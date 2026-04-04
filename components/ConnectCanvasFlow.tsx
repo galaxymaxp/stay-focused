@@ -255,7 +255,7 @@ export function ConnectCanvasFlow({
 
   return (
     <section style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-      <div style={heroCardStyle}>
+      <div className="motion-card" style={heroCardStyle}>
         <p style={{ margin: 0, fontSize: '12px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--accent-foreground)' }}>
           Canvas
         </p>
@@ -265,6 +265,7 @@ export function ConnectCanvasFlow({
         </p>
       </div>
       <SectionCard
+        className="motion-card motion-delay-1"
         eyebrow="Connection"
         title={connectionSummary ? 'Canvas is connected' : 'Connect your Canvas account'}
         description={connectionSummary
@@ -281,7 +282,7 @@ export function ConnectCanvasFlow({
             disabled={isTesting || isSyncing}
           />
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div key="connect-idle" className="motion-subsection" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <div style={introCardStyle}>
               <p style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>Guided setup</p>
               <p style={{ margin: '0.35rem 0 0', fontSize: '14px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
@@ -304,12 +305,13 @@ export function ConnectCanvasFlow({
       </SectionCard>
 
       <SectionCard
+        className="motion-card motion-delay-2"
         eyebrow="Sync courses"
         title="Choose what to bring in next"
         description="Load your current Canvas course list here, then select one or more courses to sync. The page keeps everything in a single vertical flow so you can naturally move from connection to syncing to review."
       >
         {!hasLoadedCourses ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div key="sync-locked" className="motion-subsection" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <div style={introCardStyle}>
               <p style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>
                 {canLoadCourses ? 'Ready to load your courses' : 'Connection needed before course selection'}
@@ -339,7 +341,7 @@ export function ConnectCanvasFlow({
             </div>
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div key="sync-loaded" className="motion-subsection" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <div style={successPanelStyle}>
               <p style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: 'var(--green)' }}>Course list ready</p>
               <p style={{ margin: '0.3rem 0 0', fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
@@ -446,6 +448,7 @@ export function ConnectCanvasFlow({
 
       {lastSync && (
         <SectionCard
+          className="motion-card motion-delay-3"
           eyebrow="Last sync"
           title="Recent sync status"
           description="A quick summary of the latest sync run so you can tell at a glance whether everything finished normally."
@@ -457,6 +460,7 @@ export function ConnectCanvasFlow({
       )}
 
       <SectionCard
+        className="motion-card motion-delay-4"
         eyebrow="Synced courses"
         title={syncedModules.length > 0 ? 'Courses already on your dashboard' : 'No courses synced yet'}
         description={syncedModules.length > 0
@@ -560,8 +564,8 @@ function SetupModal({
   onTestConnection: () => void
 }) {
   return (
-    <div style={modalBackdropStyle} onClick={onClose}>
-      <div style={modalCardStyle} onClick={(event) => event.stopPropagation()}>
+    <div className="motion-modal-backdrop" style={modalBackdropStyle} onClick={onClose}>
+      <div className="motion-modal-card" style={modalCardStyle} onClick={(event) => event.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'flex-start' }}>
           <div>
             <p style={{ margin: 0, fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', fontWeight: 600 }}>
@@ -742,18 +746,20 @@ function ConnectedStateCard({
 }
 
 function SectionCard({
+  className,
   eyebrow,
   title,
   description,
   children,
 }: {
+  className?: string
   eyebrow: string
   title: string
   description: string
   children: ReactNode
 }) {
   return (
-    <section style={sectionCardStyle}>
+    <section className={className} style={sectionCardStyle}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
         <p style={{ margin: 0, fontSize: '11px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
           {eyebrow}

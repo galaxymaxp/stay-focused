@@ -21,6 +21,43 @@
   --amber-light: #FDF6ED;
   --green: #3D7A5A;
   --green-light: #EEF7F2;
+  color-scheme: light;
+}
+
+:root[data-theme='light'] {
+  --bg: #FAF9F7;
+  --bg-card: #FFFFFF;
+  --bg-hover: #F5F4EF;
+  --border: #E8E6DF;
+  --border-hover: #D4D1C9;
+  --text-primary: #1A1915;
+  --text-secondary: #6B6860;
+  --text-muted: #9B9890;
+  --red: #C4432A;
+  --red-light: #FDF0EE;
+  --amber: #B87333;
+  --amber-light: #FDF6ED;
+  --green: #3D7A5A;
+  --green-light: #EEF7F2;
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  --bg: #121212;
+  --bg-card: #1A1B1E;
+  --bg-hover: #23252A;
+  --border: #2D3138;
+  --border-hover: #414650;
+  --text-primary: #F4F1E8;
+  --text-secondary: #C7C1B3;
+  --text-muted: #9A9387;
+  --red: #F28A6B;
+  --red-light: #3A1F1A;
+  --amber: #F0B24E;
+  --amber-light: #372A16;
+  --green: #79C89D;
+  --green-light: #1B3125;
+  color-scheme: dark;
 }
 
 body {
@@ -28,8 +65,111 @@ body {
   color: var(--text-primary);
   font-family: ui-sans-serif, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
+  transition: background-color 180ms ease, color 180ms ease;
 }
 
 * {
   box-sizing: border-box;
+}
+
+a,
+button,
+input {
+  transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease, box-shadow 180ms ease, opacity 180ms ease, transform 180ms ease;
+}
+
+::selection {
+  background: var(--accent-light);
+  color: var(--text-primary);
+}
+
+.motion-card {
+  opacity: 0;
+  transform: translateY(12px);
+  animation: motion-enter 420ms ease forwards;
+}
+
+.motion-delay-1 {
+  animation-delay: 50ms;
+}
+
+.motion-delay-2 {
+  animation-delay: 110ms;
+}
+
+.motion-delay-3 {
+  animation-delay: 170ms;
+}
+
+.motion-delay-4 {
+  animation-delay: 230ms;
+}
+
+.motion-subsection {
+  animation: motion-fade 220ms ease;
+}
+
+.motion-modal-backdrop {
+  animation: modal-fade 180ms ease;
+}
+
+.motion-modal-card {
+  animation: modal-rise 220ms ease;
+}
+
+@keyframes motion-enter {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes motion-fade {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes modal-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes modal-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body,
+  a,
+  button,
+  input,
+  .motion-card,
+  .motion-subsection,
+  .motion-modal-backdrop,
+  .motion-modal-card {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+  }
 }
