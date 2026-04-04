@@ -12,6 +12,7 @@ import {
   type CanvasConfig,
   type CanvasCourse,
 } from '@/lib/canvas'
+import { dedupeAIResponseDeadlines } from '@/lib/course-work-dedupe'
 import { processModuleContent } from '@/lib/openai'
 import { supabase } from '@/lib/supabase'
 
@@ -150,6 +151,8 @@ async function syncSingleCourse(course: CanvasCourse, config: Partial<CanvasConf
     throw new Error(`AI processing failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
   }
 
+  const standaloneDeadlines = dedupeAIResponseDeadlines(aiResult.tasks, aiResult.deadlines)
+
   const { error: moduleUpdateError } = await supabase
     .from('modules')
     .update({
@@ -177,9 +180,9 @@ async function syncSingleCourse(course: CanvasCourse, config: Partial<CanvasConf
     if (tasksInsertError) throw new Error('Failed to save synced tasks.')
   }
 
-  if (aiResult.deadlines.length > 0) {
+  if (standaloneDeadlines.length > 0) {
     const { error: deadlinesInsertError } = await supabase.from('deadlines').insert(
-      aiResult.deadlines.map((deadline) => ({
+      standaloneDeadlines.map((deadline) => ({
         module_id: moduleId,
         label: deadline.label,
         date: deadline.date,

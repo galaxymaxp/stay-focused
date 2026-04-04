@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { CalendarDashboard, type CalendarItem } from '@/components/CalendarDashboard'
+import { dedupeDeadlinesForDisplay } from '@/lib/course-work-dedupe'
 import { supabase } from '@/lib/supabase'
 import { getDaysUntil, getTaskBucket, getTaskScore } from '@/lib/task-ranking'
 import type { Deadline, Module, Task } from '@/lib/types'
@@ -24,7 +25,7 @@ export default async function Dashboard() {
   }
 
   const tasks = (tasksData ?? []) as Task[]
-  const deadlines = (deadlinesData ?? []) as Deadline[]
+  const deadlines = dedupeDeadlinesForDisplay(tasks, (deadlinesData ?? []) as Deadline[])
   const modules = (modulesData ?? []) as ModuleRecord[]
 
   if (tasks.length === 0 && deadlines.length === 0) {

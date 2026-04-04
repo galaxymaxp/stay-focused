@@ -22,22 +22,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <Link href="/" style={{ fontWeight: 600, fontSize: '15px', color: 'var(--text-primary)', textDecoration: 'none' }}>
             Stay Focused
           </Link>
-          <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
-            <Link href="/canvas" style={{ fontSize: '14px', color: 'var(--text-secondary)', textDecoration: 'none' }}>
-              Canvas
-            </Link>
-            <Link href="/canvas" style={{
-              fontSize: '13px',
-              background: 'var(--accent)',
-              color: '#fff',
-              padding: '6px 14px',
-              borderRadius: '8px',
-              textDecoration: 'none',
-              fontWeight: 500,
-            }}>
-              Sync course
-            </Link>
-          </div>
+          <Link href="/canvas" style={{
+            fontSize: '13px',
+            background: 'var(--accent)',
+            color: '#fff',
+            padding: '6px 14px',
+            borderRadius: '8px',
+            textDecoration: 'none',
+            fontWeight: 500,
+          }}>
+            Canvas
+          </Link>
         </nav>
         {children}
       </body>
