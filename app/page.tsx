@@ -1,57 +1,142 @@
 import Link from 'next/link'
-import { getAllTasks } from '@/actions/tasks'
-import { TaskCard } from '@/components/TaskCard'
-import type { Task } from '@/lib/types'
-import { sortTasksByRecommendation, getTaskBucket } from '@/lib/task-ranking'
+import { CalendarDashboard, type CalendarItem } from '@/components/CalendarDashboard'
+import { supabase } from '@/lib/supabase'
+import { getDaysUntil, getTaskBucket, getTaskScore } from '@/lib/task-ranking'
+import type { Deadline, Module, Task } from '@/lib/types'
+
+interface ModuleRecord extends Module {
+  raw_content: string
+}
 
 export default async function Dashboard() {
-  const tasks = await getAllTasks()
+  const [
+    { data: tasksData, error: tasksError },
+    { data: deadlinesData, error: deadlinesError },
+    { data: modulesData, error: modulesError },
+  ] = await Promise.all([
+    supabase.from('tasks').select('*').order('deadline', { ascending: true, nullsFirst: false }),
+    supabase.from('deadlines').select('*').order('date', { ascending: true }),
+    supabase.from('modules').select('*').order('created_at', { ascending: false }),
+  ])
 
-  const pending = sortTasksByRecommendation(
-    tasks.filter((t) => t.status === 'pending')
-  )
+  if (tasksError || deadlinesError || modulesError) {
+    throw new Error('Failed to load dashboard data.')
+  }
 
-  const completed = tasks.filter((t) => t.status === 'completed')
+  const tasks = (tasksData ?? []) as Task[]
+  const deadlines = (deadlinesData ?? []) as Deadline[]
+  const modules = (modulesData ?? []) as ModuleRecord[]
 
-  const urgent = pending.filter((t) => getTaskBucket(t) === 'urgent')
-  const next = pending.filter((t) => getTaskBucket(t) === 'next')
-  const later = pending.filter((t) => getTaskBucket(t) === 'later')
-
-  return (
-    <main style={{ maxWidth: '680px', margin: '0 auto', padding: '2.5rem 1.5rem' }}>
-      {tasks.length === 0 && (
+  if (tasks.length === 0 && deadlines.length === 0) {
+    return (
+      <main style={{ maxWidth: '760px', margin: '0 auto', padding: '2.5rem 1.5rem' }}>
         <div style={{ textAlign: 'center', padding: '5rem 0', color: 'var(--text-muted)', fontSize: '14px' }}>
           No tasks yet.{' '}
           <Link href="/canvas" style={{ color: 'var(--accent)' }}>
             Sync your first course.
           </Link>
         </div>
-      )}
+      </main>
+    )
+  }
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '2.5rem' }}>
-        <Section title="Urgent" dot="#C4432A" tasks={urgent} />
-        <Section title="Next" dot="#B87333" tasks={next} />
-        <Section title="Later" dot="#D4D1C9" tasks={later} />
-        <Section title="Completed" dot="#3D7A5A" tasks={completed} />
-      </div>
+  const modulesById = new Map(modules.map((module) => [module.id, module]))
+  const datedItems: CalendarItem[] = []
+  let undatedTaskCount = 0
+
+  for (const task of tasks) {
+    const moduleRecord = modulesById.get(task.module_id)
+    if (!task.deadline) {
+      undatedTaskCount += 1
+      continue
+    }
+
+    datedItems.push({
+      id: `task-${task.id}`,
+      sourceId: task.id,
+      kind: 'task',
+      title: task.title,
+      courseName: extractCourseName(moduleRecord?.raw_content),
+      moduleTitle: moduleRecord?.title ?? null,
+      relatedText: task.details,
+      dateKey: toDateKey(task.deadline),
+      dateTime: task.deadline,
+      status: getCalendarStatusForTask(task),
+      completionStatus: task.status,
+      priority: task.priority,
+      recommendationScore: getTaskScore(task),
+    })
+  }
+
+  for (const deadline of deadlines) {
+    const moduleRecord = modulesById.get(deadline.module_id)
+
+    datedItems.push({
+      id: `deadline-${deadline.id}`,
+      sourceId: deadline.id,
+      kind: 'deadline',
+      title: deadline.label,
+      courseName: extractCourseName(moduleRecord?.raw_content),
+      moduleTitle: moduleRecord?.title ?? null,
+      relatedText: moduleRecord?.summary ?? null,
+      dateKey: toDateKey(deadline.date),
+      dateTime: deadline.date,
+      status: getCalendarStatusForDeadline(deadline.date),
+      completionStatus: 'pending',
+      priority: null,
+      recommendationScore: getDeadlineScore(deadline.date),
+    })
+  }
+
+  return (
+    <main style={{ maxWidth: '1180px', margin: '0 auto', padding: '2rem 1.25rem 2.5rem' }}>
+      <CalendarDashboard items={datedItems} undatedTaskCount={undatedTaskCount} />
     </main>
   )
 }
 
-function Section({ title, dot, tasks }: { title: string; dot: string; tasks: Task[] }) {
-  if (tasks.length === 0) return null
-  return (
-    <section>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
-        <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: dot, display: 'inline-block' }} />
-        <h2 style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', margin: 0 }}>
-          {title}
-          <span style={{ marginLeft: '6px', fontWeight: 400, color: 'var(--border-hover)' }}>{tasks.length}</span>
-        </h2>
-      </div>
-      <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '6px' }}>
-        {tasks.map((task) => <TaskCard key={task.id} task={task} />)}
-      </ul>
-    </section>
-  )
+function extractCourseName(rawContent?: string | null) {
+  if (!rawContent) return 'Synced course'
+
+  const firstLine = rawContent.split('\n').find((line) => line.startsWith('Course:'))
+  if (!firstLine) return 'Synced course'
+
+  return firstLine
+    .replace(/^Course:\s*/, '')
+    .replace(/\s+\([^)]+\)\s*$/, '')
+    .trim() || 'Synced course'
+}
+
+function toDateKey(value: string) {
+  return value.slice(0, 10)
+}
+
+function getCalendarStatusForTask(task: Task): CalendarItem['status'] {
+  if (task.status === 'completed') return 'completed'
+
+  const bucket = getTaskBucket(task)
+  if (bucket === 'urgent') return 'urgent'
+  if (bucket === 'next') return 'dueSoon'
+  return 'upcoming'
+}
+
+function getCalendarStatusForDeadline(date: string): CalendarItem['status'] {
+  const daysUntil = getDaysUntil(date)
+
+  if (daysUntil === null) return 'upcoming'
+  if (daysUntil < 0) return 'urgent'
+  if (daysUntil <= 3) return 'dueSoon'
+  return 'upcoming'
+}
+
+function getDeadlineScore(date: string) {
+  const daysUntil = getDaysUntil(date)
+
+  if (daysUntil === null) return 0
+  if (daysUntil < 0) return 80
+  if (daysUntil === 0) return 68
+  if (daysUntil === 1) return 58
+  if (daysUntil <= 3) return 44
+  if (daysUntil <= 7) return 28
+  return 12
 }

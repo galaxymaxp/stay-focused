@@ -1,5 +1,5 @@
-const CANVAS_URL = process.env.CANVAS_API_URL
-const CANVAS_TOKEN = process.env.CANVAS_API_TOKEN
+const DEFAULT_CANVAS_URL = process.env.CANVAS_API_URL ?? process.env.CANVAS_API_BASE_URL
+const DEFAULT_CANVAS_TOKEN = process.env.CANVAS_API_TOKEN
 
 const NON_ACADEMIC = [
   'library',
@@ -17,28 +17,9 @@ const NON_ACADEMIC = [
   'social responsibility',
 ]
 
-function canvasHeaders() {
-  if (!CANVAS_URL || !CANVAS_TOKEN) {
-    throw new Error('Canvas API credentials missing. Check CANVAS_API_URL and CANVAS_API_TOKEN in .env.local')
-  }
-
-  return {
-    Authorization: `Bearer ${CANVAS_TOKEN}`,
-    'Content-Type': 'application/json',
-  }
-}
-
-async function canvasFetch<T>(path: string): Promise<T> {
-  const res = await fetch(`${CANVAS_URL}/api/v1${path}?per_page=100`, {
-    headers: canvasHeaders(),
-    next: { revalidate: 0 },
-  })
-
-  if (!res.ok) {
-    throw new Error(`Canvas API error ${res.status}: ${path}`)
-  }
-
-  return res.json()
+export interface CanvasConfig {
+  url: string
+  token: string
 }
 
 export interface CanvasCourse {
@@ -82,9 +63,71 @@ export interface CanvasModule {
   items: CanvasModuleItem[]
 }
 
-export async function getCourses(): Promise<CanvasCourse[]> {
+function resolveCanvasConfig(override?: Partial<CanvasConfig>): CanvasConfig {
+  const url = override?.url?.trim() || DEFAULT_CANVAS_URL?.trim()
+  const token = override?.token?.trim() || DEFAULT_CANVAS_TOKEN?.trim()
+
+  if (!url || !token) {
+    throw new Error('Add your Canvas URL and access token to continue.')
+  }
+
+  try {
+    return {
+      url: normalizeCanvasUrl(url),
+      token,
+    }
+  } catch {
+    throw new Error('Enter a valid Canvas URL, like https://school.instructure.com.')
+  }
+}
+
+export function normalizeCanvasUrl(value: string) {
+  const normalizedInput = /^[a-zA-Z][a-zA-Z\d+\-.]*:\/\//.test(value.trim())
+    ? value.trim()
+    : `https://${value.trim()}`
+
+  const url = new URL(normalizedInput)
+  url.pathname = ''
+  url.search = ''
+  url.hash = ''
+  return url.toString().replace(/\/$/, '')
+}
+
+async function canvasFetch<T>(path: string, configOverride?: Partial<CanvasConfig>): Promise<T> {
+  const config = resolveCanvasConfig(configOverride)
+  const url = new URL(`/api/v1${path}`, `${config.url}/`)
+
+  if (!url.searchParams.has('per_page')) {
+    url.searchParams.set('per_page', '100')
+  }
+
+  const res = await fetch(url.toString(), {
+    headers: {
+      Authorization: `Bearer ${config.token}`,
+      'Content-Type': 'application/json',
+    },
+    next: { revalidate: 0 },
+  })
+
+  if (!res.ok) {
+    if (res.status === 401 || res.status === 403) {
+      throw new Error('Canvas could not verify that access token. Double-check it and try again.')
+    }
+
+    if (res.status === 404) {
+      throw new Error('That Canvas URL did not respond like a Canvas site. Check the address and try again.')
+    }
+
+    throw new Error(`Canvas returned an unexpected error (${res.status}). Please try again.`)
+  }
+
+  return res.json()
+}
+
+export async function getCourses(configOverride?: Partial<CanvasConfig>): Promise<CanvasCourse[]> {
   const courses = await canvasFetch<CanvasCourse[]>(
-    '/courses?enrollment_state=active&enrollment_type=student&state[]=available&include[]=term'
+    '/courses?enrollment_state=active&enrollment_type=student&state[]=available&include[]=term',
+    configOverride
   )
 
   const now = new Date()
@@ -103,18 +146,19 @@ export async function getCourses(): Promise<CanvasCourse[]> {
   })
 }
 
-export async function getAssignments(courseId: number): Promise<CanvasAssignment[]> {
-  return canvasFetch<CanvasAssignment[]>(`/courses/${courseId}/assignments?order_by=due_at`)
+export async function getAssignments(courseId: number, configOverride?: Partial<CanvasConfig>): Promise<CanvasAssignment[]> {
+  return canvasFetch<CanvasAssignment[]>(`/courses/${courseId}/assignments?order_by=due_at`, configOverride)
 }
 
-export async function getAnnouncements(courseId: number): Promise<CanvasAnnouncement[]> {
+export async function getAnnouncements(courseId: number, configOverride?: Partial<CanvasConfig>): Promise<CanvasAnnouncement[]> {
   return canvasFetch<CanvasAnnouncement[]>(
-    `/courses/${courseId}/discussion_topics?only_announcements=true&order_by=recent_activity`
+    `/courses/${courseId}/discussion_topics?only_announcements=true&order_by=recent_activity`,
+    configOverride
   )
 }
 
-export async function getModules(courseId: number): Promise<CanvasModule[]> {
-  return canvasFetch<CanvasModule[]>(`/courses/${courseId}/modules?include[]=items`)
+export async function getModules(courseId: number, configOverride?: Partial<CanvasConfig>): Promise<CanvasModule[]> {
+  return canvasFetch<CanvasModule[]>(`/courses/${courseId}/modules?include[]=items`, configOverride)
 }
 
 function stripHtml(html: string): string {
