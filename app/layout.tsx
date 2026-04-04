@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { CanvasMenu } from '@/components/CanvasMenu'
+import { StayFocusedIcon } from '@/components/StayFocusedIcon'
 import { ThemeProvider } from '@/components/ThemeProvider'
 import Link from 'next/link'
 import Script from 'next/script'
@@ -57,8 +58,21 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             gap: '1rem',
             flexWrap: 'wrap',
           }}>
-            <Link href="/" style={{ fontWeight: 600, fontSize: '15px', color: 'var(--text-primary)', textDecoration: 'none' }}>
-              Stay Focused
+            <Link
+              href="/"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.6rem',
+                fontWeight: 600,
+                fontSize: '15px',
+                color: 'var(--text-primary)',
+                textDecoration: 'none',
+                minHeight: '40px',
+              }}
+            >
+              <StayFocusedIcon size={18} style={{ flexShrink: 0 }} />
+              <span>Stay Focused</span>
             </Link>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
               <Link href="/settings" className="ui-button ui-button-secondary" style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: 500, padding: '0.45rem 0.7rem', borderRadius: '999px', minHeight: '36px' }}>
