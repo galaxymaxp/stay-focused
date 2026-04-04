@@ -75,7 +75,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <span>Stay Focused</span>
             </Link>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-              <Link href="/settings" className="ui-button ui-button-secondary" style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: 500, padding: '0.45rem 0.7rem', borderRadius: '999px', minHeight: '36px' }}>
+              <Link href="/settings" className="ui-button ui-button-secondary" style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: 500, padding: '0.45rem 0.7rem', borderRadius: 'var(--radius-control)', minHeight: '36px' }}>
                 Settings
               </Link>
               <CanvasMenu />

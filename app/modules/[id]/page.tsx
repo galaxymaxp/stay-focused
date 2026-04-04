@@ -16,7 +16,7 @@ export default async function ModulePage({ params }: Props) {
   if (module.status === 'error') {
     return (
       <main className="page-shell page-shell-compact page-stack">
-        <div className="ui-card ui-card-soft ui-status-danger" style={{ borderRadius: '10px', padding: '14px', fontSize: '14px' }}>
+        <div className="ui-card ui-card-soft ui-status-danger" style={{ borderRadius: 'var(--radius-control)', padding: '14px', fontSize: '14px' }}>
           Processing failed. Delete this module and try again.
         </div>
       </main>
@@ -43,7 +43,7 @@ export default async function ModulePage({ params }: Props) {
           {label('Deadlines')}
           <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '6px' }}>
             {deadlines.map((d: Deadline) => (
-              <li key={d.id} className="ui-card" style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', padding: '10px 14px', borderRadius: '8px' }}>
+              <li key={d.id} className="ui-card" style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', padding: '10px 14px', borderRadius: 'var(--radius-tight)' }}>
                 <span style={{ color: 'var(--text-primary)' }}>{d.label}</span>
                 <span style={{ color: 'var(--text-muted)', fontFamily: 'monospace', fontSize: '13px' }}>{d.date}</span>
               </li>
@@ -57,7 +57,7 @@ export default async function ModulePage({ params }: Props) {
           {label('Tasks')}
           <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '6px' }}>
             {tasks.map((task: Task) => (
-              <li key={task.id} className="ui-card" style={{ borderRadius: '10px', padding: '12px 14px' }}>
+              <li key={task.id} className="ui-card" style={{ borderRadius: 'var(--radius-control)', padding: '12px 14px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', alignItems: 'flex-start' }}>
                   <span style={{ fontSize: '14px', fontWeight: 500, color: 'var(--text-primary)' }}>{task.title}</span>
                   <PriorityBadge priority={task.priority} />
@@ -96,7 +96,7 @@ function PriorityBadge({ priority }: { priority: string }) {
   }
   const s = styles[priority] ?? styles.low
   return (
-    <span className="ui-chip" style={{ fontSize: '11px', fontWeight: 500, padding: '2px 8px', borderRadius: '6px', background: s.background, color: s.color, flexShrink: 0 }}>
+    <span className="ui-chip" style={{ fontSize: '11px', fontWeight: 500, padding: '2px 8px', borderRadius: 'var(--radius-tight)', background: s.background, color: s.color, flexShrink: 0 }}>
       {priority}
     </span>
   )

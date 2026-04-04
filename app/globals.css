@@ -47,10 +47,16 @@
   --glass-glow: 0 0 0 1px rgba(255, 255, 255, 0.02);
   --glass-glow-hover: 0 0 0 1px color-mix(in srgb, var(--accent) 8%, rgba(255, 255, 255, 0.04));
   --glass-blur: 12px;
-  --radius-premium: 22px;
-  --radius-lg: 20px;
-  --radius-md: 16px;
-  --radius-sm: 12px;
+  --radius-page: 16px;
+  --radius-panel: 14px;
+  --radius-overlay: 14px;
+  --radius-control: 12px;
+  --radius-tight: 10px;
+  --radius-pill: 999px;
+  --radius-premium: var(--radius-page);
+  --radius-lg: var(--radius-panel);
+  --radius-md: var(--radius-control);
+  --radius-sm: var(--radius-tight);
   --bg: var(--app-bg);
   --bg-card: var(--surface-base);
   --bg-hover: var(--interactive-hover-bg);
@@ -112,10 +118,16 @@
   --glass-glow: 0 0 0 1px rgba(255, 255, 255, 0.12);
   --glass-glow-hover: 0 0 0 1px color-mix(in srgb, var(--accent) 10%, rgba(255, 255, 255, 0.14));
   --glass-blur: 12px;
-  --radius-premium: 22px;
-  --radius-lg: 20px;
-  --radius-md: 16px;
-  --radius-sm: 12px;
+  --radius-page: 16px;
+  --radius-panel: 14px;
+  --radius-overlay: 14px;
+  --radius-control: 12px;
+  --radius-tight: 10px;
+  --radius-pill: 999px;
+  --radius-premium: var(--radius-page);
+  --radius-lg: var(--radius-panel);
+  --radius-md: var(--radius-control);
+  --radius-sm: var(--radius-tight);
   --bg: var(--app-bg);
   --bg-card: var(--surface-base);
   --bg-hover: var(--interactive-hover-bg);
@@ -171,10 +183,16 @@
   --glass-glow: 0 0 0 1px rgba(255, 255, 255, 0.02);
   --glass-glow-hover: 0 0 0 1px color-mix(in srgb, var(--accent) 8%, rgba(255, 255, 255, 0.04));
   --glass-blur: 12px;
-  --radius-premium: 22px;
-  --radius-lg: 20px;
-  --radius-md: 16px;
-  --radius-sm: 12px;
+  --radius-page: 16px;
+  --radius-panel: 14px;
+  --radius-overlay: 14px;
+  --radius-control: 12px;
+  --radius-tight: 10px;
+  --radius-pill: 999px;
+  --radius-premium: var(--radius-page);
+  --radius-lg: var(--radius-panel);
+  --radius-md: var(--radius-control);
+  --radius-sm: var(--radius-tight);
   --bg: var(--app-bg);
   --bg-card: var(--surface-base);
   --bg-hover: var(--interactive-hover-bg);
@@ -301,7 +319,7 @@ a:focus-visible {
   background: var(--surface-base);
   border: 1px solid var(--border-subtle);
   box-shadow: var(--shadow-low), var(--highlight-sheen);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-panel);
 }
 
 .ui-card-elevated {
@@ -340,7 +358,7 @@ a:focus-visible {
   gap: 0.45rem;
   min-height: 2.5rem;
   padding: 0.72rem 1rem;
-  border-radius: 14px;
+  border-radius: var(--radius-control);
   border: 1px solid var(--border-subtle);
   background: var(--surface-elevated);
   color: var(--text-primary);
@@ -406,7 +424,7 @@ a:focus-visible {
 
 .ui-input {
   width: 100%;
-  border-radius: 14px;
+  border-radius: var(--radius-control);
   border: 1px solid var(--border-subtle);
   background: color-mix(in srgb, var(--surface-elevated) 94%, transparent);
   color: var(--text-primary);
@@ -427,7 +445,7 @@ a:focus-visible {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   border: 1px solid var(--border-subtle);
   background: color-mix(in srgb, var(--surface-soft) 92%, transparent);
   color: var(--text-secondary);
@@ -502,7 +520,7 @@ a:focus-visible {
   z-index: 30;
   margin: 0 auto;
   width: min(1200px, calc(100% - 1.5rem));
-  border-radius: 0 0 22px 22px;
+  border-radius: 0 0 var(--radius-page) var(--radius-page);
   border-top: 0;
   background: color-mix(in srgb, var(--surface-base) 84%, transparent);
   box-shadow: 0 14px 34px rgba(0, 0, 0, 0.24), var(--highlight-sheen);
@@ -532,7 +550,7 @@ a:focus-visible {
 
 .section-shell {
   padding: 1.1rem;
-  border-radius: 22px;
+  border-radius: var(--radius-page);
   background: color-mix(in srgb, var(--surface-base) 98%, transparent);
   border: 1px solid color-mix(in srgb, var(--border-subtle) 88%, transparent);
   box-shadow: var(--shadow-low), var(--highlight-sheen);

@@ -51,7 +51,7 @@ export function SettingsPage() {
                   '--glass-panel-glow': 'none',
                   width: '100%',
                   textAlign: 'left',
-                  borderRadius: '14px',
+                  borderRadius: 'var(--radius-panel)',
                   padding: '0.95rem 1rem',
                   cursor: 'pointer',
                   display: 'flex',
@@ -70,7 +70,7 @@ export function SettingsPage() {
                 <span className={selected ? 'ui-chip ui-chip-selected' : 'ui-chip'} style={{
                   fontSize: '12px',
                   fontWeight: 700,
-                  borderRadius: '999px',
+                  borderRadius: 'var(--radius-pill)',
                   padding: '0.35rem 0.55rem',
                 }}>
                   {selected ? 'Selected' : 'Choose'}
@@ -105,7 +105,7 @@ export function SettingsPage() {
                   '--glass-panel-border': selected ? 'var(--accent-border)' : 'var(--glass-border)',
                   '--glass-panel-shadow': selected ? 'var(--glass-shadow-strong)' : 'var(--glass-shadow)',
                   '--glass-panel-glow': 'none',
-                  borderRadius: '16px',
+                  borderRadius: 'var(--radius-panel)',
                   padding: '0.9rem',
                   cursor: 'pointer',
                   textAlign: 'left',
@@ -134,13 +134,13 @@ export function SettingsPage() {
 }
 
 const heroStyle = {
-  borderRadius: '22px',
+  borderRadius: 'var(--radius-page)',
   padding: '1.45rem',
   boxShadow: 'var(--shadow-medium), var(--highlight-sheen)',
 } as const
 
 const cardStyle = {
-  borderRadius: '20px',
+  borderRadius: 'var(--radius-page)',
   padding: '1.15rem',
   display: 'flex',
   flexDirection: 'column',

@@ -10,7 +10,7 @@ export function CanvasMenu() {
       style={{
         fontSize: '13px',
         padding: '6px 14px',
-        borderRadius: '999px',
+        borderRadius: 'var(--radius-control)',
         fontWeight: 700,
         textDecoration: 'none',
         minHeight: '38px',

@@ -62,7 +62,7 @@ export function CanvasSyncForm({ courses }: { courses: CanvasCourse[] }) {
           className="ui-input"
           style={{
             width: '100%',
-            borderRadius: '8px',
+            borderRadius: 'var(--radius-control)',
             padding: '10px 14px',
             fontSize: '14px',
             outline: 'none',
@@ -82,7 +82,7 @@ export function CanvasSyncForm({ courses }: { courses: CanvasCourse[] }) {
             zIndex: 10,
             marginTop: '4px',
             width: '100%',
-            borderRadius: '10px',
+            borderRadius: 'var(--radius-overlay)',
             maxHeight: '240px',
             overflowY: 'auto',
             listStyle: 'none',
@@ -127,7 +127,7 @@ export function CanvasSyncForm({ courses }: { courses: CanvasCourse[] }) {
         <div className="ui-card ui-card-soft ui-status-danger" style={{
           background: 'var(--red-light)',
           border: '1px solid #F5C5BC',
-          borderRadius: '8px',
+          borderRadius: 'var(--radius-control)',
           padding: '10px 14px',
           fontSize: '13px',
           color: 'var(--red)',
@@ -142,7 +142,7 @@ export function CanvasSyncForm({ courses }: { courses: CanvasCourse[] }) {
         className="ui-button ui-button-primary"
         style={{
           width: '100%',
-          borderRadius: '8px',
+          borderRadius: 'var(--radius-control)',
           padding: '10px',
           fontSize: '14px',
           fontWeight: 600,

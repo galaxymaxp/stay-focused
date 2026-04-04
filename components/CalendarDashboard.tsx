@@ -92,7 +92,7 @@ export function CalendarDashboard({ items, undatedTaskCount }: { items: Calendar
 
       {undatedTaskCount > 0 && (
         <div className="glass-panel glass-soft ui-empty" style={{
-          borderRadius: '14px',
+          borderRadius: 'var(--radius-panel)',
           padding: '0.75rem 0.9rem',
           fontSize: '13px',
           color: 'var(--text-secondary)',
@@ -102,7 +102,7 @@ export function CalendarDashboard({ items, undatedTaskCount }: { items: Calendar
       )}
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'flex-start' }}>
-        <section className="glass-panel glass-strong ui-data-panel" style={{ borderRadius: '24px', overflow: 'hidden', flex: '2 1 640px', minWidth: '0' }}>
+        <section className="glass-panel glass-strong ui-data-panel" style={{ borderRadius: 'var(--radius-page)', overflow: 'hidden', flex: '2 1 640px', minWidth: '0' }}>
           <div className="ui-data-header" style={{
             display: 'flex',
             justifyContent: 'space-between',
@@ -164,7 +164,7 @@ export function CalendarDashboard({ items, undatedTaskCount }: { items: Calendar
                       '--glass-panel-shadow': isSelected ? 'var(--glass-shadow-strong)' : dayItems.length > 0 ? 'var(--glass-shadow)' : 'inset 0 1px 0 rgba(255,255,255,0.02)',
                       '--glass-panel-glow': 'none',
                       minHeight: '108px',
-                      borderRadius: '16px',
+                      borderRadius: 'var(--radius-panel)',
                       padding: '0.55rem',
                       textAlign: 'left',
                       display: 'flex',
@@ -207,7 +207,7 @@ export function CalendarDashboard({ items, undatedTaskCount }: { items: Calendar
           </div>
         </section>
 
-        <aside className="glass-panel glass-strong ui-data-panel" style={{ borderRadius: '24px', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.9rem', flex: '1 1 320px', minWidth: '280px' }}>
+        <aside className="glass-panel glass-strong ui-data-panel" style={{ borderRadius: 'var(--radius-page)', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.9rem', flex: '1 1 320px', minWidth: '280px' }}>
           <div style={{ paddingBottom: '0.85rem', borderBottom: '1px solid color-mix(in srgb, var(--border-subtle) 88%, transparent)' }}>
             <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 600, color: 'var(--text-primary)' }}>
               {formatSelectedDayLabel(selectedDateKey)}
@@ -219,7 +219,7 @@ export function CalendarDashboard({ items, undatedTaskCount }: { items: Calendar
 
           {selectedItems.length === 0 ? (
             <div className="glass-panel glass-soft ui-empty" style={{
-              borderRadius: '16px',
+              borderRadius: 'var(--radius-panel)',
               padding: '1rem',
               fontSize: '14px',
             }}>
@@ -326,7 +326,7 @@ function SelectedItemCard({ item }: { item: CalendarItem }) {
       '--glass-panel-border': 'var(--glass-border)',
       '--glass-panel-shadow': item.status === 'urgent' || item.status === 'dueSoon' ? 'var(--glass-shadow-strong)' : 'var(--glass-shadow)',
       '--glass-panel-glow': 'none',
-      borderRadius: '16px',
+      borderRadius: 'var(--radius-panel)',
       padding: '0.9rem',
       display: 'flex',
       flexDirection: 'column',
@@ -376,7 +376,7 @@ function SelectedItemCard({ item }: { item: CalendarItem }) {
             disabled={isPending}
             className={`ui-button ${isCompleted ? 'ui-status-success' : 'ui-button-secondary'}`}
             style={{
-              borderRadius: '8px',
+              borderRadius: 'var(--radius-tight)',
               padding: '0.4rem 0.6rem',
               fontSize: '12px',
               flexShrink: 0,
@@ -425,7 +425,7 @@ function MonthButton({ children, onClick }: { children: ReactNode; onClick: () =
         '--glass-panel-border': 'var(--glass-border)',
         '--glass-panel-shadow': 'var(--glass-shadow)',
         color: 'var(--text-primary)',
-        borderRadius: '12px',
+        borderRadius: 'var(--radius-control)',
         padding: '0.45rem 0.75rem',
         fontSize: '13px',
         cursor: 'pointer',

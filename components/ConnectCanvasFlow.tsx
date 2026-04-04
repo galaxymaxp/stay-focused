@@ -495,7 +495,7 @@ export function ConnectCanvasFlow({
                     justifyContent: 'space-between',
                     alignItems: 'flex-start',
                     gap: '0.8rem',
-                    borderRadius: '14px',
+                    borderRadius: 'var(--radius-panel)',
                     padding: '0.95rem 1rem',
                     textDecoration: 'none',
                   } as CSSProperties}
@@ -693,7 +693,7 @@ function GuideStep({ number, title, children }: { number: string; title: string;
       <span style={{
         width: '1.6rem',
         height: '1.6rem',
-        borderRadius: '999px',
+        borderRadius: 'var(--radius-pill)',
         background: 'color-mix(in srgb, var(--surface-selected) 84%, var(--accent) 16%)',
         color: 'var(--text-primary)',
         display: 'inline-flex',
@@ -821,7 +821,7 @@ function Field({
 function Message({ children }: { children: ReactNode }) {
   return (
     <div className="glass-panel glass-soft ui-status-danger" style={{
-      borderRadius: '12px',
+      borderRadius: 'var(--radius-panel)',
       padding: '0.85rem 0.95rem',
       fontSize: '13px',
     }}>
@@ -833,7 +833,7 @@ function Message({ children }: { children: ReactNode }) {
 function SuccessMessage({ children }: { children: ReactNode }) {
   return (
     <div className="glass-panel glass-soft ui-status-success" style={{
-      borderRadius: '12px',
+      borderRadius: 'var(--radius-panel)',
       padding: '0.85rem 0.95rem',
       fontSize: '13px',
     }}>
@@ -906,19 +906,19 @@ function lastSyncCardStyle(tone: SyncSnapshot['tone']): CSSProperties {
     border: `1px solid ${borderColor}`,
     background,
     color,
-    borderRadius: '14px',
+      borderRadius: 'var(--radius-panel)',
     padding: '1rem',
   }
 }
 
 const heroCardStyle: CSSProperties = {
-  borderRadius: '24px',
+  borderRadius: 'var(--radius-page)',
   padding: '1.45rem',
   boxShadow: 'var(--shadow-medium), var(--highlight-sheen)',
 }
 
 const sectionCardStyle: CSSProperties = {
-  borderRadius: '24px',
+  borderRadius: 'var(--radius-page)',
   padding: '1.15rem',
   display: 'flex',
   flexDirection: 'column',
@@ -927,13 +927,13 @@ const sectionCardStyle: CSSProperties = {
 }
 
 const introCardStyle: CSSProperties = {
-  borderRadius: '16px',
+  borderRadius: 'var(--radius-panel)',
   padding: '1rem',
   boxShadow: 'var(--glass-shadow)',
 }
 
 const successPanelStyle: CSSProperties = {
-  borderRadius: '16px',
+  borderRadius: 'var(--radius-panel)',
   padding: '1rem',
   display: 'flex',
   flexDirection: 'column',
@@ -942,7 +942,7 @@ const successPanelStyle: CSSProperties = {
 }
 
 const softPanelStyle: CSSProperties = {
-  borderRadius: '16px',
+  borderRadius: 'var(--radius-panel)',
   padding: '0.85rem 1rem',
   fontSize: '13px',
   color: 'var(--text-secondary)',
@@ -951,7 +951,7 @@ const softPanelStyle: CSSProperties = {
 
 const courseListStyle: CSSProperties = {
   border: '1px solid var(--border)',
-  borderRadius: '16px',
+  borderRadius: 'var(--radius-panel)',
   overflow: 'hidden',
   background: 'color-mix(in srgb, var(--glass-surface-strong) 94%, transparent)',
   maxHeight: '280px',
@@ -960,7 +960,7 @@ const courseListStyle: CSSProperties = {
 }
 
 const emptyStateStyle: CSSProperties = {
-  borderRadius: '14px',
+  borderRadius: 'var(--radius-panel)',
   padding: '1rem',
   color: 'var(--text-secondary)',
   fontSize: '14px',
@@ -968,7 +968,7 @@ const emptyStateStyle: CSSProperties = {
 }
 
 const guideCardStyle: CSSProperties = {
-  borderRadius: '16px',
+  borderRadius: 'var(--radius-panel)',
   padding: '1rem',
   display: 'flex',
   flexDirection: 'column',
@@ -991,7 +991,7 @@ const modalCardStyle: CSSProperties = {
   maxWidth: '640px',
   maxHeight: 'calc(100vh - 2rem)',
   overflowY: 'auto',
-  borderRadius: '24px',
+  borderRadius: 'var(--radius-overlay)',
   padding: '1.25rem',
   display: 'flex',
   flexDirection: 'column',
@@ -999,7 +999,7 @@ const modalCardStyle: CSSProperties = {
 }
 
 const closeButtonStyle: CSSProperties = {
-  borderRadius: '12px',
+  borderRadius: 'var(--radius-control)',
   padding: '0.55rem 0.8rem',
   fontSize: '12px',
 }
@@ -1014,7 +1014,7 @@ const labelStyle = {
 
 const inputStyle = {
   width: '100%',
-  borderRadius: '14px',
+  borderRadius: 'var(--radius-control)',
   padding: '0.8rem 0.9rem',
   fontSize: '14px',
   outline: 'none',
@@ -1025,7 +1025,7 @@ function primaryButton(disabled: boolean) {
   return {
     width: 'fit-content',
     minWidth: '170px',
-    borderRadius: '14px',
+    borderRadius: 'var(--radius-control)',
     padding: '0.8rem 1rem',
     fontSize: '14px',
     fontWeight: 700,
@@ -1033,14 +1033,14 @@ function primaryButton(disabled: boolean) {
 }
 
 const secondaryButton = {
-  borderRadius: '14px',
+  borderRadius: 'var(--radius-control)',
   padding: '0.75rem 0.95rem',
   fontSize: '13px',
   fontWeight: 600,
 } as const
 
 const ghostButton = {
-  borderRadius: '10px',
+  borderRadius: 'var(--radius-tight)',
   padding: '0.75rem 0.2rem',
   fontSize: '13px',
 } as const
