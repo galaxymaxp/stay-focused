@@ -51,19 +51,20 @@ export function TaskCard({ task }: { task: Task }) {
       </button>
 
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
           <span style={{
             fontSize: '14px',
             fontWeight: 500,
             color: isCompleted ? 'var(--text-muted)' : 'var(--text-primary)',
             textDecoration: isCompleted ? 'line-through' : 'none',
+            overflowWrap: 'anywhere',
           }}>
             {task.title}
           </span>
           <PriorityBadge priority={task.priority} />
         </div>
         {task.details && (
-          <p style={{ margin: '3px 0 0', fontSize: '12px', color: 'var(--text-muted)' }}>{task.details}</p>
+          <p style={{ margin: '3px 0 0', fontSize: '12px', color: 'var(--text-muted)', overflowWrap: 'anywhere' }}>{task.details}</p>
         )}
         {task.deadline && !isCompleted && <DeadlinePill deadline={task.deadline} />}
       </div>

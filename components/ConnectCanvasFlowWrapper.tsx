@@ -11,6 +11,8 @@ export function ConnectCanvasFlowWrapper({
   initialConnectionUrl,
   lastSync,
   syncedCourseKeys,
+  initialAction,
+  syncedModules,
 }: {
   initialConnectionUrl: string | null
   lastSync: {
@@ -18,6 +20,13 @@ export function ConnectCanvasFlowWrapper({
     tone: 'success' | 'neutral' | 'warning'
   } | null
   syncedCourseKeys: string[]
+  initialAction: string | null
+  syncedModules: {
+    id: string
+    title: string
+    summary: string | null
+    createdAt: string
+  }[]
 }) {
   return (
     <ConnectCanvasFlow
@@ -25,6 +34,8 @@ export function ConnectCanvasFlowWrapper({
       lastSync={lastSync}
       syncedCourseKeys={syncedCourseKeys}
       hasSyncedCourses={syncedCourseKeys.length > 0}
+      initialAction={initialAction}
+      syncedModules={syncedModules}
     />
   )
 }

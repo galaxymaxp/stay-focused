@@ -9,9 +9,12 @@
   --text-primary: #1A1915;
   --text-secondary: #6B6860;
   --text-muted: #9B9890;
-  --accent: #D97757;
-  --accent-hover: #C4673F;
-  --accent-light: #FAF0EB;
+  --accent: #E3B437;
+  --accent-hover: #CCA02D;
+  --accent-light: #FFF5CC;
+  --accent-foreground: #4C3900;
+  --accent-border: #E2C15F;
+  --accent-shadow: rgba(227, 180, 55, 0.28);
   --red: #C4432A;
   --red-light: #FDF0EE;
   --amber: #B87333;

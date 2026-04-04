@@ -132,8 +132,8 @@ export function CalendarDashboard({ items, undatedTaskCount }: { items: Calendar
             </div>
           </div>
 
-          <div style={{ padding: '0.75rem' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: '0.5rem', marginBottom: '0.5rem' }}>
+          <div style={{ padding: '0.75rem', overflowX: 'auto' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(72px, 1fr))', gap: '0.5rem', marginBottom: '0.5rem', minWidth: '560px' }}>
               {WEEKDAY_LABELS.map((label) => (
                 <div key={label} style={{ padding: '0.25rem 0.35rem', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>
                   {label}
@@ -141,7 +141,7 @@ export function CalendarDashboard({ items, undatedTaskCount }: { items: Calendar
               ))}
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: '0.5rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(72px, 1fr))', gap: '0.5rem', minWidth: '560px' }}>
               {days.map((day) => {
                 const dayItems = itemsByDate.get(day.dateKey) ?? []
                 const isSelected = day.dateKey === selectedDateKey
@@ -168,7 +168,7 @@ export function CalendarDashboard({ items, undatedTaskCount }: { items: Calendar
                       gap: '0.4rem',
                       cursor: 'pointer',
                       opacity: day.inCurrentMonth ? 1 : 0.55,
-                      boxShadow: isSelected ? '0 0 0 1px rgba(217, 119, 87, 0.12)' : 'none',
+                      boxShadow: isSelected ? '0 0 0 1px var(--accent-shadow)' : 'none',
                     }}
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.4rem' }}>
@@ -181,7 +181,7 @@ export function CalendarDashboard({ items, undatedTaskCount }: { items: Calendar
                         justifyContent: 'center',
                         fontSize: '13px',
                         fontWeight: isToday || isSelected ? 600 : 500,
-                        color: isToday ? '#fff' : 'var(--text-primary)',
+                        color: isToday ? 'var(--accent-foreground)' : 'var(--text-primary)',
                         background: isToday ? 'var(--accent)' : 'transparent',
                       }}>
                         {day.dayNumber}
@@ -324,7 +324,7 @@ function SelectedItemCard({ item }: { item: CalendarItem }) {
       gap: '0.65rem',
       opacity: isPending ? 0.6 : 1,
     }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
         <div style={{ minWidth: 0 }}>
           <div style={{ display: 'flex', gap: '0.45rem', alignItems: 'center', flexWrap: 'wrap', marginBottom: '0.25rem' }}>
             <span style={{
@@ -357,6 +357,7 @@ function SelectedItemCard({ item }: { item: CalendarItem }) {
             fontWeight: 600,
             color: isCompleted ? 'var(--text-muted)' : 'var(--text-primary)',
             textDecoration: isCompleted ? 'line-through' : 'none',
+            overflowWrap: 'anywhere',
           }}>
             {item.title}
           </h3>
@@ -392,7 +393,7 @@ function SelectedItemCard({ item }: { item: CalendarItem }) {
         )}
         {item.relatedText && (
           <div>
-            <span style={{ color: 'var(--text-muted)' }}>Related:</span> {item.relatedText}
+            <span style={{ color: 'var(--text-muted)' }}>Related:</span> <span style={{ overflowWrap: 'anywhere' }}>{item.relatedText}</span>
           </div>
         )}
         {item.dateTime && (

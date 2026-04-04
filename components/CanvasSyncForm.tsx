@@ -145,12 +145,12 @@ export function CanvasSyncForm({ courses }: { courses: CanvasCourse[] }) {
         style={{
           width: '100%',
           background: !selected || isPending ? 'var(--border)' : 'var(--accent)',
-          color: '#fff',
-          border: 'none',
+          color: !selected || isPending ? 'var(--text-muted)' : 'var(--accent-foreground)',
+          border: !selected || isPending ? '1px solid var(--border)' : '1px solid var(--accent-border)',
           borderRadius: '8px',
           padding: '10px',
           fontSize: '14px',
-          fontWeight: 500,
+          fontWeight: 600,
           cursor: !selected || isPending ? 'not-allowed' : 'pointer',
           transition: 'background 0.15s',
         }}
