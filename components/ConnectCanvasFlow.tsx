@@ -900,81 +900,89 @@ function lastSyncCardStyle(tone: SyncSnapshot['tone']): CSSProperties {
 
 const heroCardStyle: CSSProperties = {
   border: '1px solid var(--accent-border)',
-  background: 'linear-gradient(180deg, var(--accent-light) 0%, var(--bg-card) 100%)',
-  borderRadius: '20px',
+  background: 'linear-gradient(180deg, color-mix(in srgb, var(--accent-light) 40%, var(--bg-elevated) 60%) 0%, color-mix(in srgb, var(--bg-card) 92%, transparent) 100%)',
+  borderRadius: '24px',
   padding: '1.35rem',
-  boxShadow: '0 18px 36px var(--accent-shadow)',
+  boxShadow: 'var(--panel-glow)',
+  backdropFilter: 'blur(18px)',
 }
 
 const sectionCardStyle: CSSProperties = {
   border: '1px solid var(--border)',
-  borderRadius: '18px',
-  background: 'var(--bg-card)',
+  borderRadius: '22px',
+  background: 'color-mix(in srgb, var(--bg-card) 92%, transparent)',
   padding: '1.25rem',
   display: 'flex',
   flexDirection: 'column',
   gap: '1rem',
+  boxShadow: 'var(--shadow-md)',
+  backdropFilter: 'blur(18px)',
 }
 
 const introCardStyle: CSSProperties = {
-  background: 'var(--bg)',
+  background: 'linear-gradient(180deg, color-mix(in srgb, var(--surface-soft) 92%, transparent) 0%, color-mix(in srgb, var(--bg) 92%, transparent) 100%)',
   border: '1px solid var(--border)',
-  borderRadius: '14px',
+  borderRadius: '16px',
   padding: '1rem',
+  boxShadow: 'var(--shadow-sm)',
 }
 
 const successPanelStyle: CSSProperties = {
-  background: 'var(--green-light)',
+  background: 'linear-gradient(180deg, color-mix(in srgb, var(--green-light) 88%, transparent) 0%, color-mix(in srgb, var(--bg-card) 92%, transparent) 100%)',
   border: '1px solid #CBE3D4',
-  borderRadius: '14px',
+  borderRadius: '16px',
   padding: '1rem',
   display: 'flex',
   flexDirection: 'column',
   gap: '0.45rem',
+  boxShadow: 'var(--shadow-sm)',
 }
 
 const softPanelStyle: CSSProperties = {
   border: '1px solid var(--border)',
-  borderRadius: '12px',
-  background: 'var(--bg)',
+  borderRadius: '16px',
+  background: 'linear-gradient(180deg, color-mix(in srgb, var(--surface-soft) 80%, transparent) 0%, color-mix(in srgb, var(--bg) 92%, transparent) 100%)',
   padding: '0.85rem 1rem',
   fontSize: '13px',
   color: 'var(--text-secondary)',
+  boxShadow: 'var(--shadow-sm)',
 }
 
 const courseListStyle: CSSProperties = {
   border: '1px solid var(--border)',
-  borderRadius: '12px',
+  borderRadius: '16px',
   overflow: 'hidden',
-  background: 'var(--bg-card)',
+  background: 'color-mix(in srgb, var(--bg-elevated) 90%, transparent)',
   maxHeight: '280px',
   overflowY: 'auto',
+  boxShadow: 'var(--shadow-sm)',
 }
 
 const emptyStateStyle: CSSProperties = {
   borderRadius: '14px',
   border: '1px dashed var(--border-hover)',
   padding: '1rem',
-  background: 'var(--bg)',
+  background: 'color-mix(in srgb, var(--surface-soft) 78%, transparent)',
   color: 'var(--text-secondary)',
   fontSize: '14px',
   lineHeight: 1.6,
 }
 
 const guideCardStyle: CSSProperties = {
-  background: 'var(--bg)',
+  background: 'linear-gradient(180deg, color-mix(in srgb, var(--surface-soft) 90%, transparent) 0%, color-mix(in srgb, var(--bg) 92%, transparent) 100%)',
   border: '1px solid var(--border)',
-  borderRadius: '14px',
+  borderRadius: '16px',
   padding: '1rem',
   display: 'flex',
   flexDirection: 'column',
   gap: '0.9rem',
+  boxShadow: 'var(--shadow-sm)',
 }
 
 const modalBackdropStyle: CSSProperties = {
   position: 'fixed',
   inset: 0,
-  background: 'rgba(26, 25, 21, 0.35)',
+  background: 'rgba(10, 10, 12, 0.5)',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
@@ -987,21 +995,22 @@ const modalCardStyle: CSSProperties = {
   maxWidth: '640px',
   maxHeight: 'calc(100vh - 2rem)',
   overflowY: 'auto',
-  background: 'var(--bg-card)',
-  borderRadius: '20px',
+  background: 'color-mix(in srgb, var(--bg-elevated) 92%, transparent)',
+  borderRadius: '24px',
   border: '1px solid var(--border)',
-  boxShadow: '0 24px 60px rgba(0, 0, 0, 0.12)',
+  boxShadow: 'var(--shadow-lg)',
   padding: '1.25rem',
   display: 'flex',
   flexDirection: 'column',
   gap: '1rem',
+  backdropFilter: 'blur(20px)',
 }
 
 const closeButtonStyle: CSSProperties = {
   border: '1px solid var(--border)',
-  background: 'var(--bg)',
+  background: 'color-mix(in srgb, var(--surface-soft) 72%, transparent)',
   color: 'var(--text-secondary)',
-  borderRadius: '10px',
+  borderRadius: '12px',
   padding: '0.55rem 0.8rem',
   fontSize: '12px',
   cursor: 'pointer',
@@ -1017,41 +1026,43 @@ const labelStyle = {
 
 const inputStyle = {
   width: '100%',
-  borderRadius: '10px',
+  borderRadius: '14px',
   border: '1px solid var(--border)',
   padding: '0.8rem 0.9rem',
   fontSize: '14px',
   color: 'var(--text-primary)',
-  background: 'var(--bg-card)',
+  background: 'color-mix(in srgb, var(--bg-elevated) 88%, transparent)',
   outline: 'none',
   fontFamily: 'inherit',
+  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.03)',
 } as const
 
 function primaryButton(disabled: boolean) {
   return {
     width: 'fit-content',
     minWidth: '170px',
-    background: disabled ? 'var(--border)' : 'var(--accent)',
+    background: disabled ? 'var(--border)' : 'linear-gradient(180deg, color-mix(in srgb, var(--accent) 90%, #fff 10%) 0%, var(--accent) 100%)',
     color: disabled ? 'var(--text-muted)' : 'var(--accent-foreground)',
     border: disabled ? '1px solid var(--border)' : '1px solid var(--accent-border)',
-    borderRadius: '10px',
+    borderRadius: '14px',
     padding: '0.8rem 1rem',
     fontSize: '14px',
     fontWeight: 700,
     cursor: disabled ? 'not-allowed' : 'pointer',
-    boxShadow: disabled ? 'none' : '0 10px 22px var(--accent-shadow)',
+    boxShadow: disabled ? 'none' : 'var(--panel-glow)',
   } as const
 }
 
 const secondaryButton = {
   border: '1px solid var(--border)',
-  background: 'var(--bg-card)',
+  background: 'color-mix(in srgb, var(--bg-elevated) 86%, transparent)',
   color: 'var(--text-primary)',
-  borderRadius: '10px',
+  borderRadius: '14px',
   padding: '0.75rem 0.95rem',
   fontSize: '13px',
   fontWeight: 600,
   cursor: 'pointer',
+  boxShadow: 'var(--shadow-sm)',
 } as const
 
 const ghostButton = {

@@ -94,7 +94,9 @@ export function CalendarDashboard({ items, undatedTaskCount }: { items: Calendar
         <div style={{
           border: '1px solid var(--border)',
           background: 'var(--bg-card)',
-          borderRadius: '10px',
+          boxShadow: 'var(--shadow-sm)',
+          backdropFilter: 'blur(14px)',
+          borderRadius: '14px',
           padding: '0.75rem 0.9rem',
           fontSize: '13px',
           color: 'var(--text-secondary)',
@@ -104,13 +106,14 @@ export function CalendarDashboard({ items, undatedTaskCount }: { items: Calendar
       )}
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'flex-start' }}>
-        <section style={{ border: '1px solid var(--border)', borderRadius: '16px', background: 'var(--bg-card)', overflow: 'hidden', flex: '2 1 640px', minWidth: '0' }}>
+        <section style={{ border: '1px solid var(--border)', borderRadius: '22px', background: 'color-mix(in srgb, var(--bg-card) 92%, transparent)', boxShadow: 'var(--shadow-md)', backdropFilter: 'blur(18px)', overflow: 'hidden', flex: '2 1 640px', minWidth: '0' }}>
           <div style={{
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
             padding: '1rem',
             borderBottom: '1px solid var(--border)',
+            background: 'linear-gradient(180deg, color-mix(in srgb, var(--surface-soft) 90%, transparent) 0%, transparent 100%)',
             gap: '0.75rem',
             flexWrap: 'wrap',
           }}>
@@ -158,9 +161,13 @@ export function CalendarDashboard({ items, undatedTaskCount }: { items: Calendar
                     }}
                     style={{
                       minHeight: '108px',
-                      borderRadius: '12px',
-                      border: isSelected ? '1px solid var(--accent)' : '1px solid var(--border)',
-                      background: isSelected ? 'var(--accent-light)' : 'var(--bg-card)',
+                      borderRadius: '16px',
+                      border: isSelected ? '1px solid var(--accent-border)' : '1px solid var(--border)',
+                      background: isSelected
+                        ? 'linear-gradient(180deg, color-mix(in srgb, var(--accent-light) 72%, var(--bg-card) 28%) 0%, color-mix(in srgb, var(--bg-card) 80%, var(--accent-light) 20%) 100%)'
+                        : dayItems.length > 0
+                          ? 'linear-gradient(180deg, color-mix(in srgb, var(--bg-elevated) 88%, transparent) 0%, var(--bg-card) 100%)'
+                          : 'linear-gradient(180deg, color-mix(in srgb, var(--bg-card) 88%, transparent) 0%, color-mix(in srgb, var(--bg) 78%, var(--bg-card) 22%) 100%)',
                       padding: '0.55rem',
                       textAlign: 'left',
                       display: 'flex',
@@ -168,7 +175,7 @@ export function CalendarDashboard({ items, undatedTaskCount }: { items: Calendar
                       gap: '0.4rem',
                       cursor: 'pointer',
                       opacity: day.inCurrentMonth ? 1 : 0.55,
-                      boxShadow: isSelected ? '0 0 0 1px var(--accent-shadow)' : 'none',
+                      boxShadow: isSelected ? 'var(--panel-glow)' : dayItems.length > 0 ? 'var(--shadow-sm)' : 'inset 0 1px 0 rgba(255,255,255,0.02)',
                     }}
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.4rem' }}>
@@ -182,7 +189,8 @@ export function CalendarDashboard({ items, undatedTaskCount }: { items: Calendar
                         fontSize: '13px',
                         fontWeight: isToday || isSelected ? 600 : 500,
                         color: isToday ? 'var(--accent-foreground)' : 'var(--text-primary)',
-                        background: isToday ? 'var(--accent)' : 'transparent',
+                        background: isToday ? 'var(--accent)' : isSelected ? 'color-mix(in srgb, var(--accent-light) 72%, transparent)' : 'transparent',
+                        boxShadow: isToday ? '0 10px 28px var(--accent-shadow)' : 'none',
                       }}>
                         {day.dayNumber}
                       </span>
@@ -199,8 +207,8 @@ export function CalendarDashboard({ items, undatedTaskCount }: { items: Calendar
           </div>
         </section>
 
-        <aside style={{ border: '1px solid var(--border)', borderRadius: '16px', background: 'var(--bg-card)', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.9rem', flex: '1 1 320px', minWidth: '280px' }}>
-          <div style={{ paddingBottom: '0.85rem', borderBottom: '1px solid var(--border)' }}>
+        <aside style={{ border: '1px solid var(--border-hover)', borderRadius: '22px', background: 'linear-gradient(180deg, color-mix(in srgb, var(--bg-elevated) 95%, transparent) 0%, color-mix(in srgb, var(--bg-card) 92%, transparent) 100%)', boxShadow: 'var(--shadow-lg)', backdropFilter: 'blur(18px)', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.9rem', flex: '1 1 320px', minWidth: '280px' }}>
+          <div style={{ paddingBottom: '0.85rem', borderBottom: '1px solid var(--border)', boxShadow: '0 10px 28px rgba(0,0,0,0.03)' }}>
             <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 600, color: 'var(--text-primary)' }}>
               {formatSelectedDayLabel(selectedDateKey)}
             </h2>
@@ -211,12 +219,12 @@ export function CalendarDashboard({ items, undatedTaskCount }: { items: Calendar
 
           {selectedItems.length === 0 ? (
             <div style={{
-              borderRadius: '12px',
+              borderRadius: '16px',
               border: '1px dashed var(--border-hover)',
               padding: '1rem',
               fontSize: '14px',
               color: 'var(--text-secondary)',
-              background: 'var(--bg)',
+              background: 'color-mix(in srgb, var(--bg) 88%, transparent)',
             }}>
               This day is clear right now. Pick another date in the month grid to review your workload.
             </div>
@@ -257,7 +265,7 @@ function LegendChip({ status }: { status: CalendarItem['status'] }) {
 
 function DayMarkerStack({ items }: { items: CalendarItem[] }) {
   if (items.length === 0) {
-    return <div style={{ flex: 1, borderRadius: '8px', background: 'var(--bg)' }} />
+    return <div style={{ flex: 1, borderRadius: '10px', background: 'linear-gradient(180deg, color-mix(in srgb, var(--bg) 86%, transparent) 0%, color-mix(in srgb, var(--bg-hover) 60%, transparent) 100%)' }} />
   }
 
   const counts = STATUS_ORDER
@@ -317,7 +325,9 @@ function SelectedItemCard({ item }: { item: CalendarItem }) {
   return (
     <article style={{
       border: '1px solid var(--border)',
-      borderRadius: '12px',
+      borderRadius: '16px',
+      background: 'linear-gradient(180deg, color-mix(in srgb, var(--bg-elevated) 88%, transparent) 0%, color-mix(in srgb, var(--bg-card) 96%, transparent) 100%)',
+      boxShadow: item.status === 'urgent' || item.status === 'dueSoon' ? 'var(--shadow-sm)' : 'none',
       padding: '0.9rem',
       display: 'flex',
       flexDirection: 'column',
@@ -369,7 +379,7 @@ function SelectedItemCard({ item }: { item: CalendarItem }) {
             style={{
               borderRadius: '8px',
               border: isCompleted ? '1px solid #CBE3D4' : '1px solid var(--border)',
-              background: isCompleted ? 'var(--green-light)' : 'var(--bg)',
+              background: isCompleted ? 'var(--green-light)' : 'color-mix(in srgb, var(--bg) 84%, transparent)',
               color: isCompleted ? 'var(--green)' : 'var(--text-secondary)',
               padding: '0.4rem 0.6rem',
               fontSize: '12px',
@@ -415,12 +425,13 @@ function MonthButton({ children, onClick }: { children: ReactNode; onClick: () =
       onClick={onClick}
       style={{
         border: '1px solid var(--border)',
-        background: 'var(--bg-card)',
+        background: 'color-mix(in srgb, var(--bg-elevated) 88%, transparent)',
         color: 'var(--text-primary)',
-        borderRadius: '10px',
+        borderRadius: '12px',
         padding: '0.45rem 0.75rem',
         fontSize: '13px',
         cursor: 'pointer',
+        boxShadow: 'var(--shadow-sm)',
       }}
     >
       {children}

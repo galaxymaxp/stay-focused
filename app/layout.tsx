@@ -49,7 +49,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <ThemeProvider>
           <nav style={{
             borderBottom: '1px solid var(--border)',
-            background: 'var(--bg-card)',
+            background: 'color-mix(in srgb, var(--bg-card) 88%, transparent)',
+            boxShadow: 'var(--shadow-sm)',
+            backdropFilter: 'blur(18px)',
+            WebkitBackdropFilter: 'blur(18px)',
             padding: '0 1rem 0 1.5rem',
             minHeight: '56px',
             display: 'flex',
@@ -62,7 +65,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               Stay Focused
             </Link>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-              <Link href="/settings" style={{ fontSize: '13px', color: 'var(--text-secondary)', textDecoration: 'none', fontWeight: 500 }}>
+              <Link href="/settings" style={{ fontSize: '13px', color: 'var(--text-secondary)', textDecoration: 'none', fontWeight: 500, padding: '0.45rem 0.7rem', borderRadius: '999px', background: 'var(--surface-soft)', border: '1px solid var(--border)' }}>
                 Settings
               </Link>
               <CanvasMenu />

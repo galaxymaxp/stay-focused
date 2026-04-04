@@ -17,10 +17,11 @@ export function TaskCard({ task }: { task: Task }) {
       display: 'flex',
       alignItems: 'flex-start',
       gap: '10px',
-      background: 'var(--bg-card)',
+      background: 'color-mix(in srgb, var(--bg-elevated) 88%, transparent)',
       border: '1px solid var(--border)',
-      borderRadius: '10px',
+      borderRadius: '14px',
       padding: '12px 14px',
+      boxShadow: 'var(--shadow-sm)',
       opacity: isPending ? 0.4 : isCompleted ? 0.55 : 1,
       transition: 'opacity 0.15s',
     }}>
@@ -84,7 +85,7 @@ function PriorityBadge({ priority }: { priority: string }) {
       fontSize: '11px',
       fontWeight: 500,
       padding: '2px 8px',
-      borderRadius: '6px',
+      borderRadius: '999px',
       border: `1px solid ${s.border}`,
       background: s.background,
       color: s.color,
@@ -129,6 +130,6 @@ function DeadlinePill({ deadline }: { deadline: string }) {
         : 'var(--text-muted)'
 
   return (
-    <p style={{ margin: '4px 0 0', fontSize: '12px', color }}>{label} - {deadline}</p>
+    <p style={{ margin: '6px 0 0', fontSize: '12px', color }}>{label} - {deadline}</p>
   )
 }

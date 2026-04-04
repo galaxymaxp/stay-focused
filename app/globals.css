@@ -1,20 +1,27 @@
 @import "tailwindcss";
 
 :root {
-  --bg: #FAF9F7;
-  --bg-card: #FFFFFF;
-  --bg-hover: #F5F4EF;
-  --border: #E8E6DF;
-  --border-hover: #D4D1C9;
-  --text-primary: #1A1915;
-  --text-secondary: #6B6860;
-  --text-muted: #9B9890;
+  --bg: #f7f4ee;
+  --bg-card: rgba(255, 255, 255, 0.82);
+  --bg-hover: rgba(255, 249, 235, 0.96);
+  --bg-elevated: rgba(255, 255, 255, 0.92);
+  --surface-soft: rgba(255, 248, 232, 0.7);
+  --border: rgba(179, 159, 114, 0.18);
+  --border-hover: rgba(179, 159, 114, 0.34);
+  --text-primary: #181511;
+  --text-secondary: #655d52;
+  --text-muted: #9c9387;
   --accent: #E3B437;
   --accent-hover: #CCA02D;
   --accent-light: #FFF5CC;
   --accent-foreground: #4C3900;
   --accent-border: #E2C15F;
   --accent-shadow: rgba(227, 180, 55, 0.28);
+  --shadow-sm: 0 10px 30px rgba(33, 23, 5, 0.06);
+  --shadow-md: 0 18px 44px rgba(33, 23, 5, 0.08);
+  --shadow-lg: 0 28px 70px rgba(33, 23, 5, 0.12);
+  --panel-glow: 0 0 0 1px rgba(227, 180, 55, 0.10), 0 16px 40px rgba(227, 180, 55, 0.10);
+  --focus-ring: 0 0 0 1px rgba(227, 180, 55, 0.34), 0 0 0 6px rgba(227, 180, 55, 0.12);
   --red: #C4432A;
   --red-light: #FDF0EE;
   --amber: #B87333;
@@ -25,14 +32,21 @@
 }
 
 :root[data-theme='light'] {
-  --bg: #FAF9F7;
-  --bg-card: #FFFFFF;
-  --bg-hover: #F5F4EF;
-  --border: #E8E6DF;
-  --border-hover: #D4D1C9;
-  --text-primary: #1A1915;
-  --text-secondary: #6B6860;
-  --text-muted: #9B9890;
+  --bg: #f7f4ee;
+  --bg-card: rgba(255, 255, 255, 0.82);
+  --bg-hover: rgba(255, 249, 235, 0.96);
+  --bg-elevated: rgba(255, 255, 255, 0.92);
+  --surface-soft: rgba(255, 248, 232, 0.7);
+  --border: rgba(179, 159, 114, 0.18);
+  --border-hover: rgba(179, 159, 114, 0.34);
+  --text-primary: #181511;
+  --text-secondary: #655d52;
+  --text-muted: #9c9387;
+  --shadow-sm: 0 10px 30px rgba(33, 23, 5, 0.06);
+  --shadow-md: 0 18px 44px rgba(33, 23, 5, 0.08);
+  --shadow-lg: 0 28px 70px rgba(33, 23, 5, 0.12);
+  --panel-glow: 0 0 0 1px rgba(227, 180, 55, 0.10), 0 16px 40px rgba(227, 180, 55, 0.10);
+  --focus-ring: 0 0 0 1px rgba(227, 180, 55, 0.34), 0 0 0 6px rgba(227, 180, 55, 0.12);
   --red: #C4432A;
   --red-light: #FDF0EE;
   --amber: #B87333;
@@ -43,24 +57,35 @@
 }
 
 :root[data-theme='dark'] {
-  --bg: #121212;
-  --bg-card: #1A1B1E;
-  --bg-hover: #23252A;
-  --border: #2D3138;
-  --border-hover: #414650;
-  --text-primary: #F4F1E8;
-  --text-secondary: #C7C1B3;
-  --text-muted: #9A9387;
-  --red: #F28A6B;
-  --red-light: #3A1F1A;
-  --amber: #F0B24E;
-  --amber-light: #372A16;
-  --green: #79C89D;
-  --green-light: #1B3125;
+  --bg: #0d0d10;
+  --bg-card: rgba(24, 25, 30, 0.76);
+  --bg-hover: rgba(33, 35, 42, 0.95);
+  --bg-elevated: rgba(29, 31, 37, 0.88);
+  --surface-soft: rgba(43, 34, 12, 0.24);
+  --border: rgba(255, 243, 208, 0.08);
+  --border-hover: rgba(255, 243, 208, 0.16);
+  --text-primary: #f4f1e8;
+  --text-secondary: #c7c1b3;
+  --text-muted: #9a9387;
+  --shadow-sm: 0 16px 34px rgba(0, 0, 0, 0.26);
+  --shadow-md: 0 22px 56px rgba(0, 0, 0, 0.32);
+  --shadow-lg: 0 36px 84px rgba(0, 0, 0, 0.4);
+  --panel-glow: 0 0 0 1px rgba(227, 180, 55, 0.14), 0 22px 54px rgba(227, 180, 55, 0.12);
+  --focus-ring: 0 0 0 1px rgba(227, 180, 55, 0.42), 0 0 0 7px rgba(227, 180, 55, 0.10);
+  --red: #f28a6b;
+  --red-light: rgba(86, 34, 27, 0.72);
+  --amber: #f0b24e;
+  --amber-light: rgba(73, 50, 18, 0.72);
+  --green: #79c89d;
+  --green-light: rgba(27, 49, 37, 0.78);
   color-scheme: dark;
 }
 
 body {
+  background:
+    radial-gradient(circle at top center, rgba(227, 180, 55, 0.10), transparent 34%),
+    radial-gradient(circle at 14% 14%, rgba(255, 255, 255, 0.05), transparent 24%),
+    linear-gradient(180deg, color-mix(in srgb, var(--bg) 92%, #ffffff 8%) 0%, var(--bg) 52%, color-mix(in srgb, var(--bg) 96%, #000000 4%) 100%);
   background-color: var(--bg);
   color: var(--text-primary);
   font-family: ui-sans-serif, system-ui, sans-serif;
@@ -76,6 +101,13 @@ a,
 button,
 input {
   transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease, box-shadow 180ms ease, opacity 180ms ease, transform 180ms ease;
+}
+
+input:focus-visible,
+button:focus-visible,
+a:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 ::selection {
