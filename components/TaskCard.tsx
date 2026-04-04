@@ -1,5 +1,6 @@
 'use client'
 
+import type { CSSProperties } from 'react'
 import { useSyncExternalStore, useTransition } from 'react'
 import { updateTaskStatus } from '@/actions/tasks'
 import type { Task } from '@/lib/types'
@@ -13,28 +14,29 @@ export function TaskCard({ task }: { task: Task }) {
   }
 
   return (
-    <li style={{
+    <li className="glass-panel glass-hover" style={{
+      '--glass-panel-bg': 'var(--glass-surface-strong)',
+      '--glass-panel-border': 'var(--glass-border)',
+      '--glass-panel-shadow': 'var(--glass-shadow)',
       display: 'flex',
       alignItems: 'flex-start',
       gap: '10px',
-      background: 'color-mix(in srgb, var(--bg-elevated) 88%, transparent)',
-      border: '1px solid var(--border)',
       borderRadius: '14px',
       padding: '12px 14px',
-      boxShadow: 'var(--shadow-sm)',
       opacity: isPending ? 0.4 : isCompleted ? 0.55 : 1,
       transition: 'opacity 0.15s',
-    }}>
+    } as CSSProperties}>
       <button
         onClick={handleToggle}
         disabled={isPending}
+        className="ui-control"
         style={{
           marginTop: '2px',
           width: '16px',
           height: '16px',
           borderRadius: '4px',
-          border: isCompleted ? '1.5px solid var(--accent)' : '1.5px solid var(--border-hover)',
-          background: isCompleted ? 'var(--accent-light)' : 'transparent',
+          border: isCompleted ? '1.5px solid color-mix(in srgb, var(--accent-border) 70%, var(--border-subtle) 30%)' : '1.5px solid var(--border-subtle)',
+          background: isCompleted ? 'color-mix(in srgb, var(--surface-selected) 84%, var(--accent) 16%)' : 'transparent',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -75,18 +77,19 @@ export function TaskCard({ task }: { task: Task }) {
 
 function PriorityBadge({ priority }: { priority: string }) {
   const styles: Record<string, { background: string; color: string; border: string }> = {
-    high: { background: 'var(--red-light)', color: 'var(--red)', border: '#F5C5BC' },
-    medium: { background: 'var(--amber-light)', color: 'var(--amber)', border: '#F0DCBF' },
-    low: { background: 'var(--bg-hover)', color: 'var(--text-muted)', border: 'var(--border)' },
+    high: { background: 'color-mix(in srgb, var(--red-light) 24%, var(--surface-soft) 76%)', color: 'var(--red)', border: 'color-mix(in srgb, var(--red) 24%, var(--border-subtle) 76%)' },
+    medium: { background: 'color-mix(in srgb, var(--amber-light) 24%, var(--surface-soft) 76%)', color: 'var(--amber)', border: 'color-mix(in srgb, var(--amber) 24%, var(--border-subtle) 76%)' },
+    low: { background: 'color-mix(in srgb, var(--surface-soft) 92%, transparent)', color: 'var(--text-muted)', border: 'var(--border-subtle)' },
   }
   const s = styles[priority] ?? styles.low
   return (
-    <span style={{
+    <span className="ui-chip" style={{
+      display: 'inline-flex',
+      alignItems: 'center',
       fontSize: '11px',
       fontWeight: 500,
       padding: '2px 8px',
       borderRadius: '999px',
-      border: `1px solid ${s.border}`,
       background: s.background,
       color: s.color,
       flexShrink: 0,

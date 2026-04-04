@@ -6,20 +6,14 @@ export function CanvasMenu() {
   return (
     <Link
       href="/canvas"
+      className="ui-button ui-button-primary"
       style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: '0.45rem',
         fontSize: '13px',
-        background: 'linear-gradient(180deg, color-mix(in srgb, var(--accent) 92%, #fff 8%) 0%, var(--accent) 100%)',
-        color: 'var(--accent-foreground)',
         padding: '6px 14px',
         borderRadius: '999px',
-        border: '1px solid var(--accent-border)',
         fontWeight: 700,
-        cursor: 'pointer',
         textDecoration: 'none',
-        boxShadow: 'var(--panel-glow)',
+        minHeight: '38px',
       }}
     >
       Canvas

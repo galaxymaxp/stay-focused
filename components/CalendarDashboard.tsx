@@ -1,6 +1,6 @@
 'use client'
 
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import { useState, useTransition } from 'react'
 import { updateTaskStatus } from '@/actions/tasks'
 
@@ -75,7 +75,7 @@ export function CalendarDashboard({ items, undatedTaskCount }: { items: Calendar
   const selectedItems = itemsByDate.get(selectedDateKey) ?? []
 
   return (
-    <section style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+    <section className="page-stack" style={{ gap: '1rem' }}>
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem', flexWrap: 'wrap' }}>
         <div>
           <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 600, color: 'var(--text-primary)' }}>Dashboard</h1>
@@ -91,11 +91,7 @@ export function CalendarDashboard({ items, undatedTaskCount }: { items: Calendar
       </header>
 
       {undatedTaskCount > 0 && (
-        <div style={{
-          border: '1px solid var(--border)',
-          background: 'var(--bg-card)',
-          boxShadow: 'var(--shadow-sm)',
-          backdropFilter: 'blur(14px)',
+        <div className="glass-panel glass-soft ui-empty" style={{
           borderRadius: '14px',
           padding: '0.75rem 0.9rem',
           fontSize: '13px',
@@ -106,14 +102,12 @@ export function CalendarDashboard({ items, undatedTaskCount }: { items: Calendar
       )}
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'flex-start' }}>
-        <section style={{ border: '1px solid var(--border)', borderRadius: '22px', background: 'color-mix(in srgb, var(--bg-card) 92%, transparent)', boxShadow: 'var(--shadow-md)', backdropFilter: 'blur(18px)', overflow: 'hidden', flex: '2 1 640px', minWidth: '0' }}>
-          <div style={{
+        <section className="glass-panel glass-strong ui-data-panel" style={{ borderRadius: '24px', overflow: 'hidden', flex: '2 1 640px', minWidth: '0' }}>
+          <div className="ui-data-header" style={{
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
-            padding: '1rem',
-            borderBottom: '1px solid var(--border)',
-            background: 'linear-gradient(180deg, color-mix(in srgb, var(--surface-soft) 90%, transparent) 0%, transparent 100%)',
+            padding: '1.05rem 1rem 0.95rem',
             gap: '0.75rem',
             flexWrap: 'wrap',
           }}>
@@ -135,7 +129,7 @@ export function CalendarDashboard({ items, undatedTaskCount }: { items: Calendar
             </div>
           </div>
 
-          <div style={{ padding: '0.75rem', overflowX: 'auto' }}>
+          <div style={{ padding: '0.85rem', overflowX: 'auto' }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(72px, 1fr))', gap: '0.5rem', marginBottom: '0.5rem', minWidth: '560px' }}>
               {WEEKDAY_LABELS.map((label) => (
                 <div key={label} style={{ padding: '0.25rem 0.35rem', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>
@@ -159,15 +153,18 @@ export function CalendarDashboard({ items, undatedTaskCount }: { items: Calendar
                         setVisibleMonth(startOfMonth(day.dateKey))
                       }
                     }}
+                    className="glass-panel glass-hover"
                     style={{
+                      '--glass-panel-bg': isSelected
+                        ? 'color-mix(in srgb, var(--glass-surface-accent) 76%, var(--glass-surface-strong) 24%)'
+                        : dayItems.length > 0
+                          ? 'var(--glass-surface-strong)'
+                          : 'var(--glass-surface)',
+                      '--glass-panel-border': isSelected ? 'var(--accent-border)' : 'var(--glass-border)',
+                      '--glass-panel-shadow': isSelected ? 'var(--glass-shadow-strong)' : dayItems.length > 0 ? 'var(--glass-shadow)' : 'inset 0 1px 0 rgba(255,255,255,0.02)',
+                      '--glass-panel-glow': 'none',
                       minHeight: '108px',
                       borderRadius: '16px',
-                      border: isSelected ? '1px solid var(--accent-border)' : '1px solid var(--border)',
-                      background: isSelected
-                        ? 'linear-gradient(180deg, color-mix(in srgb, var(--accent-light) 72%, var(--bg-card) 28%) 0%, color-mix(in srgb, var(--bg-card) 80%, var(--accent-light) 20%) 100%)'
-                        : dayItems.length > 0
-                          ? 'linear-gradient(180deg, color-mix(in srgb, var(--bg-elevated) 88%, transparent) 0%, var(--bg-card) 100%)'
-                          : 'linear-gradient(180deg, color-mix(in srgb, var(--bg-card) 88%, transparent) 0%, color-mix(in srgb, var(--bg) 78%, var(--bg-card) 22%) 100%)',
                       padding: '0.55rem',
                       textAlign: 'left',
                       display: 'flex',
@@ -175,8 +172,7 @@ export function CalendarDashboard({ items, undatedTaskCount }: { items: Calendar
                       gap: '0.4rem',
                       cursor: 'pointer',
                       opacity: day.inCurrentMonth ? 1 : 0.55,
-                      boxShadow: isSelected ? 'var(--panel-glow)' : dayItems.length > 0 ? 'var(--shadow-sm)' : 'inset 0 1px 0 rgba(255,255,255,0.02)',
-                    }}
+                    } as CSSProperties}
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.4rem' }}>
                       <span style={{
@@ -189,8 +185,12 @@ export function CalendarDashboard({ items, undatedTaskCount }: { items: Calendar
                         fontSize: '13px',
                         fontWeight: isToday || isSelected ? 600 : 500,
                         color: isToday ? 'var(--accent-foreground)' : 'var(--text-primary)',
-                        background: isToday ? 'var(--accent)' : isSelected ? 'color-mix(in srgb, var(--accent-light) 72%, transparent)' : 'transparent',
-                        boxShadow: isToday ? '0 10px 28px var(--accent-shadow)' : 'none',
+                        background: isToday
+                          ? 'color-mix(in srgb, var(--accent) 92%, #ffffff 8%)'
+                          : isSelected
+                            ? 'color-mix(in srgb, var(--surface-selected) 86%, var(--accent) 14%)'
+                            : 'transparent',
+                        boxShadow: isToday ? 'var(--highlight-sheen)' : 'none',
                       }}>
                         {day.dayNumber}
                       </span>
@@ -207,8 +207,8 @@ export function CalendarDashboard({ items, undatedTaskCount }: { items: Calendar
           </div>
         </section>
 
-        <aside style={{ border: '1px solid var(--border-hover)', borderRadius: '22px', background: 'linear-gradient(180deg, color-mix(in srgb, var(--bg-elevated) 95%, transparent) 0%, color-mix(in srgb, var(--bg-card) 92%, transparent) 100%)', boxShadow: 'var(--shadow-lg)', backdropFilter: 'blur(18px)', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.9rem', flex: '1 1 320px', minWidth: '280px' }}>
-          <div style={{ paddingBottom: '0.85rem', borderBottom: '1px solid var(--border)', boxShadow: '0 10px 28px rgba(0,0,0,0.03)' }}>
+        <aside className="glass-panel glass-strong ui-data-panel" style={{ borderRadius: '24px', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.9rem', flex: '1 1 320px', minWidth: '280px' }}>
+          <div style={{ paddingBottom: '0.85rem', borderBottom: '1px solid color-mix(in srgb, var(--border-subtle) 88%, transparent)' }}>
             <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 600, color: 'var(--text-primary)' }}>
               {formatSelectedDayLabel(selectedDateKey)}
             </h2>
@@ -218,13 +218,10 @@ export function CalendarDashboard({ items, undatedTaskCount }: { items: Calendar
           </div>
 
           {selectedItems.length === 0 ? (
-            <div style={{
+            <div className="glass-panel glass-soft ui-empty" style={{
               borderRadius: '16px',
-              border: '1px dashed var(--border-hover)',
               padding: '1rem',
               fontSize: '14px',
-              color: 'var(--text-secondary)',
-              background: 'color-mix(in srgb, var(--bg) 88%, transparent)',
             }}>
               This day is clear right now. Pick another date in the month grid to review your workload.
             </div>
@@ -245,7 +242,7 @@ function LegendChip({ status }: { status: CalendarItem['status'] }) {
   const style = STATUS_STYLES[status]
 
   return (
-    <span style={{
+    <span className="ui-chip" style={{
       display: 'inline-flex',
       alignItems: 'center',
       gap: '0.4rem',
@@ -283,6 +280,7 @@ function DayMarkerStack({ items }: { items: CalendarItem[] }) {
         return (
           <span
             key={status}
+            className="ui-chip"
             style={{
               display: 'inline-flex',
               alignItems: 'center',
@@ -323,17 +321,18 @@ function SelectedItemCard({ item }: { item: CalendarItem }) {
   }
 
   return (
-    <article style={{
-      border: '1px solid var(--border)',
+    <article className="glass-panel glass-hover" style={{
+      '--glass-panel-bg': 'var(--glass-surface-strong)',
+      '--glass-panel-border': 'var(--glass-border)',
+      '--glass-panel-shadow': item.status === 'urgent' || item.status === 'dueSoon' ? 'var(--glass-shadow-strong)' : 'var(--glass-shadow)',
+      '--glass-panel-glow': 'none',
       borderRadius: '16px',
-      background: 'linear-gradient(180deg, color-mix(in srgb, var(--bg-elevated) 88%, transparent) 0%, color-mix(in srgb, var(--bg-card) 96%, transparent) 100%)',
-      boxShadow: item.status === 'urgent' || item.status === 'dueSoon' ? 'var(--shadow-sm)' : 'none',
       padding: '0.9rem',
       display: 'flex',
       flexDirection: 'column',
       gap: '0.65rem',
       opacity: isPending ? 0.6 : 1,
-    }}>
+    } as CSSProperties}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
         <div style={{ minWidth: 0 }}>
           <div style={{ display: 'flex', gap: '0.45rem', alignItems: 'center', flexWrap: 'wrap', marginBottom: '0.25rem' }}>
@@ -346,14 +345,13 @@ function SelectedItemCard({ item }: { item: CalendarItem }) {
             }}>
               {item.kind}
             </span>
-            <span style={{
+            <span className="ui-chip" style={{
               display: 'inline-flex',
               alignItems: 'center',
               gap: '0.35rem',
               fontSize: '11px',
               padding: '0.18rem 0.45rem',
               borderRadius: '999px',
-              border: `1px solid ${statusStyle.chipBorder}`,
               background: statusStyle.chipBg,
               color: statusStyle.chipText,
             }}>
@@ -376,15 +374,13 @@ function SelectedItemCard({ item }: { item: CalendarItem }) {
           <button
             onClick={handleToggle}
             disabled={isPending}
+            className={`ui-button ${isCompleted ? 'ui-status-success' : 'ui-button-secondary'}`}
             style={{
               borderRadius: '8px',
-              border: isCompleted ? '1px solid #CBE3D4' : '1px solid var(--border)',
-              background: isCompleted ? 'var(--green-light)' : 'color-mix(in srgb, var(--bg) 84%, transparent)',
-              color: isCompleted ? 'var(--green)' : 'var(--text-secondary)',
               padding: '0.4rem 0.6rem',
               fontSize: '12px',
-              cursor: 'pointer',
               flexShrink: 0,
+              minHeight: '32px',
             }}
           >
             {isCompleted ? 'Completed' : 'Mark done'}
@@ -423,16 +419,17 @@ function MonthButton({ children, onClick }: { children: ReactNode; onClick: () =
   return (
     <button
       onClick={onClick}
+      className="glass-panel glass-hover"
       style={{
-        border: '1px solid var(--border)',
-        background: 'color-mix(in srgb, var(--bg-elevated) 88%, transparent)',
+        '--glass-panel-bg': 'var(--glass-surface-soft)',
+        '--glass-panel-border': 'var(--glass-border)',
+        '--glass-panel-shadow': 'var(--glass-shadow)',
         color: 'var(--text-primary)',
         borderRadius: '12px',
         padding: '0.45rem 0.75rem',
         fontSize: '13px',
         cursor: 'pointer',
-        boxShadow: 'var(--shadow-sm)',
-      }}
+      } as CSSProperties}
     >
       {children}
     </button>

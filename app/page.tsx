@@ -30,8 +30,8 @@ export default async function Dashboard() {
 
   if (tasks.length === 0 && deadlines.length === 0) {
     return (
-      <main style={{ maxWidth: '760px', margin: '0 auto', padding: '2.5rem 1.5rem' }}>
-        <div style={{ textAlign: 'center', padding: '5rem 0', color: 'var(--text-muted)', fontSize: '14px' }}>
+      <main className="page-shell page-shell-narrow page-stack">
+        <div className="section-shell" style={{ textAlign: 'center', padding: '5rem 1rem', color: 'var(--text-muted)', fontSize: '14px' }}>
           No tasks yet.{' '}
           <Link href="/canvas" style={{ color: 'var(--accent)' }}>
             Sync your first course.
@@ -90,7 +90,7 @@ export default async function Dashboard() {
   }
 
   return (
-    <main style={{ maxWidth: '1180px', margin: '0 auto', padding: '2rem 1.25rem 2.5rem' }}>
+    <main className="page-shell">
       <CalendarDashboard items={datedItems} undatedTaskCount={undatedTaskCount} />
     </main>
   )

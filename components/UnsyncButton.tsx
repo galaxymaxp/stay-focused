@@ -16,25 +16,14 @@ export function UnsyncButton({ moduleId }: { moduleId: string }) {
     <button
       onClick={handleUnsync}
       disabled={isPending}
+      className="ui-button ui-button-ghost ui-button-danger"
       style={{
         flexShrink: 0,
         fontSize: '12px',
-        color: 'var(--text-muted)',
-        background: 'none',
-        border: '1px solid var(--border)',
         borderRadius: '6px',
         padding: '6px 10px',
-        cursor: isPending ? 'not-allowed' : 'pointer',
-        transition: 'color 0.15s, border-color 0.15s',
+        minHeight: '32px',
         whiteSpace: 'nowrap',
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.color = 'var(--red)'
-        e.currentTarget.style.borderColor = '#F5C5BC'
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.color = 'var(--text-muted)'
-        e.currentTarget.style.borderColor = 'var(--border)'
       }}
     >
       {isPending ? 'Removing...' : 'Unsync'}

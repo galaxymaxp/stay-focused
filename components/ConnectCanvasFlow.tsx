@@ -254,8 +254,8 @@ export function ConnectCanvasFlow({
   }
 
   return (
-    <section style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-      <div className="motion-card" style={heroCardStyle}>
+    <section className="page-stack" style={{ gap: '1rem' }}>
+      <div className="motion-card glass-panel glass-accent" style={heroCardStyle}>
         <p style={{ margin: 0, fontSize: '12px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--accent-foreground)' }}>
           Canvas
         </p>
@@ -283,7 +283,7 @@ export function ConnectCanvasFlow({
           />
         ) : (
           <div key="connect-idle" className="motion-subsection" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            <div style={introCardStyle}>
+            <div className="glass-panel glass-soft" style={introCardStyle}>
               <p style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>Guided setup</p>
               <p style={{ margin: '0.35rem 0 0', fontSize: '14px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
                 We&apos;ll open your Canvas settings in a new tab, show you how to create a token, then test the connection before you choose courses.
@@ -293,10 +293,10 @@ export function ConnectCanvasFlow({
             {connectionError && <Message>{connectionError}</Message>}
 
             <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-              <button type="button" onClick={() => openSetup('guide')} style={primaryButton(false)}>
+              <button type="button" onClick={() => openSetup('guide')} className="ui-button ui-button-primary" style={primaryButton(false)}>
                 Open setup guide
               </button>
-              <button type="button" onClick={handleOpenTokenPage} style={secondaryButton}>
+              <button type="button" onClick={handleOpenTokenPage} className="ui-button ui-button-secondary" style={secondaryButton}>
                 Open Canvas token page
               </button>
             </div>
@@ -312,7 +312,7 @@ export function ConnectCanvasFlow({
       >
         {!hasLoadedCourses ? (
           <div key="sync-locked" className="motion-subsection" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            <div style={introCardStyle}>
+            <div className="glass-panel glass-soft" style={introCardStyle}>
               <p style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>
                 {canLoadCourses ? 'Ready to load your courses' : 'Connection needed before course selection'}
               </p>
@@ -327,22 +327,22 @@ export function ConnectCanvasFlow({
 
             <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
               {canLoadCourses ? (
-                <button type="button" onClick={handleUseSavedConnection} disabled={isTesting} style={primaryButton(isTesting)}>
+                <button type="button" onClick={handleUseSavedConnection} disabled={isTesting} className="ui-button ui-button-primary" style={primaryButton(isTesting)}>
                   {isTesting ? 'Loading courses...' : hasSyncedCourses ? 'Load more courses' : 'Load available courses'}
                 </button>
               ) : (
-                <button type="button" onClick={() => openSetup('guide')} style={primaryButton(false)}>
+                <button type="button" onClick={() => openSetup('guide')} className="ui-button ui-button-primary" style={primaryButton(false)}>
                   Open setup guide
                 </button>
               )}
-              <button type="button" onClick={handleReconnect} disabled={isTesting || isSyncing} style={secondaryButton}>
+              <button type="button" onClick={handleReconnect} disabled={isTesting || isSyncing} className="ui-button ui-button-secondary" style={secondaryButton}>
                 Reconnect Canvas
               </button>
             </div>
           </div>
         ) : (
           <div key="sync-loaded" className="motion-subsection" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            <div style={successPanelStyle}>
+            <div className="ui-status-success" style={successPanelStyle}>
               <p style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: 'var(--green)' }}>Course list ready</p>
               <p style={{ margin: '0.3rem 0 0', fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
                 Pick the courses you want on your dashboard. Already-synced courses stay out of this list automatically.
@@ -359,6 +359,7 @@ export function ConnectCanvasFlow({
                 }}
                 placeholder="Search your courses"
                 disabled={isSyncing}
+                className="ui-input"
                 style={inputStyle}
               />
               <p style={{ margin: '0.4rem 0 0', fontSize: '12px', color: 'var(--text-muted)' }}>
@@ -371,7 +372,7 @@ export function ConnectCanvasFlow({
             </div>
 
             {selectedCourseIds.length > 0 && (
-              <div style={softPanelStyle}>
+              <div className="glass-panel glass-soft" style={softPanelStyle}>
                 {selectedCourseIds.length} course{selectedCourseIds.length === 1 ? '' : 's'} selected and ready to sync.
               </div>
             )}
@@ -392,12 +393,18 @@ export function ConnectCanvasFlow({
                       key={course.id}
                       type="button"
                       onClick={() => toggleCourseSelection(course.id)}
+                      className="glass-panel glass-hover"
                       style={{
+                        '--glass-panel-bg': isSelected ? 'color-mix(in srgb, var(--surface-selected) 84%, var(--accent) 16%)' : 'var(--glass-surface)',
+                        '--glass-panel-border': isSelected ? 'var(--accent-border)' : 'var(--glass-border)',
+                        '--glass-panel-shadow': index < filteredCourses.length - 1
+                          ? `inset 0 -1px 0 var(--border), ${isSelected ? 'var(--glass-shadow-strong)' : '0 0 0 transparent'}`
+                          : isSelected
+                            ? 'var(--glass-shadow-strong)'
+                            : 'none',
+                        '--glass-panel-glow': 'none',
                         width: '100%',
                         textAlign: 'left',
-                        border: 'none',
-                        borderBottom: index < filteredCourses.length - 1 ? '1px solid var(--border)' : 'none',
-                        background: isSelected ? 'var(--accent-light)' : 'var(--bg-card)',
                         padding: '0.9rem 1rem',
                         cursor: 'pointer',
                         display: 'flex',
@@ -405,7 +412,7 @@ export function ConnectCanvasFlow({
                         gap: '0.75rem',
                         alignItems: 'center',
                         flexWrap: 'wrap',
-                      }}
+                      } as CSSProperties}
                     >
                       <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start', minWidth: 0, flex: '1 1 220px' }}>
                         <span style={selectionBadgeStyle(isSelected)}>
@@ -429,10 +436,10 @@ export function ConnectCanvasFlow({
             {syncSuccess && <SuccessMessage>{syncSuccess}</SuccessMessage>}
 
             <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-              <button type="button" onClick={handleReconnect} disabled={isSyncing} style={secondaryButton}>
+              <button type="button" onClick={handleReconnect} disabled={isSyncing} className="ui-button ui-button-secondary" style={secondaryButton}>
                 Open setup guide
               </button>
-              <button type="button" onClick={handleCourseSubmit} disabled={selectedCourseIds.length === 0 || isSyncing || courses.length === 0} style={primaryButton(selectedCourseIds.length === 0 || isSyncing || courses.length === 0)}>
+              <button type="button" onClick={handleCourseSubmit} disabled={selectedCourseIds.length === 0 || isSyncing || courses.length === 0} className="ui-button ui-button-primary" style={primaryButton(selectedCourseIds.length === 0 || isSyncing || courses.length === 0)}>
                 {isSyncing ? 'Syncing courses...' : selectedCourseIds.length > 1 ? `Sync ${selectedCourseIds.length} courses` : 'Sync selected course'}
               </button>
             </div>
@@ -453,7 +460,7 @@ export function ConnectCanvasFlow({
           title="Recent sync status"
           description="A quick summary of the latest sync run so you can tell at a glance whether everything finished normally."
         >
-          <div style={lastSyncCardStyle(lastSync.tone)}>
+          <div className={`glass-panel glass-soft ${lastSync.tone === 'success' ? 'ui-status-success' : lastSync.tone === 'warning' ? 'ui-status-warning' : ''}`} style={lastSyncCardStyle(lastSync.tone)}>
             <p style={{ margin: 0, fontSize: '14px', fontWeight: 600 }}>{lastSync.label}</p>
           </div>
         </SectionCard>
@@ -468,7 +475,7 @@ export function ConnectCanvasFlow({
           : 'Once you sync a course, it will show up here so you can jump back in or remove it later.'}
       >
         {syncedModules.length === 0 ? (
-          <div style={emptyStateStyle}>
+          <div className="ui-empty" style={emptyStateStyle}>
             Nothing has been synced yet. Finish the connection flow above, load your courses, and choose the ones you want on the dashboard.
           </div>
         ) : (
@@ -477,19 +484,21 @@ export function ConnectCanvasFlow({
               <li key={module.id} style={{ display: 'flex', alignItems: 'stretch', gap: '0.75rem', flexWrap: 'wrap' }}>
                 <Link
                   href={`/modules/${module.id}`}
+                  className="glass-panel glass-hover"
                   style={{
+                    '--glass-panel-bg': 'var(--glass-surface)',
+                    '--glass-panel-border': 'var(--glass-border)',
+                    '--glass-panel-shadow': 'var(--glass-shadow)',
                     flex: '1 1 320px',
                     minWidth: 0,
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'flex-start',
                     gap: '0.8rem',
-                    background: 'var(--bg-card)',
-                    border: '1px solid var(--border)',
                     borderRadius: '14px',
                     padding: '0.95rem 1rem',
                     textDecoration: 'none',
-                  }}
+                  } as CSSProperties}
                 >
                   <div style={{ minWidth: 0 }}>
                     <p style={{ margin: 0, fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)', overflowWrap: 'anywhere' }}>
@@ -564,8 +573,8 @@ function SetupModal({
   onTestConnection: () => void
 }) {
   return (
-    <div className="motion-modal-backdrop" style={modalBackdropStyle} onClick={onClose}>
-      <div className="motion-modal-card" style={modalCardStyle} onClick={(event) => event.stopPropagation()}>
+    <div className="motion-modal-backdrop ui-overlay" style={modalBackdropStyle} onClick={onClose}>
+      <div className="motion-modal-card glass-panel glass-strong ui-floating" style={modalCardStyle} onClick={(event) => event.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'flex-start' }}>
           <div>
             <p style={{ margin: 0, fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', fontWeight: 600 }}>
@@ -575,7 +584,7 @@ function SetupModal({
               {stage === 'guide' ? 'Create your Canvas token' : 'Enter your connection details'}
             </h2>
           </div>
-          <button type="button" onClick={onClose} style={closeButtonStyle} aria-label="Close setup guide">
+          <button type="button" onClick={onClose} className="ui-button ui-button-secondary" style={closeButtonStyle} aria-label="Close setup guide">
             Close
           </button>
         </div>
@@ -596,7 +605,7 @@ function SetupModal({
               type="url"
             />
 
-            <div style={guideCardStyle}>
+            <div className="glass-panel glass-soft" style={guideCardStyle}>
               <GuideStep number="1" title="Open your Canvas settings">
                 Use the button below to open your Canvas settings page in a new tab.
               </GuideStep>
@@ -614,10 +623,10 @@ function SetupModal({
             {connectionError && <Message>{connectionError}</Message>}
 
             <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-              <button type="button" onClick={onOpenTokenPage} style={primaryButton(false)}>
+              <button type="button" onClick={onOpenTokenPage} className="ui-button ui-button-primary" style={primaryButton(false)}>
                 Open Canvas token page
               </button>
-              <button type="button" onClick={onNext} style={secondaryButton}>
+              <button type="button" onClick={onNext} className="ui-button ui-button-secondary" style={secondaryButton}>
                 I already have my token
               </button>
             </div>
@@ -654,13 +663,14 @@ function SetupModal({
             {connectionError && <Message>{connectionError}</Message>}
 
             <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-              <button type="button" onClick={onBack} disabled={isTesting} style={secondaryButton}>
+              <button type="button" onClick={onBack} disabled={isTesting} className="ui-button ui-button-secondary" style={secondaryButton}>
                 Back
               </button>
               <button
                 type="button"
                 onClick={onTestConnection}
                 disabled={!canvasUrl.trim() || !token.trim() || isTesting}
+                className="ui-button ui-button-primary"
                 style={primaryButton(!canvasUrl.trim() || !token.trim() || isTesting)}
               >
                 {isTesting ? 'Checking Canvas...' : 'Test connection'}
@@ -684,15 +694,15 @@ function GuideStep({ number, title, children }: { number: string; title: string;
         width: '1.6rem',
         height: '1.6rem',
         borderRadius: '999px',
-        background: 'var(--accent-light)',
-        color: 'var(--accent-foreground)',
+        background: 'color-mix(in srgb, var(--surface-selected) 84%, var(--accent) 16%)',
+        color: 'var(--text-primary)',
         display: 'inline-flex',
         alignItems: 'center',
         justifyContent: 'center',
         fontSize: '12px',
         fontWeight: 700,
         flexShrink: 0,
-        border: '1px solid var(--accent-border)',
+        border: '1px solid color-mix(in srgb, var(--accent-border) 72%, var(--border-subtle) 28%)',
       }}>
         {number}
       </span>
@@ -720,7 +730,7 @@ function ConnectedStateCard({
   disabled: boolean
 }) {
   return (
-    <div style={successPanelStyle}>
+    <div className="glass-panel glass-soft ui-status-success" style={successPanelStyle}>
       <div>
         <p style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: 'var(--green)' }}>Connection saved</p>
         <p style={{ margin: '0.35rem 0 0', fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5, overflowWrap: 'anywhere' }}>
@@ -734,10 +744,10 @@ function ConnectedStateCard({
       </div>
 
       <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
-        <button type="button" onClick={onReconnect} disabled={disabled} style={secondaryButton}>
+        <button type="button" onClick={onReconnect} disabled={disabled} className="ui-button ui-button-secondary" style={secondaryButton}>
           Reconnect
         </button>
-        <button type="button" onClick={onForget} disabled={disabled} style={ghostButton}>
+        <button type="button" onClick={onForget} disabled={disabled} className="ui-button ui-button-ghost" style={ghostButton}>
           Forget saved connection
         </button>
       </div>
@@ -759,7 +769,7 @@ function SectionCard({
   children: ReactNode
 }) {
   return (
-    <section className={className} style={sectionCardStyle}>
+    <section className={[className, 'glass-panel glass-strong'].filter(Boolean).join(' ')} style={sectionCardStyle}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
         <p style={{ margin: 0, fontSize: '11px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
           {eyebrow}
@@ -800,6 +810,7 @@ function Field({
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
         disabled={disabled}
+        className="ui-input"
         style={inputStyle}
       />
       <p style={{ margin: '0.4rem 0 0', fontSize: '12px', color: 'var(--text-muted)' }}>{hint}</p>
@@ -809,13 +820,10 @@ function Field({
 
 function Message({ children }: { children: ReactNode }) {
   return (
-    <div style={{
-      background: 'var(--red-light)',
-      border: '1px solid #F5C5BC',
+    <div className="glass-panel glass-soft ui-status-danger" style={{
       borderRadius: '12px',
       padding: '0.85rem 0.95rem',
       fontSize: '13px',
-      color: 'var(--red)',
     }}>
       {children}
     </div>
@@ -824,13 +832,10 @@ function Message({ children }: { children: ReactNode }) {
 
 function SuccessMessage({ children }: { children: ReactNode }) {
   return (
-    <div style={{
-      background: 'var(--green-light)',
-      border: '1px solid #CBE3D4',
+    <div className="glass-panel glass-soft ui-status-success" style={{
       borderRadius: '12px',
       padding: '0.85rem 0.95rem',
       fontSize: '13px',
-      color: 'var(--green)',
     }}>
       {children}
     </div>
@@ -872,12 +877,12 @@ function selectionBadgeStyle(isSelected: boolean): CSSProperties {
     height: '1.35rem',
     marginTop: '1px',
     borderRadius: '999px',
-    border: isSelected ? '1px solid var(--accent-border)' : '1px solid var(--border-hover)',
-    background: isSelected ? 'var(--accent-light)' : 'transparent',
+    border: isSelected ? '1px solid color-mix(in srgb, var(--accent-border) 74%, var(--border-subtle) 26%)' : '1px solid var(--border-subtle)',
+    background: isSelected ? 'color-mix(in srgb, var(--surface-selected) 82%, var(--accent) 18%)' : 'color-mix(in srgb, var(--surface-soft) 84%, transparent)',
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
-    color: 'var(--accent-foreground)',
+    color: isSelected ? 'var(--text-primary)' : 'var(--text-muted)',
     flexShrink: 0,
     fontSize: '11px',
     fontWeight: 700,
@@ -885,8 +890,16 @@ function selectionBadgeStyle(isSelected: boolean): CSSProperties {
 }
 
 function lastSyncCardStyle(tone: SyncSnapshot['tone']): CSSProperties {
-  const borderColor = tone === 'success' ? '#CBE3D4' : tone === 'warning' ? '#F0DCBF' : 'var(--border)'
-  const background = tone === 'success' ? 'var(--green-light)' : tone === 'warning' ? 'var(--amber-light)' : 'var(--bg)'
+  const borderColor = tone === 'success'
+    ? 'color-mix(in srgb, var(--green) 24%, var(--border-subtle) 76%)'
+    : tone === 'warning'
+      ? 'color-mix(in srgb, var(--amber) 24%, var(--border-subtle) 76%)'
+      : 'var(--border)'
+  const background = tone === 'success'
+    ? 'color-mix(in srgb, var(--green-light) 24%, var(--surface-soft) 76%)'
+    : tone === 'warning'
+      ? 'color-mix(in srgb, var(--amber-light) 24%, var(--surface-soft) 76%)'
+      : 'var(--surface-soft)'
   const color = tone === 'success' ? 'var(--green)' : tone === 'warning' ? 'var(--amber)' : 'var(--text-secondary)'
 
   return {
@@ -899,90 +912,73 @@ function lastSyncCardStyle(tone: SyncSnapshot['tone']): CSSProperties {
 }
 
 const heroCardStyle: CSSProperties = {
-  border: '1px solid var(--accent-border)',
-  background: 'linear-gradient(180deg, color-mix(in srgb, var(--accent-light) 40%, var(--bg-elevated) 60%) 0%, color-mix(in srgb, var(--bg-card) 92%, transparent) 100%)',
   borderRadius: '24px',
-  padding: '1.35rem',
-  boxShadow: 'var(--panel-glow)',
-  backdropFilter: 'blur(18px)',
+  padding: '1.45rem',
+  boxShadow: 'var(--shadow-medium), var(--highlight-sheen)',
 }
 
 const sectionCardStyle: CSSProperties = {
-  border: '1px solid var(--border)',
-  borderRadius: '22px',
-  background: 'color-mix(in srgb, var(--bg-card) 92%, transparent)',
-  padding: '1.25rem',
+  borderRadius: '24px',
+  padding: '1.15rem',
   display: 'flex',
   flexDirection: 'column',
   gap: '1rem',
-  boxShadow: 'var(--shadow-md)',
-  backdropFilter: 'blur(18px)',
+  boxShadow: 'var(--shadow-medium), var(--highlight-sheen)',
 }
 
 const introCardStyle: CSSProperties = {
-  background: 'linear-gradient(180deg, color-mix(in srgb, var(--surface-soft) 92%, transparent) 0%, color-mix(in srgb, var(--bg) 92%, transparent) 100%)',
-  border: '1px solid var(--border)',
   borderRadius: '16px',
   padding: '1rem',
-  boxShadow: 'var(--shadow-sm)',
+  boxShadow: 'var(--glass-shadow)',
 }
 
 const successPanelStyle: CSSProperties = {
-  background: 'linear-gradient(180deg, color-mix(in srgb, var(--green-light) 88%, transparent) 0%, color-mix(in srgb, var(--bg-card) 92%, transparent) 100%)',
-  border: '1px solid #CBE3D4',
   borderRadius: '16px',
   padding: '1rem',
   display: 'flex',
   flexDirection: 'column',
   gap: '0.45rem',
-  boxShadow: 'var(--shadow-sm)',
+  boxShadow: 'var(--shadow-low), var(--highlight-sheen)',
 }
 
 const softPanelStyle: CSSProperties = {
-  border: '1px solid var(--border)',
   borderRadius: '16px',
-  background: 'linear-gradient(180deg, color-mix(in srgb, var(--surface-soft) 80%, transparent) 0%, color-mix(in srgb, var(--bg) 92%, transparent) 100%)',
   padding: '0.85rem 1rem',
   fontSize: '13px',
   color: 'var(--text-secondary)',
-  boxShadow: 'var(--shadow-sm)',
+  boxShadow: 'var(--glass-shadow)',
 }
 
 const courseListStyle: CSSProperties = {
   border: '1px solid var(--border)',
   borderRadius: '16px',
   overflow: 'hidden',
-  background: 'color-mix(in srgb, var(--bg-elevated) 90%, transparent)',
+  background: 'color-mix(in srgb, var(--glass-surface-strong) 94%, transparent)',
   maxHeight: '280px',
   overflowY: 'auto',
-  boxShadow: 'var(--shadow-sm)',
+  boxShadow: 'var(--glass-shadow)',
 }
 
 const emptyStateStyle: CSSProperties = {
   borderRadius: '14px',
-  border: '1px dashed var(--border-hover)',
   padding: '1rem',
-  background: 'color-mix(in srgb, var(--surface-soft) 78%, transparent)',
   color: 'var(--text-secondary)',
   fontSize: '14px',
   lineHeight: 1.6,
 }
 
 const guideCardStyle: CSSProperties = {
-  background: 'linear-gradient(180deg, color-mix(in srgb, var(--surface-soft) 90%, transparent) 0%, color-mix(in srgb, var(--bg) 92%, transparent) 100%)',
-  border: '1px solid var(--border)',
   borderRadius: '16px',
   padding: '1rem',
   display: 'flex',
   flexDirection: 'column',
   gap: '0.9rem',
-  boxShadow: 'var(--shadow-sm)',
+  boxShadow: 'var(--glass-shadow)',
 }
 
 const modalBackdropStyle: CSSProperties = {
   position: 'fixed',
   inset: 0,
-  background: 'rgba(10, 10, 12, 0.5)',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
@@ -995,25 +991,17 @@ const modalCardStyle: CSSProperties = {
   maxWidth: '640px',
   maxHeight: 'calc(100vh - 2rem)',
   overflowY: 'auto',
-  background: 'color-mix(in srgb, var(--bg-elevated) 92%, transparent)',
   borderRadius: '24px',
-  border: '1px solid var(--border)',
-  boxShadow: 'var(--shadow-lg)',
   padding: '1.25rem',
   display: 'flex',
   flexDirection: 'column',
   gap: '1rem',
-  backdropFilter: 'blur(20px)',
 }
 
 const closeButtonStyle: CSSProperties = {
-  border: '1px solid var(--border)',
-  background: 'color-mix(in srgb, var(--surface-soft) 72%, transparent)',
-  color: 'var(--text-secondary)',
   borderRadius: '12px',
   padding: '0.55rem 0.8rem',
   fontSize: '12px',
-  cursor: 'pointer',
 }
 
 const labelStyle = {
@@ -1027,50 +1015,32 @@ const labelStyle = {
 const inputStyle = {
   width: '100%',
   borderRadius: '14px',
-  border: '1px solid var(--border)',
   padding: '0.8rem 0.9rem',
   fontSize: '14px',
-  color: 'var(--text-primary)',
-  background: 'color-mix(in srgb, var(--bg-elevated) 88%, transparent)',
   outline: 'none',
   fontFamily: 'inherit',
-  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.03)',
 } as const
 
 function primaryButton(disabled: boolean) {
   return {
     width: 'fit-content',
     minWidth: '170px',
-    background: disabled ? 'var(--border)' : 'linear-gradient(180deg, color-mix(in srgb, var(--accent) 90%, #fff 10%) 0%, var(--accent) 100%)',
-    color: disabled ? 'var(--text-muted)' : 'var(--accent-foreground)',
-    border: disabled ? '1px solid var(--border)' : '1px solid var(--accent-border)',
     borderRadius: '14px',
     padding: '0.8rem 1rem',
     fontSize: '14px',
     fontWeight: 700,
-    cursor: disabled ? 'not-allowed' : 'pointer',
-    boxShadow: disabled ? 'none' : 'var(--panel-glow)',
   } as const
 }
 
 const secondaryButton = {
-  border: '1px solid var(--border)',
-  background: 'color-mix(in srgb, var(--bg-elevated) 86%, transparent)',
-  color: 'var(--text-primary)',
   borderRadius: '14px',
   padding: '0.75rem 0.95rem',
   fontSize: '13px',
   fontWeight: 600,
-  cursor: 'pointer',
-  boxShadow: 'var(--shadow-sm)',
 } as const
 
 const ghostButton = {
-  border: 'none',
-  background: 'transparent',
-  color: 'var(--text-secondary)',
   borderRadius: '10px',
   padding: '0.75rem 0.2rem',
   fontSize: '13px',
-  cursor: 'pointer',
 } as const

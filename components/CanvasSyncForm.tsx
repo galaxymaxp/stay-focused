@@ -59,14 +59,12 @@ export function CanvasSyncForm({ courses }: { courses: CanvasCourse[] }) {
           onBlur={() => setTimeout(() => setOpen(false), 150)}
           placeholder="Type to search courses..."
           disabled={isPending}
+          className="ui-input"
           style={{
             width: '100%',
             borderRadius: '8px',
-            border: '1px solid var(--border)',
             padding: '10px 14px',
             fontSize: '14px',
-            color: 'var(--text-primary)',
-            background: 'var(--bg-card)',
             outline: 'none',
             fontFamily: 'inherit',
           }}
@@ -79,15 +77,12 @@ export function CanvasSyncForm({ courses }: { courses: CanvasCourse[] }) {
         )}
 
         {open && filtered.length > 0 && (
-          <ul style={{
+          <ul className="ui-card ui-card-elevated ui-floating" style={{
             position: 'absolute',
             zIndex: 10,
             marginTop: '4px',
             width: '100%',
             borderRadius: '10px',
-            border: '1px solid var(--border)',
-            background: 'var(--bg-card)',
-            boxShadow: '0 4px 16px rgba(0,0,0,0.08)',
             maxHeight: '240px',
             overflowY: 'auto',
             listStyle: 'none',
@@ -98,12 +93,14 @@ export function CanvasSyncForm({ courses }: { courses: CanvasCourse[] }) {
               <li
                 key={course.id}
                 onMouseDown={() => handleSelect(course)}
+                className="ui-control"
                 style={{
                   padding: '10px 14px',
                   fontSize: '14px',
                   cursor: 'pointer',
-                  borderBottom: index < filtered.length - 1 ? '1px solid var(--border)' : 'none',
+                  borderBottom: index < filtered.length - 1 ? '1px solid var(--border-subtle)' : 'none',
                   color: 'var(--text-primary)',
+                  background: 'transparent',
                 }}
               >
                 <span style={{ fontWeight: 500 }}>{course.name}</span>
@@ -127,7 +124,7 @@ export function CanvasSyncForm({ courses }: { courses: CanvasCourse[] }) {
       </div>
 
       {error && (
-        <div style={{
+        <div className="ui-card ui-card-soft ui-status-danger" style={{
           background: 'var(--red-light)',
           border: '1px solid #F5C5BC',
           borderRadius: '8px',
@@ -142,17 +139,13 @@ export function CanvasSyncForm({ courses }: { courses: CanvasCourse[] }) {
       <button
         type="submit"
         disabled={!selected || isPending}
+        className="ui-button ui-button-primary"
         style={{
           width: '100%',
-          background: !selected || isPending ? 'var(--border)' : 'var(--accent)',
-          color: !selected || isPending ? 'var(--text-muted)' : 'var(--accent-foreground)',
-          border: !selected || isPending ? '1px solid var(--border)' : '1px solid var(--accent-border)',
           borderRadius: '8px',
           padding: '10px',
           fontSize: '14px',
           fontWeight: 600,
-          cursor: !selected || isPending ? 'not-allowed' : 'pointer',
-          transition: 'background 0.15s',
         }}
       >
         {isPending ? 'Syncing from Canvas...' : 'Sync course'}

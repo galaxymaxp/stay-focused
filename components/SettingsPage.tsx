@@ -1,5 +1,6 @@
 'use client'
 
+import type { CSSProperties } from 'react'
 import { useThemeSettings } from '@/components/ThemeProvider'
 import { ACCENT_OPTIONS, type AccentName, type ThemeMode } from '@/lib/theme'
 
@@ -13,8 +14,8 @@ export function SettingsPage() {
   const { mode, accent, resolvedTheme, setMode, setAccent } = useThemeSettings()
 
   return (
-    <main style={{ maxWidth: '760px', margin: '0 auto', padding: '2.25rem 1.25rem 2.75rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-      <section className="motion-card" style={heroStyle}>
+    <main className="page-shell page-shell-narrow page-stack">
+      <section className="motion-card glass-panel glass-accent" style={heroStyle}>
         <p style={{ margin: 0, fontSize: '12px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--accent-foreground)' }}>
           Settings
         </p>
@@ -24,7 +25,7 @@ export function SettingsPage() {
         </p>
       </section>
 
-      <section className="motion-card motion-delay-1" style={cardStyle}>
+      <section className="motion-card motion-delay-1 glass-panel glass-strong" style={cardStyle}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
           <p style={eyebrowStyle}>Appearance</p>
           <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)' }}>Theme mode</h2>
@@ -42,11 +43,14 @@ export function SettingsPage() {
                 key={option.value}
                 type="button"
                 onClick={() => setMode(option.value)}
+                className="glass-panel glass-hover"
                 style={{
+                  '--glass-panel-bg': selected ? 'color-mix(in srgb, var(--surface-selected) 86%, var(--accent) 14%)' : 'var(--glass-surface-soft)',
+                  '--glass-panel-border': selected ? 'var(--accent-border)' : 'var(--glass-border)',
+                  '--glass-panel-shadow': selected ? 'var(--glass-shadow-strong)' : 'var(--glass-shadow)',
+                  '--glass-panel-glow': 'none',
                   width: '100%',
                   textAlign: 'left',
-                  border: selected ? '1px solid var(--accent-border)' : '1px solid var(--border)',
-                  background: selected ? 'var(--accent-light)' : 'var(--bg-card)',
                   borderRadius: '14px',
                   padding: '0.95rem 1rem',
                   cursor: 'pointer',
@@ -55,7 +59,7 @@ export function SettingsPage() {
                   alignItems: 'flex-start',
                   gap: '1rem',
                   flexWrap: 'wrap',
-                }}
+                } as CSSProperties}
               >
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)' }}>{option.label}</div>
@@ -63,12 +67,9 @@ export function SettingsPage() {
                     {option.description}
                   </div>
                 </div>
-                <span style={{
+                <span className={selected ? 'ui-chip ui-chip-selected' : 'ui-chip'} style={{
                   fontSize: '12px',
                   fontWeight: 700,
-                  color: selected ? 'var(--accent-foreground)' : 'var(--text-muted)',
-                  background: selected ? 'var(--accent)' : 'var(--bg)',
-                  border: selected ? '1px solid var(--accent-border)' : '1px solid var(--border)',
                   borderRadius: '999px',
                   padding: '0.35rem 0.55rem',
                 }}>
@@ -80,7 +81,7 @@ export function SettingsPage() {
         </div>
       </section>
 
-      <section className="motion-card motion-delay-2" style={cardStyle}>
+      <section className="motion-card motion-delay-2 glass-panel glass-strong" style={cardStyle}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
           <p style={eyebrowStyle}>Accent</p>
           <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)' }}>Highlight color</h2>
@@ -98,9 +99,12 @@ export function SettingsPage() {
                 key={name}
                 type="button"
                 onClick={() => setAccent(name as AccentName)}
+                className="glass-panel glass-hover"
                 style={{
-                  border: selected ? '1px solid var(--accent-border)' : '1px solid var(--border)',
-                  background: selected ? 'var(--bg)' : 'var(--bg-card)',
+                  '--glass-panel-bg': selected ? 'color-mix(in srgb, var(--glass-surface-accent) 34%, var(--glass-surface-strong) 66%)' : 'var(--glass-surface-soft)',
+                  '--glass-panel-border': selected ? 'var(--accent-border)' : 'var(--glass-border)',
+                  '--glass-panel-shadow': selected ? 'var(--glass-shadow-strong)' : 'var(--glass-shadow)',
+                  '--glass-panel-glow': 'none',
                   borderRadius: '16px',
                   padding: '0.9rem',
                   cursor: 'pointer',
@@ -108,7 +112,7 @@ export function SettingsPage() {
                   display: 'flex',
                   flexDirection: 'column',
                   gap: '0.7rem',
-                }}
+                } as CSSProperties}
               >
                 <div style={{ display: 'flex', gap: '0.45rem' }}>
                   <span style={{ width: '24px', height: '24px', borderRadius: '999px', background: palette.accent, border: `1px solid ${palette.accentBorder}` }} />
@@ -130,21 +134,18 @@ export function SettingsPage() {
 }
 
 const heroStyle = {
-  border: '1px solid var(--accent-border)',
-  background: 'linear-gradient(180deg, var(--accent-light) 0%, var(--bg-card) 100%)',
-  borderRadius: '20px',
-  padding: '1.35rem',
-  boxShadow: '0 18px 36px var(--accent-shadow)',
+  borderRadius: '22px',
+  padding: '1.45rem',
+  boxShadow: 'var(--shadow-medium), var(--highlight-sheen)',
 } as const
 
 const cardStyle = {
-  border: '1px solid var(--border)',
-  borderRadius: '18px',
-  background: 'var(--bg-card)',
-  padding: '1.25rem',
+  borderRadius: '20px',
+  padding: '1.15rem',
   display: 'flex',
   flexDirection: 'column',
   gap: '1rem',
+  boxShadow: 'var(--shadow-low), var(--highlight-sheen)',
 } as const
 
 const eyebrowStyle = {

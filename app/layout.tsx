@@ -17,10 +17,10 @@ const THEME_INIT_SCRIPT = `
       var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
       var resolvedTheme = mode === 'system' ? (prefersDark ? 'dark' : 'light') : mode;
       var palettes = {
-        yellow: ['#E3B437', '#CCA02D', '#FFF5CC', '#4C3900', '#E2C15F', 'rgba(227, 180, 55, 0.28)'],
-        orange: ['#D97757', '#C4673F', '#FAF0EB', '#FFFFFF', '#DD916F', 'rgba(217, 119, 87, 0.24)'],
-        blue: ['#4F8FE8', '#3E7BD1', '#EAF3FF', '#FFFFFF', '#79A7EE', 'rgba(79, 143, 232, 0.24)'],
-        green: ['#5B9B72', '#4B875F', '#EAF6EE', '#FFFFFF', '#7AB18D', 'rgba(91, 155, 114, 0.24)']
+        yellow: ['#E3B437', '#CCA02D', '#F3E7B4', '#151006', '#C89E30', 'rgba(227, 180, 55, 0.16)'],
+        orange: ['#D97757', '#C4673F', '#F0D5CB', '#FFFFFF', '#C56E4F', 'rgba(217, 119, 87, 0.14)'],
+        blue: ['#4F8FE8', '#3E7BD1', '#CFE0FB', '#FFFFFF', '#5B90DB', 'rgba(79, 143, 232, 0.14)'],
+        green: ['#5B9B72', '#4B875F', '#D2E7DA', '#FFFFFF', '#649D79', 'rgba(91, 155, 114, 0.14)']
       };
       var palette = palettes[accent] || palettes.yellow;
       var root = document.documentElement;
@@ -45,14 +45,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           {THEME_INIT_SCRIPT}
         </Script>
       </head>
-      <body style={{ background: 'var(--bg)', minHeight: '100vh' }}>
+      <body className="app-shell" style={{ background: 'var(--bg)', minHeight: '100vh' }}>
         <ThemeProvider>
-          <nav style={{
-            borderBottom: '1px solid var(--border)',
-            background: 'color-mix(in srgb, var(--bg-card) 88%, transparent)',
-            boxShadow: 'var(--shadow-sm)',
-            backdropFilter: 'blur(18px)',
-            WebkitBackdropFilter: 'blur(18px)',
+          <nav className="app-topbar glass-panel glass-soft" style={{
+            borderBottom: '1px solid var(--border-subtle)',
             padding: '0 1rem 0 1.5rem',
             minHeight: '56px',
             display: 'flex',
@@ -65,7 +61,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               Stay Focused
             </Link>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-              <Link href="/settings" style={{ fontSize: '13px', color: 'var(--text-secondary)', textDecoration: 'none', fontWeight: 500, padding: '0.45rem 0.7rem', borderRadius: '999px', background: 'var(--surface-soft)', border: '1px solid var(--border)' }}>
+              <Link href="/settings" className="ui-button ui-button-secondary" style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: 500, padding: '0.45rem 0.7rem', borderRadius: '999px', minHeight: '36px' }}>
                 Settings
               </Link>
               <CanvasMenu />

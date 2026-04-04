@@ -45,7 +45,7 @@ export default async function CanvasPage({ searchParams }: CanvasPageProps = {})
   }))
 
   return (
-    <main style={{ maxWidth: '760px', margin: '0 auto', padding: '2.5rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+    <main className="page-shell page-shell-narrow page-stack">
       <ConnectCanvasFlowWrapper
         initialConnectionUrl={initialConnectionUrl}
         lastSync={lastSync}
