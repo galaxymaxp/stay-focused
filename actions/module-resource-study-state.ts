@@ -10,6 +10,7 @@ export async function setStudyFileProgress(input: {
   moduleId: string
   resourceId: string
   progressStatus: StudyFileProgressStatus
+  courseId?: string
 }) {
   if (!supabase) throw new Error('Supabase is not configured.')
 
@@ -24,13 +25,14 @@ export async function setStudyFileProgress(input: {
 
   if (error) throw createStudyStateError('update study progress', error, input)
 
-  revalidateStudyPaths(input.moduleId, input.resourceId)
+  revalidateStudyPaths(input.moduleId, input.resourceId, input.courseId)
 }
 
 export async function setStudyFileWorkflowOverride(input: {
   moduleId: string
   resourceId: string
   workflowOverride: ModuleResourceWorkflowOverride
+  courseId?: string
 }) {
   if (!supabase) throw new Error('Supabase is not configured.')
 
@@ -45,12 +47,13 @@ export async function setStudyFileWorkflowOverride(input: {
 
   if (error) throw createStudyStateError('update study workflow override', error, input)
 
-  revalidateStudyPaths(input.moduleId, input.resourceId)
+  revalidateStudyPaths(input.moduleId, input.resourceId, input.courseId)
 }
 
 export async function markStudyFileOpened(input: {
   moduleId: string
   resourceId: string
+  courseId?: string
 }) {
   if (!supabase) throw new Error('Supabase is not configured.')
 
@@ -66,6 +69,11 @@ export async function markStudyFileOpened(input: {
 
   if (error) throw createStudyStateError('mark study file opened', error, input)
 
+  revalidatePath('/learn')
+  revalidatePath('/courses')
+  if (input.courseId) {
+    revalidatePath(`/courses/${input.courseId}/learn`)
+  }
   revalidatePath(`/modules/${input.moduleId}/learn`)
 }
 
@@ -76,8 +84,12 @@ type SupabaseLikeError = {
   hint?: string | null
 }
 
-function revalidateStudyPaths(moduleId: string, resourceId: string) {
+function revalidateStudyPaths(moduleId: string, resourceId: string, courseId?: string) {
   revalidatePath('/learn')
+  revalidatePath('/courses')
+  if (courseId) {
+    revalidatePath(`/courses/${courseId}/learn`)
+  }
   revalidatePath(`/modules/${moduleId}`)
   revalidatePath(`/modules/${moduleId}/learn`)
   revalidatePath(`/modules/${moduleId}/learn/resources/${encodeURIComponent(resourceId)}`)

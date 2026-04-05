@@ -10,7 +10,7 @@ export interface ModuleStudyMaterial {
   reader: StudyFileReaderModel
   fileTypeLabel: string
   readiness: ModuleStudyReadiness
-  readinessLabel: 'Ready to study' | 'Limited' | 'Unavailable'
+  readinessLabel: 'Ready to study' | 'Limited' | 'Needs Canvas'
   readinessTone: 'accent' | 'warning' | 'muted'
   note: string
 }
@@ -165,7 +165,7 @@ function resolveStudyReadiness(reader: StudyFileReaderModel, hasGroundedAnalysis
 function labelForReadiness(readiness: ModuleStudyReadiness) {
   if (readiness === 'ready') return 'Ready to study'
   if (readiness === 'limited') return 'Limited'
-  return 'Unavailable'
+  return 'Needs Canvas'
 }
 
 function toneForReadiness(readiness: ModuleStudyReadiness) {

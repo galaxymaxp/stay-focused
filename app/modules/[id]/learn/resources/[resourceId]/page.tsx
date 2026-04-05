@@ -46,12 +46,14 @@ export default async function ResourceDetailPage({ params }: Props) {
       <ModuleLensShell
         currentLens="learn"
         moduleId={module.id}
+        courseId={module.courseId}
         courseName={courseName}
         title={module.title}
         summary={module.summary}
       >
         <StudyFileReader
           moduleId={module.id}
+          courseId={module.courseId}
           courseName={courseName}
           moduleTitle={module.title}
           resource={resource}
@@ -66,6 +68,7 @@ export default async function ResourceDetailPage({ params }: Props) {
     <ModuleLensShell
       currentLens="learn"
       moduleId={module.id}
+      courseId={module.courseId}
       courseName={courseName}
       title={module.title}
       summary={module.summary}

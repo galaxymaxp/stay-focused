@@ -4,6 +4,7 @@ import Link from 'next/link'
 export function ModuleLensShell({
   currentLens,
   moduleId,
+  courseId,
   courseName,
   title,
   summary,
@@ -11,6 +12,7 @@ export function ModuleLensShell({
 }: {
   currentLens: 'learn' | 'do'
   moduleId: string
+  courseId?: string
   courseName: string
   title: string
   summary: string | null
@@ -35,6 +37,11 @@ export function ModuleLensShell({
           </div>
           <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
             <span className="ui-chip ui-chip-soft">{courseName}</span>
+            {courseId && (
+              <Link href={`/courses/${courseId}/learn`} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+                Course Learn
+              </Link>
+            )}
           </div>
         </div>
 

@@ -49,6 +49,7 @@ export default async function LearnPage({ params }: Props) {
     <ModuleLensShell
       currentLens="learn"
       moduleId={module.id}
+      courseId={module.courseId}
       courseName={courseName}
       title={module.title}
       summary={null}

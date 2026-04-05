@@ -33,13 +33,7 @@ export default async function CoursesPage() {
           const newestModule = [...modules].sort(
             (a, b) => new Date(b.released_at ?? b.created_at).getTime() - new Date(a.released_at ?? a.created_at).getTime(),
           )[0] ?? null
-          const visibleModuleSnapshots = moduleSnapshots.filter(({ module }) => module.showInLearn !== false)
-          const bestLearnModule = [...(visibleModuleSnapshots.length > 0 ? visibleModuleSnapshots : moduleSnapshots)].sort((a, b) =>
-            b.experience.learnUnits.length - a.experience.learnUnits.length
-            || b.taskCount - a.taskCount
-            || new Date(b.module.released_at ?? b.module.created_at).getTime() - new Date(a.module.released_at ?? a.module.created_at).getTime(),
-          )[0]?.module ?? newestModule
-          const courseHref = bestLearnModule ? `/modules/${bestLearnModule.id}/learn` : '/learn'
+          const courseHref = `/courses/${course.id}/learn`
 
           return (
             <section key={course.id} className="motion-card motion-delay-1 section-shell section-shell-elevated" style={{ padding: '1.2rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>

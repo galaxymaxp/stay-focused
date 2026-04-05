@@ -16,6 +16,7 @@ interface LinkedTaskLike {
 
 export function StudyFileReader({
   moduleId,
+  courseId,
   courseName,
   moduleTitle,
   resource,
@@ -23,6 +24,7 @@ export function StudyFileReader({
   linkedTask,
 }: {
   moduleId: string
+  courseId?: string
   courseName: string
   moduleTitle: string
   resource: ModuleSourceResource
@@ -46,7 +48,7 @@ export function StudyFileReader({
 
   return (
     <section className="motion-card motion-delay-1 section-shell section-shell-elevated" style={{ padding: '1.35rem 1.45rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-      <StudyFileOpenTracker moduleId={moduleId} resourceId={resource.id} />
+      <StudyFileOpenTracker moduleId={moduleId} resourceId={resource.id} courseId={courseId} />
       <div className="glass-panel" style={{
         ['--glass-panel-bg' as string]: 'var(--glass-surface-strong)',
         ['--glass-panel-border' as string]: 'var(--glass-border)',
@@ -105,6 +107,7 @@ export function StudyFileReader({
         <StudyFileManualStateControls
           moduleId={moduleId}
           resourceId={resource.id}
+          courseId={courseId}
           progressStatus={studyProgress}
           workflowOverride={workflowOverride}
         />

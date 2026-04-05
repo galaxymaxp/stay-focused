@@ -14,21 +14,26 @@ import type { ModuleResourceWorkflowOverride, StudyFileProgressStatus } from '@/
 export function StudyFileManualStateControls({
   moduleId,
   resourceId,
+  courseId,
   progressStatus,
   workflowOverride,
   compact = false,
+  variant = 'card',
 }: {
   moduleId: string
   resourceId: string
+  courseId?: string
   progressStatus: StudyFileProgressStatus
   workflowOverride: ModuleResourceWorkflowOverride
   compact?: boolean
+  variant?: 'card' | 'quiet'
 }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [progress, setProgress] = useState(progressStatus)
   const [override, setOverride] = useState(workflowOverride)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const quiet = variant === 'quiet'
 
   useEffect(() => {
     setProgress(progressStatus)
@@ -50,6 +55,7 @@ export function StudyFileManualStateControls({
         await setStudyFileProgress({
           moduleId,
           resourceId,
+          courseId,
           progressStatus: nextStatus,
         })
         router.refresh()
@@ -72,6 +78,7 @@ export function StudyFileManualStateControls({
         await setStudyFileWorkflowOverride({
           moduleId,
           resourceId,
+          courseId,
           workflowOverride: nextOverride,
         })
         router.refresh()
@@ -83,13 +90,20 @@ export function StudyFileManualStateControls({
   }
 
   return (
-    <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: compact ? '0.8rem 0.85rem' : '0.95rem 1rem', display: 'grid', gap: compact ? '0.7rem' : '0.8rem' }}>
+    <div
+      className={quiet ? undefined : 'ui-card-soft'}
+      style={quiet
+        ? { display: 'grid', gap: compact ? '0.55rem' : '0.65rem' }
+        : { borderRadius: 'var(--radius-tight)', padding: compact ? '0.8rem 0.85rem' : '0.95rem 1rem', display: 'grid', gap: compact ? '0.7rem' : '0.8rem' }}
+    >
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.65rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
         <div>
-          <p className="ui-kicker">{compact ? 'Progress' : 'Study progress'}</p>
-          <p style={{ margin: '0.42rem 0 0', fontSize: compact ? '13px' : '14px', lineHeight: 1.6, color: 'var(--text-secondary)' }}>
-            Manual only. Learn will not infer this from scrolling or time.
-          </p>
+          <p className="ui-kicker">{quiet ? 'Study state' : compact ? 'Progress' : 'Study progress'}</p>
+          {!quiet && (
+            <p style={{ margin: '0.42rem 0 0', fontSize: compact ? '13px' : '14px', lineHeight: 1.6, color: 'var(--text-secondary)' }}>
+              Manual only. Learn will not infer this from scrolling or time.
+            </p>
+          )}
         </div>
         <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           <StateChip label={getStudyFileProgressLabel(progress)} selected />

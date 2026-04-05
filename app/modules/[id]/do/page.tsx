@@ -39,6 +39,7 @@ export default async function DoPage({ params }: Props) {
     <ModuleLensShell
       currentLens="do"
       moduleId={module.id}
+      courseId={module.courseId}
       courseName={courseName}
       title={module.title}
       summary={module.summary}
