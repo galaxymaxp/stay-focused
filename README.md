@@ -34,3 +34,20 @@ The app is being developed as a Canvas-first workflow tool. Instead of manually 
 
 ```bash
 npm install
+```
+
+## Reprocess Failed PDFs
+
+If older `module_resources` rows failed because PDF extraction was broken, rerun extraction directly from their stored Canvas download URLs:
+
+```bash
+npm run reprocess:resources -- --failed-pdfs
+```
+
+To target specific files:
+
+```bash
+npm run reprocess:resources -- --title "Student Handbook.pdf"
+```
+
+This refreshes the stored extraction fields on `module_resources`. If you also want the module-level AI summary to be rebuilt from the newly extracted text, unsync that course in the app and sync it again from `/canvas`.

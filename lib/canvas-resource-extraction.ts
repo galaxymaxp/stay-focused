@@ -9,6 +9,34 @@ export interface ExtractedCanvasResourceContent {
   supported: boolean
 }
 
+type PdfParseModule = typeof import('pdf-parse')
+
+type PdfExtractionResult =
+  | {
+      outcome: 'extracted'
+      text: string
+      note: string | null
+    }
+  | {
+      outcome: 'empty'
+      text: ''
+      note: string
+      reason: 'no_text' | 'scanned'
+    }
+  | {
+      outcome: 'failed'
+      text: ''
+      note: string
+      reason: 'setup' | 'parse'
+    }
+
+type PdfRuntimeGlobal = typeof globalThis & {
+  __stayFocusedPdfParseModulePromise?: Promise<PdfParseModule>
+  pdfjsWorker?: {
+    WorkerMessageHandler?: unknown
+  }
+}
+
 export async function extractCanvasFileContent(input: {
   buffer: Buffer
   title: string
@@ -24,6 +52,17 @@ export async function extractCanvasFileContent(input: {
 
     if (extension === 'pdf' || contentType === 'application/pdf') {
       const pdfResult = await extractPdfText(input.buffer)
+      if (pdfResult.outcome === 'failed') {
+        return {
+          extractionStatus: 'failed',
+          extractedText: null,
+          extractedTextPreview: null,
+          extractedCharCount: 0,
+          extractionError: pdfResult.note,
+          supported: true,
+        }
+      }
+
       extractedText = pdfResult.text
       extractionError = pdfResult.note
     } else if (
@@ -81,7 +120,7 @@ export async function extractCanvasFileContent(input: {
       extractedText: null,
       extractedTextPreview: null,
       extractedCharCount: 0,
-      extractionError: error instanceof Error ? error.message : 'Unknown extraction error.',
+      extractionError: formatUnexpectedExtractionError(error),
       supported: true,
     }
   }
@@ -102,39 +141,96 @@ function cleanExtractedText(text: string) {
     .trim()
 }
 
-async function extractPdfText(buffer: Buffer): Promise<{ text: string; note: string | null }> {
-  const pdfParseModule = await import('pdf-parse')
+async function extractPdfText(buffer: Buffer): Promise<PdfExtractionResult> {
+  let pdfParseModule: PdfParseModule
+
+  try {
+    pdfParseModule = await loadPdfParseModule()
+  } catch (error) {
+    return {
+      outcome: 'failed',
+      text: '',
+      note: formatPdfSetupError(error),
+      reason: 'setup',
+    }
+  }
+
   const parser = new pdfParseModule.PDFParse({ data: buffer })
 
   try {
-    const result = await parser.getText()
+    let result: Awaited<ReturnType<InstanceType<PdfParseModule['PDFParse']>['getText']>>
+
+    try {
+      result = await parser.getText({ pageJoiner: '' })
+    } catch (error) {
+      return {
+        outcome: 'failed',
+        text: '',
+        note: formatPdfParseError(error),
+        reason: 'parse',
+      }
+    }
+
     const primaryText = cleanExtractedText(result.text ?? '')
     if (primaryText) {
-      return { text: primaryText, note: null }
+      return { outcome: 'extracted', text: primaryText, note: null }
     }
 
     const byteHeuristicText = extractPdfTextFromOperators(buffer)
     if (byteHeuristicText) {
       return {
+        outcome: 'extracted',
         text: byteHeuristicText,
-        note: 'Recovered limited text from embedded PDF text operators after the primary parser returned little or no readable text.',
+        note: 'PDF parsed, but only limited text could be recovered from embedded text operators.',
       }
     }
 
     if (looksLikeImageOnlyPdf(buffer)) {
       return {
+        outcome: 'empty',
         text: '',
-        note: 'This PDF appears to be image-based or scanned. OCR fallback is not available in the current app architecture yet.',
+        note: 'Likely scanned or image-only PDF. A real parse completed, but no readable text was found.',
+        reason: 'scanned',
       }
     }
 
     return {
+      outcome: 'empty',
       text: '',
-      note: 'The PDF parser did not return readable text for this file.',
+      note: 'PDF parsed successfully, but no readable text was found.',
+      reason: 'no_text',
     }
   } finally {
-    await parser.destroy()
+    await parser.destroy().catch(() => undefined)
   }
+}
+
+async function loadPdfParseModule() {
+  const runtime = globalThis as PdfRuntimeGlobal
+
+  if (!runtime.__stayFocusedPdfParseModulePromise) {
+    runtime.__stayFocusedPdfParseModulePromise = (async () => {
+      const [pdfWorkerModule, pdfParseModule] = await Promise.all([
+        import('pdfjs-dist/legacy/build/pdf.worker.mjs'),
+        import('pdf-parse'),
+      ])
+
+      const workerHandler = pdfWorkerModule?.WorkerMessageHandler
+      if (workerHandler) {
+        runtime.pdfjsWorker = {
+          ...(runtime.pdfjsWorker ?? {}),
+          WorkerMessageHandler: workerHandler,
+        }
+      }
+
+      return pdfParseModule
+    })().catch((error) => {
+      delete runtime.__stayFocusedPdfParseModulePromise
+      throw error
+    })
+  }
+
+  return runtime.__stayFocusedPdfParseModulePromise
 }
 
 async function extractPptxText(buffer: Buffer) {
@@ -243,4 +339,45 @@ function looksLikeImageOnlyPdf(buffer: Buffer) {
   const imageHits = (binary.match(/\/Subtype\s*\/Image/g) ?? []).length
   const fontHits = (binary.match(/\/Font\b/g) ?? []).length
   return imageHits > 0 && fontHits === 0
+}
+
+function formatPdfSetupError(error: unknown) {
+  const message = normalizeErrorMessage(error)
+  if (/fake worker/i.test(message) || /pdf\.worker/i.test(message) || /workersrc/i.test(message)) {
+    return 'PDF parser setup failed before the document could be read.'
+  }
+
+  return `PDF parser setup failed: ${message}`
+}
+
+function formatPdfParseError(error: unknown) {
+  const message = normalizeErrorMessage(error)
+
+  if (/password/i.test(message)) {
+    return 'PDF parse failed: the document is password-protected.'
+  }
+
+  if (/invalidpdf|invalid pdf|formaterror|bad xref|malformed/i.test(message)) {
+    return 'PDF parse failed: the file appears invalid or corrupted.'
+  }
+
+  return `PDF parse failed: ${message}`
+}
+
+function formatUnexpectedExtractionError(error: unknown) {
+  return normalizeErrorMessage(error)
+}
+
+function normalizeErrorMessage(error: unknown) {
+  if (error instanceof Error) {
+    const cleaned = error.message.replace(/\s+/g, ' ').trim()
+    return cleaned || 'Unknown extraction error.'
+  }
+
+  if (typeof error === 'string') {
+    const cleaned = error.replace(/\s+/g, ' ').trim()
+    return cleaned || 'Unknown extraction error.'
+  }
+
+  return 'Unknown extraction error.'
 }

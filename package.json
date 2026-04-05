@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "reprocess:resources": "node --no-warnings --experimental-strip-types scripts/reprocess-module-resources.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.101.1",
