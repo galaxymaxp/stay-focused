@@ -54,6 +54,8 @@ export function TodayDashboard({
           description="Assignments, submissions, and deadlines that are best handled soon."
           items={needsAction}
           emptyMessage="Your action list is clear right now."
+          actionHref="/do"
+          actionLabel="Open Do"
         />
 
         <SectionBlock
@@ -62,6 +64,8 @@ export function TodayDashboard({
           description="Modules and course material to read through before they turn into rushed work."
           items={needsUnderstanding}
           emptyMessage="Nothing new needs a closer read at the moment."
+          actionHref="/learn"
+          actionLabel="Open Learn"
         />
       </div>
 
@@ -82,7 +86,13 @@ function FocusHeroCard({ item }: { item: TodayItem }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
         <div style={{ minWidth: 0, flex: '1 1 420px' }}>
           <p className="ui-kicker" style={{ color: 'var(--accent-foreground)' }}>Best next step</p>
-          <h2 style={heroTitleStyle}>{item.title}</h2>
+          {item.href ? (
+            <Link href={item.href} style={{ textDecoration: 'none' }}>
+              <h2 style={heroTitleStyle}>{item.title}</h2>
+            </Link>
+          ) : (
+            <h2 style={heroTitleStyle}>{item.title}</h2>
+          )}
           <p style={heroBodyStyle}>{item.whyNow}</p>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
@@ -123,19 +133,30 @@ function SectionBlock({
   description,
   items,
   emptyMessage,
+  actionHref,
+  actionLabel,
 }: {
   eyebrow: string
   title: string
   description: string
   items: TodayItem[]
   emptyMessage: string
+  actionHref?: string
+  actionLabel?: string
 }) {
   return (
     <section className="section-shell section-shell-elevated">
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem', marginBottom: '1rem' }}>
-        <p className="ui-kicker">{eyebrow}</p>
-        <h2 className="ui-section-title">{title}</h2>
-        <p className="ui-section-copy">{description}</p>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start', flexWrap: 'wrap', marginBottom: '1rem' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+          <p className="ui-kicker">{eyebrow}</p>
+          <h2 className="ui-section-title">{title}</h2>
+          <p className="ui-section-copy">{description}</p>
+        </div>
+        {actionHref && actionLabel && (
+          <Link href={actionHref} className="ui-button ui-button-ghost ui-button-xs">
+            {actionLabel}
+          </Link>
+        )}
       </div>
 
       {items.length === 0 ? (
@@ -162,7 +183,13 @@ function TodayItemCard({ item }: { item: TodayItem }) {
             <TonePill item={item} />
             <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{item.courseName}</span>
           </div>
-          <h3 style={itemTitleStyle}>{item.title}</h3>
+          {item.href ? (
+            <Link href={item.href} style={{ textDecoration: 'none' }}>
+              <h3 style={itemTitleStyle}>{item.title}</h3>
+            </Link>
+          ) : (
+            <h3 style={itemTitleStyle}>{item.title}</h3>
+          )}
         </div>
         <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           {item.effortLabel && <MetaPill>{item.effortLabel}</MetaPill>}

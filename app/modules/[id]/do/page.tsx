@@ -1,7 +1,8 @@
 import { notFound } from 'next/navigation'
+import Link from 'next/link'
 import { ModuleLensShell } from '@/components/ModuleLensShell'
 import { TaskStatusToggle } from '@/components/TaskStatusToggle'
-import { extractCourseName, getModuleWorkspace } from '@/lib/module-workspace'
+import { buildLearnExperience, extractCourseName, findRecommendedStepTargets, getModuleWorkspace, getResourceCanvasHref, matchTaskToResource } from '@/lib/module-workspace'
 import { sortTasksByRecommendation } from '@/lib/task-ranking'
 
 interface Props {
@@ -13,10 +14,16 @@ export default async function DoPage({ params }: Props) {
   const workspace = await getModuleWorkspace(id)
   if (!workspace) notFound()
 
-  const { module, tasks, deadlines } = workspace
+  const { module, tasks, deadlines, resources: storedResources } = workspace
   const courseName = extractCourseName(module.raw_content)
   const pendingTasks = sortTasksByRecommendation(tasks.filter((task) => task.status !== 'completed'))
   const completedTasks = tasks.filter((task) => task.status === 'completed')
+  const learnExperience = buildLearnExperience(module, {
+    taskCount: tasks.length,
+    deadlineCount: deadlines.length,
+    resources: storedResources,
+  })
+  const suggestedSteps = findRecommendedStepTargets(module, learnExperience, tasks)
 
   if (module.status === 'error') {
     return (
@@ -59,7 +66,7 @@ export default async function DoPage({ params }: Props) {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
               {pendingTasks.map((task, index) => (
-                <article key={task.id} className="glass-panel glass-hover" style={{
+                <article key={task.id} id={task.id} className="glass-panel glass-hover" style={{
                   ['--glass-panel-bg' as string]: index === 0 ? 'color-mix(in srgb, var(--glass-surface-accent) 34%, var(--glass-surface-strong) 66%)' : 'var(--glass-surface-strong)',
                   ['--glass-panel-border' as string]: index === 0 ? 'var(--accent-border)' : 'var(--glass-border)',
                   ['--glass-panel-shadow' as string]: 'var(--glass-shadow)',
@@ -101,6 +108,21 @@ export default async function DoPage({ params }: Props) {
                     <span><strong>Course:</strong> {courseName}</span>
                     <span><strong>Source:</strong> {module.title}</span>
                     <span><strong>Timing:</strong> {task.deadline ? `Due ${formatDate(task.deadline)}` : 'No due date found'}</span>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+                    <Link href={`/modules/${module.id}/learn`} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+                      Open Learn context
+                    </Link>
+                    {(() => {
+                      const matchedResource = matchTaskToResource(task.title, learnExperience.resources)
+                      const canvasHref = matchedResource ? getResourceCanvasHref(matchedResource) : null
+                      return canvasHref ? (
+                        <a href={canvasHref} target="_blank" rel="noreferrer" className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+                          Open in Canvas
+                        </a>
+                      ) : null
+                    })()}
                   </div>
                 </article>
               ))}
@@ -144,12 +166,17 @@ export default async function DoPage({ params }: Props) {
                 Suggested order
               </p>
               <ol style={{ listStyle: 'none', padding: 0, margin: '0.85rem 0 0', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-                {module.recommended_order.map((step, index) => (
-                  <li key={index} style={{ display: 'flex', gap: '0.7rem', alignItems: 'flex-start' }}>
-                    <span style={{ width: '1.4rem', height: '1.4rem', borderRadius: '999px', background: 'color-mix(in srgb, var(--surface-selected) 84%, var(--accent) 16%)', color: 'var(--text-primary)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: 700, flexShrink: 0 }}>
-                      {index + 1}
-                    </span>
-                    <span style={{ fontSize: '14px', lineHeight: 1.55, color: 'var(--text-secondary)' }}>{step}</span>
+                {suggestedSteps.map((step, index) => (
+                  <li key={step.id}>
+                    <Link href={step.href} style={{ display: 'flex', gap: '0.7rem', alignItems: 'flex-start', textDecoration: 'none' }}>
+                      <span style={{ width: '1.4rem', height: '1.4rem', borderRadius: '999px', background: 'color-mix(in srgb, var(--surface-selected) 84%, var(--accent) 16%)', color: 'var(--text-primary)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: 700, flexShrink: 0 }}>
+                        {index + 1}
+                      </span>
+                      <span style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                        <span style={{ fontSize: '14px', lineHeight: 1.55, color: 'var(--text-secondary)' }}>{step.label}</span>
+                        <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{step.destinationLabel}</span>
+                      </span>
+                    </Link>
                   </li>
                 ))}
               </ol>

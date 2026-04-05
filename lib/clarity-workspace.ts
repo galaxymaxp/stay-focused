@@ -99,7 +99,7 @@ function buildTodayTaskItem(task: TaskItem): TodayItem {
     tone,
     toneLabel: tone === 'attention' ? 'Needs action' : tone === 'review' ? 'Worth lining up' : 'Coming up',
     recommendationScore: task.actionScore,
-    href: `/do#${task.id}`,
+    href: `/modules/${task.moduleId}/do#${task.id}`,
     actionLabel: 'Open in Do',
     whyNow: buildTaskReason(task, daysUntil),
     effortLabel: `${task.estimatedMinutes} min`,
@@ -137,7 +137,7 @@ function buildTodayLearningItem(
     tone,
     toneLabel: tone === 'review' ? 'Worth reviewing' : 'Coming up',
     recommendationScore,
-    href: `/learn#${module.id}`,
+    href: `/modules/${module.id}/learn`,
     actionLabel: 'Open in Learn',
     whyNow: buildModuleReason(module, freshestTask, freshnessScore),
     effortLabel: module.estimated_minutes ? `${module.estimated_minutes} min review` : null,
@@ -166,7 +166,7 @@ function buildCalendarItem(task: TaskItem): CalendarItem {
     completionStatus: task.status,
     priority: task.priority,
     recommendationScore: task.actionScore,
-    href: `/do#${task.id}`,
+    href: `/modules/${task.moduleId}/do#${task.id}`,
   }
 }
 

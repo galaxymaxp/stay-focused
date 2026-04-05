@@ -1,7 +1,6 @@
 import type { Metadata } from 'next'
 import { AppShell } from '@/components/AppShell'
 import { ThemeProvider } from '@/components/ThemeProvider'
-import Script from 'next/script'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -40,9 +39,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        <Script id="theme-init" strategy="beforeInteractive">
-          {THEME_INIT_SCRIPT}
-        </Script>
+        <script
+          id="theme-init"
+          dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }}
+        />
       </head>
       <body className="app-shell" style={{ background: 'var(--bg)', minHeight: '100vh' }}>
         <ThemeProvider>
