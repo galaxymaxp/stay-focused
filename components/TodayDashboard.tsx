@@ -2,28 +2,7 @@
 
 import type { CSSProperties, ReactNode } from 'react'
 import Link from 'next/link'
-import { useTransition } from 'react'
-import { updateTaskStatus } from '@/actions/tasks'
-
-export interface TodayFocusItem {
-  id: string
-  kind: 'task' | 'deadline' | 'module'
-  title: string
-  courseName: string
-  moduleTitle: string | null
-  supportingText: string | null
-  dateTime: string | null
-  priority: 'high' | 'medium' | 'low' | null
-  tone: 'attention' | 'review' | 'upcoming'
-  toneLabel: string
-  recommendationScore: number
-  href: string | null
-  actionLabel: string
-  whyNow: string
-  effortLabel: string | null
-  completionStatus?: 'pending' | 'completed'
-  sourceId?: string
-}
+import type { TodayItem } from '@/lib/types'
 
 export function TodayDashboard({
   nextBestMove,
@@ -32,10 +11,10 @@ export function TodayDashboard({
   comingUp,
   undatedTaskCount,
 }: {
-  nextBestMove: TodayFocusItem | null
-  needsAction: TodayFocusItem[]
-  needsUnderstanding: TodayFocusItem[]
-  comingUp: TodayFocusItem[]
+  nextBestMove: TodayItem | null
+  needsAction: TodayItem[]
+  needsUnderstanding: TodayItem[]
+  comingUp: TodayItem[]
   undatedTaskCount: number
 }) {
   return (
@@ -45,7 +24,7 @@ export function TodayDashboard({
           <p className="ui-kicker">Today</p>
           <h1 className="ui-page-title">What should I do right now?</h1>
           <p className="ui-page-copy">
-            A calmer read on your workload. Start with the clearest next move, then scan what needs attention, what is worth reviewing, and what is coming up soon.
+            A calmer read on your workload. Start with the clearest next move, then scan what needs action, what is worth understanding, and what is coming up soon.
           </p>
         </div>
 
@@ -97,7 +76,7 @@ export function TodayDashboard({
   )
 }
 
-function FocusHeroCard({ item }: { item: TodayFocusItem }) {
+function FocusHeroCard({ item }: { item: TodayItem }) {
   return (
     <section className="glass-panel glass-accent motion-card" style={heroCardStyle}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
@@ -148,7 +127,7 @@ function SectionBlock({
   eyebrow: string
   title: string
   description: string
-  items: TodayFocusItem[]
+  items: TodayItem[]
   emptyMessage: string
 }) {
   return (
@@ -172,7 +151,7 @@ function SectionBlock({
   )
 }
 
-function TodayItemCard({ item }: { item: TodayFocusItem }) {
+function TodayItemCard({ item }: { item: TodayItem }) {
   const tone = getToneStyle(item.tone)
 
   return (
@@ -215,37 +194,16 @@ function TodayItemCard({ item }: { item: TodayFocusItem }) {
   )
 }
 
-function ItemActionButton({ item, primary = false }: { item: TodayFocusItem; primary?: boolean }) {
-  const [isPending, startTransition] = useTransition()
-  const canToggleTask = item.kind === 'task' && item.sourceId
-
-  if (!canToggleTask) {
-    if (!item.href) return null
-
-    return (
-      <Link href={item.href} className={`ui-button ${primary ? 'ui-button-primary' : 'ui-button-secondary'}`} style={primary ? primaryButtonStyle : secondaryButtonStyle}>
-        {item.actionLabel}
-      </Link>
-    )
-  }
-
-  function handleClick() {
-    startTransition(() => updateTaskStatus(item.sourceId!, item.completionStatus === 'completed' ? 'pending' : 'completed'))
-  }
-
+function ItemActionButton({ item, primary = false }: { item: TodayItem; primary?: boolean }) {
+  if (!item.href) return null
   return (
-    <button
-      onClick={handleClick}
-      disabled={isPending}
-      className={`ui-button ${primary ? 'ui-button-primary' : item.completionStatus === 'completed' ? 'ui-status-success' : 'ui-button-secondary'}`}
-      style={primary ? primaryButtonStyle : secondaryButtonStyle}
-    >
-      {isPending ? 'Saving...' : item.completionStatus === 'completed' ? 'Marked complete' : item.actionLabel}
-    </button>
+    <Link href={item.href} className={`ui-button ${primary ? 'ui-button-primary' : 'ui-button-secondary'}`} style={primary ? primaryButtonStyle : secondaryButtonStyle}>
+      {item.actionLabel}
+    </Link>
   )
 }
 
-function TonePill({ item, emphasis = false }: { item: TodayFocusItem; emphasis?: boolean }) {
+function TonePill({ item, emphasis = false }: { item: TodayItem; emphasis?: boolean }) {
   const tone = getToneStyle(item.tone)
 
   return (
@@ -286,7 +244,7 @@ function MetaCard({ label, value }: { label: string; value: string }) {
   )
 }
 
-function getToneStyle(tone: TodayFocusItem['tone']) {
+function getToneStyle(tone: TodayItem['tone']) {
   if (tone === 'attention') {
     return {
       dot: 'var(--amber)',
@@ -316,9 +274,9 @@ function getToneStyle(tone: TodayFocusItem['tone']) {
   }
 }
 
-function fallbackFocusLabel(kind: TodayFocusItem['kind']) {
+function fallbackFocusLabel(kind: TodayItem['kind']) {
   if (kind === 'module') return 'Review this module'
-  if (kind === 'deadline') return 'Deadline context'
+  if (kind === 'learning') return 'Learning focus'
   return 'Assignment focus'
 }
 
@@ -390,7 +348,7 @@ const metaCardStyle: CSSProperties = {
   padding: '0.85rem 0.9rem',
 }
 
-function itemCardStyle(tone: TodayFocusItem['tone']): CSSProperties {
+function itemCardStyle(tone: TodayItem['tone']): CSSProperties {
   const toneStyle = getToneStyle(tone)
 
   return {

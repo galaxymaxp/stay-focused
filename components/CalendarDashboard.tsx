@@ -1,24 +1,9 @@
 'use client'
 
 import type { CSSProperties, ReactNode } from 'react'
-import { useState, useTransition } from 'react'
-import { updateTaskStatus } from '@/actions/tasks'
-
-export interface CalendarItem {
-  id: string
-  sourceId: string
-  kind: 'task' | 'deadline'
-  title: string
-  courseName: string
-  moduleTitle: string | null
-  relatedText: string | null
-  dateKey: string
-  dateTime: string | null
-  status: 'urgent' | 'dueSoon' | 'upcoming' | 'completed'
-  completionStatus: 'pending' | 'completed'
-  priority: 'high' | 'medium' | 'low' | null
-  recommendationScore: number
-}
+import Link from 'next/link'
+import { useState } from 'react'
+import type { CalendarItem } from '@/lib/types'
 
 const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const STATUS_ORDER: CalendarItem['status'][] = ['urgent', 'dueSoon', 'upcoming', 'completed']
@@ -79,7 +64,7 @@ export function CalendarDashboard({ items, undatedTaskCount }: { items: Calendar
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem', flexWrap: 'wrap' }}>
         <div>
           <p style={{ margin: 0, fontSize: '11px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
-            Overview
+            Calendar
           </p>
           <h1 style={{ margin: '0.45rem 0 0', fontSize: '32px', lineHeight: 1.08, fontWeight: 650, letterSpacing: '-0.04em', color: 'var(--text-primary)' }}>Your workload, made quieter</h1>
           <p style={{ margin: '0.7rem 0 0', fontSize: '15px', color: 'var(--text-secondary)', lineHeight: 1.6, maxWidth: '46rem' }}>
@@ -313,16 +298,8 @@ function DayMarkerStack({ items }: { items: CalendarItem[] }) {
 }
 
 function SelectedItemCard({ item }: { item: CalendarItem }) {
-  const [isPending, startTransition] = useTransition()
-  const isTask = item.kind === 'task'
   const isCompleted = item.completionStatus === 'completed'
   const statusStyle = STATUS_STYLES[item.status]
-
-  function handleToggle() {
-    if (!isTask) return
-
-    startTransition(() => updateTaskStatus(item.sourceId, isCompleted ? 'pending' : 'completed'))
-  }
 
   return (
     <article className="glass-panel glass-hover" style={{
@@ -335,7 +312,6 @@ function SelectedItemCard({ item }: { item: CalendarItem }) {
       display: 'flex',
       flexDirection: 'column',
       gap: '0.75rem',
-      opacity: isPending ? 0.6 : 1,
     } as CSSProperties}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
         <div style={{ minWidth: 0 }}>
@@ -375,10 +351,9 @@ function SelectedItemCard({ item }: { item: CalendarItem }) {
             {item.title}
           </h3>
         </div>
-        {isTask && (
-          <button
-            onClick={handleToggle}
-            disabled={isPending}
+        {item.href && (
+          <Link
+            href={item.href}
             className={`ui-button ${isCompleted ? 'ui-status-success' : 'ui-button-secondary'}`}
             style={{
               borderRadius: 'var(--radius-tight)',
@@ -388,8 +363,8 @@ function SelectedItemCard({ item }: { item: CalendarItem }) {
               minHeight: '32px',
             }}
           >
-            {isCompleted ? 'Completed' : 'Mark done'}
-          </button>
+            {isCompleted ? 'Reviewed' : 'Open task'}
+          </Link>
         )}
       </div>
 
@@ -413,7 +388,7 @@ function SelectedItemCard({ item }: { item: CalendarItem }) {
           </div>
         )}
         <div>
-          <span style={{ color: 'var(--text-muted)' }}>Status:</span> {isTask ? item.completionStatus : 'scheduled'}
+          <span style={{ color: 'var(--text-muted)' }}>Status:</span> {item.completionStatus}
         </div>
       </div>
     </article>

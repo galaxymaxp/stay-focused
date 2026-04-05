@@ -9,8 +9,8 @@ import { StayFocusedIcon } from '@/components/StayFocusedIcon'
 const NAV_ITEMS = [
   {
     href: '/',
-    label: 'Overview',
-    description: 'Your clearest next view',
+    label: 'Today',
+    description: 'Your clearest next focus',
     icon: (
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
         <path d="M4.75 6.75h14.5v10.5H4.75z" stroke="currentColor" strokeWidth="1.6" rx="2.5" />
@@ -19,24 +19,46 @@ const NAV_ITEMS = [
     ),
   },
   {
-    href: '/canvas',
-    label: 'Canvas Sync',
-    description: 'Bring courses in quietly',
+    href: '/courses',
+    label: 'Courses',
+    description: 'See each class clearly',
     icon: (
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-        <path d="M6.75 7.5A5.25 5.25 0 0 1 12 4.75a5.25 5.25 0 0 1 5.25 5.25v.5h1A2.75 2.75 0 0 1 21 13.25v1A5 5 0 0 1 16 19.25H9A6.25 6.25 0 0 1 6.75 7.5Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
-        <path d="M12 10v6m0 0-2.25-2.25M12 16l2.25-2.25" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.6" />
+        <path d="M5.75 6.75h12.5a2 2 0 0 1 2 2v8.5H7.75a2 2 0 0 0-2 2V6.75Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+        <path d="M7.75 17.25V8.25a1.5 1.5 0 0 0-1.5-1.5h-.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
       </svg>
     ),
   },
   {
-    href: '/settings',
-    label: 'Settings',
-    description: 'Adjust the study atmosphere',
+    href: '/learn',
+    label: 'Learn',
+    description: 'Turn modules into understanding',
     icon: (
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-        <path d="M12 8.75A3.25 3.25 0 1 0 12 15.25A3.25 3.25 0 1 0 12 8.75Z" stroke="currentColor" strokeWidth="1.6" />
-        <path d="M19.25 13.25v-2.5l-1.97-.34a5.65 5.65 0 0 0-.52-1.26l1.15-1.64-1.76-1.76-1.64 1.15c-.4-.22-.82-.4-1.26-.52l-.34-1.97h-2.5l-.34 1.97c-.44.12-.86.3-1.26.52L6.12 5.75 4.36 7.5l1.15 1.64c-.22.4-.4.82-.52 1.26l-1.97.35v2.5l1.97.34c.12.44.3.86.52 1.26L4.36 16.5l1.76 1.76 1.64-1.15c.4.22.82.4 1.26.52l.34 1.97h2.5l.34-1.97c.44-.12.86-.3 1.26-.52l1.64 1.15 1.76-1.76-1.15-1.64c.22-.4.4-.82.52-1.26l1.97-.34Z" stroke="currentColor" strokeWidth="1.35" strokeLinejoin="round" />
+        <path d="M5.75 8.25c0-1.1.9-2 2-2h10.5v11.5H7.75a2 2 0 0 0-2 2V8.25Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+        <path d="M9.25 10.25h5.5M9.25 13.5h6.75" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      </svg>
+    ),
+  },
+  {
+    href: '/do',
+    label: 'Do',
+    description: 'See the extracted work',
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M6.75 12.25 10 15.5l7.25-7.25" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z" stroke="currentColor" strokeWidth="1.6" />
+      </svg>
+    ),
+  },
+  {
+    href: '/calendar',
+    label: 'Calendar',
+    description: 'Place work on the week',
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M7.25 4.75v2.5M16.75 4.75v2.5M5.75 8.25h12.5M6.75 6.25h10.5a1.5 1.5 0 0 1 1.5 1.5v9.5a1.5 1.5 0 0 1-1.5 1.5H6.75a1.5 1.5 0 0 1-1.5-1.5v-9.5a1.5 1.5 0 0 1 1.5-1.5Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+        <path d="M9 11.5h2.25v2.25H9zM12.75 11.5H15v2.25h-2.25z" stroke="currentColor" strokeWidth="1.4" />
       </svg>
     ),
   },
