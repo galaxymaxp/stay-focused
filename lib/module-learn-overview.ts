@@ -1,5 +1,6 @@
 import { getLearnResourceHref, getResourceCanvasHref, getResourceGrounding, type ModuleSourceResource } from '@/lib/module-workspace'
 import { buildStudyFileReaderModel, getStudyFileTypeLabel, type StudyFileReaderModel } from '@/lib/study-file-reader'
+import { getCanvasSourceLabel, getStudySourceNoun } from '@/lib/study-resource'
 import type { ModuleResourceWorkflowOverride, StudyFileProgressStatus, Task } from '@/lib/types'
 
 export type ModuleStudyReadiness = 'ready' | 'limited' | 'unavailable'
@@ -174,8 +175,11 @@ function toneForReadiness(readiness: ModuleStudyReadiness) {
 }
 
 function buildStudyNote(resource: ModuleSourceResource, reader: StudyFileReaderModel, readiness: ModuleStudyReadiness) {
+  const sourceNoun = getStudySourceNoun(resource)
+  const canvasSourceLabel = getCanvasSourceLabel(resource).toLowerCase()
+
   if (readiness === 'ready') {
-    return reader.summary ?? 'Readable text is available in the study reader for this file.'
+    return reader.summary ?? `Readable text is available in the study reader for this ${sourceNoun}.`
   }
 
   if (reader.state === 'extracted') {
@@ -183,26 +187,26 @@ function buildStudyNote(resource: ModuleSourceResource, reader: StudyFileReaderM
   }
 
   if (reader.state === 'metadata_only') {
-    return 'Only file context is available here right now, so the original Canvas file is still the fuller source.'
+    return `Only ${sourceNoun} context is available here right now, so the original ${canvasSourceLabel} is still the fuller source.`
   }
 
   if (reader.state === 'empty') {
     if (/scanned|image-only|image based|image-based/i.test(resource.extractionError ?? '')) {
-      return 'The file was parsed, but it still looks more like a scanned or image-based document in Learn.'
+      return `The ${sourceNoun} was parsed, but it still looks more like a scanned or image-based document in Learn.`
     }
 
-    return 'The file was parsed, but no usable text surfaced in Learn.'
+    return `The ${sourceNoun} was parsed, but no usable text surfaced in Learn.`
   }
 
   if (resource.extractionStatus === 'pending') {
-    return 'The reader is still waiting on extraction for this file.'
+    return `The reader is still waiting on extraction for this ${sourceNoun}.`
   }
 
   if (resource.extractionStatus === 'unsupported') {
-    return 'This file type is not readable in the current study reader, so Canvas stays the source of truth.'
+    return `This ${sourceNoun} type is not readable in the current study reader, so Canvas stays the source of truth.`
   }
 
-  return 'The reader could not prepare usable text for this file this time.'
+  return `The reader could not prepare usable text for this ${sourceNoun} this time.`
 }
 
 function buildGroundedModuleSummary(studyMaterials: ModuleStudyMaterial[]) {
@@ -238,27 +242,27 @@ function buildSummaryStateMessage({
   unavailableStudyFileCount: number
 }) {
   if (totalStudyFileCount === 0) {
-    return 'No study files are mapped to this module yet, so Learn stays at the resource and action level instead of pretending to summarize the module.'
+    return 'No study materials are mapped to this module yet, so Learn stays at the resource and action level instead of pretending to summarize the module.'
   }
 
   if (activeStudyFileCount === 0 && activityOverrideCount > 0) {
-    return 'All study files in this module are currently treated as activity instead, so Learn is not building a study-lane summary from them.'
+    return 'All study materials in this module are currently treated as activity instead, so Learn is not building a study-lane summary from them.'
   }
 
   if (readyStudyFileCount > 0) {
-    return 'A grounded module summary is available because at least one study file in the current study lane produced enough readable text to support it.'
+    return 'A grounded module summary is available because at least one study material in the current study lane produced enough readable text to support it.'
   }
 
   if (extractedStudyFileCount > 0) {
-    return 'Some study files have readable text, but not enough of the current study lane is strong enough for a grounded module summary yet.'
+    return 'Some study materials have readable text, but not enough of the current study lane is strong enough for a grounded module summary yet.'
   }
 
   if (limitedStudyFileCount > 0) {
-    return 'The mapped study files are still limited in Learn, so this page stays at the file and action level instead of inventing a theme.'
+    return 'The mapped study materials are still limited in Learn, so this page stays at the source and action level instead of inventing a theme.'
   }
 
   if (unavailableStudyFileCount > 0) {
-    return 'The mapped study files are still unreadable in Learn right now, so the overview stays honest and keeps Canvas close by.'
+    return 'The mapped study materials are still unreadable in Learn right now, so the overview stays honest and keeps Canvas close by.'
   }
 
   return 'Learn is waiting on stronger study-file coverage before it creates a grounded module summary.'
@@ -280,11 +284,11 @@ function buildCoverageNote({
   unavailableStudyFileCount: number
 }) {
   if (totalStudyFileCount === 0) {
-    return 'No mapped study files are available for this module yet.'
+    return 'No mapped study materials are available for this module yet.'
   }
 
   if (activeStudyFileCount === 0 && activityOverrideCount > 0) {
-    return `${activityOverrideCount} study file${activityOverrideCount === 1 ? ' is' : 's are'} currently treated as activity instead of study material.`
+    return `${activityOverrideCount} study material${activityOverrideCount === 1 ? ' is' : 's are'} currently treated as activity instead of the main study lane.`
   }
 
   const fragments: string[] = []
@@ -292,11 +296,11 @@ function buildCoverageNote({
   if (readyStudyFileCount > 0) {
     fragments.push(
       readyStudyFileCount === activeStudyFileCount
-        ? `Grounded from all ${readyStudyFileCount} study file${readyStudyFileCount === 1 ? '' : 's'} still in the study lane.`
-        : `Grounded from ${readyStudyFileCount} of ${activeStudyFileCount} study file${activeStudyFileCount === 1 ? '' : 's'} in the study lane.`,
+        ? `Grounded from all ${readyStudyFileCount} study material${readyStudyFileCount === 1 ? '' : 's'} still in the study lane.`
+        : `Grounded from ${readyStudyFileCount} of ${activeStudyFileCount} study material${activeStudyFileCount === 1 ? '' : 's'} in the study lane.`,
     )
   } else {
-    fragments.push('No study files in the current study lane have enough readable text for a grounded module summary yet.')
+    fragments.push('No study materials in the current study lane have enough readable text for a grounded module summary yet.')
   }
 
   if (limitedStudyFileCount > 0) {
@@ -308,7 +312,7 @@ function buildCoverageNote({
   }
 
   if (activityOverrideCount > 0) {
-    fragments.push(`${activityOverrideCount} ${activityOverrideCount === 1 ? 'study file is' : 'study files are'} currently treated as activity instead.`)
+    fragments.push(`${activityOverrideCount} ${activityOverrideCount === 1 ? 'study material is' : 'study materials are'} currently treated as activity instead.`)
   }
 
   return fragments.join(' ')
@@ -449,10 +453,10 @@ function buildStudyStep(moduleId: string, material: ModuleStudyMaterial): Omit<M
     note: material.readiness === 'ready'
       ? 'Readable extracted text is available, so this is the clearest place to get oriented.'
       : material.readiness === 'limited'
-        ? 'Use this as a guidepost, then keep the original Canvas file nearby for the fuller read.'
+        ? 'Use this as a guidepost, then keep the original Canvas source nearby for the fuller read.'
         : 'Canvas is still the most reliable place to read this one in full.',
     href: useCanvas ? canvasHref! : getLearnResourceHref(moduleId, material.resource.id),
-    destinationLabel: useCanvas ? 'Canvas file' : 'Study reader',
+    destinationLabel: useCanvas ? 'Canvas source' : 'Study reader',
     external: useCanvas,
   }
 }
@@ -488,9 +492,9 @@ function buildActivityOverrideStep(moduleId: string, material: ModuleStudyMateri
   return {
     id: `${material.resource.id}-activity-override-step`,
     title: material.resource.title,
-    note: 'You marked this study file as activity for your workflow, so it sits in the action lane even though the study reader is still available.',
+    note: 'You marked this study material as activity for your workflow, so it sits in the action lane even though the study reader is still available.',
     href: useCanvas ? canvasHref! : getLearnResourceHref(moduleId, material.resource.id),
-    destinationLabel: useCanvas ? 'Canvas file' : 'Study reader',
+    destinationLabel: useCanvas ? 'Canvas source' : 'Study reader',
     external: useCanvas,
   }
 }
@@ -502,33 +506,33 @@ function buildResumeNote(
 ) {
   if (source === 'recent') {
     return openedAtLabel
-      ? `Last opened ${openedAtLabel}. This file is still in your study lane, so Learn keeps it ready to reopen.`
-      : 'This is the most recent readable study file still in your study lane.'
+      ? `Last opened ${openedAtLabel}. This study material is still in your study lane, so Learn keeps it ready to reopen.`
+      : 'This is the most recent readable study material still in your study lane.'
   }
 
   if (source === 'fallback_readable') {
-    return 'No recent study file is saved in the active study lane, so Learn is pointing to the clearest readable file in this module.'
+    return 'No recent study material is saved in the active study lane, so Learn is pointing to the clearest readable source in this module.'
   }
 
   if (source === 'recent_fallback') {
     return openedAtLabel
-      ? `Last opened ${openedAtLabel}. Learn could not find a stronger readable study file in the current study lane, so this stays closest at hand.`
-      : 'This was the most recent study file in your active study lane, and no stronger readable file is available yet.'
+      ? `Last opened ${openedAtLabel}. Learn could not find a stronger readable study material in the current study lane, so this stays closest at hand.`
+      : 'This was the most recent study material in your active study lane, and no stronger readable source is available yet.'
   }
 
   if (material.reader.state === 'metadata_only') {
-    return 'No recently opened readable study file is available yet, so Learn is keeping the clearest context-only file close.'
+    return 'No recently opened readable study material is available yet, so Learn is keeping the clearest context-only source close.'
   }
 
   if (material.reader.state === 'empty') {
-    return 'No recently opened readable study file is available yet, so Learn is keeping the closest parsed file nearby even though it did not surface usable text.'
+    return 'No recently opened readable study material is available yet, so Learn is keeping the closest parsed source nearby even though it did not surface usable text.'
   }
 
   if (material.readiness === 'unavailable') {
-    return 'No recently opened readable study file is available yet, so Learn is pointing you back to the original Canvas file for the cleanest reopen.'
+    return 'No recently opened readable study material is available yet, so Learn is pointing you back to the original Canvas source for the cleanest reopen.'
   }
 
-  return 'No recently opened readable study file is available yet, so Learn is keeping the clearest available study file close.'
+  return 'No recently opened readable study material is available yet, so Learn is keeping the clearest available study source close.'
 }
 
 function buildActionStep(moduleId: string, item: ModuleSourceResource, tasks: Task[]): Omit<ModuleSuggestedStudyStep, 'slotLabel'> {

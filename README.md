@@ -51,3 +51,7 @@ npm run reprocess:resources -- --title "Student Handbook.pdf"
 ```
 
 This refreshes the stored extraction fields on `module_resources`. If you also want the module-level AI summary to be rebuilt from the newly extracted text, unsync that course in the app and sync it again from `/canvas`.
+
+## Refresh Canvas Pages
+
+Canvas Page extraction is picked up during normal course sync. For courses that were already synced before Page support landed, unsync that course in the app and sync it again from `/canvas` so page-backed study materials can be ingested with their readable body text.

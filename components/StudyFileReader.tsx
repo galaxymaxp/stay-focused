@@ -4,6 +4,7 @@ import { StudyFileManualStateControls } from '@/components/StudyFileManualStateC
 import { StudyFileOpenTracker } from '@/components/StudyFileOpenTracker'
 import { StudyFilePreviewExplorer } from '@/components/StudyFilePreviewExplorer'
 import { getStudyFileProgressLabel } from '@/lib/study-file-manual-state'
+import { getStudySourceNoun } from '@/lib/study-resource'
 import { buildStudyFileReaderModel } from '@/lib/study-file-reader'
 import type { ModuleSourceResource } from '@/lib/module-workspace'
 
@@ -31,6 +32,7 @@ export function StudyFileReader({
   const reader = buildStudyFileReaderModel(resource)
   const studyProgress = resource.studyProgressStatus ?? 'not_started'
   const workflowOverride = resource.workflowOverride ?? 'study'
+  const sourceNoun = getStudySourceNoun(resource)
   const progressTone = studyProgress === 'reviewed'
     ? 'accent'
     : studyProgress === 'skimmed'
@@ -57,10 +59,10 @@ export function StudyFileReader({
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.9rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
           <div style={{ minWidth: 0, flex: '1 1 420px' }}>
-            <p className="ui-kicker">Study file reader</p>
+            <p className="ui-kicker">Study reader</p>
             <h2 className="ui-section-title" style={{ marginTop: '0.45rem' }}>{resource.title}</h2>
             <p className="ui-section-copy" style={{ marginTop: '0.5rem' }}>
-              A calm reading surface over the Canvas file, with grounded guidance only when the app has real text to stand on.
+              A calm reading surface over the original Canvas source, with grounded guidance only when the app has real text to stand on.
             </p>
           </div>
           <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
@@ -96,7 +98,7 @@ export function StudyFileReader({
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.75rem' }}>
           <ReaderMetaCard label="Course" value={resource.courseName ?? courseName} />
           <ReaderMetaCard label="Module" value={resource.moduleName ?? moduleTitle} />
-          <ReaderMetaCard label="Context" value={contextBits.join(' / ') || 'Canvas study file'} />
+          <ReaderMetaCard label="Context" value={contextBits.join(' / ') || 'Canvas study material'} />
           <ReaderMetaCard label="Canvas title" value={resource.originalTitle ?? resource.title} />
         </div>
 
@@ -108,7 +110,7 @@ export function StudyFileReader({
         />
       </div>
 
-      <ReaderSection title="What this file is about" kicker={reader.state === 'extracted' ? 'Grounded overview' : 'Honest state'}>
+      <ReaderSection title="What this material is about" kicker={reader.state === 'extracted' ? 'Grounded overview' : 'Honest state'}>
         <p className="ui-reading-copy" style={{ margin: 0, fontSize: '15px', lineHeight: 1.76, color: 'var(--text-secondary)' }}>
           {reader.overviewBody}
         </p>
@@ -149,10 +151,10 @@ export function StudyFileReader({
 
       <ReaderSection title="Source transparency" kicker="What this page is actually using">
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '0.75rem' }}>
-          <ReaderMetaCard label="File type" value={reader.fileTypeLabel} />
+          <ReaderMetaCard label="Source type" value={reader.fileTypeLabel} />
           <ReaderMetaCard label="Extraction status" value={reader.statusLabel} />
           <ReaderMetaCard label="Readable characters" value={reader.charCount > 0 ? reader.charCount.toLocaleString() : 'Not available'} />
-          <ReaderMetaCard label="Canvas source" value={canvasHref ? 'Direct file link available' : 'No direct Canvas link stored'} />
+          <ReaderMetaCard label="Canvas source" value={canvasHref ? `Direct ${sourceNoun} link available` : 'No direct Canvas link stored'} />
         </div>
 
         <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.9rem 1rem', marginTop: '0.85rem' }}>

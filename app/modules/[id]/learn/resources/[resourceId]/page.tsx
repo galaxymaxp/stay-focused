@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import { ModuleLensShell } from '@/components/ModuleLensShell'
 import { StudyFileReader } from '@/components/StudyFileReader'
 import { StudyModeSwitcher } from '@/components/StudyModeSwitcher'
+import { getLearnResourceKindLabel } from '@/lib/study-resource'
 import {
   buildLearnExperience,
   extractCourseName,
@@ -123,7 +124,7 @@ export default async function ResourceDetailPage({ params }: Props) {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.75rem' }}>
           <MetaCard label="Course" value={resource.courseName ?? courseName} />
           <MetaCard label="Module / week" value={resource.moduleName ?? module.title} />
-          <MetaCard label="Resource type" value={labelForResourceKind(resource.kind)} />
+          <MetaCard label="Resource type" value={labelForResourceKind(resource)} />
           <MetaCard label="Original Canvas title" value={resource.originalTitle ?? resource.title} />
           <MetaCard label="Due date" value={resource.dueDate && resource.dueDate !== 'No due date' ? formatDate(resource.dueDate) : 'None surfaced'} />
           <MetaCard label="Linked context" value={resource.linkedContext ?? 'No linked task or assignment context surfaced yet'} />
@@ -152,7 +153,7 @@ export default async function ResourceDetailPage({ params }: Props) {
               <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem' }}>
                 <p className="ui-kicker">Fallback view</p>
                 <p style={{ margin: '0.55rem 0 0', fontSize: '15px', lineHeight: 1.7, color: 'var(--text-secondary)' }}>
-                  Deep document analysis is hidden because the system does not have enough readable file text to support it honestly.
+                  Deep document analysis is hidden because the system does not have enough readable source text to support it honestly.
                 </p>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.8rem' }}>
                   {resource.whyItMatters && (
@@ -245,14 +246,8 @@ function formatDate(value: string) {
   return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' }).format(date)
 }
 
-function labelForResourceKind(kind: 'study_file' | 'practice_link' | 'assignment' | 'quiz' | 'discussion' | 'reference' | 'announcement') {
-  if (kind === 'study_file') return 'Study File'
-  if (kind === 'practice_link') return 'Practice Link'
-  if (kind === 'assignment') return 'Assignment'
-  if (kind === 'quiz') return 'Quiz'
-  if (kind === 'discussion') return 'Discussion'
-  if (kind === 'reference') return 'Reference'
-  return 'Announcement'
+function labelForResourceKind(resource: { kind: 'study_file' | 'practice_link' | 'assignment' | 'quiz' | 'discussion' | 'reference' | 'announcement'; type: string }) {
+  return getLearnResourceKindLabel(resource)
 }
 
 function matchesByTitle(left: string, right: string) {

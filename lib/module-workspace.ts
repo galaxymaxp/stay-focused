@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { getLearnResourceKindLabel, getStudySourceNoun } from '@/lib/study-resource'
 import type {
   Deadline,
   Module,
@@ -545,7 +546,7 @@ function enrichResourceContext(
   const dueDate = resource.dueDate ?? matchedAssignment?.due ?? null
   const linkedContext = resource.lane === 'learn'
     ? linkedDoItem
-      ? `${labelForKind(linkedDoItem.kind)} next: ${linkedDoItem.title}${linkedDoItem.dueDate ? ` (${formatContextDate(linkedDoItem.dueDate)})` : ''}`
+      ? `${labelForKind(linkedDoItem)} next: ${linkedDoItem.title}${linkedDoItem.dueDate ? ` (${formatContextDate(linkedDoItem.dueDate)})` : ''}`
       : null
     : matchedAssignment?.details ?? null
 
@@ -623,7 +624,7 @@ function buildKeyConceptFallback(
     ...resources
       .filter((resource) => resource.lane === 'learn')
       .slice(0, 4)
-      .map((resource) => `${labelForKind(resource.kind)}: ${resource.title}`),
+      .map((resource) => `${labelForKind(resource)}: ${resource.title}`),
     ...parsed.modules.map((moduleGroup) => `${moduleGroup.name}: ${moduleGroup.items.slice(0, 2).map((item) => item.title).join(', ')}`),
   ]
 
@@ -654,7 +655,7 @@ function buildMemorizeLines(
     ...resources
       .filter((resource) => resource.lane === 'learn')
       .slice(0, 3)
-      .map((resource) => `${labelForKind(resource.kind)}: ${resource.title}`),
+      .map((resource) => `${labelForKind(resource)}: ${resource.title}`),
     ...requiredResources.map((resource) => `Required resource: ${resource}`),
     ...dueLines,
     ...extractedResources,
@@ -979,6 +980,7 @@ export function matchTaskToResource(taskTitle: string, resources: ModuleSourceRe
 export function getResourceGrounding(resource: ModuleSourceResource): ResourceGrounding {
   const evidenceText = resource.extractedText?.trim() || resource.extractedTextPreview?.trim() || ''
   const charCount = typeof resource.extractedCharCount === 'number' ? resource.extractedCharCount : 0
+  const sourceNoun = getStudySourceNoun(resource)
 
   if (resource.extractionStatus === 'extracted' && charCount >= 900 && evidenceText) {
     return {
@@ -987,7 +989,7 @@ export function getResourceGrounding(resource: ModuleSourceResource): ResourceGr
       confidence: 'High',
       evidenceSnippet: evidenceText.slice(0, 280),
       hasGroundedAnalysis: true,
-      message: `This view is grounded in extracted file text (${charCount} characters).`,
+      message: `This view is grounded in extracted ${sourceNoun} text (${charCount} characters).`,
     }
   }
 
@@ -998,7 +1000,7 @@ export function getResourceGrounding(resource: ModuleSourceResource): ResourceGr
       confidence: 'Medium',
       evidenceSnippet: evidenceText.slice(0, 280),
       hasGroundedAnalysis: true,
-      message: `This view is grounded in extracted file text, but the readable amount is still fairly limited (${charCount} characters).`,
+      message: `This view is grounded in extracted ${sourceNoun} text, but the readable amount is still fairly limited (${charCount} characters).`,
     }
   }
 
@@ -1009,7 +1011,7 @@ export function getResourceGrounding(resource: ModuleSourceResource): ResourceGr
       confidence: 'Low',
       evidenceSnippet: evidenceText.slice(0, 280),
       hasGroundedAnalysis: false,
-      message: `Only a small amount of readable file text was extracted (${charCount} characters), so the app keeps the reader lightweight instead of making deeper claims.`,
+      message: `Only a small amount of readable ${sourceNoun} text was extracted (${charCount} characters), so the app keeps the reader lightweight instead of making deeper claims.`,
     }
   }
 
@@ -1020,7 +1022,7 @@ export function getResourceGrounding(resource: ModuleSourceResource): ResourceGr
       confidence: 'None',
       evidenceSnippet: null,
       hasGroundedAnalysis: false,
-      message: 'Only the file title, module context, and linked tasks are available here. No readable file text was extracted.',
+      message: `Only the ${sourceNoun} title, module context, and linked tasks are available here. No readable ${sourceNoun} text was extracted.`,
     }
   }
 
@@ -1035,20 +1037,22 @@ export function getResourceGrounding(resource: ModuleSourceResource): ResourceGr
 }
 
 function buildUnreadGroundingMessage(resource: ModuleSourceResource) {
+  const sourceNoun = getStudySourceNoun(resource)
+
   if (resource.extractionStatus === 'failed') {
-    return `The app could not prepare a readable text view for this file this time.${resource.extractionError ? ` ${resource.extractionError}` : ''}`
+    return `The app could not prepare a readable text view for this ${sourceNoun} this time.${resource.extractionError ? ` ${resource.extractionError}` : ''}`
   }
 
   if (resource.extractionStatus === 'unsupported') {
-    return 'This file type is not readable in the current extraction pipeline, so the app is keeping the state explicit and linking back to Canvas.'
+    return `This ${sourceNoun} type is not readable in the current extraction pipeline, so the app is keeping the state explicit and linking back to Canvas.`
   }
 
   if (resource.extractionStatus === 'empty') {
-    return 'The file was parsed, but no usable text was found, so the reader is falling back to metadata and module context only.'
+    return `The ${sourceNoun} was parsed, but no usable text was found, so the reader is falling back to metadata and module context only.`
   }
 
   if (resource.extractionStatus === 'pending') {
-    return 'Extraction has not finished yet, so the reader is still waiting for usable file text.'
+    return `Extraction has not finished yet, so the reader is still waiting for usable ${sourceNoun} text.`
   }
 
   return 'No extraction evidence is available for this resource yet, so the app is not claiming to have read the document.'
@@ -1056,7 +1060,7 @@ function buildUnreadGroundingMessage(resource: ModuleSourceResource) {
 
 function summarizeResource(sourceText: string, resource: ModuleSourceResource) {
   if (!sourceText.trim()) {
-    return `No readable file text was extracted for ${resource.title}, so document-grounded analysis is not available yet.`
+    return `No readable source text was extracted for ${resource.title}, so document-grounded analysis is not available yet.`
   }
   const sentences = sourceText.split(/(?<=[.!?])\s+/).map((part) => part.trim()).filter(Boolean)
   if (sentences.length > 0) {
@@ -1117,7 +1121,7 @@ function buildResourceMisunderstandings(resource: ModuleSourceResource, sourceTe
     'Do not assume recognizing the wording means you understand the idea. Restate it without copying the phrasing.',
     firstLine ? `Do not over-focus on this single line without connecting it to the rest of ${resource.title}: ${firstLine}` : null,
     resource.kind === 'reference' ? 'Reference material can look simple; make sure you can use the definition, not just spot it.' : null,
-    resource.kind === 'study_file' ? 'A file or slide deck can feel complete on its own, but the important move is extracting the structure, not rereading every sentence.' : null,
+    resource.kind === 'study_file' ? 'A study source can feel complete on its own, but the important move is extracting the structure, not rereading every sentence.' : null,
   ], 4)
 }
 
@@ -1143,7 +1147,7 @@ function buildResourceMemoryAnchors(resource: ModuleSourceResource, sourceText: 
 
   return uniqueLines([
     `Anchor the title: ${resource.title}`,
-    resource.required ? 'Anchor the fact that Canvas marks this resource as required.' : `Anchor the format: ${labelForKind(resource.kind)}`,
+    resource.required ? 'Anchor the fact that Canvas marks this resource as required.' : `Anchor the format: ${labelForKind(resource)}`,
     anchorLine ? `Anchor phrase: ${anchorLine}` : null,
   ], 4)
 }
@@ -1280,14 +1284,8 @@ function classifyLearnResourceLane(kind: LearnResourceKind): LearnResourceLane {
   return 'learn'
 }
 
-function labelForKind(kind: LearnResourceKind) {
-  if (kind === 'study_file') return 'Study File'
-  if (kind === 'practice_link') return 'Practice Link'
-  if (kind === 'assignment') return 'Assignment'
-  if (kind === 'quiz') return 'Quiz'
-  if (kind === 'discussion') return 'Discussion'
-  if (kind === 'reference') return 'Reference'
-  return 'Announcement'
+function labelForKind(resource: Pick<ModuleSourceResource, 'kind' | 'type'>) {
+  return getLearnResourceKindLabel(resource)
 }
 
 function adaptModuleResourceRow(row: Record<string, unknown>): ModuleResource {

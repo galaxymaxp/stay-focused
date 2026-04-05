@@ -1,5 +1,6 @@
 import type { ModuleSourceResource } from '@/lib/module-workspace'
 import type { ModuleResourceExtractionStatus } from '@/lib/types'
+import { getCanvasSourceLabel, getStudySourceNoun, getStudySourceTypeLabel } from '@/lib/study-resource'
 
 export type StudyFileReaderState = 'extracted' | 'metadata_only' | 'empty' | 'failed'
 
@@ -36,14 +37,16 @@ export function buildStudyFileReaderModel(resource: ModuleSourceResource): Study
     ? resource.extractedCharCount
     : normalizedText.length
   const paragraphs = buildPreviewParagraphs(normalizedText)
+  const sourceNoun = getStudySourceNoun(resource)
+  const canvasSourceLabel = getCanvasSourceLabel(resource)
 
   if (state === 'extracted' && normalizedText) {
     const summary = buildGroundedSummary(paragraphs)
     const keyPoints = buildGroundedKeyPoints(paragraphs, summary)
     const previewBlocks = buildPreviewBlocks(normalizedText, paragraphs)
     const transparencyBase = charCount >= 1200
-      ? 'This study page is grounded in real extracted file text.'
-      : 'This study page is grounded in real extracted file text, but the readable amount is still fairly light.'
+      ? 'This study page is grounded in real extracted source text.'
+      : 'This study page is grounded in real extracted source text, but the readable amount is still fairly light.'
 
     return {
       state,
@@ -53,7 +56,7 @@ export function buildStudyFileReaderModel(resource: ModuleSourceResource): Study
       summary,
       keyPoints,
       previewBlocks,
-      overviewTitle: 'What this file is about',
+      overviewTitle: 'What this material is about',
       overviewBody: summary,
       keyPointsHint: null,
       previewHint: null,
@@ -73,13 +76,13 @@ export function buildStudyFileReaderModel(resource: ModuleSourceResource): Study
       summary: null,
       keyPoints: [],
       previewBlocks: [],
-      overviewTitle: 'What this file is about',
-      overviewBody: 'Only the file title, type, and module context are available here right now. The app did not extract readable file text for this item, so it is not pretending to summarize it.',
-      keyPointsHint: 'Key points stay hidden until the reader has real extracted text to work from.',
-      previewHint: 'Open the original file in Canvas if you want the full source material right away.',
+      overviewTitle: 'What this material is about',
+      overviewBody: `Only the ${sourceNoun} title, type, and module context are available here right now. The app did not extract readable ${sourceNoun} text for this item, so it is not pretending to summarize it.`,
+      keyPointsHint: `Key points stay hidden until the reader has real extracted ${sourceNoun} text to work from.`,
+      previewHint: `Open the original ${canvasSourceLabel.toLowerCase()} in Canvas if you want the full source material right away.`,
       transparencyNote: resource.extractionError
-        ? `No readable file text is stored for this item. Note: ${resource.extractionError}`
-        : 'No readable file text is stored for this item yet.',
+        ? `No readable ${sourceNoun} text is stored for this item. Note: ${resource.extractionError}`
+        : `No readable ${sourceNoun} text is stored for this item yet.`,
       charCount,
     }
   }
@@ -95,14 +98,14 @@ export function buildStudyFileReaderModel(resource: ModuleSourceResource): Study
       summary: null,
       keyPoints: [],
       previewBlocks: [],
-      overviewTitle: 'What this file is about',
+      overviewTitle: 'What this material is about',
       overviewBody: likelyScanned
-        ? 'The file was parsed, but no usable text surfaced in the reader. It may be a scanned or image-based document, so this page stays quiet instead of inventing a summary.'
-        : 'The file was parsed successfully, but no usable text surfaced in the reader. This page stays honest and keeps the original Canvas file close at hand.',
-      keyPointsHint: 'Key points are hidden because the parser did not return usable text from the file.',
+        ? `The ${sourceNoun} was parsed, but no usable text surfaced in the reader. It may be a scanned or image-based document, so this page stays quiet instead of inventing a summary.`
+        : `The ${sourceNoun} was parsed successfully, but no usable text surfaced in the reader. This page stays honest and keeps the original ${canvasSourceLabel.toLowerCase()} close at hand.`,
+      keyPointsHint: `Key points are hidden because the parser did not return usable text from the ${sourceNoun}.`,
       previewHint: likelyScanned
-        ? 'If this is a scanned handout or image-based PDF, the original Canvas file will still be the best place to read it.'
-        : 'The file may still be useful in Canvas even though no readable text surfaced here.',
+        ? `If this is a scanned handout or image-based PDF, the original ${canvasSourceLabel.toLowerCase()} will still be the best place to read it.`
+        : `The ${sourceNoun} may still be useful in Canvas even though no readable text surfaced here.`,
       transparencyNote: resource.extractionError
         ? `Extraction completed, but no usable text was returned. Note: ${resource.extractionError}`
         : 'Extraction completed, but no usable text was returned.',
@@ -118,31 +121,19 @@ export function buildStudyFileReaderModel(resource: ModuleSourceResource): Study
     summary: null,
     keyPoints: [],
     previewBlocks: [],
-    overviewTitle: 'What this file is about',
-    overviewBody: 'The app could not prepare a readable study view for this file this time. The original Canvas file is still available, and this page keeps the state clear without making the reader feel broken.',
-    keyPointsHint: 'Key points are hidden because extraction did not complete cleanly for this file.',
-    previewHint: 'Use the Canvas link for the original file, then resync later if you want the reader to try again.',
+    overviewTitle: 'What this material is about',
+    overviewBody: `The app could not prepare a readable study view for this ${sourceNoun} this time. The original ${canvasSourceLabel.toLowerCase()} is still available, and this page keeps the state clear without making the reader feel broken.`,
+    keyPointsHint: `Key points are hidden because extraction did not complete cleanly for this ${sourceNoun}.`,
+    previewHint: `Use the Canvas link for the original ${sourceNoun}, then resync later if you want the reader to try again.`,
     transparencyNote: resource.extractionError
       ? `Extraction did not complete cleanly. Error: ${resource.extractionError}`
-      : 'Extraction did not complete cleanly for this file.',
+      : `Extraction did not complete cleanly for this ${sourceNoun}.`,
     charCount,
   }
 }
 
-export function getStudyFileTypeLabel(resource: Pick<ModuleSourceResource, 'extension' | 'contentType'>) {
-  const extension = resource.extension?.toLowerCase() ?? null
-  const contentType = resource.contentType?.toLowerCase() ?? null
-
-  if (extension === 'pdf') return 'PDF'
-  if (extension === 'pptx') return 'PPTX'
-  if (extension === 'ppt') return 'PPT'
-  if (extension === 'txt') return 'TXT'
-  if (extension === 'md') return 'Markdown'
-  if (extension === 'csv') return 'CSV'
-  if (contentType?.includes('pdf')) return 'PDF'
-  if (contentType?.includes('presentation')) return 'Slide deck'
-  if (contentType?.includes('text/html')) return 'HTML'
-  return 'Study file'
+export function getStudyFileTypeLabel(resource: Pick<ModuleSourceResource, 'type' | 'extension' | 'contentType'>) {
+  return getStudySourceTypeLabel(resource)
 }
 
 export function labelForExtractionStatus(status?: ModuleResourceExtractionStatus) {

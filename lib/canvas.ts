@@ -90,6 +90,16 @@ export interface CanvasFile {
   updated_at?: string | null
 }
 
+export interface CanvasPage {
+  page_id?: number | null
+  url?: string | null
+  title?: string | null
+  body?: string | null
+  html_url?: string | null
+  published?: boolean | null
+  updated_at?: string | null
+}
+
 function resolveCanvasConfig(override?: Partial<CanvasConfig>): CanvasConfig {
   const url = override?.url?.trim() || DEFAULT_CANVAS_URL?.trim()
   const token = override?.token?.trim() || DEFAULT_CANVAS_TOKEN?.trim()
@@ -223,6 +233,24 @@ export async function getModules(courseId: number, configOverride?: Partial<Canv
 
 export async function getCanvasFile(courseId: number, fileId: number, configOverride?: Partial<CanvasConfig>): Promise<CanvasFile> {
   return canvasFetchAbsolute<CanvasFile>(`${resolveCanvasConfig(configOverride).url}/api/v1/courses/${courseId}/files/${fileId}`, configOverride)
+}
+
+export async function getCanvasPage(
+  courseId: number,
+  input: { pageUrl?: string | null; apiUrl?: string | null },
+  configOverride?: Partial<CanvasConfig>
+): Promise<CanvasPage> {
+  if (input.pageUrl) {
+    return canvasFetch<CanvasPage>(`/courses/${courseId}/pages/${encodeURIComponent(input.pageUrl)}`, configOverride)
+  }
+
+  if (input.apiUrl) {
+    const config = resolveCanvasConfig(configOverride)
+    const absoluteUrl = new URL(input.apiUrl, `${config.url}/`).toString()
+    return canvasFetchAbsolute<CanvasPage>(absoluteUrl, configOverride)
+  }
+
+  throw new Error('Canvas page resource is missing both page_url and API URL.')
 }
 
 function stripHtml(html: string): string {

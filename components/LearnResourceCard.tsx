@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { StudyModeSwitcher } from '@/components/StudyModeSwitcher'
+import { getLearnResourceKindLabel } from '@/lib/study-resource'
 import { getLearnResourceHref, getResourceCanvasHref, type LearnResourceUnit } from '@/lib/module-workspace'
 import { labelForExtractionStatus } from '@/lib/study-file-reader'
 
@@ -37,7 +38,7 @@ export function LearnResourceCard({
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.85rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
         <div style={{ minWidth: 0 }}>
           <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', marginBottom: '0.45rem' }}>
-            <span className="ui-chip ui-chip-soft">{labelForResourceKind(unit.resource.kind)}</span>
+            <span className="ui-chip ui-chip-soft">{labelForResourceKind(unit.resource)}</span>
             <span className="ui-chip ui-chip-soft">{unit.grounding.label}</span>
             {unit.resource.extractionStatus && (
               <span className="ui-chip ui-chip-soft">{labelForExtractionStatus(unit.resource.extractionStatus)}</span>
@@ -95,7 +96,7 @@ export function LearnResourceCard({
         <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.85rem 0.95rem' }}>
           <p className="ui-kicker">Analysis availability</p>
           <p style={{ margin: '0.5rem 0 0', fontSize: '13px', lineHeight: 1.6, color: 'var(--text-secondary)' }}>
-            Deep analysis modes are hidden until enough readable file text is extracted.
+            Deep analysis modes are hidden until enough readable source text is extracted.
           </p>
         </div>
       )}
@@ -120,12 +121,6 @@ function formatDate(value: string) {
   return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' }).format(date)
 }
 
-function labelForResourceKind(kind: 'study_file' | 'practice_link' | 'assignment' | 'quiz' | 'discussion' | 'reference' | 'announcement') {
-  if (kind === 'study_file') return 'Study File'
-  if (kind === 'practice_link') return 'Practice Link'
-  if (kind === 'assignment') return 'Assignment'
-  if (kind === 'quiz') return 'Quiz'
-  if (kind === 'discussion') return 'Discussion'
-  if (kind === 'reference') return 'Reference'
-  return 'Announcement'
+function labelForResourceKind(resource: Pick<LearnResourceUnit['resource'], 'kind' | 'type'>) {
+  return getLearnResourceKindLabel(resource)
 }

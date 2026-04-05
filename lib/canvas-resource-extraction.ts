@@ -37,6 +37,8 @@ type PdfRuntimeGlobal = typeof globalThis & {
   }
 }
 
+type HtmlExtractionContext = 'canvas_page' | 'html_file'
+
 export async function extractCanvasFileContent(input: {
   buffer: Buffer
   title: string
@@ -82,7 +84,7 @@ export async function extractCanvasFileContent(input: {
     } else if (extension === 'txt' || extension === 'md' || extension === 'csv') {
       extractedText = input.buffer.toString('utf8')
     } else if (extension === 'html' || extension === 'htm' || contentType === 'text/html') {
-      extractedText = stripHtml(input.buffer.toString('utf8'))
+      extractedText = extractReadableTextFromHtml(input.buffer.toString('utf8'), 'html_file')
     } else {
       return {
         extractionStatus: 'unsupported',
@@ -126,6 +128,43 @@ export async function extractCanvasFileContent(input: {
   }
 }
 
+export async function extractCanvasPageContent(input: {
+  title: string
+  html: string | null | undefined
+}): Promise<ExtractedCanvasResourceContent> {
+  try {
+    const cleaned = cleanExtractedText(extractReadableTextFromHtml(input.html ?? '', 'canvas_page'))
+    if (!cleaned) {
+      return {
+        extractionStatus: 'empty',
+        extractedText: null,
+        extractedTextPreview: null,
+        extractedCharCount: 0,
+        extractionError: 'Canvas page fetched successfully, but no usable body text was found.',
+        supported: true,
+      }
+    }
+
+    return {
+      extractionStatus: 'extracted',
+      extractedText: cleaned,
+      extractedTextPreview: cleaned.slice(0, 420),
+      extractedCharCount: cleaned.length,
+      extractionError: null,
+      supported: true,
+    }
+  } catch (error) {
+    return {
+      extractionStatus: 'failed',
+      extractedText: null,
+      extractedTextPreview: null,
+      extractedCharCount: 0,
+      extractionError: formatUnexpectedExtractionError(error),
+      supported: true,
+    }
+  }
+}
+
 export function normalizeExtension(extension: string | null | undefined, title: string) {
   if (extension) return extension.replace(/^\./, '').trim().toLowerCase()
   const match = title.toLowerCase().match(/\.([a-z0-9]+)$/)
@@ -139,6 +178,52 @@ function cleanExtractedText(text: string) {
     .replace(/\n{3,}/g, '\n\n')
     .replace(/[ \t]{2,}/g, ' ')
     .trim()
+}
+
+function extractReadableTextFromHtml(html: string, context: HtmlExtractionContext) {
+  const withoutHeavyNoise = html
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/<(script|style|noscript|svg|iframe|canvas|form)\b[^>]*>[\s\S]*?<\/\1>/gi, ' ')
+    .replace(/<(nav|header|footer|aside)\b[^>]*>[\s\S]*?<\/\1>/gi, ' ')
+
+  const structured = withoutHeavyNoise
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<hr\b[^>]*>/gi, '\n\n')
+    .replace(/<li\b[^>]*>/gi, '\n- ')
+    .replace(/<\/li>/gi, '\n')
+    .replace(/<h[1-6]\b[^>]*>/gi, '\n\n')
+    .replace(/<\/h[1-6]>/gi, '\n')
+    .replace(/<\/(p|div|section|article|blockquote|pre|figure|figcaption|ul|ol|dl|table|thead|tbody|tfoot|tr)>/gi, '\n\n')
+    .replace(/<(td|th)\b[^>]*>/gi, ' ')
+    .replace(/<\/(td|th)>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+
+  const lines = decodeHtmlEntities(structured)
+    .replace(/\u00a0/g, ' ')
+    .split('\n')
+    .map((line) => line.replace(/[ \t]{2,}/g, ' ').trim())
+
+  const cleanedLines: string[] = []
+  let previousWasBlank = false
+
+  for (const line of lines) {
+    if (!line) {
+      if (!previousWasBlank && cleanedLines.length > 0) {
+        cleanedLines.push('')
+      }
+      previousWasBlank = true
+      continue
+    }
+
+    if (looksLikeHtmlChromeLine(line, context)) {
+      continue
+    }
+
+    cleanedLines.push(line)
+    previousWasBlank = false
+  }
+
+  return cleanedLines.join('\n').replace(/\n{3,}/g, '\n\n').trim()
 }
 
 async function extractPdfText(buffer: Buffer): Promise<PdfExtractionResult> {
@@ -280,24 +365,51 @@ function comparePptxXmlPaths(a: string, b: string) {
 }
 
 function decodeXmlEntities(value: string) {
-  return value
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
+  return decodeHtmlEntities(value)
 }
 
-function stripHtml(html: string) {
-  return html
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/\s+/g, ' ')
-    .trim()
+function decodeHtmlEntities(value: string) {
+  return value.replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (entity, rawCode: string) => {
+    const code = rawCode.toLowerCase()
+
+    if (code === 'nbsp') return ' '
+    if (code === 'amp') return '&'
+    if (code === 'lt') return '<'
+    if (code === 'gt') return '>'
+    if (code === 'quot') return '"'
+    if (code === 'apos' || code === '#39') return "'"
+    if (code === 'ndash') return '-'
+    if (code === 'mdash') return '-'
+    if (code === 'hellip') return '...'
+
+    if (code.startsWith('#x')) {
+      const parsed = Number.parseInt(code.slice(2), 16)
+      return Number.isFinite(parsed) ? String.fromCodePoint(parsed) : entity
+    }
+
+    if (code.startsWith('#')) {
+      const parsed = Number.parseInt(code.slice(1), 10)
+      return Number.isFinite(parsed) ? String.fromCodePoint(parsed) : entity
+    }
+
+    return entity
+  })
+}
+
+function looksLikeHtmlChromeLine(line: string, context: HtmlExtractionContext) {
+  if (line.length > 36) return false
+
+  const normalized = line.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+  if (!normalized) return false
+
+  if (normalized === 'skip to content') return true
+  if (normalized === 'previous' || normalized === 'next' || normalized === 'back') return true
+  if (normalized === 'print' || normalized === 'download') return true
+  if (context === 'canvas_page' && (normalized === 'return to module' || normalized === 'back to modules')) {
+    return true
+  }
+
+  return false
 }
 
 function extractPdfTextFromOperators(buffer: Buffer) {

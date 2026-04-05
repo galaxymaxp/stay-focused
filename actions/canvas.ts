@@ -6,6 +6,7 @@ import {
   compileCanvasContent,
   downloadCanvasBinary,
   getCanvasFile,
+  getCanvasPage,
   getAnnouncements,
   getAssignments,
   getCourses,
@@ -14,7 +15,7 @@ import {
   type CanvasConfig,
   type CanvasCourse,
 } from '@/lib/canvas'
-import { extractCanvasFileContent, normalizeExtension } from '@/lib/canvas-resource-extraction'
+import { extractCanvasFileContent, extractCanvasPageContent, normalizeExtension } from '@/lib/canvas-resource-extraction'
 import { dedupeAIResponseDeadlines } from '@/lib/course-work-dedupe'
 import { processModuleContent } from '@/lib/openai'
 import { supabase } from '@/lib/supabase'
@@ -529,8 +530,8 @@ async function ingestModuleResources(
         resourceType: item.type,
         contentType: item.content_details?.content_type ?? null,
         extension: normalizeExtension(null, item.title),
-        sourceUrl: item.content_details?.url ?? item.url ?? null,
-        htmlUrl: item.html_url ?? item.page_url ?? null,
+        sourceUrl: resolveCanvasUrl(config.url ?? null, item.content_details?.url ?? item.url ?? null),
+        htmlUrl: buildCanvasPageHtmlUrl(config.url ?? null, courseId, item.page_url ?? null, item.html_url ?? null),
         extractionStatus: 'metadata_only',
         extractedText: null,
         extractedTextPreview: null,
@@ -542,6 +543,55 @@ async function ingestModuleResources(
           canvasModuleUrl: buildCanvasModuleUrl(config.url ?? null, courseId, module.id),
           completionRequirementType: item.completion_requirement?.type ?? null,
         },
+      }
+
+      if (isCanvasPageModuleItem(item)) {
+        try {
+          const page = await getCanvasPage(courseId, {
+            pageUrl: item.page_url ?? null,
+            apiUrl: item.url ?? null,
+          }, config)
+          const title = page.title?.trim() || item.title
+          const extracted = await extractCanvasPageContent({
+            title,
+            html: page.body ?? '',
+          })
+
+          records.push({
+            ...baseRecord,
+            title,
+            contentType: 'text/html',
+            extension: null,
+            sourceUrl: buildCanvasPageApiUrl(config.url ?? null, courseId, page.url ?? item.page_url ?? null, item.url ?? null),
+            htmlUrl: buildCanvasPageHtmlUrl(config.url ?? null, courseId, page.url ?? item.page_url ?? null, page.html_url ?? item.html_url ?? null),
+            extractionStatus: extracted.extractionStatus,
+            extractedText: extracted.extractedText,
+            extractedTextPreview: extracted.extractedTextPreview,
+            extractedCharCount: extracted.extractedCharCount,
+            extractionError: extracted.extractionError,
+            metadata: {
+              ...baseRecord.metadata,
+              canvasPageUrl: page.url ?? item.page_url ?? null,
+              pageUpdatedAt: page.updated_at ?? null,
+              pagePublished: page.published ?? null,
+            },
+          })
+        } catch (error) {
+          records.push({
+            ...baseRecord,
+            contentType: 'text/html',
+            extension: null,
+            sourceUrl: buildCanvasPageApiUrl(config.url ?? null, courseId, item.page_url ?? null, item.url ?? null),
+            htmlUrl: buildCanvasPageHtmlUrl(config.url ?? null, courseId, item.page_url ?? null, item.html_url ?? null),
+            extractionStatus: 'failed',
+            extractionError: error instanceof Error ? error.message : 'Unknown Canvas page ingestion error.',
+            metadata: {
+              ...baseRecord.metadata,
+              canvasPageUrl: item.page_url ?? null,
+            },
+          })
+        }
+        continue
       }
 
       if (item.type.toLowerCase() !== 'file' || typeof item.content_id !== 'number') {
@@ -658,6 +708,45 @@ function getBestResourceCanvasUrl(resource: ResourceIngestionRecord) {
 function buildCanvasModuleUrl(baseUrl: string | null | undefined, courseId: number, moduleId: number) {
   if (!baseUrl) return null
   return `${normalizeCanvasUrl(baseUrl)}/courses/${courseId}/modules/${moduleId}`
+}
+
+function buildCanvasPageApiUrl(
+  baseUrl: string | null | undefined,
+  courseId: number,
+  pageUrl: string | null | undefined,
+  fallback: string | null | undefined
+) {
+  if (pageUrl && baseUrl) {
+    return `${normalizeCanvasUrl(baseUrl)}/api/v1/courses/${courseId}/pages/${encodeURIComponent(pageUrl)}`
+  }
+  return resolveCanvasUrl(baseUrl, fallback)
+}
+
+function buildCanvasPageHtmlUrl(
+  baseUrl: string | null | undefined,
+  courseId: number,
+  pageUrl: string | null | undefined,
+  fallback: string | null | undefined
+) {
+  if (pageUrl && baseUrl) {
+    return `${normalizeCanvasUrl(baseUrl)}/courses/${courseId}/pages/${encodeURIComponent(pageUrl)}`
+  }
+  return resolveCanvasUrl(baseUrl, fallback)
+}
+
+function resolveCanvasUrl(baseUrl: string | null | undefined, value: string | null | undefined) {
+  if (!value) return null
+
+  try {
+    return new URL(value, baseUrl ? `${normalizeCanvasUrl(baseUrl)}/` : undefined).toString()
+  } catch {
+    return value
+  }
+}
+
+function isCanvasPageModuleItem(item: { type?: string | null; page_url?: string | null }) {
+  const type = item.type?.toLowerCase() ?? ''
+  return Boolean(item.page_url) || type.includes('page') || type.includes('wiki')
 }
 
 function matchesCanvasTaskTitle(taskTitle: string, sourceTitle: string) {

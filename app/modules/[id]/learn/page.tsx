@@ -5,6 +5,7 @@ import { StudyFileManualStateControls } from '@/components/StudyFileManualStateC
 import { ModuleLensShell } from '@/components/ModuleLensShell'
 import { buildModuleLearnOverview, type ModuleSuggestedStudyStep, type ModuleStudyMaterial } from '@/lib/module-learn-overview'
 import { getStudyFileProgressLabel } from '@/lib/study-file-manual-state'
+import { getLearnResourceKindLabel } from '@/lib/study-resource'
 import { buildLearnExperience, extractCourseName, getLearnResourceHref, getModuleWorkspace, getResourceCanvasHref, type ModuleSourceResource } from '@/lib/module-workspace'
 
 interface Props {
@@ -59,11 +60,11 @@ export default async function LearnPage({ params }: Props) {
               <p className="ui-kicker">Module study overview</p>
               <h2 className="ui-section-title" style={{ marginTop: '0.45rem' }}>What to focus on here</h2>
               <p className="ui-section-copy" style={{ marginTop: '0.45rem' }}>
-                Learn is grounding this module view in readable study files first, while keeping manual progress and workflow choices close to the actual files.
+                Learn is grounding this module view in readable study materials first, while keeping manual progress and workflow choices close to the original sources.
               </p>
             </div>
             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-              <span className="ui-chip ui-chip-soft">{overview.totalStudyFileCount} study file{overview.totalStudyFileCount === 1 ? '' : 's'}</span>
+              <span className="ui-chip ui-chip-soft">{overview.totalStudyFileCount} study material{overview.totalStudyFileCount === 1 ? '' : 's'}</span>
               <span className="ui-chip ui-chip-soft">{actionLaneCount} item{actionLaneCount === 1 ? '' : 's'} in action lane</span>
               {overview.activityOverrideCount > 0 && (
                 <span className="ui-chip ui-chip-soft">{overview.activityOverrideCount} treated as activity</span>
@@ -99,7 +100,7 @@ export default async function LearnPage({ params }: Props) {
 
             <div className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem 1.05rem', display: 'grid', gap: '0.8rem' }}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '0.7rem' }}>
-                <StudyStatCard label="Study files" value={String(overview.totalStudyFileCount)} />
+                <StudyStatCard label="Study materials" value={String(overview.totalStudyFileCount)} />
                 <StudyStatCard label="Active study lane" value={String(overview.activeStudyFileCount)} />
                 <StudyStatCard label="Reviewed" value={String(overview.progressCounts.reviewed)} />
                 <StudyStatCard label="Need Canvas" value={String(overview.unavailableStudyFileCount)} />
@@ -114,7 +115,7 @@ export default async function LearnPage({ params }: Props) {
                 </div>
                 {overview.activityOverrideCount > 0 && (
                   <p style={{ margin: '0.45rem 0 0', fontSize: '12px', lineHeight: 1.6, color: 'var(--text-muted)' }}>
-                    {overview.activityOverrideCount} {overview.activityOverrideCount === 1 ? 'study file is' : 'study files are'} currently treated as activity instead.
+                    {overview.activityOverrideCount} {overview.activityOverrideCount === 1 ? 'study material is' : 'study materials are'} currently treated as activity instead.
                   </p>
                 )}
               </div>
@@ -164,9 +165,9 @@ export default async function LearnPage({ params }: Props) {
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.85rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
             <div>
               <p className="ui-kicker">Study materials</p>
-              <h3 style={{ margin: '0.42rem 0 0', fontSize: '1.05rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>Files you can study from here</h3>
+              <h3 style={{ margin: '0.42rem 0 0', fontSize: '1.05rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>Materials you can study from here</h3>
               <p className="ui-section-copy" style={{ marginTop: '0.45rem', maxWidth: '44rem' }}>
-                Manual progress keeps this view resumable, while the activity override lets you move a study file out of the main study lane without losing the reader.
+                Manual progress keeps this view resumable, while the activity override lets you move a study material out of the main study lane without losing the reader.
               </p>
             </div>
             <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
@@ -182,8 +183,8 @@ export default async function LearnPage({ params }: Props) {
 
           {overview.studyMaterials.length === 0 ? (
             <EmptySurface body={overview.activityOverrideCount > 0
-              ? 'All study files in this module are currently treated as activity instead. You can move them back into study materials at any time.'
-              : 'No study files are mapped to this module yet, so Learn cannot build a study-file overview here.'}
+              ? 'All study materials in this module are currently treated as activity instead. You can move them back into the study lane at any time.'
+              : 'No study materials are mapped to this module yet, so Learn cannot build a grounded study overview here.'}
             />
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '0.85rem', marginTop: '0.95rem' }}>
@@ -204,7 +205,7 @@ export default async function LearnPage({ params }: Props) {
           <section className="motion-card motion-delay-2 section-shell" style={{ padding: '1.25rem 1.35rem' }}>
             <p className="ui-kicker">Suggested study order</p>
             <p className="ui-section-copy" style={{ marginTop: '0.45rem', maxWidth: '44rem' }}>
-              This flow stays close to what Learn can actually read, plus any study files you have manually moved into the action lane.
+              This flow stays close to what Learn can actually read, plus any study materials you have manually moved into the action lane.
             </p>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.85rem', marginTop: '0.95rem' }}>
               {overview.suggestedSteps.map((step) => (
@@ -220,7 +221,7 @@ export default async function LearnPage({ params }: Props) {
               <p className="ui-kicker">Action items</p>
               <h3 style={{ margin: '0.42rem 0 0', fontSize: '1.05rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>What still needs doing</h3>
               <p className="ui-section-copy" style={{ marginTop: '0.45rem', maxWidth: '42rem' }}>
-                Assignments, quizzes, and discussions stay separate from the study files. If you manually treat a study file as activity, it appears here in its own clearly labeled group.
+                Assignments, quizzes, and discussions stay separate from the study materials. If you manually treat a study material as activity, it appears here in its own clearly labeled group.
               </p>
             </div>
             <span className="ui-chip ui-chip-soft">{actionLaneCount} item{actionLaneCount === 1 ? '' : 's'} in action lane</span>
@@ -230,7 +231,7 @@ export default async function LearnPage({ params }: Props) {
             <div className="ui-card" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', marginTop: '0.95rem' }}>
               <p className="ui-kicker">Marked as activity</p>
               <p style={{ margin: '0.45rem 0 0', fontSize: '13px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
-                These are still original study files, but your workflow override places them in the action lane for now.
+                These are still original study materials, but your workflow override places them in the action lane for now.
               </p>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '0.85rem', marginTop: '0.85rem' }}>
                 {overview.activityOverrides.map((material) => (
@@ -249,7 +250,7 @@ export default async function LearnPage({ params }: Props) {
               {overview.actionItems.map((item) => (
                 <article key={item.id} className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.95rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.7rem' }}>
                   <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-                    <StatusBadge tone="muted" label={labelForResourceKind(item.kind)} />
+                    <StatusBadge tone="muted" label={labelForResourceKind(item)} />
                     {item.dueDate && item.dueDate !== 'No due date' && (
                       <StatusBadge tone="warning" label={`Due ${formatDate(item.dueDate)}`} />
                     )}
@@ -281,14 +282,14 @@ export default async function LearnPage({ params }: Props) {
           <section className="motion-card motion-delay-3 section-shell" style={{ padding: '1.2rem 1.3rem' }}>
             <p className="ui-kicker">More context</p>
             <p className="ui-section-copy" style={{ marginTop: '0.45rem', maxWidth: '42rem' }}>
-              These items support the module, but they are not the main study files or action items.
+              These items support the module, but they are not the main study materials or action items.
             </p>
             <div style={{ display: 'grid', gap: '0.7rem', marginTop: '0.9rem' }}>
               {overview.otherContextResources.map((item) => (
                 <article key={item.id} className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.9rem 1rem', display: 'flex', justifyContent: 'space-between', gap: '0.8rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
                   <div style={{ minWidth: 0, flex: '1 1 320px' }}>
                     <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', marginBottom: '0.45rem' }}>
-                      <StatusBadge tone="muted" label={labelForResourceKind(item.kind)} />
+                      <StatusBadge tone="muted" label={labelForResourceKind(item)} />
                     </div>
                     <p style={{ margin: 0, fontSize: '15px', lineHeight: 1.55, color: 'var(--text-primary)', fontWeight: 600 }}>{item.title}</p>
                     {(item.linkedContext || item.whyItMatters || item.moduleName) && (
@@ -386,7 +387,7 @@ function ActivityOverrideCard({
   return (
     <article className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.95rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
       <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-        <StatusBadge tone="muted" label="Study file" />
+        <StatusBadge tone="muted" label={labelForResourceKind(material.resource)} />
         <StatusBadge tone="muted" label={material.fileTypeLabel} />
         <StatusBadge tone="warning" label="Treated as activity" />
         <StatusBadge tone="muted" label={getStudyFileProgressLabel(material.resource.studyProgressStatus ?? 'not_started')} />
@@ -524,7 +525,7 @@ function buildMaterialContext(resource: ModuleSourceResource, courseName: string
     resource.originalTitle && resource.originalTitle !== resource.title ? `Canvas: ${resource.originalTitle}` : null,
   ].filter(Boolean)
 
-  return parts.join(' / ') || 'Canvas study file'
+  return parts.join(' / ') || 'Canvas study material'
 }
 
 function formatDate(value: string) {
@@ -533,12 +534,6 @@ function formatDate(value: string) {
   return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(date)
 }
 
-function labelForResourceKind(kind: 'study_file' | 'practice_link' | 'assignment' | 'quiz' | 'discussion' | 'reference' | 'announcement') {
-  if (kind === 'study_file') return 'Study file'
-  if (kind === 'practice_link') return 'Practice link'
-  if (kind === 'assignment') return 'Assignment'
-  if (kind === 'quiz') return 'Quiz'
-  if (kind === 'discussion') return 'Discussion'
-  if (kind === 'reference') return 'Reference'
-  return 'Announcement'
+function labelForResourceKind(resource: Pick<ModuleSourceResource, 'kind' | 'type'>) {
+  return getLearnResourceKindLabel(resource)
 }
