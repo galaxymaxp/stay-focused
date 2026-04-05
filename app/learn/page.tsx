@@ -18,7 +18,8 @@ export default async function LearnPage() {
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
         {workspace.courses.map((course) => {
-          const modules = getCourseModules(workspace, course.id)
+          const modules = getCourseModules(workspace, course.id).filter((module) => module.showInLearn !== false)
+          if (modules.length === 0) return null
 
           return (
             <section key={course.id} className="section-shell section-shell-elevated" style={{ padding: '1.25rem' }}>

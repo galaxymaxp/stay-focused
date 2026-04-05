@@ -41,6 +41,7 @@ export interface ModuleSourceResource {
   dueDate?: string | null
   sourceUrl?: string | null
   htmlUrl?: string | null
+  moduleUrl?: string | null
   canvasUrl?: string | null
   linkedContext?: string | null
   whyItMatters?: string | null
@@ -57,6 +58,7 @@ export interface LearnResourceUnit {
   modes: LearnSection[]
   preview: string
   priorityScore: number
+  grounding: ResourceGrounding
 }
 
 export interface LearnAudit {
@@ -82,11 +84,20 @@ export interface RecommendedStepTarget {
   destinationLabel: string
 }
 
+export interface ResourceGrounding {
+  state: 'grounded' | 'partial' | 'context_only' | 'unread'
+  label: 'Read from extracted content' | 'Partially read' | 'Context only' | 'Unread / extraction unavailable'
+  confidence: 'High' | 'Medium' | 'Low' | 'None'
+  evidenceSnippet: string | null
+  hasGroundedAnalysis: boolean
+  message: string
+}
+
 export async function getModuleWorkspace(id: string): Promise<ModuleWorkspaceData | null> {
   if (!supabase) return null
 
-  const { data: module } = await supabase.from('modules').select('*').eq('id', id).single()
-  if (!module) return null
+  const { data: moduleRow } = await supabase.from('modules').select('*').eq('id', id).single()
+  if (!moduleRow) return null
 
   const [tasksResult, deadlinesResult, resourcesResult] = await Promise.all([
     supabase.from('tasks').select('*').eq('module_id', id).order('created_at'),
@@ -95,9 +106,9 @@ export async function getModuleWorkspace(id: string): Promise<ModuleWorkspaceDat
   ])
 
   return {
-    module,
-    tasks: (tasksResult.data ?? []) as Task[],
-    deadlines: (deadlinesResult.data ?? []) as Deadline[],
+    module: adaptModuleWorkspaceRow(moduleRow),
+    tasks: (tasksResult.data ?? []).map(adaptTaskRow),
+    deadlines: (deadlinesResult.data ?? []).map(adaptDeadlineRow),
     resources: (resourcesResult.data ?? []).map(adaptModuleResourceRow),
   }
 }
@@ -156,46 +167,72 @@ export function buildLearnExperience(
     .filter((resource) => resource.lane === 'support')
     .sort((a, b) => a.title.localeCompare(b.title))
   const summary = module.summary?.trim() || buildSummaryFallback(parsed, resources, readingBlocks, extractedTextBlocks)
-  const simplifiedExplanation = simplifySummary(summary || 'This module has been turned into a calmer study view so you can understand it before you act on it.')
-  const memorizeLines = buildMemorizeLines(parsed, resources, options?.deadlineCount ?? 0)
-  const studySteps = buildStudySteps(resources, options?.taskCount ?? 0, fileResources.length)
-  const reviewPrompts = buildReviewPrompts(module, conceptLines, resources)
   const keyConcepts = conceptLines.length > 0
     ? conceptLines
     : buildKeyConceptFallback(parsed, resources, readingBlocks, extractedTextBlocks)
+  const coreIdeas = buildCoreIdeas(summary, keyConcepts, resources)
+  const breakdown = buildModuleBreakdown(resources, summary)
+  const connections = buildModuleConnections(resources, doItems, supportItems)
+  const examFocus = buildLikelyExamFocus(parsed, resources, options?.deadlineCount ?? 0)
+  const misunderstandings = buildModuleMisunderstandings(resources, summary)
+  const deepQuestions = buildDeepQuestions(module, keyConcepts, resources)
+  const appliedPractice = buildAppliedPractice(resources, doItems)
+  const memoryAnchors = buildMemoryAnchors(resources, keyConcepts, parsed, options?.deadlineCount ?? 0)
+  const whyThisMatters = buildModuleWhyThisMatters(module, resources, doItems)
+  const nextSteps = buildAfterReadingSteps(resources, doItems, options?.taskCount ?? 0)
   const audit = buildLearnAudit(module, resources, fileResources)
 
   return {
     sections: [
       {
-        id: 'quick-summary',
-        title: 'Quick Summary',
-        body: summary,
+        id: 'core-ideas',
+        title: 'Core Ideas',
+        body: coreIdeas.join('\n'),
       },
       {
-        id: 'explain-simply',
-        title: 'Explain Simply',
-        body: simplifiedExplanation,
+        id: 'step-by-step-breakdown',
+        title: 'Step-by-Step Breakdown',
+        body: breakdown.join('\n'),
       },
       {
-        id: 'key-concepts',
-        title: 'Key Concepts',
-        body: keyConcepts.join('\n'),
+        id: 'connections',
+        title: 'Connections',
+        body: connections.join('\n'),
       },
       {
-        id: 'what-to-memorize',
-        title: 'What to Memorize',
-        body: memorizeLines.join('\n'),
+        id: 'likely-exam-focus',
+        title: 'Likely Exam Focus',
+        body: examFocus.join('\n'),
       },
       {
-        id: 'how-to-study',
-        title: 'How to Study This',
-        body: studySteps.join('\n'),
+        id: 'misunderstandings',
+        title: 'Misunderstandings to Avoid',
+        body: misunderstandings.join('\n'),
       },
       {
-        id: 'review-practice',
-        title: 'Review / Practice Prompts',
-        body: reviewPrompts.join('\n'),
+        id: 'deep-questions',
+        title: 'Deep Questions',
+        body: deepQuestions.join('\n'),
+      },
+      {
+        id: 'applied-practice',
+        title: 'Applied Practice',
+        body: appliedPractice.join('\n'),
+      },
+      {
+        id: 'memory-anchors',
+        title: 'Memory Anchors',
+        body: memoryAnchors.join('\n'),
+      },
+      {
+        id: 'why-this-matters',
+        title: 'Why This Matters',
+        body: whyThisMatters,
+      },
+      {
+        id: 'what-to-do-after-reading',
+        title: 'What To Do After Reading',
+        body: nextSteps.join('\n'),
       },
     ].filter((section) => section.body.trim().length > 0),
     resources,
@@ -232,16 +269,6 @@ function groupReadingBlocks(lines: string[]) {
   }
 
   return blocks.filter(Boolean)
-}
-
-function simplifySummary(summary: string) {
-  const sentences = summary.split(/(?<=[.!?])\s+/).filter(Boolean)
-  if (sentences.length <= 1) return summary
-
-  return [
-    sentences[0],
-    sentences[1] ?? '',
-  ].filter(Boolean).join(' ')
 }
 
 interface ParsedCanvasAssignment {
@@ -464,7 +491,12 @@ function adaptStoredResourceForLearn(resource: ModuleResource): ModuleSourceReso
     lane: classifyLearnResourceLane(kind),
     sourceUrl: resource.sourceUrl,
     htmlUrl: resource.htmlUrl,
-    canvasUrl: getCanvasUrl(resource.htmlUrl, resource.sourceUrl),
+    moduleUrl: typeof resource.metadata.canvasModuleUrl === 'string' ? resource.metadata.canvasModuleUrl : null,
+    canvasUrl: getCanvasUrl(
+      resource.htmlUrl,
+      resource.sourceUrl,
+      typeof resource.metadata.canvasModuleUrl === 'string' ? resource.metadata.canvasModuleUrl : null,
+    ),
     extractionStatus: resource.extractionStatus,
     extractedText: resource.extractedText,
     extractedTextPreview: resource.extractedTextPreview,
@@ -495,7 +527,7 @@ function enrichResourceContext(
     ...resource,
     courseName: context.courseName,
     dueDate,
-    canvasUrl: resource.canvasUrl ?? getCanvasUrl(resource.htmlUrl, resource.sourceUrl),
+    canvasUrl: resource.canvasUrl ?? getCanvasUrl(resource.htmlUrl, resource.sourceUrl, resource.moduleUrl),
     linkedContext,
     whyItMatters: buildWhyItMatters(resource, {
       moduleTitle: context.module.title,
@@ -600,6 +632,114 @@ function buildMemorizeLines(
   return lines
 }
 
+function buildCoreIdeas(summary: string, keyConcepts: string[], resources: ModuleSourceResource[]) {
+  const lines = [
+    summary,
+    ...keyConcepts.slice(0, 3),
+    ...resources
+      .filter((resource) => resource.lane === 'learn')
+      .slice(0, 2)
+      .map((resource) => `${resource.title} is one of the main teaching resources for this module.`),
+  ]
+
+  return uniqueLines(lines, 4)
+}
+
+function buildModuleBreakdown(resources: ModuleSourceResource[], summary: string) {
+  const learnResources = resources.filter((resource) => resource.lane === 'learn')
+  const first = learnResources[0]
+  const second = learnResources[1]
+
+  return uniqueLines([
+    first ? `Start with ${first.title} to get the main frame of the topic.` : summary,
+    second ? `Then move to ${second.title} and ask how it extends or sharpens the first resource.` : 'Then slow down and separate definitions, examples, and anything that looks procedural.',
+    'Turn the repeated terms into a short outline so you can see the internal logic instead of rereading passively.',
+    'Before leaving Learn, connect those ideas to the quiz, assignment, or discussion that depends on them.',
+  ], 4)
+}
+
+function buildModuleConnections(resources: ModuleSourceResource[], doItems: ModuleSourceResource[], supportItems: ModuleSourceResource[]) {
+  return uniqueLines([
+    ...resources
+      .filter((resource) => resource.lane === 'learn' && resource.linkedContext)
+      .slice(0, 3)
+      .map((resource) => `${resource.title}: ${resource.linkedContext}`),
+    doItems[0] ? `The clearest action connection is ${doItems[0].title}, which should feel easier once the Learn-first resources make sense.` : null,
+    supportItems[0] ? `${supportItems[0].title} adds background context rather than core testable content.` : null,
+  ], 4)
+}
+
+function buildLikelyExamFocus(parsed: ParsedCanvasContent, resources: ModuleSourceResource[], deadlineCount: number) {
+  const required = resources.filter((resource) => resource.required)
+  const dueLines = parsed.assignments.filter((assignment) => assignment.due && assignment.due !== 'No due date')
+
+  return uniqueLines([
+    ...required.slice(0, 3).map((resource) => `${resource.title} is marked required, so its key terms or examples are high-value review targets.`),
+    ...dueLines.slice(0, 2).map((assignment) => `${assignment.title} signals assessed material, especially the ideas you would need to explain without looking back.`),
+    deadlineCount > 0 ? `There are ${deadlineCount} extracted deadline reference${deadlineCount === 1 ? '' : 's'}, so time-sensitive items are likely tied to what matters most.` : null,
+  ], 4)
+}
+
+function buildModuleMisunderstandings(resources: ModuleSourceResource[], summary: string) {
+  const learnTitles = resources.filter((resource) => resource.lane === 'learn').slice(0, 2).map((resource) => resource.title)
+
+  return uniqueLines([
+    'Do not treat the resource titles as the same thing; separate the core idea, the example, and the task expectation.',
+    learnTitles[0] ? `When reviewing ${learnTitles[0]}, avoid memorizing isolated phrases without asking what problem or concept it is addressing.` : null,
+    'If something sounds familiar, verify that you can explain the relationship between parts, not just recognize the wording.',
+    summary ? 'Do not stop at the module summary. Use it as a frame, then test whether each resource actually supports that frame.' : null,
+  ], 4)
+}
+
+function buildDeepQuestions(module: Module, keyConcepts: string[], resources: ModuleSourceResource[]) {
+  const prompts = (module.study_prompts ?? []).filter(Boolean)
+  if (prompts.length > 0) return uniqueLines(prompts, 4)
+
+  return uniqueLines([
+    ...keyConcepts.slice(0, 3).map((concept) => `How would you defend why "${concept}" matters in this module instead of just defining it?`),
+    ...resources.filter((resource) => resource.lane === 'learn').slice(0, 2).map((resource) => `What changes in your understanding after reading ${resource.title}, and what would stay unclear without it?`),
+  ], 4)
+}
+
+function buildAppliedPractice(resources: ModuleSourceResource[], doItems: ModuleSourceResource[]) {
+  return uniqueLines([
+    'Write a 3-bullet explanation of the topic without looking at the resource, then reopen it and fill the gaps.',
+    ...resources.filter((resource) => resource.lane === 'learn').slice(0, 2).map((resource) => `Use ${resource.title} to create one self-test question and answer it in your own words.`),
+    doItems[0] ? `Before starting ${doItems[0].title}, write what knowledge from Learn you expect to use so the task is not disconnected from the study pass.` : null,
+  ], 4)
+}
+
+function buildMemoryAnchors(resources: ModuleSourceResource[], keyConcepts: string[], parsed: ParsedCanvasContent, deadlineCount: number) {
+  return uniqueLines([
+    ...keyConcepts.slice(0, 2).map((concept) => `Anchor: ${concept}`),
+    ...resources.filter((resource) => resource.required).slice(0, 2).map((resource) => `Required anchor: ${resource.title}`),
+    parsed.assignments[0]?.due ? `${parsed.assignments[0].title} is due ${parsed.assignments[0].due}, so tie your memory of the concept to that deliverable.` : null,
+    deadlineCount > 0 ? 'Remember the concepts together with the task or deadline they unlock.' : null,
+  ], 4)
+}
+
+function buildModuleWhyThisMatters(module: Module, resources: ModuleSourceResource[], doItems: ModuleSourceResource[]) {
+  const firstLearn = resources.find((resource) => resource.lane === 'learn')
+  const firstDo = doItems[0]
+
+  if (firstLearn && firstDo) {
+    return `${firstLearn.title} helps explain the material that sits underneath ${firstDo.title}, so this module is not just information to skim. It is the understanding layer that reduces friction when you switch into action.`
+  }
+
+  return `${module.title} matters because it builds context before the workload turns into isolated tasks. The goal is to understand the idea well enough that later work feels connected instead of rushed.`
+}
+
+function buildAfterReadingSteps(resources: ModuleSourceResource[], doItems: ModuleSourceResource[], taskCount: number) {
+  const firstLearn = resources.find((resource) => resource.lane === 'learn')
+  const firstDo = doItems[0]
+
+  return uniqueLines([
+    firstLearn ? `Close ${firstLearn.title} and restate its main point from memory before moving on.` : 'Close the resource and restate the main idea from memory.',
+    'Turn the key terms into a short note, comparison, or mini-outline you can revisit quickly.',
+    firstDo ? `Open ${firstDo.title} next and mark exactly which concept from Learn it depends on.` : `Switch into Do and decide which of the ${taskCount} extracted task${taskCount === 1 ? '' : 's'} should move next.`,
+  ], 4)
+}
+
 function buildStudySteps(resources: ModuleSourceResource[], taskCount: number, fileResourceCount: number) {
   const firstFile = resources.find((resource) => isFileBasedResourceType(resource.type))
   const firstExtractedFile = resources.find((resource) => resource.extractionStatus === 'extracted' && resource.extractedText)
@@ -673,15 +813,19 @@ function mergeLearnResources(parsedResources: ModuleSourceResource[], storedReso
   const nonStored = parsedResources.filter((resource) => resource.category !== 'resource')
   const seen = new Set<string>()
   const merged = [...nonStored]
+  const storedLookup = new Map<string, ModuleSourceResource>()
 
   for (const resource of storedResources) {
     const key = `${resource.title.toLowerCase()}::${resource.kind}::${resource.moduleName ?? ''}`
     if (seen.has(key)) continue
     seen.add(key)
     merged.push(resource)
+    storedLookup.set(`${normalizeLookup(resource.title)}::${resource.kind}`, resource)
   }
 
   for (const resource of parsedResources.filter((entry) => entry.category === 'resource')) {
+    const storedMatch = storedLookup.get(`${normalizeLookup(resource.title)}::${resource.kind}`)
+    if (storedMatch) continue
     const key = `${resource.title.toLowerCase()}::${resource.kind}::${resource.moduleName ?? ''}`
     if (seen.has(key)) continue
     seen.add(key)
@@ -738,29 +882,43 @@ export function findRecommendedStepTargets(
 }
 
 function buildLearnUnit(resource: ModuleSourceResource, module: Module, index: number): LearnResourceUnit {
+  const grounding = getResourceGrounding(resource)
   const sourceText = resource.extractedText?.trim()
     || resource.extractedTextPreview?.trim()
-    || `${resource.title}. ${module.summary ?? ''}`.trim()
+    || ''
   const summary = summarizeResource(sourceText, resource)
-  const simple = explainResourceSimply(summary, resource)
   const concepts = extractResourceConcepts(sourceText, resource)
-  const memorize = buildResourceMemorize(resource, sourceText)
-  const study = buildResourceStudyGuide(resource)
-  const review = buildResourceReviewPrompts(resource, concepts)
+  const coreIdeas = buildResourceCoreIdeas(resource, summary, concepts)
+  const breakdown = buildResourceBreakdown(resource, sourceText)
+  const connections = buildResourceConnections(resource, module)
+  const examFocus = buildResourceExamFocus(resource, concepts)
+  const misunderstandings = buildResourceMisunderstandings(resource, sourceText)
+  const deepQuestions = buildResourceDeepQuestions(resource, concepts)
+  const appliedPractice = buildResourceAppliedPractice(resource)
+  const memoryAnchors = buildResourceMemoryAnchors(resource, sourceText)
+  const whyThisMatters = buildResourceWhyThisMatters(resource, module)
+  const nextSteps = buildResourceNextSteps(resource)
 
   return {
     id: `${resource.id}-unit`,
     resource,
-    preview: summary,
+    preview: grounding.hasGroundedAnalysis ? summary : grounding.message,
     priorityScore: getLearnPriorityScore(resource, index),
-    modes: [
-      { id: `${resource.id}-quick-summary`, title: 'Quick Summary', body: summary },
-      { id: `${resource.id}-explain-simply`, title: 'Explain Simply', body: simple },
-      { id: `${resource.id}-key-concepts`, title: 'Key Concepts', body: concepts.join('\n') },
-      { id: `${resource.id}-what-to-memorize`, title: 'What to Memorize', body: memorize.join('\n') },
-      { id: `${resource.id}-how-to-study`, title: 'How to Study This', body: study.join('\n') },
-      { id: `${resource.id}-review-practice`, title: 'Review / Practice Prompts', body: review.join('\n') },
-    ],
+    grounding,
+    modes: grounding.hasGroundedAnalysis
+      ? [
+          { id: `${resource.id}-core-ideas`, title: 'Core Ideas', body: coreIdeas.join('\n') },
+          { id: `${resource.id}-step-by-step-breakdown`, title: 'Step-by-Step Breakdown', body: breakdown.join('\n') },
+          { id: `${resource.id}-connections`, title: 'Connections', body: connections.join('\n') },
+          { id: `${resource.id}-likely-exam-focus`, title: 'Likely Exam Focus', body: examFocus.join('\n') },
+          { id: `${resource.id}-misunderstandings`, title: 'Misunderstandings to Avoid', body: misunderstandings.join('\n') },
+          { id: `${resource.id}-deep-questions`, title: 'Deep Questions', body: deepQuestions.join('\n') },
+          { id: `${resource.id}-applied-practice`, title: 'Applied Practice', body: appliedPractice.join('\n') },
+          { id: `${resource.id}-memory-anchors`, title: 'Memory Anchors', body: memoryAnchors.join('\n') },
+          { id: `${resource.id}-why-this-matters`, title: 'Why This Matters', body: whyThisMatters },
+          { id: `${resource.id}-next-steps`, title: 'What To Do After Reading', body: nextSteps.join('\n') },
+        ]
+      : [],
   }
 }
 
@@ -779,63 +937,189 @@ export function matchTaskToResource(taskTitle: string, resources: ModuleSourceRe
   return resources.find((resource) => matchesResourceTitle(taskTitle, resource.title)) ?? null
 }
 
+export function getResourceGrounding(resource: ModuleSourceResource): ResourceGrounding {
+  const evidenceText = resource.extractedText?.trim() || resource.extractedTextPreview?.trim() || ''
+  const charCount = typeof resource.extractedCharCount === 'number' ? resource.extractedCharCount : 0
+
+  if (resource.extractionStatus === 'extracted' && charCount >= 900 && evidenceText) {
+    return {
+      state: 'grounded',
+      label: 'Read from extracted content',
+      confidence: 'High',
+      evidenceSnippet: evidenceText.slice(0, 280),
+      hasGroundedAnalysis: true,
+      message: `This analysis is grounded in extracted file text (${charCount} characters).`,
+    }
+  }
+
+  if (resource.extractionStatus === 'extracted' && charCount >= 320 && evidenceText) {
+    return {
+      state: 'grounded',
+      label: 'Read from extracted content',
+      confidence: 'Medium',
+      evidenceSnippet: evidenceText.slice(0, 280),
+      hasGroundedAnalysis: true,
+      message: `This analysis is grounded in extracted file text, but the readable text is still fairly limited (${charCount} characters).`,
+    }
+  }
+
+  if (resource.extractionStatus === 'extracted' && evidenceText) {
+    return {
+      state: 'partial',
+      label: 'Partially read',
+      confidence: 'Low',
+      evidenceSnippet: evidenceText.slice(0, 280),
+      hasGroundedAnalysis: false,
+      message: `Only a thin amount of readable file text was extracted (${charCount} characters), so the app is not generating deep document analysis.`,
+    }
+  }
+
+  if (resource.extractionStatus === 'metadata_only') {
+    return {
+      state: 'context_only',
+      label: 'Context only',
+      confidence: 'None',
+      evidenceSnippet: null,
+      hasGroundedAnalysis: false,
+      message: 'This analysis is based only on the file title, module context, and linked tasks. No readable file text was extracted.',
+    }
+  }
+
+  return {
+    state: 'unread',
+    label: 'Unread / extraction unavailable',
+    confidence: 'None',
+    evidenceSnippet: null,
+    hasGroundedAnalysis: false,
+    message: buildUnreadGroundingMessage(resource),
+  }
+}
+
+function buildUnreadGroundingMessage(resource: ModuleSourceResource) {
+  if (resource.extractionStatus === 'failed') {
+    return `Extraction failed for this resource, so no document-grounded analysis is available.${resource.extractionError ? ` ${resource.extractionError}` : ''}`
+  }
+
+  if (resource.extractionStatus === 'unsupported') {
+    return 'This file type is currently unsupported for extraction, so the system could not read the document content.'
+  }
+
+  if (resource.extractionStatus === 'empty') {
+    return 'Extraction ran, but no readable text was found in the file, so the system is falling back to metadata and module context only.'
+  }
+
+  if (resource.extractionStatus === 'pending') {
+    return 'Extraction has not finished yet, so no document-grounded analysis is available.'
+  }
+
+  return 'No extraction evidence is available for this resource, so the system cannot claim to have read the document.'
+}
+
 function summarizeResource(sourceText: string, resource: ModuleSourceResource) {
+  if (!sourceText.trim()) {
+    return `No readable file text was extracted for ${resource.title}, so document-grounded analysis is not available yet.`
+  }
   const sentences = sourceText.split(/(?<=[.!?])\s+/).map((part) => part.trim()).filter(Boolean)
   if (sentences.length > 0) {
     return sentences.slice(0, 2).join(' ')
   }
-  return `${resource.title} is a ${labelForKind(resource.kind).toLowerCase()} in this module and should be reviewed as part of the understanding pass before you move into task execution.`
-}
-
-function explainResourceSimply(summary: string, resource: ModuleSourceResource) {
-  return `This resource is here to help you understand "${resource.title}" in a more direct way. ${summary}`
+  return `The extracted text for ${resource.title} was too thin to support a confident document-grounded summary.`
 }
 
 function extractResourceConcepts(sourceText: string, resource: ModuleSourceResource) {
+  if (!sourceText.trim()) return []
   const sentences = sourceText
     .split(/(?<=[.!?])\s+/)
     .map((part) => part.trim())
     .filter((line) => line.length >= 28)
     .slice(0, 4)
-
-  if (sentences.length > 0) return sentences
-  return [
-    `${resource.title} is being treated as a ${labelForKind(resource.kind).toLowerCase()}.`,
-    resource.moduleName ? `It sits inside the module group "${resource.moduleName}".` : 'It belongs to the current Canvas module.',
-  ]
+  return sentences
 }
 
-function buildResourceMemorize(resource: ModuleSourceResource, sourceText: string) {
-  const firstUsefulLine = sourceText
-    .split(/(?<=[.!?])\s+/)
-    .map((part) => part.trim())
-    .find((line) => line.length >= 24)
-
-  return [
-    `Resource name: ${resource.title}`,
-    resource.required ? 'This resource is marked required in Canvas.' : `Resource type: ${labelForKind(resource.kind)}`,
-    firstUsefulLine ?? 'Memorize the title, the format, and the main idea you think this resource is trying to teach.',
-  ]
+function buildResourceCoreIdeas(resource: ModuleSourceResource, summary: string, concepts: string[]) {
+  return uniqueLines([
+    summary,
+    ...concepts.slice(0, 3),
+    resource.required ? `${resource.title} is marked required, so its core claims are worth active review.` : null,
+  ], 4)
 }
 
-function buildResourceStudyGuide(resource: ModuleSourceResource) {
-  const firstStep = resource.kind === 'study_file'
-    ? 'Read or skim the attachment once for structure before taking notes.'
-    : resource.kind === 'practice_link'
-      ? 'Open the practice resource and identify what skill it wants you to apply.'
-      : resource.kind === 'reference'
-        ? 'Use this resource as a concept anchor and pull out the definitions or examples that keep recurring.'
-        : 'Use this resource to understand the material before acting on it.'
+function buildResourceBreakdown(resource: ModuleSourceResource, sourceText: string) {
+  const sentences = sourceText.split(/(?<=[.!?])\s+/).map((part) => part.trim()).filter((line) => line.length >= 20)
 
-  return [
-    firstStep,
-    'Write 3 short bullets: what it covers, what terms repeat, and what it probably supports later in the module.',
-    'Only after that, connect it to the task or quiz items in Do.',
-  ]
+  return uniqueLines([
+    `First, identify the main claim or topic in ${resource.title}.`,
+    sentences[0] ? `Then pin down the first concrete idea: ${sentences[0]}` : 'Then separate the first major idea from the examples or supporting details.',
+    sentences[1] ? `Next, ask how this second part extends the first: ${sentences[1]}` : 'Next, ask how the later sections extend, justify, or apply that idea.',
+    'Finish by writing the smallest possible outline that still shows the logic of the resource.',
+  ], 4)
 }
 
-function buildResourceReviewPrompts(resource: ModuleSourceResource, concepts: string[]) {
-  return concepts.slice(0, 3).map((concept) => `How would you explain this part of "${resource.title}" to a classmate: ${concept}`)
+function buildResourceConnections(resource: ModuleSourceResource, module: Module) {
+  return uniqueLines([
+    resource.linkedContext ? `${resource.title} connects forward to ${resource.linkedContext}` : null,
+    resource.moduleName ? `${resource.title} sits inside ${resource.moduleName}, which gives it a place in the larger module flow.` : `This resource supports the larger module ${module.title}.`,
+    resource.whyItMatters ?? null,
+  ], 4)
+}
+
+function buildResourceExamFocus(resource: ModuleSourceResource, concepts: string[]) {
+  return uniqueLines([
+    ...concepts.slice(0, 2).map((concept) => `Be ready to explain or apply: ${concept}`),
+    resource.required ? 'Because this is marked required, definitions, distinctions, and repeated examples here are good test targets.' : 'Focus on ideas that can be explained, compared, or applied without reopening the resource.',
+    resource.kind === 'practice_link' ? 'If this is a practice resource, the method it asks you to use is likely as important as the content itself.' : null,
+  ], 4)
+}
+
+function buildResourceMisunderstandings(resource: ModuleSourceResource, sourceText: string) {
+  const firstLine = sourceText.split(/(?<=[.!?])\s+/).map((part) => part.trim()).find((line) => line.length >= 24)
+
+  return uniqueLines([
+    'Do not assume recognizing the wording means you understand the idea. Restate it without copying the phrasing.',
+    firstLine ? `Do not over-focus on this single line without connecting it to the rest of ${resource.title}: ${firstLine}` : null,
+    resource.kind === 'reference' ? 'Reference material can look simple; make sure you can use the definition, not just spot it.' : null,
+    resource.kind === 'study_file' ? 'A file or slide deck can feel complete on its own, but the important move is extracting the structure, not rereading every sentence.' : null,
+  ], 4)
+}
+
+function buildResourceDeepQuestions(resource: ModuleSourceResource, concepts: string[]) {
+  return uniqueLines([
+    ...concepts.slice(0, 3).map((concept) => `Why does "${concept}" matter in the logic of ${resource.title}?`),
+    `What would be harder to do in this module if ${resource.title} were missing?`,
+  ], 4)
+}
+
+function buildResourceAppliedPractice(resource: ModuleSourceResource) {
+  return uniqueLines([
+    `Create one short self-test question from ${resource.title} and answer it from memory.`,
+    resource.kind === 'practice_link'
+      ? 'Work through the practice step once, then explain why each move is needed.'
+      : 'Turn the resource into a tiny example, comparison, or worked explanation.',
+    resource.linkedContext ? `Use this resource to prepare for ${resource.linkedContext}` : 'Connect this resource to the next task or check-for-understanding step.',
+  ], 4)
+}
+
+function buildResourceMemoryAnchors(resource: ModuleSourceResource, sourceText: string) {
+  const anchorLine = sourceText.split(/(?<=[.!?])\s+/).map((part) => part.trim()).find((line) => line.length >= 20)
+
+  return uniqueLines([
+    `Anchor the title: ${resource.title}`,
+    resource.required ? 'Anchor the fact that Canvas marks this resource as required.' : `Anchor the format: ${labelForKind(resource.kind)}`,
+    anchorLine ? `Anchor phrase: ${anchorLine}` : null,
+  ], 4)
+}
+
+function buildResourceWhyThisMatters(resource: ModuleSourceResource, module: Module) {
+  return resource.whyItMatters
+    ?? `${resource.title} matters because it carries part of the understanding load for ${module.title}. If you skip it, later tasks are more likely to feel disconnected or rushed.`
+}
+
+function buildResourceNextSteps(resource: ModuleSourceResource) {
+  return uniqueLines([
+    `Close ${resource.title} and write one sentence from memory about what it is trying to teach.`,
+    'Turn the repeated ideas into 2 or 3 bullets you can review fast later.',
+    resource.linkedContext ? `Open the linked task or follow-on item next: ${resource.linkedContext}` : 'Move to the next task or resource and carry forward one idea from this reading.',
+  ], 4)
 }
 
 function getLearnPriorityScore(resource: ModuleSourceResource, index: number) {
@@ -878,8 +1162,8 @@ function buildWhyItMatters(
   return `${resource.title} adds background context for ${context.moduleTitle} and is best used as support material.`
 }
 
-function getCanvasUrl(htmlUrl?: string | null, sourceUrl?: string | null) {
-  return htmlUrl ?? sourceUrl ?? null
+function getCanvasUrl(htmlUrl?: string | null, sourceUrl?: string | null, moduleUrl?: string | null) {
+  return htmlUrl ?? sourceUrl ?? moduleUrl ?? null
 }
 
 function matchesStepText(step: string, title: string) {
@@ -905,6 +1189,23 @@ function formatContextDate(value: string) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
   return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(date)
+}
+
+function uniqueLines(lines: Array<string | null | undefined>, max = 4) {
+  const seen = new Set<string>()
+  const results: string[] = []
+
+  for (const line of lines) {
+    const cleaned = line?.trim()
+    if (!cleaned) continue
+    const key = cleaned.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    results.push(cleaned)
+    if (results.length >= max) break
+  }
+
+  return results
 }
 
 function classifyLearnResourceKind(input: {
@@ -971,6 +1272,50 @@ function adaptModuleResourceRow(row: Record<string, unknown>): ModuleResource {
     extractionError: typeof row.extraction_error === 'string' ? row.extraction_error : null,
     required: Boolean(row.required),
     metadata: isPlainRecord(row.metadata) ? row.metadata : {},
+    created_at: typeof row.created_at === 'string' ? row.created_at : new Date().toISOString(),
+  }
+}
+
+function adaptModuleWorkspaceRow(row: Record<string, unknown>): Module {
+  return {
+    id: String(row.id ?? ''),
+    courseId: typeof row.course_id === 'string' ? row.course_id : undefined,
+    title: typeof row.title === 'string' ? row.title : 'Untitled module',
+    raw_content: typeof row.raw_content === 'string' ? row.raw_content : '',
+    summary: typeof row.summary === 'string' ? row.summary : null,
+    concepts: Array.isArray(row.concepts) ? row.concepts.filter((value): value is string => typeof value === 'string') : [],
+    study_prompts: Array.isArray(row.study_prompts) ? row.study_prompts.filter((value): value is string => typeof value === 'string') : [],
+    recommended_order: Array.isArray(row.recommended_order) ? row.recommended_order.filter((value): value is string => typeof value === 'string') : [],
+    status: row.status === 'processed' || row.status === 'error' ? row.status : 'pending',
+    order: typeof row.order === 'number' ? row.order : undefined,
+    released_at: typeof row.released_at === 'string' ? row.released_at : undefined,
+    estimated_minutes: typeof row.estimated_minutes === 'number' ? row.estimated_minutes : undefined,
+    priority_signal: row.priority_signal === 'high' || row.priority_signal === 'medium' || row.priority_signal === 'low' ? row.priority_signal : undefined,
+    showInLearn: typeof row.show_in_learn === 'boolean' ? row.show_in_learn : true,
+    created_at: typeof row.created_at === 'string' ? row.created_at : new Date().toISOString(),
+  }
+}
+
+function adaptTaskRow(row: Record<string, unknown>): Task {
+  return {
+    id: String(row.id ?? ''),
+    module_id: typeof row.module_id === 'string' ? row.module_id : '',
+    title: typeof row.title === 'string' ? row.title : 'Task',
+    details: typeof row.details === 'string' ? row.details : null,
+    deadline: typeof row.deadline === 'string' ? row.deadline : null,
+    canvasUrl: typeof row.canvas_url === 'string' ? row.canvas_url : null,
+    priority: row.priority === 'high' || row.priority === 'medium' || row.priority === 'low' ? row.priority : 'medium',
+    status: row.status === 'completed' ? 'completed' : 'pending',
+    created_at: typeof row.created_at === 'string' ? row.created_at : new Date().toISOString(),
+  }
+}
+
+function adaptDeadlineRow(row: Record<string, unknown>): Deadline {
+  return {
+    id: String(row.id ?? ''),
+    module_id: typeof row.module_id === 'string' ? row.module_id : '',
+    label: typeof row.label === 'string' ? row.label : 'Deadline',
+    date: typeof row.date === 'string' ? row.date : new Date().toISOString(),
     created_at: typeof row.created_at === 'string' ? row.created_at : new Date().toISOString(),
   }
 }

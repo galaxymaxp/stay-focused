@@ -33,7 +33,8 @@ export default async function CoursesPage() {
           const newestModule = [...modules].sort(
             (a, b) => new Date(b.released_at ?? b.created_at).getTime() - new Date(a.released_at ?? a.created_at).getTime(),
           )[0] ?? null
-          const bestLearnModule = [...moduleSnapshots].sort((a, b) =>
+          const visibleModuleSnapshots = moduleSnapshots.filter(({ module }) => module.showInLearn !== false)
+          const bestLearnModule = [...(visibleModuleSnapshots.length > 0 ? visibleModuleSnapshots : moduleSnapshots)].sort((a, b) =>
             b.experience.learnUnits.length - a.experience.learnUnits.length
             || b.taskCount - a.taskCount
             || new Date(b.module.released_at ?? b.module.created_at).getTime() - new Date(a.module.released_at ?? a.module.created_at).getTime(),
@@ -107,7 +108,7 @@ export default async function CoursesPage() {
                         <div>
                           <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.5, color: 'var(--text-primary)', fontWeight: 650 }}>{module.title}</p>
                           <p style={{ margin: '0.25rem 0 0', fontSize: '12px', lineHeight: 1.55, color: 'var(--text-muted)' }}>
-                            {experience.learnUnits.length} learn unit{experience.learnUnits.length === 1 ? '' : 's'} • {taskCount} active task{taskCount === 1 ? '' : 's'}
+                            {experience.learnUnits.length} learn unit{experience.learnUnits.length === 1 ? '' : 's'} • {taskCount} active task{taskCount === 1 ? '' : 's'}{module.showInLearn === false ? ' • hidden from global Learn' : ''}
                           </p>
                         </div>
                         <span className="ui-button ui-button-ghost ui-button-xs">Open Learn</span>

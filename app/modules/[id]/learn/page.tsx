@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { LearnResourceCard } from '@/components/LearnResourceCard'
+import { ModuleLearnVisibilityToggle } from '@/components/ModuleLearnVisibilityToggle'
 import { ModuleLensShell } from '@/components/ModuleLensShell'
 import { buildLearnExperience, extractCourseName, findRecommendedStepTargets, getLearnResourceHref, getModuleWorkspace, getResourceCanvasHref } from '@/lib/module-workspace'
 
@@ -51,8 +52,22 @@ export default async function LearnPage({ params }: Props) {
                 PDFs, slide decks, extracted files, practice links, and reference materials are surfaced first so Learn behaves more like your actual Canvas study flow.
               </p>
             </div>
-            <span className="ui-chip ui-chip-soft">{learnUnits.length} study unit{learnUnits.length === 1 ? '' : 's'}</span>
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+              <span className="ui-chip ui-chip-soft">{learnUnits.length} study unit{learnUnits.length === 1 ? '' : 's'}</span>
+              {module.showInLearn === false && (
+                <span className="ui-chip ui-chip-soft">Hidden from global Learn</span>
+              )}
+              <ModuleLearnVisibilityToggle moduleId={module.id} showInLearn={module.showInLearn !== false} />
+            </div>
           </div>
+
+          {module.showInLearn === false && (
+            <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.9rem 1rem', marginBottom: '1rem' }}>
+              <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.6, color: 'var(--text-secondary)' }}>
+                This module is hidden from global Learn and Learn-focused recommendation surfaces, but it still stays available here, in Courses, and through normal module navigation.
+              </p>
+            </div>
+          )}
 
           {learnUnits.length === 0 ? (
             <div className="ui-empty" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', fontSize: '14px', lineHeight: 1.65 }}>
@@ -260,9 +275,9 @@ export default async function LearnPage({ params }: Props) {
                       className="ui-reading-copy"
                       style={{
                         margin: 0,
-                        fontSize: section.id === 'quick-summary' || section.id === 'explain-simply' ? '16px' : '15px',
-                        lineHeight: section.id === 'quick-summary' || section.id === 'explain-simply' ? 1.78 : 1.72,
-                        color: section.id === 'quick-summary' ? 'var(--text-primary)' : 'var(--text-secondary)',
+                        fontSize: section.id === 'why-this-matters' || section.id === 'core-ideas' ? '16px' : '15px',
+                        lineHeight: section.id === 'why-this-matters' || section.id === 'core-ideas' ? 1.78 : 1.72,
+                        color: paragraphIndex === 0 ? 'var(--text-primary)' : 'var(--text-secondary)',
                       }}
                     >
                       {paragraph}

@@ -57,6 +57,7 @@ export function buildSeedWorkspaceSource(now = new Date()): ClarityWorkspaceSour
         released_at: createdAt,
         estimated_minutes: seed.estimatedMinutes,
         priority_signal: seed.prioritySignal,
+        showInLearn: true,
         created_at: createdAt,
       },
       parsed,
@@ -101,6 +102,7 @@ function adaptModuleRow(row: WorkspaceModuleRow): Module {
     released_at: row.released_at ?? row.created_at ?? undefined,
     estimated_minutes: row.estimated_minutes ?? undefined,
     priority_signal: normalizePriority(row.priority_signal),
+    showInLearn: row.show_in_learn ?? true,
     created_at: row.created_at ?? new Date().toISOString(),
   }
 }
@@ -145,6 +147,7 @@ function adaptTaskItemRow(
     taskType: normalizeTaskType(row.task_type),
     estimatedMinutes: row.estimated_minutes ?? 20,
     extractedFrom: row.extracted_from ?? module?.title ?? 'Task source',
+    canvasUrl: row.canvas_url ?? null,
     moduleFreshnessScore: freshnessScore,
     actionScore: computeActionScore(priority, deadline, status, freshnessScore),
   }

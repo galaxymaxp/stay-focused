@@ -22,7 +22,9 @@ export async function getClarityWorkspace(): Promise<ClarityWorkspace> {
   const courseMap = new Map(source.courses.map((course) => [course.id, course]))
   const todayItems = [
     ...source.taskItems.filter((task) => task.status !== 'completed').map((task) => buildTodayTaskItem(task)),
-    ...source.modules.map((module) => buildTodayLearningItem(module, source.learnItems, source.taskItems, courseMap)),
+    ...source.modules
+      .filter((module) => module.showInLearn !== false)
+      .map((module) => buildTodayLearningItem(module, source.learnItems, source.taskItems, courseMap)),
   ].sort(compareTodayItems)
   const nextBestMove = todayItems[0] ?? null
   const heroId = nextBestMove?.id ?? null

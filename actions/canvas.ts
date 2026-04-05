@@ -63,6 +63,11 @@ interface ResourceIngestionRecord {
   metadata: Record<string, unknown>
 }
 
+interface TaskCanvasLink {
+  title: string
+  canvasUrl: string | null
+}
+
 export async function fetchCourses(config?: Partial<CanvasConfig>): Promise<CanvasCourse[]> {
   return getCourses(config)
 }
@@ -160,6 +165,7 @@ async function syncSingleCourse(course: CanvasCourse, config: Partial<CanvasConf
   }
 
   const resourceIngestion = await ingestModuleResources(course.id, modules, config)
+  const taskCanvasLinks = buildTaskCanvasLinks(assignments, resourceIngestion)
   const rawContent = compileCanvasContent(
     course,
     assignments,
@@ -271,6 +277,7 @@ async function syncSingleCourse(course: CanvasCourse, config: Partial<CanvasConf
     courseId: courseRecord.id,
     moduleId,
     extractedFrom: aiResult.title,
+    taskCanvasLinks,
   })
 
   if (clarityTaskItems.length > 0) {
@@ -293,6 +300,7 @@ async function syncSingleCourse(course: CanvasCourse, config: Partial<CanvasConf
         title: task.title,
         details: task.details,
         deadline: task.deadline,
+        canvas_url: resolveTaskCanvasUrl(task.title, taskCanvasLinks),
         priority: task.priority,
         status: 'pending',
       }))
@@ -446,7 +454,7 @@ function buildModuleResourcesForSync(
 
 function buildTaskItemsForSync(
   aiResult: AIResponse,
-  context: { courseId: string; moduleId: string; extractedFrom: string },
+  context: { courseId: string; moduleId: string; extractedFrom: string; taskCanvasLinks: TaskCanvasLink[] },
 ) {
   return aiResult.tasks.map((task) => ({
     course_id: context.courseId,
@@ -459,6 +467,7 @@ function buildTaskItemsForSync(
     task_type: normalizeTaskTypeForSync(task.task_type, task.title, task.details),
     estimated_minutes: normalizeEstimatedMinutes(task.estimated_minutes, task.priority),
     extracted_from: context.extractedFrom,
+    canvas_url: resolveTaskCanvasUrl(task.title, context.taskCanvasLinks),
   }))
 }
 
@@ -530,6 +539,7 @@ async function ingestModuleResources(
         required,
         metadata: {
           canvasModuleName: module.name,
+          canvasModuleUrl: buildCanvasModuleUrl(config.url ?? null, courseId, module.id),
           completionRequirementType: item.completion_requirement?.type ?? null,
         },
       }
@@ -610,6 +620,54 @@ function pickCourseColorToken(courseCode: string, courseName: string): Course['c
   if (seed === 1) return 'blue'
   if (seed === 2) return 'green'
   return 'orange'
+}
+
+function buildTaskCanvasLinks(
+  assignments: CanvasCourseAssignmentShape[],
+  resources: ResourceIngestionRecord[],
+): TaskCanvasLink[] {
+  const assignmentLinks = assignments.map((assignment) => ({
+    title: assignment.name,
+    canvasUrl: assignment.html_url ?? assignment.url ?? null,
+  }))
+
+  const resourceLinks = resources.map((resource) => ({
+    title: resource.title,
+    canvasUrl: getBestResourceCanvasUrl(resource),
+  }))
+
+  return [...assignmentLinks, ...resourceLinks]
+}
+
+type CanvasCourseAssignmentShape = {
+  name: string
+  html_url?: string | null
+  url?: string | null
+}
+
+function resolveTaskCanvasUrl(taskTitle: string, links: TaskCanvasLink[]) {
+  const match = links.find((link) => matchesCanvasTaskTitle(taskTitle, link.title))
+  return match?.canvasUrl ?? null
+}
+
+function getBestResourceCanvasUrl(resource: ResourceIngestionRecord) {
+  const moduleUrl = typeof resource.metadata.canvasModuleUrl === 'string' ? resource.metadata.canvasModuleUrl : null
+  return resource.htmlUrl ?? resource.sourceUrl ?? moduleUrl
+}
+
+function buildCanvasModuleUrl(baseUrl: string | null | undefined, courseId: number, moduleId: number) {
+  if (!baseUrl) return null
+  return `${normalizeCanvasUrl(baseUrl)}/courses/${courseId}/modules/${moduleId}`
+}
+
+function matchesCanvasTaskTitle(taskTitle: string, sourceTitle: string) {
+  const left = normalizeTaskLookup(taskTitle)
+  const right = normalizeTaskLookup(sourceTitle)
+  return left === right || left.includes(right) || right.includes(left)
+}
+
+function normalizeTaskLookup(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
 }
 
 function getCanvasConfig(canvasUrl: string | null | undefined, accessToken: string | null | undefined): Partial<CanvasConfig> {

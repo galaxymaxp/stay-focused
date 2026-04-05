@@ -24,6 +24,7 @@ export interface WorkspaceModuleRow {
   released_at?: string | null
   estimated_minutes?: number | null
   priority_signal?: string | null
+  show_in_learn?: boolean | null
   created_at?: string | null
 }
 
@@ -49,6 +50,7 @@ export interface WorkspaceTaskItemRow {
   task_type?: string | null
   estimated_minutes?: number | null
   extracted_from?: string | null
+  canvas_url?: string | null
 }
 
 export interface WorkspaceQueryResult {

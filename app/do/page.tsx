@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { getClarityWorkspace, getTaskUrgencyLabel } from '@/lib/clarity-workspace'
 import { TaskStatusToggle } from '@/components/TaskStatusToggle'
 import type { TaskItem } from '@/lib/types'
@@ -99,6 +100,17 @@ export default async function DoPage() {
                         <span><strong>Module:</strong> {task.moduleTitle}</span>
                         <span><strong>Timing:</strong> {getTaskUrgencyLabel(task)}</span>
                         <span><strong>Status:</strong> {task.status}</span>
+                      </div>
+
+                      <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+                        <Link href={`/modules/${task.moduleId}/do#${task.id}`} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+                          Open module Do
+                        </Link>
+                        {task.canvasUrl && (
+                          <a href={task.canvasUrl} target="_blank" rel="noreferrer" className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
+                            Open in Canvas
+                          </a>
+                        )}
                       </div>
                     </article>
                   ))}

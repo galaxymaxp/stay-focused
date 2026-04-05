@@ -8,6 +8,7 @@ import {
   findDoResourceById,
   findLearnUnitByResourceId,
   getModuleWorkspace,
+  getResourceGrounding,
   getResourceCanvasHref,
 } from '@/lib/module-workspace'
 
@@ -33,6 +34,7 @@ export default async function ResourceDetailPage({ params }: Props) {
   if (!resource) notFound()
 
   const canvasHref = getResourceCanvasHref(resource)
+  const grounding = unit?.grounding ?? getResourceGrounding(resource)
   const linkedTask = tasks.find((task) => matchesByTitle(resource.title, task.title)) ?? null
 
   return (
@@ -49,7 +51,7 @@ export default async function ResourceDetailPage({ params }: Props) {
             <p className="ui-kicker">Resource deep view</p>
             <h2 className="ui-section-title" style={{ marginTop: '0.45rem' }}>{resource.title}</h2>
             <p className="ui-section-copy" style={{ marginTop: '0.5rem' }}>
-              Stronger context, deeper analysis, and direct source actions for this individual Canvas item.
+              Honest resource evidence, context, and source actions for this individual Canvas item.
             </p>
           </div>
           <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
@@ -64,7 +66,34 @@ export default async function ResourceDetailPage({ params }: Props) {
                 Open in Canvas
               </a>
             )}
+            <Link href="/canvas" className="ui-button ui-button-ghost">
+              Reconnect / resync
+            </Link>
           </div>
+        </div>
+
+        <div className={grounding.hasGroundedAnalysis ? 'ui-card' : 'ui-card-soft'} style={{ borderRadius: 'var(--radius-panel)', padding: '1rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+            <div>
+              <p className="ui-kicker">Grounding</p>
+              <p style={{ margin: '0.45rem 0 0', fontSize: '16px', lineHeight: 1.45, color: 'var(--text-primary)', fontWeight: 650 }}>{grounding.label}</p>
+            </div>
+            <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+              <span className="ui-chip ui-chip-soft">Confidence: {grounding.confidence}</span>
+              <span className="ui-chip ui-chip-soft">Status: {labelForExtractionStatus(resource.extractionStatus)}</span>
+            </div>
+          </div>
+          <p style={{ margin: '0.65rem 0 0', fontSize: '14px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
+            {grounding.message}
+          </p>
+          {grounding.evidenceSnippet && (
+            <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.85rem 0.9rem', marginTop: '0.8rem' }}>
+              <p className="ui-kicker">Evidence snippet</p>
+              <p style={{ margin: '0.5rem 0 0', fontSize: '13px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
+                {grounding.evidenceSnippet}
+              </p>
+            </div>
+          )}
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.75rem' }}>
@@ -87,26 +116,41 @@ export default async function ResourceDetailPage({ params }: Props) {
 
         <div style={{ display: 'grid', gridTemplateColumns: unit ? 'minmax(0, 1.45fr) minmax(280px, 0.9fr)' : 'minmax(0, 1fr)', gap: '1rem', alignItems: 'start' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            {unit ? (
+            {unit && unit.modes.length > 0 ? (
               <>
                 <div className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem' }}>
-                  <p className="ui-kicker">Quick read</p>
+                  <p className="ui-kicker">Grounded read</p>
                   <p style={{ margin: '0.55rem 0 0', fontSize: '15px', lineHeight: 1.72, color: 'var(--text-secondary)' }}>{unit.preview}</p>
                 </div>
                 <StudyModeSwitcher modes={unit.modes} summaryLabel="Learning modes are collapsed by default here too" />
               </>
             ) : (
               <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem' }}>
-                <p className="ui-kicker">Action item context</p>
+                <p className="ui-kicker">Fallback view</p>
                 <p style={{ margin: '0.55rem 0 0', fontSize: '15px', lineHeight: 1.7, color: 'var(--text-secondary)' }}>
-                  This item is currently classified into the Do or support lane, so the deeper study modes are not generated for it yet.
+                  Deep document analysis is hidden because the system does not have enough readable file text to support it honestly.
                 </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.8rem' }}>
+                  {resource.whyItMatters && (
+                    <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
+                      <strong style={{ color: 'var(--text-primary)' }}>Why it may matter:</strong> {resource.whyItMatters}
+                    </p>
+                  )}
+                  {resource.linkedContext && (
+                    <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
+                      <strong style={{ color: 'var(--text-primary)' }}>Linked follow-on:</strong> {resource.linkedContext}
+                    </p>
+                  )}
+                  <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
+                    <strong style={{ color: 'var(--text-primary)' }}>What you can do:</strong> Open the original Canvas item, review the file directly, and resync if you want extraction to try again.
+                  </p>
+                </div>
               </div>
             )}
 
-            {(resource.extractedTextPreview || resource.extractionError) && (
+            {(resource.extractedTextPreview || resource.extractionError || grounding.evidenceSnippet) && (
               <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem' }}>
-                <p className="ui-kicker">Source analysis</p>
+                <p className="ui-kicker">Extraction evidence</p>
                 {resource.extractedTextPreview && (
                   <p style={{ margin: '0.55rem 0 0', fontSize: '14px', lineHeight: 1.7, color: 'var(--text-secondary)' }}>
                     {resource.extractedTextPreview}
@@ -123,11 +167,12 @@ export default async function ResourceDetailPage({ params }: Props) {
 
           <aside style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem' }}>
-              <p className="ui-kicker">Metadata</p>
+              <p className="ui-kicker">Metadata and status</p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem', marginTop: '0.75rem' }}>
                 <MetaLine label="Canvas source" value={canvasHref ? 'Direct item link available' : 'No direct item URL stored'} />
                 <MetaLine label="Extraction status" value={labelForExtractionStatus(resource.extractionStatus)} />
                 <MetaLine label="Character count" value={typeof resource.extractedCharCount === 'number' && resource.extractedCharCount > 0 ? `${resource.extractedCharCount}` : 'Not available'} />
+                <MetaLine label="Grounding confidence" value={grounding.confidence} />
                 <MetaLine label="Required" value={resource.required ? 'Yes' : 'No'} />
               </div>
             </div>

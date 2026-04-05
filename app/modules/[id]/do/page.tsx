@@ -115,6 +115,14 @@ export default async function DoPage({ params }: Props) {
                       Open Learn context
                     </Link>
                     {(() => {
+                      if (task.canvasUrl) {
+                        return (
+                          <a href={task.canvasUrl} target="_blank" rel="noreferrer" className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
+                            Open in Canvas
+                          </a>
+                        )
+                      }
+
                       const matchedResource = matchTaskToResource(task.title, learnExperience.resources)
                       const canvasHref = matchedResource ? getResourceCanvasHref(matchedResource) : null
                       return canvasHref ? (

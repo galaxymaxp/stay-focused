@@ -29,6 +29,7 @@ export function LearnResourceCard({
         <div style={{ minWidth: 0 }}>
           <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', marginBottom: '0.45rem' }}>
             <span className="ui-chip ui-chip-soft">{labelForResourceKind(unit.resource.kind)}</span>
+            <span className="ui-chip ui-chip-soft">{unit.grounding.label}</span>
             {unit.resource.extractionStatus && (
               <span className="ui-chip ui-chip-soft">{labelForExtractionStatus(unit.resource.extractionStatus)}</span>
             )}
@@ -56,8 +57,13 @@ export function LearnResourceCard({
       </div>
 
       <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: compact ? '0.85rem' : '0.9rem' }}>
-        <p className="ui-kicker">Resource Preview</p>
+        <p className="ui-kicker">{unit.grounding.hasGroundedAnalysis ? 'Resource Preview' : 'Grounding Note'}</p>
         <p style={{ margin: '0.55rem 0 0', fontSize: '14px', lineHeight: 1.7, color: 'var(--text-secondary)' }}>{unit.preview}</p>
+        {unit.grounding.evidenceSnippet && (
+          <p style={{ margin: '0.55rem 0 0', fontSize: '12px', lineHeight: 1.6, color: 'var(--text-muted)' }}>
+            Evidence: {unit.grounding.evidenceSnippet}
+          </p>
+        )}
       </div>
 
       {unit.resource.whyItMatters && (
@@ -70,7 +76,16 @@ export function LearnResourceCard({
         </div>
       )}
 
-      <StudyModeSwitcher modes={unit.modes} />
+      {unit.modes.length > 0 ? (
+        <StudyModeSwitcher modes={unit.modes} />
+      ) : (
+        <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.85rem 0.95rem' }}>
+          <p className="ui-kicker">Analysis availability</p>
+          <p style={{ margin: '0.5rem 0 0', fontSize: '13px', lineHeight: 1.6, color: 'var(--text-secondary)' }}>
+            Deep analysis modes are hidden until enough readable file text is extracted.
+          </p>
+        </div>
+      )}
     </article>
   )
 }

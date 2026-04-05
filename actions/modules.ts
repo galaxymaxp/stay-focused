@@ -70,6 +70,24 @@ export async function deleteModule(moduleId: string) {
   revalidatePath('/calendar')
 }
 
+export async function setModuleLearnVisibility(input: { moduleId: string; showInLearn: boolean }) {
+  if (!supabase) throw new Error('Supabase is not configured.')
+
+  const { error } = await supabase
+    .from('modules')
+    .update({ show_in_learn: input.showInLearn })
+    .eq('id', input.moduleId)
+
+  if (error) throw createSupabaseDeleteError('update module learn visibility', error, input)
+
+  revalidatePath('/')
+  revalidatePath('/courses')
+  revalidatePath('/learn')
+  revalidatePath(`/modules/${input.moduleId}`)
+  revalidatePath(`/modules/${input.moduleId}/learn`)
+  revalidatePath(`/modules/${input.moduleId}/do`)
+}
+
 type SupabaseLikeError = {
   code?: string | null
   message?: string | null

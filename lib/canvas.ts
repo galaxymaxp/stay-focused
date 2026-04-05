@@ -39,6 +39,8 @@ export interface CanvasAssignment {
   name: string
   description: string | null
   due_at: string | null
+  html_url?: string | null
+  url?: string | null
   points_possible: number
   submission_types: string[]
 }

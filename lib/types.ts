@@ -27,6 +27,7 @@ export interface Module {
   released_at?: string
   estimated_minutes?: number
   priority_signal?: Priority
+  showInLearn?: boolean
   created_at: string
 }
 
@@ -59,6 +60,7 @@ export interface Task {
   title: string
   details: string | null
   deadline: string | null  // ISO date string, null if not found
+  canvasUrl?: string | null
   priority: Priority
   status: TaskStatus
   created_at: string
@@ -96,6 +98,7 @@ export interface TaskItem {
   taskType: 'assignment' | 'quiz' | 'reading' | 'prep' | 'discussion' | 'project'
   estimatedMinutes: number
   extractedFrom: string
+  canvasUrl?: string | null
   moduleFreshnessScore: number
   actionScore: number
 }
