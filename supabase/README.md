@@ -6,6 +6,7 @@ Important migration for attachment-backed Learn:
 
 - `supabase/migrations/20260405_add_module_resources.sql`
 - `supabase/migrations/20260406_add_module_resource_study_state.sql`
+- `supabase/migrations/20260407_add_module_resource_study_last_opened_at.sql`
 
 That migration creates:
 
@@ -13,6 +14,7 @@ That migration creates:
 - indexes used by resource sync and Learn drill-down
 - `public.module_resource_study_state`
 - indexes used by manual study progress and Learn workflow overrides
+- `last_opened_at` support for subtle study-file resume cues
 
 If you see errors such as:
 
@@ -36,5 +38,6 @@ Current app features that depend on `module_resource_study_state`:
 - per-file study progress (`Not started`, `Skimmed`, `Reviewed`)
 - manual `Treat as activity instead` workflow overrides for study files
 - module Learn progress rollups and resumable reader state
+- subtle `Resume where you left off` cues on module Learn pages
 
 The module delete flow is defensive if `module_resources` is missing, but the proper fix is still to apply the migration to the active Supabase environment.

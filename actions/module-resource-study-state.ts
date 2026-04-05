@@ -48,6 +48,27 @@ export async function setStudyFileWorkflowOverride(input: {
   revalidateStudyPaths(input.moduleId, input.resourceId)
 }
 
+export async function markStudyFileOpened(input: {
+  moduleId: string
+  resourceId: string
+}) {
+  if (!supabase) throw new Error('Supabase is not configured.')
+
+  const now = new Date().toISOString()
+  const { error } = await supabase
+    .from(TABLE_NAME)
+    .upsert({
+      module_id: input.moduleId,
+      resource_id: input.resourceId,
+      last_opened_at: now,
+      updated_at: now,
+    }, { onConflict: 'module_id,resource_id' })
+
+  if (error) throw createStudyStateError('mark study file opened', error, input)
+
+  revalidatePath(`/modules/${input.moduleId}/learn`)
+}
+
 type SupabaseLikeError = {
   code?: string | null
   message?: string | null
@@ -69,7 +90,7 @@ function createStudyStateError(step: string, error: SupabaseLikeError | null | u
   const hint = error?.hint ?? null
   const contextText = context ? ` context=${JSON.stringify(context)}` : ''
   const migrationHelp = isMissingSchemaObjectError(error)
-    ? ' Missing newer schema objects in the connected Supabase project. Apply supabase/migrations/20260406_add_module_resource_study_state.sql and refresh the PostgREST schema cache.'
+    ? ' Missing newer schema objects in the connected Supabase project. Apply supabase/migrations/20260406_add_module_resource_study_state.sql and supabase/migrations/20260407_add_module_resource_study_last_opened_at.sql, then refresh the PostgREST schema cache.'
     : ''
   const diagnostic = `[Study state] step=${step} code=${code ?? 'unknown'} message=${message}${details ? ` details=${details}` : ''}${hint ? ` hint=${hint}` : ''}${migrationHelp}${contextText}`
 
@@ -85,5 +106,5 @@ function createStudyStateError(step: string, error: SupabaseLikeError | null | u
 }
 
 function isMissingSchemaObjectError(error: SupabaseLikeError | null | undefined) {
-  return error?.code === 'PGRST205'
+  return error?.code === 'PGRST204' || error?.code === 'PGRST205'
 }

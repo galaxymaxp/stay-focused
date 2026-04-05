@@ -119,6 +119,37 @@ export default async function LearnPage({ params }: Props) {
                 )}
               </div>
 
+              {overview.resumeTarget && (
+                <div className="ui-card" style={{ borderRadius: 'var(--radius-tight)', padding: '0.9rem 0.95rem' }}>
+                  <p className="ui-kicker">{overview.resumeTarget.promptLabel}</p>
+                  <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', marginTop: '0.5rem' }}>
+                    <StatusBadge tone="muted" label={overview.resumeTarget.fileTypeLabel} />
+                    <StatusBadge
+                      tone={overview.resumeTarget.readinessLabel === 'Ready to study'
+                        ? 'accent'
+                        : overview.resumeTarget.readinessLabel === 'Limited'
+                          ? 'warning'
+                          : 'muted'}
+                      label={overview.resumeTarget.readinessLabel}
+                    />
+                  </div>
+                  <p style={{ margin: '0.6rem 0 0', fontSize: '15px', lineHeight: 1.55, color: 'var(--text-primary)', fontWeight: 650 }}>
+                    {overview.resumeTarget.resource.title}
+                  </p>
+                  <p style={{ margin: '0.35rem 0 0', fontSize: '13px', lineHeight: 1.68, color: 'var(--text-secondary)' }}>
+                    {overview.resumeTarget.note}
+                  </p>
+                  <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', marginTop: '0.75rem' }}>
+                    <ActionLink
+                      href={overview.resumeTarget.href}
+                      label={overview.resumeTarget.actionLabel}
+                      external={overview.resumeTarget.external}
+                      tone="secondary"
+                    />
+                  </div>
+                </div>
+              )}
+
               <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.85rem 0.9rem' }}>
                 <p className="ui-kicker">Study coverage</p>
                 <p style={{ margin: '0.45rem 0 0', fontSize: '13px', lineHeight: 1.68, color: 'var(--text-secondary)' }}>

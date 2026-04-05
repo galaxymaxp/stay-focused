@@ -61,6 +61,7 @@ export interface ModuleResourceStudyState {
   resourceId: string
   studyProgressStatus: StudyFileProgressStatus
   workflowOverride: ModuleResourceWorkflowOverride
+  lastOpenedAt: string | null
   createdAt: string
   updatedAt: string
 }

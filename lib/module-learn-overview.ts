@@ -24,6 +24,17 @@ export interface ModuleSuggestedStudyStep {
   external: boolean
 }
 
+export interface ModuleStudyResumeTarget {
+  resource: ModuleSourceResource
+  fileTypeLabel: string
+  readinessLabel: ModuleStudyMaterial['readinessLabel']
+  promptLabel: 'Resume where you left off' | 'Continue reading'
+  note: string
+  href: string
+  actionLabel: string
+  external: boolean
+}
+
 export interface ModuleLearnOverviewModel {
   summary: string | null
   summaryStateMessage: string
@@ -40,6 +51,7 @@ export interface ModuleLearnOverviewModel {
     skimmed: number
     reviewed: number
   }
+  resumeTarget: ModuleStudyResumeTarget | null
   studyMaterials: ModuleStudyMaterial[]
   activityOverrides: ModuleStudyMaterial[]
   actionItems: ModuleSourceResource[]
@@ -77,6 +89,7 @@ export function buildModuleLearnOverview({
   const unavailableStudyFileCount = studyMaterials.filter((material) => material.readiness === 'unavailable').length
   const summary = buildGroundedModuleSummary(studyMaterials)
   const progressCounts = buildProgressCounts(allStudyFiles)
+  const resumeTarget = buildResumeTarget(moduleId, studyMaterials)
 
   return {
     summary,
@@ -105,6 +118,7 @@ export function buildModuleLearnOverview({
     limitedStudyFileCount,
     unavailableStudyFileCount,
     progressCounts,
+    resumeTarget,
     studyMaterials,
     activityOverrides,
     actionItems,
@@ -325,6 +339,32 @@ function buildProgressCounts(studyMaterials: ModuleStudyMaterial[]) {
   return counts
 }
 
+function buildResumeTarget(moduleId: string, studyMaterials: ModuleStudyMaterial[]): ModuleStudyResumeTarget | null {
+  if (studyMaterials.length === 0) {
+    return null
+  }
+
+  const recentlyOpened = [...studyMaterials]
+    .filter((material) => recentDateValue(material.resource.lastOpenedAt) !== Number.NEGATIVE_INFINITY)
+    .sort((left, right) => recentDateValue(right.resource.lastOpenedAt) - recentDateValue(left.resource.lastOpenedAt))
+  const recentReadable = recentlyOpened.find((material) => material.reader.state === 'extracted')
+  if (recentReadable) {
+    return buildResumeTargetModel(moduleId, recentReadable, 'recent')
+  }
+
+  const strongestReadable = studyMaterials.find((material) => material.reader.state === 'extracted')
+  if (strongestReadable) {
+    return buildResumeTargetModel(moduleId, strongestReadable, 'fallback_readable')
+  }
+
+  const recentFallback = recentlyOpened[0]
+  if (recentFallback) {
+    return buildResumeTargetModel(moduleId, recentFallback, 'recent_fallback')
+  }
+
+  return buildResumeTargetModel(moduleId, studyMaterials[0], 'fallback_available')
+}
+
 function buildSuggestedStudySteps({
   moduleId,
   studyMaterials,
@@ -417,6 +457,30 @@ function buildStudyStep(moduleId: string, material: ModuleStudyMaterial): Omit<M
   }
 }
 
+function buildResumeTargetModel(
+  moduleId: string,
+  material: ModuleStudyMaterial,
+  source: 'recent' | 'fallback_readable' | 'recent_fallback' | 'fallback_available',
+): ModuleStudyResumeTarget {
+  const canvasHref = getResourceCanvasHref(material.resource)
+  const useCanvas = material.readiness === 'unavailable' && Boolean(canvasHref)
+  const openedAtLabel = formatOpenedAt(material.resource.lastOpenedAt)
+  const promptLabel = source === 'recent' || source === 'recent_fallback'
+    ? 'Resume where you left off'
+    : 'Continue reading'
+
+  return {
+    resource: material.resource,
+    fileTypeLabel: material.fileTypeLabel,
+    readinessLabel: material.readinessLabel,
+    promptLabel,
+    note: buildResumeNote(material, source, openedAtLabel),
+    href: useCanvas ? canvasHref! : getLearnResourceHref(moduleId, material.resource.id),
+    actionLabel: useCanvas ? 'Open in Canvas' : 'Continue reading',
+    external: useCanvas,
+  }
+}
+
 function buildActivityOverrideStep(moduleId: string, material: ModuleStudyMaterial): Omit<ModuleSuggestedStudyStep, 'slotLabel'> {
   const canvasHref = getResourceCanvasHref(material.resource)
   const useCanvas = material.readiness === 'unavailable' && Boolean(canvasHref)
@@ -429,6 +493,42 @@ function buildActivityOverrideStep(moduleId: string, material: ModuleStudyMateri
     destinationLabel: useCanvas ? 'Canvas file' : 'Study reader',
     external: useCanvas,
   }
+}
+
+function buildResumeNote(
+  material: ModuleStudyMaterial,
+  source: 'recent' | 'fallback_readable' | 'recent_fallback' | 'fallback_available',
+  openedAtLabel: string | null,
+) {
+  if (source === 'recent') {
+    return openedAtLabel
+      ? `Last opened ${openedAtLabel}. This file is still in your study lane, so Learn keeps it ready to reopen.`
+      : 'This is the most recent readable study file still in your study lane.'
+  }
+
+  if (source === 'fallback_readable') {
+    return 'No recent study file is saved in the active study lane, so Learn is pointing to the clearest readable file in this module.'
+  }
+
+  if (source === 'recent_fallback') {
+    return openedAtLabel
+      ? `Last opened ${openedAtLabel}. Learn could not find a stronger readable study file in the current study lane, so this stays closest at hand.`
+      : 'This was the most recent study file in your active study lane, and no stronger readable file is available yet.'
+  }
+
+  if (material.reader.state === 'metadata_only') {
+    return 'No recently opened readable study file is available yet, so Learn is keeping the clearest context-only file close.'
+  }
+
+  if (material.reader.state === 'empty') {
+    return 'No recently opened readable study file is available yet, so Learn is keeping the closest parsed file nearby even though it did not surface usable text.'
+  }
+
+  if (material.readiness === 'unavailable') {
+    return 'No recently opened readable study file is available yet, so Learn is pointing you back to the original Canvas file for the cleanest reopen.'
+  }
+
+  return 'No recently opened readable study file is available yet, so Learn is keeping the clearest available study file close.'
 }
 
 function buildActionStep(moduleId: string, item: ModuleSourceResource, tasks: Task[]): Omit<ModuleSuggestedStudyStep, 'slotLabel'> {
@@ -507,6 +607,20 @@ function formatDueContext(value: string | null) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
   return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(date)
+}
+
+function formatOpenedAt(value: string | null | undefined) {
+  if (!value) return null
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return null
+  return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(date)
+}
+
+function recentDateValue(value: string | null | undefined) {
+  if (!value) return Number.NEGATIVE_INFINITY
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return Number.NEGATIVE_INFINITY
+  return date.getTime()
 }
 
 function trimAtBoundary(text: string, maxLength: number) {

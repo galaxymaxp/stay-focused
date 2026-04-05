@@ -61,6 +61,7 @@ export interface ModuleSourceResource {
   extractionError?: string | null
   studyProgressStatus?: StudyFileProgressStatus
   workflowOverride?: ModuleResourceWorkflowOverride
+  lastOpenedAt?: string | null
   studyStateUpdatedAt?: string | null
 }
 
@@ -570,6 +571,7 @@ function applyResourceStudyState(
     ...resource,
     studyProgressStatus: studyState?.studyProgressStatus ?? 'not_started',
     workflowOverride: studyState?.workflowOverride ?? 'study',
+    lastOpenedAt: studyState?.lastOpenedAt ?? null,
     studyStateUpdatedAt: studyState?.updatedAt ?? null,
   }
 }
@@ -1363,6 +1365,7 @@ function adaptModuleResourceStudyStateRow(row: Record<string, unknown>): ModuleR
     resourceId: typeof row.resource_id === 'string' ? row.resource_id : '',
     studyProgressStatus: normalizeStudyProgressStatus(row.study_progress_status),
     workflowOverride: normalizeWorkflowOverride(row.workflow_override),
+    lastOpenedAt: typeof row.last_opened_at === 'string' ? row.last_opened_at : null,
     createdAt: typeof row.created_at === 'string' ? row.created_at : new Date().toISOString(),
     updatedAt: typeof row.updated_at === 'string' ? row.updated_at : new Date().toISOString(),
   }

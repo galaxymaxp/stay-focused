@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { StudyFileManualStateControls } from '@/components/StudyFileManualStateControls'
+import { StudyFileOpenTracker } from '@/components/StudyFileOpenTracker'
 import { StudyFilePreviewExplorer } from '@/components/StudyFilePreviewExplorer'
 import { getStudyFileProgressLabel } from '@/lib/study-file-manual-state'
 import { buildStudyFileReaderModel } from '@/lib/study-file-reader'
@@ -43,6 +44,7 @@ export function StudyFileReader({
 
   return (
     <section className="motion-card motion-delay-1 section-shell section-shell-elevated" style={{ padding: '1.35rem 1.45rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      <StudyFileOpenTracker moduleId={moduleId} resourceId={resource.id} />
       <div className="glass-panel" style={{
         ['--glass-panel-bg' as string]: 'var(--glass-surface-strong)',
         ['--glass-panel-border' as string]: 'var(--glass-border)',
