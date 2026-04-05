@@ -117,11 +117,15 @@ export interface CalendarItem {
 export interface AIResponse {
   title: string
   summary: string
+  concepts: string[]
+  study_prompts: string[]
   tasks: {
     title: string
     details: string | null
     deadline: string | null
     priority: Priority
+    task_type?: TaskItem['taskType']
+    estimated_minutes?: number
   }[]
   deadlines: {
     label: string

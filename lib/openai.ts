@@ -25,12 +25,16 @@ Return this exact shape:
 {
   "title": "string",
   "summary": "string",
+  "concepts": ["string"],
+  "study_prompts": ["string"],
   "tasks": [
     {
       "title": "string",
       "details": "string or null",
       "deadline": "YYYY-MM-DD or null",
-      "priority": "high | medium | low"
+      "priority": "high | medium | low",
+      "task_type": "assignment | quiz | reading | prep | discussion | project",
+      "estimated_minutes": 20
     }
   ],
   "deadlines": [
@@ -62,6 +66,8 @@ export async function processModuleContent(content: string): Promise<AIResponse>
     if (!parsed.title || !parsed.summary || !Array.isArray(parsed.tasks)) {
       throw new Error('AI response missing required fields')
     }
+    parsed.concepts = Array.isArray(parsed.concepts) ? parsed.concepts : []
+    parsed.study_prompts = Array.isArray(parsed.study_prompts) ? parsed.study_prompts : []
     return parsed
   } catch {
     throw new Error(`Failed to parse AI response: ${raw.slice(0, 200)}`)
