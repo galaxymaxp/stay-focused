@@ -35,7 +35,13 @@ export async function deleteModule(moduleId: string) {
     .delete()
     .eq('module_id', moduleId)
 
-  if (moduleResourcesError) throw createSupabaseDeleteError('delete synced module resources', moduleResourcesError, { moduleId })
+  if (moduleResourcesError) {
+    if (isMissingSchemaObjectError(moduleResourcesError)) {
+      logOptionalTableMismatch('module_resources', moduleResourcesError, { moduleId })
+    } else {
+      throw createSupabaseDeleteError('delete synced module resources', moduleResourcesError, { moduleId })
+    }
+  }
 
   const { error } = await supabase
     .from('modules')
@@ -101,7 +107,10 @@ function createSupabaseDeleteError(step: string, error: SupabaseLikeError | null
   const details = error?.details ?? null
   const hint = error?.hint ?? null
   const contextText = context ? ` context=${JSON.stringify(context)}` : ''
-  const diagnostic = `[Module delete] step=${step} code=${code ?? 'unknown'} message=${message}${details ? ` details=${details}` : ''}${hint ? ` hint=${hint}` : ''}${contextText}`
+  const migrationHelp = isMissingSchemaObjectError(error)
+    ? ' Missing newer schema objects in the connected Supabase project. Apply supabase/migrations/20260405_add_module_resources.sql and refresh the PostgREST schema cache.'
+    : ''
+  const diagnostic = `[Module delete] step=${step} code=${code ?? 'unknown'} message=${message}${details ? ` details=${details}` : ''}${hint ? ` hint=${hint}` : ''}${migrationHelp}${contextText}`
 
   console.error(diagnostic)
 
@@ -109,5 +118,23 @@ function createSupabaseDeleteError(step: string, error: SupabaseLikeError | null
     return new Error(diagnostic)
   }
 
-  return new Error(`Module delete failed during ${step}.`)
+  return new Error(isMissingSchemaObjectError(error)
+    ? 'Module delete hit a schema mismatch in Supabase. Apply the latest migration and retry.'
+    : `Module delete failed during ${step}.`)
+}
+
+function isMissingSchemaObjectError(error: SupabaseLikeError | null | undefined) {
+  return error?.code === 'PGRST205'
+}
+
+function logOptionalTableMismatch(table: string, error: SupabaseLikeError, context?: Record<string, unknown>) {
+  const projectHost = process.env.NEXT_PUBLIC_SUPABASE_URL
+    ? new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).host
+    : 'unknown-supabase-host'
+  const contextText = context ? ` context=${JSON.stringify(context)}` : ''
+  console.warn(
+    `[Module delete] optional table "${table}" is missing in ${projectHost}. ` +
+    `Continuing delete without that cleanup step. Apply supabase/migrations/20260405_add_module_resources.sql and refresh PostgREST schema cache.${contextText} ` +
+    `code=${error.code ?? 'unknown'} message=${error.message ?? 'Unknown Supabase error.'}`
+  )
 }
