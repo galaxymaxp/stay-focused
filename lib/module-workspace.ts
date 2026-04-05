@@ -948,7 +948,7 @@ export function getResourceGrounding(resource: ModuleSourceResource): ResourceGr
       confidence: 'High',
       evidenceSnippet: evidenceText.slice(0, 280),
       hasGroundedAnalysis: true,
-      message: `This analysis is grounded in extracted file text (${charCount} characters).`,
+      message: `This view is grounded in extracted file text (${charCount} characters).`,
     }
   }
 
@@ -959,7 +959,7 @@ export function getResourceGrounding(resource: ModuleSourceResource): ResourceGr
       confidence: 'Medium',
       evidenceSnippet: evidenceText.slice(0, 280),
       hasGroundedAnalysis: true,
-      message: `This analysis is grounded in extracted file text, but the readable text is still fairly limited (${charCount} characters).`,
+      message: `This view is grounded in extracted file text, but the readable amount is still fairly limited (${charCount} characters).`,
     }
   }
 
@@ -970,7 +970,7 @@ export function getResourceGrounding(resource: ModuleSourceResource): ResourceGr
       confidence: 'Low',
       evidenceSnippet: evidenceText.slice(0, 280),
       hasGroundedAnalysis: false,
-      message: `Only a thin amount of readable file text was extracted (${charCount} characters), so the app is not generating deep document analysis.`,
+      message: `Only a small amount of readable file text was extracted (${charCount} characters), so the app keeps the reader lightweight instead of making deeper claims.`,
     }
   }
 
@@ -981,7 +981,7 @@ export function getResourceGrounding(resource: ModuleSourceResource): ResourceGr
       confidence: 'None',
       evidenceSnippet: null,
       hasGroundedAnalysis: false,
-      message: 'This analysis is based only on the file title, module context, and linked tasks. No readable file text was extracted.',
+      message: 'Only the file title, module context, and linked tasks are available here. No readable file text was extracted.',
     }
   }
 
@@ -997,22 +997,22 @@ export function getResourceGrounding(resource: ModuleSourceResource): ResourceGr
 
 function buildUnreadGroundingMessage(resource: ModuleSourceResource) {
   if (resource.extractionStatus === 'failed') {
-    return `Extraction failed for this resource, so no document-grounded analysis is available.${resource.extractionError ? ` ${resource.extractionError}` : ''}`
+    return `The app could not prepare a readable text view for this file this time.${resource.extractionError ? ` ${resource.extractionError}` : ''}`
   }
 
   if (resource.extractionStatus === 'unsupported') {
-    return 'This file type is currently unsupported for extraction, so the system could not read the document content.'
+    return 'This file type is not readable in the current extraction pipeline, so the app is keeping the state explicit and linking back to Canvas.'
   }
 
   if (resource.extractionStatus === 'empty') {
-    return 'Extraction ran, but no readable text was found in the file, so the system is falling back to metadata and module context only.'
+    return 'The file was parsed, but no usable text was found, so the reader is falling back to metadata and module context only.'
   }
 
   if (resource.extractionStatus === 'pending') {
-    return 'Extraction has not finished yet, so no document-grounded analysis is available.'
+    return 'Extraction has not finished yet, so the reader is still waiting for usable file text.'
   }
 
-  return 'No extraction evidence is available for this resource, so the system cannot claim to have read the document.'
+  return 'No extraction evidence is available for this resource yet, so the app is not claiming to have read the document.'
 }
 
 function summarizeResource(sourceText: string, resource: ModuleSourceResource) {

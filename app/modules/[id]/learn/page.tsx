@@ -4,6 +4,7 @@ import { LearnResourceCard } from '@/components/LearnResourceCard'
 import { ModuleLearnVisibilityToggle } from '@/components/ModuleLearnVisibilityToggle'
 import { ModuleLensShell } from '@/components/ModuleLensShell'
 import { buildLearnExperience, extractCourseName, findRecommendedStepTargets, getLearnResourceHref, getModuleWorkspace, getResourceCanvasHref } from '@/lib/module-workspace'
+import { labelForExtractionStatus } from '@/lib/study-file-reader'
 
 interface Props {
   params: Promise<{ id: string }>
@@ -179,7 +180,7 @@ export default async function LearnPage({ params }: Props) {
                     )}
                     <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', marginTop: '0.7rem' }}>
                       <Link href={getLearnResourceHref(module.id, resource.id)} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-                        Deep view
+                        {resource.kind === 'study_file' ? 'Study reader' : 'Deep view'}
                       </Link>
                       {getResourceCanvasHref(resource) && (
                         <a href={getResourceCanvasHref(resource)!} target="_blank" rel="noreferrer" className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
@@ -214,7 +215,7 @@ export default async function LearnPage({ params }: Props) {
                     )}
                     <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', marginTop: '0.65rem' }}>
                       <Link href={getLearnResourceHref(module.id, item.id)} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-                        Open detail
+                        {item.kind === 'study_file' ? 'Study reader' : 'Open detail'}
                       </Link>
                       {getResourceCanvasHref(item) && (
                         <a href={getResourceCanvasHref(item)!} target="_blank" rel="noreferrer" className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
@@ -291,15 +292,6 @@ export default async function LearnPage({ params }: Props) {
       </div>
     </ModuleLensShell>
   )
-}
-
-function labelForExtractionStatus(status: 'pending' | 'extracted' | 'metadata_only' | 'unsupported' | 'empty' | 'failed') {
-  if (status === 'extracted') return 'Text extracted'
-  if (status === 'unsupported') return 'Unsupported'
-  if (status === 'failed') return 'Extraction failed'
-  if (status === 'empty') return 'No text found'
-  if (status === 'pending') return 'Pending'
-  return 'Metadata only'
 }
 
 function labelForResourceKind(kind: 'study_file' | 'practice_link' | 'assignment' | 'quiz' | 'discussion' | 'reference' | 'announcement') {

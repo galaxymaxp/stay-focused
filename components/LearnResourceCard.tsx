@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { StudyModeSwitcher } from '@/components/StudyModeSwitcher'
 import { getLearnResourceHref, getResourceCanvasHref, type LearnResourceUnit } from '@/lib/module-workspace'
+import { labelForExtractionStatus } from '@/lib/study-file-reader'
 
 export function LearnResourceCard({
   moduleId,
@@ -13,6 +14,14 @@ export function LearnResourceCard({
 }) {
   const canvasHref = getResourceCanvasHref(unit.resource)
   const deepHref = getLearnResourceHref(moduleId, unit.resource.id)
+  const deepViewLabel = unit.resource.kind === 'study_file' ? 'Open study reader' : 'Open deep view'
+  const previewLabel = unit.resource.kind === 'study_file'
+    ? unit.grounding.hasGroundedAnalysis
+      ? 'Study snapshot'
+      : 'Reader status'
+    : unit.grounding.hasGroundedAnalysis
+      ? 'Resource Preview'
+      : 'Grounding Note'
 
   return (
     <article className="glass-panel" style={{
@@ -48,7 +57,7 @@ export function LearnResourceCard({
         </div>
         <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
           <Link href={deepHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
-            Open deep view
+            {deepViewLabel}
           </Link>
           {canvasHref && (
             <a href={canvasHref} target="_blank" rel="noreferrer" className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
@@ -60,7 +69,7 @@ export function LearnResourceCard({
 
       <Link href={deepHref} style={{ textDecoration: 'none' }}>
         <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: compact ? '0.85rem' : '0.9rem' }}>
-          <p className="ui-kicker">{unit.grounding.hasGroundedAnalysis ? 'Resource Preview' : 'Grounding Note'}</p>
+          <p className="ui-kicker">{previewLabel}</p>
           <p style={{ margin: '0.55rem 0 0', fontSize: '14px', lineHeight: 1.7, color: 'var(--text-secondary)' }}>{unit.preview}</p>
           {unit.grounding.evidenceSnippet && (
             <p style={{ margin: '0.55rem 0 0', fontSize: '12px', lineHeight: 1.6, color: 'var(--text-muted)' }}>
@@ -102,22 +111,13 @@ function buildContextLine(unit: LearnResourceUnit) {
     unit.resource.dueDate && unit.resource.dueDate !== 'No due date' ? `Due ${formatDate(unit.resource.dueDate)}` : null,
   ].filter(Boolean)
 
-  return parts.join(' • ') || 'Canvas resource'
+  return parts.join(' / ') || 'Canvas resource'
 }
 
 function formatDate(value: string) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
   return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' }).format(date)
-}
-
-function labelForExtractionStatus(status: 'pending' | 'extracted' | 'metadata_only' | 'unsupported' | 'empty' | 'failed') {
-  if (status === 'extracted') return 'Text extracted'
-  if (status === 'unsupported') return 'Unsupported'
-  if (status === 'failed') return 'Extraction failed'
-  if (status === 'empty') return 'No text found'
-  if (status === 'pending') return 'Pending'
-  return 'Metadata only'
 }
 
 function labelForResourceKind(kind: 'study_file' | 'practice_link' | 'assignment' | 'quiz' | 'discussion' | 'reference' | 'announcement') {

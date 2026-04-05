@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { ModuleLensShell } from '@/components/ModuleLensShell'
+import { StudyFileReader } from '@/components/StudyFileReader'
 import { StudyModeSwitcher } from '@/components/StudyModeSwitcher'
 import {
   buildLearnExperience,
@@ -11,6 +12,7 @@ import {
   getResourceGrounding,
   getResourceCanvasHref,
 } from '@/lib/module-workspace'
+import { labelForExtractionStatus } from '@/lib/study-file-reader'
 
 interface Props {
   params: Promise<{ id: string; resourceId: string }>
@@ -36,6 +38,27 @@ export default async function ResourceDetailPage({ params }: Props) {
   const canvasHref = getResourceCanvasHref(resource)
   const grounding = unit?.grounding ?? getResourceGrounding(resource)
   const linkedTask = tasks.find((task) => matchesByTitle(resource.title, task.title)) ?? null
+
+  if (resource.kind === 'study_file') {
+    return (
+      <ModuleLensShell
+        currentLens="learn"
+        moduleId={module.id}
+        courseName={courseName}
+        title={module.title}
+        summary={module.summary}
+      >
+        <StudyFileReader
+          moduleId={module.id}
+          courseName={courseName}
+          moduleTitle={module.title}
+          resource={resource}
+          canvasHref={canvasHref}
+          linkedTask={linkedTask}
+        />
+      </ModuleLensShell>
+    )
+  }
 
   return (
     <ModuleLensShell
@@ -219,16 +242,6 @@ function formatDate(value: string) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
   return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' }).format(date)
-}
-
-function labelForExtractionStatus(status?: 'pending' | 'extracted' | 'metadata_only' | 'unsupported' | 'empty' | 'failed') {
-  if (!status) return 'Not available'
-  if (status === 'extracted') return 'Text extracted'
-  if (status === 'unsupported') return 'Unsupported'
-  if (status === 'failed') return 'Extraction failed'
-  if (status === 'empty') return 'No text found'
-  if (status === 'pending') return 'Pending'
-  return 'Metadata only'
 }
 
 function labelForResourceKind(kind: 'study_file' | 'practice_link' | 'assignment' | 'quiz' | 'discussion' | 'reference' | 'announcement') {
