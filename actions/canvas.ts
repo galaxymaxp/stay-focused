@@ -4,6 +4,8 @@ import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import {
   compileCanvasContent,
+  downloadCanvasBinary,
+  getCanvasFile,
   getAnnouncements,
   getAssignments,
   getCourses,
@@ -12,10 +14,11 @@ import {
   type CanvasConfig,
   type CanvasCourse,
 } from '@/lib/canvas'
+import { extractCanvasFileContent, normalizeExtension } from '@/lib/canvas-resource-extraction'
 import { dedupeAIResponseDeadlines } from '@/lib/course-work-dedupe'
 import { processModuleContent } from '@/lib/openai'
 import { supabase } from '@/lib/supabase'
-import type { AIResponse, Course, Priority, TaskItem } from '@/lib/types'
+import type { AIResponse, Course, ModuleResourceExtractionStatus, Priority, TaskItem } from '@/lib/types'
 
 export interface CanvasConnectionResult {
   normalizedUrl: string
@@ -39,6 +42,25 @@ interface ExistingModuleMatch {
 
 interface ExistingCourseMatch {
   id: string
+}
+
+interface ResourceIngestionRecord {
+  canvasModuleId: number | null
+  canvasItemId: number | null
+  canvasFileId: number | null
+  title: string
+  resourceType: string
+  contentType: string | null
+  extension: string | null
+  sourceUrl: string | null
+  htmlUrl: string | null
+  extractionStatus: ModuleResourceExtractionStatus
+  extractedText: string | null
+  extractedTextPreview: string | null
+  extractedCharCount: number
+  extractionError: string | null
+  required: boolean
+  metadata: Record<string, unknown>
 }
 
 export async function fetchCourses(config?: Partial<CanvasConfig>): Promise<CanvasCourse[]> {
@@ -137,7 +159,20 @@ async function syncSingleCourse(course: CanvasCourse, config: Partial<CanvasConf
     throw new Error(`Canvas did not return any assignments, announcements, or module content for ${course.name} yet.`)
   }
 
-  const rawContent = compileCanvasContent(course, assignments, announcements, modules)
+  const resourceIngestion = await ingestModuleResources(course.id, modules, config)
+  const rawContent = compileCanvasContent(
+    course,
+    assignments,
+    announcements,
+    modules,
+    resourceIngestion
+      .filter((resource) => resource.extractionStatus === 'extracted' && resource.extractedText)
+      .map((resource) => ({
+        title: resource.title,
+        resourceType: resource.resourceType,
+        extractedText: resource.extractedText!,
+      }))
+  )
   const existingModule = await findExistingSyncedModule(course.name, course.course_code)
   if (existingModule) {
     throw new Error(`${course.name} is already synced. Unsync it first if you want to connect it again.`)
@@ -168,6 +203,24 @@ async function syncSingleCourse(course: CanvasCourse, config: Partial<CanvasConf
   const moduleId = moduleRecord.id
 
   if (!moduleId) throw new Error('Failed to determine synced module.')
+
+  if (resourceIngestion.length > 0) {
+    const resourceRows = buildModuleResourcesForSync(resourceIngestion, {
+      moduleId,
+      courseId: courseRecord.id,
+    })
+
+    const { error: resourcesInsertError } = await supabase
+      .from('module_resources')
+      .insert(resourceRows)
+
+    if (resourcesInsertError) {
+      throw createSupabaseStepError('insert module resources', resourcesInsertError, {
+        moduleId,
+        moduleResourceCount: resourceRows.length,
+      })
+    }
+  }
 
   let aiResult
   try {
@@ -365,6 +418,32 @@ function buildLearningItemsForSync(aiResult: AIResponse, courseId: string, modul
   return items
 }
 
+function buildModuleResourcesForSync(
+  resources: ResourceIngestionRecord[],
+  context: { moduleId: string; courseId: string },
+) {
+  return resources.map((resource) => ({
+    module_id: context.moduleId,
+    course_id: context.courseId,
+    canvas_module_id: resource.canvasModuleId,
+    canvas_item_id: resource.canvasItemId,
+    canvas_file_id: resource.canvasFileId,
+    title: resource.title,
+    resource_type: resource.resourceType,
+    content_type: resource.contentType,
+    extension: resource.extension,
+    source_url: resource.sourceUrl,
+    html_url: resource.htmlUrl,
+    extraction_status: resource.extractionStatus,
+    extracted_text: resource.extractedText,
+    extracted_text_preview: resource.extractedTextPreview,
+    extracted_char_count: resource.extractedCharCount,
+    extraction_error: resource.extractionError,
+    required: resource.required,
+    metadata: resource.metadata,
+  }))
+}
+
 function buildTaskItemsForSync(
   aiResult: AIResponse,
   context: { courseId: string; moduleId: string; extractedFrom: string },
@@ -421,6 +500,108 @@ function normalizeEstimatedMinutes(estimatedMinutes: number | undefined, priorit
   if (priority === 'high') return 35
   if (priority === 'medium') return 20
   return 12
+}
+
+async function ingestModuleResources(
+  courseId: number,
+  modules: Awaited<ReturnType<typeof getModules>>,
+  config: Partial<CanvasConfig>,
+): Promise<ResourceIngestionRecord[]> {
+  const records: ResourceIngestionRecord[] = []
+
+  for (const module of modules) {
+    for (const item of module.items ?? []) {
+      const required = Boolean(item.completion_requirement)
+      const baseRecord: ResourceIngestionRecord = {
+        canvasModuleId: module.id,
+        canvasItemId: item.id ?? null,
+        canvasFileId: typeof item.content_id === 'number' ? item.content_id : null,
+        title: item.title,
+        resourceType: item.type,
+        contentType: item.content_details?.content_type ?? null,
+        extension: normalizeExtension(null, item.title),
+        sourceUrl: item.content_details?.url ?? item.url ?? null,
+        htmlUrl: item.html_url ?? item.page_url ?? null,
+        extractionStatus: 'metadata_only',
+        extractedText: null,
+        extractedTextPreview: null,
+        extractedCharCount: 0,
+        extractionError: null,
+        required,
+        metadata: {
+          canvasModuleName: module.name,
+          completionRequirementType: item.completion_requirement?.type ?? null,
+        },
+      }
+
+      if (item.type.toLowerCase() !== 'file' || typeof item.content_id !== 'number') {
+        records.push(baseRecord)
+        continue
+      }
+
+      try {
+        const file = await getCanvasFile(courseId, item.content_id, config)
+        const title = file.display_name?.trim() || file.filename?.trim() || item.title
+        const contentType = file.content_type ?? file['content-type'] ?? baseRecord.contentType
+        const extension = normalizeExtension(null, title)
+        const sourceUrl = file.url ?? baseRecord.sourceUrl
+
+        if (!sourceUrl) {
+          records.push({
+            ...baseRecord,
+            title,
+            contentType,
+            extension,
+            extractionStatus: 'failed',
+            extractionError: 'Canvas returned no downloadable URL for this file.',
+            metadata: {
+              ...baseRecord.metadata,
+              fileSize: file.size ?? null,
+              mimeClass: file.mime_class ?? null,
+            },
+          })
+          continue
+        }
+
+        const fileBuffer = await downloadCanvasBinary(sourceUrl, config)
+        const extracted = await extractCanvasFileContent({
+          buffer: fileBuffer,
+          title,
+          extension,
+          contentType,
+        })
+
+        records.push({
+          ...baseRecord,
+          canvasFileId: file.id,
+          title,
+          contentType,
+          extension,
+          sourceUrl,
+          htmlUrl: file.preview_url ?? baseRecord.htmlUrl,
+          extractionStatus: extracted.extractionStatus,
+          extractedText: extracted.extractedText,
+          extractedTextPreview: extracted.extractedTextPreview,
+          extractedCharCount: extracted.extractedCharCount,
+          extractionError: extracted.extractionError,
+          metadata: {
+            ...baseRecord.metadata,
+            fileSize: file.size ?? null,
+            mimeClass: file.mime_class ?? null,
+            fileUpdatedAt: file.updated_at ?? null,
+          },
+        })
+      } catch (error) {
+        records.push({
+          ...baseRecord,
+          extractionStatus: 'failed',
+          extractionError: error instanceof Error ? error.message : 'Unknown Canvas file ingestion error.',
+        })
+      }
+    }
+  }
+
+  return records
 }
 
 function pickCourseColorToken(courseCode: string, courseName: string): Course['colorToken'] {

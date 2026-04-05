@@ -1,10 +1,11 @@
 import { supabase } from '@/lib/supabase'
-import type { Deadline, Module, Task } from '@/lib/types'
+import type { Deadline, Module, ModuleResource, Task } from '@/lib/types'
 
 export interface ModuleWorkspaceData {
   module: Module
   tasks: Task[]
   deadlines: Deadline[]
+  resources: ModuleResource[]
 }
 
 export interface LearnSection {
@@ -17,9 +18,16 @@ export interface ModuleSourceResource {
   id: string
   title: string
   type: string
+  contentType?: string | null
+  extension?: string | null
   required: boolean
   moduleName: string | null
   category: 'assignment' | 'announcement' | 'resource'
+  extractionStatus?: ModuleResource['extractionStatus']
+  extractedText?: string | null
+  extractedTextPreview?: string | null
+  extractedCharCount?: number
+  extractionError?: string | null
 }
 
 export interface LearnAudit {
@@ -41,13 +49,17 @@ export async function getModuleWorkspace(id: string): Promise<ModuleWorkspaceDat
   const { data: module } = await supabase.from('modules').select('*').eq('id', id).single()
   if (!module) return null
 
-  const { data: tasks } = await supabase.from('tasks').select('*').eq('module_id', id).order('created_at')
-  const { data: deadlines } = await supabase.from('deadlines').select('*').eq('module_id', id).order('date')
+  const [tasksResult, deadlinesResult, resourcesResult] = await Promise.all([
+    supabase.from('tasks').select('*').eq('module_id', id).order('created_at'),
+    supabase.from('deadlines').select('*').eq('module_id', id).order('date'),
+    supabase.from('module_resources').select('*').eq('module_id', id).order('created_at'),
+  ])
 
   return {
     module,
-    tasks: (tasks ?? []) as Task[],
-    deadlines: (deadlines ?? []) as Deadline[],
+    tasks: (tasksResult.data ?? []) as Task[],
+    deadlines: (deadlinesResult.data ?? []) as Deadline[],
+    resources: (resourcesResult.data ?? []).map(adaptModuleResourceRow),
   }
 }
 
@@ -69,22 +81,27 @@ export function buildLearnSections(module: Module) {
 
 export function buildLearnExperience(
   module: Module,
-  options?: { taskCount?: number; deadlineCount?: number },
+  options?: { taskCount?: number; deadlineCount?: number; resources?: ModuleResource[] },
 ): LearnExperience {
   const cleanLines = sanitizeRawContent(module.raw_content)
   const readingBlocks = groupReadingBlocks(cleanLines)
   const parsed = parseCompiledCanvasContent(module.raw_content)
-  const resources = buildSourceResources(parsed)
+  const resources = options?.resources && options.resources.length > 0
+    ? options.resources.map(adaptStoredResourceForLearn)
+    : buildSourceResources(parsed)
   const fileResources = resources.filter((resource) => isFileBasedResourceType(resource.type))
   const conceptLines = (module.concepts ?? []).filter(Boolean).slice(0, 6)
-  const summary = module.summary?.trim() || buildSummaryFallback(parsed, resources, readingBlocks)
+  const extractedTextBlocks = resources
+    .map((resource) => resource.extractedText?.trim() ?? '')
+    .filter(Boolean)
+  const summary = module.summary?.trim() || buildSummaryFallback(parsed, resources, readingBlocks, extractedTextBlocks)
   const simplifiedExplanation = simplifySummary(summary || 'This module has been turned into a calmer study view so you can understand it before you act on it.')
   const memorizeLines = buildMemorizeLines(parsed, resources, options?.deadlineCount ?? 0)
   const studySteps = buildStudySteps(resources, options?.taskCount ?? 0, fileResources.length)
   const reviewPrompts = buildReviewPrompts(module, conceptLines, resources)
   const keyConcepts = conceptLines.length > 0
     ? conceptLines
-    : buildKeyConceptFallback(parsed, resources, readingBlocks)
+    : buildKeyConceptFallback(parsed, resources, readingBlocks, extractedTextBlocks)
   const audit = buildLearnAudit(module, resources, fileResources)
 
   return {
@@ -328,15 +345,39 @@ function buildSourceResources(parsed: ParsedCanvasContent): ModuleSourceResource
   ]
 }
 
+function adaptStoredResourceForLearn(resource: ModuleResource): ModuleSourceResource {
+  return {
+    id: resource.id,
+    title: resource.title,
+    type: resource.resourceType,
+    contentType: resource.contentType,
+    extension: resource.extension,
+    required: resource.required,
+    moduleName: typeof resource.metadata.canvasModuleName === 'string' ? resource.metadata.canvasModuleName : null,
+    category: 'resource',
+    extractionStatus: resource.extractionStatus,
+    extractedText: resource.extractedText,
+    extractedTextPreview: resource.extractedTextPreview,
+    extractedCharCount: resource.extractedCharCount,
+    extractionError: resource.extractionError,
+  }
+}
+
 function buildSummaryFallback(
   parsed: ParsedCanvasContent,
   resources: ModuleSourceResource[],
   readingBlocks: string[],
+  extractedTextBlocks: string[],
 ) {
   const fileCount = resources.filter((resource) => isFileBasedResourceType(resource.type)).length
   const assignmentCount = parsed.assignments.length
   const announcementCount = parsed.announcements.length
   const resourceCount = parsed.modules.reduce((total, module) => total + module.items.length, 0)
+  const extractedCount = resources.filter((resource) => resource.extractionStatus === 'extracted' && resource.extractedText).length
+
+  if (extractedCount > 0 && extractedTextBlocks.length > 0) {
+    return `This file-backed module now includes extracted learning text from ${extractedCount} Canvas resource${extractedCount === 1 ? '' : 's'}. ${summarizeExtractedText(extractedTextBlocks.join(' '))}`
+  }
 
   if (fileCount > 0) {
     return `This looks like a file-heavy Canvas module with ${fileCount} linked file resource${fileCount === 1 ? '' : 's'}, ${assignmentCount} assignment${assignmentCount === 1 ? '' : 's'}, and ${announcementCount} recent announcement${announcementCount === 1 ? '' : 's'}. The sync captured the file titles and surrounding task context, so this view turns them into a guided study pass even when the original PDF or slide text was not extracted.`
@@ -353,7 +394,16 @@ function buildKeyConceptFallback(
   parsed: ParsedCanvasContent,
   resources: ModuleSourceResource[],
   readingBlocks: string[],
+  extractedTextBlocks: string[],
 ) {
+  const extractedConcepts = extractedTextBlocks
+    .flatMap((block) => block.split(/(?<=[.!?])\s+/))
+    .map((line) => line.trim())
+    .filter((line) => line.length >= 40)
+    .slice(0, 4)
+
+  if (extractedConcepts.length > 0) return extractedConcepts
+
   const concepts = [
     ...parsed.modules.map((moduleGroup) => `${moduleGroup.name}: ${moduleGroup.items.slice(0, 2).map((item) => item.title).join(', ')}`),
     ...resources.filter((resource) => resource.category === 'assignment').slice(0, 2).map((resource) => `Assignment focus: ${resource.title}`),
@@ -377,10 +427,15 @@ function buildMemorizeLines(
     .filter((resource) => resource.required)
     .slice(0, 4)
     .map((resource) => `${resource.title}${resource.moduleName ? ` in ${resource.moduleName}` : ''}`)
+  const extractedResources = resources
+    .filter((resource) => resource.extractionStatus === 'extracted' && resource.extractedTextPreview)
+    .slice(0, 2)
+    .map((resource) => `From ${resource.title}: ${resource.extractedTextPreview}`)
 
   const lines = [
     ...dueLines,
     ...requiredResources.map((resource) => `Required resource: ${resource}`),
+    ...extractedResources,
   ]
 
   if (deadlineCount > 0 && lines.length === 0) {
@@ -396,11 +451,14 @@ function buildMemorizeLines(
 
 function buildStudySteps(resources: ModuleSourceResource[], taskCount: number, fileResourceCount: number) {
   const firstFile = resources.find((resource) => isFileBasedResourceType(resource.type))
+  const firstExtractedFile = resources.find((resource) => resource.extractionStatus === 'extracted' && resource.extractedText)
   const firstAssignment = resources.find((resource) => resource.category === 'assignment')
 
   const steps = [
-    fileResourceCount > 0
-      ? `Start with the file-based resources first${firstFile ? `, beginning with "${firstFile.title}"` : ''}, and turn each file title into a short note about what it probably covers.`
+    firstExtractedFile
+      ? `Start with the extracted file content from "${firstExtractedFile.title}" and turn the opening section into a 3-sentence note in your own words.`
+      : fileResourceCount > 0
+        ? `Start with the file-based resources first${firstFile ? `, beginning with "${firstFile.title}"` : ''}, and turn each file title into a short note about what it probably covers.`
       : 'Start with the summary and key concepts so the module has a clear shape before you dive into details.',
     resources.length > 0
       ? 'Move through the resource list in order and write one sentence per item about what it seems to contribute.'
@@ -430,24 +488,72 @@ function buildReviewPrompts(module: Module, conceptLines: string[], resources: M
 
 function buildLearnAudit(module: Module, resources: ModuleSourceResource[], fileResources: ModuleSourceResource[]): LearnAudit {
   const hasFileBasedResources = fileResources.length > 0
+  const extractedFileResources = fileResources.filter((resource) => resource.extractionStatus === 'extracted' && resource.extractedText)
   const hasStructuredExtraction = Boolean(module.summary?.trim()) || (module.concepts?.length ?? 0) > 0 || (module.study_prompts?.length ?? 0) > 0
-  const missingFileExtraction = hasFileBasedResources && !hasStructuredExtraction
+  const missingFileExtraction = hasFileBasedResources && extractedFileResources.length === 0 && !hasStructuredExtraction
 
   return {
     hasFileBasedResources,
     fileResourceCount: fileResources.length,
     missingFileExtraction,
-    note: missingFileExtraction
-      ? `This module includes ${fileResources.length} file-based Canvas resource${fileResources.length === 1 ? '' : 's'}, but the current sync only captured their titles and types, not the actual PDF or slide text.`
-      : hasFileBasedResources
-        ? `This module includes ${fileResources.length} file-based Canvas resource${fileResources.length === 1 ? '' : 's'}. The current Learn view is combining extracted summary data with the file/resource map that was available.`
-        : resources.length === 0
-          ? 'This module has very little structured source material in the current sync, so Learn is falling back to the available module text.'
-          : null,
+    note: extractedFileResources.length > 0
+      ? `This module includes ${fileResources.length} file-based Canvas resource${fileResources.length === 1 ? '' : 's'}, and ${extractedFileResources.length} of them produced usable learning text for Learn.`
+      : missingFileExtraction
+        ? `This module includes ${fileResources.length} file-based Canvas resource${fileResources.length === 1 ? '' : 's'}, but the current sync only captured their titles and types, not the actual PDF or slide text.`
+        : hasFileBasedResources
+          ? `This module includes ${fileResources.length} file-based Canvas resource${fileResources.length === 1 ? '' : 's'}. The current Learn view is combining extracted summary data with the file/resource map that was available.`
+          : resources.length === 0
+            ? 'This module has very little structured source material in the current sync, so Learn is falling back to the available module text.'
+            : null,
   }
 }
 
 function isFileBasedResourceType(type: string) {
   const normalized = type.toLowerCase()
   return normalized === 'file' || normalized === 'document' || normalized === 'pdf' || normalized === 'ppt' || normalized === 'pptx'
+}
+
+function summarizeExtractedText(text: string) {
+  const sentences = text.split(/(?<=[.!?])\s+/).map((part) => part.trim()).filter(Boolean)
+  return sentences.slice(0, 2).join(' ')
+}
+
+function adaptModuleResourceRow(row: Record<string, unknown>): ModuleResource {
+  return {
+    id: String(row.id ?? ''),
+    moduleId: String(row.module_id ?? ''),
+    courseId: typeof row.course_id === 'string' ? row.course_id : null,
+    canvasModuleId: typeof row.canvas_module_id === 'number' ? row.canvas_module_id : null,
+    canvasItemId: typeof row.canvas_item_id === 'number' ? row.canvas_item_id : null,
+    canvasFileId: typeof row.canvas_file_id === 'number' ? row.canvas_file_id : null,
+    title: typeof row.title === 'string' ? row.title : 'Resource',
+    resourceType: typeof row.resource_type === 'string' ? row.resource_type : 'Resource',
+    contentType: typeof row.content_type === 'string' ? row.content_type : null,
+    extension: typeof row.extension === 'string' ? row.extension : null,
+    sourceUrl: typeof row.source_url === 'string' ? row.source_url : null,
+    htmlUrl: typeof row.html_url === 'string' ? row.html_url : null,
+    extractionStatus: normalizeExtractionStatus(row.extraction_status),
+    extractedText: typeof row.extracted_text === 'string' ? row.extracted_text : null,
+    extractedTextPreview: typeof row.extracted_text_preview === 'string' ? row.extracted_text_preview : null,
+    extractedCharCount: typeof row.extracted_char_count === 'number' ? row.extracted_char_count : 0,
+    extractionError: typeof row.extraction_error === 'string' ? row.extraction_error : null,
+    required: Boolean(row.required),
+    metadata: isPlainRecord(row.metadata) ? row.metadata : {},
+    created_at: typeof row.created_at === 'string' ? row.created_at : new Date().toISOString(),
+  }
+}
+
+function normalizeExtractionStatus(value: unknown): ModuleResource['extractionStatus'] {
+  return value === 'pending'
+    || value === 'extracted'
+    || value === 'metadata_only'
+    || value === 'unsupported'
+    || value === 'empty'
+    || value === 'failed'
+    ? value
+    : 'metadata_only'
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }

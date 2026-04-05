@@ -54,6 +54,18 @@ export interface CanvasModuleItem {
   id: number
   title: string
   type: string
+  content_id?: number | null
+  url?: string | null
+  html_url?: string | null
+  page_url?: string | null
+  content_details?: {
+    url?: string | null
+    display_name?: string | null
+    content_type?: string | null
+    mime_class?: string | null
+    size?: number | null
+    locked_for_user?: boolean | null
+  } | null
   completion_requirement?: { type: string } | null
 }
 
@@ -61,6 +73,19 @@ export interface CanvasModule {
   id: number
   name: string
   items: CanvasModuleItem[]
+}
+
+export interface CanvasFile {
+  id: number
+  display_name?: string | null
+  filename?: string | null
+  url?: string | null
+  preview_url?: string | null
+  mime_class?: string | null
+  'content-type'?: string | null
+  content_type?: string | null
+  size?: number | null
+  updated_at?: string | null
 }
 
 function resolveCanvasConfig(override?: Partial<CanvasConfig>): CanvasConfig {
@@ -124,6 +149,39 @@ async function canvasFetch<T>(path: string, configOverride?: Partial<CanvasConfi
   return res.json()
 }
 
+async function canvasFetchAbsolute<T>(url: string, configOverride?: Partial<CanvasConfig>): Promise<T> {
+  const config = resolveCanvasConfig(configOverride)
+  const res = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${config.token}`,
+      'Content-Type': 'application/json',
+    },
+    next: { revalidate: 0 },
+  })
+
+  if (!res.ok) {
+    throw new Error(`Canvas returned an unexpected error (${res.status}) while fetching a resource.`)
+  }
+
+  return res.json()
+}
+
+export async function downloadCanvasBinary(url: string, configOverride?: Partial<CanvasConfig>): Promise<Buffer> {
+  const config = resolveCanvasConfig(configOverride)
+  const res = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${config.token}`,
+    },
+    next: { revalidate: 0 },
+  })
+
+  if (!res.ok) {
+    throw new Error(`Canvas returned an unexpected error (${res.status}) while downloading a file.`)
+  }
+
+  return Buffer.from(await res.arrayBuffer())
+}
+
 export async function getCourses(configOverride?: Partial<CanvasConfig>): Promise<CanvasCourse[]> {
   const courses = await canvasFetch<CanvasCourse[]>(
     '/courses?enrollment_state=active&enrollment_type=student&state[]=available&include[]=term',
@@ -158,7 +216,11 @@ export async function getAnnouncements(courseId: number, configOverride?: Partia
 }
 
 export async function getModules(courseId: number, configOverride?: Partial<CanvasConfig>): Promise<CanvasModule[]> {
-  return canvasFetch<CanvasModule[]>(`/courses/${courseId}/modules?include[]=items`, configOverride)
+  return canvasFetch<CanvasModule[]>(`/courses/${courseId}/modules?include[]=items&include[]=content_details`, configOverride)
+}
+
+export async function getCanvasFile(courseId: number, fileId: number, configOverride?: Partial<CanvasConfig>): Promise<CanvasFile> {
+  return canvasFetchAbsolute<CanvasFile>(`${resolveCanvasConfig(configOverride).url}/api/v1/courses/${courseId}/files/${fileId}`, configOverride)
 }
 
 function stripHtml(html: string): string {
@@ -187,7 +249,8 @@ export function compileCanvasContent(
   course: CanvasCourse,
   assignments: CanvasAssignment[],
   announcements: CanvasAnnouncement[],
-  modules: CanvasModule[]
+  modules: CanvasModule[],
+  resourceExtracts: Array<{ title: string; resourceType: string; extractedText: string }> = [],
 ): string {
   const lines: string[] = []
 
@@ -228,6 +291,25 @@ export function compileCanvasContent(
           lines.push(`  * ${item.title} (${item.type})${required}`)
         }
       }
+    }
+  }
+
+  const usableExtracts = resourceExtracts.filter((resource) => resource.extractedText.trim().length > 0)
+  if (usableExtracts.length > 0) {
+    lines.push('')
+    lines.push('RESOURCE EXTRACTS:')
+    let totalChars = 0
+
+    for (const resource of usableExtracts) {
+      const remaining = 18000 - totalChars
+      if (remaining <= 0) break
+
+      const excerpt = resource.extractedText.slice(0, Math.min(remaining, 3200)).trim()
+      if (!excerpt) continue
+
+      lines.push(`- ${resource.title} (${resource.resourceType})`)
+      lines.push(`  ${excerpt}`)
+      totalChars += excerpt.length
     }
   }
 

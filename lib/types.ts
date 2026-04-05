@@ -1,6 +1,7 @@
 export type ModuleStatus = 'pending' | 'processed' | 'error'
 export type TaskStatus = 'pending' | 'completed'
 export type Priority = 'high' | 'medium' | 'low'
+export type ModuleResourceExtractionStatus = 'pending' | 'extracted' | 'metadata_only' | 'unsupported' | 'empty' | 'failed'
 
 export interface Course {
   id: string
@@ -26,6 +27,29 @@ export interface Module {
   released_at?: string
   estimated_minutes?: number
   priority_signal?: Priority
+  created_at: string
+}
+
+export interface ModuleResource {
+  id: string
+  moduleId: string
+  courseId: string | null
+  canvasModuleId: number | null
+  canvasItemId: number | null
+  canvasFileId: number | null
+  title: string
+  resourceType: string
+  contentType: string | null
+  extension: string | null
+  sourceUrl: string | null
+  htmlUrl: string | null
+  extractionStatus: ModuleResourceExtractionStatus
+  extractedText: string | null
+  extractedTextPreview: string | null
+  extractedCharCount: number
+  extractionError: string | null
+  required: boolean
+  metadata: Record<string, unknown>
   created_at: string
 }
 

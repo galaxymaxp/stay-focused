@@ -20,6 +20,7 @@ Rules:
 - Keep the summary to 2-3 sentences maximum.
 - The title should be 8 words or fewer.
 - recommended_order should list task titles in the suggested completion order.
+- If the content includes resource extracts from PDFs or slide decks, use that material to improve the summary, concepts, and study prompts.
 
 Return this exact shape:
 {

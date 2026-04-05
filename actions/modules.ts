@@ -30,6 +30,13 @@ export async function deleteModule(moduleId: string) {
 
   if (taskItemsError) throw createSupabaseDeleteError('delete synced task items', taskItemsError, { moduleId })
 
+  const { error: moduleResourcesError } = await supabase
+    .from('module_resources')
+    .delete()
+    .eq('module_id', moduleId)
+
+  if (moduleResourcesError) throw createSupabaseDeleteError('delete synced module resources', moduleResourcesError, { moduleId })
+
   const { error } = await supabase
     .from('modules')
     .delete()

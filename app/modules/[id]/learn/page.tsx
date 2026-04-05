@@ -11,9 +11,13 @@ export default async function LearnPage({ params }: Props) {
   const workspace = await getModuleWorkspace(id)
   if (!workspace) notFound()
 
-  const { module, tasks, deadlines } = workspace
+  const { module, tasks, deadlines, resources: storedResources } = workspace
   const courseName = extractCourseName(module.raw_content)
-  const experience = buildLearnExperience(module, { taskCount: tasks.length, deadlineCount: deadlines.length })
+  const experience = buildLearnExperience(module, {
+    taskCount: tasks.length,
+    deadlineCount: deadlines.length,
+    resources: storedResources,
+  })
   const { sections, resources, audit } = experience
 
   if (module.status === 'error') {
@@ -71,6 +75,9 @@ export default async function LearnPage({ params }: Props) {
                   <article key={resource.id} style={{ padding: '0.85rem', borderRadius: 'var(--radius-tight)', border: '1px solid var(--border-subtle)', background: 'color-mix(in srgb, var(--surface-elevated) 94%, transparent)' }}>
                     <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', marginBottom: '0.45rem' }}>
                       <span className="ui-chip ui-chip-soft">{resource.type}</span>
+                      {resource.extractionStatus && (
+                        <span className="ui-chip ui-chip-soft">{labelForExtractionStatus(resource.extractionStatus)}</span>
+                      )}
                       {resource.required && (
                         <span className="ui-chip ui-status-warning" style={{ padding: '0.28rem 0.6rem', fontSize: '11px', fontWeight: 700 }}>Required</span>
                       )}
@@ -78,6 +85,16 @@ export default async function LearnPage({ params }: Props) {
                     <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.5, color: 'var(--text-primary)', fontWeight: 600 }}>{resource.title}</p>
                     {resource.moduleName && (
                       <p style={{ margin: '0.3rem 0 0', fontSize: '12px', lineHeight: 1.5, color: 'var(--text-muted)' }}>{resource.moduleName}</p>
+                    )}
+                    {resource.extractedTextPreview && (
+                      <p style={{ margin: '0.55rem 0 0', fontSize: '12px', lineHeight: 1.6, color: 'var(--text-secondary)' }}>
+                        {resource.extractedTextPreview}
+                      </p>
+                    )}
+                    {resource.extractionError && (
+                      <p style={{ margin: '0.55rem 0 0', fontSize: '12px', lineHeight: 1.6, color: 'var(--red)' }}>
+                        {resource.extractionError}
+                      </p>
                     )}
                   </article>
                 ))}
@@ -121,4 +138,13 @@ export default async function LearnPage({ params }: Props) {
       </div>
     </ModuleLensShell>
   )
+}
+
+function labelForExtractionStatus(status: 'pending' | 'extracted' | 'metadata_only' | 'unsupported' | 'empty' | 'failed') {
+  if (status === 'extracted') return 'Text extracted'
+  if (status === 'unsupported') return 'Unsupported'
+  if (status === 'failed') return 'Extraction failed'
+  if (status === 'empty') return 'No text found'
+  if (status === 'pending') return 'Pending'
+  return 'Metadata only'
 }
