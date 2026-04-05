@@ -7,7 +7,7 @@ export default async function CoursesPage() {
 
   return (
     <main className="page-shell page-stack">
-      <header style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+      <header className="motion-card" style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
         <div>
           <p className="ui-kicker">Courses</p>
           <h1 className="ui-page-title">Where each class stands right now</h1>
@@ -42,7 +42,7 @@ export default async function CoursesPage() {
           const courseHref = bestLearnModule ? `/modules/${bestLearnModule.id}/learn` : '/learn'
 
           return (
-            <section key={course.id} className="section-shell section-shell-elevated" style={{ padding: '1.2rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <section key={course.id} className="motion-card motion-delay-1 section-shell section-shell-elevated" style={{ padding: '1.2rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
                 <div>
                   <p className="ui-kicker">{course.code}</p>

@@ -37,9 +37,11 @@ export function LearnResourceCard({
               <span className="ui-chip ui-status-warning" style={{ padding: '0.28rem 0.6rem', fontSize: '11px', fontWeight: 700 }}>Required</span>
             )}
           </div>
-          <h3 style={{ margin: 0, fontSize: compact ? '17px' : '19px', lineHeight: 1.25, fontWeight: 650, color: 'var(--text-primary)' }}>
-            {unit.resource.title}
-          </h3>
+          <Link href={deepHref} style={{ textDecoration: 'none' }}>
+            <h3 style={{ margin: 0, fontSize: compact ? '17px' : '19px', lineHeight: 1.25, fontWeight: 650, color: 'var(--text-primary)' }}>
+              {unit.resource.title}
+            </h3>
+          </Link>
           <p style={{ margin: '0.4rem 0 0', fontSize: '13px', lineHeight: 1.6, color: 'var(--text-muted)' }}>
             {buildContextLine(unit)}
           </p>
@@ -56,15 +58,17 @@ export function LearnResourceCard({
         </div>
       </div>
 
-      <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: compact ? '0.85rem' : '0.9rem' }}>
-        <p className="ui-kicker">{unit.grounding.hasGroundedAnalysis ? 'Resource Preview' : 'Grounding Note'}</p>
-        <p style={{ margin: '0.55rem 0 0', fontSize: '14px', lineHeight: 1.7, color: 'var(--text-secondary)' }}>{unit.preview}</p>
-        {unit.grounding.evidenceSnippet && (
-          <p style={{ margin: '0.55rem 0 0', fontSize: '12px', lineHeight: 1.6, color: 'var(--text-muted)' }}>
-            Evidence: {unit.grounding.evidenceSnippet}
-          </p>
-        )}
-      </div>
+      <Link href={deepHref} style={{ textDecoration: 'none' }}>
+        <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: compact ? '0.85rem' : '0.9rem' }}>
+          <p className="ui-kicker">{unit.grounding.hasGroundedAnalysis ? 'Resource Preview' : 'Grounding Note'}</p>
+          <p style={{ margin: '0.55rem 0 0', fontSize: '14px', lineHeight: 1.7, color: 'var(--text-secondary)' }}>{unit.preview}</p>
+          {unit.grounding.evidenceSnippet && (
+            <p style={{ margin: '0.55rem 0 0', fontSize: '12px', lineHeight: 1.6, color: 'var(--text-muted)' }}>
+              Evidence: {unit.grounding.evidenceSnippet}
+            </p>
+          )}
+        </div>
+      </Link>
 
       {unit.resource.whyItMatters && (
         <div className="ui-card" style={{ borderRadius: 'var(--radius-tight)', padding: '0.85rem 0.9rem' }}>

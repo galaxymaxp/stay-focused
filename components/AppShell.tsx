@@ -123,7 +123,6 @@ export function AppShell({ children }: { children: ReactNode }) {
             <strong>Stay with the next thing</strong>
             <p>Built to reduce Canvas clutter and keep your coursework readable when your energy is low.</p>
           </div>
-          <CanvasMenu />
         </div>
       </aside>
 
@@ -134,9 +133,6 @@ export function AppShell({ children }: { children: ReactNode }) {
             <span>Clear modules, clear tasks, less noise.</span>
           </div>
           <div className="app-topbar-actions">
-            <Link href="/settings" className="ui-button ui-button-secondary ui-button-sm" style={{ textDecoration: 'none' }}>
-              Settings
-            </Link>
             <CanvasMenu />
           </div>
         </header>

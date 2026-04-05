@@ -44,7 +44,7 @@ export default async function DoPage({ params }: Props) {
       summary={module.summary}
     >
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1rem', alignItems: 'start' }}>
-        <section className="section-shell section-shell-elevated" style={{ padding: '1.25rem' }}>
+        <section className="motion-card motion-delay-1 section-shell section-shell-elevated" style={{ padding: '1.25rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap', marginBottom: '1rem' }}>
             <div>
               <p className="ui-kicker">
@@ -169,7 +169,7 @@ export default async function DoPage({ params }: Props) {
 
         <aside style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           {module.recommended_order && module.recommended_order.length > 0 && (
-            <section className="section-shell" style={{ padding: '1.15rem' }}>
+            <section className="motion-card motion-delay-2 section-shell" style={{ padding: '1.15rem' }}>
               <p className="ui-kicker">
                 Suggested order
               </p>
@@ -191,7 +191,7 @@ export default async function DoPage({ params }: Props) {
             </section>
           )}
 
-          <section className="section-shell" style={{ padding: '1.15rem' }}>
+          <section className="motion-card motion-delay-2 section-shell" style={{ padding: '1.15rem' }}>
             <p className="ui-kicker">
               Deadlines
             </p>

@@ -8,7 +8,7 @@ export default async function LearnPage() {
 
   return (
     <main className="page-shell page-stack">
-      <header>
+      <header className="motion-card">
         <p className="ui-kicker">Learn</p>
         <h1 className="ui-page-title">Understanding output, organized by course and module</h1>
         <p className="ui-page-copy">
@@ -22,7 +22,7 @@ export default async function LearnPage() {
           if (modules.length === 0) return null
 
           return (
-            <section key={course.id} className="section-shell section-shell-elevated" style={{ padding: '1.25rem' }}>
+            <section key={course.id} className="motion-card motion-delay-1 section-shell section-shell-elevated" style={{ padding: '1.25rem' }}>
               <div style={{ marginBottom: '1rem' }}>
                 <p className="ui-kicker">{course.code}</p>
                 <h2 className="ui-section-title" style={{ marginTop: '0.45rem' }}>{course.name}</h2>
@@ -33,11 +33,11 @@ export default async function LearnPage() {
                 {modules.map((module) => {
                   const taskCount = getModuleTasks(workspace, module.id).filter((task) => task.status !== 'completed').length
                   const experience = buildLearnExperience(module, { taskCount })
-                  const topLearnUnits = experience.learnUnits.slice(0, 2)
+                  const topLearnUnits = experience.learnUnits.slice(0, 4)
                   const suggestedSteps = findRecommendedStepTargets(module, experience, [])
 
                   return (
-                    <article key={module.id} id={module.id} className="glass-panel glass-hover" style={{
+                    <article key={module.id} id={module.id} className="motion-subsection glass-panel glass-hover" style={{
                       ['--glass-panel-bg' as string]: 'var(--glass-surface-strong)',
                       ['--glass-panel-border' as string]: 'var(--glass-border)',
                       ['--glass-panel-shadow' as string]: 'var(--glass-shadow)',

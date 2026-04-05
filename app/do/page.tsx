@@ -32,7 +32,7 @@ export default async function DoPage() {
 
   return (
     <main className="page-shell page-stack">
-      <header>
+      <header className="motion-card">
         <p className="ui-kicker">Do</p>
         <h1 className="ui-page-title">Actionable work, grouped by urgency and status</h1>
         <p className="ui-page-copy">
@@ -45,7 +45,7 @@ export default async function DoPage() {
           const items = workspace.taskItems.filter(group.filter)
 
           return (
-            <section key={group.key} className="section-shell section-shell-elevated" style={{ padding: '1.2rem' }}>
+            <section key={group.key} className="motion-card motion-delay-1 section-shell section-shell-elevated" style={{ padding: '1.2rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
                 <div>
                   <p className="ui-kicker">{group.key}</p>
@@ -121,7 +121,7 @@ export default async function DoPage() {
         })}
       </div>
 
-      <section className="section-shell" style={{ padding: '1.2rem' }}>
+      <section className="motion-card motion-delay-2 section-shell" style={{ padding: '1.2rem' }}>
         <details>
           <summary style={{
             cursor: 'pointer',

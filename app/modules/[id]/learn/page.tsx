@@ -43,7 +43,7 @@ export default async function LearnPage({ params }: Props) {
       summary={module.summary}
     >
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '1rem' }}>
-        <section className="section-shell section-shell-elevated" style={{ padding: '1.35rem 1.45rem' }}>
+        <section className="motion-card motion-delay-1 section-shell section-shell-elevated" style={{ padding: '1.35rem 1.45rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.85rem', alignItems: 'flex-start', flexWrap: 'wrap', marginBottom: '1rem' }}>
             <div>
               <p className="ui-kicker">Learn-first resources</p>
@@ -83,7 +83,7 @@ export default async function LearnPage({ params }: Props) {
         </section>
 
         {suggestedSteps.length > 0 && (
-          <section className="section-shell" style={{ padding: '1.2rem 1.3rem' }}>
+          <section className="motion-card motion-delay-2 section-shell" style={{ padding: '1.2rem 1.3rem' }}>
             <p className="ui-kicker">Suggested order</p>
             <p className="ui-section-copy" style={{ marginTop: '0.45rem' }}>
               Each step opens the most relevant resource or action surface instead of staying as passive text.
@@ -120,7 +120,7 @@ export default async function LearnPage({ params }: Props) {
           </section>
         )}
 
-        <section className="section-shell" style={{ padding: '1.35rem 1.45rem' }}>
+        <section className="motion-card motion-delay-2 section-shell" style={{ padding: '1.35rem 1.45rem' }}>
           <div className="ui-meta-list" style={{ marginBottom: '1rem' }}>
             <span><strong>Tasks:</strong> {tasks.length} tied to this module</span>
             <span><strong>Deadlines:</strong> {deadlines.length} referenced</span>

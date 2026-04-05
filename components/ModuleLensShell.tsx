@@ -18,7 +18,7 @@ export function ModuleLensShell({
 }) {
   return (
     <main className={currentLens === 'learn' ? 'page-shell page-shell-narrow page-stack' : 'page-shell page-stack'} style={{ gap: '1.4rem' }}>
-      <section className={`section-shell ${currentLens === 'learn' ? '' : 'section-shell-elevated'}`} style={{ padding: currentLens === 'learn' ? '1.3rem 1.35rem' : '1.35rem 1.4rem' }}>
+      <section className={`motion-card section-shell ${currentLens === 'learn' ? '' : 'section-shell-elevated'}`} style={{ padding: currentLens === 'learn' ? '1.3rem 1.35rem' : '1.35rem 1.4rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
           <div style={{ minWidth: 0, flex: '1 1 520px' }}>
             <p className="ui-kicker">

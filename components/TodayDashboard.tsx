@@ -19,7 +19,7 @@ export function TodayDashboard({
 }) {
   return (
     <section className="page-stack" style={{ gap: '1.25rem' }}>
-      <header style={{ display: 'flex', flexDirection: 'column', gap: '0.7rem' }}>
+      <header className="motion-card" style={{ display: 'flex', flexDirection: 'column', gap: '0.7rem' }}>
         <div>
           <p className="ui-kicker">Today</p>
           <h1 className="ui-page-title">What should I do right now?</h1>
@@ -38,7 +38,7 @@ export function TodayDashboard({
       {nextBestMove ? (
         <FocusHeroCard item={nextBestMove} />
       ) : (
-        <section className="section-shell section-shell-elevated" style={{ textAlign: 'center', padding: '3.2rem 1.5rem' }}>
+        <section className="motion-card motion-delay-1 section-shell section-shell-elevated" style={{ textAlign: 'center', padding: '3.2rem 1.5rem' }}>
           <p className="ui-kicker">Best next step</p>
           <h2 style={{ margin: '0.5rem 0 0', fontSize: '26px', lineHeight: 1.15, fontWeight: 650, letterSpacing: '-0.03em' }}>You are clear for now</h2>
           <p style={{ margin: '0.85rem auto 0', maxWidth: '38rem', fontSize: '15px', lineHeight: 1.7, color: 'var(--text-secondary)' }}>
@@ -145,7 +145,7 @@ function SectionBlock({
   actionLabel?: string
 }) {
   return (
-    <section className="section-shell section-shell-elevated">
+    <section className="motion-card motion-delay-1 section-shell section-shell-elevated">
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start', flexWrap: 'wrap', marginBottom: '1rem' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
           <p className="ui-kicker">{eyebrow}</p>

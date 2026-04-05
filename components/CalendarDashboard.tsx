@@ -61,7 +61,7 @@ export function CalendarDashboard({ items, undatedTaskCount }: { items: Calendar
 
   return (
     <section className="page-stack" style={{ gap: '1rem' }}>
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem', flexWrap: 'wrap' }}>
+      <header className="motion-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem', flexWrap: 'wrap' }}>
         <div>
           <p style={{ margin: 0, fontSize: '11px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
             Calendar
@@ -79,7 +79,7 @@ export function CalendarDashboard({ items, undatedTaskCount }: { items: Calendar
       </header>
 
       {undatedTaskCount > 0 && (
-        <div className="glass-panel glass-soft ui-empty" style={{
+        <div className="motion-card motion-delay-1 glass-panel glass-soft ui-empty" style={{
           borderRadius: 'var(--radius-panel)',
           padding: '0.75rem 0.9rem',
           fontSize: '13px',
@@ -90,7 +90,7 @@ export function CalendarDashboard({ items, undatedTaskCount }: { items: Calendar
       )}
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'flex-start' }}>
-        <section className="glass-panel glass-strong ui-data-panel" style={{ borderRadius: 'var(--radius-page)', overflow: 'hidden', flex: '2 1 640px', minWidth: '0' }}>
+        <section className="motion-card motion-delay-1 glass-panel glass-strong ui-data-panel" style={{ borderRadius: 'var(--radius-page)', overflow: 'hidden', flex: '2 1 640px', minWidth: '0' }}>
           <div className="ui-data-header" style={{
             display: 'flex',
             justifyContent: 'space-between',
@@ -195,7 +195,7 @@ export function CalendarDashboard({ items, undatedTaskCount }: { items: Calendar
           </div>
         </section>
 
-        <aside className="glass-panel glass-strong ui-data-panel" style={{ borderRadius: 'var(--radius-page)', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.9rem', flex: '1 1 320px', minWidth: '280px' }}>
+        <aside className="motion-card motion-delay-2 glass-panel glass-strong ui-data-panel" style={{ borderRadius: 'var(--radius-page)', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.9rem', flex: '1 1 320px', minWidth: '280px' }}>
           <div style={{ paddingBottom: '0.85rem', borderBottom: '1px solid color-mix(in srgb, var(--border-subtle) 88%, transparent)' }}>
             <h2 style={{ margin: 0, fontSize: '20px', lineHeight: 1.2, fontWeight: 650, letterSpacing: '-0.02em', color: 'var(--text-primary)' }}>
               {formatSelectedDayLabel(selectedDateKey)}

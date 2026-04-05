@@ -45,7 +45,7 @@ export default async function ResourceDetailPage({ params }: Props) {
       title={module.title}
       summary={module.summary}
     >
-      <section className="section-shell section-shell-elevated" style={{ padding: '1.35rem 1.45rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      <section className="motion-card motion-delay-1 section-shell section-shell-elevated" style={{ padding: '1.35rem 1.45rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
           <div style={{ minWidth: 0, flex: '1 1 480px' }}>
             <p className="ui-kicker">Resource deep view</p>
