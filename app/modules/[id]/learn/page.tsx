@@ -1,10 +1,9 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
-import { LearnResourceCard } from '@/components/LearnResourceCard'
 import { ModuleLearnVisibilityToggle } from '@/components/ModuleLearnVisibilityToggle'
 import { ModuleLensShell } from '@/components/ModuleLensShell'
-import { buildLearnExperience, extractCourseName, findRecommendedStepTargets, getLearnResourceHref, getModuleWorkspace, getResourceCanvasHref } from '@/lib/module-workspace'
-import { labelForExtractionStatus } from '@/lib/study-file-reader'
+import { buildModuleLearnOverview, type ModuleSuggestedStudyStep } from '@/lib/module-learn-overview'
+import { buildLearnExperience, extractCourseName, getLearnResourceHref, getModuleWorkspace, getResourceCanvasHref, type ModuleSourceResource } from '@/lib/module-workspace'
 
 interface Props {
   params: Promise<{ id: string }>
@@ -15,15 +14,21 @@ export default async function LearnPage({ params }: Props) {
   const workspace = await getModuleWorkspace(id)
   if (!workspace) notFound()
 
-  const { module, tasks, deadlines, resources: storedResources } = workspace
+  const { module, tasks, resources: storedResources } = workspace
+  const deadlineCount = workspace.deadlines.length
   const courseName = extractCourseName(module.raw_content)
   const experience = buildLearnExperience(module, {
     taskCount: tasks.length,
-    deadlineCount: deadlines.length,
+    deadlineCount,
     resources: storedResources,
   })
-  const { sections, resources, learnUnits, doItems, supportItems, audit } = experience
-  const suggestedSteps = findRecommendedStepTargets(module, experience, tasks)
+  const { resources, doItems } = experience
+  const overview = buildModuleLearnOverview({
+    moduleId: module.id,
+    resources,
+    doItems,
+    tasks,
+  })
 
   if (module.status === 'error') {
     return (
@@ -41,20 +46,21 @@ export default async function LearnPage({ params }: Props) {
       moduleId={module.id}
       courseName={courseName}
       title={module.title}
-      summary={module.summary}
+      summary={null}
     >
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '1rem' }}>
         <section className="motion-card motion-delay-1 section-shell section-shell-elevated" style={{ padding: '1.35rem 1.45rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.85rem', alignItems: 'flex-start', flexWrap: 'wrap', marginBottom: '1rem' }}>
-            <div>
-              <p className="ui-kicker">Learn-first resources</p>
-              <h2 className="ui-section-title" style={{ marginTop: '0.45rem' }}>Attachment-backed study units</h2>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.9rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+            <div style={{ minWidth: 0, flex: '1 1 420px' }}>
+              <p className="ui-kicker">Module study overview</p>
+              <h2 className="ui-section-title" style={{ marginTop: '0.45rem' }}>What to focus on here</h2>
               <p className="ui-section-copy" style={{ marginTop: '0.45rem' }}>
-                PDFs, slide decks, extracted files, practice links, and reference materials are surfaced first so Learn behaves more like your actual Canvas study flow.
+                Learn is grounding this module view in readable study files first, then keeping the action pass clearly separate.
               </p>
             </div>
             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-              <span className="ui-chip ui-chip-soft">{learnUnits.length} study unit{learnUnits.length === 1 ? '' : 's'}</span>
+              <span className="ui-chip ui-chip-soft">{overview.totalStudyFileCount} study file{overview.totalStudyFileCount === 1 ? '' : 's'}</span>
+              <span className="ui-chip ui-chip-soft">{overview.actionItems.length} action item{overview.actionItems.length === 1 ? '' : 's'}</span>
               {module.showInLearn === false && (
                 <span className="ui-chip ui-chip-soft">Hidden from global Learn</span>
               )}
@@ -63,240 +69,338 @@ export default async function LearnPage({ params }: Props) {
           </div>
 
           {module.showInLearn === false && (
-            <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.9rem 1rem', marginBottom: '1rem' }}>
+            <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.9rem 1rem', marginTop: '0.95rem' }}>
               <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.6, color: 'var(--text-secondary)' }}>
-                This module is hidden from global Learn and Learn-focused recommendation surfaces, but it still stays available here, in Courses, and through normal module navigation.
+                This module is hidden from global Learn and recommendation surfaces, but it still stays available here and through normal module navigation.
               </p>
             </div>
           )}
 
-          {learnUnits.length === 0 ? (
-            <div className="ui-empty" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', fontSize: '14px', lineHeight: 1.65 }}>
-              No Learn-first resources were classified for this module yet, so Learn is falling back to the module overview below.
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.25fr) minmax(280px, 0.95fr)', gap: '0.9rem', marginTop: '1rem' }}>
+            <div className="glass-panel" style={{
+              ['--glass-panel-bg' as string]: 'var(--glass-surface-strong)',
+              ['--glass-panel-border' as string]: 'var(--glass-border)',
+              ['--glass-panel-shadow' as string]: 'var(--glass-shadow)',
+              borderRadius: 'var(--radius-panel)',
+              padding: '1rem 1.05rem',
+            }}>
+              <p className="ui-kicker">{overview.summary ? 'Grounded module summary' : 'Honest coverage state'}</p>
+              <p className="ui-reading-copy" style={{ margin: '0.55rem 0 0', fontSize: '15px', lineHeight: 1.8, color: 'var(--text-secondary)' }}>
+                {overview.summary ?? overview.summaryStateMessage}
+              </p>
             </div>
+
+            <div className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem 1.05rem', display: 'grid', gap: '0.8rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '0.7rem' }}>
+                <StudyStatCard label="Study files" value={String(overview.totalStudyFileCount)} />
+                <StudyStatCard label="Ready in Learn" value={String(overview.readyStudyFileCount)} />
+                <StudyStatCard label="Extracted files" value={String(overview.extractedStudyFileCount)} />
+                <StudyStatCard label="Need Canvas" value={String(overview.unavailableStudyFileCount)} />
+              </div>
+
+              <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.85rem 0.9rem' }}>
+                <p className="ui-kicker">Study coverage</p>
+                <p style={{ margin: '0.45rem 0 0', fontSize: '13px', lineHeight: 1.68, color: 'var(--text-secondary)' }}>
+                  {overview.coverageNote}
+                </p>
+                {overview.limitedStudyFileCount > 0 && (
+                  <p style={{ margin: '0.4rem 0 0', fontSize: '12px', lineHeight: 1.6, color: 'var(--text-muted)' }}>
+                    Limited in Learn: {overview.limitedStudyFileCount}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="motion-card motion-delay-2 section-shell section-shell-elevated" style={{ padding: '1.35rem 1.45rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.85rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+            <div>
+              <p className="ui-kicker">Study materials</p>
+              <h3 style={{ margin: '0.42rem 0 0', fontSize: '1.05rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>Files you can study from here</h3>
+              <p className="ui-section-copy" style={{ marginTop: '0.45rem', maxWidth: '44rem' }}>
+                Study files stay visible even when Learn has only partial coverage, so you can see what is ready here and what still needs Canvas.
+              </p>
+            </div>
+            {overview.studyMaterials.length > 0 && (
+              <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                <StatusBadge tone="accent" label={`${overview.readyStudyFileCount} ready`} />
+                {overview.limitedStudyFileCount > 0 && (
+                  <StatusBadge tone="warning" label={`${overview.limitedStudyFileCount} limited`} />
+                )}
+                {overview.unavailableStudyFileCount > 0 && (
+                  <StatusBadge tone="muted" label={`${overview.unavailableStudyFileCount} unavailable`} />
+                )}
+              </div>
+            )}
+          </div>
+
+          {overview.studyMaterials.length === 0 ? (
+            <EmptySurface body="No study files are mapped to this module yet, so Learn cannot build a study-file overview here." />
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              {learnUnits.map((unit) => (
-                <LearnResourceCard key={unit.id} moduleId={module.id} unit={unit} />
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '0.85rem', marginTop: '0.95rem' }}>
+              {overview.studyMaterials.map((material) => (
+                <article
+                  key={material.resource.id}
+                  className="glass-panel"
+                  style={{
+                    ['--glass-panel-bg' as string]: 'var(--glass-surface-strong)',
+                    ['--glass-panel-border' as string]: 'var(--glass-border)',
+                    ['--glass-panel-shadow' as string]: 'var(--glass-shadow)',
+                    borderRadius: 'var(--radius-panel)',
+                    padding: '1rem',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '0.8rem',
+                  }}
+                >
+                  <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+                    <StatusBadge tone="muted" label={material.fileTypeLabel} />
+                    <StatusBadge tone={material.readinessTone} label={material.readinessLabel} />
+                    {material.resource.required && (
+                      <StatusBadge tone="warning" label="Required" />
+                    )}
+                  </div>
+
+                  <div>
+                    <h4 style={{ margin: 0, fontSize: '16px', lineHeight: 1.42, color: 'var(--text-primary)' }}>{material.resource.title}</h4>
+                    <p style={{ margin: '0.35rem 0 0', fontSize: '12px', lineHeight: 1.55, color: 'var(--text-muted)' }}>
+                      {buildMaterialContext(material.resource, courseName, module.title)}
+                    </p>
+                  </div>
+
+                  <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.72, color: 'var(--text-secondary)' }}>
+                    {material.note}
+                  </p>
+
+                  <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+                    <ActionLink href={getLearnResourceHref(module.id, material.resource.id)} label="Study reader" />
+                    {getResourceCanvasHref(material.resource) && (
+                      <ActionLink href={getResourceCanvasHref(material.resource)!} label="Open in Canvas" external />
+                    )}
+                  </div>
+                </article>
               ))}
             </div>
           )}
         </section>
 
-        {suggestedSteps.length > 0 && (
-          <section className="motion-card motion-delay-2 section-shell" style={{ padding: '1.2rem 1.3rem' }}>
-            <p className="ui-kicker">Suggested order</p>
-            <p className="ui-section-copy" style={{ marginTop: '0.45rem' }}>
-              Each step opens the most relevant resource or action surface instead of staying as passive text.
+        {overview.suggestedSteps.length > 0 && (
+          <section className="motion-card motion-delay-2 section-shell" style={{ padding: '1.25rem 1.35rem' }}>
+            <p className="ui-kicker">Suggested study order</p>
+            <p className="ui-section-copy" style={{ marginTop: '0.45rem', maxWidth: '44rem' }}>
+              This flow stays close to what Learn can actually read: clearer study files first, then the action pass.
             </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem', marginTop: '0.85rem' }}>
-              {suggestedSteps.map((step, index) => (
-                <Link
-                  key={step.id}
-                  href={step.href}
-                  className="glass-panel glass-hover"
-                  style={{
-                    ['--glass-panel-bg' as string]: 'var(--glass-surface-soft)',
-                    ['--glass-panel-border' as string]: 'var(--glass-border)',
-                    ['--glass-panel-shadow' as string]: 'var(--glass-shadow)',
-                    borderRadius: 'var(--radius-panel)',
-                    padding: '0.9rem 1rem',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    gap: '0.8rem',
-                    alignItems: 'center',
-                    textDecoration: 'none',
-                  }}
-                >
-                  <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}>
-                    <span style={{ width: '1.5rem', height: '1.5rem', borderRadius: '999px', background: 'color-mix(in srgb, var(--surface-selected) 84%, var(--accent) 16%)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: 700, color: 'var(--text-primary)', flexShrink: 0 }}>
-                      {index + 1}
-                    </span>
-                    <span style={{ fontSize: '14px', lineHeight: 1.6, color: 'var(--text-secondary)' }}>{step.label}</span>
-                  </div>
-                  <span className="ui-chip ui-chip-soft">{step.destinationLabel}</span>
-                </Link>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.85rem', marginTop: '0.95rem' }}>
+              {overview.suggestedSteps.map((step) => (
+                <SuggestedStepCard key={step.id} step={step} />
               ))}
             </div>
           </section>
         )}
 
-        <section className="motion-card motion-delay-2 section-shell" style={{ padding: '1.35rem 1.45rem' }}>
-          <div className="ui-meta-list" style={{ marginBottom: '1rem' }}>
-            <span><strong>Tasks:</strong> {tasks.length} tied to this module</span>
-            <span><strong>Deadlines:</strong> {deadlines.length} referenced</span>
-            <span><strong>Resources:</strong> {resources.length} mapped from Canvas</span>
-          </div>
-
-          {audit.note && (
-            <div className={audit.missingFileExtraction ? 'ui-card ui-status-warning' : 'ui-card-soft'} style={{ borderRadius: 'var(--radius-tight)', padding: '0.95rem 1rem', marginBottom: '1rem' }}>
-              <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.65 }}>
-                {audit.note}
+        <section className="motion-card motion-delay-3 section-shell" style={{ padding: '1.25rem 1.35rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.85rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+            <div>
+              <p className="ui-kicker">Action items</p>
+              <h3 style={{ margin: '0.42rem 0 0', fontSize: '1.05rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>What still needs doing</h3>
+              <p className="ui-section-copy" style={{ marginTop: '0.45rem', maxWidth: '42rem' }}>
+                Assignments, quizzes, and discussions stay separate from the study files so the module overview can stay understanding-first.
               </p>
             </div>
-          )}
-
-          <div className="ui-tab-group" style={{ marginBottom: '1rem', flexWrap: 'wrap' }}>
-            {sections.map((section) => (
-              <a
-                key={section.id}
-                href={`#${section.id}`}
-                className="ui-button ui-button-ghost ui-button-xs"
-                style={{ textDecoration: 'none' }}
-              >
-                {section.title}
-              </a>
-            ))}
+            <span className="ui-chip ui-chip-soft">{overview.actionItems.length} action item{overview.actionItems.length === 1 ? '' : 's'}</span>
           </div>
 
-          {resources.length > 0 && (
-            <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', marginBottom: '1rem' }}>
-              <p className="ui-kicker">Source map</p>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.75rem', marginTop: '0.75rem' }}>
-                {resources.slice(0, 8).map((resource) => (
-                  <article key={resource.id} style={{ padding: '0.85rem', borderRadius: 'var(--radius-tight)', border: '1px solid var(--border-subtle)', background: 'color-mix(in srgb, var(--surface-elevated) 94%, transparent)' }}>
-                    <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', marginBottom: '0.45rem' }}>
-                      <span className="ui-chip ui-chip-soft">{resource.type}</span>
-                      {resource.extractionStatus && (
-                        <span className="ui-chip ui-chip-soft">{labelForExtractionStatus(resource.extractionStatus)}</span>
-                      )}
-                      {resource.required && (
-                        <span className="ui-chip ui-status-warning" style={{ padding: '0.28rem 0.6rem', fontSize: '11px', fontWeight: 700 }}>Required</span>
-                      )}
-                    </div>
-                    <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.5, color: 'var(--text-primary)', fontWeight: 600 }}>{resource.title}</p>
-                    {resource.moduleName && (
-                      <p style={{ margin: '0.3rem 0 0', fontSize: '12px', lineHeight: 1.5, color: 'var(--text-muted)' }}>{resource.moduleName}</p>
+          {overview.actionItems.length === 0 ? (
+            <EmptySurface body="No assignment, quiz, or discussion items were mapped into this module's action lane." />
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '0.85rem', marginTop: '0.95rem' }}>
+              {overview.actionItems.map((item) => (
+                <article key={item.id} className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.95rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.7rem' }}>
+                  <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+                    <StatusBadge tone="muted" label={labelForResourceKind(item.kind)} />
+                    {item.dueDate && item.dueDate !== 'No due date' && (
+                      <StatusBadge tone="warning" label={`Due ${formatDate(item.dueDate)}`} />
                     )}
-                    {resource.extractedTextPreview && (
-                      <p style={{ margin: '0.55rem 0 0', fontSize: '12px', lineHeight: 1.6, color: 'var(--text-secondary)' }}>
-                        {resource.extractedTextPreview}
-                      </p>
+                    {item.required && (
+                      <StatusBadge tone="warning" label="Required" />
                     )}
-                    {resource.extractionError && (
-                      <p style={{ margin: '0.55rem 0 0', fontSize: '12px', lineHeight: 1.6, color: 'var(--red)' }}>
-                        {resource.extractionError}
-                      </p>
-                    )}
-                    <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', marginTop: '0.7rem' }}>
-                      <Link href={getLearnResourceHref(module.id, resource.id)} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-                        {resource.kind === 'study_file' ? 'Study reader' : 'Deep view'}
-                      </Link>
-                      {getResourceCanvasHref(resource) && (
-                        <a href={getResourceCanvasHref(resource)!} target="_blank" rel="noreferrer" className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-                          Open in Canvas
-                        </a>
-                      )}
-                    </div>
-                  </article>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {doItems.length > 0 && (
-            <div className="ui-card" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', marginBottom: '1rem' }}>
-              <p className="ui-kicker">Do-first items</p>
-              <p style={{ margin: '0.45rem 0 0', fontSize: '14px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
-                These are action-oriented items. They still matter, but they are separated from the study resources so Learn stays attachment-first.
-              </p>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.75rem', marginTop: '0.85rem' }}>
-                {doItems.map((item) => (
-                  <article key={item.id} className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.85rem' }}>
-                    <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', marginBottom: '0.45rem' }}>
-                      <span className="ui-chip ui-chip-soft">{labelForResourceKind(item.kind)}</span>
-                      {item.required && (
-                        <span className="ui-chip ui-status-warning" style={{ padding: '0.28rem 0.6rem', fontSize: '11px', fontWeight: 700 }}>Required</span>
-                      )}
-                    </div>
-                    <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.55, color: 'var(--text-primary)', fontWeight: 600 }}>{item.title}</p>
-                    {item.whyItMatters && (
-                      <p style={{ margin: '0.45rem 0 0', fontSize: '13px', lineHeight: 1.6, color: 'var(--text-secondary)' }}>{item.whyItMatters}</p>
-                    )}
-                    <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', marginTop: '0.65rem' }}>
-                      <Link href={getLearnResourceHref(module.id, item.id)} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-                        {item.kind === 'study_file' ? 'Study reader' : 'Open detail'}
-                      </Link>
-                      {getResourceCanvasHref(item) && (
-                        <a href={getResourceCanvasHref(item)!} target="_blank" rel="noreferrer" className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-                          Open in Canvas
-                        </a>
-                      )}
-                    </div>
-                  </article>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {supportItems.length > 0 && (
-            <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', marginBottom: '1rem' }}>
-              <p className="ui-kicker">Support context</p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem', marginTop: '0.75rem' }}>
-                {supportItems.map((item) => (
-                  <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start' }}>
-                    <div>
-                      <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.55, color: 'var(--text-primary)', fontWeight: 600 }}>{item.title}</p>
-                      {item.moduleName && (
-                        <p style={{ margin: '0.25rem 0 0', fontSize: '12px', color: 'var(--text-muted)' }}>{item.moduleName}</p>
-                      )}
-                      {item.linkedContext && (
-                        <p style={{ margin: '0.3rem 0 0', fontSize: '12px', lineHeight: 1.55, color: 'var(--text-secondary)' }}>{item.linkedContext}</p>
-                      )}
-                    </div>
-                    <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                      <span className="ui-chip ui-chip-soft">{labelForResourceKind(item.kind)}</span>
-                      <Link href={getLearnResourceHref(module.id, item.id)} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-                        Detail
-                      </Link>
-                    </div>
                   </div>
-                ))}
-              </div>
+
+                  <div>
+                    <h4 style={{ margin: 0, fontSize: '16px', lineHeight: 1.42, color: 'var(--text-primary)' }}>{item.title}</h4>
+                    <p style={{ margin: '0.4rem 0 0', fontSize: '13px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
+                      {item.whyItMatters ?? 'This belongs in the action pass after you finish the main study materials.'}
+                    </p>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+                    <ActionLink href={`/modules/${module.id}/do`} label="Open in Do" tone="secondary" />
+                    {getResourceCanvasHref(item) && (
+                      <ActionLink href={getResourceCanvasHref(item)!} label="Open in Canvas" external />
+                    )}
+                  </div>
+                </article>
+              ))}
             </div>
           )}
-
-          <div className="ui-list-divider" style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-            {sections.map((section, index) => (
-              <article
-                key={section.id}
-                id={section.id}
-                style={{
-                  paddingTop: index === 0 ? 0 : '1.2rem',
-                  paddingBottom: index === sections.length - 1 ? 0 : '1.2rem',
-                }}
-              >
-                <p className="ui-kicker">
-                  {section.title}
-                </p>
-                <div style={{ marginTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                  {section.body.split('\n').filter(Boolean).map((paragraph, paragraphIndex) => (
-                    <p
-                      key={`${section.id}-${paragraphIndex}`}
-                      className="ui-reading-copy"
-                      style={{
-                        margin: 0,
-                        fontSize: section.id === 'why-this-matters' || section.id === 'core-ideas' ? '16px' : '15px',
-                        lineHeight: section.id === 'why-this-matters' || section.id === 'core-ideas' ? 1.78 : 1.72,
-                        color: paragraphIndex === 0 ? 'var(--text-primary)' : 'var(--text-secondary)',
-                      }}
-                    >
-                      {paragraph}
-                    </p>
-                  ))}
-                </div>
-              </article>
-            ))}
-          </div>
         </section>
+
+        {overview.otherContextResources.length > 0 && (
+          <section className="motion-card motion-delay-3 section-shell" style={{ padding: '1.2rem 1.3rem' }}>
+            <p className="ui-kicker">More context</p>
+            <p className="ui-section-copy" style={{ marginTop: '0.45rem', maxWidth: '42rem' }}>
+              These items support the module, but they are not the main study files or action items.
+            </p>
+            <div style={{ display: 'grid', gap: '0.7rem', marginTop: '0.9rem' }}>
+              {overview.otherContextResources.map((item) => (
+                <article key={item.id} className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.9rem 1rem', display: 'flex', justifyContent: 'space-between', gap: '0.8rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                  <div style={{ minWidth: 0, flex: '1 1 320px' }}>
+                    <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', marginBottom: '0.45rem' }}>
+                      <StatusBadge tone="muted" label={labelForResourceKind(item.kind)} />
+                    </div>
+                    <p style={{ margin: 0, fontSize: '15px', lineHeight: 1.55, color: 'var(--text-primary)', fontWeight: 600 }}>{item.title}</p>
+                    {(item.linkedContext || item.whyItMatters || item.moduleName) && (
+                      <p style={{ margin: '0.35rem 0 0', fontSize: '13px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
+                        {item.linkedContext ?? item.whyItMatters ?? item.moduleName}
+                      </p>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                    <ActionLink href={getLearnResourceHref(module.id, item.id)} label="Open detail" />
+                    {getResourceCanvasHref(item) && (
+                      <ActionLink href={getResourceCanvasHref(item)!} label="Open in Canvas" external />
+                    )}
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+        )}
       </div>
     </ModuleLensShell>
   )
 }
 
+function StudyStatCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.8rem 0.85rem' }}>
+      <p style={{ margin: 0, fontSize: '11px', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{label}</p>
+      <p style={{ margin: '0.4rem 0 0', fontSize: '20px', lineHeight: 1.1, fontWeight: 650, color: 'var(--text-primary)' }}>{value}</p>
+    </div>
+  )
+}
+
+function SuggestedStepCard({ step }: { step: ModuleSuggestedStudyStep }) {
+  return (
+    <article className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.95rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.7rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start' }}>
+        <p className="ui-kicker">{step.slotLabel}</p>
+        <span className="ui-chip ui-chip-soft">{step.destinationLabel}</span>
+      </div>
+      <div>
+        <p style={{ margin: 0, fontSize: '16px', lineHeight: 1.45, color: 'var(--text-primary)', fontWeight: 650 }}>{step.title}</p>
+        <p style={{ margin: '0.45rem 0 0', fontSize: '14px', lineHeight: 1.68, color: 'var(--text-secondary)' }}>{step.note}</p>
+      </div>
+      <div>
+        <ActionLink href={step.href} label={step.destinationLabel} external={step.external} tone={step.external ? 'ghost' : 'secondary'} />
+      </div>
+    </article>
+  )
+}
+
+function StatusBadge({
+  label,
+  tone,
+}: {
+  label: string
+  tone: 'accent' | 'warning' | 'muted'
+}) {
+  const background = tone === 'accent'
+    ? 'color-mix(in srgb, var(--surface-selected) 84%, var(--accent) 16%)'
+    : tone === 'warning'
+      ? 'color-mix(in srgb, var(--amber-light) 88%, transparent)'
+      : 'color-mix(in srgb, var(--surface-soft) 92%, transparent)'
+  const border = tone === 'accent'
+    ? 'color-mix(in srgb, var(--accent) 30%, var(--border-subtle) 70%)'
+    : tone === 'warning'
+      ? 'color-mix(in srgb, var(--amber) 24%, var(--border-subtle) 76%)'
+      : 'var(--border-subtle)'
+
+  return (
+    <span style={{
+      display: 'inline-flex',
+      alignItems: 'center',
+      padding: '0.34rem 0.68rem',
+      borderRadius: '999px',
+      border: `1px solid ${border}`,
+      background,
+      fontSize: '12px',
+      fontWeight: 600,
+      lineHeight: 1.2,
+      color: 'var(--text-primary)',
+    }}>
+      {label}
+    </span>
+  )
+}
+
+function ActionLink({
+  href,
+  label,
+  external = false,
+  tone = 'ghost',
+}: {
+  href: string
+  label: string
+  external?: boolean
+  tone?: 'ghost' | 'secondary'
+}) {
+  const className = `ui-button ${tone === 'secondary' ? 'ui-button-secondary' : 'ui-button-ghost'} ui-button-xs`
+  const style = { textDecoration: 'none' }
+
+  if (external) {
+    return (
+      <a href={href} target="_blank" rel="noreferrer" className={className} style={style}>
+        {label}
+      </a>
+    )
+  }
+
+  return (
+    <Link href={href} className={className} style={style}>
+      {label}
+    </Link>
+  )
+}
+
+function EmptySurface({ body }: { body: string }) {
+  return (
+    <div className="ui-empty" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', fontSize: '14px', lineHeight: 1.7, marginTop: '0.95rem' }}>
+      {body}
+    </div>
+  )
+}
+
+function buildMaterialContext(resource: ModuleSourceResource, courseName: string, moduleTitle: string) {
+  const parts = [
+    resource.courseName ?? courseName,
+    resource.moduleName ?? moduleTitle,
+    resource.originalTitle && resource.originalTitle !== resource.title ? `Canvas: ${resource.originalTitle}` : null,
+  ].filter(Boolean)
+
+  return parts.join(' / ') || 'Canvas study file'
+}
+
+function formatDate(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(date)
+}
+
 function labelForResourceKind(kind: 'study_file' | 'practice_link' | 'assignment' | 'quiz' | 'discussion' | 'reference' | 'announcement') {
-  if (kind === 'study_file') return 'Study File'
-  if (kind === 'practice_link') return 'Practice Link'
+  if (kind === 'study_file') return 'Study file'
+  if (kind === 'practice_link') return 'Practice link'
   if (kind === 'assignment') return 'Assignment'
   if (kind === 'quiz') return 'Quiz'
   if (kind === 'discussion') return 'Discussion'
