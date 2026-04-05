@@ -2,6 +2,8 @@ export type ModuleStatus = 'pending' | 'processed' | 'error'
 export type TaskStatus = 'pending' | 'completed'
 export type Priority = 'high' | 'medium' | 'low'
 export type ModuleResourceExtractionStatus = 'pending' | 'extracted' | 'metadata_only' | 'unsupported' | 'empty' | 'failed'
+export type StudyFileProgressStatus = 'not_started' | 'skimmed' | 'reviewed'
+export type ModuleResourceWorkflowOverride = 'study' | 'activity'
 
 export interface Course {
   id: string
@@ -52,6 +54,15 @@ export interface ModuleResource {
   required: boolean
   metadata: Record<string, unknown>
   created_at: string
+}
+
+export interface ModuleResourceStudyState {
+  moduleId: string
+  resourceId: string
+  studyProgressStatus: StudyFileProgressStatus
+  workflowOverride: ModuleResourceWorkflowOverride
+  createdAt: string
+  updatedAt: string
 }
 
 export interface Task {

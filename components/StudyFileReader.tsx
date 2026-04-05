@@ -1,6 +1,8 @@
 import Link from 'next/link'
 import type { ReactNode } from 'react'
+import { StudyFileManualStateControls } from '@/components/StudyFileManualStateControls'
 import { StudyFilePreviewExplorer } from '@/components/StudyFilePreviewExplorer'
+import { getStudyFileProgressLabel } from '@/lib/study-file-manual-state'
 import { buildStudyFileReaderModel } from '@/lib/study-file-reader'
 import type { ModuleSourceResource } from '@/lib/module-workspace'
 
@@ -26,6 +28,13 @@ export function StudyFileReader({
   linkedTask: LinkedTaskLike | null
 }) {
   const reader = buildStudyFileReaderModel(resource)
+  const studyProgress = resource.studyProgressStatus ?? 'not_started'
+  const workflowOverride = resource.workflowOverride ?? 'study'
+  const progressTone = studyProgress === 'reviewed'
+    ? 'accent'
+    : studyProgress === 'skimmed'
+      ? 'warning'
+      : 'muted'
   const contextBits = [
     resource.courseName ?? courseName,
     resource.moduleName ?? moduleTitle,
@@ -70,6 +79,10 @@ export function StudyFileReader({
         <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
           <ReaderBadge tone="muted" label={reader.fileTypeLabel} />
           <ReaderBadge tone={reader.statusTone} label={reader.statusLabel} />
+          <ReaderBadge tone={progressTone} label={getStudyFileProgressLabel(studyProgress)} />
+          {workflowOverride === 'activity' && (
+            <ReaderBadge tone="warning" label="Treated as activity" />
+          )}
           {resource.required && (
             <ReaderBadge tone="warning" label="Required" />
           )}
@@ -84,6 +97,13 @@ export function StudyFileReader({
           <ReaderMetaCard label="Context" value={contextBits.join(' / ') || 'Canvas study file'} />
           <ReaderMetaCard label="Canvas title" value={resource.originalTitle ?? resource.title} />
         </div>
+
+        <StudyFileManualStateControls
+          moduleId={moduleId}
+          resourceId={resource.id}
+          progressStatus={studyProgress}
+          workflowOverride={workflowOverride}
+        />
       </div>
 
       <ReaderSection title="What this file is about" kicker={reader.state === 'extracted' ? 'Grounded overview' : 'Honest state'}>

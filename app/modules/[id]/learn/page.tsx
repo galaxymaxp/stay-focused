@@ -1,8 +1,10 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { ModuleLearnVisibilityToggle } from '@/components/ModuleLearnVisibilityToggle'
+import { StudyFileManualStateControls } from '@/components/StudyFileManualStateControls'
 import { ModuleLensShell } from '@/components/ModuleLensShell'
-import { buildModuleLearnOverview, type ModuleSuggestedStudyStep } from '@/lib/module-learn-overview'
+import { buildModuleLearnOverview, type ModuleSuggestedStudyStep, type ModuleStudyMaterial } from '@/lib/module-learn-overview'
+import { getStudyFileProgressLabel } from '@/lib/study-file-manual-state'
 import { buildLearnExperience, extractCourseName, getLearnResourceHref, getModuleWorkspace, getResourceCanvasHref, type ModuleSourceResource } from '@/lib/module-workspace'
 
 interface Props {
@@ -14,13 +16,14 @@ export default async function LearnPage({ params }: Props) {
   const workspace = await getModuleWorkspace(id)
   if (!workspace) notFound()
 
-  const { module, tasks, resources: storedResources } = workspace
+  const { module, tasks, resources: storedResources, resourceStudyStates } = workspace
   const deadlineCount = workspace.deadlines.length
   const courseName = extractCourseName(module.raw_content)
   const experience = buildLearnExperience(module, {
     taskCount: tasks.length,
     deadlineCount,
     resources: storedResources,
+    resourceStudyStates,
   })
   const { resources, doItems } = experience
   const overview = buildModuleLearnOverview({
@@ -29,6 +32,7 @@ export default async function LearnPage({ params }: Props) {
     doItems,
     tasks,
   })
+  const actionLaneCount = overview.actionItems.length + overview.activityOverrides.length
 
   if (module.status === 'error') {
     return (
@@ -55,12 +59,15 @@ export default async function LearnPage({ params }: Props) {
               <p className="ui-kicker">Module study overview</p>
               <h2 className="ui-section-title" style={{ marginTop: '0.45rem' }}>What to focus on here</h2>
               <p className="ui-section-copy" style={{ marginTop: '0.45rem' }}>
-                Learn is grounding this module view in readable study files first, then keeping the action pass clearly separate.
+                Learn is grounding this module view in readable study files first, while keeping manual progress and workflow choices close to the actual files.
               </p>
             </div>
             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
               <span className="ui-chip ui-chip-soft">{overview.totalStudyFileCount} study file{overview.totalStudyFileCount === 1 ? '' : 's'}</span>
-              <span className="ui-chip ui-chip-soft">{overview.actionItems.length} action item{overview.actionItems.length === 1 ? '' : 's'}</span>
+              <span className="ui-chip ui-chip-soft">{actionLaneCount} item{actionLaneCount === 1 ? '' : 's'} in action lane</span>
+              {overview.activityOverrideCount > 0 && (
+                <span className="ui-chip ui-chip-soft">{overview.activityOverrideCount} treated as activity</span>
+              )}
               {module.showInLearn === false && (
                 <span className="ui-chip ui-chip-soft">Hidden from global Learn</span>
               )}
@@ -93,9 +100,23 @@ export default async function LearnPage({ params }: Props) {
             <div className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem 1.05rem', display: 'grid', gap: '0.8rem' }}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '0.7rem' }}>
                 <StudyStatCard label="Study files" value={String(overview.totalStudyFileCount)} />
-                <StudyStatCard label="Ready in Learn" value={String(overview.readyStudyFileCount)} />
-                <StudyStatCard label="Extracted files" value={String(overview.extractedStudyFileCount)} />
+                <StudyStatCard label="Active study lane" value={String(overview.activeStudyFileCount)} />
+                <StudyStatCard label="Reviewed" value={String(overview.progressCounts.reviewed)} />
                 <StudyStatCard label="Need Canvas" value={String(overview.unavailableStudyFileCount)} />
+              </div>
+
+              <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.85rem 0.9rem' }}>
+                <p className="ui-kicker">Progress rollup</p>
+                <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', marginTop: '0.55rem' }}>
+                  <StatusBadge tone="accent" label={`${overview.progressCounts.reviewed} reviewed`} />
+                  <StatusBadge tone="warning" label={`${overview.progressCounts.skimmed} skimmed`} />
+                  <StatusBadge tone="muted" label={`${overview.progressCounts.notStarted} not started`} />
+                </div>
+                {overview.activityOverrideCount > 0 && (
+                  <p style={{ margin: '0.45rem 0 0', fontSize: '12px', lineHeight: 1.6, color: 'var(--text-muted)' }}>
+                    {overview.activityOverrideCount} {overview.activityOverrideCount === 1 ? 'study file is' : 'study files are'} currently treated as activity instead.
+                  </p>
+                )}
               </div>
 
               <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.85rem 0.9rem' }}>
@@ -103,11 +124,6 @@ export default async function LearnPage({ params }: Props) {
                 <p style={{ margin: '0.45rem 0 0', fontSize: '13px', lineHeight: 1.68, color: 'var(--text-secondary)' }}>
                   {overview.coverageNote}
                 </p>
-                {overview.limitedStudyFileCount > 0 && (
-                  <p style={{ margin: '0.4rem 0 0', fontSize: '12px', lineHeight: 1.6, color: 'var(--text-muted)' }}>
-                    Limited in Learn: {overview.limitedStudyFileCount}
-                  </p>
-                )}
               </div>
             </div>
           </div>
@@ -119,67 +135,35 @@ export default async function LearnPage({ params }: Props) {
               <p className="ui-kicker">Study materials</p>
               <h3 style={{ margin: '0.42rem 0 0', fontSize: '1.05rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>Files you can study from here</h3>
               <p className="ui-section-copy" style={{ marginTop: '0.45rem', maxWidth: '44rem' }}>
-                Study files stay visible even when Learn has only partial coverage, so you can see what is ready here and what still needs Canvas.
+                Manual progress keeps this view resumable, while the activity override lets you move a study file out of the main study lane without losing the reader.
               </p>
             </div>
-            {overview.studyMaterials.length > 0 && (
-              <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                <StatusBadge tone="accent" label={`${overview.readyStudyFileCount} ready`} />
-                {overview.limitedStudyFileCount > 0 && (
-                  <StatusBadge tone="warning" label={`${overview.limitedStudyFileCount} limited`} />
-                )}
-                {overview.unavailableStudyFileCount > 0 && (
-                  <StatusBadge tone="muted" label={`${overview.unavailableStudyFileCount} unavailable`} />
-                )}
-              </div>
-            )}
+            <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+              <StatusBadge tone="accent" label={`${overview.readyStudyFileCount} ready`} />
+              {overview.limitedStudyFileCount > 0 && (
+                <StatusBadge tone="warning" label={`${overview.limitedStudyFileCount} limited`} />
+              )}
+              {overview.unavailableStudyFileCount > 0 && (
+                <StatusBadge tone="muted" label={`${overview.unavailableStudyFileCount} unavailable`} />
+              )}
+            </div>
           </div>
 
           {overview.studyMaterials.length === 0 ? (
-            <EmptySurface body="No study files are mapped to this module yet, so Learn cannot build a study-file overview here." />
+            <EmptySurface body={overview.activityOverrideCount > 0
+              ? 'All study files in this module are currently treated as activity instead. You can move them back into study materials at any time.'
+              : 'No study files are mapped to this module yet, so Learn cannot build a study-file overview here.'}
+            />
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '0.85rem', marginTop: '0.95rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '0.85rem', marginTop: '0.95rem' }}>
               {overview.studyMaterials.map((material) => (
-                <article
+                <StudyMaterialCard
                   key={material.resource.id}
-                  className="glass-panel"
-                  style={{
-                    ['--glass-panel-bg' as string]: 'var(--glass-surface-strong)',
-                    ['--glass-panel-border' as string]: 'var(--glass-border)',
-                    ['--glass-panel-shadow' as string]: 'var(--glass-shadow)',
-                    borderRadius: 'var(--radius-panel)',
-                    padding: '1rem',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '0.8rem',
-                  }}
-                >
-                  <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-                    <StatusBadge tone="muted" label={material.fileTypeLabel} />
-                    <StatusBadge tone={material.readinessTone} label={material.readinessLabel} />
-                    {material.resource.required && (
-                      <StatusBadge tone="warning" label="Required" />
-                    )}
-                  </div>
-
-                  <div>
-                    <h4 style={{ margin: 0, fontSize: '16px', lineHeight: 1.42, color: 'var(--text-primary)' }}>{material.resource.title}</h4>
-                    <p style={{ margin: '0.35rem 0 0', fontSize: '12px', lineHeight: 1.55, color: 'var(--text-muted)' }}>
-                      {buildMaterialContext(material.resource, courseName, module.title)}
-                    </p>
-                  </div>
-
-                  <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.72, color: 'var(--text-secondary)' }}>
-                    {material.note}
-                  </p>
-
-                  <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-                    <ActionLink href={getLearnResourceHref(module.id, material.resource.id)} label="Study reader" />
-                    {getResourceCanvasHref(material.resource) && (
-                      <ActionLink href={getResourceCanvasHref(material.resource)!} label="Open in Canvas" external />
-                    )}
-                  </div>
-                </article>
+                  moduleId={module.id}
+                  courseName={courseName}
+                  moduleTitle={module.title}
+                  material={material}
+                />
               ))}
             </div>
           )}
@@ -189,7 +173,7 @@ export default async function LearnPage({ params }: Props) {
           <section className="motion-card motion-delay-2 section-shell" style={{ padding: '1.25rem 1.35rem' }}>
             <p className="ui-kicker">Suggested study order</p>
             <p className="ui-section-copy" style={{ marginTop: '0.45rem', maxWidth: '44rem' }}>
-              This flow stays close to what Learn can actually read: clearer study files first, then the action pass.
+              This flow stays close to what Learn can actually read, plus any study files you have manually moved into the action lane.
             </p>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.85rem', marginTop: '0.95rem' }}>
               {overview.suggestedSteps.map((step) => (
@@ -205,14 +189,30 @@ export default async function LearnPage({ params }: Props) {
               <p className="ui-kicker">Action items</p>
               <h3 style={{ margin: '0.42rem 0 0', fontSize: '1.05rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>What still needs doing</h3>
               <p className="ui-section-copy" style={{ marginTop: '0.45rem', maxWidth: '42rem' }}>
-                Assignments, quizzes, and discussions stay separate from the study files so the module overview can stay understanding-first.
+                Assignments, quizzes, and discussions stay separate from the study files. If you manually treat a study file as activity, it appears here in its own clearly labeled group.
               </p>
             </div>
-            <span className="ui-chip ui-chip-soft">{overview.actionItems.length} action item{overview.actionItems.length === 1 ? '' : 's'}</span>
+            <span className="ui-chip ui-chip-soft">{actionLaneCount} item{actionLaneCount === 1 ? '' : 's'} in action lane</span>
           </div>
 
+          {overview.activityOverrides.length > 0 && (
+            <div className="ui-card" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', marginTop: '0.95rem' }}>
+              <p className="ui-kicker">Marked as activity</p>
+              <p style={{ margin: '0.45rem 0 0', fontSize: '13px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
+                These are still original study files, but your workflow override places them in the action lane for now.
+              </p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '0.85rem', marginTop: '0.85rem' }}>
+                {overview.activityOverrides.map((material) => (
+                  <ActivityOverrideCard key={material.resource.id} moduleId={module.id} material={material} />
+                ))}
+              </div>
+            </div>
+          )}
+
           {overview.actionItems.length === 0 ? (
-            <EmptySurface body="No assignment, quiz, or discussion items were mapped into this module's action lane." />
+            overview.activityOverrides.length === 0 ? (
+              <EmptySurface body="No assignment, quiz, or discussion items were mapped into this module's action lane." />
+            ) : null
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '0.85rem', marginTop: '0.95rem' }}>
               {overview.actionItems.map((item) => (
@@ -279,6 +279,110 @@ export default async function LearnPage({ params }: Props) {
         )}
       </div>
     </ModuleLensShell>
+  )
+}
+
+function StudyMaterialCard({
+  moduleId,
+  courseName,
+  moduleTitle,
+  material,
+}: {
+  moduleId: string
+  courseName: string
+  moduleTitle: string
+  material: ModuleStudyMaterial
+}) {
+  return (
+    <article
+      className="glass-panel"
+      style={{
+        ['--glass-panel-bg' as string]: 'var(--glass-surface-strong)',
+        ['--glass-panel-border' as string]: 'var(--glass-border)',
+        ['--glass-panel-shadow' as string]: 'var(--glass-shadow)',
+        borderRadius: 'var(--radius-panel)',
+        padding: '1rem',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '0.8rem',
+      }}
+    >
+      <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+        <StatusBadge tone="muted" label={material.fileTypeLabel} />
+        <StatusBadge tone={material.readinessTone} label={material.readinessLabel} />
+        <StatusBadge tone="muted" label={getStudyFileProgressLabel(material.resource.studyProgressStatus ?? 'not_started')} />
+        {material.resource.required && (
+          <StatusBadge tone="warning" label="Required" />
+        )}
+      </div>
+
+      <div>
+        <h4 style={{ margin: 0, fontSize: '16px', lineHeight: 1.42, color: 'var(--text-primary)' }}>{material.resource.title}</h4>
+        <p style={{ margin: '0.35rem 0 0', fontSize: '12px', lineHeight: 1.55, color: 'var(--text-muted)' }}>
+          {buildMaterialContext(material.resource, courseName, moduleTitle)}
+        </p>
+      </div>
+
+      <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.72, color: 'var(--text-secondary)' }}>
+        {material.note}
+      </p>
+
+      <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+        <ActionLink href={getLearnResourceHref(moduleId, material.resource.id)} label="Study reader" />
+        {getResourceCanvasHref(material.resource) && (
+          <ActionLink href={getResourceCanvasHref(material.resource)!} label="Open in Canvas" external />
+        )}
+      </div>
+
+      <StudyFileManualStateControls
+        moduleId={moduleId}
+        resourceId={material.resource.id}
+        progressStatus={material.resource.studyProgressStatus ?? 'not_started'}
+        workflowOverride={material.resource.workflowOverride ?? 'study'}
+        compact
+      />
+    </article>
+  )
+}
+
+function ActivityOverrideCard({
+  moduleId,
+  material,
+}: {
+  moduleId: string
+  material: ModuleStudyMaterial
+}) {
+  return (
+    <article className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.95rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+      <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+        <StatusBadge tone="muted" label="Study file" />
+        <StatusBadge tone="muted" label={material.fileTypeLabel} />
+        <StatusBadge tone="warning" label="Treated as activity" />
+        <StatusBadge tone="muted" label={getStudyFileProgressLabel(material.resource.studyProgressStatus ?? 'not_started')} />
+      </div>
+
+      <div>
+        <h4 style={{ margin: 0, fontSize: '16px', lineHeight: 1.42, color: 'var(--text-primary)' }}>{material.resource.title}</h4>
+        <p style={{ margin: '0.4rem 0 0', fontSize: '13px', lineHeight: 1.68, color: 'var(--text-secondary)' }}>
+          {material.note}
+        </p>
+      </div>
+
+      <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+        <ActionLink href={getLearnResourceHref(moduleId, material.resource.id)} label="Study reader" />
+        {getResourceCanvasHref(material.resource) && (
+          <ActionLink href={getResourceCanvasHref(material.resource)!} label="Open in Canvas" external />
+        )}
+      </div>
+
+      <StudyFileManualStateControls
+        moduleId={moduleId}
+        resourceId={material.resource.id}
+        progressStatus={material.resource.studyProgressStatus ?? 'not_started'}
+        workflowOverride={material.resource.workflowOverride ?? 'study'}
+        compact
+      />
+    </article>
   )
 }
 

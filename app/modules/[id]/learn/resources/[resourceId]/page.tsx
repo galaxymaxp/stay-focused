@@ -23,12 +23,13 @@ export default async function ResourceDetailPage({ params }: Props) {
   const workspace = await getModuleWorkspace(id)
   if (!workspace) notFound()
 
-  const { module, tasks, deadlines, resources: storedResources } = workspace
+  const { module, tasks, deadlines, resources: storedResources, resourceStudyStates } = workspace
   const courseName = extractCourseName(module.raw_content)
   const experience = buildLearnExperience(module, {
     taskCount: tasks.length,
     deadlineCount: deadlines.length,
     resources: storedResources,
+    resourceStudyStates,
   })
   const unit = findLearnUnitByResourceId(experience, resourceId)
   const resource = unit?.resource ?? findDoResourceById(experience, resourceId)

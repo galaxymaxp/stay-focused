@@ -1,11 +1,20 @@
 import { supabase } from '@/lib/supabase'
-import type { Deadline, Module, ModuleResource, Task } from '@/lib/types'
+import type {
+  Deadline,
+  Module,
+  ModuleResource,
+  ModuleResourceStudyState,
+  ModuleResourceWorkflowOverride,
+  StudyFileProgressStatus,
+  Task,
+} from '@/lib/types'
 
 export interface ModuleWorkspaceData {
   module: Module
   tasks: Task[]
   deadlines: Deadline[]
   resources: ModuleResource[]
+  resourceStudyStates: ModuleResourceStudyState[]
 }
 
 export interface LearnSection {
@@ -50,6 +59,9 @@ export interface ModuleSourceResource {
   extractedTextPreview?: string | null
   extractedCharCount?: number
   extractionError?: string | null
+  studyProgressStatus?: StudyFileProgressStatus
+  workflowOverride?: ModuleResourceWorkflowOverride
+  studyStateUpdatedAt?: string | null
 }
 
 export interface LearnResourceUnit {
@@ -99,17 +111,22 @@ export async function getModuleWorkspace(id: string): Promise<ModuleWorkspaceDat
   const { data: moduleRow } = await supabase.from('modules').select('*').eq('id', id).single()
   if (!moduleRow) return null
 
-  const [tasksResult, deadlinesResult, resourcesResult] = await Promise.all([
+  const [tasksResult, deadlinesResult, resourcesResult, resourceStudyStateResult] = await Promise.all([
     supabase.from('tasks').select('*').eq('module_id', id).order('created_at'),
     supabase.from('deadlines').select('*').eq('module_id', id).order('date'),
     supabase.from('module_resources').select('*').eq('module_id', id).order('created_at'),
+    supabase.from('module_resource_study_state').select('*').eq('module_id', id).order('updated_at', { ascending: false }),
   ])
+  const resourceStudyStates = isMissingSchemaObjectError(resourceStudyStateResult.error)
+    ? []
+    : (resourceStudyStateResult.data ?? []).map(adaptModuleResourceStudyStateRow)
 
   return {
     module: adaptModuleWorkspaceRow(moduleRow),
     tasks: (tasksResult.data ?? []).map(adaptTaskRow),
     deadlines: (deadlinesResult.data ?? []).map(adaptDeadlineRow),
     resources: (resourcesResult.data ?? []).map(adaptModuleResourceRow),
+    resourceStudyStates,
   }
 }
 
@@ -131,26 +148,34 @@ export function buildLearnSections(module: Module) {
 
 export function buildLearnExperience(
   module: Module,
-  options?: { taskCount?: number; deadlineCount?: number; resources?: ModuleResource[] },
+  options?: {
+    taskCount?: number
+    deadlineCount?: number
+    resources?: ModuleResource[]
+    resourceStudyStates?: ModuleResourceStudyState[]
+  },
 ): LearnExperience {
   const cleanLines = sanitizeRawContent(module.raw_content)
   const readingBlocks = groupReadingBlocks(cleanLines)
   const parsed = parseCompiledCanvasContent(module.raw_content)
   const parsedOnlyResources = buildSourceResources(parsed)
   const storedResources = options?.resources?.map(adaptStoredResourceForLearn) ?? []
+  const studyStateByResourceId = new Map((options?.resourceStudyStates ?? []).map((state) => [state.resourceId, state]))
   const courseName = extractCourseName(module.raw_content)
   const mergedResources = mergeLearnResources(parsedOnlyResources, storedResources)
   const baseDoItems = mergedResources
     .filter((resource) => resource.lane === 'do')
     .sort((a, b) => Number(b.required) - Number(a.required) || a.title.localeCompare(b.title))
-  const resources = mergedResources.map((resource) =>
-    enrichResourceContext(resource, {
+  const resources = mergedResources.map((resource) => {
+    const enriched = enrichResourceContext(resource, {
       courseName,
       module,
       assignments: parsed.assignments,
       doItems: baseDoItems,
     })
-  )
+
+    return applyResourceStudyState(enriched, studyStateByResourceId.get(enriched.id))
+  })
   const fileResources = resources.filter((resource) => isFileBasedResourceType(resource.type))
   const conceptLines = (module.concepts ?? []).filter(Boolean).slice(0, 6)
   const extractedTextBlocks = resources
@@ -534,6 +559,18 @@ function enrichResourceContext(
       linkedDoItem,
       dueDate,
     }),
+  }
+}
+
+function applyResourceStudyState(
+  resource: ModuleSourceResource,
+  studyState?: ModuleResourceStudyState,
+): ModuleSourceResource {
+  return {
+    ...resource,
+    studyProgressStatus: studyState?.studyProgressStatus ?? 'not_started',
+    workflowOverride: studyState?.workflowOverride ?? 'study',
+    studyStateUpdatedAt: studyState?.updatedAt ?? null,
   }
 }
 
@@ -1320,6 +1357,17 @@ function adaptDeadlineRow(row: Record<string, unknown>): Deadline {
   }
 }
 
+function adaptModuleResourceStudyStateRow(row: Record<string, unknown>): ModuleResourceStudyState {
+  return {
+    moduleId: String(row.module_id ?? ''),
+    resourceId: typeof row.resource_id === 'string' ? row.resource_id : '',
+    studyProgressStatus: normalizeStudyProgressStatus(row.study_progress_status),
+    workflowOverride: normalizeWorkflowOverride(row.workflow_override),
+    createdAt: typeof row.created_at === 'string' ? row.created_at : new Date().toISOString(),
+    updatedAt: typeof row.updated_at === 'string' ? row.updated_at : new Date().toISOString(),
+  }
+}
+
 function normalizeExtractionStatus(value: unknown): ModuleResource['extractionStatus'] {
   return value === 'pending'
     || value === 'extracted'
@@ -1331,6 +1379,22 @@ function normalizeExtractionStatus(value: unknown): ModuleResource['extractionSt
     : 'metadata_only'
 }
 
+function normalizeStudyProgressStatus(value: unknown): StudyFileProgressStatus {
+  return value === 'skimmed' || value === 'reviewed' || value === 'not_started'
+    ? value
+    : 'not_started'
+}
+
+function normalizeWorkflowOverride(value: unknown): ModuleResourceWorkflowOverride {
+  return value === 'activity' || value === 'study'
+    ? value
+    : 'study'
+}
+
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function isMissingSchemaObjectError(error: { code?: string | null } | null | undefined) {
+  return error?.code === 'PGRST205'
 }

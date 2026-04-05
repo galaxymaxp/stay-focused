@@ -1,6 +1,6 @@
 import { getLearnResourceHref, getResourceCanvasHref, getResourceGrounding, type ModuleSourceResource } from '@/lib/module-workspace'
 import { buildStudyFileReaderModel, getStudyFileTypeLabel, type StudyFileReaderModel } from '@/lib/study-file-reader'
-import type { Task } from '@/lib/types'
+import type { ModuleResourceWorkflowOverride, StudyFileProgressStatus, Task } from '@/lib/types'
 
 export type ModuleStudyReadiness = 'ready' | 'limited' | 'unavailable'
 
@@ -29,11 +29,19 @@ export interface ModuleLearnOverviewModel {
   summaryStateMessage: string
   coverageNote: string
   totalStudyFileCount: number
+  activeStudyFileCount: number
+  activityOverrideCount: number
   extractedStudyFileCount: number
   readyStudyFileCount: number
   limitedStudyFileCount: number
   unavailableStudyFileCount: number
+  progressCounts: {
+    notStarted: number
+    skimmed: number
+    reviewed: number
+  }
   studyMaterials: ModuleStudyMaterial[]
+  activityOverrides: ModuleStudyMaterial[]
   actionItems: ModuleSourceResource[]
   otherContextResources: ModuleSourceResource[]
   suggestedSteps: ModuleSuggestedStudyStep[]
@@ -50,26 +58,32 @@ export function buildModuleLearnOverview({
   doItems: ModuleSourceResource[]
   tasks: Task[]
 }): ModuleLearnOverviewModel {
-  const studyMaterials = resources
+  const allStudyFiles = resources
     .filter((resource) => resource.kind === 'study_file')
     .map((resource) => buildStudyMaterial(resource))
     .sort(compareStudyMaterials)
+  const studyMaterials = allStudyFiles.filter((material) => getWorkflowOverride(material.resource) !== 'activity')
+  const activityOverrides = allStudyFiles.filter((material) => getWorkflowOverride(material.resource) === 'activity')
   const actionItems = [...doItems].sort(compareActionItems)
   const otherContextResources = resources
     .filter((resource) => resource.kind !== 'study_file' && resource.lane !== 'do')
     .sort((left, right) => left.title.localeCompare(right.title))
-
-  const totalStudyFileCount = studyMaterials.length
-  const extractedStudyFileCount = studyMaterials.filter((material) => hasReadableText(material.resource)).length
+  const totalStudyFileCount = allStudyFiles.length
+  const activeStudyFileCount = studyMaterials.length
+  const activityOverrideCount = activityOverrides.length
+  const extractedStudyFileCount = allStudyFiles.filter((material) => hasReadableText(material.resource)).length
   const readyStudyFileCount = studyMaterials.filter((material) => material.readiness === 'ready').length
   const limitedStudyFileCount = studyMaterials.filter((material) => material.readiness === 'limited').length
   const unavailableStudyFileCount = studyMaterials.filter((material) => material.readiness === 'unavailable').length
   const summary = buildGroundedModuleSummary(studyMaterials)
+  const progressCounts = buildProgressCounts(allStudyFiles)
 
   return {
     summary,
     summaryStateMessage: buildSummaryStateMessage({
       totalStudyFileCount,
+      activeStudyFileCount,
+      activityOverrideCount,
       extractedStudyFileCount,
       readyStudyFileCount,
       limitedStudyFileCount,
@@ -77,21 +91,28 @@ export function buildModuleLearnOverview({
     }),
     coverageNote: buildCoverageNote({
       totalStudyFileCount,
+      activeStudyFileCount,
+      activityOverrideCount,
       readyStudyFileCount,
       limitedStudyFileCount,
       unavailableStudyFileCount,
     }),
     totalStudyFileCount,
+    activeStudyFileCount,
+    activityOverrideCount,
     extractedStudyFileCount,
     readyStudyFileCount,
     limitedStudyFileCount,
     unavailableStudyFileCount,
+    progressCounts,
     studyMaterials,
+    activityOverrides,
     actionItems,
     otherContextResources,
     suggestedSteps: buildSuggestedStudySteps({
       moduleId,
       studyMaterials,
+      activityOverrides,
       actionItems,
       tasks,
     }),
@@ -187,12 +208,16 @@ function buildGroundedModuleSummary(studyMaterials: ModuleStudyMaterial[]) {
 
 function buildSummaryStateMessage({
   totalStudyFileCount,
+  activeStudyFileCount,
+  activityOverrideCount,
   extractedStudyFileCount,
   readyStudyFileCount,
   limitedStudyFileCount,
   unavailableStudyFileCount,
 }: {
   totalStudyFileCount: number
+  activeStudyFileCount: number
+  activityOverrideCount: number
   extractedStudyFileCount: number
   readyStudyFileCount: number
   limitedStudyFileCount: number
@@ -202,12 +227,16 @@ function buildSummaryStateMessage({
     return 'No study files are mapped to this module yet, so Learn stays at the resource and action level instead of pretending to summarize the module.'
   }
 
+  if (activeStudyFileCount === 0 && activityOverrideCount > 0) {
+    return 'All study files in this module are currently treated as activity instead, so Learn is not building a study-lane summary from them.'
+  }
+
   if (readyStudyFileCount > 0) {
-    return 'A grounded module summary is available because at least one study file produced enough readable text to support it.'
+    return 'A grounded module summary is available because at least one study file in the current study lane produced enough readable text to support it.'
   }
 
   if (extractedStudyFileCount > 0) {
-    return 'Some study files have readable text, but not enough of it is strong enough for a grounded module summary yet.'
+    return 'Some study files have readable text, but not enough of the current study lane is strong enough for a grounded module summary yet.'
   }
 
   if (limitedStudyFileCount > 0) {
@@ -223,11 +252,15 @@ function buildSummaryStateMessage({
 
 function buildCoverageNote({
   totalStudyFileCount,
+  activeStudyFileCount,
+  activityOverrideCount,
   readyStudyFileCount,
   limitedStudyFileCount,
   unavailableStudyFileCount,
 }: {
   totalStudyFileCount: number
+  activeStudyFileCount: number
+  activityOverrideCount: number
   readyStudyFileCount: number
   limitedStudyFileCount: number
   unavailableStudyFileCount: number
@@ -236,16 +269,20 @@ function buildCoverageNote({
     return 'No mapped study files are available for this module yet.'
   }
 
+  if (activeStudyFileCount === 0 && activityOverrideCount > 0) {
+    return `${activityOverrideCount} study file${activityOverrideCount === 1 ? ' is' : 's are'} currently treated as activity instead of study material.`
+  }
+
   const fragments: string[] = []
 
   if (readyStudyFileCount > 0) {
     fragments.push(
-      readyStudyFileCount === totalStudyFileCount
-        ? `Grounded from all ${readyStudyFileCount} study file${readyStudyFileCount === 1 ? '' : 's'} in this module.`
-        : `Grounded from ${readyStudyFileCount} of ${totalStudyFileCount} study file${totalStudyFileCount === 1 ? '' : 's'}.`,
+      readyStudyFileCount === activeStudyFileCount
+        ? `Grounded from all ${readyStudyFileCount} study file${readyStudyFileCount === 1 ? '' : 's'} still in the study lane.`
+        : `Grounded from ${readyStudyFileCount} of ${activeStudyFileCount} study file${activeStudyFileCount === 1 ? '' : 's'} in the study lane.`,
     )
   } else {
-    fragments.push('No study files have enough readable text for a grounded module summary yet.')
+    fragments.push('No study files in the current study lane have enough readable text for a grounded module summary yet.')
   }
 
   if (limitedStudyFileCount > 0) {
@@ -256,17 +293,48 @@ function buildCoverageNote({
     fragments.push(`${unavailableStudyFileCount} ${unavailableStudyFileCount === 1 ? 'file still needs' : 'files still need'} Canvas for the full read.`)
   }
 
+  if (activityOverrideCount > 0) {
+    fragments.push(`${activityOverrideCount} ${activityOverrideCount === 1 ? 'study file is' : 'study files are'} currently treated as activity instead.`)
+  }
+
   return fragments.join(' ')
+}
+
+function buildProgressCounts(studyMaterials: ModuleStudyMaterial[]) {
+  const counts = {
+    notStarted: 0,
+    skimmed: 0,
+    reviewed: 0,
+  }
+
+  for (const material of studyMaterials) {
+    const progress = getStudyProgress(material.resource)
+    if (progress === 'reviewed') {
+      counts.reviewed += 1
+      continue
+    }
+
+    if (progress === 'skimmed') {
+      counts.skimmed += 1
+      continue
+    }
+
+    counts.notStarted += 1
+  }
+
+  return counts
 }
 
 function buildSuggestedStudySteps({
   moduleId,
   studyMaterials,
+  activityOverrides,
   actionItems,
   tasks,
 }: {
   moduleId: string
   studyMaterials: ModuleStudyMaterial[]
+  activityOverrides: ModuleStudyMaterial[]
   actionItems: ModuleSourceResource[]
   tasks: Task[]
 }): ModuleSuggestedStudyStep[] {
@@ -292,6 +360,12 @@ function buildSuggestedStudySteps({
   if (primaryAction) {
     steps.push(buildActionStep(moduleId, primaryAction, tasks))
     usedIds.add(primaryAction.id)
+  } else {
+    const overriddenStudy = activityOverrides.find((material) => !usedIds.has(material.resource.id))
+    if (overriddenStudy) {
+      steps.push(buildActivityOverrideStep(moduleId, overriddenStudy))
+      usedIds.add(overriddenStudy.resource.id)
+    }
   }
 
   if (steps.length < 3) {
@@ -299,6 +373,14 @@ function buildSuggestedStudySteps({
     if (fallbackAction) {
       steps.push(buildActionStep(moduleId, fallbackAction, tasks))
       usedIds.add(fallbackAction.id)
+    }
+  }
+
+  if (steps.length < 3) {
+    const fallbackOverride = activityOverrides.find((material) => !usedIds.has(material.resource.id))
+    if (fallbackOverride) {
+      steps.push(buildActivityOverrideStep(moduleId, fallbackOverride))
+      usedIds.add(fallbackOverride.resource.id)
     }
   }
 
@@ -329,6 +411,20 @@ function buildStudyStep(moduleId: string, material: ModuleStudyMaterial): Omit<M
       : material.readiness === 'limited'
         ? 'Use this as a guidepost, then keep the original Canvas file nearby for the fuller read.'
         : 'Canvas is still the most reliable place to read this one in full.',
+    href: useCanvas ? canvasHref! : getLearnResourceHref(moduleId, material.resource.id),
+    destinationLabel: useCanvas ? 'Canvas file' : 'Study reader',
+    external: useCanvas,
+  }
+}
+
+function buildActivityOverrideStep(moduleId: string, material: ModuleStudyMaterial): Omit<ModuleSuggestedStudyStep, 'slotLabel'> {
+  const canvasHref = getResourceCanvasHref(material.resource)
+  const useCanvas = material.readiness === 'unavailable' && Boolean(canvasHref)
+
+  return {
+    id: `${material.resource.id}-activity-override-step`,
+    title: material.resource.title,
+    note: 'You marked this study file as activity for your workflow, so it sits in the action lane even though the study reader is still available.',
     href: useCanvas ? canvasHref! : getLearnResourceHref(moduleId, material.resource.id),
     destinationLabel: useCanvas ? 'Canvas file' : 'Study reader',
     external: useCanvas,
@@ -379,6 +475,14 @@ function readinessWeight(readiness: ModuleStudyReadiness) {
 function hasReadableText(resource: ModuleSourceResource) {
   if (resource.extractionStatus !== 'extracted') return false
   return Boolean(resource.extractedText?.trim() || resource.extractedTextPreview?.trim())
+}
+
+function getStudyProgress(resource: ModuleSourceResource): StudyFileProgressStatus {
+  return resource.studyProgressStatus ?? 'not_started'
+}
+
+function getWorkflowOverride(resource: ModuleSourceResource): ModuleResourceWorkflowOverride {
+  return resource.workflowOverride ?? 'study'
 }
 
 function findMatchingTask(item: ModuleSourceResource, tasks: Task[]) {
