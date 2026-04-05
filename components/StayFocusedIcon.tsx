@@ -22,9 +22,10 @@ export function StayFocusedIcon({
     >
       <g
         stroke={color}
-        strokeWidth="10"
+        strokeWidth="11"
         strokeLinecap="round"
         strokeLinejoin="round"
+        transform="translate(-23 -23) scale(1.18)"
       >
         <path d="M52 62V190" />
         <path d="M204 62V190" />

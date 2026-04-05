@@ -1,8 +1,6 @@
 import type { Metadata } from 'next'
-import { CanvasMenu } from '@/components/CanvasMenu'
-import { StayFocusedIcon } from '@/components/StayFocusedIcon'
+import { AppShell } from '@/components/AppShell'
 import { ThemeProvider } from '@/components/ThemeProvider'
-import Link from 'next/link'
 import Script from 'next/script'
 import './globals.css'
 
@@ -48,40 +46,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className="app-shell" style={{ background: 'var(--bg)', minHeight: '100vh' }}>
         <ThemeProvider>
-          <nav className="app-topbar glass-panel glass-soft" style={{
-            borderBottom: '1px solid var(--border-subtle)',
-            padding: '0 1rem 0 1.5rem',
-            minHeight: '56px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: '1rem',
-            flexWrap: 'wrap',
-          }}>
-            <Link
-              href="/"
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '0.6rem',
-                fontWeight: 600,
-                fontSize: '15px',
-                color: 'var(--text-primary)',
-                textDecoration: 'none',
-                minHeight: '40px',
-              }}
-            >
-              <StayFocusedIcon size={18} style={{ flexShrink: 0 }} />
-              <span>Stay Focused</span>
-            </Link>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-              <Link href="/settings" className="ui-button ui-button-secondary" style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: 500, padding: '0.45rem 0.7rem', borderRadius: 'var(--radius-control)', minHeight: '36px' }}>
-                Settings
-              </Link>
-              <CanvasMenu />
-            </div>
-          </nav>
-          {children}
+          <AppShell>{children}</AppShell>
         </ThemeProvider>
       </body>
     </html>

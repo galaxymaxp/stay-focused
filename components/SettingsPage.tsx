@@ -19,8 +19,8 @@ export function SettingsPage() {
         <p style={{ margin: 0, fontSize: '12px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--accent-foreground)' }}>
           Settings
         </p>
-        <h1 style={{ margin: '0.4rem 0 0', fontSize: '28px', fontWeight: 700, color: 'var(--text-primary)' }}>Personalize how the app feels</h1>
-        <p style={{ margin: '0.65rem 0 0', fontSize: '14px', color: 'var(--text-secondary)', lineHeight: 1.6, maxWidth: '56ch' }}>
+        <h1 style={{ margin: '0.45rem 0 0', fontSize: '32px', lineHeight: 1.08, letterSpacing: '-0.04em', fontWeight: 650, color: 'var(--text-primary)' }}>Personalize the study atmosphere</h1>
+        <p style={{ margin: '0.7rem 0 0', fontSize: '15px', color: 'var(--text-secondary)', lineHeight: 1.65, maxWidth: '56ch' }}>
           Adjust appearance for your own study style. Theme mode and accent color are applied across the app through the same centralized design tokens.
         </p>
       </section>
@@ -28,7 +28,7 @@ export function SettingsPage() {
       <section className="motion-card motion-delay-1 glass-panel glass-strong" style={cardStyle}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
           <p style={eyebrowStyle}>Appearance</p>
-          <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)' }}>Theme mode</h2>
+          <h2 style={{ margin: 0, fontSize: '22px', lineHeight: 1.15, letterSpacing: '-0.03em', fontWeight: 650, color: 'var(--text-primary)' }}>Theme mode</h2>
           <p style={{ margin: 0, fontSize: '14px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
             Choose whether the app stays light, stays dark, or follows your system setting. Current resolved theme: <strong style={{ color: 'var(--text-primary)' }}>{resolvedTheme}</strong>.
           </p>
@@ -62,7 +62,7 @@ export function SettingsPage() {
                 } as CSSProperties}
               >
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)' }}>{option.label}</div>
+                  <div style={{ fontSize: '15px', fontWeight: 650, color: 'var(--text-primary)' }}>{option.label}</div>
                   <div style={{ marginTop: '0.25rem', fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
                     {option.description}
                   </div>
@@ -84,7 +84,7 @@ export function SettingsPage() {
       <section className="motion-card motion-delay-2 glass-panel glass-strong" style={cardStyle}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
           <p style={eyebrowStyle}>Accent</p>
-          <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)' }}>Highlight color</h2>
+          <h2 style={{ margin: 0, fontSize: '22px', lineHeight: 1.15, letterSpacing: '-0.03em', fontWeight: 650, color: 'var(--text-primary)' }}>Highlight color</h2>
           <p style={{ margin: 0, fontSize: '14px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
             Pick the accent that appears on buttons, highlights, chips, and supporting emphasis across the interface. Yellow stays the default.
           </p>
@@ -119,7 +119,7 @@ export function SettingsPage() {
                   <span style={{ width: '24px', height: '24px', borderRadius: '999px', background: palette.accentLight, border: `1px solid ${palette.accentBorder}` }} />
                 </div>
                 <div>
-                  <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)' }}>{palette.label}</div>
+                  <div style={{ fontSize: '15px', fontWeight: 650, color: 'var(--text-primary)' }}>{palette.label}</div>
                   <div style={{ marginTop: '0.25rem', fontSize: '12px', color: 'var(--text-secondary)' }}>
                     {selected ? 'Current accent' : 'Tap to apply'}
                   </div>

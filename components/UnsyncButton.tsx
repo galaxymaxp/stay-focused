@@ -20,9 +20,9 @@ export function UnsyncButton({ moduleId }: { moduleId: string }) {
       style={{
         flexShrink: 0,
         fontSize: '12px',
-        borderRadius: 'var(--radius-tight)',
-        padding: '6px 10px',
-        minHeight: '32px',
+        borderRadius: 'var(--radius-control)',
+        padding: '0.5rem 0.8rem',
+        minHeight: '36px',
         whiteSpace: 'nowrap',
       }}
     >

@@ -27,14 +27,14 @@ const STATUS_STYLES: Record<CalendarItem['status'], { label: string; dot: string
     label: 'Urgent',
     dot: 'var(--red)',
     chipBg: 'var(--red-light)',
-    chipBorder: '#F5C5BC',
+    chipBorder: 'color-mix(in srgb, var(--red) 24%, var(--border-subtle) 76%)',
     chipText: 'var(--red)',
   },
   dueSoon: {
     label: 'Due soon',
     dot: 'var(--amber)',
     chipBg: 'var(--amber-light)',
-    chipBorder: '#F0DCBF',
+    chipBorder: 'color-mix(in srgb, var(--amber) 24%, var(--border-subtle) 76%)',
     chipText: 'var(--amber)',
   },
   upcoming: {
@@ -78,9 +78,12 @@ export function CalendarDashboard({ items, undatedTaskCount }: { items: Calendar
     <section className="page-stack" style={{ gap: '1rem' }}>
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem', flexWrap: 'wrap' }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 600, color: 'var(--text-primary)' }}>Dashboard</h1>
-          <p style={{ margin: '0.4rem 0 0', fontSize: '14px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-            Calendar-first view of synced tasks and deadlines. Select a day to inspect the full workload.
+          <p style={{ margin: 0, fontSize: '11px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
+            Overview
+          </p>
+          <h1 style={{ margin: '0.45rem 0 0', fontSize: '32px', lineHeight: 1.08, fontWeight: 650, letterSpacing: '-0.04em', color: 'var(--text-primary)' }}>Your workload, made quieter</h1>
+          <p style={{ margin: '0.7rem 0 0', fontSize: '15px', color: 'var(--text-secondary)', lineHeight: 1.6, maxWidth: '46rem' }}>
+            A calm calendar view of synced tasks and deadlines. Pick a day to see what needs your attention without opening the full Canvas clutter.
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
@@ -112,8 +115,8 @@ export function CalendarDashboard({ items, undatedTaskCount }: { items: Calendar
             flexWrap: 'wrap',
           }}>
             <div>
-              <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 600 }}>{formatMonthLabel(visibleMonth)}</h2>
-              <p style={{ margin: '0.25rem 0 0', fontSize: '13px', color: 'var(--text-muted)' }}>
+              <h2 style={{ margin: 0, fontSize: '20px', lineHeight: 1.2, fontWeight: 650, letterSpacing: '-0.02em' }}>{formatMonthLabel(visibleMonth)}</h2>
+              <p style={{ margin: '0.3rem 0 0', fontSize: '13px', color: 'var(--text-muted)' }}>
                 {items.length} scheduled item{items.length === 1 ? '' : 's'}
               </p>
             </div>
@@ -183,7 +186,7 @@ export function CalendarDashboard({ items, undatedTaskCount }: { items: Calendar
                         alignItems: 'center',
                         justifyContent: 'center',
                         fontSize: '13px',
-                        fontWeight: isToday || isSelected ? 600 : 500,
+                        fontWeight: isToday || isSelected ? 650 : 500,
                         color: isToday ? 'var(--accent-foreground)' : 'var(--text-primary)',
                         background: isToday
                           ? 'color-mix(in srgb, var(--accent) 92%, #ffffff 8%)'
@@ -209,7 +212,7 @@ export function CalendarDashboard({ items, undatedTaskCount }: { items: Calendar
 
         <aside className="glass-panel glass-strong ui-data-panel" style={{ borderRadius: 'var(--radius-page)', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.9rem', flex: '1 1 320px', minWidth: '280px' }}>
           <div style={{ paddingBottom: '0.85rem', borderBottom: '1px solid color-mix(in srgb, var(--border-subtle) 88%, transparent)' }}>
-            <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 600, color: 'var(--text-primary)' }}>
+            <h2 style={{ margin: 0, fontSize: '20px', lineHeight: 1.2, fontWeight: 650, letterSpacing: '-0.02em', color: 'var(--text-primary)' }}>
               {formatSelectedDayLabel(selectedDateKey)}
             </h2>
             <p style={{ margin: '0.35rem 0 0', fontSize: '13px', color: 'var(--text-muted)' }}>
@@ -252,7 +255,7 @@ function LegendChip({ status }: { status: CalendarItem['status'] }) {
       border: `1px solid ${style.chipBorder}`,
       background: style.chipBg,
       color: style.chipText,
-      fontWeight: 500,
+      fontWeight: 600,
     }}>
       <span style={{ width: '7px', height: '7px', borderRadius: '999px', background: style.dot }} />
       {style.label}
@@ -294,6 +297,7 @@ function DayMarkerStack({ items }: { items: CalendarItem[] }) {
               background: style.chipBg,
               color: style.chipText,
               whiteSpace: 'nowrap',
+              fontWeight: 600,
             }}
           >
             <span style={{ width: '6px', height: '6px', borderRadius: '999px', background: style.dot, flexShrink: 0 }} />
@@ -327,10 +331,10 @@ function SelectedItemCard({ item }: { item: CalendarItem }) {
       '--glass-panel-shadow': item.status === 'urgent' || item.status === 'dueSoon' ? 'var(--glass-shadow-strong)' : 'var(--glass-shadow)',
       '--glass-panel-glow': 'none',
       borderRadius: 'var(--radius-panel)',
-      padding: '0.9rem',
+      padding: '1rem',
       display: 'flex',
       flexDirection: 'column',
-      gap: '0.65rem',
+      gap: '0.75rem',
       opacity: isPending ? 0.6 : 1,
     } as CSSProperties}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
@@ -341,7 +345,7 @@ function SelectedItemCard({ item }: { item: CalendarItem }) {
               textTransform: 'uppercase',
               letterSpacing: '0.05em',
               color: 'var(--text-muted)',
-              fontWeight: 600,
+              fontWeight: 700,
             }}>
               {item.kind}
             </span>
@@ -361,8 +365,9 @@ function SelectedItemCard({ item }: { item: CalendarItem }) {
           </div>
           <h3 style={{
             margin: 0,
-            fontSize: '15px',
-            fontWeight: 600,
+            fontSize: '16px',
+            lineHeight: 1.35,
+            fontWeight: 650,
             color: isCompleted ? 'var(--text-muted)' : 'var(--text-primary)',
             textDecoration: isCompleted ? 'line-through' : 'none',
             overflowWrap: 'anywhere',
@@ -388,7 +393,7 @@ function SelectedItemCard({ item }: { item: CalendarItem }) {
         )}
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', fontSize: '13px', color: 'var(--text-secondary)' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.38rem', fontSize: '13px', lineHeight: 1.5, color: 'var(--text-secondary)' }}>
         <div>
           <span style={{ color: 'var(--text-muted)' }}>Course:</span> {item.courseName}
         </div>

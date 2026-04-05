@@ -256,11 +256,11 @@ export function ConnectCanvasFlow({
   return (
     <section className="page-stack" style={{ gap: '1rem' }}>
       <div className="motion-card glass-panel glass-accent" style={heroCardStyle}>
-        <p style={{ margin: 0, fontSize: '12px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--accent-foreground)' }}>
+        <p className="ui-kicker" style={{ color: 'var(--accent-foreground)' }}>
           Canvas
         </p>
-        <h1 style={{ margin: '0.4rem 0 0', fontSize: '28px', fontWeight: 700, color: 'var(--text-primary)' }}>One clean place to manage your Canvas sync</h1>
-        <p style={{ margin: '0.65rem 0 0', fontSize: '14px', color: 'var(--text-secondary)', lineHeight: 1.6, maxWidth: '56ch' }}>
+        <h1 className="ui-page-title" style={{ fontSize: '32px' }}>One clean place to manage your Canvas sync</h1>
+        <p className="ui-page-copy" style={{ maxWidth: '56ch' }}>
           Connect once, load your available courses, and keep track of what you already brought into the dashboard. The page is meant to guide you downward instead of splitting the experience into separate top-level actions.
         </p>
       </div>
@@ -419,7 +419,7 @@ export function ConnectCanvasFlow({
                           {isSelected ? 'Yes' : ''}
                         </span>
                         <div style={{ minWidth: 0 }}>
-                          <div style={{ fontSize: '14px', fontWeight: 500, color: 'var(--text-primary)', overflowWrap: 'anywhere' }}>{course.name}</div>
+                  <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)', lineHeight: 1.45, overflowWrap: 'anywhere' }}>{course.name}</div>
                           <div style={{ marginTop: '0.2rem', fontSize: '12px', color: 'var(--text-muted)', overflowWrap: 'anywhere' }}>{course.course_code}</div>
                         </div>
                       </div>
@@ -483,7 +483,7 @@ export function ConnectCanvasFlow({
             {syncedModules.map((module) => (
               <li key={module.id} style={{ display: 'flex', alignItems: 'stretch', gap: '0.75rem', flexWrap: 'wrap' }}>
                 <Link
-                  href={`/modules/${module.id}`}
+                  href={`/modules/${module.id}/learn`}
                   className="glass-panel glass-hover"
                   style={{
                     '--glass-panel-bg': 'var(--glass-surface)',
@@ -501,11 +501,11 @@ export function ConnectCanvasFlow({
                   } as CSSProperties}
                 >
                   <div style={{ minWidth: 0 }}>
-                    <p style={{ margin: 0, fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)', overflowWrap: 'anywhere' }}>
+                    <p style={{ margin: 0, fontSize: '15px', lineHeight: 1.4, fontWeight: 650, color: 'var(--text-primary)', overflowWrap: 'anywhere' }}>
                       {module.title}
                     </p>
                     {module.summary && (
-                      <p style={{ margin: '0.3rem 0 0', fontSize: '12px', color: 'var(--text-muted)', lineHeight: 1.5, overflowWrap: 'anywhere' }}>
+                      <p style={{ margin: '0.35rem 0 0', fontSize: '13px', color: 'var(--text-muted)', lineHeight: 1.55, overflowWrap: 'anywhere' }}>
                         {module.summary}
                       </p>
                     )}
@@ -577,10 +577,10 @@ function SetupModal({
       <div className="motion-modal-card glass-panel glass-strong ui-floating" style={modalCardStyle} onClick={(event) => event.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'flex-start' }}>
           <div>
-            <p style={{ margin: 0, fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', fontWeight: 600 }}>
+            <p className="ui-kicker">
               Connect Canvas
             </p>
-            <h2 style={{ margin: '0.35rem 0 0', fontSize: '22px', fontWeight: 600, color: 'var(--text-primary)' }}>
+            <h2 className="ui-section-title" style={{ marginTop: '0.35rem', fontSize: '22px' }}>
               {stage === 'guide' ? 'Create your Canvas token' : 'Enter your connection details'}
             </h2>
           </div>
@@ -771,11 +771,11 @@ function SectionCard({
   return (
     <section className={[className, 'glass-panel glass-strong'].filter(Boolean).join(' ')} style={sectionCardStyle}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
-        <p style={{ margin: 0, fontSize: '11px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
+        <p className="ui-kicker">
           {eyebrow}
         </p>
-        <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)' }}>{title}</h2>
-        <p style={{ margin: 0, fontSize: '14px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+        <h2 className="ui-section-title" style={{ fontSize: '22px' }}>{title}</h2>
+        <p className="ui-section-copy">
           {description}
         </p>
       </div>
@@ -1026,8 +1026,8 @@ function primaryButton(disabled: boolean) {
     width: 'fit-content',
     minWidth: '170px',
     borderRadius: 'var(--radius-control)',
-    padding: '0.8rem 1rem',
-    fontSize: '14px',
+    padding: '0.72rem 1rem',
+    fontSize: '13px',
     fontWeight: 700,
   } as const
 }

@@ -9,14 +9,14 @@ export function CanvasMenu() {
       className="ui-button ui-button-primary"
       style={{
         fontSize: '13px',
-        padding: '6px 14px',
+        padding: '0.62rem 0.92rem',
         borderRadius: 'var(--radius-control)',
         fontWeight: 700,
         textDecoration: 'none',
-        minHeight: '38px',
+        minHeight: '40px',
       }}
     >
-      Canvas
+      Sync Canvas
     </Link>
   )
 }

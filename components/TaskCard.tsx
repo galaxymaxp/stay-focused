@@ -1,6 +1,5 @@
 'use client'
 
-import type { CSSProperties } from 'react'
 import { useSyncExternalStore, useTransition } from 'react'
 import { updateTaskStatus } from '@/actions/tasks'
 import type { Task } from '@/lib/types'
@@ -15,17 +14,17 @@ export function TaskCard({ task }: { task: Task }) {
 
   return (
     <li className="glass-panel glass-hover" style={{
-      '--glass-panel-bg': 'var(--glass-surface-strong)',
-      '--glass-panel-border': 'var(--glass-border)',
-      '--glass-panel-shadow': 'var(--glass-shadow)',
+      ['--glass-panel-bg' as string]: 'var(--glass-surface-strong)',
+      ['--glass-panel-border' as string]: 'var(--glass-border)',
+      ['--glass-panel-shadow' as string]: 'var(--glass-shadow)',
       display: 'flex',
       alignItems: 'flex-start',
-      gap: '10px',
+      gap: '0.8rem',
       borderRadius: 'var(--radius-panel)',
-      padding: '12px 14px',
+      padding: '0.95rem 1rem',
       opacity: isPending ? 0.4 : isCompleted ? 0.55 : 1,
       transition: 'opacity 0.15s',
-    } as CSSProperties}>
+    }}>
       <button
         onClick={handleToggle}
         disabled={isPending}
@@ -56,8 +55,9 @@ export function TaskCard({ task }: { task: Task }) {
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
           <span style={{
-            fontSize: '14px',
-            fontWeight: 500,
+            fontSize: '15px',
+            lineHeight: 1.4,
+            fontWeight: 600,
             color: isCompleted ? 'var(--text-muted)' : 'var(--text-primary)',
             textDecoration: isCompleted ? 'line-through' : 'none',
             overflowWrap: 'anywhere',
@@ -67,7 +67,7 @@ export function TaskCard({ task }: { task: Task }) {
           <PriorityBadge priority={task.priority} />
         </div>
         {task.details && (
-          <p style={{ margin: '3px 0 0', fontSize: '12px', color: 'var(--text-muted)', overflowWrap: 'anywhere' }}>{task.details}</p>
+          <p style={{ margin: '0.35rem 0 0', fontSize: '13px', lineHeight: 1.5, color: 'var(--text-muted)', overflowWrap: 'anywhere' }}>{task.details}</p>
         )}
         {task.deadline && !isCompleted && <DeadlinePill deadline={task.deadline} />}
       </div>
@@ -88,11 +88,12 @@ function PriorityBadge({ priority }: { priority: string }) {
       alignItems: 'center',
       fontSize: '11px',
       fontWeight: 500,
-      padding: '2px 8px',
+      padding: '0.22rem 0.55rem',
       borderRadius: '999px',
       background: s.background,
       color: s.color,
       flexShrink: 0,
+      border: `1px solid ${s.border}`,
     }}>
       {priority}
     </span>
@@ -132,7 +133,5 @@ function DeadlinePill({ deadline }: { deadline: string }) {
         ? 'var(--amber)'
         : 'var(--text-muted)'
 
-  return (
-    <p style={{ margin: '6px 0 0', fontSize: '12px', color }}>{label} - {deadline}</p>
-  )
+  return <p style={{ margin: '0.45rem 0 0', fontSize: '12px', color }}>{label} - {deadline}</p>
 }
