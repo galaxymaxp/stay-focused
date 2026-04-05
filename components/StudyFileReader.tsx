@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import type { ReactNode } from 'react'
+import { StudyFilePreviewExplorer } from '@/components/StudyFilePreviewExplorer'
 import { buildStudyFileReaderModel } from '@/lib/study-file-reader'
 import type { ModuleSourceResource } from '@/lib/module-workspace'
 
@@ -102,10 +103,10 @@ export function StudyFileReader({
       <ReaderSection title="Key points" kicker={reader.state === 'extracted' ? 'Quick study frame' : 'Held back on purpose'}>
         {reader.keyPoints.length > 0 ? (
           <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: '0.7rem' }}>
-            {reader.keyPoints.map((point) => (
+            {reader.keyPoints.map((point, index) => (
               <li key={point} className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.85rem 0.9rem', display: 'flex', gap: '0.7rem', alignItems: 'flex-start' }}>
                 <span style={{ width: '1.55rem', height: '1.55rem', borderRadius: '999px', background: 'color-mix(in srgb, var(--surface-selected) 84%, var(--accent) 16%)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: 700, color: 'var(--text-primary)', flexShrink: 0 }}>
-                  •
+                  {index + 1}
                 </span>
                 <span style={{ fontSize: '14px', lineHeight: 1.68, color: 'var(--text-secondary)' }}>{point}</span>
               </li>
@@ -118,16 +119,7 @@ export function StudyFileReader({
 
       <ReaderSection title="Study preview" kicker={reader.state === 'extracted' ? 'Readable source preview' : 'Source stays quiet'}>
         {reader.previewBlocks.length > 0 ? (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '0.8rem' }}>
-            {reader.previewBlocks.map((block) => (
-              <article key={block.title} className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
-                <p className="ui-kicker" style={{ margin: 0 }}>{block.title}</p>
-                <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.74, color: 'var(--text-secondary)' }}>
-                  {block.body}
-                </p>
-              </article>
-            ))}
-          </div>
+          <StudyFilePreviewExplorer previewBlocks={reader.previewBlocks} />
         ) : (
           <EmptyReaderState body={reader.previewHint ?? 'No readable study preview is available in the app yet.'} />
         )}

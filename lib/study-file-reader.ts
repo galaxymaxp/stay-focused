@@ -4,6 +4,7 @@ import type { ModuleResourceExtractionStatus } from '@/lib/types'
 export type StudyFileReaderState = 'extracted' | 'metadata_only' | 'empty' | 'failed'
 
 export interface StudyFilePreviewBlock {
+  id: string
   title: string
   body: string
 }
@@ -39,7 +40,7 @@ export function buildStudyFileReaderModel(resource: ModuleSourceResource): Study
   if (state === 'extracted' && normalizedText) {
     const summary = buildGroundedSummary(paragraphs)
     const keyPoints = buildGroundedKeyPoints(paragraphs, summary)
-    const previewBlocks = buildPreviewBlocks(paragraphs)
+    const previewBlocks = buildPreviewBlocks(normalizedText, paragraphs)
     const transparencyBase = charCount >= 1200
       ? 'This study page is grounded in real extracted file text.'
       : 'This study page is grounded in real extracted file text, but the readable amount is still fairly light.'
@@ -177,16 +178,7 @@ function normalizeReaderText(text: string) {
 }
 
 function buildPreviewParagraphs(text: string) {
-  const blocks = text
-    .split(/\n{2,}/)
-    .map((block) => block
-      .split('\n')
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .join(' ')
-      .replace(/\s+/g, ' ')
-      .trim())
-    .filter((block) => block.length >= 48 && !looksLikeNoise(block))
+  const blocks = splitReadableBlocks(text)
 
   if (blocks.length >= 2) {
     return blocks.slice(0, 8)
@@ -248,15 +240,54 @@ function buildGroundedKeyPoints(paragraphs: string[], summary: string) {
   ]).slice(0, 6)
 }
 
-function buildPreviewBlocks(paragraphs: string[]): StudyFilePreviewBlock[] {
-  const labels = ['Opening passage', 'Closer read', 'Later passage']
+function buildPreviewBlocks(text: string, fallbackParagraphs: string[]): StudyFilePreviewBlock[] {
+  const blockCandidates = splitReadableBlocks(text)
+  const selectedParagraphs = blockCandidates.length >= 2
+    ? samplePreviewSections(blockCandidates, Math.min(blockCandidates.length, 4))
+    : fallbackParagraphs.slice(0, 4)
+  const labels = buildPreviewSectionLabels(selectedParagraphs.length)
 
-  return paragraphs
-    .slice(0, 3)
-    .map((paragraph, index) => ({
-      title: labels[index] ?? `Passage ${index + 1}`,
-      body: trimAtBoundary(paragraph, index === 0 ? 420 : 360),
-    }))
+  return selectedParagraphs.map((paragraph, index) => ({
+    id: `study-preview-section-${index + 1}`,
+    title: labels[index] ?? `Section ${index + 1}`,
+    body: trimAtBoundary(paragraph, selectedParagraphs.length === 1 ? 560 : 440),
+  }))
+}
+
+function splitReadableBlocks(text: string) {
+  return text
+    .split(/\n{2,}/)
+    .map((block) => block
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim())
+    .filter((block) => block.length >= 48 && !looksLikeNoise(block))
+}
+
+function samplePreviewSections(blocks: string[], count: number) {
+  if (blocks.length <= count) {
+    return blocks.slice(0, count)
+  }
+
+  const indices = new Set<number>()
+  for (let index = 0; index < count; index += 1) {
+    const ratio = count === 1 ? 0 : index / (count - 1)
+    indices.add(Math.round(ratio * (blocks.length - 1)))
+  }
+
+  return Array.from(indices)
+    .sort((left, right) => left - right)
+    .map((index) => blocks[index])
+}
+
+function buildPreviewSectionLabels(count: number) {
+  if (count <= 1) return ['Beginning']
+  if (count === 2) return ['Beginning', 'Later section']
+  if (count === 3) return ['Beginning', 'Middle', 'Final section']
+  return ['Beginning', 'Middle', 'Later section', 'Final section']
 }
 
 function splitSentences(text: string) {
