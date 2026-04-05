@@ -1,4 +1,6 @@
-import { getClarityWorkspace, getCourseModules, getModuleLearnItems, getModuleTasks } from '@/lib/clarity-workspace'
+import Link from 'next/link'
+import { getClarityWorkspace, getCourseModules, getModuleTasks } from '@/lib/clarity-workspace'
+import { buildLearnExperience } from '@/lib/module-workspace'
 
 export default async function LearnPage() {
   const workspace = await getClarityWorkspace()
@@ -27,8 +29,9 @@ export default async function LearnPage() {
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.95rem' }}>
                 {modules.map((module) => {
-                  const items = getModuleLearnItems(workspace, module.id)
                   const taskCount = getModuleTasks(workspace, module.id).filter((task) => task.status !== 'completed').length
+                  const experience = buildLearnExperience(module, { taskCount })
+                  const previewSections = experience.sections.slice(0, 3)
 
                   return (
                     <article key={module.id} id={module.id} className="glass-panel glass-hover" style={{
@@ -49,17 +52,44 @@ export default async function LearnPage() {
                         <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
                           <span className="ui-chip ui-chip-soft">{module.estimated_minutes} min</span>
                           <span className="ui-chip ui-chip-soft">{taskCount} action item{taskCount === 1 ? '' : 's'}</span>
+                          {experience.audit.hasFileBasedResources && (
+                            <span className="ui-chip ui-chip-soft">{experience.audit.fileResourceCount} file resource{experience.audit.fileResourceCount === 1 ? '' : 's'}</span>
+                          )}
                         </div>
                       </div>
 
+                      <div className="ui-tab-group" style={{ flexWrap: 'wrap' }}>
+                        {experience.sections.map((section) => (
+                          <Link
+                            key={section.id}
+                            href={`/modules/${module.id}/learn#${section.id}`}
+                            className="ui-button ui-button-ghost ui-button-xs"
+                            style={{ textDecoration: 'none' }}
+                          >
+                            {section.title}
+                          </Link>
+                        ))}
+                      </div>
+
+                      {experience.audit.note && (
+                        <div className={experience.audit.missingFileExtraction ? 'ui-card ui-status-warning' : 'ui-card-soft'} style={{ borderRadius: 'var(--radius-tight)', padding: '0.85rem 0.95rem' }}>
+                          <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.6 }}>{experience.audit.note}</p>
+                        </div>
+                      )}
+
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.8rem' }}>
-                        {items.map((item) => (
+                        {previewSections.map((item) => (
                           <section key={item.id} className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.9rem' }}>
-                            <p className="ui-kicker">{labelForLearnType(item.type)}</p>
-                            <h4 style={{ margin: '0.45rem 0 0', fontSize: '15px', fontWeight: 650, color: 'var(--text-primary)' }}>{item.title}</h4>
+                            <p className="ui-kicker">{item.title}</p>
                             <p style={{ margin: '0.55rem 0 0', fontSize: '14px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>{item.body}</p>
                           </section>
                         ))}
+                      </div>
+
+                      <div>
+                        <Link href={`/modules/${module.id}/learn`} className="ui-button ui-button-secondary" style={{ textDecoration: 'none' }}>
+                          Open Full Learn View
+                        </Link>
                       </div>
                     </article>
                   )
@@ -71,11 +101,4 @@ export default async function LearnPage() {
       </div>
     </main>
   )
-}
-
-function labelForLearnType(type: 'summary' | 'concept' | 'connection' | 'review') {
-  if (type === 'summary') return 'Summary'
-  if (type === 'concept') return 'Concept'
-  if (type === 'connection') return 'Connection'
-  return 'Review prompt'
 }

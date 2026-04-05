@@ -1,4 +1,5 @@
 import { getClarityWorkspace, getTaskUrgencyLabel } from '@/lib/clarity-workspace'
+import { TaskStatusToggle } from '@/components/TaskStatusToggle'
 import type { TaskItem } from '@/lib/types'
 
 const GROUPS: Array<{ key: string; title: string; description: string; filter: (task: TaskItem) => boolean }> = [
@@ -20,16 +21,13 @@ const GROUPS: Array<{ key: string; title: string; description: string; filter: (
     description: 'Clear, lower-pressure tasks that are still worth keeping visible.',
     filter: (task) => task.status !== 'completed' && task.actionScore < 36,
   },
-  {
-    key: 'done',
-    title: 'Already done',
-    description: 'Completed items still shown so the product flow feels like a real working queue.',
-    filter: (task) => task.status === 'completed',
-  },
 ]
 
 export default async function DoPage() {
   const workspace = await getClarityWorkspace()
+  const completedItems = workspace.taskItems
+    .filter((task) => task.status === 'completed')
+    .sort((a, b) => a.title.localeCompare(b.title))
 
   return (
     <main className="page-shell page-stack">
@@ -89,6 +87,13 @@ export default async function DoPage() {
                         <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.62, color: 'var(--text-secondary)' }}>{task.details}</p>
                       )}
 
+                      <TaskStatusToggle
+                        status={task.status}
+                        moduleId={task.moduleId}
+                        title={task.title}
+                        taskItemId={task.id}
+                      />
+
                       <div className="ui-meta-list">
                         <span><strong>Course:</strong> {task.courseName}</span>
                         <span><strong>Module:</strong> {task.moduleTitle}</span>
@@ -103,6 +108,69 @@ export default async function DoPage() {
           )
         })}
       </div>
+
+      <section className="section-shell" style={{ padding: '1.2rem' }}>
+        <details>
+          <summary style={{
+            cursor: 'pointer',
+            listStyle: 'none',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: '0.75rem',
+          }}>
+            <div>
+              <p className="ui-kicker">Done</p>
+              <h2 className="ui-section-title" style={{ marginTop: '0.45rem' }}>Completed items</h2>
+              <p className="ui-section-copy" style={{ marginTop: '0.45rem' }}>
+                Hidden by default so active work stays easier to scan, but still available to reopen.
+              </p>
+            </div>
+            <span className="ui-chip ui-chip-soft">{completedItems.length} completed</span>
+          </summary>
+
+          <div style={{ marginTop: '1rem' }}>
+            {completedItems.length === 0 ? (
+              <div className="ui-empty" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', fontSize: '14px' }}>
+                Nothing has been marked complete yet.
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '0.85rem' }}>
+                {completedItems.map((task) => (
+                  <article key={task.id} className="ui-card-soft" style={{
+                    borderRadius: 'var(--radius-panel)',
+                    padding: '1rem',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '0.75rem',
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.65rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                      <div>
+                        <p style={{ margin: 0, fontSize: '16px', lineHeight: 1.35, fontWeight: 650, color: 'var(--text-muted)', textDecoration: 'line-through' }}>
+                          {task.title}
+                        </p>
+                        <p style={{ margin: '0.3rem 0 0', fontSize: '13px', color: 'var(--text-secondary)' }}>
+                          {task.courseName} • {task.moduleTitle}
+                        </p>
+                      </div>
+                      <span className="ui-chip ui-status-success" style={{ padding: '0.28rem 0.6rem', fontSize: '11px', fontWeight: 700 }}>
+                        Done
+                      </span>
+                    </div>
+
+                    <TaskStatusToggle
+                      status={task.status}
+                      moduleId={task.moduleId}
+                      title={task.title}
+                      taskItemId={task.id}
+                    />
+                  </article>
+                ))}
+              </div>
+            )}
+          </div>
+        </details>
+      </section>
     </main>
   )
 }

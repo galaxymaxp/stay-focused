@@ -62,6 +62,17 @@ const NAV_ITEMS = [
       </svg>
     ),
   },
+  {
+    href: '/settings',
+    label: 'Settings',
+    description: 'Theme and accent controls',
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M12 8.5a3.5 3.5 0 1 0 0 7a3.5 3.5 0 0 0 0-7Z" stroke="currentColor" strokeWidth="1.6" />
+        <path d="M19.25 13.2v-2.4l-1.78-.5a5.98 5.98 0 0 0-.55-1.32l.94-1.6-1.7-1.7-1.6.94c-.42-.23-.86-.41-1.32-.55l-.5-1.78h-2.4l-.5 1.78c-.46.14-.9.32-1.32.55l-1.6-.94-1.7 1.7.94 1.6c-.23.42-.41.86-.55 1.32l-1.78.5v2.4l1.78.5c.14.46.32.9.55 1.32l-.94 1.6 1.7 1.7 1.6-.94c.42.23.86.41 1.32.55l.5 1.78h2.4l.5-1.78c.46-.14.9-.32 1.32-.55l1.6.94 1.7-1.7-.94-1.6c.23-.42.41-.86.55-1.32l1.78-.5Z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+      </svg>
+    ),
+  },
 ] as const
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -123,6 +134,9 @@ export function AppShell({ children }: { children: ReactNode }) {
             <span>Clear modules, clear tasks, less noise.</span>
           </div>
           <div className="app-topbar-actions">
+            <Link href="/settings" className="ui-button ui-button-secondary ui-button-sm" style={{ textDecoration: 'none' }}>
+              Settings
+            </Link>
             <CanvasMenu />
           </div>
         </header>

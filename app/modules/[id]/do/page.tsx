@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation'
 import { ModuleLensShell } from '@/components/ModuleLensShell'
+import { TaskStatusToggle } from '@/components/TaskStatusToggle'
 import { extractCourseName, getModuleWorkspace } from '@/lib/module-workspace'
 import { sortTasksByRecommendation } from '@/lib/task-ranking'
 
@@ -89,6 +90,13 @@ export default async function DoPage({ params }: Props) {
                     <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.62, color: 'var(--text-secondary)' }}>{task.details}</p>
                   )}
 
+                  <TaskStatusToggle
+                    status={task.status}
+                    moduleId={module.id}
+                    title={task.title}
+                    legacyTaskId={task.id}
+                  />
+
                   <div className="ui-meta-list">
                     <span><strong>Course:</strong> {courseName}</span>
                     <span><strong>Source:</strong> {module.title}</span>
@@ -100,18 +108,32 @@ export default async function DoPage({ params }: Props) {
           )}
 
           {completedTasks.length > 0 && (
-            <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid color-mix(in srgb, var(--border-subtle) 82%, transparent)' }}>
-              <p className="ui-kicker">
-                Already cleared
-              </p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.75rem' }}>
+            <details style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid color-mix(in srgb, var(--border-subtle) 82%, transparent)' }}>
+              <summary style={{ cursor: 'pointer', listStyle: 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem' }}>
+                <div>
+                  <p className="ui-kicker">
+                    Already cleared
+                  </p>
+                  <p style={{ margin: '0.45rem 0 0', fontSize: '13px', lineHeight: 1.6, color: 'var(--text-secondary)' }}>
+                    Completed tasks stay tucked away unless you need to reopen one.
+                  </p>
+                </div>
+                <span className="ui-chip ui-chip-soft">{completedTasks.length} completed</span>
+              </summary>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.85rem' }}>
                 {completedTasks.map((task) => (
-                  <div key={task.id} className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.8rem 0.9rem' }}>
+                  <div key={task.id} className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.8rem 0.9rem', display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
                     <p style={{ margin: 0, fontSize: '14px', color: 'var(--text-muted)', textDecoration: 'line-through' }}>{task.title}</p>
+                    <TaskStatusToggle
+                      status={task.status}
+                      moduleId={module.id}
+                      title={task.title}
+                      legacyTaskId={task.id}
+                    />
                   </div>
                 ))}
               </div>
-            </div>
+            </details>
           )}
         </section>
 
