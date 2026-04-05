@@ -1,22 +1,5 @@
-import { seedCourses, seedModules } from '@/lib/mock-data'
-import type { CalendarItem, Course, LearningItem, Module, Priority, TaskItem, TaskStatus, TodayItem } from '@/lib/types'
-
-interface ParsedTaskSeed {
-  title: string
-  deadline: string | null
-  priority: Priority
-  status: TaskStatus
-  estimatedMinutes: number
-  details: string | null
-  taskType: TaskItem['taskType']
-}
-
-interface ParsedModuleSource {
-  summary: string
-  concepts: string[]
-  studyPrompts: string[]
-  tasks: ParsedTaskSeed[]
-}
+import { loadWorkspaceSource } from '@/lib/workspace-source'
+import type { CalendarItem, Course, LearningItem, Module, TaskItem, TodayItem } from '@/lib/types'
 
 export interface ClarityWorkspace {
   courses: Course[]
@@ -34,52 +17,20 @@ export interface ClarityWorkspace {
   }
 }
 
-export function getClarityWorkspace(): ClarityWorkspace {
-  const now = new Date()
-  const modules = seedModules.map((seed) => {
-    const parsed = parseRawModuleContent(seed.rawContent, now)
-    const createdAt = offsetDateTime(now, seed.releasedOffsetDays, 8)
-
-    return {
-      module: {
-        id: seed.id,
-        courseId: seed.courseId,
-        title: seed.title,
-        raw_content: seed.rawContent,
-        summary: parsed.summary,
-        concepts: parsed.concepts,
-        study_prompts: parsed.studyPrompts,
-        recommended_order: parsed.tasks.slice(0, 3).map((task) => task.title),
-        status: 'processed' as const,
-        order: seed.order,
-        released_at: createdAt,
-        estimated_minutes: seed.estimatedMinutes,
-        priority_signal: seed.prioritySignal,
-        created_at: createdAt,
-      },
-      parsed,
-    }
-  })
-
-  const modulesOnly = modules.map((entry) => entry.module)
-  const courseMap = new Map(seedCourses.map((course) => [course.id, course]))
-  const learnItems = modules.flatMap(({ module, parsed }) => buildLearningItems(module, parsed))
-  const taskItems = modules.flatMap(({ module, parsed }) => buildTaskItems(module, parsed, courseMap, now))
+export async function getClarityWorkspace(): Promise<ClarityWorkspace> {
+  const source = await loadWorkspaceSource()
+  const courseMap = new Map(source.courses.map((course) => [course.id, course]))
   const todayItems = [
-    ...taskItems.filter((task) => task.status !== 'completed').map((task) => buildTodayTaskItem(task)),
-    ...modulesOnly.map((module) => buildTodayLearningItem(module, learnItems, taskItems, courseMap, now)),
+    ...source.taskItems.filter((task) => task.status !== 'completed').map((task) => buildTodayTaskItem(task)),
+    ...source.modules.map((module) => buildTodayLearningItem(module, source.learnItems, source.taskItems, courseMap)),
   ].sort(compareTodayItems)
-
   const nextBestMove = todayItems[0] ?? null
   const heroId = nextBestMove?.id ?? null
 
   return {
-    courses: seedCourses,
-    modules: modulesOnly,
-    learnItems,
-    taskItems,
+    ...source,
     todayItems,
-    calendarItems: taskItems
+    calendarItems: source.taskItems
       .filter((task) => task.deadline)
       .map((task) => buildCalendarItem(task))
       .sort((a, b) => a.dateKey.localeCompare(b.dateKey) || compareCalendarItems(a, b)),
@@ -88,7 +39,7 @@ export function getClarityWorkspace(): ClarityWorkspace {
       needsAction: todayItems.filter((item) => item.id !== heroId && item.tone === 'attention').slice(0, 4),
       needsUnderstanding: todayItems.filter((item) => item.id !== heroId && item.tone === 'review').slice(0, 4),
       comingUp: todayItems.filter((item) => item.id !== heroId && item.tone === 'upcoming').slice(0, 6),
-      undatedTaskCount: taskItems.filter((task) => task.status !== 'completed' && !task.deadline).length,
+      undatedTaskCount: source.taskItems.filter((task) => task.status !== 'completed' && !task.deadline).length,
     },
   }
 }
@@ -130,66 +81,6 @@ export function getModuleFreshnessScore(module: Module, now = new Date()) {
   return 4
 }
 
-function buildLearningItems(module: Module, parsed: ParsedModuleSource): LearningItem[] {
-  return [
-    {
-      id: `${module.id}-summary`,
-      courseId: module.courseId!,
-      moduleId: module.id,
-      title: 'What this module is trying to teach',
-      body: parsed.summary,
-      type: 'summary',
-      order: 0,
-    },
-    ...parsed.concepts.map((concept, index) => ({
-      id: `${module.id}-concept-${index + 1}`,
-      courseId: module.courseId!,
-      moduleId: module.id,
-      title: `Key idea ${index + 1}`,
-      body: concept,
-      type: 'concept' as const,
-      order: index + 1,
-    })),
-    ...parsed.studyPrompts.map((prompt, index) => ({
-      id: `${module.id}-prompt-${index + 1}`,
-      courseId: module.courseId!,
-      moduleId: module.id,
-      title: `Check your understanding ${index + 1}`,
-      body: prompt,
-      type: 'review' as const,
-      order: parsed.concepts.length + index + 1,
-    })),
-  ]
-}
-
-function buildTaskItems(
-  module: Module,
-  parsed: ParsedModuleSource,
-  courseMap: Map<string, Course>,
-  now: Date,
-): TaskItem[] {
-  const course = courseMap.get(module.courseId!)
-  const freshnessScore = getModuleFreshnessScore(module, now)
-
-  return parsed.tasks.map((task, index) => ({
-    id: `${module.id}-task-${index + 1}`,
-    courseId: module.courseId!,
-    courseName: course?.name ?? 'Course',
-    moduleId: module.id,
-    moduleTitle: module.title,
-    title: task.title,
-    details: task.details,
-    status: task.status,
-    priority: task.priority,
-    deadline: task.deadline,
-    taskType: task.taskType,
-    estimatedMinutes: task.estimatedMinutes,
-    extractedFrom: module.title,
-    moduleFreshnessScore: freshnessScore,
-    actionScore: computeActionScore(task.priority, task.deadline, task.status, freshnessScore),
-  }))
-}
-
 function buildTodayTaskItem(task: TaskItem): TodayItem {
   const daysUntil = getDaysUntil(task.deadline)
   const tone = task.actionScore >= 70 ? 'attention' : task.actionScore >= 36 ? 'review' : 'upcoming'
@@ -221,13 +112,12 @@ function buildTodayLearningItem(
   learnItems: LearningItem[],
   taskItems: TaskItem[],
   courseMap: Map<string, Course>,
-  now: Date,
 ): TodayItem {
-  const course = courseMap.get(module.courseId!)
+  const course = courseMap.get(module.courseId ?? '')
   const moduleLearnItems = learnItems.filter((item) => item.moduleId === module.id)
   const moduleTasks = taskItems.filter((item) => item.moduleId === module.id && item.status !== 'completed').sort(compareTaskItems)
   const freshestTask = moduleTasks[0] ?? null
-  const freshnessScore = getModuleFreshnessScore(module, now)
+  const freshnessScore = getModuleFreshnessScore(module)
   const recommendationScore = freshnessScore
     + (module.priority_signal === 'high' ? 16 : module.priority_signal === 'medium' ? 8 : 2)
     + (freshestTask ? Math.round(freshestTask.actionScore / 3) : 0)
@@ -237,7 +127,7 @@ function buildTodayLearningItem(
     id: `today-module-${module.id}`,
     kind: 'module',
     title: module.title,
-    courseId: module.courseId!,
+    courseId: module.courseId ?? 'unknown-course',
     courseName: course?.name ?? 'Course',
     moduleId: module.id,
     moduleTitle: module.title,
@@ -280,83 +170,6 @@ function buildCalendarItem(task: TaskItem): CalendarItem {
   }
 }
 
-function parseRawModuleContent(rawContent: string, now: Date): ParsedModuleSource {
-  const lines = rawContent.split('\n').map((line) => line.trim()).filter(Boolean)
-
-  return {
-    summary: getSectionParagraph(lines, 'Overview:'),
-    concepts: getBulletSection(lines, 'Key concepts:'),
-    studyPrompts: getBulletSection(lines, 'Study prompts:'),
-    tasks: getBulletSection(lines, 'Tasks:').map((line) => parseTaskLine(line, now)),
-  }
-}
-
-function parseTaskLine(line: string, now: Date): ParsedTaskSeed {
-  const [title, duePart, priorityPart, statusPart, minutesPart, detailsPart] = line.split('|').map((part) => part.trim())
-
-  return {
-    title,
-    deadline: resolveRelativeDate(duePart?.replace(/^due\s+/i, '') ?? '', now),
-    priority: (priorityPart as Priority) || 'medium',
-    status: (statusPart as TaskStatus) || 'pending',
-    estimatedMinutes: Number.parseInt(minutesPart?.replace(/m$/i, '') ?? '20', 10),
-    details: detailsPart ?? null,
-    taskType: inferTaskType(title),
-  }
-}
-
-function getSectionParagraph(lines: string[], heading: string) {
-  const start = lines.indexOf(heading)
-  if (start === -1) return ''
-
-  const collected: string[] = []
-  for (let index = start + 1; index < lines.length; index += 1) {
-    if (isHeading(lines[index])) break
-    collected.push(lines[index])
-  }
-
-  return collected.join(' ').trim()
-}
-
-function getBulletSection(lines: string[], heading: string) {
-  const start = lines.indexOf(heading)
-  if (start === -1) return []
-
-  const items: string[] = []
-  for (let index = start + 1; index < lines.length; index += 1) {
-    if (isHeading(lines[index])) break
-    if (lines[index].startsWith('- ')) {
-      items.push(lines[index].slice(2).trim())
-    }
-  }
-
-  return items
-}
-
-function isHeading(line: string) {
-  return /^(Course|Module|Overview|Key concepts|Study prompts|Tasks):$/i.test(line)
-}
-
-function resolveRelativeDate(token: string, now: Date) {
-  if (!token) return null
-
-  const match = token.match(/^([+-]?\d+)d(?:\s+(\d{1,2}):(\d{2}))?$/i)
-  if (!match) return token
-
-  const offsetDays = Number.parseInt(match[1], 10)
-  const hours = match[2] ? Number.parseInt(match[2], 10) : 12
-  const minutes = match[3] ? Number.parseInt(match[3], 10) : 0
-
-  return offsetDateTime(now, offsetDays, hours, minutes)
-}
-
-function offsetDateTime(base: Date, offsetDays: number, hours = 12, minutes = 0) {
-  const next = new Date(base)
-  next.setDate(next.getDate() + offsetDays)
-  next.setHours(hours, minutes, 0, 0)
-  return next.toISOString()
-}
-
 function getDaysUntil(value: string | null) {
   if (!value) return null
   return Math.ceil((new Date(value).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
@@ -364,38 +177,6 @@ function getDaysUntil(value: string | null) {
 
 function getDaysSince(value: string, now: Date) {
   return Math.max(0, Math.floor((now.getTime() - new Date(value).getTime()) / (1000 * 60 * 60 * 24)))
-}
-
-function computeActionScore(priority: Priority, deadline: string | null, status: TaskStatus, freshnessScore: number) {
-  if (status === 'completed') return -20
-
-  const priorityScore = priority === 'high' ? 34 : priority === 'medium' ? 21 : 10
-  const daysUntil = getDaysUntil(deadline)
-  const timingScore = daysUntil === null
-    ? 6
-    : daysUntil < 0
-      ? 42
-      : daysUntil === 0
-        ? 36
-        : daysUntil === 1
-          ? 28
-          : daysUntil <= 3
-            ? 18
-            : daysUntil <= 7
-              ? 9
-              : 3
-
-  return priorityScore + timingScore + Math.round(freshnessScore / 2)
-}
-
-function inferTaskType(title: string): TaskItem['taskType'] {
-  const normalized = title.toLowerCase()
-  if (normalized.includes('quiz')) return 'quiz'
-  if (normalized.includes('read')) return 'reading'
-  if (normalized.includes('discussion') || normalized.includes('response')) return 'discussion'
-  if (normalized.includes('implement') || normalized.includes('project')) return 'project'
-  if (normalized.includes('set up') || normalized.includes('draft') || normalized.includes('start')) return 'prep'
-  return 'assignment'
 }
 
 function buildTaskReason(task: TaskItem, daysUntil: number | null) {

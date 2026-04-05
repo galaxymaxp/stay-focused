@@ -1,8 +1,8 @@
 import { CalendarDashboard } from '@/components/CalendarDashboard'
 import { getClarityWorkspace } from '@/lib/clarity-workspace'
 
-export default function CalendarPage() {
-  const workspace = getClarityWorkspace()
+export default async function CalendarPage() {
+  const workspace = await getClarityWorkspace()
 
   return (
     <main className="page-shell">

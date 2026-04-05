@@ -5,6 +5,8 @@ import { supabase } from '@/lib/supabase'
 import type { Task } from '@/lib/types'
 
 export async function updateTaskStatus(taskId: string, status: 'pending' | 'completed') {
+  if (!supabase) throw new Error('Supabase is not configured.')
+
   const { error } = await supabase
     .from('tasks')
     .update({ status })
@@ -16,6 +18,8 @@ export async function updateTaskStatus(taskId: string, status: 'pending' | 'comp
 }
 
 export async function getAllTasks(): Promise<Task[]> {
+  if (!supabase) return []
+
   const { data, error } = await supabase
     .from('tasks')
     .select('*')

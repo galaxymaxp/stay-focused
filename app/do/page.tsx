@@ -28,8 +28,8 @@ const GROUPS: Array<{ key: string; title: string; description: string; filter: (
   },
 ]
 
-export default function DoPage() {
-  const workspace = getClarityWorkspace()
+export default async function DoPage() {
+  const workspace = await getClarityWorkspace()
 
   return (
     <main className="page-shell page-stack">

@@ -1,8 +1,8 @@
 import { TodayDashboard } from '@/components/TodayDashboard'
 import { getClarityWorkspace } from '@/lib/clarity-workspace'
 
-export default function Dashboard() {
-  const workspace = getClarityWorkspace()
+export default async function Dashboard() {
+  const workspace = await getClarityWorkspace()
 
   return (
     <main className="page-shell">

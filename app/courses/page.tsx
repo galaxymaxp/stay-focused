@@ -1,8 +1,8 @@
 import Link from 'next/link'
 import { getClarityWorkspace, getCourseModules, getModuleTasks, getTaskUrgencyLabel } from '@/lib/clarity-workspace'
 
-export default function CoursesPage() {
-  const workspace = getClarityWorkspace()
+export default async function CoursesPage() {
+  const workspace = await getClarityWorkspace()
 
   return (
     <main className="page-shell page-stack">

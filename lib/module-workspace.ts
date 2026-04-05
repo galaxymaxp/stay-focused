@@ -14,6 +14,8 @@ export interface LearnSection {
 }
 
 export async function getModuleWorkspace(id: string): Promise<ModuleWorkspaceData | null> {
+  if (!supabase) return null
+
   const { data: module } = await supabase.from('modules').select('*').eq('id', id).single()
   if (!module) return null
 

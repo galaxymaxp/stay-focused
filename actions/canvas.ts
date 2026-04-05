@@ -54,6 +54,10 @@ export async function testCanvasConnection(input: {
 }
 
 export async function syncCourse(formData: FormData): Promise<{ error: string } | void> {
+  if (!supabase) {
+    return { error: 'Supabase is not configured yet.' }
+  }
+
   const courseId = Number(formData.get('courseId'))
   const courseName = formData.get('courseName') as string
   const courseCode = (formData.get('courseCode') as string | null)?.trim() ?? ''
@@ -83,6 +87,10 @@ export async function syncCourses(input: {
   canvasUrl: string
   accessToken: string
 }): Promise<{ success: true; syncedCount: number; syncedCourses: string[] } | { error: string }> {
+  if (!supabase) {
+    return { error: 'Supabase is not configured yet.' }
+  }
+
   const config = getRequiredCanvasConfig(input.canvasUrl, input.accessToken)
 
   if (input.courses.length === 0) {
@@ -112,6 +120,8 @@ export async function syncCourses(input: {
 }
 
 async function syncSingleCourse(course: CanvasCourse, config: Partial<CanvasConfig>): Promise<SyncCourseResult> {
+  if (!supabase) throw new Error('Supabase is not configured yet.')
+
   const [assignments, announcements, modules] = await Promise.all([
     getAssignments(course.id, config),
     getAnnouncements(course.id, config),
@@ -199,6 +209,8 @@ async function syncSingleCourse(course: CanvasCourse, config: Partial<CanvasConf
 }
 
 async function findExistingSyncedModule(courseName: string, courseCode: string): Promise<ExistingModuleMatch | null> {
+  if (!supabase) return null
+
   const coursePrefix = `Course: ${courseName} (${courseCode})`
 
   const { data, error } = await supabase

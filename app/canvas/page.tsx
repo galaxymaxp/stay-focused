@@ -12,10 +12,12 @@ export default async function CanvasPage({ searchParams }: CanvasPageProps = {})
   const actionParam = resolvedSearchParams.action
   const initialAction = Array.isArray(actionParam) ? actionParam[0] : actionParam ?? null
 
-  const { data: syncedModules } = await supabase
-    .from('modules')
-    .select('id, title, summary, status, created_at, raw_content')
-    .order('created_at', { ascending: false })
+  const syncedModules = supabase
+    ? (await supabase
+        .from('modules')
+        .select('id, title, summary, status, created_at, raw_content')
+        .order('created_at', { ascending: false })).data
+    : []
 
   const latestModule = syncedModules?.[0]
   const initialConnectionUrl = extractCanvasUrl(latestModule?.summary ?? null)

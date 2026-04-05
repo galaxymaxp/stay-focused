@@ -94,6 +94,10 @@ async function importProject() {
     import('../app/canvas/page'),
   ])
 
+  if (!supabase) {
+    throw new Error('Supabase is not configured for verification.')
+  }
+
   return {
     fetchCourses,
     syncCourse,

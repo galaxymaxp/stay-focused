@@ -1,7 +1,7 @@
 import { getClarityWorkspace, getCourseModules, getModuleLearnItems, getModuleTasks } from '@/lib/clarity-workspace'
 
-export default function LearnPage() {
-  const workspace = getClarityWorkspace()
+export default async function LearnPage() {
+  const workspace = await getClarityWorkspace()
 
   return (
     <main className="page-shell page-stack">
