@@ -88,8 +88,6 @@ export function ConnectCanvasFlow({
   } : null)
   const canLoadCourses = Boolean(connectionSummary?.url && token.trim())
   const hasLoadedCourses = step === 'courses'
-  const selectedAvailableCount = selectedCourseIds.length
-  const syncedModuleCount = syncedModules.length
 
   function persistConnection(result: CanvasConnectionResult, nextToken: string) {
     const connection = {
@@ -119,7 +117,7 @@ export function ConnectCanvasFlow({
     const tokenPageUrl = getCanvasTokenPageUrl(canvasUrl)
 
     if (!tokenPageUrl) {
-      setConnectionError('Add your school Canvas URL first so we can open the right settings page.')
+      setConnectionError('Add your school Canvas URL first so the correct Canvas settings page can open.')
       setIsSetupOpen(true)
       setSetupStage('guide')
       return
@@ -159,7 +157,7 @@ export function ConnectCanvasFlow({
     if (!canvasUrl.trim() || !token.trim()) {
       setStep('connect')
       openSetup('credentials')
-      setConnectionError('Reconnect to Canvas so we can refresh your saved setup.')
+      setConnectionError('Reconnect to Canvas so the saved setup can be refreshed.')
       return
     }
 
@@ -256,166 +254,119 @@ export function ConnectCanvasFlow({
   }
 
   return (
-    <section className="page-stack" style={{ gap: '1rem' }}>
-      <div className="motion-card glass-panel glass-accent" style={heroCardStyle}>
-        <p className="ui-kicker" style={{ color: 'var(--accent-foreground)' }}>
-          Canvas
+    <main className="page-stack" style={{ gap: '1rem' }}>
+      <header className="motion-card" style={{ display: 'grid', gap: '0.5rem' }}>
+        <p className="ui-kicker">Canvas</p>
+        <h1 className="ui-page-title" style={{ fontSize: '2rem' }}>Sync Canvas</h1>
+        <p className="ui-page-copy" style={{ maxWidth: '48rem', marginTop: 0 }}>
+          Connect Canvas, load the courses that are available to you, and sync the ones you want in the app.
         </p>
-        <h1 className="ui-page-title" style={{ fontSize: '32px' }}>One clean place to manage your Canvas sync</h1>
-        <p className="ui-page-copy" style={{ maxWidth: '56ch' }}>
-          Connect once, load your available courses, and keep track of what you already brought into the dashboard. The page is meant to guide you downward instead of splitting the experience into separate top-level actions.
-        </p>
+      </header>
 
-        <div style={heroStatsGridStyle}>
-          <StatusStatCard
-            label="Connection"
-            value={connectionSummary ? 'Connected' : 'Not connected'}
-            note={connectionSummary ? 'Saved on this device' : 'Setup required'}
-          />
-          <StatusStatCard
-            label="Last sync"
-            value={lastSync ? syncToneLabel(lastSync.tone) : 'No sync yet'}
-            note={lastSync ? lastSync.label : 'Nothing has run yet'}
-          />
-          <StatusStatCard
-            label="Synced modules"
-            value={String(syncedModuleCount)}
-            note={syncedModuleCount > 0 ? 'Available in the app' : 'Nothing imported yet'}
-          />
-          <StatusStatCard
-            label="Ready to sync"
-            value={hasLoadedCourses ? String(filteredCourses.length) : 'Locked'}
-            note={hasLoadedCourses ? 'Available course choices' : 'Load courses after connection'}
-          />
-        </div>
-      </div>
-      <SectionCard
-        className="motion-card motion-delay-1"
+      <PlainSection
         eyebrow="Connection"
-        title={connectionSummary ? 'Canvas is connected' : 'Connect your Canvas account'}
+        title={connectionSummary ? 'Canvas connected' : 'Connect your Canvas account'}
         description={connectionSummary
-          ? `Connected to ${connectionSummary.url}. Refresh the connection, update your token, or keep scrolling to sync more courses.`
-          : 'Start here if you have not connected Canvas yet. We will guide you to the token page, help you paste the details, and test the connection before loading courses.'}
+          ? `Connected to ${connectionSummary.url}.`
+          : 'Add your Canvas details, test the connection, and then load your courses.'}
       >
         {connectionSummary ? (
-          <ConnectedStateCard
-            url={connectionSummary.url}
-            testedAt={savedConnection?.testedAt ?? null}
-            courseCount={savedConnection?.courseCount ?? null}
-            onReconnect={handleReconnect}
-            onForget={handleForgetConnection}
-            disabled={isTesting || isSyncing}
-          />
-        ) : (
-          <div key="connect-idle" className="motion-subsection" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            <div className="glass-panel glass-soft" style={introCardStyle}>
-              <p style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>Guided setup</p>
-              <p style={{ margin: '0.35rem 0 0', fontSize: '14px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-                We&apos;ll open your Canvas settings in a new tab, show you how to create a token, then test the connection before you choose courses.
-              </p>
+          <div style={{ display: 'grid', gap: '0.85rem' }}>
+            <StatusRow
+              title="Saved connection"
+              detail={`Connected to ${connectionSummary.url}${savedConnection?.courseCount ? ` with ${savedConnection.courseCount} available courses from the last check.` : '.'}`}
+              tone="success"
+            />
+            <div className="ui-meta-list">
+              {savedConnection?.testedAt && <span><strong>Last checked:</strong> {new Date(savedConnection.testedAt).toLocaleString()}</span>}
+              {lastSync && <span><strong>Latest sync:</strong> {lastSync.label}</span>}
             </div>
-
-            {connectionError && <Message>{connectionError}</Message>}
-
-            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-              <button type="button" onClick={() => openSetup('guide')} className="ui-button ui-button-primary" style={primaryButton()}>
-                Open setup guide
+            <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+              <button type="button" onClick={handleReconnect} disabled={isTesting || isSyncing} className="ui-button ui-button-secondary ui-button-sm">
+                Reconnect
               </button>
-              <button type="button" onClick={handleOpenTokenPage} className="ui-button ui-button-secondary" style={secondaryButton}>
+              <button type="button" onClick={handleForgetConnection} disabled={isTesting || isSyncing} className="ui-button ui-button-ghost ui-button-sm">
+                Forget saved connection
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gap: '0.85rem' }}>
+            <p style={bodyCopyStyle}>
+              No Canvas connection is saved on this device yet.
+            </p>
+            {connectionError && <Message>{connectionError}</Message>}
+            <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+              <button type="button" onClick={() => openSetup('guide')} className="ui-button ui-button-primary ui-button-sm">
+                Open setup
+              </button>
+              <button type="button" onClick={handleOpenTokenPage} className="ui-button ui-button-ghost ui-button-sm">
                 Open Canvas token page
               </button>
             </div>
           </div>
         )}
-      </SectionCard>
+      </PlainSection>
 
-      <SectionCard
-        className="motion-card motion-delay-2"
-        eyebrow="Sync courses"
-        title="Choose what to bring in next"
-        description="Load your current Canvas course list here, then select one or more courses to sync. The page keeps everything in a single vertical flow so you can naturally move from connection to syncing to review."
+      <PlainSection
+        eyebrow="Sync"
+        title="Course sync"
+        description="Load the list of available Canvas courses, select what you want to import, and run sync."
       >
         {!hasLoadedCourses ? (
-          <div key="sync-locked" className="motion-subsection" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            <div style={compactMetaGridStyle}>
-              <MiniWorkflowCard label="Connection" value={canLoadCourses ? 'Ready' : 'Blocked'} note={canLoadCourses ? 'Saved credentials available' : 'Finish setup first'} />
-              <MiniWorkflowCard label="Course list" value="Not loaded" note="Load the current Canvas list here" />
-            </div>
-
-            <div className="glass-panel glass-soft" style={introCardStyle}>
-              <p style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>
-                {canLoadCourses ? 'Ready to load your courses' : 'Connection needed before course selection'}
-              </p>
-              <p style={{ margin: '0.35rem 0 0', fontSize: '14px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-                {canLoadCourses
-                  ? 'Use your saved Canvas details to load the latest list of available courses, then pick the ones you want on the dashboard.'
-                  : 'Open the setup guide first. As soon as your Canvas details are confirmed, this section becomes your course picker.'}
-              </p>
-            </div>
-
+          <div style={{ display: 'grid', gap: '0.85rem' }}>
+            <p style={bodyCopyStyle}>
+              {canLoadCourses
+                ? 'The saved connection is ready. Load your available courses when you want to sync more.'
+                : 'Connect Canvas first. After the connection check succeeds, this section becomes your course picker.'}
+            </p>
             {connectionError && connectionSummary && <Message>{connectionError}</Message>}
-
-            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
               {canLoadCourses ? (
-                <button type="button" onClick={handleUseSavedConnection} disabled={isTesting} className="ui-button ui-button-primary" style={primaryButton()}>
-                  {isTesting ? 'Loading courses...' : hasSyncedCourses ? 'Load more courses' : 'Load available courses'}
+                <button type="button" onClick={handleUseSavedConnection} disabled={isTesting} className="ui-button ui-button-primary ui-button-sm">
+                  {isTesting ? 'Loading courses...' : hasSyncedCourses ? 'Load more courses' : 'Load courses'}
                 </button>
               ) : (
-                <button type="button" onClick={() => openSetup('guide')} className="ui-button ui-button-primary" style={primaryButton()}>
-                  Open setup guide
+                <button type="button" onClick={() => openSetup('guide')} className="ui-button ui-button-primary ui-button-sm">
+                  Open setup
                 </button>
               )}
-              <button type="button" onClick={handleReconnect} disabled={isTesting || isSyncing} className="ui-button ui-button-secondary" style={secondaryButton}>
-                Reconnect Canvas
+              <button type="button" onClick={handleReconnect} disabled={isTesting || isSyncing} className="ui-button ui-button-ghost ui-button-sm">
+                Reconnect
               </button>
             </div>
           </div>
         ) : (
-          <div key="sync-loaded" className="motion-subsection" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            <div style={compactMetaGridStyle}>
-              <MiniWorkflowCard label="Available courses" value={String(filteredCourses.length)} note="Still available to bring in" />
-              <MiniWorkflowCard label="Selected now" value={String(selectedAvailableCount)} note={selectedAvailableCount > 0 ? 'Ready to sync' : 'Pick one or more'} />
-              <MiniWorkflowCard label="Already in app" value={String(syncedModuleCount)} note="Hidden from this picker" />
-            </div>
+          <div style={{ display: 'grid', gap: '0.9rem' }}>
+            <StatusRow
+              title="Courses loaded"
+              detail="Choose one or more courses below. Courses already synced into the app are excluded from this list."
+              tone="success"
+            />
 
-            <div className="ui-status-success" style={successPanelStyle}>
-              <p style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: 'var(--green)' }}>Course list ready</p>
-              <p style={{ margin: '0.3rem 0 0', fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                Pick the courses you want on your dashboard. Already-synced courses stay out of this list automatically.
-              </p>
-            </div>
-
-            <div>
-              <label style={labelStyle}>Course search</label>
+            <div style={{ display: 'grid', gap: '0.4rem' }}>
+              <label style={labelStyle}>Search courses</label>
               <input
                 type="text"
                 value={search}
-                onChange={(event) => {
-                  setSearch(event.target.value)
-                }}
+                onChange={(event) => setSearch(event.target.value)}
                 placeholder="Search your courses"
                 disabled={isSyncing}
                 className="ui-input"
                 style={inputStyle}
               />
-              <p style={{ margin: '0.4rem 0 0', fontSize: '12px', color: 'var(--text-muted)' }}>
+              <p style={helperTextStyle}>
                 {courses.length === 0
                   ? 'No active courses were found for this account.'
                   : filteredCourses.length === 0
                     ? 'Everything available from this Canvas account is already synced.'
-                    : 'Start typing, then choose one or more courses to sync.'}
+                    : 'Select one or more courses to sync.'}
               </p>
             </div>
 
-            {selectedCourseIds.length > 0 && (
-              <div className="glass-panel glass-soft" style={softPanelStyle}>
-                {selectedCourseIds.length} course{selectedCourseIds.length === 1 ? '' : 's'} selected and ready to sync.
-              </div>
-            )}
-
-            <div style={courseListStyle}>
+            <div style={listShellStyle}>
               {filteredCourses.length === 0 ? (
-                <div style={{ padding: '0.95rem 1rem', fontSize: '13px', color: 'var(--text-secondary)' }}>
+                <div style={{ padding: '0.9rem 1rem', fontSize: '13px', color: 'var(--text-secondary)' }}>
                   {courses.some((course) => !syncedCourseKeys.includes(getCourseKey(course.name, course.course_code)))
                     ? 'No courses matched that search.'
                     : 'All available courses from this Canvas account are already synced.'}
@@ -430,38 +381,19 @@ export function ConnectCanvasFlow({
                       type="button"
                       onClick={() => toggleCourseSelection(course.id)}
                       aria-pressed={isSelected}
-                      className="glass-panel ui-interactive-card"
+                      className="ui-interactive-card"
                       data-open={isSelected ? 'true' : 'false'}
-                      style={{
-                        '--glass-panel-bg': isSelected ? 'color-mix(in srgb, var(--surface-selected) 84%, var(--accent) 16%)' : 'var(--glass-surface)',
-                        '--glass-panel-border': isSelected ? 'var(--accent-border)' : 'var(--glass-border)',
-                        '--glass-panel-shadow': index < filteredCourses.length - 1
-                          ? `inset 0 -1px 0 var(--border), ${isSelected ? 'var(--glass-shadow-strong)' : '0 0 0 transparent'}`
-                          : isSelected
-                            ? 'var(--glass-shadow-strong)'
-                            : 'none',
-                        '--glass-panel-glow': 'none',
-                        width: '100%',
-                        textAlign: 'left',
-                        padding: '0.9rem 1rem',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        gap: '0.75rem',
-                        alignItems: 'center',
-                        flexWrap: 'wrap',
-                      } as CSSProperties}
+                      style={courseRowStyle(index < filteredCourses.length - 1, isSelected)}
                     >
-                      <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start', minWidth: 0, flex: '1 1 220px' }}>
-                        <span style={selectionBadgeStyle(isSelected)}>
-                          {isSelected ? 'Yes' : ''}
-                        </span>
-                        <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)', lineHeight: 1.45, overflowWrap: 'anywhere' }}>{course.name}</div>
-                          <div style={{ marginTop: '0.2rem', fontSize: '12px', color: 'var(--text-muted)', overflowWrap: 'anywhere' }}>{course.course_code}</div>
+                      <div style={{ minWidth: 0, flex: '1 1 220px' }}>
+                        <div style={{ fontSize: '14px', fontWeight: 600, lineHeight: 1.45, color: 'var(--text-primary)', overflowWrap: 'anywhere' }}>
+                          {course.name}
+                        </div>
+                        <div style={{ marginTop: '0.22rem', fontSize: '12px', color: 'var(--text-muted)', overflowWrap: 'anywhere' }}>
+                          {course.course_code}
                         </div>
                       </div>
-                      <span style={{ fontSize: '12px', color: isSelected ? 'var(--accent-foreground)' : 'var(--text-muted)', fontWeight: isSelected ? 600 : 500, flexShrink: 0 }}>
+                      <span style={selectionStateStyle(isSelected)}>
                         {isSelected ? 'Selected' : 'Select'}
                       </span>
                     </button>
@@ -470,92 +402,70 @@ export function ConnectCanvasFlow({
               )}
             </div>
 
+            {selectedCourseIds.length > 0 && (
+              <p style={helperTextStyle}>
+                {selectedCourseIds.length} course{selectedCourseIds.length === 1 ? '' : 's'} selected.
+              </p>
+            )}
+
             {syncError && <Message>{syncError}</Message>}
             {syncSuccess && <SuccessMessage>{syncSuccess}</SuccessMessage>}
 
-            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-              <button type="button" onClick={handleReconnect} disabled={isSyncing} className="ui-button ui-button-secondary" style={secondaryButton}>
-                Open setup guide
+            <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+              <button type="button" onClick={handleCourseSubmit} disabled={selectedCourseIds.length === 0 || isSyncing || courses.length === 0} className="ui-button ui-button-primary ui-button-sm">
+                {isSyncing ? 'Syncing...' : selectedCourseIds.length > 1 ? `Sync ${selectedCourseIds.length} courses` : 'Sync selected course'}
               </button>
-              <button type="button" onClick={handleCourseSubmit} disabled={selectedCourseIds.length === 0 || isSyncing || courses.length === 0} className="ui-button ui-button-primary" style={primaryButton()}>
-                {isSyncing ? 'Syncing courses...' : selectedCourseIds.length > 1 ? `Sync ${selectedCourseIds.length} courses` : 'Sync selected course'}
+              <button type="button" onClick={handleReconnect} disabled={isSyncing} className="ui-button ui-button-ghost ui-button-sm">
+                Open setup
               </button>
             </div>
 
             {isSyncing && (
-              <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-muted)' }}>
-                Pulling in assignments, announcements, and module content for your selected courses. This takes a few seconds.
+              <p style={helperTextStyle}>
+                Pulling in assignments, announcements, and module content. This can take a few seconds.
               </p>
             )}
           </div>
         )}
-      </SectionCard>
+      </PlainSection>
 
       {lastSync && (
-        <SectionCard
-          className="motion-card motion-delay-3"
-          eyebrow="Last sync"
-          title="Recent sync status"
-          description="A quick summary of the latest sync run so you can tell at a glance whether everything finished normally."
+        <PlainSection
+          eyebrow="Recent activity"
+          title="Last sync"
+          description="The latest sync result from this workspace."
         >
-          <div style={compactMetaGridStyle}>
-            <MiniWorkflowCard label="Status" value={syncToneLabel(lastSync.tone)} note="Latest sync run" />
-            <MiniWorkflowCard label="Imported modules" value={String(syncedModuleCount)} note="Current synced count" />
-          </div>
-          <details className={`glass-panel glass-soft ${lastSync.tone === 'success' ? 'ui-status-success' : lastSync.tone === 'warning' ? 'ui-status-warning' : ''}`} style={lastSyncCardStyle(lastSync.tone)}>
-            <summary className="ui-interactive-summary" style={{ fontSize: '13px', fontWeight: 700, color: 'inherit' }}>
-              View last sync detail
-            </summary>
-            <p style={{ margin: '0.8rem 0 0', fontSize: '14px', fontWeight: 600 }}>{lastSync.label}</p>
-          </details>
-        </SectionCard>
+          <StatusRow title="Latest run" detail={lastSync.label} tone={lastSync.tone} />
+        </PlainSection>
       )}
 
-      <SectionCard
-        className="motion-card motion-delay-4"
-        eyebrow="Synced courses"
-        title={syncedModules.length > 0 ? 'Courses already on your dashboard' : 'No courses synced yet'}
+      <PlainSection
+        eyebrow="Synced modules"
+        title={syncedModules.length > 0 ? 'Imported content' : 'No synced modules yet'}
         description={syncedModules.length > 0
-          ? 'These course modules are already synced into Stay Focused. Open any one to review the extracted work, or unsync it here if you want to remove it.'
-          : 'Once you sync a course, it will show up here so you can jump back in or remove it later.'}
+          ? 'Modules already brought into Stay Focused. Open one to study it, or remove it if you no longer want it here.'
+          : 'Synced modules will appear here after you import a course.'}
       >
         {syncedModules.length === 0 ? (
-          <div className="ui-empty" style={emptyStateStyle}>
-            Nothing has been synced yet. Finish the connection flow above, load your courses, and choose the ones you want on the dashboard.
+          <div className="ui-empty" style={{ borderRadius: '12px', padding: '0.95rem 1rem', fontSize: '13px', lineHeight: 1.6 }}>
+            Nothing has been synced yet.
           </div>
         ) : (
-          <ul id="synced-courses" style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+          <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: '0.65rem' }}>
             {syncedModules.map((module) => (
-              <li key={module.id} style={{ display: 'flex', alignItems: 'stretch', gap: '0.75rem', flexWrap: 'wrap' }}>
-                <Link
-                  href={`/modules/${module.id}/learn`}
-                  className="glass-panel ui-interactive-card"
-                  style={{
-                    '--glass-panel-bg': 'var(--glass-surface)',
-                    '--glass-panel-border': 'var(--glass-border)',
-                    '--glass-panel-shadow': 'var(--glass-shadow)',
-                    flex: '1 1 320px',
-                    minWidth: 0,
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'flex-start',
-                    gap: '0.8rem',
-                    borderRadius: 'var(--radius-panel)',
-                    padding: '0.95rem 1rem',
-                    textDecoration: 'none',
-                  } as CSSProperties}
-                >
+              <li key={module.id} style={{ display: 'flex', gap: '0.65rem', alignItems: 'stretch', flexWrap: 'wrap' }}>
+                <Link href={`/modules/${module.id}/learn`} className="ui-interactive-card" style={moduleRowStyle}>
                   <div style={{ minWidth: 0 }}>
-                    <p style={{ margin: 0, fontSize: '15px', lineHeight: 1.4, fontWeight: 650, color: 'var(--text-primary)', overflowWrap: 'anywhere' }}>
+                    <p style={{ margin: 0, fontSize: '14px', fontWeight: 600, lineHeight: 1.45, color: 'var(--text-primary)', overflowWrap: 'anywhere' }}>
                       {module.title}
                     </p>
                     {module.summary && (
-                      <p style={{ margin: '0.35rem 0 0', fontSize: '13px', color: 'var(--text-muted)', lineHeight: 1.55, overflowWrap: 'anywhere' }}>
+                      <p style={{ margin: '0.28rem 0 0', fontSize: '12px', lineHeight: 1.55, color: 'var(--text-secondary)', overflowWrap: 'anywhere' }}>
                         {module.summary}
                       </p>
                     )}
                   </div>
-                  <span style={{ fontSize: '12px', color: 'var(--text-muted)', flexShrink: 0, whiteSpace: 'nowrap', paddingTop: '1px' }}>
+                  <span style={{ fontSize: '12px', color: 'var(--text-muted)', whiteSpace: 'nowrap', flexShrink: 0 }}>
                     {new Date(module.createdAt).toLocaleDateString()}
                   </span>
                 </Link>
@@ -564,7 +474,7 @@ export function ConnectCanvasFlow({
             ))}
           </ul>
         )}
-      </SectionCard>
+      </PlainSection>
 
       {isSetupOpen && (
         <SetupModal
@@ -582,12 +492,35 @@ export function ConnectCanvasFlow({
           onTestConnection={handleTestConnection}
         />
       )}
-    </section>
+    </main>
   )
 }
 
-function getCourseKey(courseName: string, courseCode: string) {
-  return `${courseName}::${courseCode}`.toLowerCase()
+function PlainSection({
+  eyebrow,
+  title,
+  description,
+  children,
+}: {
+  eyebrow: string
+  title: string
+  description: string
+  children: ReactNode
+}) {
+  return (
+    <section style={sectionStyle}>
+      <div style={{ padding: '1rem 1.1rem', borderBottom: '1px solid color-mix(in srgb, var(--border-subtle) 88%, transparent)' }}>
+        <p className="ui-kicker">{eyebrow}</p>
+        <h2 style={{ margin: '0.38rem 0 0', fontSize: '1.05rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>{title}</h2>
+        <p style={{ margin: '0.36rem 0 0', fontSize: '13px', lineHeight: 1.6, color: 'var(--text-secondary)' }}>
+          {description}
+        </p>
+      </div>
+      <div style={{ padding: '1rem 1.1rem' }}>
+        {children}
+      </div>
+    </section>
+  )
 }
 
 function SetupModal({
@@ -618,31 +551,29 @@ function SetupModal({
   onTestConnection: () => void
 }) {
   return (
-    <div className="motion-modal-backdrop ui-overlay" style={modalBackdropStyle} onClick={onClose}>
-      <div className="motion-modal-card glass-panel glass-strong ui-floating" style={modalCardStyle} onClick={(event) => event.stopPropagation()}>
+    <div className="ui-overlay" style={modalBackdropStyle} onClick={onClose}>
+      <div style={modalCardStyle} onClick={(event) => event.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'flex-start' }}>
           <div>
-            <p className="ui-kicker">
-              Connect Canvas
-            </p>
-            <h2 className="ui-section-title" style={{ marginTop: '0.35rem', fontSize: '22px' }}>
-              {stage === 'guide' ? 'Create your Canvas token' : 'Enter your connection details'}
+            <p className="ui-kicker">Connect Canvas</p>
+            <h2 style={{ margin: '0.38rem 0 0', fontSize: '1.1rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>
+              {stage === 'guide' ? 'Create an access token' : 'Enter your connection details'}
             </h2>
           </div>
-          <button type="button" onClick={onClose} className="ui-button ui-button-secondary" style={closeButtonStyle} aria-label="Close setup guide">
+          <button type="button" onClick={onClose} className="ui-button ui-button-ghost ui-button-sm" aria-label="Close setup">
             Close
           </button>
         </div>
 
         {stage === 'guide' ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            <p style={{ margin: 0, fontSize: '14px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-              We&apos;ll help you open Canvas in a new tab and generate a personal access token. Nothing is synced until you come back and test the connection here.
+          <div style={{ display: 'grid', gap: '0.9rem' }}>
+            <p style={bodyCopyStyle}>
+              Open your Canvas settings, create a token, then return here to test the connection.
             </p>
 
             <Field
-              label="Your Canvas URL"
-              hint="This helps us open the correct Canvas settings page for your school."
+              label="Canvas URL"
+              hint="Used to open the correct Canvas settings page."
               value={canvasUrl}
               onChange={onCanvasUrlChange}
               placeholder="https://your-school.instructure.com"
@@ -650,40 +581,28 @@ function SetupModal({
               type="url"
             />
 
-            <div className="glass-panel glass-soft" style={guideCardStyle}>
-              <GuideStep number="1" title="Open your Canvas settings">
-                Use the button below to open your Canvas settings page in a new tab.
-              </GuideStep>
-              <GuideStep number="2" title="Create a new access token">
-                In Canvas, look for Approved Integrations or Access Tokens, then choose the option to create a new token.
-              </GuideStep>
-              <GuideStep number="3" title="Copy the token right away">
-                Canvas usually shows the token only once, so copy it before leaving the page.
-              </GuideStep>
-              <GuideStep number="4" title="Return here and paste it in">
-                Once you&apos;re back, we&apos;ll test the connection before showing your courses.
-              </GuideStep>
-            </div>
+            <ol style={{ margin: 0, paddingLeft: '1.1rem', display: 'grid', gap: '0.45rem', color: 'var(--text-secondary)', fontSize: '13px', lineHeight: 1.6 }}>
+              <li>Open your Canvas settings page.</li>
+              <li>Create a new personal access token.</li>
+              <li>Copy the token before leaving Canvas.</li>
+              <li>Return here and paste it in.</li>
+            </ol>
 
             {connectionError && <Message>{connectionError}</Message>}
 
-            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-              <button type="button" onClick={onOpenTokenPage} className="ui-button ui-button-primary" style={primaryButton()}>
-                Open Canvas token page
+            <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+              <button type="button" onClick={onOpenTokenPage} className="ui-button ui-button-primary ui-button-sm">
+                Open token page
               </button>
-              <button type="button" onClick={onNext} className="ui-button ui-button-secondary" style={secondaryButton}>
-                I already have my token
+              <button type="button" onClick={onNext} className="ui-button ui-button-ghost ui-button-sm">
+                I already have a token
               </button>
             </div>
-
-            <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-muted)' }}>
-              If Canvas opens somewhere slightly different, go to Account, then Settings or Approved Integrations.
-            </p>
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            <p style={{ margin: 0, fontSize: '14px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-              Paste your Canvas URL and the token you just created. We&apos;ll test everything before you pick a course.
+          <div style={{ display: 'grid', gap: '0.9rem' }}>
+            <p style={bodyCopyStyle}>
+              Paste your Canvas URL and token. The connection is tested before the course list is loaded.
             </p>
 
             <Field
@@ -697,7 +616,7 @@ function SetupModal({
             />
             <Field
               label="Access token"
-              hint="Paste the token exactly as Canvas gave it to you."
+              hint="Paste the token exactly as Canvas provided it."
               value={token}
               onChange={onTokenChange}
               placeholder="Paste your Canvas access token"
@@ -707,24 +626,19 @@ function SetupModal({
 
             {connectionError && <Message>{connectionError}</Message>}
 
-            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-              <button type="button" onClick={onBack} disabled={isTesting} className="ui-button ui-button-secondary" style={secondaryButton}>
+            <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+              <button type="button" onClick={onBack} disabled={isTesting} className="ui-button ui-button-ghost ui-button-sm">
                 Back
               </button>
               <button
                 type="button"
                 onClick={onTestConnection}
                 disabled={!canvasUrl.trim() || !token.trim() || isTesting}
-                className="ui-button ui-button-primary"
-                style={primaryButton()}
+                className="ui-button ui-button-primary ui-button-sm"
               >
-                {isTesting ? 'Checking Canvas...' : 'Test connection'}
+                {isTesting ? 'Checking...' : 'Test connection'}
               </button>
             </div>
-
-            <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-muted)' }}>
-              We&apos;ll load your available courses only after the connection check succeeds.
-            </p>
           </div>
         )}
       </div>
@@ -732,160 +646,37 @@ function SetupModal({
   )
 }
 
-function GuideStep({ number, title, children }: { number: string; title: string; children: ReactNode }) {
-  return (
-    <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}>
-      <span style={{
-        width: '1.6rem',
-        height: '1.6rem',
-        borderRadius: 'var(--radius-pill)',
-        background: 'color-mix(in srgb, var(--surface-selected) 84%, var(--accent) 16%)',
-        color: 'var(--text-primary)',
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontSize: '12px',
-        fontWeight: 700,
-        flexShrink: 0,
-        border: '1px solid color-mix(in srgb, var(--accent-border) 72%, var(--border-subtle) 28%)',
-      }}>
-        {number}
-      </span>
-      <div>
-        <p style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>{title}</p>
-        <p style={{ margin: '0.25rem 0 0', fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>{children}</p>
-      </div>
-    </div>
-  )
-}
-
-function ConnectedStateCard({
-  url,
-  testedAt,
-  courseCount,
-  onReconnect,
-  onForget,
-  disabled,
-}: {
-  url: string
-  testedAt: string | null
-  courseCount: number | null
-  onReconnect: () => void
-  onForget: () => void
-  disabled: boolean
-}) {
-  return (
-    <div className="glass-panel glass-soft ui-status-success" style={successPanelStyle}>
-      <div style={compactMetaGridStyle}>
-        <MiniWorkflowCard label="State" value="Connected" note="Canvas access is saved" />
-        <MiniWorkflowCard label="Course access" value={courseCount !== null ? String(courseCount) : 'Unknown'} note="Available from last check" />
-      </div>
-
-      <div>
-        <p style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: 'var(--green)' }}>Connection saved</p>
-        <p style={{ margin: '0.35rem 0 0', fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5, overflowWrap: 'anywhere' }}>
-          Connected to {url}
-          {courseCount !== null ? ` with ${courseCount} available course${courseCount === 1 ? '' : 's'}.` : '.'}
-        </p>
-      </div>
-
-      <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', fontSize: '12px', color: 'var(--text-secondary)' }}>
-        {testedAt && <span>Last checked {new Date(testedAt).toLocaleString()}</span>}
-      </div>
-
-      <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
-        <button type="button" onClick={onReconnect} disabled={disabled} className="ui-button ui-button-secondary" style={secondaryButton}>
-          Reconnect
-        </button>
-        <button type="button" onClick={onForget} disabled={disabled} className="ui-button ui-button-ghost" style={ghostButton}>
-          Forget saved connection
-        </button>
-      </div>
-    </div>
-  )
-}
-
-function SectionCard({
-  className,
-  eyebrow,
+function StatusRow({
   title,
-  description,
-  children,
+  detail,
+  tone,
 }: {
-  className?: string
-  eyebrow: string
   title: string
-  description: string
-  children: ReactNode
+  detail: string
+  tone: SyncSnapshot['tone'] | 'success'
 }) {
-  return (
-    <section className={[className, 'glass-panel glass-strong'].filter(Boolean).join(' ')} style={sectionCardStyle}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
-        <p className="ui-kicker">
-          {eyebrow}
-        </p>
-        <h2 className="ui-section-title" style={{ fontSize: '22px' }}>{title}</h2>
-        <p className="ui-section-copy">
-          {description}
-        </p>
-      </div>
-      {children}
-    </section>
-  )
-}
+  const borderColor = tone === 'success'
+    ? 'color-mix(in srgb, var(--green) 22%, var(--border-subtle) 78%)'
+    : tone === 'warning'
+      ? 'color-mix(in srgb, var(--amber) 22%, var(--border-subtle) 78%)'
+      : 'color-mix(in srgb, var(--border-subtle) 88%, transparent)'
+  const background = tone === 'success'
+    ? 'color-mix(in srgb, var(--green-light) 18%, var(--surface-elevated) 82%)'
+    : tone === 'warning'
+      ? 'color-mix(in srgb, var(--amber-light) 18%, var(--surface-elevated) 82%)'
+      : 'var(--surface-elevated)'
 
-function MiniWorkflowCard({
-  label,
-  value,
-  note,
-}: {
-  label: string
-  value: string
-  note: string
-}) {
   return (
-    <div className="glass-panel glass-soft" style={miniCardStyle}>
-      <p style={{ margin: 0, fontSize: '10px', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
-        {label}
-      </p>
-      <p style={{ margin: '0.34rem 0 0', fontSize: '16px', lineHeight: 1.2, fontWeight: 650, color: 'var(--text-primary)' }}>
-        {value}
-      </p>
-      <p style={{ margin: '0.22rem 0 0', fontSize: '12px', lineHeight: 1.55, color: 'var(--text-secondary)' }}>
-        {note}
-      </p>
+    <div style={{
+      borderRadius: '12px',
+      border: `1px solid ${borderColor}`,
+      background,
+      padding: '0.85rem 0.95rem',
+    }}>
+      <p style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>{title}</p>
+      <p style={{ margin: '0.28rem 0 0', fontSize: '13px', lineHeight: 1.6, color: 'var(--text-secondary)' }}>{detail}</p>
     </div>
   )
-}
-
-function StatusStatCard({
-  label,
-  value,
-  note,
-}: {
-  label: string
-  value: string
-  note: string
-}) {
-  return (
-    <div className="glass-panel glass-soft" style={heroStatCardStyle}>
-      <p style={{ margin: 0, fontSize: '10px', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
-        {label}
-      </p>
-      <p style={{ margin: '0.35rem 0 0', fontSize: '17px', lineHeight: 1.15, fontWeight: 650, color: 'var(--text-primary)' }}>
-        {value}
-      </p>
-      <p style={{ margin: '0.22rem 0 0', fontSize: '12px', lineHeight: 1.55, color: 'var(--text-secondary)' }}>
-        {note}
-      </p>
-    </div>
-  )
-}
-
-function syncToneLabel(tone: SyncSnapshot['tone']) {
-  if (tone === 'success') return 'Healthy'
-  if (tone === 'warning') return 'Needs review'
-  return 'In progress'
 }
 
 function Field({
@@ -906,7 +697,7 @@ function Field({
   type: 'url' | 'password'
 }) {
   return (
-    <div>
+    <div style={{ display: 'grid', gap: '0.35rem' }}>
       <label style={labelStyle}>{label}</label>
       <input
         type={type}
@@ -917,17 +708,21 @@ function Field({
         className="ui-input"
         style={inputStyle}
       />
-      <p style={{ margin: '0.4rem 0 0', fontSize: '12px', color: 'var(--text-muted)' }}>{hint}</p>
+      <p style={helperTextStyle}>{hint}</p>
     </div>
   )
 }
 
 function Message({ children }: { children: ReactNode }) {
   return (
-    <div className="glass-panel glass-soft ui-status-danger" style={{
-      borderRadius: 'var(--radius-panel)',
+    <div style={{
+      borderRadius: '12px',
+      border: '1px solid color-mix(in srgb, var(--red) 22%, var(--border-subtle) 78%)',
+      background: 'color-mix(in srgb, var(--red-light) 20%, var(--surface-elevated) 80%)',
       padding: '0.85rem 0.95rem',
       fontSize: '13px',
+      lineHeight: 1.6,
+      color: 'var(--text-secondary)',
     }}>
       {children}
     </div>
@@ -936,28 +731,22 @@ function Message({ children }: { children: ReactNode }) {
 
 function SuccessMessage({ children }: { children: ReactNode }) {
   return (
-    <div className="glass-panel glass-soft ui-status-success" style={{
-      borderRadius: 'var(--radius-panel)',
+    <div style={{
+      borderRadius: '12px',
+      border: '1px solid color-mix(in srgb, var(--green) 22%, var(--border-subtle) 78%)',
+      background: 'color-mix(in srgb, var(--green-light) 18%, var(--surface-elevated) 82%)',
       padding: '0.85rem 0.95rem',
       fontSize: '13px',
+      lineHeight: 1.6,
+      color: 'var(--text-secondary)',
     }}>
       {children}
     </div>
   )
 }
 
-function readSavedConnection(): SavedCanvasConnection | null {
-  if (typeof window === 'undefined') return null
-
-  const raw = window.localStorage.getItem(STORAGE_KEY)
-  if (!raw) return null
-
-  try {
-    return JSON.parse(raw) as SavedCanvasConnection
-  } catch {
-    window.localStorage.removeItem(STORAGE_KEY)
-    return null
-  }
+function getCourseKey(courseName: string, courseCode: string) {
+  return `${courseName}::${courseCode}`.toLowerCase()
 }
 
 function getCanvasTokenPageUrl(canvasUrl: string) {
@@ -975,133 +764,77 @@ function getCanvasTokenPageUrl(canvasUrl: string) {
   }
 }
 
-function selectionBadgeStyle(isSelected: boolean): CSSProperties {
+function readSavedConnection(): SavedCanvasConnection | null {
+  if (typeof window === 'undefined') return null
+
+  const raw = window.localStorage.getItem(STORAGE_KEY)
+  if (!raw) return null
+
+  try {
+    return JSON.parse(raw) as SavedCanvasConnection
+  } catch {
+    window.localStorage.removeItem(STORAGE_KEY)
+    return null
+  }
+}
+
+function courseRowStyle(showDivider: boolean, selected: boolean): CSSProperties {
   return {
-    width: '2rem',
-    height: '1.35rem',
-    marginTop: '1px',
-    borderRadius: '999px',
-    border: isSelected ? '1px solid color-mix(in srgb, var(--accent-border) 74%, var(--border-subtle) 26%)' : '1px solid var(--border-subtle)',
-    background: isSelected ? 'color-mix(in srgb, var(--surface-selected) 82%, var(--accent) 18%)' : 'color-mix(in srgb, var(--surface-soft) 84%, transparent)',
-    display: 'inline-flex',
+    width: '100%',
+    display: 'flex',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    justifyContent: 'center',
-    color: isSelected ? 'var(--text-primary)' : 'var(--text-muted)',
-    flexShrink: 0,
-    fontSize: '11px',
-    fontWeight: 700,
+    gap: '0.8rem',
+    padding: '0.85rem 1rem',
+    textAlign: 'left',
+    cursor: 'pointer',
+    background: selected
+      ? 'color-mix(in srgb, var(--surface-selected) 62%, var(--surface-elevated) 38%)'
+      : 'transparent',
+    border: 'none',
+    borderBottom: showDivider ? '1px solid color-mix(in srgb, var(--border-subtle) 88%, transparent)' : 'none',
+    borderRadius: 0,
   }
 }
 
-function lastSyncCardStyle(tone: SyncSnapshot['tone']): CSSProperties {
-  const borderColor = tone === 'success'
-    ? 'color-mix(in srgb, var(--green) 24%, var(--border-subtle) 76%)'
-    : tone === 'warning'
-      ? 'color-mix(in srgb, var(--amber) 24%, var(--border-subtle) 76%)'
-      : 'var(--border)'
-  const background = tone === 'success'
-    ? 'color-mix(in srgb, var(--green-light) 24%, var(--surface-soft) 76%)'
-    : tone === 'warning'
-      ? 'color-mix(in srgb, var(--amber-light) 24%, var(--surface-soft) 76%)'
-      : 'var(--surface-soft)'
-  const color = tone === 'success' ? 'var(--green)' : tone === 'warning' ? 'var(--amber)' : 'var(--text-secondary)'
-
+function selectionStateStyle(selected: boolean): CSSProperties {
   return {
-    border: `1px solid ${borderColor}`,
-    background,
-    color,
-      borderRadius: 'var(--radius-panel)',
-    padding: '1rem',
+    flexShrink: 0,
+    fontSize: '12px',
+    fontWeight: 600,
+    color: selected ? 'var(--text-primary)' : 'var(--text-muted)',
   }
 }
 
-const heroCardStyle: CSSProperties = {
-  borderRadius: 'var(--radius-page)',
-  padding: '1.45rem',
-  display: 'grid',
-  gap: '1rem',
-  boxShadow: 'var(--shadow-medium), var(--highlight-sheen)',
-}
-
-const heroStatsGridStyle: CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
-  gap: '0.75rem',
-}
-
-const sectionCardStyle: CSSProperties = {
-  borderRadius: 'var(--radius-page)',
-  padding: '1.15rem',
-  display: 'flex',
-  flexDirection: 'column',
-  gap: '1rem',
-  boxShadow: 'var(--shadow-medium), var(--highlight-sheen)',
-}
-
-const compactMetaGridStyle: CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-  gap: '0.75rem',
-}
-
-const introCardStyle: CSSProperties = {
-  borderRadius: 'var(--radius-panel)',
-  padding: '1rem',
-  boxShadow: 'var(--glass-shadow)',
-}
-
-const successPanelStyle: CSSProperties = {
-  borderRadius: 'var(--radius-panel)',
-  padding: '1rem',
-  display: 'flex',
-  flexDirection: 'column',
-  gap: '0.75rem',
-  boxShadow: 'var(--shadow-low), var(--highlight-sheen)',
-}
-
-const softPanelStyle: CSSProperties = {
-  borderRadius: 'var(--radius-panel)',
-  padding: '0.85rem 1rem',
-  fontSize: '13px',
-  color: 'var(--text-secondary)',
-  boxShadow: 'var(--glass-shadow)',
-}
-
-const courseListStyle: CSSProperties = {
-  border: '1px solid var(--border)',
-  borderRadius: 'var(--radius-panel)',
+const sectionStyle: CSSProperties = {
+  borderRadius: '16px',
+  border: '1px solid color-mix(in srgb, var(--border-subtle) 88%, transparent)',
+  background: 'color-mix(in srgb, var(--surface-elevated) 98%, transparent)',
+  boxShadow: 'var(--highlight-sheen)',
   overflow: 'hidden',
-  background: 'color-mix(in srgb, var(--glass-surface-strong) 94%, transparent)',
-  maxHeight: '280px',
+}
+
+const listShellStyle: CSSProperties = {
+  borderRadius: '12px',
+  border: '1px solid color-mix(in srgb, var(--border-subtle) 88%, transparent)',
+  background: 'var(--surface-elevated)',
+  overflow: 'hidden',
+  maxHeight: '300px',
   overflowY: 'auto',
-  boxShadow: 'var(--glass-shadow)',
 }
 
-const emptyStateStyle: CSSProperties = {
-  borderRadius: 'var(--radius-panel)',
-  padding: '1rem',
-  color: 'var(--text-secondary)',
-  fontSize: '14px',
-  lineHeight: 1.6,
-}
-
-const miniCardStyle: CSSProperties = {
-  borderRadius: 'var(--radius-tight)',
-  padding: '0.8rem 0.85rem',
-}
-
-const heroStatCardStyle: CSSProperties = {
-  borderRadius: 'var(--radius-tight)',
-  padding: '0.78rem 0.84rem',
-}
-
-const guideCardStyle: CSSProperties = {
-  borderRadius: 'var(--radius-panel)',
-  padding: '1rem',
+const moduleRowStyle: CSSProperties = {
+  flex: '1 1 320px',
+  minWidth: 0,
   display: 'flex',
-  flexDirection: 'column',
-  gap: '0.9rem',
-  boxShadow: 'var(--glass-shadow)',
+  justifyContent: 'space-between',
+  alignItems: 'flex-start',
+  gap: '0.8rem',
+  textDecoration: 'none',
+  borderRadius: '12px',
+  border: '1px solid color-mix(in srgb, var(--border-subtle) 88%, transparent)',
+  background: 'var(--surface-elevated)',
+  padding: '0.85rem 0.95rem',
 }
 
 const modalBackdropStyle: CSSProperties = {
@@ -1116,59 +849,41 @@ const modalBackdropStyle: CSSProperties = {
 
 const modalCardStyle: CSSProperties = {
   width: '100%',
-  maxWidth: '640px',
+  maxWidth: '620px',
   maxHeight: 'calc(100vh - 2rem)',
   overflowY: 'auto',
-  borderRadius: 'var(--radius-overlay)',
-  padding: '1.25rem',
-  display: 'flex',
-  flexDirection: 'column',
+  borderRadius: '16px',
+  border: '1px solid color-mix(in srgb, var(--border-subtle) 92%, transparent)',
+  background: 'color-mix(in srgb, var(--surface-elevated) 99%, transparent)',
+  boxShadow: 'var(--shadow-medium)',
+  padding: '1rem 1.1rem',
+  display: 'grid',
   gap: '1rem',
 }
 
-const closeButtonStyle: CSSProperties = {
-  borderRadius: 'var(--radius-control)',
-  padding: '0.55rem 0.8rem',
-  fontSize: '12px',
-}
-
-const labelStyle = {
-  display: 'block',
-  fontSize: '13px',
-  fontWeight: 500,
-  color: 'var(--text-secondary)',
-  marginBottom: '0.4rem',
-} as const
-
-const inputStyle = {
-  width: '100%',
-  borderRadius: 'var(--radius-control)',
-  padding: '0.8rem 0.9rem',
-  fontSize: '14px',
-  outline: 'none',
-  fontFamily: 'inherit',
-} as const
-
-function primaryButton() {
-  return {
-    width: 'fit-content',
-    minWidth: '170px',
-    borderRadius: 'var(--radius-control)',
-    padding: '0.72rem 1rem',
-    fontSize: '13px',
-    fontWeight: 700,
-  } as const
-}
-
-const secondaryButton = {
-  borderRadius: 'var(--radius-control)',
-  padding: '0.75rem 0.95rem',
+const labelStyle: CSSProperties = {
   fontSize: '13px',
   fontWeight: 600,
-} as const
+  color: 'var(--text-primary)',
+}
 
-const ghostButton = {
-  borderRadius: 'var(--radius-tight)',
-  padding: '0.75rem 0.2rem',
+const inputStyle: CSSProperties = {
+  width: '100%',
+  padding: '0.75rem 0.85rem',
+  fontSize: '14px',
+  fontFamily: 'inherit',
+}
+
+const helperTextStyle: CSSProperties = {
+  margin: 0,
+  fontSize: '12px',
+  lineHeight: 1.55,
+  color: 'var(--text-muted)',
+}
+
+const bodyCopyStyle: CSSProperties = {
+  margin: 0,
   fontSize: '13px',
-} as const
+  lineHeight: 1.65,
+  color: 'var(--text-secondary)',
+}
