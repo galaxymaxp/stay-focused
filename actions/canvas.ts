@@ -208,6 +208,7 @@ export async function syncCourses(input: {
 
 async function syncSingleCourse(course: CanvasCourse, config: Partial<CanvasConfig>): Promise<SyncCourseResult> {
   if (!supabase) throw new Error('Supabase is not configured yet.')
+  const databaseSafeCourse = createDatabaseSafeCanvasCourse(course)
 
   const [assignments, announcements, modules] = await Promise.all([
     getAssignments(course.id, config),
@@ -216,13 +217,13 @@ async function syncSingleCourse(course: CanvasCourse, config: Partial<CanvasConf
   ])
 
   if (assignments.length === 0 && announcements.length === 0 && modules.length === 0) {
-    throw new Error(`Canvas did not return any assignments, announcements, or module content for ${course.name} yet.`)
+    throw new Error(`Canvas did not return any assignments, announcements, or module content for ${databaseSafeCourse.name} yet.`)
   }
 
   const resourceIngestion = await ingestModuleResources(course.id, modules, config)
   const taskCanvasLinks = buildTaskCanvasLinks(assignments, resourceIngestion)
-  const rawContent = compileCanvasContent(
-    course,
+  const rawContent = stripDatabaseNullCharacters(compileCanvasContent(
+    databaseSafeCourse,
     assignments,
     announcements,
     modules,
@@ -233,34 +234,34 @@ async function syncSingleCourse(course: CanvasCourse, config: Partial<CanvasConf
         resourceType: resource.resourceType,
         extractedText: resource.extractedText!,
       }))
-  )
-  const courseRecord = await ensureCourseRecord(course)
+  ))
+  const courseRecord = await ensureCourseRecord(databaseSafeCourse)
   const existingModule = await findExistingSyncedModule(courseRecord.id, {
-    courseName: course.name,
-    courseCode: course.course_code,
+    courseName: databaseSafeCourse.name,
+    courseCode: databaseSafeCourse.course_code,
   })
   if (existingModule) {
-    throw new Error(`${course.name} is already synced. Unsync it first if you want to connect it again.`)
+    throw new Error(`${databaseSafeCourse.name} is already synced. Unsync it first if you want to connect it again.`)
   }
 
   const { data: moduleRecord, error: insertError } = await supabase
     .from('modules')
-    .insert({
+    .insert(sanitizeDatabaseValue({
       course_id: courseRecord.id,
       title: 'Processing...',
       raw_content: rawContent,
       status: 'pending',
       order: 1,
       released_at: new Date().toISOString(),
-    })
+    }))
     .select('id')
     .single()
 
   if (insertError || !moduleRecord) {
     throw createSupabaseStepError('insert module', insertError, {
       courseId: courseRecord.id,
-      canvasCourseCode: course.course_code,
-      canvasCourseName: course.name,
+      canvasCourseCode: databaseSafeCourse.course_code,
+      canvasCourseName: databaseSafeCourse.name,
     })
   }
   const moduleId = moduleRecord.id
@@ -300,7 +301,7 @@ async function syncSingleCourse(course: CanvasCourse, config: Partial<CanvasConf
 
   const { error: moduleUpdateError } = await supabase
     .from('modules')
-    .update({
+    .update(sanitizeDatabaseValue({
       title: aiResult.title,
       summary: aiResult.summary,
       concepts: aiResult.concepts,
@@ -309,7 +310,7 @@ async function syncSingleCourse(course: CanvasCourse, config: Partial<CanvasConf
       status: 'processed',
       estimated_minutes: estimateModuleMinutes(aiResult),
       priority_signal: deriveModulePrioritySignal(aiResult),
-    })
+    }))
     .eq('id', moduleId)
 
   if (moduleUpdateError) {
@@ -354,7 +355,7 @@ async function syncSingleCourse(course: CanvasCourse, config: Partial<CanvasConf
 
   if (aiResult.tasks.length > 0) {
     const { error: tasksInsertError } = await supabase.from('tasks').insert(
-      syncedTaskDrafts.map((task) => ({
+      sanitizeDatabaseValue(syncedTaskDrafts.map((task) => ({
         module_id: moduleId,
         title: task.title,
         details: task.details,
@@ -365,7 +366,7 @@ async function syncSingleCourse(course: CanvasCourse, config: Partial<CanvasConf
         status: task.status,
         completion_origin: task.completionOrigin,
         planning_annotation: null,
-      }))
+      })))
     )
 
     if (tasksInsertError) {
@@ -378,11 +379,11 @@ async function syncSingleCourse(course: CanvasCourse, config: Partial<CanvasConf
 
   if (standaloneDeadlines.length > 0) {
     const { error: deadlinesInsertError } = await supabase.from('deadlines').insert(
-      standaloneDeadlines.map((deadline) => ({
+      sanitizeDatabaseValue(standaloneDeadlines.map((deadline) => ({
         module_id: moduleId,
         label: deadline.label,
         date: deadline.date,
-      }))
+      })))
     )
 
     if (deadlinesInsertError) {
@@ -430,17 +431,18 @@ async function findExistingSyncedModule(
 
 async function ensureCourseRecord(course: CanvasCourse): Promise<ExistingCourseMatch> {
   if (!supabase) throw new Error('Supabase is not configured yet.')
+  const databaseSafeCourse = createDatabaseSafeCanvasCourse(course)
 
   const { data: insertedCourse, error: insertCourseError } = await supabase
     .from('courses')
-    .insert({
-      code: course.course_code,
-      name: course.name,
-      term: course.term?.name ?? 'Current term',
+    .insert(sanitizeDatabaseValue({
+      code: databaseSafeCourse.course_code,
+      name: databaseSafeCourse.name,
+      term: databaseSafeCourse.term?.name ?? 'Current term',
       instructor: 'Canvas course staff',
       focus_label: 'Synced from Canvas',
-      color_token: pickCourseColorToken(course.course_code, course.name),
-    })
+      color_token: pickCourseColorToken(databaseSafeCourse.course_code, databaseSafeCourse.name),
+    }))
     .select('id')
     .single()
 
@@ -450,8 +452,8 @@ async function ensureCourseRecord(course: CanvasCourse): Promise<ExistingCourseM
     const { data: existingCourse, error: existingCourseError } = await supabase
       .from('courses')
       .select('id')
-      .eq('code', course.course_code)
-      .eq('name', course.name)
+      .eq('code', databaseSafeCourse.course_code)
+      .eq('name', databaseSafeCourse.name)
       .limit(1)
       .maybeSingle()
 
@@ -459,16 +461,16 @@ async function ensureCourseRecord(course: CanvasCourse): Promise<ExistingCourseM
 
     if (existingCourseError) {
       throw createSupabaseStepError('resolve existing synced course after conflict', existingCourseError, {
-        courseCode: course.course_code,
-        courseName: course.name,
+        courseCode: databaseSafeCourse.course_code,
+        courseName: databaseSafeCourse.name,
       })
     }
   }
 
   if (insertCourseError || !insertedCourse) {
     throw createSupabaseStepError('insert course', insertCourseError, {
-      courseCode: course.course_code,
-      courseName: course.name,
+      courseCode: databaseSafeCourse.course_code,
+      courseName: databaseSafeCourse.name,
     })
   }
 
@@ -476,7 +478,7 @@ async function ensureCourseRecord(course: CanvasCourse): Promise<ExistingCourseM
 }
 
 function buildLearningItemsForSync(aiResult: AIResponse, courseId: string, moduleId: string) {
-  const items = [
+  const items = sanitizeDatabaseValue([
     aiResult.summary
       ? {
           course_id: courseId,
@@ -503,7 +505,7 @@ function buildLearningItemsForSync(aiResult: AIResponse, courseId: string, modul
       type: 'review',
       order: aiResult.concepts.length + index + 1,
     })),
-  ].filter(Boolean)
+  ].filter(Boolean))
 
   return items
 }
@@ -512,7 +514,7 @@ function buildModuleResourcesForSync(
   resources: ResourceIngestionRecord[],
   context: { moduleId: string; courseId: string },
 ) {
-  return resources.map((resource) => ({
+  return sanitizeDatabaseValue(resources.map((resource) => ({
     module_id: context.moduleId,
     course_id: context.courseId,
     canvas_module_id: resource.canvasModuleId,
@@ -531,7 +533,7 @@ function buildModuleResourcesForSync(
     extraction_error: resource.extractionError,
     required: resource.required,
     metadata: resource.metadata,
-  }))
+  })))
 }
 
 function buildSyncedTaskDrafts(
@@ -561,7 +563,7 @@ function buildTaskItemsForSync(
   syncedTasks: SyncedTaskDraft[],
   context: { courseId: string; moduleId: string; extractedFrom: string },
 ) {
-  return syncedTasks.map((task) => ({
+  return sanitizeDatabaseValue(syncedTasks.map((task) => ({
     course_id: context.courseId,
     module_id: context.moduleId,
     title: task.title,
@@ -576,7 +578,7 @@ function buildTaskItemsForSync(
     canvas_assignment_id: task.canvasAssignmentId,
     completion_origin: task.completionOrigin,
     planning_annotation: null,
-  }))
+  })))
 }
 
 function estimateModuleMinutes(aiResult: AIResponse) {
@@ -939,6 +941,47 @@ function getRequiredCanvasConfig(canvasUrl: string | null | undefined, accessTok
     url: config.url,
     token: config.token,
   }
+}
+
+function createDatabaseSafeCanvasCourse(course: CanvasCourse): CanvasCourse {
+  return {
+    ...course,
+    name: normalizeCanvasCourseField(course.name, `Canvas course ${course.id}`),
+    course_code: normalizeCanvasCourseField(course.course_code, `canvas-${course.id}`),
+    term: course.term
+      ? {
+          ...course.term,
+          name: normalizeCanvasCourseField(course.term.name, 'Current term'),
+        }
+      : course.term,
+  }
+}
+
+function normalizeCanvasCourseField(value: string | null | undefined, fallback: string) {
+  const normalized = stripDatabaseNullCharacters(value ?? '').trim()
+  return normalized || fallback
+}
+
+function stripDatabaseNullCharacters(value: string) {
+  return value.replace(/\u0000/g, '')
+}
+
+function sanitizeDatabaseValue<T>(value: T): T {
+  if (typeof value === 'string') {
+    return stripDatabaseNullCharacters(value) as T
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeDatabaseValue(item)) as T
+  }
+
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, nestedValue]) => [key, sanitizeDatabaseValue(nestedValue)])
+    ) as T
+  }
+
+  return value
 }
 
 type SupabaseLikeError = {
