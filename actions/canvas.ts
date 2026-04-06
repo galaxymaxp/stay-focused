@@ -234,12 +234,14 @@ async function syncSingleCourse(course: CanvasCourse, config: Partial<CanvasConf
         extractedText: resource.extractedText!,
       }))
   )
-  const existingModule = await findExistingSyncedModule(course.name, course.course_code)
+  const courseRecord = await ensureCourseRecord(course)
+  const existingModule = await findExistingSyncedModule(courseRecord.id, {
+    courseName: course.name,
+    courseCode: course.course_code,
+  })
   if (existingModule) {
     throw new Error(`${course.name} is already synced. Unsync it first if you want to connect it again.`)
   }
-
-  const courseRecord = await ensureCourseRecord(course)
 
   const { data: moduleRecord, error: insertError } = await supabase
     .from('modules')
@@ -402,20 +404,27 @@ async function syncSingleCourse(course: CanvasCourse, config: Partial<CanvasConf
   }
 }
 
-async function findExistingSyncedModule(courseName: string, courseCode: string): Promise<ExistingModuleMatch | null> {
+async function findExistingSyncedModule(
+  courseId: string,
+  context?: { courseName?: string; courseCode?: string },
+): Promise<ExistingModuleMatch | null> {
   if (!supabase) return null
-
-  const coursePrefix = `Course: ${courseName} (${courseCode})`
 
   const { data, error } = await supabase
     .from('modules')
     .select('id')
-    .ilike('raw_content', `${coursePrefix}%`)
+    .eq('course_id', courseId)
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle()
 
-  if (error) throw createSupabaseStepError('check existing synced module', error, { courseName, courseCode })
+  if (error) {
+    throw createSupabaseStepError('check existing synced module', error, {
+      courseId,
+      courseName: context?.courseName,
+      courseCode: context?.courseCode,
+    })
+  }
   return (data as ExistingModuleMatch | null) ?? null
 }
 
