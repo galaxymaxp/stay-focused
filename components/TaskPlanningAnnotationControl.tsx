@@ -54,6 +54,7 @@ export function TaskPlanningAnnotationControl({
           type="button"
           disabled={isPending}
           onClick={() => update(option.value)}
+          aria-pressed={annotation === option.value}
           className={annotation === option.value ? 'ui-button ui-button-secondary ui-button-xs' : 'ui-button ui-button-ghost ui-button-xs'}
         >
           {option.buttonLabel}

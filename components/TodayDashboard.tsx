@@ -195,7 +195,7 @@ function TodayItemCard({ item }: { item: TodayItem }) {
   const tone = getToneStyle(item.tone)
 
   return (
-    <article className="glass-panel glass-hover" style={itemCardStyle(item.tone)}>
+    <article className="glass-panel" style={itemCardStyle(item.tone)}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.85rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
         <div style={{ minWidth: 0, flex: '1 1 240px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap', marginBottom: '0.35rem' }}>

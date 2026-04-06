@@ -49,7 +49,8 @@ export function StudyResourceAccordionList({
         return (
           <article
             key={item.id}
-            className="glass-panel glass-soft"
+            className="glass-panel glass-soft ui-interactive-card"
+            data-open={expanded ? 'true' : 'false'}
             style={{
               borderRadius: 'var(--radius-panel)',
               padding: '0.9rem 0.95rem',
@@ -61,16 +62,13 @@ export function StudyResourceAccordionList({
               type="button"
               onClick={() => setOpenResourceId((current) => current === item.id ? null : item.id)}
               aria-expanded={expanded}
+              className="ui-interactive-row"
               style={{
-                border: 'none',
-                background: 'transparent',
-                padding: 0,
                 display: 'flex',
                 justifyContent: 'space-between',
                 gap: '0.75rem',
                 alignItems: 'flex-start',
                 textAlign: 'left',
-                cursor: 'pointer',
               }}
             >
               <div style={{ minWidth: 0, flex: '1 1 320px', display: 'grid', gap: '0.38rem' }}>

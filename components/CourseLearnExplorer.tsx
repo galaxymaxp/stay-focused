@@ -67,7 +67,8 @@ export function CourseLearnExplorer({
         return (
           <article
             key={module.id}
-            className={`motion-card motion-delay-${Math.min(index + 1, 4)}`}
+            className={`ui-interactive-card motion-card motion-delay-${Math.min(index + 1, 4)}`}
+            data-open={expanded ? 'true' : 'false'}
             style={{
               borderRadius: 'var(--radius-panel)',
               border: expanded
@@ -76,7 +77,7 @@ export function CourseLearnExplorer({
               background: expanded
                 ? 'color-mix(in srgb, var(--surface-elevated) 96%, transparent)'
                 : 'color-mix(in srgb, var(--surface-soft) 94%, transparent)',
-              boxShadow: expanded ? 'var(--shadow-soft)' : 'none',
+              boxShadow: expanded ? 'var(--shadow-medium), var(--highlight-sheen)' : 'none',
               overflow: 'hidden',
             }}
           >
@@ -85,16 +86,13 @@ export function CourseLearnExplorer({
                 type="button"
                 onClick={() => toggleModule(module.id)}
                 aria-expanded={expanded}
+                className="ui-interactive-row"
                 style={{
                   flex: '1 1 520px',
                   minWidth: 0,
-                  border: 'none',
-                  background: 'transparent',
-                  padding: 0,
                   display: 'grid',
                   gap: '0.55rem',
                   textAlign: 'left',
-                  cursor: 'pointer',
                 }}
               >
                 <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', alignItems: 'center' }}>
@@ -240,7 +238,7 @@ export function CourseLearnExplorer({
                 />
 
                 <details className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.95rem 1rem' }}>
-                  <summary style={{ cursor: 'pointer', fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                  <summary className="ui-interactive-summary" style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
                     View extracted source
                   </summary>
                   <p style={{ margin: '0.7rem 0 0', fontSize: '13px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
@@ -342,7 +340,7 @@ function TaskStatusPanel({
 
       {completedTasks.length > 0 && (
         <details>
-          <summary style={{ cursor: 'pointer', fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)' }}>
+          <summary className="ui-interactive-summary" style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)' }}>
             Already done
           </summary>
           <div style={{ display: 'grid', gap: '0.55rem', marginTop: '0.7rem' }}>

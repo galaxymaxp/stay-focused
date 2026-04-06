@@ -111,6 +111,7 @@ export function ModuleQuickQuiz({
               key={count}
               type="button"
               onClick={() => setSelectedCount(count)}
+              aria-pressed={resolvedSelectedCount === count}
               className={resolvedSelectedCount === count ? 'ui-button ui-button-secondary ui-button-xs' : 'ui-button ui-button-ghost ui-button-xs'}
             >
               {count}
@@ -163,6 +164,7 @@ export function ModuleQuickQuiz({
             key={item.id}
             type="button"
             onClick={() => moveToIndex(index)}
+            aria-pressed={index === activeIndex}
             className={index === activeIndex ? 'ui-button ui-button-secondary ui-button-xs' : 'ui-button ui-button-ghost ui-button-xs'}
           >
             {index + 1}
@@ -195,7 +197,9 @@ export function ModuleQuickQuiz({
                   key={choice}
                   type="button"
                   onClick={() => setSelectedChoice(choice)}
-                  className="ui-card-soft"
+                  aria-pressed={isSelected}
+                  className="ui-card-soft ui-interactive-card"
+                  data-open={shouldHighlightAnswer || shouldHighlightMistake || isSelected ? 'true' : 'false'}
                   style={{
                     borderRadius: 'var(--radius-tight)',
                     padding: '0.8rem 0.85rem',

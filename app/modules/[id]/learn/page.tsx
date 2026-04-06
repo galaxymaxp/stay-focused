@@ -111,6 +111,7 @@ export default async function LearnPage({ params }: Props) {
                         <ActionLink
                           href={step.href}
                           external={step.external}
+                          className="ui-interactive-row"
                           style={{
                             display: 'flex',
                             gap: '0.7rem',
@@ -270,7 +271,7 @@ export default async function LearnPage({ params }: Props) {
 
               {completedTasks.length > 0 && (
                 <details className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.9rem 0.95rem' }}>
-                  <summary style={{ cursor: 'pointer', fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                  <summary className="ui-interactive-summary" style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
                     Already done
                   </summary>
                   <div style={{ display: 'grid', gap: '0.6rem', marginTop: '0.8rem' }}>
@@ -344,7 +345,7 @@ export default async function LearnPage({ params }: Props) {
 
         <div id="source-support">
           <details className="motion-card motion-delay-3 section-shell" style={{ padding: '1.2rem 1.25rem' }}>
-            <summary style={{ cursor: 'pointer', fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
+            <summary className="ui-interactive-summary" style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
               View extracted source
             </summary>
             <div style={{ display: 'grid', gap: '0.85rem', marginTop: '0.8rem' }}>
@@ -459,22 +460,24 @@ function ActionLink({
   external = false,
   children,
   style,
+  className,
 }: {
   href: string
   external?: boolean
   children: ReactNode
   style?: CSSProperties
+  className?: string
 }) {
   if (external) {
     return (
-      <a href={href} target="_blank" rel="noreferrer" style={style}>
+      <a href={href} target="_blank" rel="noreferrer" className={className} style={style}>
         {children}
       </a>
     )
   }
 
   return (
-    <Link href={href} style={style}>
+    <Link href={href} className={className} style={style}>
       {children}
     </Link>
   )

@@ -343,7 +343,7 @@ export function ModuleTermBank({
                       )}
                       <MetaLine label="Why it matters" value={term.whyItMatters} />
                       <details className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.8rem 0.9rem' }}>
-                        <summary style={{ cursor: 'pointer', fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                        <summary className="ui-interactive-summary" style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)' }}>
                           Show source support
                         </summary>
                         <div style={{ display: 'grid', gap: '0.45rem', marginTop: '0.7rem' }}>
@@ -361,7 +361,7 @@ export function ModuleTermBank({
       </section>
 
       <details className="motion-card motion-delay-3 section-shell" style={{ padding: '1.25rem 1.35rem' }}>
-        <summary style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.85rem', listStyle: 'none' }}>
+        <summary className="ui-interactive-summary">
           <div>
             <p className="ui-kicker" style={{ margin: 0 }}>Correction path</p>
             <h3 style={{ margin: '0.42rem 0 0', fontSize: '1.05rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>Only open extra suggestions if the grounded term set missed something</h3>

@@ -137,13 +137,16 @@ export function CalendarDashboard({ items, undatedTaskCount }: { items: Calendar
                 return (
                   <button
                     key={day.dateKey}
+                    type="button"
                     onClick={() => {
                       setSelectedDateKey(day.dateKey)
                       if (!day.inCurrentMonth) {
                         setVisibleMonth(startOfMonth(day.dateKey))
                       }
                     }}
-                    className="glass-panel glass-hover"
+                    className="glass-panel ui-interactive-card"
+                    aria-pressed={isSelected}
+                    data-open={isSelected ? 'true' : 'false'}
                     style={{
                       '--glass-panel-bg': isSelected
                         ? 'color-mix(in srgb, var(--glass-surface-accent) 76%, var(--glass-surface-strong) 24%)'
@@ -304,7 +307,7 @@ function SelectedItemCard({ item }: { item: CalendarItem }) {
   const statusStyle = STATUS_STYLES[item.status]
 
   return (
-    <article className="glass-panel glass-hover" style={{
+    <article className="glass-panel" style={{
       '--glass-panel-bg': 'var(--glass-surface-strong)',
       '--glass-panel-border': 'var(--glass-border)',
       '--glass-panel-shadow': item.status === 'urgent' || item.status === 'dueSoon' ? 'var(--glass-shadow-strong)' : 'var(--glass-shadow)',
@@ -433,8 +436,9 @@ function SelectedItemCard({ item }: { item: CalendarItem }) {
 function MonthButton({ children, onClick }: { children: ReactNode; onClick: () => void }) {
   return (
     <button
+      type="button"
       onClick={onClick}
-      className="glass-panel glass-hover"
+      className="glass-panel ui-interactive-card"
       style={{
         '--glass-panel-bg': 'var(--glass-surface-soft)',
         '--glass-panel-border': 'var(--glass-border)',

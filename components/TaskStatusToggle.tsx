@@ -43,6 +43,7 @@ export function TaskStatusToggle({
         alignSelf: align === 'end' ? 'flex-end' : 'flex-start',
         opacity: isPending ? 0.7 : 1,
       }}
+      aria-pressed={status === 'completed'}
       aria-label={status === 'completed' ? `Reopen ${title}` : `Mark ${title} as done`}
     >
       {isPending ? 'Saving...' : status === 'completed' ? 'Reopen task' : 'Mark done'}

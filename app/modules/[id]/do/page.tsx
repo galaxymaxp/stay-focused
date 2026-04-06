@@ -67,7 +67,7 @@ export default async function DoPage({ params }: Props) {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
               {pendingTasks.map((task, index) => (
-                <article key={task.id} id={task.id} className="glass-panel glass-hover" style={{
+                <article key={task.id} id={task.id} className="glass-panel" style={{
                   ['--glass-panel-bg' as string]: index === 0 ? 'color-mix(in srgb, var(--glass-surface-accent) 34%, var(--glass-surface-strong) 66%)' : 'var(--glass-surface-strong)',
                   ['--glass-panel-border' as string]: index === 0 ? 'var(--accent-border)' : 'var(--glass-border)',
                   ['--glass-panel-shadow' as string]: 'var(--glass-shadow)',
@@ -140,7 +140,7 @@ export default async function DoPage({ params }: Props) {
 
           {completedTasks.length > 0 && (
             <details style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid color-mix(in srgb, var(--border-subtle) 82%, transparent)' }}>
-              <summary style={{ cursor: 'pointer', listStyle: 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem' }}>
+              <summary className="ui-interactive-summary">
                 <div>
                   <p className="ui-kicker">
                     Already cleared
@@ -177,7 +177,7 @@ export default async function DoPage({ params }: Props) {
               <ol style={{ listStyle: 'none', padding: 0, margin: '0.85rem 0 0', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
                 {suggestedSteps.map((step, index) => (
                   <li key={step.id}>
-                    <Link href={step.href} style={{ display: 'flex', gap: '0.7rem', alignItems: 'flex-start', textDecoration: 'none' }}>
+                    <Link href={step.href} className="ui-interactive-row" style={{ display: 'flex', gap: '0.7rem', alignItems: 'flex-start', textDecoration: 'none' }}>
                       <span style={{ width: '1.4rem', height: '1.4rem', borderRadius: '999px', background: 'color-mix(in srgb, var(--surface-selected) 84%, var(--accent) 16%)', color: 'var(--text-primary)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: 700, flexShrink: 0 }}>
                         {index + 1}
                       </span>

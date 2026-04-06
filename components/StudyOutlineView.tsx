@@ -63,7 +63,8 @@ function StudyNoteCard({
 
   return (
     <section
-      className="ui-card-soft"
+      className="ui-card-soft ui-interactive-card"
+      data-open={expanded ? 'true' : 'false'}
       style={{
         borderRadius: 'var(--radius-tight)',
         padding: '0.8rem 0.85rem',
@@ -76,16 +77,13 @@ function StudyNoteCard({
         type="button"
         onClick={onToggle}
         aria-expanded={expanded}
+        className="ui-interactive-row"
         style={{
-          border: 'none',
-          background: 'transparent',
-          padding: 0,
           display: 'flex',
           justifyContent: 'space-between',
           gap: '0.75rem',
           alignItems: 'flex-start',
           textAlign: 'left',
-          cursor: 'pointer',
         }}
       >
         <div style={{ minWidth: 0, flex: '1 1 340px', display: 'grid', gap: '0.38rem' }}>
