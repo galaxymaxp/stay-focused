@@ -91,6 +91,8 @@ export async function setModuleLearnVisibility(input: { moduleId: string; showIn
   revalidatePath('/learn')
   revalidatePath(`/modules/${input.moduleId}`)
   revalidatePath(`/modules/${input.moduleId}/learn`)
+  revalidatePath(`/modules/${input.moduleId}/review`)
+  revalidatePath(`/modules/${input.moduleId}/source`)
   revalidatePath(`/modules/${input.moduleId}/do`)
 }
 

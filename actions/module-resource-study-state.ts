@@ -75,6 +75,8 @@ export async function markStudyFileOpened(input: {
     revalidatePath(`/courses/${input.courseId}/learn`)
   }
   revalidatePath(`/modules/${input.moduleId}/learn`)
+  revalidatePath(`/modules/${input.moduleId}/review`)
+  revalidatePath(`/modules/${input.moduleId}/source`)
 }
 
 type SupabaseLikeError = {
@@ -92,6 +94,8 @@ function revalidateStudyPaths(moduleId: string, resourceId: string, courseId?: s
   }
   revalidatePath(`/modules/${moduleId}`)
   revalidatePath(`/modules/${moduleId}/learn`)
+  revalidatePath(`/modules/${moduleId}/review`)
+  revalidatePath(`/modules/${moduleId}/source`)
   revalidatePath(`/modules/${moduleId}/learn/resources/${encodeURIComponent(resourceId)}`)
 }
 

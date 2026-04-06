@@ -1,6 +1,6 @@
 'use client'
 
-import { useDeferredValue, useEffect, useRef, useState, type KeyboardEvent, type MutableRefObject, type ReactNode } from 'react'
+import { useDeferredValue, useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent, type MutableRefObject, type ReactNode } from 'react'
 import type { StudyFilePreviewBlock } from '@/lib/study-file-reader'
 
 interface PreviewSectionWithMatches {
@@ -17,29 +17,15 @@ export function StudyFilePreviewExplorer({ previewBlocks }: { previewBlocks: Stu
   const previewSections = buildPreviewSections(previewBlocks, deferredQuery)
   const totalMatches = previewSections.reduce((sum, section) => sum + section.matches.length, 0)
   const activeSearch = deferredQuery.length > 0
+  const resolvedActiveMatchIndex = totalMatches === 0
+    ? 0
+    : Math.min(activeMatchIndex, totalMatches - 1)
   const activeSectionId = activeSearch && totalMatches > 0
     ? previewSections.find((section) => (
-      activeMatchIndex >= section.matchStartIndex
-      && activeMatchIndex < section.matchStartIndex + section.matches.length
+      resolvedActiveMatchIndex >= section.matchStartIndex
+      && resolvedActiveMatchIndex < section.matchStartIndex + section.matches.length
     ))?.block.id ?? null
     : null
-
-  useEffect(() => {
-    setActiveMatchIndex(0)
-  }, [deferredQuery])
-
-  useEffect(() => {
-    if (totalMatches === 0) {
-      if (activeMatchIndex !== 0) {
-        setActiveMatchIndex(0)
-      }
-      return
-    }
-
-    if (activeMatchIndex > totalMatches - 1) {
-      setActiveMatchIndex(totalMatches - 1)
-    }
-  }, [activeMatchIndex, totalMatches])
 
   useEffect(() => {
     matchRefs.current = matchRefs.current.slice(0, totalMatches)
@@ -47,9 +33,9 @@ export function StudyFilePreviewExplorer({ previewBlocks }: { previewBlocks: Stu
 
   useEffect(() => {
     if (!activeSearch || totalMatches === 0) return
-    const activeNode = matchRefs.current[activeMatchIndex]
+    const activeNode = matchRefs.current[resolvedActiveMatchIndex]
     activeNode?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' })
-  }, [activeMatchIndex, activeSearch, totalMatches])
+  }, [activeSearch, resolvedActiveMatchIndex, totalMatches])
 
   const searchMessage = !activeSearch
     ? 'Search stays local to this extracted preview so you can scan the source without leaving the page.'
@@ -68,6 +54,11 @@ export function StudyFilePreviewExplorer({ previewBlocks }: { previewBlocks: Stu
       if (next >= totalMatches) return 0
       return next
     })
+  }
+
+  function handleSearchChange(event: ChangeEvent<HTMLInputElement>) {
+    setQuery(event.target.value)
+    setActiveMatchIndex(0)
   }
 
   function handleSearchKeyDown(event: KeyboardEvent<HTMLInputElement>) {
@@ -90,7 +81,7 @@ export function StudyFilePreviewExplorer({ previewBlocks }: { previewBlocks: Stu
             <input
               type="search"
               value={query}
-              onChange={(event) => setQuery(event.target.value)}
+              onChange={handleSearchChange}
               onKeyDown={handleSearchKeyDown}
               className="ui-input"
               placeholder="Find a term in this extracted preview"
@@ -126,7 +117,7 @@ export function StudyFilePreviewExplorer({ previewBlocks }: { previewBlocks: Stu
           </p>
           {activeSearch && totalMatches > 0 && (
             <span className="ui-chip ui-chip-soft ui-chip-selected" style={{ padding: '0.34rem 0.7rem', fontSize: '11px', fontWeight: 700 }}>
-              Match {activeMatchIndex + 1} of {totalMatches}
+              Match {resolvedActiveMatchIndex + 1} of {totalMatches}
             </span>
           )}
         </div>
@@ -180,7 +171,7 @@ export function StudyFilePreviewExplorer({ previewBlocks }: { previewBlocks: Stu
                 text: section.block.body,
                 matches: section.matches,
                 matchStartIndex: section.matchStartIndex,
-                activeMatchIndex,
+                activeMatchIndex: resolvedActiveMatchIndex,
                 matchRefs,
               })}
             </p>

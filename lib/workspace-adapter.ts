@@ -108,12 +108,12 @@ function adaptModuleRow(row: WorkspaceModuleRow): Module {
 }
 
 function adaptLearningItemRow(row: WorkspaceLearningItemRow, moduleMap: Map<string, Module>): LearningItem {
-  const module = row.module_id ? moduleMap.get(row.module_id) : undefined
+  const linkedModule = row.module_id ? moduleMap.get(row.module_id) : undefined
 
   return {
     id: row.id,
-    courseId: row.course_id ?? module?.courseId ?? 'unknown-course',
-    moduleId: row.module_id ?? module?.id ?? 'unknown-module',
+    courseId: row.course_id ?? linkedModule?.courseId ?? 'unknown-course',
+    moduleId: row.module_id ?? linkedModule?.id ?? 'unknown-module',
     title: row.title ?? 'Learning item',
     body: row.body ?? '',
     type: normalizeLearningType(row.type),
@@ -126,19 +126,19 @@ function adaptTaskItemRow(
   courseMap: Map<string, Course>,
   moduleMap: Map<string, Module>,
 ): TaskItem {
-  const module = row.module_id ? moduleMap.get(row.module_id) : undefined
-  const course = row.course_id ? courseMap.get(row.course_id) : module?.courseId ? courseMap.get(module.courseId) : undefined
-  const freshnessScore = getModuleFreshnessScoreFromModule(module)
+  const linkedModule = row.module_id ? moduleMap.get(row.module_id) : undefined
+  const course = row.course_id ? courseMap.get(row.course_id) : linkedModule?.courseId ? courseMap.get(linkedModule.courseId) : undefined
+  const freshnessScore = getModuleFreshnessScoreFromModule(linkedModule)
   const priority = normalizePriority(row.priority) ?? 'medium'
   const status = normalizeTaskStatus(row.status)
   const deadline = row.deadline ?? null
 
   return {
     id: row.id,
-    courseId: row.course_id ?? module?.courseId ?? 'unknown-course',
+    courseId: row.course_id ?? linkedModule?.courseId ?? 'unknown-course',
     courseName: course?.name ?? 'Course',
-    moduleId: row.module_id ?? module?.id ?? 'unknown-module',
-    moduleTitle: module?.title ?? 'Module',
+    moduleId: row.module_id ?? linkedModule?.id ?? 'unknown-module',
+    moduleTitle: linkedModule?.title ?? 'Module',
     title: row.title ?? 'Task item',
     details: row.details ?? null,
     status,
@@ -146,7 +146,7 @@ function adaptTaskItemRow(
     deadline,
     taskType: normalizeTaskType(row.task_type),
     estimatedMinutes: row.estimated_minutes ?? 20,
-    extractedFrom: row.extracted_from ?? module?.title ?? 'Task source',
+    extractedFrom: row.extracted_from ?? linkedModule?.title ?? 'Task source',
     canvasUrl: row.canvas_url ?? null,
     moduleFreshnessScore: freshnessScore,
     actionScore: computeActionScore(priority, deadline, status, freshnessScore),

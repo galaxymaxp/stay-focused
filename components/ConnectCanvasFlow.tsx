@@ -293,7 +293,7 @@ export function ConnectCanvasFlow({
             {connectionError && <Message>{connectionError}</Message>}
 
             <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-              <button type="button" onClick={() => openSetup('guide')} className="ui-button ui-button-primary" style={primaryButton(false)}>
+              <button type="button" onClick={() => openSetup('guide')} className="ui-button ui-button-primary" style={primaryButton()}>
                 Open setup guide
               </button>
               <button type="button" onClick={handleOpenTokenPage} className="ui-button ui-button-secondary" style={secondaryButton}>
@@ -327,11 +327,11 @@ export function ConnectCanvasFlow({
 
             <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
               {canLoadCourses ? (
-                <button type="button" onClick={handleUseSavedConnection} disabled={isTesting} className="ui-button ui-button-primary" style={primaryButton(isTesting)}>
+                <button type="button" onClick={handleUseSavedConnection} disabled={isTesting} className="ui-button ui-button-primary" style={primaryButton()}>
                   {isTesting ? 'Loading courses...' : hasSyncedCourses ? 'Load more courses' : 'Load available courses'}
                 </button>
               ) : (
-                <button type="button" onClick={() => openSetup('guide')} className="ui-button ui-button-primary" style={primaryButton(false)}>
+                <button type="button" onClick={() => openSetup('guide')} className="ui-button ui-button-primary" style={primaryButton()}>
                   Open setup guide
                 </button>
               )}
@@ -439,7 +439,7 @@ export function ConnectCanvasFlow({
               <button type="button" onClick={handleReconnect} disabled={isSyncing} className="ui-button ui-button-secondary" style={secondaryButton}>
                 Open setup guide
               </button>
-              <button type="button" onClick={handleCourseSubmit} disabled={selectedCourseIds.length === 0 || isSyncing || courses.length === 0} className="ui-button ui-button-primary" style={primaryButton(selectedCourseIds.length === 0 || isSyncing || courses.length === 0)}>
+              <button type="button" onClick={handleCourseSubmit} disabled={selectedCourseIds.length === 0 || isSyncing || courses.length === 0} className="ui-button ui-button-primary" style={primaryButton()}>
                 {isSyncing ? 'Syncing courses...' : selectedCourseIds.length > 1 ? `Sync ${selectedCourseIds.length} courses` : 'Sync selected course'}
               </button>
             </div>
@@ -623,7 +623,7 @@ function SetupModal({
             {connectionError && <Message>{connectionError}</Message>}
 
             <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-              <button type="button" onClick={onOpenTokenPage} className="ui-button ui-button-primary" style={primaryButton(false)}>
+              <button type="button" onClick={onOpenTokenPage} className="ui-button ui-button-primary" style={primaryButton()}>
                 Open Canvas token page
               </button>
               <button type="button" onClick={onNext} className="ui-button ui-button-secondary" style={secondaryButton}>
@@ -671,7 +671,7 @@ function SetupModal({
                 onClick={onTestConnection}
                 disabled={!canvasUrl.trim() || !token.trim() || isTesting}
                 className="ui-button ui-button-primary"
-                style={primaryButton(!canvasUrl.trim() || !token.trim() || isTesting)}
+                style={primaryButton()}
               >
                 {isTesting ? 'Checking Canvas...' : 'Test connection'}
               </button>
@@ -1021,7 +1021,7 @@ const inputStyle = {
   fontFamily: 'inherit',
 } as const
 
-function primaryButton(disabled: boolean) {
+function primaryButton() {
   return {
     width: 'fit-content',
     minWidth: '170px',
