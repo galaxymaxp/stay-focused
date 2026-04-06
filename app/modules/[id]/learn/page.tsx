@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import type { CSSProperties, ReactNode } from 'react'
 import { ModuleLensShell } from '@/components/ModuleLensShell'
 import { ModuleQuickQuiz } from '@/components/ModuleQuickQuiz'
+import { StudyOutlineView } from '@/components/StudyOutlineView'
 import { ModuleTermBank } from '@/components/ModuleTermBank'
 import { TaskStatusToggle } from '@/components/TaskStatusToggle'
 import { buildModuleLearnOverview, type ModuleStudyMaterial } from '@/lib/module-learn-overview'
@@ -13,7 +14,6 @@ import {
   getLearnResourceHref,
   getModuleWorkspace,
   getResourceCanvasHref,
-  type LearnSection,
 } from '@/lib/module-workspace'
 import type { Task } from '@/lib/types'
 
@@ -47,9 +47,8 @@ export default async function LearnPage({ params }: Props) {
   const sortedTasks = sortModuleTasks(tasks)
   const pendingTasks = sortedTasks.filter((task) => task.status !== 'completed')
   const completedTasks = sortedTasks.filter((task) => task.status === 'completed')
-  const featuredSections = pickFeaturedSections(experience.sections)
-  const extraSections = experience.sections.filter((section) => !featuredSections.some((featured) => featured.id === section.id))
-  const summaryText = overview.summary ?? module.summary ?? featuredSections[0]?.body ?? termBank.termsStateMessage
+  const outlineSectionCount = overview.studyMaterials.reduce((total, material) => total + material.reader.outlineSections.length, 0)
+  const summaryText = overview.summary ?? module.summary ?? overview.coverageNote ?? termBank.termsStateMessage
 
   if (module.status === 'error') {
     return (
@@ -75,13 +74,14 @@ export default async function LearnPage({ params }: Props) {
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.9rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
             <div style={{ minWidth: 0, flex: '1 1 460px' }}>
               <p className="ui-kicker">Unified Learn workspace</p>
-              <h2 className="ui-section-title" style={{ marginTop: '0.45rem' }}>Learn the module, scan the terms, and quiz yourself in one place</h2>
+              <h2 className="ui-section-title" style={{ marginTop: '0.45rem' }}>Study the full module outline, then move straight into terms and quiz</h2>
               <p className="ui-section-copy" style={{ marginTop: '0.45rem', maxWidth: '46rem' }}>
-                This page keeps the grounded study content first, lays the extracted terms directly underneath it, and keeps quiz practice in the same module flow instead of splitting it into a separate mode.
+                Learn now keeps the source-grounded notes front and center. Short summaries stay optional, but the main study body is the fuller extracted outline from the materials that belong to this module.
               </p>
             </div>
             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-              <span className="ui-chip ui-chip-soft">{featuredSections.length + extraSections.length} learn section{featuredSections.length + extraSections.length === 1 ? '' : 's'}</span>
+              <span className="ui-chip ui-chip-soft">{overview.studyMaterials.length} study source{overview.studyMaterials.length === 1 ? '' : 's'}</span>
+              <span className="ui-chip ui-chip-soft">{outlineSectionCount} outline section{outlineSectionCount === 1 ? '' : 's'}</span>
               <span className="ui-chip ui-chip-soft">{termBank.finalTerms.length} key term{termBank.finalTerms.length === 1 ? '' : 's'}</span>
               <span className="ui-chip ui-chip-soft">{termBank.quizItems.length} quiz item{termBank.quizItems.length === 1 ? '' : 's'}</span>
               <span className="ui-chip ui-chip-soft">{pendingTasks.length} active task{pendingTasks.length === 1 ? '' : 's'}</span>
@@ -187,30 +187,23 @@ export default async function LearnPage({ params }: Props) {
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.18fr) minmax(320px, 0.92fr)', gap: '1rem', alignItems: 'start' }}>
           <section className="motion-card motion-delay-2 section-shell section-shell-elevated" style={{ padding: '1.35rem 1.45rem', display: 'grid', gap: '0.95rem' }}>
             <div>
-              <p className="ui-kicker">Learn material</p>
-              <h3 style={{ margin: '0.42rem 0 0', fontSize: '1.08rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>Grounded study content for this module</h3>
+              <p className="ui-kicker">Study notes</p>
+              <h3 style={{ margin: '0.42rem 0 0', fontSize: '1.08rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>Full extracted outline for the module study materials</h3>
               <p className="ui-section-copy" style={{ marginTop: '0.45rem', maxWidth: '44rem' }}>
-                The summary, structure, likely test focus, and follow-up prompts stay visible before you move into term review and quiz practice.
+                The main Learn body now stays close to the extracted source structure. Headings, sections, bullets, and readable paragraphs are preserved as study notes instead of being compressed into a short synthetic recap.
               </p>
             </div>
 
-            <div style={{ display: 'grid', gap: '0.85rem' }}>
-              {featuredSections.map((section) => (
-                <StudySectionCard key={section.id} section={section} />
-              ))}
-            </div>
-
-            {extraSections.length > 0 && (
-              <details className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.95rem 1rem' }}>
-                <summary style={{ cursor: 'pointer', fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                  More study angles
-                </summary>
-                <div style={{ display: 'grid', gap: '0.75rem', marginTop: '0.85rem' }}>
-                  {extraSections.map((section) => (
-                    <StudySectionCard key={section.id} section={section} subtle />
-                  ))}
-                </div>
-              </details>
+            {overview.studyMaterials.length === 0 ? (
+              <div className="ui-empty" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', fontSize: '14px', lineHeight: 1.68 }}>
+                No mapped study readers are ready for this module yet. Learn will show fuller notes here as soon as readable extracted source text is available.
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gap: '0.95rem' }}>
+                {overview.studyMaterials.map((material) => (
+                  <StudyMaterialOutlineCard key={material.resource.id} moduleId={module.id} material={material} />
+                ))}
+              </div>
             )}
           </section>
 
@@ -294,8 +287,8 @@ export default async function LearnPage({ params }: Props) {
             <section className="motion-card motion-delay-3 section-shell" style={{ padding: '1.2rem 1.25rem', display: 'grid', gap: '0.85rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
                 <div>
-                  <p className="ui-kicker">Grounded sources</p>
-                  <h3 style={{ margin: '0.42rem 0 0', fontSize: '1.02rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>Keep the strongest readers nearby</h3>
+                  <p className="ui-kicker">Study coverage</p>
+                  <h3 style={{ margin: '0.42rem 0 0', fontSize: '1.02rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>What Learn is grounding this module from</h3>
                 </div>
                 <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
                   <StateBadge label={`${overview.readyStudyFileCount} ready`} tone="accent" />
@@ -305,14 +298,20 @@ export default async function LearnPage({ params }: Props) {
 
               {overview.studyMaterials.length === 0 ? (
                 <div className="ui-empty" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', fontSize: '14px', lineHeight: 1.68 }}>
-                  No study readers are mapped into this module yet, so Learn is leaning on the summary, tasks, and any grounded terms it can find.
+                  No study readers are mapped into this module yet, so Learn is leaning on tasks and any grounded terms it can find.
                 </div>
               ) : (
-                <div style={{ display: 'grid', gap: '0.7rem' }}>
-                  {overview.studyMaterials.slice(0, 3).map((material) => (
-                    <StudyMaterialCard key={material.resource.id} moduleId={module.id} material={material} />
-                  ))}
-                </div>
+                <>
+                  <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.68, color: 'var(--text-secondary)' }}>
+                    {overview.coverageNote}
+                  </p>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '0.7rem' }}>
+                    <StatCard label="Study sources" value={String(overview.studyMaterials.length)} />
+                    <StatCard label="Outline sections" value={String(outlineSectionCount)} />
+                    <StatCard label="Readable files" value={String(overview.extractedStudyFileCount)} />
+                    <StatCard label="Limited files" value={String(overview.limitedStudyFileCount)} />
+                  </div>
+                </>
               )}
 
               <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
@@ -342,33 +341,7 @@ export default async function LearnPage({ params }: Props) {
   )
 }
 
-function StudySectionCard({
-  section,
-  subtle = false,
-}: {
-  section: LearnSection
-  subtle?: boolean
-}) {
-  const lines = section.body
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-
-  return (
-    <article className={subtle ? 'ui-card-soft' : 'glass-panel glass-soft'} style={{ borderRadius: 'var(--radius-panel)', padding: '1rem' }}>
-      <p className="ui-kicker">{section.title}</p>
-      <ul style={{ margin: '0.65rem 0 0', paddingLeft: '1rem', display: 'grid', gap: '0.45rem' }}>
-        {lines.map((line) => (
-          <li key={line} style={{ fontSize: '14px', lineHeight: 1.7, color: 'var(--text-secondary)' }}>
-            {line}
-          </li>
-        ))}
-      </ul>
-    </article>
-  )
-}
-
-function StudyMaterialCard({
+function StudyMaterialOutlineCard({
   moduleId,
   material,
 }: {
@@ -392,6 +365,16 @@ function StudyMaterialCard({
         <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.5, color: 'var(--text-primary)', fontWeight: 650 }}>{material.resource.title}</p>
         <p style={{ margin: '0.35rem 0 0', fontSize: '13px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>{material.note}</p>
       </div>
+
+      {material.reader.outlineSections.length > 0 ? (
+        <StudyOutlineView sections={material.reader.outlineSections} />
+      ) : (
+        <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.9rem 0.95rem' }}>
+          <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.72, color: 'var(--text-secondary)' }}>
+            {material.reader.outlineHint ?? material.reader.overviewBody}
+          </p>
+        </div>
+      )}
 
       <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
         <Link href={getLearnResourceHref(moduleId, material.resource.id)} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
@@ -522,27 +505,6 @@ function PriorityBadge({ priority }: { priority: Task['priority'] }) {
       tone={priority === 'high' ? 'warning' : priority === 'medium' ? 'accent' : 'muted'}
     />
   )
-}
-
-function pickFeaturedSections(sections: LearnSection[]) {
-  const preferredOrder = [
-    'core-ideas',
-    'step-by-step-breakdown',
-    'likely-exam-focus',
-    'what-to-do-after-reading',
-  ]
-  const chosen: LearnSection[] = []
-
-  for (const id of preferredOrder) {
-    const match = sections.find((section) => section.id === id)
-    if (match) chosen.push(match)
-  }
-
-  if (chosen.length === 0) {
-    return sections.slice(0, 4)
-  }
-
-  return chosen
 }
 
 function sortModuleTasks(tasks: Task[]) {
