@@ -448,23 +448,9 @@ async function ensureCourseRecord(course: CanvasCourse): Promise<ExistingCourseM
 
   if (insertedCourse) return insertedCourse as ExistingCourseMatch
 
-  if (insertCourseError?.code === '23505') {
-    const { data: existingCourse, error: existingCourseError } = await supabase
-      .from('courses')
-      .select('id')
-      .eq('code', databaseSafeCourse.course_code)
-      .eq('name', databaseSafeCourse.name)
-      .limit(1)
-      .maybeSingle()
-
-    if (existingCourse) return existingCourse as ExistingCourseMatch
-
-    if (existingCourseError) {
-      throw createSupabaseStepError('resolve existing synced course after conflict', existingCourseError, {
-        courseCode: databaseSafeCourse.course_code,
-        courseName: databaseSafeCourse.name,
-      })
-    }
+  const existingCourse = await resolveExistingCourseRecord(databaseSafeCourse, insertCourseError?.code === '23505')
+  if (existingCourse) {
+    return existingCourse
   }
 
   if (insertCourseError || !insertedCourse) {
@@ -475,6 +461,63 @@ async function ensureCourseRecord(course: CanvasCourse): Promise<ExistingCourseM
   }
 
   return insertedCourse as ExistingCourseMatch
+}
+
+async function resolveExistingCourseRecord(
+  course: CanvasCourse,
+  afterConflict: boolean,
+): Promise<ExistingCourseMatch | null> {
+  if (!supabase) return null
+
+  const exactMatch = await findExistingCourseByFilters(
+    {
+      code: course.course_code,
+      name: course.name,
+    },
+    afterConflict ? 'resolve existing synced course after conflict' : 'resolve existing synced course after insert error',
+  )
+  if (exactMatch) return exactMatch
+
+  const codeMatch = await findExistingCourseByFilters(
+    {
+      code: course.course_code,
+    },
+    'resolve existing synced course by code',
+  )
+  if (codeMatch) return codeMatch
+
+  const nameMatch = await findExistingCourseByFilters(
+    {
+      name: course.name,
+    },
+    'resolve existing synced course by name',
+  )
+  if (nameMatch) return nameMatch
+
+  return null
+}
+
+async function findExistingCourseByFilters(
+  filters: { code?: string; name?: string },
+  step: string,
+): Promise<ExistingCourseMatch | null> {
+  if (!supabase) return null
+
+  let query = supabase.from('courses').select('id').limit(1)
+  if (filters.code) {
+    query = query.eq('code', filters.code)
+  }
+  if (filters.name) {
+    query = query.eq('name', filters.name)
+  }
+
+  const { data, error } = await query.maybeSingle()
+
+  if (error) {
+    throw createSupabaseStepError(step, error, filters)
+  }
+
+  return (data as ExistingCourseMatch | null) ?? null
 }
 
 function buildLearningItemsForSync(aiResult: AIResponse, courseId: string, moduleId: string) {
