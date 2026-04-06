@@ -88,6 +88,8 @@ export function ConnectCanvasFlow({
   } : null)
   const canLoadCourses = Boolean(connectionSummary?.url && token.trim())
   const hasLoadedCourses = step === 'courses'
+  const selectedAvailableCount = selectedCourseIds.length
+  const syncedModuleCount = syncedModules.length
 
   function persistConnection(result: CanvasConnectionResult, nextToken: string) {
     const connection = {
@@ -263,6 +265,29 @@ export function ConnectCanvasFlow({
         <p className="ui-page-copy" style={{ maxWidth: '56ch' }}>
           Connect once, load your available courses, and keep track of what you already brought into the dashboard. The page is meant to guide you downward instead of splitting the experience into separate top-level actions.
         </p>
+
+        <div style={heroStatsGridStyle}>
+          <StatusStatCard
+            label="Connection"
+            value={connectionSummary ? 'Connected' : 'Not connected'}
+            note={connectionSummary ? 'Saved on this device' : 'Setup required'}
+          />
+          <StatusStatCard
+            label="Last sync"
+            value={lastSync ? syncToneLabel(lastSync.tone) : 'No sync yet'}
+            note={lastSync ? lastSync.label : 'Nothing has run yet'}
+          />
+          <StatusStatCard
+            label="Synced modules"
+            value={String(syncedModuleCount)}
+            note={syncedModuleCount > 0 ? 'Available in the app' : 'Nothing imported yet'}
+          />
+          <StatusStatCard
+            label="Ready to sync"
+            value={hasLoadedCourses ? String(filteredCourses.length) : 'Locked'}
+            note={hasLoadedCourses ? 'Available course choices' : 'Load courses after connection'}
+          />
+        </div>
       </div>
       <SectionCard
         className="motion-card motion-delay-1"
@@ -312,6 +337,11 @@ export function ConnectCanvasFlow({
       >
         {!hasLoadedCourses ? (
           <div key="sync-locked" className="motion-subsection" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <div style={compactMetaGridStyle}>
+              <MiniWorkflowCard label="Connection" value={canLoadCourses ? 'Ready' : 'Blocked'} note={canLoadCourses ? 'Saved credentials available' : 'Finish setup first'} />
+              <MiniWorkflowCard label="Course list" value="Not loaded" note="Load the current Canvas list here" />
+            </div>
+
             <div className="glass-panel glass-soft" style={introCardStyle}>
               <p style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>
                 {canLoadCourses ? 'Ready to load your courses' : 'Connection needed before course selection'}
@@ -342,6 +372,12 @@ export function ConnectCanvasFlow({
           </div>
         ) : (
           <div key="sync-loaded" className="motion-subsection" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <div style={compactMetaGridStyle}>
+              <MiniWorkflowCard label="Available courses" value={String(filteredCourses.length)} note="Still available to bring in" />
+              <MiniWorkflowCard label="Selected now" value={String(selectedAvailableCount)} note={selectedAvailableCount > 0 ? 'Ready to sync' : 'Pick one or more'} />
+              <MiniWorkflowCard label="Already in app" value={String(syncedModuleCount)} note="Hidden from this picker" />
+            </div>
+
             <div className="ui-status-success" style={successPanelStyle}>
               <p style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: 'var(--green)' }}>Course list ready</p>
               <p style={{ margin: '0.3rem 0 0', fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
@@ -393,7 +429,9 @@ export function ConnectCanvasFlow({
                       key={course.id}
                       type="button"
                       onClick={() => toggleCourseSelection(course.id)}
-                      className="glass-panel glass-hover"
+                      aria-pressed={isSelected}
+                      className="glass-panel ui-interactive-card"
+                      data-open={isSelected ? 'true' : 'false'}
                       style={{
                         '--glass-panel-bg': isSelected ? 'color-mix(in srgb, var(--surface-selected) 84%, var(--accent) 16%)' : 'var(--glass-surface)',
                         '--glass-panel-border': isSelected ? 'var(--accent-border)' : 'var(--glass-border)',
@@ -460,9 +498,16 @@ export function ConnectCanvasFlow({
           title="Recent sync status"
           description="A quick summary of the latest sync run so you can tell at a glance whether everything finished normally."
         >
-          <div className={`glass-panel glass-soft ${lastSync.tone === 'success' ? 'ui-status-success' : lastSync.tone === 'warning' ? 'ui-status-warning' : ''}`} style={lastSyncCardStyle(lastSync.tone)}>
-            <p style={{ margin: 0, fontSize: '14px', fontWeight: 600 }}>{lastSync.label}</p>
+          <div style={compactMetaGridStyle}>
+            <MiniWorkflowCard label="Status" value={syncToneLabel(lastSync.tone)} note="Latest sync run" />
+            <MiniWorkflowCard label="Imported modules" value={String(syncedModuleCount)} note="Current synced count" />
           </div>
+          <details className={`glass-panel glass-soft ${lastSync.tone === 'success' ? 'ui-status-success' : lastSync.tone === 'warning' ? 'ui-status-warning' : ''}`} style={lastSyncCardStyle(lastSync.tone)}>
+            <summary className="ui-interactive-summary" style={{ fontSize: '13px', fontWeight: 700, color: 'inherit' }}>
+              View last sync detail
+            </summary>
+            <p style={{ margin: '0.8rem 0 0', fontSize: '14px', fontWeight: 600 }}>{lastSync.label}</p>
+          </details>
         </SectionCard>
       )}
 
@@ -484,7 +529,7 @@ export function ConnectCanvasFlow({
               <li key={module.id} style={{ display: 'flex', alignItems: 'stretch', gap: '0.75rem', flexWrap: 'wrap' }}>
                 <Link
                   href={`/modules/${module.id}/learn`}
-                  className="glass-panel glass-hover"
+                  className="glass-panel ui-interactive-card"
                   style={{
                     '--glass-panel-bg': 'var(--glass-surface)',
                     '--glass-panel-border': 'var(--glass-border)',
@@ -731,6 +776,11 @@ function ConnectedStateCard({
 }) {
   return (
     <div className="glass-panel glass-soft ui-status-success" style={successPanelStyle}>
+      <div style={compactMetaGridStyle}>
+        <MiniWorkflowCard label="State" value="Connected" note="Canvas access is saved" />
+        <MiniWorkflowCard label="Course access" value={courseCount !== null ? String(courseCount) : 'Unknown'} note="Available from last check" />
+      </div>
+
       <div>
         <p style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: 'var(--green)' }}>Connection saved</p>
         <p style={{ margin: '0.35rem 0 0', fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5, overflowWrap: 'anywhere' }}>
@@ -782,6 +832,60 @@ function SectionCard({
       {children}
     </section>
   )
+}
+
+function MiniWorkflowCard({
+  label,
+  value,
+  note,
+}: {
+  label: string
+  value: string
+  note: string
+}) {
+  return (
+    <div className="glass-panel glass-soft" style={miniCardStyle}>
+      <p style={{ margin: 0, fontSize: '10px', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
+        {label}
+      </p>
+      <p style={{ margin: '0.34rem 0 0', fontSize: '16px', lineHeight: 1.2, fontWeight: 650, color: 'var(--text-primary)' }}>
+        {value}
+      </p>
+      <p style={{ margin: '0.22rem 0 0', fontSize: '12px', lineHeight: 1.55, color: 'var(--text-secondary)' }}>
+        {note}
+      </p>
+    </div>
+  )
+}
+
+function StatusStatCard({
+  label,
+  value,
+  note,
+}: {
+  label: string
+  value: string
+  note: string
+}) {
+  return (
+    <div className="glass-panel glass-soft" style={heroStatCardStyle}>
+      <p style={{ margin: 0, fontSize: '10px', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
+        {label}
+      </p>
+      <p style={{ margin: '0.35rem 0 0', fontSize: '17px', lineHeight: 1.15, fontWeight: 650, color: 'var(--text-primary)' }}>
+        {value}
+      </p>
+      <p style={{ margin: '0.22rem 0 0', fontSize: '12px', lineHeight: 1.55, color: 'var(--text-secondary)' }}>
+        {note}
+      </p>
+    </div>
+  )
+}
+
+function syncToneLabel(tone: SyncSnapshot['tone']) {
+  if (tone === 'success') return 'Healthy'
+  if (tone === 'warning') return 'Needs review'
+  return 'In progress'
 }
 
 function Field({
@@ -914,7 +1018,15 @@ function lastSyncCardStyle(tone: SyncSnapshot['tone']): CSSProperties {
 const heroCardStyle: CSSProperties = {
   borderRadius: 'var(--radius-page)',
   padding: '1.45rem',
+  display: 'grid',
+  gap: '1rem',
   boxShadow: 'var(--shadow-medium), var(--highlight-sheen)',
+}
+
+const heroStatsGridStyle: CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
+  gap: '0.75rem',
 }
 
 const sectionCardStyle: CSSProperties = {
@@ -924,6 +1036,12 @@ const sectionCardStyle: CSSProperties = {
   flexDirection: 'column',
   gap: '1rem',
   boxShadow: 'var(--shadow-medium), var(--highlight-sheen)',
+}
+
+const compactMetaGridStyle: CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+  gap: '0.75rem',
 }
 
 const introCardStyle: CSSProperties = {
@@ -937,7 +1055,7 @@ const successPanelStyle: CSSProperties = {
   padding: '1rem',
   display: 'flex',
   flexDirection: 'column',
-  gap: '0.45rem',
+  gap: '0.75rem',
   boxShadow: 'var(--shadow-low), var(--highlight-sheen)',
 }
 
@@ -965,6 +1083,16 @@ const emptyStateStyle: CSSProperties = {
   color: 'var(--text-secondary)',
   fontSize: '14px',
   lineHeight: 1.6,
+}
+
+const miniCardStyle: CSSProperties = {
+  borderRadius: 'var(--radius-tight)',
+  padding: '0.8rem 0.85rem',
+}
+
+const heroStatCardStyle: CSSProperties = {
+  borderRadius: 'var(--radius-tight)',
+  padding: '0.78rem 0.84rem',
 }
 
 const guideCardStyle: CSSProperties = {
