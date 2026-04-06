@@ -103,9 +103,11 @@ const GENERIC_TERM_KEYS = new Set([
   'discussion',
   'example',
   'examples',
+  'features',
   'file',
   'files',
   'introduction',
+  'it',
   'label',
   'labels',
   'lesson',
@@ -136,6 +138,7 @@ const GENERIC_TERM_KEYS = new Set([
   'students',
   'study',
   'summary',
+  'they',
   'term',
   'terms',
   'topic',
@@ -151,9 +154,10 @@ export function buildModuleTermBank({
   storedTerms: ModuleTerm[]
 }): ModuleTermBankModel {
   const readyMaterials = overview.studyMaterials.filter((material) => material.readiness === 'ready')
+  const termSourceMaterials = readyMaterials.filter(isUsefulTermSourceMaterial)
   const groundedCharCount = readyMaterials.reduce((total, material) => total + getMaterialCharCount(material), 0)
-  const noisyTitleKeys = buildNoisyTitleKeySet(readyMaterials)
-  const generatedCandidates = buildGeneratedCandidates(readyMaterials, noisyTitleKeys)
+  const noisyTitleKeys = buildNoisyTitleKeySet(termSourceMaterials)
+  const generatedCandidates = buildGeneratedCandidates(termSourceMaterials, noisyTitleKeys)
   const generatedByKey = new Map(generatedCandidates.map((candidate) => [candidate.key, candidate]))
   const rejectedKeys = new Set(
     storedTerms
@@ -222,11 +226,9 @@ function buildGeneratedCandidates(materials: ModuleStudyMaterial[], noisyTitleKe
     if (!text) continue
 
     const sentences = splitSentences(text)
-    const blocks = splitBlocks(text)
 
     collectDefinitionCandidates(sentences, material, drafts, noisyTitleKeys)
     collectAcronymCandidates(sentences, material, drafts, noisyTitleKeys)
-    collectHeadingCandidates(blocks, material, drafts, noisyTitleKeys)
   }
 
   return Array.from(drafts.values())
@@ -471,33 +473,6 @@ function collectAcronymCandidates(
   }
 }
 
-function collectHeadingCandidates(
-  blocks: string[],
-  material: ModuleStudyMaterial,
-  drafts: Map<string, CandidateDraft>,
-  noisyTitleKeys: Set<string>,
-) {
-  for (let index = 0; index < blocks.length - 1; index += 1) {
-    const heading = parseHeadingCandidate(blocks[index])
-    if (!heading) continue
-
-    const key = normalizeLookup(heading)
-    if (noisyTitleKeys.has(key)) continue
-
-    const explanation = splitSentences(blocks[index + 1]).find((sentence) => sentence.length >= 42)
-    if (!explanation) continue
-
-    addDraft(drafts, {
-      term: heading,
-      kind: classifyCandidateKind(heading),
-      score: 5,
-      definitionSentence: trimAtBoundary(explanation, 220),
-      explanationSentence: trimAtBoundary(explanation, 170),
-      evidenceSentence: trimAtBoundary(explanation, 220),
-    }, material, noisyTitleKeys)
-  }
-}
-
 function addDraft(
   drafts: Map<string, CandidateDraft>,
   input: {
@@ -662,6 +637,22 @@ function buildNoisyTitleKeySet(materials: ModuleStudyMaterial[]) {
   return keys
 }
 
+function isUsefulTermSourceMaterial(material: ModuleStudyMaterial) {
+  const title = normalizeLookup(material.resource.title)
+  const linkedContext = normalizeLookup(material.resource.linkedContext ?? '')
+
+  if (!title) return false
+
+  if (
+    /student handbook|handbook|orientation|roll call|attendance|get to know|learning contract/.test(title)
+    || /student handbook|orientation|attendance/.test(linkedContext)
+  ) {
+    return false
+  }
+
+  return true
+}
+
 function getMaterialCharCount(material: ModuleStudyMaterial) {
   return typeof material.resource.extractedCharCount === 'number'
     ? material.resource.extractedCharCount
@@ -686,13 +677,6 @@ function normalizeReviewText(text: string) {
     .replace(/\n{3,}/g, '\n\n')
     .replace(/[ \t]{2,}/g, ' ')
     .trim()
-}
-
-function splitBlocks(text: string) {
-  return text
-    .split(/\n{2,}/)
-    .map((block) => compactWhitespace(block))
-    .filter((block) => block.length >= 4)
 }
 
 function splitSentences(text: string) {
@@ -735,15 +719,6 @@ function normalizeDefinitionSentence(term: string, sentence: string, definitionC
   }
 
   return trimAtBoundary(`${term} is ${definitionClause}.`, 220)
-}
-
-function parseHeadingCandidate(block: string) {
-  const heading = compactWhitespace(block.replace(/[:\-]+$/, ''))
-  if (heading.length < 4 || heading.length > 48) return null
-  if (/[.!?]/.test(heading)) return null
-  if (looksLikeJunkTerm(heading, classifyCandidateKind(heading))) return null
-
-  return sanitizeCandidateTerm(heading)
 }
 
 function classifyCandidateKind(term: string): ModuleTermCandidateKind {
@@ -791,7 +766,9 @@ function looksLikeJunkTerm(term: string, kind: ModuleTermCandidateKind) {
   if (/^(week|module|chapter|lesson|part|section|slide|page|figure|table)\s+\d+$/i.test(term)) return true
   if (/\.(pdf|pptx?|docx?|txt|md)$/i.test(term)) return true
   if (/^(speaker notes?|presenter notes?|click to add notes?)$/i.test(term)) return true
+  if (/^slide:\s+/i.test(term)) return true
   if (/^(learning objectives?|key takeaways?|reference list|discussion board|study guide)$/i.test(term)) return true
+  if (/^(definition|definitions|features|key features|benefits|advantages|challenges|key issues|applications|best practice)$/i.test(term)) return true
   if (/^[-*•]/.test(term)) return true
   if (/[\\/=_]/.test(term)) return true
   if (/^(continued|discussion|remember|recall|example|note)$/i.test(term)) return true
