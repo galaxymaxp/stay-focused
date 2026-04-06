@@ -1,55 +1,130 @@
 'use client'
 
 import { useState } from 'react'
-import { labelForTermQuizStyle, type ModuleTermQuizItem } from '@/lib/module-term-bank'
+import type { StudyNoteQuizItem } from '@/lib/study-note-quiz'
 
 export function ModuleQuickQuiz({
   quizItems,
-  finalTermCount,
+  questionCountOptions,
   embedded = false,
+  title = 'Quiz this note',
+  description = 'Choose how many grounded questions to run from this note before starting.',
+  emptyMessage,
 }: {
-  quizItems: ModuleTermQuizItem[]
-  finalTermCount: number
+  quizItems: StudyNoteQuizItem[]
+  questionCountOptions: number[]
   embedded?: boolean
+  title?: string
+  description?: string
+  emptyMessage: string
 }) {
+  const [selectedCount, setSelectedCount] = useState<number | null>(questionCountOptions[0] ?? null)
+  const [activeCount, setActiveCount] = useState<number | null>(null)
   const [activeIndex, setActiveIndex] = useState(0)
   const [selectedChoice, setSelectedChoice] = useState<string | null>(null)
   const [draftAnswer, setDraftAnswer] = useState('')
   const [revealed, setRevealed] = useState(false)
+  const resolvedSelectedCount = selectedCount && questionCountOptions.includes(selectedCount)
+    ? selectedCount
+    : (questionCountOptions[0] ?? null)
+  const resolvedActiveCount = activeCount && questionCountOptions.includes(activeCount)
+    ? activeCount
+    : null
+  const activeQuizItems = quizItems.slice(0, resolvedActiveCount ?? 0)
+  const currentItem = activeQuizItems[activeIndex] ?? null
 
-  const currentItem = quizItems[activeIndex] ?? null
-
-  function moveToIndex(nextIndex: number) {
-    setActiveIndex(nextIndex)
+  function resetQuestionState() {
     setSelectedChoice(null)
     setDraftAnswer('')
     setRevealed(false)
   }
 
-  if (quizItems.length === 0) {
+  function moveToIndex(nextIndex: number) {
+    setActiveIndex(nextIndex)
+    resetQuestionState()
+  }
+
+  function startQuiz() {
+    if (!resolvedSelectedCount) return
+    setActiveCount(resolvedSelectedCount)
+    setActiveIndex(0)
+    resetQuestionState()
+  }
+
+  function returnToLauncher() {
+    setActiveCount(null)
+    setActiveIndex(0)
+    resetQuestionState()
+  }
+
+  if (questionCountOptions.length === 0 || quizItems.length === 0) {
     return (
       <section
         className={embedded ? 'ui-card-soft' : 'motion-card motion-delay-3 section-shell section-shell-elevated'}
         style={{
-          padding: embedded ? '1rem 1.05rem' : '1.35rem 1.45rem',
+          padding: embedded ? '0.95rem 1rem' : '1.35rem 1.45rem',
           borderRadius: embedded ? 'var(--radius-panel)' : undefined,
+          display: 'grid',
+          gap: '0.7rem',
         }}
       >
-        <p className="ui-kicker">Quick self-quiz</p>
-        <h3 style={{ margin: '0.42rem 0 0', fontSize: '1.08rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>
-          Quiz from the same grounded term set when it is ready
+        <p className="ui-kicker">Note quiz</p>
+        <h3 style={{ margin: 0, fontSize: '1rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>
+          {title}
         </h3>
-        <div className="ui-empty" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', fontSize: '14px', lineHeight: 1.7, marginTop: '1rem' }}>
-          {finalTermCount === 0
-            ? 'The module does not have a strong enough grounded term set yet, so the quiz stays empty instead of faking confidence.'
-            : 'The current term set is still a little too small for a mixed quiz. You can keep reviewing the terms above or add a missing one if the module is under-extracted.'}
+        <div className="ui-empty" style={{ borderRadius: 'var(--radius-tight)', padding: '0.9rem', fontSize: '13px', lineHeight: 1.7 }}>
+          {emptyMessage}
         </div>
       </section>
     )
   }
 
-  if (!currentItem) {
-    return null
+  if (!resolvedActiveCount || !currentItem) {
+    return (
+      <section
+        className={embedded ? 'ui-card-soft' : 'motion-card motion-delay-3 section-shell section-shell-elevated'}
+        style={{
+          padding: embedded ? '0.95rem 1rem' : '1.35rem 1.45rem',
+          borderRadius: embedded ? 'var(--radius-panel)' : undefined,
+          display: 'grid',
+          gap: '0.8rem',
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+          <div style={{ minWidth: 0, flex: '1 1 280px' }}>
+            <p className="ui-kicker">Note quiz</p>
+            <h3 style={{ margin: '0.38rem 0 0', fontSize: '1rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>
+              {title}
+            </h3>
+            <p style={{ margin: '0.38rem 0 0', fontSize: '13px', lineHeight: 1.68, color: 'var(--text-secondary)' }}>
+              {description}
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+            <span className="ui-chip ui-chip-soft">{quizItems.length} grounded question{quizItems.length === 1 ? '' : 's'}</span>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+          {questionCountOptions.map((count) => (
+            <button
+              key={count}
+              type="button"
+              onClick={() => setSelectedCount(count)}
+              className={resolvedSelectedCount === count ? 'ui-button ui-button-secondary ui-button-xs' : 'ui-button ui-button-ghost ui-button-xs'}
+            >
+              {count}
+            </button>
+          ))}
+        </div>
+
+        <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+          <button type="button" onClick={startQuiz} className="ui-button ui-button-secondary ui-button-xs" disabled={!resolvedSelectedCount}>
+            Start quiz
+          </button>
+        </div>
+      </section>
+    )
   }
 
   const isChoiceQuestion = currentItem.choices.length > 0
@@ -60,30 +135,30 @@ export function ModuleQuickQuiz({
     <section
       className={embedded ? 'ui-card-soft' : 'motion-card motion-delay-3 section-shell section-shell-elevated'}
       style={{
-        padding: embedded ? '1rem 1.05rem' : '1.35rem 1.45rem',
-        display: 'grid',
-        gap: '1rem',
+        padding: embedded ? '0.95rem 1rem' : '1.35rem 1.45rem',
         borderRadius: embedded ? 'var(--radius-panel)' : undefined,
+        display: 'grid',
+        gap: '0.85rem',
       }}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.9rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-        <div style={{ minWidth: 0, flex: '1 1 460px' }}>
-          <p className="ui-kicker">Quick self-quiz</p>
-          <h3 style={{ margin: '0.42rem 0 0', fontSize: '1.08rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>
-            Check the same terms you just reviewed without leaving Learn
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+        <div style={{ minWidth: 0, flex: '1 1 260px' }}>
+          <p className="ui-kicker">Note quiz</p>
+          <h3 style={{ margin: '0.38rem 0 0', fontSize: '1rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>
+            {title}
           </h3>
-          <p className="ui-section-copy" style={{ marginTop: '0.45rem', maxWidth: '46rem' }}>
-            Every question here comes from the grounded term set already on this page, so review and quiz stay in the same module flow.
+          <p style={{ margin: '0.38rem 0 0', fontSize: '13px', lineHeight: 1.68, color: 'var(--text-secondary)' }}>
+            Only this note&apos;s extracted content is used here.
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-          <span className="ui-chip ui-chip-soft">{quizItems.length} question{quizItems.length === 1 ? '' : 's'}</span>
-          <span className="ui-chip ui-chip-soft">{finalTermCount} ready term{finalTermCount === 1 ? '' : 's'}</span>
+        <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+          <span className="ui-chip ui-chip-soft">{activeQuizItems.length} selected</span>
+          <span className="ui-chip ui-chip-soft">{quizItems.length} available</span>
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-        {quizItems.map((item, index) => (
+      <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+        {activeQuizItems.map((item, index) => (
           <button
             key={item.id}
             type="button"
@@ -95,16 +170,16 @@ export function ModuleQuickQuiz({
         ))}
       </div>
 
-      <article className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', display: 'grid', gap: '0.9rem' }}>
+      <article className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.95rem 1rem', display: 'grid', gap: '0.85rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
             <StateChip label={`Question ${activeIndex + 1}`} tone="accent" />
-            <StateChip label={labelForTermQuizStyle(currentItem.style)} tone="muted" />
+            <StateChip label={labelForQuizStyle(currentItem.style)} tone="muted" />
           </div>
           {currentItem.sourceLabel && <span className="ui-chip ui-chip-soft">{currentItem.sourceLabel}</span>}
         </div>
 
-        <p style={{ margin: 0, fontSize: '15px', lineHeight: 1.74, color: 'var(--text-primary)', fontWeight: 600 }}>
+        <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.72, color: 'var(--text-primary)', fontWeight: 600 }}>
           {currentItem.prompt}
         </p>
 
@@ -123,7 +198,7 @@ export function ModuleQuickQuiz({
                   className="ui-card-soft"
                   style={{
                     borderRadius: 'var(--radius-tight)',
-                    padding: '0.82rem 0.9rem',
+                    padding: '0.8rem 0.85rem',
                     border: `1px solid ${shouldHighlightAnswer
                       ? 'color-mix(in srgb, var(--accent) 34%, var(--border-subtle) 66%)'
                       : shouldHighlightMistake
@@ -138,7 +213,7 @@ export function ModuleQuickQuiz({
                         : isSelected
                           ? 'color-mix(in srgb, var(--surface-soft) 76%, var(--accent-light) 24%)'
                           : 'color-mix(in srgb, var(--surface-soft) 92%, transparent)',
-                    fontSize: '14px',
+                    fontSize: '13px',
                     lineHeight: 1.6,
                     color: 'var(--text-secondary)',
                     textAlign: 'left',
@@ -157,7 +232,7 @@ export function ModuleQuickQuiz({
               onChange={(event) => setDraftAnswer(event.target.value)}
               rows={3}
               className="ui-input"
-              style={{ padding: '0.75rem 0.85rem', resize: 'vertical' }}
+              style={{ padding: '0.75rem 0.8rem', resize: 'vertical' }}
               placeholder="Answer from memory, then reveal the grounded answer."
             />
           </label>
@@ -172,38 +247,33 @@ export function ModuleQuickQuiz({
           >
             {isChoiceQuestion ? 'Check answer' : 'Show answer'}
           </button>
-          <button
-            type="button"
-            onClick={() => {
-              setSelectedChoice(null)
-              setDraftAnswer('')
-              setRevealed(false)
-            }}
-            className="ui-button ui-button-ghost ui-button-xs"
-          >
+          <button type="button" onClick={resetQuestionState} className="ui-button ui-button-ghost ui-button-xs">
             Reset question
           </button>
-          {quizItems.length > 1 && (
+          {activeQuizItems.length > 1 && (
             <button
               type="button"
-              onClick={() => moveToIndex((activeIndex + 1) % quizItems.length)}
+              onClick={() => moveToIndex((activeIndex + 1) % activeQuizItems.length)}
               className="ui-button ui-button-ghost ui-button-xs"
             >
               Next question
             </button>
           )}
+          <button type="button" onClick={returnToLauncher} className="ui-button ui-button-ghost ui-button-xs">
+            Change count
+          </button>
         </div>
 
         {revealed && (
-          <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.9rem 0.95rem', display: 'grid', gap: '0.45rem' }}>
+          <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.85rem 0.9rem', display: 'grid', gap: '0.45rem' }}>
             {isChoiceQuestion && (
               <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.6, color: isCorrectChoice ? 'var(--accent-foreground)' : 'var(--amber)' }}>
-                {isCorrectChoice ? 'Nice. That matches the grounded term set.' : 'The strongest grounded answer is shown below.'}
+                {isCorrectChoice ? 'This matches the grounded note.' : 'The grounded answer is shown below.'}
               </p>
             )}
             {!isChoiceQuestion && hasInput && (
               <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.6, color: 'var(--text-secondary)' }}>
-                Compare your answer with the grounded version below and tighten any missing detail.
+                Compare your answer with the extracted note and tighten what you missed.
               </p>
             )}
             <MetaLine label="Answer" value={currentItem.answer} />
@@ -213,6 +283,12 @@ export function ModuleQuickQuiz({
       </article>
     </section>
   )
+}
+
+function labelForQuizStyle(style: StudyNoteQuizItem['style']) {
+  if (style === 'multiple_choice') return 'Multiple choice'
+  if (style === 'identification') return 'Identification'
+  return 'Short answer'
 }
 
 function StateChip({ label, tone }: { label: string; tone: 'accent' | 'muted' }) {

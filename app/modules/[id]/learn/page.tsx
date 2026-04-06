@@ -2,11 +2,11 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import type { CSSProperties, ReactNode } from 'react'
 import { ModuleLensShell } from '@/components/ModuleLensShell'
-import { ModuleQuickQuiz } from '@/components/ModuleQuickQuiz'
 import { StudyOutlineView } from '@/components/StudyOutlineView'
 import { ModuleTermBank } from '@/components/ModuleTermBank'
 import { TaskStatusToggle } from '@/components/TaskStatusToggle'
 import { buildModuleLearnOverview, type ModuleStudyMaterial } from '@/lib/module-learn-overview'
+import { countQuizReadyStudyNotes } from '@/lib/study-note-quiz'
 import { buildModuleTermBank } from '@/lib/module-term-bank'
 import {
   buildLearnExperience,
@@ -48,6 +48,10 @@ export default async function LearnPage({ params }: Props) {
   const pendingTasks = sortedTasks.filter((task) => task.status !== 'completed')
   const completedTasks = sortedTasks.filter((task) => task.status === 'completed')
   const outlineSectionCount = overview.studyMaterials.reduce((total, material) => total + material.reader.outlineSections.length, 0)
+  const quizReadyNoteCount = overview.studyMaterials.reduce(
+    (total, material) => total + countQuizReadyStudyNotes(material.reader.outlineSections),
+    0,
+  )
   const summaryText = overview.summary ?? module.summary ?? overview.coverageNote ?? termBank.termsStateMessage
 
   if (module.status === 'error') {
@@ -74,16 +78,16 @@ export default async function LearnPage({ params }: Props) {
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.9rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
             <div style={{ minWidth: 0, flex: '1 1 460px' }}>
               <p className="ui-kicker">Unified Learn workspace</p>
-              <h2 className="ui-section-title" style={{ marginTop: '0.45rem' }}>Study the full module outline, then move straight into terms and quiz</h2>
+              <h2 className="ui-section-title" style={{ marginTop: '0.45rem' }}>Study one note at a time, then quiz that same note in place</h2>
               <p className="ui-section-copy" style={{ marginTop: '0.45rem', maxWidth: '46rem' }}>
-                Learn now keeps the source-grounded notes front and center. Short summaries stay optional, but the main study body is the fuller extracted outline from the materials that belong to this module.
+                Learn keeps the source-grounded notes front and center, but the flow is tighter now. Open the notes you need, expand one section at a time, then quiz only that note instead of the whole module at once.
               </p>
             </div>
             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
               <span className="ui-chip ui-chip-soft">{overview.studyMaterials.length} study source{overview.studyMaterials.length === 1 ? '' : 's'}</span>
               <span className="ui-chip ui-chip-soft">{outlineSectionCount} outline section{outlineSectionCount === 1 ? '' : 's'}</span>
               <span className="ui-chip ui-chip-soft">{termBank.finalTerms.length} key term{termBank.finalTerms.length === 1 ? '' : 's'}</span>
-              <span className="ui-chip ui-chip-soft">{termBank.quizItems.length} quiz item{termBank.quizItems.length === 1 ? '' : 's'}</span>
+              <span className="ui-chip ui-chip-soft">{quizReadyNoteCount} quiz-ready note{quizReadyNoteCount === 1 ? '' : 's'}</span>
               <span className="ui-chip ui-chip-soft">{pendingTasks.length} active task{pendingTasks.length === 1 ? '' : 's'}</span>
               {completedTasks.length > 0 && <span className="ui-chip ui-chip-soft">{completedTasks.length} done</span>}
             </div>
@@ -151,7 +155,7 @@ export default async function LearnPage({ params }: Props) {
                 <StatCard label="Grounded sources" value={String(termBank.groundedSourceCount)} />
                 <StatCard label="Readable chars" value={termBank.groundedCharCount.toLocaleString()} />
                 <StatCard label="Ready readers" value={String(overview.readyStudyFileCount)} />
-                <StatCard label="Completed work" value={String(completedTasks.length)} />
+                <StatCard label="Quiz-ready notes" value={String(quizReadyNoteCount)} />
               </div>
 
               {overview.resumeTarget && (
@@ -185,12 +189,12 @@ export default async function LearnPage({ params }: Props) {
         </section>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.18fr) minmax(320px, 0.92fr)', gap: '1rem', alignItems: 'start' }}>
-          <section className="motion-card motion-delay-2 section-shell section-shell-elevated" style={{ padding: '1.35rem 1.45rem', display: 'grid', gap: '0.95rem' }}>
+          <section id="study-notes" className="motion-card motion-delay-2 section-shell section-shell-elevated" style={{ padding: '1.35rem 1.45rem', display: 'grid', gap: '0.95rem' }}>
             <div>
               <p className="ui-kicker">Study notes</p>
-              <h3 style={{ margin: '0.42rem 0 0', fontSize: '1.08rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>Full extracted outline for the module study materials</h3>
+              <h3 style={{ margin: '0.42rem 0 0', fontSize: '1.08rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>Compact note rows that expand into the full extracted outline</h3>
               <p className="ui-section-copy" style={{ marginTop: '0.45rem', maxWidth: '44rem' }}>
-                The main Learn body now stays close to the extracted source structure. Headings, sections, bullets, and readable paragraphs are preserved as study notes instead of being compressed into a short synthetic recap.
+                The main Learn body stays close to the extracted source structure, but each note now opens on demand. Expand a section to read its bullets and launch a quiz grounded only in that note.
               </p>
             </div>
 
@@ -331,10 +335,6 @@ export default async function LearnPage({ params }: Props) {
             suggestedTerms={termBank.suggestedTerms}
             dismissedCount={termBank.dismissedCount}
           />
-        </div>
-
-        <div id="quiz">
-          <ModuleQuickQuiz quizItems={termBank.quizItems} finalTermCount={termBank.finalTerms.length} />
         </div>
 
         <div id="source-support">

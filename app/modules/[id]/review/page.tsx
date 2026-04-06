@@ -6,5 +6,5 @@ interface Props {
 
 export default async function ReviewPage({ params }: Props) {
   const { id } = await params
-  redirect(`/modules/${id}/learn#quiz`)
+  redirect(`/modules/${id}/learn#study-notes`)
 }

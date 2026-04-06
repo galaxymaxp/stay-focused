@@ -2,9 +2,9 @@
 
 import Link from 'next/link'
 import { useState } from 'react'
-import { ModuleQuickQuiz } from '@/components/ModuleQuickQuiz'
 import { ModuleTermBank } from '@/components/ModuleTermBank'
 import { StudyOutlineView } from '@/components/StudyOutlineView'
+import { countQuizReadyStudyNotes } from '@/lib/study-note-quiz'
 import type {
   CourseLearnModuleCard,
   CourseLearnMoreRow,
@@ -60,6 +60,10 @@ export function CourseLearnExplorer({
       {visibleModules.map((module, index) => {
         const expanded = openModuleId === module.id
         const focused = focusedModuleId === module.id
+        const quizReadyNoteCount = module.studyMaterials.reduce(
+          (total, material) => total + countQuizReadyStudyNotes(material.outlineSections),
+          0,
+        )
 
         return (
           <article
@@ -170,7 +174,7 @@ export function CourseLearnExplorer({
                       <p className="ui-kicker">Module status</p>
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '0.7rem', marginTop: '0.7rem' }}>
                         <MiniStat label="Study sources" value={String(module.studyCount)} />
-                        <MiniStat label="Quiz items" value={String(module.quizCount)} />
+                        <MiniStat label="Quiz-ready notes" value={String(quizReadyNoteCount)} />
                         <MiniStat label="Active work" value={String(module.pendingTasks.length)} />
                         <MiniStat label="Completed" value={String(module.completedTasks.length)} />
                       </div>
@@ -194,10 +198,10 @@ export function CourseLearnExplorer({
                   <div>
                     <p className="ui-kicker">Study outline</p>
                     <h3 style={{ margin: '0.38rem 0 0', fontSize: '1rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>
-                      Full module notes stay inside the card
+                      Open one note at a time inside the module
                     </h3>
                     <p style={{ margin: '0.4rem 0 0', fontSize: '14px', lineHeight: 1.68, color: 'var(--text-secondary)' }}>
-                      The expanded card reveals the full study outline directly here instead of sending you into another review layer.
+                      Each outline section stays collapsed until you open it, and each note now launches its own grounded quiz instead of one broad module-wide set.
                     </p>
                   </div>
 
@@ -220,12 +224,6 @@ export function CourseLearnExplorer({
                   finalTerms={module.finalTerms}
                   suggestedTerms={module.suggestedTerms}
                   dismissedCount={module.dismissedTermCount}
-                  embedded
-                />
-
-                <ModuleQuickQuiz
-                  quizItems={module.quizItems}
-                  finalTermCount={module.finalTerms.length}
                   embedded
                 />
 
