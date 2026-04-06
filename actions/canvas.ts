@@ -20,6 +20,7 @@ import { extractCanvasFileContent, extractCanvasPageContent, normalizeExtension 
 import { dedupeAIResponseDeadlines } from '@/lib/course-work-dedupe'
 import { processModuleContent } from '@/lib/openai'
 import { supabase } from '@/lib/supabase'
+import { populateModuleTerms } from '@/actions/module-terms'
 import type { AIResponse, Course, ModuleResourceExtractionStatus, Priority, TaskItem } from '@/lib/types'
 
 export interface CanvasConnectionResult {
@@ -352,6 +353,11 @@ async function syncSingleCourse(course: CanvasCourse, config: Partial<CanvasConf
       })
     }
   }
+
+  await populateModuleTerms({
+    moduleId,
+    courseId: courseRecord.id,
+  })
 
   return {
     moduleId,

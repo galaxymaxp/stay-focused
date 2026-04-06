@@ -1,7 +1,10 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { buildModuleLearnOverview } from '@/lib/module-learn-overview'
+import { buildModuleTermBank } from '@/lib/module-term-bank'
 import { supabase } from '@/lib/supabase'
+import { buildLearnExperience, getModuleWorkspace } from '@/lib/module-workspace'
 import type { ModuleTermOrigin, ModuleTermStatus } from '@/lib/types'
 
 const TABLE_NAME = 'module_terms'
@@ -104,6 +107,77 @@ export async function resetModuleReviewer(input: {
   if (result.error) throw createModuleTermError('reset module reviewer', result.error, input)
 
   revalidateTermPaths(input.moduleId, input.courseId)
+}
+
+export async function populateModuleTerms(input: {
+  moduleId: string
+  courseId?: string
+}) {
+  if (!supabase) throw new Error('Supabase is not configured.')
+
+  const workspace = await getModuleWorkspace(input.moduleId)
+  if (!workspace) {
+    throw new Error('The module could not be loaded for term population.')
+  }
+
+  const { module, tasks, deadlines, resources, resourceStudyStates, terms } = workspace
+  const experience = buildLearnExperience(module, {
+    taskCount: tasks.length,
+    deadlineCount: deadlines.length,
+    resources,
+    resourceStudyStates,
+  })
+  const overview = buildModuleLearnOverview({
+    moduleId: module.id,
+    resources: experience.resources,
+    doItems: experience.doItems,
+    tasks,
+  })
+  const termBank = buildModuleTermBank({
+    overview,
+    storedTerms: terms,
+  })
+
+  const autoTerms = termBank.finalTerms.filter((term) => term.origin === 'auto')
+  if (autoTerms.length === 0) {
+    revalidateTermPaths(input.moduleId, input.courseId)
+    return {
+      populatedCount: 0,
+      finalTermCount: termBank.finalTerms.length,
+    }
+  }
+
+  const now = new Date().toISOString()
+  const result = await supabase
+    .from(TABLE_NAME)
+    .upsert(
+      autoTerms.map((term) => ({
+        module_id: input.moduleId,
+        resource_id: term.resourceId,
+        normalized_term: term.key,
+        term: term.term,
+        definition: cleanNullable(term.definition),
+        explanation: cleanNullable(term.explanation),
+        evidence_snippet: cleanNullable(term.evidenceSnippet),
+        source_label: cleanNullable(term.sourceLabel),
+        origin: 'ai',
+        status: 'approved',
+        updated_at: now,
+      })),
+      { onConflict: 'module_id,normalized_term' },
+    )
+
+  if (result.error) throw createModuleTermError('populate module terms', result.error, {
+    moduleId: input.moduleId,
+    candidateCount: autoTerms.length,
+  })
+
+  revalidateTermPaths(input.moduleId, input.courseId)
+
+  return {
+    populatedCount: autoTerms.length,
+    finalTermCount: termBank.finalTerms.length,
+  }
 }
 
 type SupabaseLikeError = {
