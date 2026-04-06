@@ -5,10 +5,30 @@ const supabaseKey = process.env.SUPABASE_ANON_KEY ?? process.env.NEXT_PUBLIC_SUP
 
 const SUPABASE_FETCH_RETRIES = 3
 
+const supabaseEnvPresence = {
+  hasSupabaseUrl: Boolean(process.env.SUPABASE_URL),
+  hasNextPublicSupabaseUrl: Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL),
+  hasSupabaseAnonKey: Boolean(process.env.SUPABASE_ANON_KEY),
+  hasNextPublicSupabaseAnonKey: Boolean(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY),
+}
+
+const supabaseHost = getSupabaseHost(supabaseUrl)
+
 export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseKey)
 
-export const supabase = isSupabaseConfigured
-  ? createClient(supabaseUrl!, supabaseKey!, {
+let supabaseClientCreationError: Record<string, unknown> | null = null
+export const supabase = (() => {
+  if (!isSupabaseConfigured) {
+    logSupabaseClientEvent('client_not_configured', {
+      supabaseHost,
+      envPresence: supabaseEnvPresence,
+      isSupabaseConfigured,
+    })
+    return null
+  }
+
+  try {
+    const client = createClient(supabaseUrl!, supabaseKey!, {
       auth: {
         autoRefreshToken: false,
         persistSession: false,
@@ -17,7 +37,90 @@ export const supabase = isSupabaseConfigured
         fetch: retryingSupabaseFetch,
       },
     })
-  : null
+
+    logSupabaseClientEvent('client_created', {
+      supabaseHost,
+      envPresence: supabaseEnvPresence,
+      isSupabaseConfigured,
+      fetchRetries: SUPABASE_FETCH_RETRIES,
+    })
+
+    return client
+  } catch (error) {
+    supabaseClientCreationError = serializeErrorForLogging(error)
+    logSupabaseClientEvent('client_create_failed', {
+      supabaseHost,
+      envPresence: supabaseEnvPresence,
+      isSupabaseConfigured,
+      fetchRetries: SUPABASE_FETCH_RETRIES,
+      error: supabaseClientCreationError,
+    })
+    return null
+  }
+})()
+
+export function getSupabaseLoggingContext() {
+  return {
+    supabaseHost,
+    envPresence: supabaseEnvPresence,
+    isSupabaseConfigured,
+    clientCreated: Boolean(supabase),
+    fetchRetries: SUPABASE_FETCH_RETRIES,
+    clientCreationError: supabaseClientCreationError,
+  }
+}
+
+export function serializeErrorForLogging(error: unknown, depth = 0): Record<string, unknown> | null {
+  if (error == null) return null
+
+  if (depth >= 4) {
+    return { message: 'Max error cause depth reached.' }
+  }
+
+  if (error instanceof Error) {
+    const serialized: Record<string, unknown> = {
+      name: error.name,
+      message: error.message,
+      stack: error.stack ?? null,
+    }
+
+    const code = getOptionalObjectString(error, 'code')
+    const details = getOptionalObjectString(error, 'details')
+    const hint = getOptionalObjectString(error, 'hint')
+    if (code) serialized.code = code
+    if (details) serialized.details = details
+    if (hint) serialized.hint = hint
+
+    if ('cause' in error) {
+      serialized.cause = serializeErrorForLogging(error.cause, depth + 1)
+    }
+
+    return serialized
+  }
+
+  if (typeof error === 'object') {
+    const serialized: Record<string, unknown> = {
+      name: getOptionalObjectString(error, 'name'),
+      message: getOptionalObjectString(error, 'message') ?? String(error),
+      stack: getOptionalObjectString(error, 'stack'),
+    }
+
+    const code = getOptionalObjectString(error, 'code')
+    const details = getOptionalObjectString(error, 'details')
+    const hint = getOptionalObjectString(error, 'hint')
+    if (code) serialized.code = code
+    if (details) serialized.details = details
+    if (hint) serialized.hint = hint
+
+    if ('cause' in error) {
+      serialized.cause = serializeErrorForLogging((error as { cause?: unknown }).cause, depth + 1)
+    }
+
+    return serialized
+  }
+
+  return { message: String(error) }
+}
 
 async function retryingSupabaseFetch(input: RequestInfo | URL, init?: RequestInit) {
   let lastError: unknown
@@ -52,4 +155,27 @@ function shouldRetrySupabaseFetch(error: unknown) {
 function waitForRetry(attempt: number) {
   const delayMs = attempt * 250
   return new Promise((resolve) => setTimeout(resolve, delayMs))
+}
+
+function getSupabaseHost(value: string | undefined) {
+  if (!value) return null
+
+  try {
+    return new URL(value).host
+  } catch {
+    return 'invalid-supabase-url'
+  }
+}
+
+function getOptionalObjectString(value: unknown, key: string) {
+  if (!value || typeof value !== 'object' || !(key in value)) return null
+  const field = (value as Record<string, unknown>)[key]
+  return typeof field === 'string' && field ? field : null
+}
+
+function logSupabaseClientEvent(step: string, context: Record<string, unknown>) {
+  console.info('[Supabase client]', {
+    step,
+    ...context,
+  })
 }

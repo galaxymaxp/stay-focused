@@ -28,7 +28,7 @@ import {
 } from '@/lib/canvas-sync'
 import { dedupeAIResponseDeadlines } from '@/lib/course-work-dedupe'
 import { processModuleContent } from '@/lib/openai'
-import { supabase } from '@/lib/supabase'
+import { getSupabaseLoggingContext, serializeErrorForLogging, supabase } from '@/lib/supabase'
 import { populateModuleTerms } from '@/actions/module-terms'
 import type { AIResponse, Course, ModuleResourceExtractionStatus, Priority, TaskItem } from '@/lib/types'
 
@@ -454,29 +454,57 @@ async function findExistingSyncedModule(
 
 async function upsertCanvasCourseRecord(course: NormalizedCanvasCourseForSync): Promise<ExistingCourseMatch> {
   if (!supabase) throw new Error('Supabase is not configured yet.')
+  const courseIdentityPayload = buildCanvasCourseIdentityPayload(course)
 
-  const { data: courseRecord, error: upsertCourseError } = await supabase
-    .from('courses')
-    .upsert(
-      sanitizeDatabaseValue({
-        canvas_instance_url: course.canvasInstanceUrl,
-        canvas_course_id: course.canvasCourseId,
-        code: course.courseCode,
-        name: course.name,
-        term: course.termName,
-        instructor: 'Canvas course staff',
-        focus_label: 'Synced from Canvas',
-        color_token: pickCourseColorToken(course.courseCode, course.name),
-      }),
-      {
-        onConflict: 'canvas_instance_url,canvas_course_id',
-        ignoreDuplicates: false,
-      },
-    )
-    .select('id')
-    .single()
+  logCanvasCourseUpsertEvent('start', {
+    courseIdentityPayload,
+    supabase: getSupabaseLoggingContext(),
+  })
+
+  await probeSupabaseCoursesBeforeUpsert(course)
+
+  let courseRecord: ExistingCourseMatch | null = null
+  let upsertCourseError: SupabaseLikeError | null = null
+
+  try {
+    const response = await supabase
+      .from('courses')
+      .upsert(
+        sanitizeDatabaseValue({
+          canvas_instance_url: course.canvasInstanceUrl,
+          canvas_course_id: course.canvasCourseId,
+          code: course.courseCode,
+          name: course.name,
+          term: course.termName,
+          instructor: 'Canvas course staff',
+          focus_label: 'Synced from Canvas',
+          color_token: pickCourseColorToken(course.courseCode, course.name),
+        }),
+        {
+          onConflict: 'canvas_instance_url,canvas_course_id',
+          ignoreDuplicates: false,
+        },
+      )
+      .select('id')
+      .single()
+
+    courseRecord = (response.data as ExistingCourseMatch | null) ?? null
+    upsertCourseError = response.error
+  } catch (error) {
+    logCanvasCourseUpsertEvent('request_threw', {
+      courseIdentityPayload,
+      supabase: getSupabaseLoggingContext(),
+      error: serializeErrorForLogging(error),
+    })
+    throw error
+  }
 
   if (upsertCourseError || !courseRecord) {
+    logCanvasCourseUpsertEvent('response_error', {
+      courseIdentityPayload,
+      supabase: getSupabaseLoggingContext(),
+      error: serializeErrorForLogging(upsertCourseError),
+    })
     throw createSupabaseStepError('upsert course', upsertCourseError, {
       canvasInstanceUrl: course.canvasInstanceUrl,
       canvasCourseId: course.canvasCourseId,
@@ -484,6 +512,12 @@ async function upsertCanvasCourseRecord(course: NormalizedCanvasCourseForSync): 
       courseName: course.name,
     })
   }
+
+  logCanvasCourseUpsertEvent('success', {
+    courseIdentityPayload,
+    supabase: getSupabaseLoggingContext(),
+    insertedCourseId: courseRecord.id,
+  })
 
   return courseRecord as ExistingCourseMatch
 }
@@ -629,6 +663,61 @@ function normalizeCanvasSyncTextList(values: string[]) {
   return values
     .map((value) => normalizeOptionalCanvasSyncText(value))
     .filter((value): value is string => Boolean(value))
+}
+
+async function probeSupabaseCoursesBeforeUpsert(course: NormalizedCanvasCourseForSync) {
+  if (!supabase) throw new Error('Supabase is not configured yet.')
+
+  const courseIdentityPayload = buildCanvasCourseIdentityPayload(course)
+
+  logCanvasCourseUpsertEvent('probe_start', {
+    courseIdentityPayload,
+    supabase: getSupabaseLoggingContext(),
+  })
+
+  try {
+    const { error } = await supabase
+      .from('courses')
+      .select('id', { head: true, count: 'exact' })
+      .limit(1)
+
+    if (error) {
+      logCanvasCourseUpsertEvent('probe_response_error', {
+        courseIdentityPayload,
+        supabase: getSupabaseLoggingContext(),
+        error: serializeErrorForLogging(error),
+      })
+
+      throw createSupabaseStepError('probe courses before upsert', error, {
+        canvasInstanceUrl: course.canvasInstanceUrl,
+        canvasCourseId: course.canvasCourseId,
+        courseCode: course.courseCode,
+        courseName: course.name,
+      })
+    }
+
+    logCanvasCourseUpsertEvent('probe_success', {
+      courseIdentityPayload,
+      supabase: getSupabaseLoggingContext(),
+    })
+  } catch (error) {
+    logCanvasCourseUpsertEvent('probe_threw', {
+      courseIdentityPayload,
+      supabase: getSupabaseLoggingContext(),
+      error: serializeErrorForLogging(error),
+    })
+    throw error
+  }
+}
+
+function buildCanvasCourseIdentityPayload(course: NormalizedCanvasCourseForSync) {
+  return {
+    canvasInstanceUrl: course.canvasInstanceUrl,
+    canvasCourseId: course.canvasCourseId,
+    courseCode: course.courseCode,
+    courseName: course.name,
+    termName: course.termName,
+  }
 }
 
 function estimateModuleMinutes(aiResult: AIResponse) {
@@ -1043,5 +1132,12 @@ function logCanvasActionFailure(step: string, error: unknown, context?: Record<s
     message: error instanceof Error ? error.message : String(error),
     stack: error instanceof Error ? error.stack : undefined,
     context,
+  })
+}
+
+function logCanvasCourseUpsertEvent(step: string, context: Record<string, unknown>) {
+  console.info('[Canvas course upsert]', {
+    step,
+    ...context,
   })
 }
