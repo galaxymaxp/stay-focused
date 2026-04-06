@@ -503,7 +503,11 @@ async function findExistingCourseByFilters(
 ): Promise<ExistingCourseMatch | null> {
   if (!supabase) return null
 
-  let query = supabase.from('courses').select('id').limit(1)
+  let query = supabase
+    .from('courses')
+    .select('id, created_at')
+    .order('created_at', { ascending: false })
+    .limit(5)
   if (filters.code) {
     query = query.eq('code', filters.code)
   }
@@ -511,13 +515,18 @@ async function findExistingCourseByFilters(
     query = query.eq('name', filters.name)
   }
 
-  const { data, error } = await query.maybeSingle()
+  const { data, error } = await query
 
   if (error) {
-    throw createSupabaseStepError(step, error, filters)
+    console.error(createSupabaseStepError(step, error, filters).message)
+    return null
   }
 
-  return (data as ExistingCourseMatch | null) ?? null
+  if (!data || data.length === 0) {
+    return null
+  }
+
+  return data[0] as ExistingCourseMatch
 }
 
 function buildLearningItemsForSync(aiResult: AIResponse, courseId: string, moduleId: string) {
