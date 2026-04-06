@@ -17,6 +17,7 @@ Important migration for attachment-backed Learn:
 - `supabase/migrations/20260409_add_task_canvas_completion_metadata.sql`
 - `supabase/migrations/20260410_add_task_planning_annotations.sql`
 - `supabase/migrations/20260411_backfill_task_item_planning_and_completion_metadata.sql`
+- `supabase/migrations/20260412_add_canvas_course_identity.sql`
 
 That migration creates:
 
@@ -68,6 +69,12 @@ Current app features that depend on `20260410_add_task_planning_annotations.sql`
 - Today and Calendar can show the same planner annotations (`Best next step`, `Needs attention`, `Worth reviewing`) for the same synced task
 - task items now keep their completion origin directly, so calendar-facing views can distinguish Canvas-completed work from manual completion without reading the legacy `tasks` table
 - setting a new `Best next step` clears the previous one so the planner keeps a single top focus item
+
+Current app features that depend on `20260412_add_canvas_course_identity.sql`:
+
+- Canvas course persistence now upserts deterministically on `canvas_instance_url + canvas_course_id`
+- repeat sync protection no longer depends on fuzzy course recovery by code, name, or raw module content
+- legacy duplicate `courses` rows are merged onto a canonical row before the new unique index is installed
 
 ## Fresh Project Reset
 

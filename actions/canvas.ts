@@ -12,11 +12,20 @@ import {
   getCourses,
   getModules,
   normalizeCanvasUrl,
+  resolveCanvasConfig,
   type CanvasConfig,
   type CanvasAssignment,
   type CanvasCourse,
 } from '@/lib/canvas'
 import { extractCanvasFileContent, extractCanvasPageContent, normalizeExtension } from '@/lib/canvas-resource-extraction'
+import {
+  normalizeCanvasCourseForSync,
+  normalizeOptionalCanvasSyncText,
+  normalizeRequiredCanvasSyncText,
+  sanitizeCanvasSyncValue as sanitizeDatabaseValue,
+  stripDatabaseNullCharacters,
+  type NormalizedCanvasCourseForSync,
+} from '@/lib/canvas-sync'
 import { dedupeAIResponseDeadlines } from '@/lib/course-work-dedupe'
 import { processModuleContent } from '@/lib/openai'
 import { supabase } from '@/lib/supabase'
@@ -208,19 +217,32 @@ export async function syncCourses(input: {
 
 async function syncSingleCourse(course: CanvasCourse, config: Partial<CanvasConfig>): Promise<SyncCourseResult> {
   if (!supabase) throw new Error('Supabase is not configured yet.')
-  const databaseSafeCourse = createDatabaseSafeCanvasCourse(course)
+  const resolvedConfig = resolveCanvasConfig(config)
+  const normalizedCourse = normalizeCanvasCourseForSync(course, resolvedConfig.url)
+  const databaseSafeCourse: CanvasCourse = {
+    ...course,
+    id: normalizedCourse.canvasCourseId,
+    name: normalizedCourse.name,
+    course_code: normalizedCourse.courseCode,
+    term: course.term
+      ? {
+          ...course.term,
+          name: normalizedCourse.termName,
+        }
+      : course.term,
+  }
 
   const [assignments, announcements, modules] = await Promise.all([
-    getAssignments(course.id, config),
-    getAnnouncements(course.id, config),
-    getModules(course.id, config),
+    getAssignments(course.id, resolvedConfig),
+    getAnnouncements(course.id, resolvedConfig),
+    getModules(course.id, resolvedConfig),
   ])
 
   if (assignments.length === 0 && announcements.length === 0 && modules.length === 0) {
     throw new Error(`Canvas did not return any assignments, announcements, or module content for ${databaseSafeCourse.name} yet.`)
   }
 
-  const resourceIngestion = await ingestModuleResources(course.id, modules, config)
+  const resourceIngestion = await ingestModuleResources(course.id, modules, resolvedConfig)
   const taskCanvasLinks = buildTaskCanvasLinks(assignments, resourceIngestion)
   const rawContent = stripDatabaseNullCharacters(compileCanvasContent(
     databaseSafeCourse,
@@ -235,7 +257,7 @@ async function syncSingleCourse(course: CanvasCourse, config: Partial<CanvasConf
         extractedText: resource.extractedText!,
       }))
   ))
-  const courseRecord = await ensureCourseRecord(databaseSafeCourse)
+  const courseRecord = await upsertCanvasCourseRecord(normalizedCourse)
   const existingModule = await findExistingSyncedModule(courseRecord.id, {
     courseName: databaseSafeCourse.name,
     courseCode: databaseSafeCourse.course_code,
@@ -297,27 +319,28 @@ async function syncSingleCourse(course: CanvasCourse, config: Partial<CanvasConf
     throw new Error(`AI processing failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
   }
 
-  const standaloneDeadlines = dedupeAIResponseDeadlines(aiResult.tasks, aiResult.deadlines)
+  const normalizedAiResult = normalizeAIResponseForSync(aiResult)
+  const standaloneDeadlines = dedupeAIResponseDeadlines(normalizedAiResult.tasks, normalizedAiResult.deadlines)
 
   const { error: moduleUpdateError } = await supabase
     .from('modules')
     .update(sanitizeDatabaseValue({
-      title: aiResult.title,
-      summary: aiResult.summary,
-      concepts: aiResult.concepts,
-      study_prompts: aiResult.study_prompts,
-      recommended_order: aiResult.recommended_order,
+      title: normalizedAiResult.title,
+      summary: normalizedAiResult.summary || null,
+      concepts: normalizedAiResult.concepts,
+      study_prompts: normalizedAiResult.study_prompts,
+      recommended_order: normalizedAiResult.recommended_order,
       status: 'processed',
-      estimated_minutes: estimateModuleMinutes(aiResult),
-      priority_signal: deriveModulePrioritySignal(aiResult),
+      estimated_minutes: estimateModuleMinutes(normalizedAiResult),
+      priority_signal: deriveModulePrioritySignal(normalizedAiResult),
     }))
     .eq('id', moduleId)
 
   if (moduleUpdateError) {
-    throw createSupabaseStepError('update processed module', moduleUpdateError, { moduleId, title: aiResult.title })
+    throw createSupabaseStepError('update processed module', moduleUpdateError, { moduleId, title: normalizedAiResult.title })
   }
 
-  const learningItems = buildLearningItemsForSync(aiResult, courseRecord.id, moduleId)
+  const learningItems = buildLearningItemsForSync(normalizedAiResult, courseRecord.id, moduleId)
   if (learningItems.length > 0) {
     const { error: learningItemsError } = await supabase
       .from('learning_items')
@@ -331,13 +354,13 @@ async function syncSingleCourse(course: CanvasCourse, config: Partial<CanvasConf
     }
   }
 
-  const syncedTaskDrafts = buildSyncedTaskDrafts(aiResult, {
+  const syncedTaskDrafts = buildSyncedTaskDrafts(normalizedAiResult, {
     taskCanvasLinks,
   })
   const clarityTaskItems = buildTaskItemsForSync(syncedTaskDrafts, {
     courseId: courseRecord.id,
     moduleId,
-    extractedFrom: aiResult.title,
+    extractedFrom: normalizedAiResult.title,
   })
 
   if (clarityTaskItems.length > 0) {
@@ -353,7 +376,7 @@ async function syncSingleCourse(course: CanvasCourse, config: Partial<CanvasConf
     }
   }
 
-  if (aiResult.tasks.length > 0) {
+  if (normalizedAiResult.tasks.length > 0) {
     const { error: tasksInsertError } = await supabase.from('tasks').insert(
       sanitizeDatabaseValue(syncedTaskDrafts.map((task) => ({
         module_id: moduleId,
@@ -372,7 +395,7 @@ async function syncSingleCourse(course: CanvasCourse, config: Partial<CanvasConf
     if (tasksInsertError) {
       throw createSupabaseStepError('insert legacy tasks', tasksInsertError, {
         moduleId,
-        taskCount: aiResult.tasks.length,
+        taskCount: normalizedAiResult.tasks.length,
       })
     }
   }
@@ -401,7 +424,7 @@ async function syncSingleCourse(course: CanvasCourse, config: Partial<CanvasConf
 
   return {
     moduleId,
-    courseName: course.name,
+    courseName: databaseSafeCourse.name,
   }
 }
 
@@ -429,110 +452,40 @@ async function findExistingSyncedModule(
   return (data as ExistingModuleMatch | null) ?? null
 }
 
-async function ensureCourseRecord(course: CanvasCourse): Promise<ExistingCourseMatch> {
+async function upsertCanvasCourseRecord(course: NormalizedCanvasCourseForSync): Promise<ExistingCourseMatch> {
   if (!supabase) throw new Error('Supabase is not configured yet.')
-  const databaseSafeCourse = createDatabaseSafeCanvasCourse(course)
 
-  const { data: insertedCourse, error: insertCourseError } = await supabase
+  const { data: courseRecord, error: upsertCourseError } = await supabase
     .from('courses')
     .upsert(
       sanitizeDatabaseValue({
-        code: databaseSafeCourse.course_code,
-        name: databaseSafeCourse.name,
-        term: databaseSafeCourse.term?.name ?? 'Current term',
+        canvas_instance_url: course.canvasInstanceUrl,
+        canvas_course_id: course.canvasCourseId,
+        code: course.courseCode,
+        name: course.name,
+        term: course.termName,
         instructor: 'Canvas course staff',
         focus_label: 'Synced from Canvas',
-        color_token: pickCourseColorToken(databaseSafeCourse.course_code, databaseSafeCourse.name),
+        color_token: pickCourseColorToken(course.courseCode, course.name),
       }),
       {
-        onConflict: 'code,name',
+        onConflict: 'canvas_instance_url,canvas_course_id',
         ignoreDuplicates: false,
       },
     )
     .select('id')
     .single()
 
-  if (insertedCourse) return insertedCourse as ExistingCourseMatch
-
-  const existingCourse = await resolveExistingCourseRecord(databaseSafeCourse, insertCourseError?.code === '23505')
-  if (existingCourse) {
-    return existingCourse
-  }
-
-  if (insertCourseError || !insertedCourse) {
-    throw createSupabaseStepError('insert course', insertCourseError, {
-      courseCode: databaseSafeCourse.course_code,
-      courseName: databaseSafeCourse.name,
+  if (upsertCourseError || !courseRecord) {
+    throw createSupabaseStepError('upsert course', upsertCourseError, {
+      canvasInstanceUrl: course.canvasInstanceUrl,
+      canvasCourseId: course.canvasCourseId,
+      courseCode: course.courseCode,
+      courseName: course.name,
     })
   }
 
-  return insertedCourse as ExistingCourseMatch
-}
-
-async function resolveExistingCourseRecord(
-  course: CanvasCourse,
-  afterConflict: boolean,
-): Promise<ExistingCourseMatch | null> {
-  if (!supabase) return null
-
-  const exactMatch = await findExistingCourseByFilters(
-    {
-      code: course.course_code,
-      name: course.name,
-    },
-    afterConflict ? 'resolve existing synced course after conflict' : 'resolve existing synced course after insert error',
-  )
-  if (exactMatch) return exactMatch
-
-  const codeMatch = await findExistingCourseByFilters(
-    {
-      code: course.course_code,
-    },
-    'resolve existing synced course by code',
-  )
-  if (codeMatch) return codeMatch
-
-  const nameMatch = await findExistingCourseByFilters(
-    {
-      name: course.name,
-    },
-    'resolve existing synced course by name',
-  )
-  if (nameMatch) return nameMatch
-
-  return null
-}
-
-async function findExistingCourseByFilters(
-  filters: { code?: string; name?: string },
-  step: string,
-): Promise<ExistingCourseMatch | null> {
-  if (!supabase) return null
-
-  let query = supabase
-    .from('courses')
-    .select('id, created_at')
-    .order('created_at', { ascending: false })
-    .limit(5)
-  if (filters.code) {
-    query = query.eq('code', filters.code)
-  }
-  if (filters.name) {
-    query = query.eq('name', filters.name)
-  }
-
-  const { data, error } = await query
-
-  if (error) {
-    console.error(createSupabaseStepError(step, error, filters).message)
-    return null
-  }
-
-  if (!data || data.length === 0) {
-    return null
-  }
-
-  return data[0] as ExistingCourseMatch
+  return courseRecord as ExistingCourseMatch
 }
 
 function buildLearningItemsForSync(aiResult: AIResponse, courseId: string, moduleId: string) {
@@ -578,17 +531,17 @@ function buildModuleResourcesForSync(
     canvas_module_id: resource.canvasModuleId,
     canvas_item_id: resource.canvasItemId,
     canvas_file_id: resource.canvasFileId,
-    title: resource.title,
-    resource_type: resource.resourceType,
-    content_type: resource.contentType,
-    extension: resource.extension,
-    source_url: resource.sourceUrl,
-    html_url: resource.htmlUrl,
+    title: normalizeRequiredCanvasSyncText(resource.title, 'Canvas resource'),
+    resource_type: normalizeRequiredCanvasSyncText(resource.resourceType, 'resource'),
+    content_type: normalizeOptionalCanvasSyncText(resource.contentType),
+    extension: normalizeOptionalCanvasSyncText(resource.extension),
+    source_url: normalizeOptionalCanvasSyncText(resource.sourceUrl),
+    html_url: normalizeOptionalCanvasSyncText(resource.htmlUrl),
     extraction_status: resource.extractionStatus,
-    extracted_text: resource.extractedText,
-    extracted_text_preview: resource.extractedTextPreview,
+    extracted_text: normalizeOptionalCanvasSyncText(resource.extractedText),
+    extracted_text_preview: normalizeOptionalCanvasSyncText(resource.extractedTextPreview),
     extracted_char_count: resource.extractedCharCount,
-    extraction_error: resource.extractionError,
+    extraction_error: normalizeOptionalCanvasSyncText(resource.extractionError),
     required: resource.required,
     metadata: resource.metadata,
   })))
@@ -603,13 +556,13 @@ function buildSyncedTaskDrafts(
     const matchedCanvasLink = resolveTaskCanvasLink(task.title, context.taskCanvasLinks, taskType)
 
     return {
-      title: task.title,
-      details: task.details,
-      deadline: task.deadline,
+      title: normalizeRequiredCanvasSyncText(task.title, 'Canvas task'),
+      details: normalizeOptionalCanvasSyncText(task.details),
+      deadline: normalizeOptionalCanvasSyncText(task.deadline),
       priority: task.priority,
       taskType,
       estimatedMinutes: normalizeEstimatedMinutes(task.estimated_minutes, task.priority),
-      canvasUrl: matchedCanvasLink?.canvasUrl ?? null,
+      canvasUrl: normalizeOptionalCanvasSyncText(matchedCanvasLink?.canvasUrl ?? null),
       canvasAssignmentId: matchedCanvasLink?.canvasAssignmentId ?? null,
       status: matchedCanvasLink?.taskStatus ?? 'pending',
       completionOrigin: matchedCanvasLink?.completionOrigin ?? null,
@@ -631,12 +584,51 @@ function buildTaskItemsForSync(
     deadline: task.deadline,
     task_type: task.taskType,
     estimated_minutes: task.estimatedMinutes,
-    extracted_from: context.extractedFrom,
+    extracted_from: normalizeRequiredCanvasSyncText(context.extractedFrom, 'Canvas module'),
     canvas_url: task.canvasUrl,
     canvas_assignment_id: task.canvasAssignmentId,
     completion_origin: task.completionOrigin,
     planning_annotation: null,
   })))
+}
+
+function normalizeAIResponseForSync(aiResult: AIResponse): AIResponse {
+  return {
+    title: normalizeRequiredCanvasSyncText(aiResult.title, 'Canvas module'),
+    summary: normalizeOptionalCanvasSyncText(aiResult.summary) ?? '',
+    concepts: normalizeCanvasSyncTextList(aiResult.concepts),
+    study_prompts: normalizeCanvasSyncTextList(aiResult.study_prompts),
+    recommended_order: normalizeCanvasSyncTextList(aiResult.recommended_order),
+    tasks: aiResult.tasks
+      .map((task) => {
+        const title = normalizeOptionalCanvasSyncText(task.title)
+        if (!title) return null
+
+        return {
+          ...task,
+          title,
+          details: normalizeOptionalCanvasSyncText(task.details),
+        }
+      })
+      .filter((task): task is AIResponse['tasks'][number] => Boolean(task)),
+    deadlines: aiResult.deadlines
+      .map((deadline) => {
+        const label = normalizeOptionalCanvasSyncText(deadline.label)
+        if (!label) return null
+
+        return {
+          ...deadline,
+          label,
+        }
+      })
+      .filter((deadline): deadline is AIResponse['deadlines'][number] => Boolean(deadline)),
+  }
+}
+
+function normalizeCanvasSyncTextList(values: string[]) {
+  return values
+    .map((value) => normalizeOptionalCanvasSyncText(value))
+    .filter((value): value is string => Boolean(value))
 }
 
 function estimateModuleMinutes(aiResult: AIResponse) {
@@ -1001,47 +993,6 @@ function getRequiredCanvasConfig(canvasUrl: string | null | undefined, accessTok
   }
 }
 
-function createDatabaseSafeCanvasCourse(course: CanvasCourse): CanvasCourse {
-  return {
-    ...course,
-    name: normalizeCanvasCourseField(course.name, `Canvas course ${course.id}`),
-    course_code: normalizeCanvasCourseField(course.course_code, `canvas-${course.id}`),
-    term: course.term
-      ? {
-          ...course.term,
-          name: normalizeCanvasCourseField(course.term.name, 'Current term'),
-        }
-      : course.term,
-  }
-}
-
-function normalizeCanvasCourseField(value: string | null | undefined, fallback: string) {
-  const normalized = stripDatabaseNullCharacters(value ?? '').trim()
-  return normalized || fallback
-}
-
-function stripDatabaseNullCharacters(value: string) {
-  return value.replace(/\u0000/g, '')
-}
-
-function sanitizeDatabaseValue<T>(value: T): T {
-  if (typeof value === 'string') {
-    return stripDatabaseNullCharacters(value) as T
-  }
-
-  if (Array.isArray(value)) {
-    return value.map((item) => sanitizeDatabaseValue(item)) as T
-  }
-
-  if (value && typeof value === 'object') {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>).map(([key, nestedValue]) => [key, sanitizeDatabaseValue(nestedValue)])
-    ) as T
-  }
-
-  return value
-}
-
 type SupabaseLikeError = {
   code?: string | null
   message?: string | null
@@ -1063,7 +1014,7 @@ function createSupabaseStepError(step: string, error: SupabaseLikeError | null |
     return new Error(diagnostic)
   }
 
-  if (step === 'insert course') {
+  if (step === 'insert course' || step === 'upsert course') {
     const detail = [code, message].filter(Boolean).join(': ')
     return new Error(detail ? `Canvas sync failed during ${step}: ${detail}.` : `Canvas sync failed during ${step}.`)
   }

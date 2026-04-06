@@ -110,7 +110,7 @@ export interface CanvasPage {
   updated_at?: string | null
 }
 
-function resolveCanvasConfig(override?: Partial<CanvasConfig>): CanvasConfig {
+export function resolveCanvasConfig(override?: Partial<CanvasConfig>): CanvasConfig {
   const url = override?.url?.trim() || DEFAULT_CANVAS_URL?.trim()
   const token = override?.token?.trim() || DEFAULT_CANVAS_TOKEN?.trim()
 

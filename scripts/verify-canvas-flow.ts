@@ -108,8 +108,60 @@ async function importProject() {
   }
 }
 
-function buildCoursePrefix(courseName: string, courseCode: string) {
-  return `Course: ${courseName} (${courseCode})`
+function getConfiguredCanvasUrl() {
+  const rawUrl = process.env.CANVAS_API_URL ?? process.env.CANVAS_API_BASE_URL
+  if (!rawUrl) {
+    throw new Error('CANVAS_API_URL or CANVAS_API_BASE_URL is required for verification.')
+  }
+
+  const normalizedInput = /^[a-zA-Z][a-zA-Z\d+\-.]*:\/\//.test(rawUrl.trim())
+    ? rawUrl.trim()
+    : `https://${rawUrl.trim()}`
+  const url = new URL(normalizedInput)
+  url.pathname = ''
+  url.search = ''
+  url.hash = ''
+  return url.toString().replace(/\/$/, '')
+}
+
+async function getSyncedCourseRows(supabase: Awaited<ReturnType<typeof importProject>>['supabase'], canvasCourseId: number) {
+  const { data, error } = await supabase
+    .from('courses')
+    .select('id, created_at')
+    .eq('canvas_instance_url', getConfiguredCanvasUrl())
+    .eq('canvas_course_id', canvasCourseId)
+    .order('created_at', { ascending: false })
+
+  if (error) throw new Error('Failed to read synced course rows from Supabase.')
+  return data ?? []
+}
+
+async function getModulesForSyncedCourse(
+  supabase: Awaited<ReturnType<typeof importProject>>['supabase'],
+  canvasCourseId: number,
+) {
+  const courseRows = await getSyncedCourseRows(supabase, canvasCourseId)
+  const courseIds = courseRows.map((row) => row.id)
+
+  if (courseIds.length === 0) {
+    return {
+      courseRows,
+      modules: [] as Array<{ id: string; title: string; summary: string | null; created_at: string }>,
+    }
+  }
+
+  const { data, error } = await supabase
+    .from('modules')
+    .select('id, title, summary, created_at')
+    .in('course_id', courseIds)
+    .order('created_at', { ascending: false })
+
+  if (error) throw new Error('Failed to read synced modules from Supabase after sync.')
+
+  return {
+    courseRows,
+    modules: data ?? [],
+  }
 }
 
 async function runValidSyncCase() {
@@ -146,15 +198,9 @@ async function runValidSyncCase() {
       firstRedirectPath = redirectPath
     }
 
-    const coursePrefix = buildCoursePrefix(course.name, course.course_code)
-    const { data: modules, error: modulesError } = await supabase
-      .from('modules')
-      .select('id, title, summary, created_at')
-      .ilike('raw_content', `${coursePrefix}%`)
-      .order('created_at', { ascending: false })
-      .limit(1)
+    const { modules, courseRows } = await getModulesForSyncedCourse(supabase, course.id)
 
-    if (modulesError || !modules || modules.length === 0) {
+    if (courseRows.length === 0 || modules.length === 0) {
       throw new Error('Synced module was not found in Supabase after sync.')
     }
 
@@ -230,16 +276,16 @@ async function runRepeatSyncCase() {
   formData.set('courseName', course.name)
   formData.set('courseCode', course.course_code)
 
-  const coursePrefix = buildCoursePrefix(course.name, course.course_code)
   const getModules = async () => {
-    const { data, error } = await supabase
-      .from('modules')
-      .select('id, created_at')
-      .ilike('raw_content', `${coursePrefix}%`)
-      .order('created_at', { ascending: false })
+    const { courseRows, modules } = await getModulesForSyncedCourse(supabase, course.id)
 
-    if (error) throw new Error('Failed to read existing synced modules.')
-    return data ?? []
+    return {
+      courseRows,
+      modules: modules.map((module) => ({
+        id: module.id,
+        created_at: module.created_at,
+      })),
+    }
   }
 
   const before = await getModules()
@@ -255,7 +301,7 @@ async function runRepeatSyncCase() {
   }
 
   const after = await getModules()
-  const latestModuleId = after[0]?.id ?? null
+  const latestModuleId = after.modules[0]?.id ?? null
 
   let tasksCount = 0
   if (latestModuleId) {
@@ -273,10 +319,12 @@ async function runRepeatSyncCase() {
     tested: true,
     courseName: course.name,
     courseCode: course.course_code,
-    modulesBefore: before.length,
-    modulesAfter: after.length,
+    courseRowsBefore: before.courseRows.length,
+    courseRowsAfter: after.courseRows.length,
+    modulesBefore: before.modules.length,
+    modulesAfter: after.modules.length,
     latestModuleId,
-    duplicatePrevented: after.length === Math.max(before.length, 1),
+    duplicatePrevented: after.courseRows.length === 1 && after.modules.length === Math.max(before.modules.length, 1),
     tasksCount,
   }
 }
@@ -314,20 +362,22 @@ async function runNoCoursesCase() {
 async function runNoContentCase() {
   const { syncCourse, supabase } = await importProject()
   const courseName = 'Mock Empty Course'
-  const courseCode = 'MOCK-EMPTY'
-  const coursePrefix = buildCoursePrefix(courseName, courseCode)
+  const canvasCourseId = 999
 
   const { count: beforeCount, error: beforeError } = await supabase
-    .from('modules')
+    .from('courses')
     .select('*', { count: 'exact', head: true })
-    .ilike('raw_content', `${coursePrefix}%`)
+    .eq('canvas_instance_url', getConfiguredCanvasUrl())
+    .eq('canvas_course_id', canvasCourseId)
 
-  if (beforeError) throw new Error('Failed to count mock empty-course modules before test.')
+  if (beforeError) throw new Error('Failed to count mock empty-course rows before test.')
+
+  const beforeModules = await getModulesForSyncedCourse(supabase, canvasCourseId)
 
   const formData = new FormData()
-  formData.set('courseId', '999')
+  formData.set('courseId', String(canvasCourseId))
   formData.set('courseName', courseName)
-  formData.set('courseCode', courseCode)
+  formData.set('courseCode', 'MOCK-EMPTY')
 
   let message = ''
   try {
@@ -338,18 +388,23 @@ async function runNoContentCase() {
   }
 
   const { count: afterCount, error: afterError } = await supabase
-    .from('modules')
+    .from('courses')
     .select('*', { count: 'exact', head: true })
-    .ilike('raw_content', `${coursePrefix}%`)
+    .eq('canvas_instance_url', getConfiguredCanvasUrl())
+    .eq('canvas_course_id', canvasCourseId)
 
-  if (afterError) throw new Error('Failed to count mock empty-course modules after test.')
+  if (afterError) throw new Error('Failed to count mock empty-course rows after test.')
+
+  const afterModules = await getModulesForSyncedCourse(supabase, canvasCourseId)
 
   return {
     status: 'ok',
     tested: true,
     message,
-    modulesBefore: beforeCount ?? 0,
-    modulesAfter: afterCount ?? 0,
+    coursesBefore: beforeCount ?? 0,
+    coursesAfter: afterCount ?? 0,
+    modulesBefore: beforeModules.modules.length,
+    modulesAfter: afterModules.modules.length,
   }
 }
 

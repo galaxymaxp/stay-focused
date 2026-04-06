@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation'
 import { syncCourses, testCanvasConnection, type CanvasConnectionResult } from '@/actions/canvas'
 import { UnsyncButton } from '@/components/UnsyncButton'
 import type { CanvasCourse } from '@/lib/canvas'
+import { buildCanvasCourseSyncKey } from '@/lib/canvas-sync'
 
 const STORAGE_KEY = 'stay-focused.canvas-connection'
 
@@ -71,21 +72,27 @@ export function ConnectCanvasFlow({
   const [isTesting, startTesting] = useTransition()
   const [isSyncing, startSyncing] = useTransition()
   const initialActionHandledRef = useRef(false)
-
-  const filteredCourses = useMemo(() => {
-    const availableCourses = courses.filter((course) => !syncedCourseKeys.includes(getCourseKey(course.name, course.course_code)))
-
-    return availableCourses.filter((course) =>
-      course.name.toLowerCase().includes(search.toLowerCase()) ||
-      course.course_code?.toLowerCase().includes(search.toLowerCase())
-    )
-  }, [courses, search, syncedCourseKeys])
-
   const connectionSummary = savedConnection ?? (initialConnectionUrl ? {
     url: initialConnectionUrl,
     token: '',
     testedAt: '',
   } : null)
+  const activeCanvasUrl = (canvasUrl || connectionSummary?.url) ?? ''
+  const syncedCourseKeySet = useMemo(() => new Set(syncedCourseKeys), [syncedCourseKeys])
+  const isCourseAlreadySynced = useCallback((course: CanvasCourse) => {
+    const key = buildCanvasCourseSyncKey(activeCanvasUrl, course.id)
+    return key ? syncedCourseKeySet.has(key) : false
+  }, [activeCanvasUrl, syncedCourseKeySet])
+
+  const filteredCourses = useMemo(() => {
+    const availableCourses = courses.filter((course) => !isCourseAlreadySynced(course))
+
+    return availableCourses.filter((course) =>
+      course.name.toLowerCase().includes(search.toLowerCase()) ||
+      course.course_code?.toLowerCase().includes(search.toLowerCase())
+    )
+  }, [courses, isCourseAlreadySynced, search])
+
   const canLoadCourses = Boolean(connectionSummary?.url && token.trim())
   const hasLoadedCourses = step === 'courses'
 
@@ -226,7 +233,7 @@ export function ConnectCanvasFlow({
         const selectedCourses = courses
           .filter((course) =>
             selectedCourseIds.includes(course.id) &&
-            !syncedCourseKeys.includes(getCourseKey(course.name, course.course_code))
+            !isCourseAlreadySynced(course)
           )
           .map((course) => ({
             courseId: course.id,
@@ -372,7 +379,7 @@ export function ConnectCanvasFlow({
             <div style={listShellStyle}>
               {filteredCourses.length === 0 ? (
                 <div style={{ padding: '0.9rem 1rem', fontSize: '13px', color: 'var(--text-secondary)' }}>
-                  {courses.some((course) => !syncedCourseKeys.includes(getCourseKey(course.name, course.course_code)))
+                  {courses.some((course) => !isCourseAlreadySynced(course))
                     ? 'No courses matched that search.'
                     : 'All available courses from this Canvas account are already synced.'}
                 </div>
@@ -748,10 +755,6 @@ function SuccessMessage({ children }: { children: ReactNode }) {
       {children}
     </div>
   )
-}
-
-function getCourseKey(courseName: string, courseCode: string) {
-  return `${courseName}::${courseCode}`.toLowerCase()
 }
 
 function getCanvasTokenPageUrl(canvasUrl: string) {

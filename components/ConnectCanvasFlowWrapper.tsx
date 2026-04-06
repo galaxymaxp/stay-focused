@@ -33,7 +33,7 @@ export function ConnectCanvasFlowWrapper({
       initialConnectionUrl={initialConnectionUrl}
       lastSync={lastSync}
       syncedCourseKeys={syncedCourseKeys}
-      hasSyncedCourses={syncedCourseKeys.length > 0}
+      hasSyncedCourses={syncedModules.length > 0}
       initialAction={initialAction}
       syncedModules={syncedModules}
     />

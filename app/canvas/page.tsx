@@ -1,4 +1,5 @@
 import { ConnectCanvasFlowWrapper } from '@/components/ConnectCanvasFlowWrapper'
+import { buildCanvasCourseSyncKey } from '@/lib/canvas-sync'
 import { supabase } from '@/lib/supabase'
 
 type SyncTone = 'success' | 'neutral' | 'warning'
@@ -15,16 +16,23 @@ export default async function CanvasPage({ searchParams }: CanvasPageProps = {})
   const syncedModules = supabase
     ? (await supabase
         .from('modules')
-        .select('id, title, summary, status, created_at, raw_content')
+        .select('id, title, summary, status, created_at')
+        .order('created_at', { ascending: false })).data
+    : []
+  const syncedCourses = supabase
+    ? (await supabase
+        .from('courses')
+        .select('canvas_instance_url, canvas_course_id, created_at')
         .order('created_at', { ascending: false })).data
     : []
 
   const latestModule = syncedModules?.[0]
-  const initialConnectionUrl = extractCanvasUrl(latestModule?.summary ?? null)
+  const latestCourseConnectionUrl = (syncedCourses ?? []).find((course) => typeof course.canvas_instance_url === 'string')?.canvas_instance_url ?? null
+  const initialConnectionUrl = latestCourseConnectionUrl ?? extractCanvasUrl(latestModule?.summary ?? null)
   const syncedCourseKeys = Array.from(
     new Set(
-      (syncedModules ?? [])
-        .map((module) => extractCourseKey(module.raw_content))
+      (syncedCourses ?? [])
+        .map((course) => buildCanvasCourseSyncKey(course.canvas_instance_url, course.canvas_course_id))
         .filter((value): value is string => Boolean(value))
     )
   )
@@ -70,16 +78,4 @@ function getSyncTone(status: string): SyncTone {
   if (status === 'processed') return 'success'
   if (status === 'error') return 'warning'
   return 'neutral'
-}
-
-function extractCourseKey(rawContent: string | null | undefined) {
-  if (!rawContent) return null
-
-  const firstLine = rawContent.split('\n').find((line) => line.startsWith('Course:'))
-  if (!firstLine) return null
-
-  const match = firstLine.match(/^Course:\s*(.+?)\s+\((.+)\)\s*$/)
-  if (!match) return null
-
-  return `${match[1]}::${match[2]}`.toLowerCase()
 }
