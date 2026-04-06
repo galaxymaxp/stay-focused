@@ -15,7 +15,7 @@ export default async function LearnPage() {
           <p className="ui-kicker">Learn</p>
           <h1 className="ui-page-title">A calmer way into your course material</h1>
           <p className="ui-page-copy" style={{ maxWidth: '46rem' }}>
-            Start at the course level. Choose the class you want, then open one module at a time instead of seeing every resource and status all at once.
+            Start at the course level. Choose the class you want, then open one module workspace at a time instead of seeing every resource and status all at once.
           </p>
         </div>
       </header>

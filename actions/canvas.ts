@@ -13,6 +13,7 @@ import {
   getModules,
   normalizeCanvasUrl,
   type CanvasConfig,
+  type CanvasAssignment,
   type CanvasCourse,
 } from '@/lib/canvas'
 import { extractCanvasFileContent, extractCanvasPageContent, normalizeExtension } from '@/lib/canvas-resource-extraction'
@@ -67,6 +68,22 @@ interface ResourceIngestionRecord {
 interface TaskCanvasLink {
   title: string
   canvasUrl: string | null
+  canvasAssignmentId: number | null
+  taskStatus: 'pending' | 'completed'
+  completionOrigin: 'canvas' | null
+}
+
+interface SyncedTaskDraft {
+  title: string
+  details: string | null
+  deadline: string | null
+  priority: Priority
+  taskType: TaskItem['taskType']
+  estimatedMinutes: number
+  canvasUrl: string | null
+  canvasAssignmentId: number | null
+  status: 'pending' | 'completed'
+  completionOrigin: 'canvas' | null
 }
 
 export async function fetchCourses(config?: Partial<CanvasConfig>): Promise<CanvasCourse[]> {
@@ -274,11 +291,13 @@ async function syncSingleCourse(course: CanvasCourse, config: Partial<CanvasConf
     }
   }
 
-  const clarityTaskItems = buildTaskItemsForSync(aiResult, {
+  const syncedTaskDrafts = buildSyncedTaskDrafts(aiResult, {
+    taskCanvasLinks,
+  })
+  const clarityTaskItems = buildTaskItemsForSync(syncedTaskDrafts, {
     courseId: courseRecord.id,
     moduleId,
     extractedFrom: aiResult.title,
-    taskCanvasLinks,
   })
 
   if (clarityTaskItems.length > 0) {
@@ -296,14 +315,16 @@ async function syncSingleCourse(course: CanvasCourse, config: Partial<CanvasConf
 
   if (aiResult.tasks.length > 0) {
     const { error: tasksInsertError } = await supabase.from('tasks').insert(
-      aiResult.tasks.map((task) => ({
+      syncedTaskDrafts.map((task) => ({
         module_id: moduleId,
         title: task.title,
         details: task.details,
         deadline: task.deadline,
-        canvas_url: resolveTaskCanvasUrl(task.title, taskCanvasLinks),
+        canvas_url: task.canvasUrl,
+        canvas_assignment_id: task.canvasAssignmentId,
         priority: task.priority,
-        status: 'pending',
+        status: task.status,
+        completion_origin: task.completionOrigin,
       }))
     )
 
@@ -453,22 +474,46 @@ function buildModuleResourcesForSync(
   }))
 }
 
-function buildTaskItemsForSync(
+function buildSyncedTaskDrafts(
   aiResult: AIResponse,
-  context: { courseId: string; moduleId: string; extractedFrom: string; taskCanvasLinks: TaskCanvasLink[] },
+  context: { taskCanvasLinks: TaskCanvasLink[] },
+): SyncedTaskDraft[] {
+  return aiResult.tasks.map((task) => {
+    const taskType = normalizeTaskTypeForSync(task.task_type, task.title, task.details)
+    const matchedCanvasLink = resolveTaskCanvasLink(task.title, context.taskCanvasLinks, taskType)
+
+    return {
+      title: task.title,
+      details: task.details,
+      deadline: task.deadline,
+      priority: task.priority,
+      taskType,
+      estimatedMinutes: normalizeEstimatedMinutes(task.estimated_minutes, task.priority),
+      canvasUrl: matchedCanvasLink?.canvasUrl ?? null,
+      canvasAssignmentId: matchedCanvasLink?.canvasAssignmentId ?? null,
+      status: matchedCanvasLink?.taskStatus ?? 'pending',
+      completionOrigin: matchedCanvasLink?.completionOrigin ?? null,
+    }
+  })
+}
+
+function buildTaskItemsForSync(
+  syncedTasks: SyncedTaskDraft[],
+  context: { courseId: string; moduleId: string; extractedFrom: string },
 ) {
-  return aiResult.tasks.map((task) => ({
+  return syncedTasks.map((task) => ({
     course_id: context.courseId,
     module_id: context.moduleId,
     title: task.title,
     details: task.details,
-    status: 'pending',
+    status: task.status,
     priority: task.priority,
     deadline: task.deadline,
-    task_type: normalizeTaskTypeForSync(task.task_type, task.title, task.details),
-    estimated_minutes: normalizeEstimatedMinutes(task.estimated_minutes, task.priority),
+    task_type: task.taskType,
+    estimated_minutes: task.estimatedMinutes,
     extracted_from: context.extractedFrom,
-    canvas_url: resolveTaskCanvasUrl(task.title, context.taskCanvasLinks),
+    canvas_url: task.canvasUrl,
+    canvas_assignment_id: task.canvasAssignmentId,
   }))
 }
 
@@ -519,11 +564,11 @@ async function ingestModuleResources(
 ): Promise<ResourceIngestionRecord[]> {
   const records: ResourceIngestionRecord[] = []
 
-  for (const module of modules) {
-    for (const item of module.items ?? []) {
+  for (const moduleItem of modules) {
+    for (const item of moduleItem.items ?? []) {
       const required = Boolean(item.completion_requirement)
       const baseRecord: ResourceIngestionRecord = {
-        canvasModuleId: module.id,
+        canvasModuleId: moduleItem.id,
         canvasItemId: item.id ?? null,
         canvasFileId: typeof item.content_id === 'number' ? item.content_id : null,
         title: item.title,
@@ -539,8 +584,8 @@ async function ingestModuleResources(
         extractionError: null,
         required,
         metadata: {
-          canvasModuleName: module.name,
-          canvasModuleUrl: buildCanvasModuleUrl(config.url ?? null, courseId, module.id),
+          canvasModuleName: moduleItem.name,
+          canvasModuleUrl: buildCanvasModuleUrl(config.url ?? null, courseId, moduleItem.id),
           completionRequirementType: item.completion_requirement?.type ?? null,
         },
       }
@@ -673,36 +718,80 @@ function pickCourseColorToken(courseCode: string, courseName: string): Course['c
 }
 
 function buildTaskCanvasLinks(
-  assignments: CanvasCourseAssignmentShape[],
+  assignments: CanvasAssignment[],
   resources: ResourceIngestionRecord[],
 ): TaskCanvasLink[] {
   const assignmentLinks = assignments.map((assignment) => ({
     title: assignment.name,
     canvasUrl: assignment.html_url ?? assignment.url ?? null,
+    canvasAssignmentId: assignment.id,
+    ...deriveCanvasAssignmentTaskState(assignment),
   }))
 
   const resourceLinks = resources.map((resource) => ({
     title: resource.title,
     canvasUrl: getBestResourceCanvasUrl(resource),
+    canvasAssignmentId: null,
+    taskStatus: 'pending' as const,
+    completionOrigin: null,
   }))
 
   return [...assignmentLinks, ...resourceLinks]
 }
 
-type CanvasCourseAssignmentShape = {
-  name: string
-  html_url?: string | null
-  url?: string | null
+function deriveCanvasAssignmentTaskState(assignment: Pick<CanvasAssignment, 'submission'>) {
+  const submission = assignment.submission
+  if (!submission || submission.missing) {
+    return {
+      taskStatus: 'pending' as const,
+      completionOrigin: null,
+    }
+  }
+
+  const workflowState = submission.workflow_state?.toLowerCase() ?? null
+  const isCompleted = submission.excused
+    || Boolean(submission.submitted_at)
+    || workflowState === 'submitted'
+    || workflowState === 'graded'
+    || workflowState === 'pending_review'
+    || (workflowState === 'unsubmitted' && submission.score !== null && submission.score !== undefined)
+    || (workflowState === 'unsubmitted' && Boolean(submission.grade))
+
+  return {
+    taskStatus: isCompleted ? 'completed' as const : 'pending' as const,
+    completionOrigin: isCompleted ? 'canvas' as const : null,
+  }
 }
 
-function resolveTaskCanvasUrl(taskTitle: string, links: TaskCanvasLink[]) {
+function resolveTaskCanvasLink(
+  taskTitle: string,
+  links: TaskCanvasLink[],
+  taskType: TaskItem['taskType'],
+) {
   const match = links.find((link) => matchesCanvasTaskTitle(taskTitle, link.title))
-  return match?.canvasUrl ?? null
+  if (!match) return null
+
+  if (!isCanvasCompletableTaskType(taskType)) {
+    return {
+      ...match,
+      taskStatus: 'pending' as const,
+      completionOrigin: null,
+    }
+  }
+
+  return match
 }
 
 function getBestResourceCanvasUrl(resource: ResourceIngestionRecord) {
   const moduleUrl = typeof resource.metadata.canvasModuleUrl === 'string' ? resource.metadata.canvasModuleUrl : null
   return resource.htmlUrl ?? resource.sourceUrl ?? moduleUrl
+}
+
+function isCanvasCompletableTaskType(taskType: TaskItem['taskType']) {
+  return taskType === 'assignment'
+    || taskType === 'quiz'
+    || taskType === 'discussion'
+    || taskType === 'project'
 }
 
 function buildCanvasModuleUrl(baseUrl: string | null | undefined, courseId: number, moduleId: number) {

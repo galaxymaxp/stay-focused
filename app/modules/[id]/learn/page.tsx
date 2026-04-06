@@ -1,12 +1,21 @@
-import { notFound } from 'next/navigation'
 import Link from 'next/link'
-import { ModuleLearnVisibilityToggle } from '@/components/ModuleLearnVisibilityToggle'
-import { StudyFileManualStateControls } from '@/components/StudyFileManualStateControls'
+import { notFound } from 'next/navigation'
+import type { CSSProperties, ReactNode } from 'react'
 import { ModuleLensShell } from '@/components/ModuleLensShell'
-import { buildModuleLearnOverview, type ModuleSuggestedStudyStep, type ModuleStudyMaterial } from '@/lib/module-learn-overview'
-import { getStudyFileProgressLabel } from '@/lib/study-file-manual-state'
-import { getLearnResourceKindLabel } from '@/lib/study-resource'
-import { buildLearnExperience, extractCourseName, getLearnResourceHref, getModuleWorkspace, getResourceCanvasHref, type ModuleSourceResource } from '@/lib/module-workspace'
+import { ModuleQuickQuiz } from '@/components/ModuleQuickQuiz'
+import { ModuleTermBank } from '@/components/ModuleTermBank'
+import { TaskStatusToggle } from '@/components/TaskStatusToggle'
+import { buildModuleLearnOverview, type ModuleStudyMaterial } from '@/lib/module-learn-overview'
+import { buildModuleTermBank } from '@/lib/module-term-bank'
+import {
+  buildLearnExperience,
+  extractCourseName,
+  getLearnResourceHref,
+  getModuleWorkspace,
+  getResourceCanvasHref,
+  type LearnSection,
+} from '@/lib/module-workspace'
+import type { Task } from '@/lib/types'
 
 interface Props {
   params: Promise<{ id: string }>
@@ -17,23 +26,30 @@ export default async function LearnPage({ params }: Props) {
   const workspace = await getModuleWorkspace(id)
   if (!workspace) notFound()
 
-  const { module, tasks, resources: storedResources, resourceStudyStates } = workspace
-  const deadlineCount = workspace.deadlines.length
+  const { module, tasks, resources: storedResources, resourceStudyStates, terms } = workspace
   const courseName = extractCourseName(module.raw_content)
   const experience = buildLearnExperience(module, {
     taskCount: tasks.length,
-    deadlineCount,
+    deadlineCount: workspace.deadlines.length,
     resources: storedResources,
     resourceStudyStates,
   })
-  const { resources, doItems } = experience
   const overview = buildModuleLearnOverview({
     moduleId: module.id,
-    resources,
-    doItems,
+    resources: experience.resources,
+    doItems: experience.doItems,
     tasks,
   })
-  const actionLaneCount = overview.actionItems.length + overview.activityOverrides.length
+  const termBank = buildModuleTermBank({
+    overview,
+    storedTerms: terms,
+  })
+  const sortedTasks = sortModuleTasks(tasks)
+  const pendingTasks = sortedTasks.filter((task) => task.status !== 'completed')
+  const completedTasks = sortedTasks.filter((task) => task.status === 'completed')
+  const featuredSections = pickFeaturedSections(experience.sections)
+  const extraSections = experience.sections.filter((section) => !featuredSections.some((featured) => featured.id === section.id))
+  const summaryText = overview.summary ?? module.summary ?? featuredSections[0]?.body ?? termBank.termsStateMessage
 
   if (module.status === 'error') {
     return (
@@ -52,374 +68,400 @@ export default async function LearnPage({ params }: Props) {
       courseId={module.courseId}
       courseName={courseName}
       title={module.title}
-      summary={null}
+      summary={overview.summaryStateMessage}
     >
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '1rem' }}>
-        <section className="motion-card motion-delay-1 section-shell section-shell-elevated" style={{ padding: '1.35rem 1.45rem' }}>
+      <div style={{ display: 'grid', gap: '1rem' }}>
+        <section className="motion-card motion-delay-1 section-shell section-shell-elevated" style={{ padding: '1.35rem 1.45rem', display: 'grid', gap: '1rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.9rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-            <div style={{ minWidth: 0, flex: '1 1 420px' }}>
-              <p className="ui-kicker">Module study overview</p>
-              <h2 className="ui-section-title" style={{ marginTop: '0.45rem' }}>What to focus on here</h2>
-              <p className="ui-section-copy" style={{ marginTop: '0.45rem' }}>
-                Learn is grounding this module view in readable study materials first, while keeping manual progress and workflow choices close to the original sources.
+            <div style={{ minWidth: 0, flex: '1 1 460px' }}>
+              <p className="ui-kicker">Unified Learn workspace</p>
+              <h2 className="ui-section-title" style={{ marginTop: '0.45rem' }}>Learn the module, scan the terms, and quiz yourself in one place</h2>
+              <p className="ui-section-copy" style={{ marginTop: '0.45rem', maxWidth: '46rem' }}>
+                This page keeps the grounded study content first, lays the extracted terms directly underneath it, and keeps quiz practice in the same module flow instead of splitting it into a separate mode.
               </p>
             </div>
             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-              <span className="ui-chip ui-chip-soft">{overview.totalStudyFileCount} study material{overview.totalStudyFileCount === 1 ? '' : 's'}</span>
-              <span className="ui-chip ui-chip-soft">{actionLaneCount} item{actionLaneCount === 1 ? '' : 's'} in action lane</span>
-              {overview.activityOverrideCount > 0 && (
-                <span className="ui-chip ui-chip-soft">{overview.activityOverrideCount} treated as activity</span>
-              )}
-              {module.showInLearn === false && (
-                <span className="ui-chip ui-chip-soft">Hidden from global Learn</span>
-              )}
-              <ModuleLearnVisibilityToggle moduleId={module.id} showInLearn={module.showInLearn !== false} />
+              <span className="ui-chip ui-chip-soft">{featuredSections.length + extraSections.length} learn section{featuredSections.length + extraSections.length === 1 ? '' : 's'}</span>
+              <span className="ui-chip ui-chip-soft">{termBank.finalTerms.length} key term{termBank.finalTerms.length === 1 ? '' : 's'}</span>
+              <span className="ui-chip ui-chip-soft">{termBank.quizItems.length} quiz item{termBank.quizItems.length === 1 ? '' : 's'}</span>
+              <span className="ui-chip ui-chip-soft">{pendingTasks.length} active task{pendingTasks.length === 1 ? '' : 's'}</span>
+              {completedTasks.length > 0 && <span className="ui-chip ui-chip-soft">{completedTasks.length} done</span>}
             </div>
           </div>
 
-          {module.showInLearn === false && (
-            <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.9rem 1rem', marginTop: '0.95rem' }}>
-              <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.6, color: 'var(--text-secondary)' }}>
-                This module is hidden from global Learn and recommendation surfaces, but it still stays available here and through normal module navigation.
-              </p>
-            </div>
-          )}
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.15fr) minmax(300px, 0.95fr)', gap: '0.9rem', alignItems: 'start' }}>
+            <div className="glass-panel glass-accent" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem 1.05rem', display: 'grid', gap: '0.85rem' }}>
+              <div>
+                <p className="ui-kicker">Module focus</p>
+                <p style={{ margin: '0.55rem 0 0', fontSize: '15px', lineHeight: 1.76, color: 'var(--text-secondary)' }}>
+                  {summaryText}
+                </p>
+              </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.25fr) minmax(280px, 0.95fr)', gap: '0.9rem', marginTop: '1rem' }}>
-            <div className="glass-panel" style={{
-              ['--glass-panel-bg' as string]: 'var(--glass-surface-strong)',
-              ['--glass-panel-border' as string]: 'var(--glass-border)',
-              ['--glass-panel-shadow' as string]: 'var(--glass-shadow)',
-              borderRadius: 'var(--radius-panel)',
-              padding: '1rem 1.05rem',
-            }}>
-              <p className="ui-kicker">{overview.summary ? 'Grounded module summary' : 'Honest coverage state'}</p>
-              <p className="ui-reading-copy" style={{ margin: '0.55rem 0 0', fontSize: '15px', lineHeight: 1.8, color: 'var(--text-secondary)' }}>
-                {overview.summary ?? overview.summaryStateMessage}
-              </p>
+              {overview.suggestedSteps.length > 0 && (
+                <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.85rem 0.9rem' }}>
+                  <p className="ui-kicker">Suggested flow</p>
+                  <ol style={{ listStyle: 'none', padding: 0, margin: '0.7rem 0 0', display: 'grid', gap: '0.55rem' }}>
+                    {overview.suggestedSteps.map((step, index) => (
+                      <li key={step.id}>
+                        <ActionLink
+                          href={step.href}
+                          external={step.external}
+                          style={{
+                            display: 'flex',
+                            gap: '0.7rem',
+                            alignItems: 'flex-start',
+                            textDecoration: 'none',
+                            color: 'inherit',
+                          }}
+                        >
+                          <span style={{
+                            width: '1.45rem',
+                            height: '1.45rem',
+                            borderRadius: '999px',
+                            background: 'color-mix(in srgb, var(--surface-selected) 84%, var(--accent) 16%)',
+                            color: 'var(--text-primary)',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            flexShrink: 0,
+                          }}>
+                            {index + 1}
+                          </span>
+                          <span style={{ display: 'grid', gap: '0.18rem' }}>
+                            <span style={{ fontSize: '14px', lineHeight: 1.55, color: 'var(--text-primary)', fontWeight: 600 }}>
+                              {step.title}
+                            </span>
+                            <span style={{ fontSize: '12px', lineHeight: 1.55, color: 'var(--text-secondary)' }}>
+                              {step.note}
+                            </span>
+                          </span>
+                        </ActionLink>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              )}
             </div>
 
             <div className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem 1.05rem', display: 'grid', gap: '0.8rem' }}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '0.7rem' }}>
-                <StudyStatCard label="Study materials" value={String(overview.totalStudyFileCount)} />
-                <StudyStatCard label="Active study lane" value={String(overview.activeStudyFileCount)} />
-                <StudyStatCard label="Reviewed" value={String(overview.progressCounts.reviewed)} />
-                <StudyStatCard label="Need Canvas" value={String(overview.unavailableStudyFileCount)} />
-              </div>
-
-              <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.85rem 0.9rem' }}>
-                <p className="ui-kicker">Progress rollup</p>
-                <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', marginTop: '0.55rem' }}>
-                  <StatusBadge tone="accent" label={`${overview.progressCounts.reviewed} reviewed`} />
-                  <StatusBadge tone="warning" label={`${overview.progressCounts.skimmed} skimmed`} />
-                  <StatusBadge tone="muted" label={`${overview.progressCounts.notStarted} not started`} />
-                </div>
-                {overview.activityOverrideCount > 0 && (
-                  <p style={{ margin: '0.45rem 0 0', fontSize: '12px', lineHeight: 1.6, color: 'var(--text-muted)' }}>
-                    {overview.activityOverrideCount} {overview.activityOverrideCount === 1 ? 'study material is' : 'study materials are'} currently treated as activity instead.
-                  </p>
-                )}
+                <StatCard label="Grounded sources" value={String(termBank.groundedSourceCount)} />
+                <StatCard label="Readable chars" value={termBank.groundedCharCount.toLocaleString()} />
+                <StatCard label="Ready readers" value={String(overview.readyStudyFileCount)} />
+                <StatCard label="Completed work" value={String(completedTasks.length)} />
               </div>
 
               {overview.resumeTarget && (
-                <div className="ui-card" style={{ borderRadius: 'var(--radius-tight)', padding: '0.9rem 0.95rem' }}>
+                <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.85rem 0.9rem', display: 'grid', gap: '0.45rem' }}>
                   <p className="ui-kicker">{overview.resumeTarget.promptLabel}</p>
-                  <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', marginTop: '0.5rem' }}>
-                    <StatusBadge tone="muted" label={overview.resumeTarget.fileTypeLabel} />
-                    <StatusBadge
-                      tone={overview.resumeTarget.readinessLabel === 'Ready to study'
-                        ? 'accent'
-                        : overview.resumeTarget.readinessLabel === 'Limited'
-                          ? 'warning'
-                          : 'muted'}
-                      label={overview.resumeTarget.readinessLabel}
-                    />
-                  </div>
-                  <p style={{ margin: '0.6rem 0 0', fontSize: '15px', lineHeight: 1.55, color: 'var(--text-primary)', fontWeight: 650 }}>
+                  <p style={{ margin: 0, fontSize: '15px', lineHeight: 1.45, fontWeight: 650, color: 'var(--text-primary)' }}>
                     {overview.resumeTarget.resource.title}
                   </p>
-                  <p style={{ margin: '0.35rem 0 0', fontSize: '13px', lineHeight: 1.68, color: 'var(--text-secondary)' }}>
+                  <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
                     {overview.resumeTarget.note}
                   </p>
-                  <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', marginTop: '0.75rem' }}>
-                    <ActionLink
-                      href={overview.resumeTarget.href}
-                      label={overview.resumeTarget.actionLabel}
-                      external={overview.resumeTarget.external}
-                      tone="secondary"
-                    />
+                  <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+                    <ActionButton href={overview.resumeTarget.href} label={overview.resumeTarget.actionLabel} external={overview.resumeTarget.external} tone="secondary" />
+                    <Link href={`/modules/${module.id}/source`} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+                      Open Source
+                    </Link>
                   </div>
                 </div>
               )}
 
-              <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.85rem 0.9rem' }}>
-                <p className="ui-kicker">Study coverage</p>
-                <p style={{ margin: '0.45rem 0 0', fontSize: '13px', lineHeight: 1.68, color: 'var(--text-secondary)' }}>
-                  {overview.coverageNote}
-                </p>
-              </div>
+              {experience.audit.note && (
+                <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.85rem 0.9rem' }}>
+                  <p className="ui-kicker">Grounding note</p>
+                  <p style={{ margin: '0.45rem 0 0', fontSize: '13px', lineHeight: 1.68, color: 'var(--text-secondary)' }}>
+                    {experience.audit.note}
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         </section>
 
-        <section className="motion-card motion-delay-2 section-shell section-shell-elevated" style={{ padding: '1.35rem 1.45rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.85rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.18fr) minmax(320px, 0.92fr)', gap: '1rem', alignItems: 'start' }}>
+          <section className="motion-card motion-delay-2 section-shell section-shell-elevated" style={{ padding: '1.35rem 1.45rem', display: 'grid', gap: '0.95rem' }}>
             <div>
-              <p className="ui-kicker">Study materials</p>
-              <h3 style={{ margin: '0.42rem 0 0', fontSize: '1.05rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>Materials you can study from here</h3>
+              <p className="ui-kicker">Learn material</p>
+              <h3 style={{ margin: '0.42rem 0 0', fontSize: '1.08rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>Grounded study content for this module</h3>
               <p className="ui-section-copy" style={{ marginTop: '0.45rem', maxWidth: '44rem' }}>
-                Manual progress keeps this view resumable, while the activity override lets you move a study material out of the main study lane without losing the reader.
+                The summary, structure, likely test focus, and follow-up prompts stay visible before you move into term review and quiz practice.
               </p>
             </div>
-            <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-              <StatusBadge tone="accent" label={`${overview.readyStudyFileCount} ready`} />
-              {overview.limitedStudyFileCount > 0 && (
-                <StatusBadge tone="warning" label={`${overview.limitedStudyFileCount} limited`} />
-              )}
-              {overview.unavailableStudyFileCount > 0 && (
-                <StatusBadge tone="muted" label={`${overview.unavailableStudyFileCount} unavailable`} />
-              )}
-            </div>
-          </div>
 
-          {overview.studyMaterials.length === 0 ? (
-            <EmptySurface body={overview.activityOverrideCount > 0
-              ? 'All study materials in this module are currently treated as activity instead. You can move them back into the study lane at any time.'
-              : 'No study materials are mapped to this module yet, so Learn cannot build a grounded study overview here.'}
-            />
-          ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '0.85rem', marginTop: '0.95rem' }}>
-              {overview.studyMaterials.map((material) => (
-                <StudyMaterialCard
-                  key={material.resource.id}
-                  moduleId={module.id}
-                  courseName={courseName}
-                  moduleTitle={module.title}
-                  material={material}
-                />
+            <div style={{ display: 'grid', gap: '0.85rem' }}>
+              {featuredSections.map((section) => (
+                <StudySectionCard key={section.id} section={section} />
               ))}
             </div>
-          )}
-        </section>
 
-        {overview.suggestedSteps.length > 0 && (
-          <section className="motion-card motion-delay-2 section-shell" style={{ padding: '1.25rem 1.35rem' }}>
-            <p className="ui-kicker">Suggested study order</p>
-            <p className="ui-section-copy" style={{ marginTop: '0.45rem', maxWidth: '44rem' }}>
-              This flow stays close to what Learn can actually read, plus any study materials you have manually moved into the action lane.
-            </p>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.85rem', marginTop: '0.95rem' }}>
-              {overview.suggestedSteps.map((step) => (
-                <SuggestedStepCard key={step.id} step={step} />
-              ))}
-            </div>
+            {extraSections.length > 0 && (
+              <details className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.95rem 1rem' }}>
+                <summary style={{ cursor: 'pointer', fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                  More study angles
+                </summary>
+                <div style={{ display: 'grid', gap: '0.75rem', marginTop: '0.85rem' }}>
+                  {extraSections.map((section) => (
+                    <StudySectionCard key={section.id} section={section} subtle />
+                  ))}
+                </div>
+              </details>
+            )}
           </section>
-        )}
 
-        <section className="motion-card motion-delay-3 section-shell" style={{ padding: '1.25rem 1.35rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.85rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-            <div>
-              <p className="ui-kicker">Action items</p>
-              <h3 style={{ margin: '0.42rem 0 0', fontSize: '1.05rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>What still needs doing</h3>
-              <p className="ui-section-copy" style={{ marginTop: '0.45rem', maxWidth: '42rem' }}>
-                Assignments, quizzes, and discussions stay separate from the study materials. If you manually treat a study material as activity, it appears here in its own clearly labeled group.
-              </p>
-            </div>
-            <span className="ui-chip ui-chip-soft">{actionLaneCount} item{actionLaneCount === 1 ? '' : 's'} in action lane</span>
-          </div>
-
-          {overview.activityOverrides.length > 0 && (
-            <div className="ui-card" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', marginTop: '0.95rem' }}>
-              <p className="ui-kicker">Marked as activity</p>
-              <p style={{ margin: '0.45rem 0 0', fontSize: '13px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
-                These are still original study materials, but your workflow override places them in the action lane for now.
-              </p>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '0.85rem', marginTop: '0.85rem' }}>
-                {overview.activityOverrides.map((material) => (
-                  <ActivityOverrideCard key={material.resource.id} moduleId={module.id} material={material} />
-                ))}
+          <aside style={{ display: 'grid', gap: '1rem' }}>
+            <section className="motion-card motion-delay-2 section-shell" style={{ padding: '1.2rem 1.25rem', display: 'grid', gap: '0.85rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                <div>
+                  <p className="ui-kicker">Action status</p>
+                  <h3 style={{ margin: '0.42rem 0 0', fontSize: '1.02rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>Finished graded work already drops out of the way</h3>
+                </div>
+                <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+                  <span className="ui-chip ui-chip-soft">{pendingTasks.length} active</span>
+                  <span className="ui-chip ui-chip-soft">{completedTasks.length} done</span>
+                </div>
               </div>
-            </div>
-          )}
 
-          {overview.actionItems.length === 0 ? (
-            overview.activityOverrides.length === 0 ? (
-              <EmptySurface body="No assignment, quiz, or discussion items were mapped into this module's action lane." />
-            ) : null
-          ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '0.85rem', marginTop: '0.95rem' }}>
-              {overview.actionItems.map((item) => (
-                <article key={item.id} className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.95rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.7rem' }}>
-                  <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-                    <StatusBadge tone="muted" label={labelForResourceKind(item)} />
-                    {item.dueDate && item.dueDate !== 'No due date' && (
-                      <StatusBadge tone="warning" label={`Due ${formatDate(item.dueDate)}`} />
-                    )}
-                    {item.required && (
-                      <StatusBadge tone="warning" label="Required" />
-                    )}
-                  </div>
+              {pendingTasks.length === 0 ? (
+                <div className="ui-empty" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', fontSize: '14px', lineHeight: 1.68 }}>
+                  No unfinished module work is demanding attention right now.
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gap: '0.7rem' }}>
+                  {pendingTasks.map((task) => (
+                    <article key={task.id} className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.92rem 0.95rem', display: 'grid', gap: '0.65rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.65rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                        <div style={{ minWidth: 0, flex: '1 1 220px' }}>
+                          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.3rem' }}>
+                            <PriorityBadge priority={task.priority} />
+                            {task.deadline && <StateBadge label={formatDeadlineLabel(task.deadline)} tone={deadlineTone(task.deadline)} />}
+                          </div>
+                          <p style={{ margin: 0, fontSize: '15px', lineHeight: 1.5, color: 'var(--text-primary)', fontWeight: 650 }}>{task.title}</p>
+                          {task.details && (
+                            <p style={{ margin: '0.35rem 0 0', fontSize: '13px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
+                              {task.details}
+                            </p>
+                          )}
+                        </div>
+                        <TaskStatusToggle status={task.status} moduleId={module.id} title={task.title} legacyTaskId={task.id} align="end" />
+                      </div>
 
-                  <div>
-                    <h4 style={{ margin: 0, fontSize: '16px', lineHeight: 1.42, color: 'var(--text-primary)' }}>{item.title}</h4>
-                    <p style={{ margin: '0.4rem 0 0', fontSize: '13px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
-                      {item.whyItMatters ?? 'This belongs in the action pass after you finish the main study materials.'}
-                    </p>
-                  </div>
+                      <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+                        <Link href={`/modules/${module.id}/do#${task.id}`} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+                          Open in Do
+                        </Link>
+                        {task.canvasUrl && (
+                          <a href={task.canvasUrl} target="_blank" rel="noreferrer" className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
+                            Open in Canvas
+                          </a>
+                        )}
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
 
-                  <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-                    <ActionLink href={`/modules/${module.id}/do`} label="Open in Do" tone="secondary" />
-                    {getResourceCanvasHref(item) && (
-                      <ActionLink href={getResourceCanvasHref(item)!} label="Open in Canvas" external />
-                    )}
+              {completedTasks.length > 0 && (
+                <details className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.9rem 0.95rem' }}>
+                  <summary style={{ cursor: 'pointer', fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                    Already done
+                  </summary>
+                  <div style={{ display: 'grid', gap: '0.6rem', marginTop: '0.8rem' }}>
+                    {completedTasks.map((task) => (
+                      <article key={task.id} style={{ display: 'grid', gap: '0.5rem', padding: '0.8rem 0.85rem', borderRadius: 'var(--radius-tight)', border: '1px solid color-mix(in srgb, var(--border-subtle) 84%, transparent)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.65rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                          <div style={{ minWidth: 0, flex: '1 1 220px' }}>
+                            <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.3rem' }}>
+                              <CompletionBadge origin={task.completionOrigin ?? null} />
+                              {task.deadline && <StateBadge label={formatDate(task.deadline)} tone="muted" />}
+                            </div>
+                            <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.5, color: 'var(--text-muted)', textDecoration: 'line-through' }}>{task.title}</p>
+                          </div>
+                          <TaskStatusToggle status={task.status} moduleId={module.id} title={task.title} legacyTaskId={task.id} align="end" />
+                        </div>
+                      </article>
+                    ))}
                   </div>
-                </article>
-              ))}
-            </div>
-          )}
-        </section>
+                </details>
+              )}
+            </section>
 
-        {overview.otherContextResources.length > 0 && (
-          <section className="motion-card motion-delay-3 section-shell" style={{ padding: '1.2rem 1.3rem' }}>
-            <p className="ui-kicker">More context</p>
-            <p className="ui-section-copy" style={{ marginTop: '0.45rem', maxWidth: '42rem' }}>
-              These items support the module, but they are not the main study materials or action items.
-            </p>
-            <div style={{ display: 'grid', gap: '0.7rem', marginTop: '0.9rem' }}>
-              {overview.otherContextResources.map((item) => (
-                <article key={item.id} className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.9rem 1rem', display: 'flex', justifyContent: 'space-between', gap: '0.8rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-                  <div style={{ minWidth: 0, flex: '1 1 320px' }}>
-                    <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', marginBottom: '0.45rem' }}>
-                      <StatusBadge tone="muted" label={labelForResourceKind(item)} />
-                    </div>
-                    <p style={{ margin: 0, fontSize: '15px', lineHeight: 1.55, color: 'var(--text-primary)', fontWeight: 600 }}>{item.title}</p>
-                    {(item.linkedContext || item.whyItMatters || item.moduleName) && (
-                      <p style={{ margin: '0.35rem 0 0', fontSize: '13px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
-                        {item.linkedContext ?? item.whyItMatters ?? item.moduleName}
-                      </p>
-                    )}
-                  </div>
-                  <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                    <ActionLink href={getLearnResourceHref(module.id, item.id)} label="Open detail" />
-                    {getResourceCanvasHref(item) && (
-                      <ActionLink href={getResourceCanvasHref(item)!} label="Open in Canvas" external />
-                    )}
-                  </div>
-                </article>
-              ))}
-            </div>
-          </section>
-        )}
+            <section className="motion-card motion-delay-3 section-shell" style={{ padding: '1.2rem 1.25rem', display: 'grid', gap: '0.85rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                <div>
+                  <p className="ui-kicker">Grounded sources</p>
+                  <h3 style={{ margin: '0.42rem 0 0', fontSize: '1.02rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>Keep the strongest readers nearby</h3>
+                </div>
+                <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+                  <StateBadge label={`${overview.readyStudyFileCount} ready`} tone="accent" />
+                  {overview.limitedStudyFileCount > 0 && <StateBadge label={`${overview.limitedStudyFileCount} limited`} tone="warning" />}
+                </div>
+              </div>
+
+              {overview.studyMaterials.length === 0 ? (
+                <div className="ui-empty" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', fontSize: '14px', lineHeight: 1.68 }}>
+                  No study readers are mapped into this module yet, so Learn is leaning on the summary, tasks, and any grounded terms it can find.
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gap: '0.7rem' }}>
+                  {overview.studyMaterials.slice(0, 3).map((material) => (
+                    <StudyMaterialCard key={material.resource.id} moduleId={module.id} material={material} />
+                  ))}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+                <Link href={`/modules/${module.id}/source`} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+                  Open full Source
+                </Link>
+              </div>
+            </section>
+          </aside>
+        </div>
+
+        <div id="terms">
+          <ModuleTermBank
+            moduleId={module.id}
+            courseId={module.courseId}
+            finalTerms={termBank.finalTerms}
+            suggestedTerms={termBank.suggestedTerms}
+            dismissedCount={termBank.dismissedCount}
+          />
+        </div>
+
+        <div id="quiz">
+          <ModuleQuickQuiz quizItems={termBank.quizItems} finalTermCount={termBank.finalTerms.length} />
+        </div>
       </div>
     </ModuleLensShell>
   )
 }
 
+function StudySectionCard({
+  section,
+  subtle = false,
+}: {
+  section: LearnSection
+  subtle?: boolean
+}) {
+  const lines = section.body
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+
+  return (
+    <article className={subtle ? 'ui-card-soft' : 'glass-panel glass-soft'} style={{ borderRadius: 'var(--radius-panel)', padding: '1rem' }}>
+      <p className="ui-kicker">{section.title}</p>
+      <ul style={{ margin: '0.65rem 0 0', paddingLeft: '1rem', display: 'grid', gap: '0.45rem' }}>
+        {lines.map((line) => (
+          <li key={line} style={{ fontSize: '14px', lineHeight: 1.7, color: 'var(--text-secondary)' }}>
+            {line}
+          </li>
+        ))}
+      </ul>
+    </article>
+  )
+}
+
 function StudyMaterialCard({
   moduleId,
-  courseName,
-  moduleTitle,
-  material,
-}: {
-  moduleId: string
-  courseName: string
-  moduleTitle: string
-  material: ModuleStudyMaterial
-}) {
-  return (
-    <article
-      className="glass-panel"
-      style={{
-        ['--glass-panel-bg' as string]: 'var(--glass-surface-strong)',
-        ['--glass-panel-border' as string]: 'var(--glass-border)',
-        ['--glass-panel-shadow' as string]: 'var(--glass-shadow)',
-        borderRadius: 'var(--radius-panel)',
-        padding: '1rem',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '0.8rem',
-      }}
-    >
-      <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-        <StatusBadge tone="muted" label={material.fileTypeLabel} />
-        <StatusBadge tone={material.readinessTone} label={material.readinessLabel} />
-        <StatusBadge tone="muted" label={getStudyFileProgressLabel(material.resource.studyProgressStatus ?? 'not_started')} />
-        {material.resource.required && (
-          <StatusBadge tone="warning" label="Required" />
-        )}
-      </div>
-
-      <div>
-        <h4 style={{ margin: 0, fontSize: '16px', lineHeight: 1.42, color: 'var(--text-primary)' }}>{material.resource.title}</h4>
-        <p style={{ margin: '0.35rem 0 0', fontSize: '12px', lineHeight: 1.55, color: 'var(--text-muted)' }}>
-          {buildMaterialContext(material.resource, courseName, moduleTitle)}
-        </p>
-      </div>
-
-      <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.72, color: 'var(--text-secondary)' }}>
-        {material.note}
-      </p>
-
-      <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-        <ActionLink href={getLearnResourceHref(moduleId, material.resource.id)} label="Study reader" />
-        {getResourceCanvasHref(material.resource) && (
-          <ActionLink href={getResourceCanvasHref(material.resource)!} label="Open in Canvas" external />
-        )}
-      </div>
-
-      <StudyFileManualStateControls
-        moduleId={moduleId}
-        resourceId={material.resource.id}
-        progressStatus={material.resource.studyProgressStatus ?? 'not_started'}
-        workflowOverride={material.resource.workflowOverride ?? 'study'}
-        compact
-      />
-    </article>
-  )
-}
-
-function ActivityOverrideCard({
-  moduleId,
   material,
 }: {
   moduleId: string
   material: ModuleStudyMaterial
 }) {
+  const canvasHref = getResourceCanvasHref(material.resource)
+
   return (
-    <article className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.95rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-      <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-        <StatusBadge tone="muted" label={labelForResourceKind(material.resource)} />
-        <StatusBadge tone="muted" label={material.fileTypeLabel} />
-        <StatusBadge tone="warning" label="Treated as activity" />
-        <StatusBadge tone="muted" label={getStudyFileProgressLabel(material.resource.studyProgressStatus ?? 'not_started')} />
+    <article className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.92rem 0.95rem', display: 'grid', gap: '0.65rem' }}>
+      <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+        <StateBadge label={material.fileTypeLabel} tone="muted" />
+        <StateBadge
+          label={material.readinessLabel}
+          tone={material.readiness === 'ready' ? 'accent' : material.readiness === 'limited' ? 'warning' : 'muted'}
+        />
+        {material.resource.required && <StateBadge label="Required" tone="warning" />}
       </div>
 
       <div>
-        <h4 style={{ margin: 0, fontSize: '16px', lineHeight: 1.42, color: 'var(--text-primary)' }}>{material.resource.title}</h4>
-        <p style={{ margin: '0.4rem 0 0', fontSize: '13px', lineHeight: 1.68, color: 'var(--text-secondary)' }}>
-          {material.note}
-        </p>
+        <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.5, color: 'var(--text-primary)', fontWeight: 650 }}>{material.resource.title}</p>
+        <p style={{ margin: '0.35rem 0 0', fontSize: '13px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>{material.note}</p>
       </div>
 
       <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-        <ActionLink href={getLearnResourceHref(moduleId, material.resource.id)} label="Study reader" />
-        {getResourceCanvasHref(material.resource) && (
-          <ActionLink href={getResourceCanvasHref(material.resource)!} label="Open in Canvas" external />
+        <Link href={getLearnResourceHref(moduleId, material.resource.id)} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
+          Open reader
+        </Link>
+        {canvasHref && (
+          <a href={canvasHref} target="_blank" rel="noreferrer" className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+            Open in Canvas
+          </a>
         )}
       </div>
-
-      <StudyFileManualStateControls
-        moduleId={moduleId}
-        resourceId={material.resource.id}
-        progressStatus={material.resource.studyProgressStatus ?? 'not_started'}
-        workflowOverride={material.resource.workflowOverride ?? 'study'}
-        compact
-      />
     </article>
   )
 }
 
-function StudyStatCard({ label, value }: { label: string; value: string }) {
+function ActionLink({
+  href,
+  external = false,
+  children,
+  style,
+}: {
+  href: string
+  external?: boolean
+  children: ReactNode
+  style?: CSSProperties
+}) {
+  if (external) {
+    return (
+      <a href={href} target="_blank" rel="noreferrer" style={style}>
+        {children}
+      </a>
+    )
+  }
+
+  return (
+    <Link href={href} style={style}>
+      {children}
+    </Link>
+  )
+}
+
+function ActionButton({
+  href,
+  label,
+  external = false,
+  tone,
+}: {
+  href: string
+  label: string
+  external?: boolean
+  tone: 'secondary' | 'ghost'
+}) {
+  const className = `ui-button ${tone === 'secondary' ? 'ui-button-secondary' : 'ui-button-ghost'} ui-button-xs`
+
+  if (external) {
+    return (
+      <a href={href} target="_blank" rel="noreferrer" className={className} style={{ textDecoration: 'none' }}>
+        {label}
+      </a>
+    )
+  }
+
+  return (
+    <Link href={href} className={className} style={{ textDecoration: 'none' }}>
+      {label}
+    </Link>
+  )
+}
+
+function StatCard({ label, value }: { label: string; value: string }) {
   return (
     <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.8rem 0.85rem' }}>
       <p style={{ margin: 0, fontSize: '11px', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{label}</p>
@@ -428,25 +470,7 @@ function StudyStatCard({ label, value }: { label: string; value: string }) {
   )
 }
 
-function SuggestedStepCard({ step }: { step: ModuleSuggestedStudyStep }) {
-  return (
-    <article className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.95rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.7rem' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start' }}>
-        <p className="ui-kicker">{step.slotLabel}</p>
-        <span className="ui-chip ui-chip-soft">{step.destinationLabel}</span>
-      </div>
-      <div>
-        <p style={{ margin: 0, fontSize: '16px', lineHeight: 1.45, color: 'var(--text-primary)', fontWeight: 650 }}>{step.title}</p>
-        <p style={{ margin: '0.45rem 0 0', fontSize: '14px', lineHeight: 1.68, color: 'var(--text-secondary)' }}>{step.note}</p>
-      </div>
-      <div>
-        <ActionLink href={step.href} label={step.destinationLabel} external={step.external} tone={step.external ? 'ghost' : 'secondary'} />
-      </div>
-    </article>
-  )
-}
-
-function StatusBadge({
+function StateBadge({
   label,
   tone,
 }: {
@@ -468,12 +492,12 @@ function StatusBadge({
     <span style={{
       display: 'inline-flex',
       alignItems: 'center',
-      padding: '0.34rem 0.68rem',
+      padding: '0.32rem 0.64rem',
       borderRadius: '999px',
       border: `1px solid ${border}`,
       background,
-      fontSize: '12px',
-      fontWeight: 600,
+      fontSize: '11px',
+      fontWeight: 700,
       lineHeight: 1.2,
       color: 'var(--text-primary)',
     }}>
@@ -482,59 +506,92 @@ function StatusBadge({
   )
 }
 
-function ActionLink({
-  href,
-  label,
-  external = false,
-  tone = 'ghost',
-}: {
-  href: string
-  label: string
-  external?: boolean
-  tone?: 'ghost' | 'secondary'
-}) {
-  const className = `ui-button ${tone === 'secondary' ? 'ui-button-secondary' : 'ui-button-ghost'} ui-button-xs`
-  const style = { textDecoration: 'none' }
+function CompletionBadge({ origin }: { origin: Task['completionOrigin'] }) {
+  return (
+    <StateBadge
+      label={origin === 'canvas' ? 'Done in Canvas' : 'Completed'}
+      tone={origin === 'canvas' ? 'accent' : 'muted'}
+    />
+  )
+}
 
-  if (external) {
-    return (
-      <a href={href} target="_blank" rel="noreferrer" className={className} style={style}>
-        {label}
-      </a>
-    )
+function PriorityBadge({ priority }: { priority: Task['priority'] }) {
+  return (
+    <StateBadge
+      label={`${priority} priority`}
+      tone={priority === 'high' ? 'warning' : priority === 'medium' ? 'accent' : 'muted'}
+    />
+  )
+}
+
+function pickFeaturedSections(sections: LearnSection[]) {
+  const preferredOrder = [
+    'core-ideas',
+    'step-by-step-breakdown',
+    'likely-exam-focus',
+    'what-to-do-after-reading',
+  ]
+  const chosen: LearnSection[] = []
+
+  for (const id of preferredOrder) {
+    const match = sections.find((section) => section.id === id)
+    if (match) chosen.push(match)
   }
 
-  return (
-    <Link href={href} className={className} style={style}>
-      {label}
-    </Link>
-  )
+  if (chosen.length === 0) {
+    return sections.slice(0, 4)
+  }
+
+  return chosen
 }
 
-function EmptySurface({ body }: { body: string }) {
-  return (
-    <div className="ui-empty" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', fontSize: '14px', lineHeight: 1.7, marginTop: '0.95rem' }}>
-      {body}
-    </div>
-  )
+function sortModuleTasks(tasks: Task[]) {
+  return [...tasks].sort((left, right) => {
+    const statusDiff = Number(left.status === 'completed') - Number(right.status === 'completed')
+    if (statusDiff !== 0) return statusDiff
+
+    const leftDeadline = sortableDateValue(left.deadline)
+    const rightDeadline = sortableDateValue(right.deadline)
+    if (leftDeadline !== rightDeadline) return leftDeadline - rightDeadline
+
+    const priorityDiff = priorityWeight(right.priority) - priorityWeight(left.priority)
+    if (priorityDiff !== 0) return priorityDiff
+
+    return left.title.localeCompare(right.title)
+  })
 }
 
-function buildMaterialContext(resource: ModuleSourceResource, courseName: string, moduleTitle: string) {
-  const parts = [
-    resource.courseName ?? courseName,
-    resource.moduleName ?? moduleTitle,
-    resource.originalTitle && resource.originalTitle !== resource.title ? `Canvas: ${resource.originalTitle}` : null,
-  ].filter(Boolean)
+function priorityWeight(priority: Task['priority']) {
+  if (priority === 'high') return 3
+  if (priority === 'medium') return 2
+  return 1
+}
 
-  return parts.join(' / ') || 'Canvas study material'
+function sortableDateValue(value: string | null) {
+  if (!value) return Number.POSITIVE_INFINITY
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return Number.POSITIVE_INFINITY
+  return date.getTime()
 }
 
 function formatDate(value: string) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
-  return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(date)
+  return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' }).format(date)
 }
 
-function labelForResourceKind(resource: Pick<ModuleSourceResource, 'kind' | 'type'>) {
-  return getLearnResourceKindLabel(resource)
+function formatDeadlineLabel(value: string) {
+  const daysUntil = Math.ceil((new Date(value).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+  if (daysUntil < 0) return 'Past due'
+  if (daysUntil === 0) return 'Due today'
+  if (daysUntil === 1) return 'Due tomorrow'
+  if (daysUntil <= 7) return `Due in ${daysUntil} days`
+  return formatDate(value)
+}
+
+function deadlineTone(value: string): 'warning' | 'accent' | 'muted' {
+  const daysUntil = Math.ceil((new Date(value).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+  if (daysUntil <= 1) return 'warning'
+  if (daysUntil <= 7) return 'accent'
+  return 'muted'
 }

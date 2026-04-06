@@ -5,6 +5,7 @@ import type {
   Module,
   ModuleResource,
   ModuleResourceStudyState,
+  ModuleTerm,
   ModuleResourceWorkflowOverride,
   StudyFileProgressStatus,
   Task,
@@ -16,6 +17,7 @@ export interface ModuleWorkspaceData {
   deadlines: Deadline[]
   resources: ModuleResource[]
   resourceStudyStates: ModuleResourceStudyState[]
+  terms: ModuleTerm[]
 }
 
 export interface LearnSection {
@@ -113,15 +115,19 @@ export async function getModuleWorkspace(id: string): Promise<ModuleWorkspaceDat
   const { data: moduleRow } = await supabase.from('modules').select('*').eq('id', id).single()
   if (!moduleRow) return null
 
-  const [tasksResult, deadlinesResult, resourcesResult, resourceStudyStateResult] = await Promise.all([
+  const [tasksResult, deadlinesResult, resourcesResult, resourceStudyStateResult, termResult] = await Promise.all([
     supabase.from('tasks').select('*').eq('module_id', id).order('created_at'),
     supabase.from('deadlines').select('*').eq('module_id', id).order('date'),
     supabase.from('module_resources').select('*').eq('module_id', id).order('created_at'),
     supabase.from('module_resource_study_state').select('*').eq('module_id', id).order('updated_at', { ascending: false }),
+    supabase.from('module_terms').select('*').eq('module_id', id).order('updated_at', { ascending: false }),
   ])
   const resourceStudyStates = isMissingSchemaObjectError(resourceStudyStateResult.error)
     ? []
     : (resourceStudyStateResult.data ?? []).map(adaptModuleResourceStudyStateRow)
+  const terms = isMissingSchemaObjectError(termResult.error)
+    ? []
+    : (termResult.data ?? []).map(adaptModuleTermRow)
 
   return {
     module: adaptModuleWorkspaceRow(moduleRow),
@@ -129,6 +135,7 @@ export async function getModuleWorkspace(id: string): Promise<ModuleWorkspaceDat
     deadlines: (deadlinesResult.data ?? []).map(adaptDeadlineRow),
     resources: (resourcesResult.data ?? []).map(adaptModuleResourceRow),
     resourceStudyStates,
+    terms,
   }
 }
 
@@ -587,7 +594,6 @@ function buildSummaryFallback(
   const learnCount = resources.filter((resource) => resource.lane === 'learn').length
   const doCount = resources.filter((resource) => resource.lane === 'do').length
   const assignmentCount = parsed.assignments.length
-  const announcementCount = parsed.announcements.length
   const resourceCount = parsed.modules.reduce((total, module) => total + module.items.length, 0)
   const extractedCount = resources.filter((resource) => resource.extractionStatus === 'extracted' && resource.extractedText).length
 
@@ -630,46 +636,6 @@ function buildKeyConceptFallback(
 
   if (concepts.length > 0) return concepts.slice(0, 5)
   return readingBlocks.slice(0, 4)
-}
-
-function buildMemorizeLines(
-  parsed: ParsedCanvasContent,
-  resources: ModuleSourceResource[],
-  deadlineCount: number,
-) {
-  const dueLines = parsed.assignments
-    .filter((assignment) => assignment.due && assignment.due !== 'No due date')
-    .slice(0, 4)
-    .map((assignment) => `${assignment.title}: ${assignment.due}`)
-
-  const requiredResources = resources
-    .filter((resource) => resource.required)
-    .slice(0, 4)
-    .map((resource) => `${resource.title}${resource.moduleName ? ` in ${resource.moduleName}` : ''}`)
-  const extractedResources = resources
-    .filter((resource) => resource.extractionStatus === 'extracted' && resource.extractedTextPreview)
-    .slice(0, 2)
-    .map((resource) => `From ${resource.title}: ${resource.extractedTextPreview}`)
-
-  const lines = [
-    ...resources
-      .filter((resource) => resource.lane === 'learn')
-      .slice(0, 3)
-      .map((resource) => `${labelForKind(resource)}: ${resource.title}`),
-    ...requiredResources.map((resource) => `Required resource: ${resource}`),
-    ...dueLines,
-    ...extractedResources,
-  ]
-
-  if (deadlineCount > 0 && lines.length === 0) {
-    lines.push(`This module has ${deadlineCount} extracted deadline reference${deadlineCount === 1 ? '' : 's'} to keep in view.`)
-  }
-
-  if (lines.length === 0) {
-    lines.push('Memorize the names of the main resources, the assignment titles, and any repeated terms that show up across the module items.')
-  }
-
-  return lines
 }
 
 function buildCoreIdeas(summary: string, keyConcepts: string[], resources: ModuleSourceResource[]) {
@@ -778,43 +744,6 @@ function buildAfterReadingSteps(resources: ModuleSourceResource[], doItems: Modu
     'Turn the key terms into a short note, comparison, or mini-outline you can revisit quickly.',
     firstDo ? `Open ${firstDo.title} next and mark exactly which concept from Learn it depends on.` : `Switch into Do and decide which of the ${taskCount} extracted task${taskCount === 1 ? '' : 's'} should move next.`,
   ], 4)
-}
-
-function buildStudySteps(resources: ModuleSourceResource[], taskCount: number, fileResourceCount: number) {
-  const firstFile = resources.find((resource) => isFileBasedResourceType(resource.type))
-  const firstExtractedFile = resources.find((resource) => resource.extractionStatus === 'extracted' && resource.extractedText)
-  const firstTaskLike = resources.find((resource) => resource.lane === 'do')
-
-  const steps = [
-    firstExtractedFile
-      ? `Start with the extracted file content from "${firstExtractedFile.title}" and turn the opening section into a 3-sentence note in your own words.`
-      : fileResourceCount > 0
-        ? `Start with the file-based resources first${firstFile ? `, beginning with "${firstFile.title}"` : ''}, and turn each file title into a short note about what it probably covers.`
-      : 'Start with the summary and key concepts so the module has a clear shape before you dive into details.',
-    resources.length > 0
-      ? 'Move through the Learn-first resources one at a time and write one sentence per resource about what it contributes.'
-      : 'Pull out the repeated ideas and examples before switching into task mode.',
-    firstTaskLike
-      ? `After the study pass, switch to the Do-first lane and decide how "${firstTaskLike.title}" depends on the resources you just reviewed.`
-      : `After the understanding pass, switch to Do and decide which of the ${taskCount} extracted task${taskCount === 1 ? '' : 's'} should move next.`,
-  ]
-
-  return steps
-}
-
-function buildReviewPrompts(module: Module, conceptLines: string[], resources: ModuleSourceResource[]) {
-  const prompts = (module.study_prompts ?? []).filter(Boolean).slice(0, 5)
-  if (prompts.length > 0) return prompts
-
-  const seeds = conceptLines.length > 0
-    ? conceptLines
-    : resources.filter((resource) => resource.lane === 'learn').slice(0, 4).map((resource) => resource.title)
-
-  if (seeds.length === 0) {
-    return ['How would you explain this module to a classmate in under one minute?']
-  }
-
-  return seeds.slice(0, 4).map((seed) => `Explain "${seed}" in your own words, then say why it probably matters for the next task.`)
 }
 
 function buildLearnAudit(module: Module, resources: ModuleSourceResource[], fileResources: ModuleSourceResource[]): LearnAudit {
@@ -927,7 +856,7 @@ function buildLearnUnit(resource: ModuleSourceResource, module: Module, index: n
     || resource.extractedTextPreview?.trim()
     || ''
   const summary = summarizeResource(sourceText, resource)
-  const concepts = extractResourceConcepts(sourceText, resource)
+  const concepts = extractResourceConcepts(sourceText)
   const coreIdeas = buildResourceCoreIdeas(resource, summary, concepts)
   const breakdown = buildResourceBreakdown(resource, sourceText)
   const connections = buildResourceConnections(resource, module)
@@ -1069,7 +998,7 @@ function summarizeResource(sourceText: string, resource: ModuleSourceResource) {
   return `The extracted text for ${resource.title} was too thin to support a confident document-grounded summary.`
 }
 
-function extractResourceConcepts(sourceText: string, resource: ModuleSourceResource) {
+function extractResourceConcepts(sourceText: string) {
   if (!sourceText.trim()) return []
   const sentences = sourceText
     .split(/(?<=[.!?])\s+/)
@@ -1337,12 +1266,16 @@ function adaptTaskRow(row: Record<string, unknown>): Task {
   return {
     id: String(row.id ?? ''),
     module_id: typeof row.module_id === 'string' ? row.module_id : '',
+    canvasAssignmentId: typeof row.canvas_assignment_id === 'number' ? row.canvas_assignment_id : null,
     title: typeof row.title === 'string' ? row.title : 'Task',
     details: typeof row.details === 'string' ? row.details : null,
     deadline: typeof row.deadline === 'string' ? row.deadline : null,
     canvasUrl: typeof row.canvas_url === 'string' ? row.canvas_url : null,
     priority: row.priority === 'high' || row.priority === 'medium' || row.priority === 'low' ? row.priority : 'medium',
     status: row.status === 'completed' ? 'completed' : 'pending',
+    completionOrigin: row.completion_origin === 'manual' || row.completion_origin === 'canvas'
+      ? row.completion_origin
+      : null,
     created_at: typeof row.created_at === 'string' ? row.created_at : new Date().toISOString(),
   }
 }
@@ -1369,6 +1302,24 @@ function adaptModuleResourceStudyStateRow(row: Record<string, unknown>): ModuleR
   }
 }
 
+function adaptModuleTermRow(row: Record<string, unknown>): ModuleTerm {
+  return {
+    id: String(row.id ?? ''),
+    moduleId: String(row.module_id ?? ''),
+    resourceId: typeof row.resource_id === 'string' ? row.resource_id : null,
+    normalizedTerm: typeof row.normalized_term === 'string' ? row.normalized_term : '',
+    term: typeof row.term === 'string' ? row.term : 'Untitled term',
+    definition: typeof row.definition === 'string' ? row.definition : null,
+    explanation: typeof row.explanation === 'string' ? row.explanation : null,
+    evidenceSnippet: typeof row.evidence_snippet === 'string' ? row.evidence_snippet : null,
+    sourceLabel: typeof row.source_label === 'string' ? row.source_label : null,
+    status: normalizeModuleTermStatus(row.status),
+    origin: normalizeModuleTermOrigin(row.origin),
+    createdAt: typeof row.created_at === 'string' ? row.created_at : new Date().toISOString(),
+    updatedAt: typeof row.updated_at === 'string' ? row.updated_at : new Date().toISOString(),
+  }
+}
+
 function normalizeExtractionStatus(value: unknown): ModuleResource['extractionStatus'] {
   return value === 'pending'
     || value === 'extracted'
@@ -1390,6 +1341,18 @@ function normalizeWorkflowOverride(value: unknown): ModuleResourceWorkflowOverri
   return value === 'activity' || value === 'study'
     ? value
     : 'study'
+}
+
+function normalizeModuleTermStatus(value: unknown): ModuleTerm['status'] {
+  return value === 'rejected' || value === 'approved'
+    ? value
+    : 'approved'
+}
+
+function normalizeModuleTermOrigin(value: unknown): ModuleTerm['origin'] {
+  return value === 'user' || value === 'ai'
+    ? value
+    : 'ai'
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {

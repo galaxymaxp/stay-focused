@@ -32,7 +32,7 @@ const NAV_ITEMS = [
   {
     href: '/learn',
     label: 'Learn',
-    description: 'Turn modules into understanding',
+    description: 'Open each module learning workspace',
     icon: (
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
         <path d="M5.75 8.25c0-1.1.9-2 2-2h10.5v11.5H7.75a2 2 0 0 0-2 2V8.25Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />

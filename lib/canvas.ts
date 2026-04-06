@@ -43,6 +43,16 @@ export interface CanvasAssignment {
   url?: string | null
   points_possible: number
   submission_types: string[]
+  submission?: CanvasSubmission | null
+}
+
+export interface CanvasSubmission {
+  submitted_at?: string | null
+  workflow_state?: string | null
+  grade?: string | null
+  score?: number | null
+  excused?: boolean | null
+  missing?: boolean | null
 }
 
 export interface CanvasAnnouncement {
@@ -217,7 +227,7 @@ export async function getCourses(configOverride?: Partial<CanvasConfig>): Promis
 }
 
 export async function getAssignments(courseId: number, configOverride?: Partial<CanvasConfig>): Promise<CanvasAssignment[]> {
-  return canvasFetch<CanvasAssignment[]>(`/courses/${courseId}/assignments?order_by=due_at`, configOverride)
+  return canvasFetch<CanvasAssignment[]>(`/courses/${courseId}/assignments?order_by=due_at&include[]=submission`, configOverride)
 }
 
 export async function getAnnouncements(courseId: number, configOverride?: Partial<CanvasConfig>): Promise<CanvasAnnouncement[]> {

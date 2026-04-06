@@ -78,7 +78,7 @@ export default async function CoursesPage() {
                 <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'center' }}>
                     <p className="ui-kicker">Modules</p>
-                    <span className="ui-chip ui-chip-soft">Direct learn links</span>
+                    <span className="ui-chip ui-chip-soft">Direct Learn links</span>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem', marginTop: '0.8rem', maxHeight: '19rem', overflowY: 'auto', paddingRight: '0.2rem' }}>
                     {moduleSnapshots.map(({ module, experience, taskCount }) => (
@@ -102,7 +102,7 @@ export default async function CoursesPage() {
                         <div>
                           <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.5, color: 'var(--text-primary)', fontWeight: 650 }}>{module.title}</p>
                           <p style={{ margin: '0.25rem 0 0', fontSize: '12px', lineHeight: 1.55, color: 'var(--text-muted)' }}>
-                            {experience.learnUnits.length} learn unit{experience.learnUnits.length === 1 ? '' : 's'} • {taskCount} active task{taskCount === 1 ? '' : 's'}{module.showInLearn === false ? ' • hidden from global Learn' : ''}
+                            {experience.learnUnits.length} study unit{experience.learnUnits.length === 1 ? '' : 's'} / {taskCount} active task{taskCount === 1 ? '' : 's'}{module.showInLearn === false ? ' / hidden from global Learn' : ''}
                           </p>
                         </div>
                         <span className="ui-button ui-button-ghost ui-button-xs">Open Learn</span>

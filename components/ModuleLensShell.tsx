@@ -10,7 +10,7 @@ export function ModuleLensShell({
   summary,
   children,
 }: {
-  currentLens: 'learn' | 'review' | 'do'
+  currentLens: 'learn' | 'source' | 'do'
   moduleId: string
   courseId?: string
   courseName: string
@@ -20,25 +20,25 @@ export function ModuleLensShell({
 }) {
   const lensLabel = currentLens === 'learn'
     ? 'Learn'
-    : currentLens === 'review'
-      ? 'Review'
+    : currentLens === 'source'
+      ? 'Source'
       : 'Do'
   const lensCopy = currentLens === 'learn'
-    ? 'A calmer reading lens for understanding what this module is actually saying.'
-    : currentLens === 'review'
-      ? 'A grounded reviewer for terminology, quiz focus, and exam prep built from extracted study text.'
-      : 'A clearer action lens for seeing exactly what needs to get done.'
+    ? 'Learning material, extracted terms, and quick quiz all live together here so the module makes sense in one pass.'
+    : currentLens === 'source'
+      ? 'Keep the original grounded materials close, but let them support the main Learn workspace instead of competing with it.'
+      : 'A clearer action lens for seeing exactly what still needs to get done.'
 
   return (
-    <main className={currentLens === 'learn' ? 'page-shell page-shell-narrow page-stack' : 'page-shell page-stack'} style={{ gap: '1.4rem' }}>
-      <section className={`motion-card section-shell ${currentLens === 'learn' ? '' : 'section-shell-elevated'}`} style={{ padding: currentLens === 'learn' ? '1.3rem 1.35rem' : '1.35rem 1.4rem' }}>
+    <main className="page-shell page-stack" style={{ gap: '1.4rem' }}>
+      <section className={`motion-card section-shell ${currentLens === 'do' ? 'section-shell-elevated' : ''}`} style={{ padding: currentLens === 'do' ? '1.35rem 1.4rem' : '1.3rem 1.35rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
           <div style={{ minWidth: 0, flex: '1 1 520px' }}>
             <p className="ui-kicker">{lensLabel}</p>
-            <h1 className="ui-page-title" style={{ fontSize: currentLens === 'learn' ? '34px' : '32px' }}>
+            <h1 className="ui-page-title" style={{ fontSize: currentLens === 'do' ? '32px' : '34px' }}>
               {title}
             </h1>
-            <p className="ui-page-copy" style={{ maxWidth: currentLens === 'learn' ? '48rem' : '54rem' }}>
+            <p className="ui-page-copy" style={{ maxWidth: '56rem' }}>
               {lensCopy}
             </p>
           </div>
@@ -53,14 +53,14 @@ export function ModuleLensShell({
         </div>
 
         {summary && (
-          <p className="ui-page-copy" style={{ marginTop: '1rem', maxWidth: currentLens === 'learn' ? '50rem' : '60rem' }}>
+          <p className="ui-page-copy" style={{ marginTop: '1rem', maxWidth: '60rem' }}>
             {summary}
           </p>
         )}
 
         <div className="ui-tab-group" style={{ marginTop: '1.05rem' }}>
           <LensTab href={`/modules/${moduleId}/learn`} label="Learn" active={currentLens === 'learn'} />
-          <LensTab href={`/modules/${moduleId}/review`} label="Review" active={currentLens === 'review'} />
+          <LensTab href={`/modules/${moduleId}/source`} label="Source" active={currentLens === 'source'} />
           <LensTab href={`/modules/${moduleId}/do`} label="Do" active={currentLens === 'do'} />
         </div>
       </section>

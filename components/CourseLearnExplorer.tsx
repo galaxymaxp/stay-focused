@@ -128,7 +128,7 @@ export function CourseLearnExplorer({
                     )}
 
                     <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-                      <ActionLink href={module.moduleHref} label="Open module view" tone="ghost" />
+                      <ActionLink href={module.moduleHref} label="Open module Learn" tone="ghost" />
                     </div>
                   </div>
                 </div>

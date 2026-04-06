@@ -1,9 +1,12 @@
 export type ModuleStatus = 'pending' | 'processed' | 'error'
 export type TaskStatus = 'pending' | 'completed'
+export type TaskCompletionOrigin = 'manual' | 'canvas'
 export type Priority = 'high' | 'medium' | 'low'
 export type ModuleResourceExtractionStatus = 'pending' | 'extracted' | 'metadata_only' | 'unsupported' | 'empty' | 'failed'
 export type StudyFileProgressStatus = 'not_started' | 'skimmed' | 'reviewed'
 export type ModuleResourceWorkflowOverride = 'study' | 'activity'
+export type ModuleTermStatus = 'approved' | 'rejected'
+export type ModuleTermOrigin = 'ai' | 'user'
 
 export interface Course {
   id: string
@@ -66,15 +69,33 @@ export interface ModuleResourceStudyState {
   updatedAt: string
 }
 
+export interface ModuleTerm {
+  id: string
+  moduleId: string
+  resourceId: string | null
+  normalizedTerm: string
+  term: string
+  definition: string | null
+  explanation: string | null
+  evidenceSnippet: string | null
+  sourceLabel: string | null
+  status: ModuleTermStatus
+  origin: ModuleTermOrigin
+  createdAt: string
+  updatedAt: string
+}
+
 export interface Task {
   id: string
   module_id: string
+  canvasAssignmentId?: number | null
   title: string
   details: string | null
   deadline: string | null  // ISO date string, null if not found
   canvasUrl?: string | null
   priority: Priority
   status: TaskStatus
+  completionOrigin?: TaskCompletionOrigin | null
   created_at: string
 }
 

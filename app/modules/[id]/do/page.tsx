@@ -113,7 +113,7 @@ export default async function DoPage({ params }: Props) {
 
                   <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
                     <Link href={`/modules/${module.id}/learn`} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-                      Open Learn context
+                      Open Learn
                     </Link>
                     {(() => {
                       if (task.canvasUrl) {

@@ -17,7 +17,10 @@ export async function updateTaskStatus(taskId: string, status: 'pending' | 'comp
 
   const { error } = await supabase
     .from('tasks')
-    .update({ status })
+    .update({
+      status,
+      completion_origin: status === 'completed' ? 'manual' : null,
+    })
     .eq('id', taskId)
 
   if (error) throw new Error('Failed to update task status.')
@@ -57,7 +60,10 @@ export async function updateTaskCompletion(input: TaskCompletionInput) {
     updates.push(
       supabase
         .from('tasks')
-        .update({ status: input.status })
+        .update({
+          status: input.status,
+          completion_origin: input.status === 'completed' ? 'manual' : null,
+        })
         .eq('id', input.legacyTaskId)
         .then(({ error }) => {
           if (error) throw new Error('Failed to update module task status.')
@@ -67,7 +73,10 @@ export async function updateTaskCompletion(input: TaskCompletionInput) {
     updates.push(
       supabase
         .from('tasks')
-        .update({ status: input.status })
+        .update({
+          status: input.status,
+          completion_origin: input.status === 'completed' ? 'manual' : null,
+        })
         .eq('module_id', input.moduleId)
         .eq('title', input.title)
         .then(({ error }) => {
