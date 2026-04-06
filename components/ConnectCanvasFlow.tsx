@@ -141,6 +141,11 @@ export function ConnectCanvasFlow({
           accessToken: trimmedToken,
         })
 
+        if ('error' in result) {
+          setConnectionError(result.error)
+          return
+        }
+
         setCourses(result.courses)
         setSearch('')
         setSelectedCourseIds([])

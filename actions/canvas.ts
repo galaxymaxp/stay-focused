@@ -28,6 +28,10 @@ export interface CanvasConnectionResult {
   courses: CanvasCourse[]
 }
 
+export interface CanvasConnectionErrorResult {
+  error: string
+}
+
 interface SyncCourseInput {
   courseId: number
   courseName: string
@@ -94,13 +98,22 @@ export async function fetchCourses(config?: Partial<CanvasConfig>): Promise<Canv
 export async function testCanvasConnection(input: {
   canvasUrl: string
   accessToken: string
-}): Promise<CanvasConnectionResult> {
-  const config = getRequiredCanvasConfig(input.canvasUrl, input.accessToken)
-  const courses = await getCourses(config)
+}): Promise<CanvasConnectionResult | CanvasConnectionErrorResult> {
+  try {
+    const config = getRequiredCanvasConfig(input.canvasUrl, input.accessToken)
+    const courses = await getCourses(config)
 
-  return {
-    normalizedUrl: config.url,
-    courses,
+    return {
+      normalizedUrl: config.url,
+      courses,
+    }
+  } catch (error) {
+    logCanvasActionFailure('test connection', error, {
+      canvasUrl: input.canvasUrl,
+    })
+    return {
+      error: formatCanvasActionError(error, 'We could not connect to Canvas just yet.'),
+    }
   }
 }
 
@@ -121,12 +134,24 @@ export async function syncCourse(formData: FormData): Promise<{ error: string } 
     return { error: 'Choose a course before syncing.' }
   }
 
-  const result = await syncSingleCourse({
-    id: courseId,
-    name: courseName,
-    course_code: courseCode,
-    enrollment_state: 'active',
-  }, config)
+  let result: SyncCourseResult
+  try {
+    result = await syncSingleCourse({
+      id: courseId,
+      name: courseName,
+      course_code: courseCode,
+      enrollment_state: 'active',
+    }, config)
+  } catch (error) {
+    logCanvasActionFailure('sync single course', error, {
+      courseId,
+      courseName,
+      courseCode,
+    })
+    return {
+      error: formatCanvasActionError(error, `We could not sync ${courseName || 'that course'}.`),
+    }
+  }
 
   revalidatePath('/')
   revalidatePath('/canvas')
@@ -151,12 +176,23 @@ export async function syncCourses(input: {
   const syncedCourses: string[] = []
 
   for (const course of input.courses) {
-    await syncSingleCourse({
-      id: course.courseId,
-      name: course.courseName,
-      course_code: course.courseCode,
-      enrollment_state: 'active',
-    }, config)
+    try {
+      await syncSingleCourse({
+        id: course.courseId,
+        name: course.courseName,
+        course_code: course.courseCode,
+        enrollment_state: 'active',
+      }, config)
+    } catch (error) {
+      logCanvasActionFailure('sync selected courses', error, {
+        courseId: course.courseId,
+        courseName: course.courseName,
+        courseCode: course.courseCode,
+      })
+      return {
+        error: formatCanvasActionError(error, `We could not sync ${course.courseName}.`),
+      }
+    }
     syncedCourses.push(course.courseName)
   }
 
@@ -910,4 +946,28 @@ function createSupabaseStepError(step: string, error: SupabaseLikeError | null |
   }
 
   return new Error(`Canvas sync failed during ${step}.`)
+}
+
+function formatCanvasActionError(error: unknown, fallback: string) {
+  if (error instanceof Error) {
+    const message = error.message.trim()
+    if (message && !isGenericProductionActionError(message)) {
+      return message
+    }
+  }
+
+  return fallback
+}
+
+function isGenericProductionActionError(message: string) {
+  return message.includes('An error occurred in the Server Components render')
+    || message.includes('digest property is included')
+}
+
+function logCanvasActionFailure(step: string, error: unknown, context?: Record<string, unknown>) {
+  console.error(`[Canvas action] step=${step}`, {
+    message: error instanceof Error ? error.message : String(error),
+    stack: error instanceof Error ? error.stack : undefined,
+    context,
+  })
 }
