@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { SyncFirstEmptyState } from '@/components/SyncFirstEmptyState'
 import { getClarityWorkspace, getTaskUrgencyLabel } from '@/lib/clarity-workspace'
 import { TaskStatusToggle } from '@/components/TaskStatusToggle'
 import type { TaskItem } from '@/lib/types'
@@ -26,6 +27,13 @@ const GROUPS: Array<{ key: string; title: string; description: string; filter: (
 
 export default async function DoPage() {
   const workspace = await getClarityWorkspace()
+  if (!workspace.hasSyncedData) {
+    return (
+      <main className="page-shell page-stack">
+        <SyncFirstEmptyState eyebrow="Do" />
+      </main>
+    )
+  }
   const completedItems = workspace.taskItems
     .filter((task) => task.status === 'completed')
     .sort((a, b) => a.title.localeCompare(b.title))

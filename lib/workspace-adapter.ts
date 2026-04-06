@@ -1,4 +1,3 @@
-import { seedCourses, seedModules } from '@/lib/mock-data'
 import { normalizeTaskPlanningAnnotation } from '@/lib/task-planning'
 import type { Course, LearningItem, Module, Priority, TaskItem, TaskStatus } from '@/lib/types'
 import type { WorkspaceCourseRow, WorkspaceLearningItemRow, WorkspaceModuleRow, WorkspaceQueryResult, WorkspaceTaskItemRow } from '@/lib/workspace-queries'
@@ -10,23 +9,6 @@ export interface ClarityWorkspaceSourceData {
   taskItems: TaskItem[]
 }
 
-interface ParsedTaskSeed {
-  title: string
-  deadline: string | null
-  priority: Priority
-  status: TaskStatus
-  estimatedMinutes: number
-  details: string | null
-  taskType: TaskItem['taskType']
-}
-
-interface ParsedModuleSource {
-  summary: string
-  concepts: string[]
-  studyPrompts: string[]
-  tasks: ParsedTaskSeed[]
-}
-
 export function adaptSupabaseWorkspaceRows(rows: WorkspaceQueryResult): ClarityWorkspaceSourceData {
   const courses = rows.courses.map(adaptCourseRow)
   const courseMap = new Map(courses.map((course) => [course.id, course]))
@@ -36,44 +18,6 @@ export function adaptSupabaseWorkspaceRows(rows: WorkspaceQueryResult): ClarityW
   const taskItems = rows.taskItems.map((row) => adaptTaskItemRow(row, courseMap, moduleMap))
 
   return { courses, modules, learnItems, taskItems }
-}
-
-export function buildSeedWorkspaceSource(now = new Date()): ClarityWorkspaceSourceData {
-  const modules = seedModules.map((seed) => {
-    const parsed = parseRawModuleContent(seed.rawContent, now)
-    const createdAt = offsetDateTime(now, seed.releasedOffsetDays, 8)
-
-    return {
-      module: {
-        id: seed.id,
-        courseId: seed.courseId,
-        title: seed.title,
-        raw_content: seed.rawContent,
-        summary: parsed.summary,
-        concepts: parsed.concepts,
-        study_prompts: parsed.studyPrompts,
-        recommended_order: parsed.tasks.slice(0, 3).map((task) => task.title),
-        status: 'processed' as const,
-        order: seed.order,
-        released_at: createdAt,
-        estimated_minutes: seed.estimatedMinutes,
-        priority_signal: seed.prioritySignal,
-        showInLearn: true,
-        created_at: createdAt,
-      },
-      parsed,
-    }
-  })
-
-  const modulesOnly = modules.map((entry) => entry.module)
-  const courseMap = new Map(seedCourses.map((course) => [course.id, course]))
-
-  return {
-    courses: seedCourses,
-    modules: modulesOnly,
-    learnItems: modules.flatMap(({ module, parsed }) => buildLearningItems(module, parsed)),
-    taskItems: modules.flatMap(({ module, parsed }) => buildTaskItems(module, parsed, courseMap, now)),
-  }
 }
 
 function adaptCourseRow(row: WorkspaceCourseRow): Course {
@@ -158,145 +102,6 @@ function adaptTaskItemRow(
   }
 }
 
-function buildLearningItems(module: Module, parsed: ParsedModuleSource): LearningItem[] {
-  return [
-    {
-      id: `${module.id}-summary`,
-      courseId: module.courseId!,
-      moduleId: module.id,
-      title: 'What this module is trying to teach',
-      body: parsed.summary,
-      type: 'summary',
-      order: 0,
-    },
-    ...parsed.concepts.map((concept, index) => ({
-      id: `${module.id}-concept-${index + 1}`,
-      courseId: module.courseId!,
-      moduleId: module.id,
-      title: `Key idea ${index + 1}`,
-      body: concept,
-      type: 'concept' as const,
-      order: index + 1,
-    })),
-    ...parsed.studyPrompts.map((prompt, index) => ({
-      id: `${module.id}-prompt-${index + 1}`,
-      courseId: module.courseId!,
-      moduleId: module.id,
-      title: `Check your understanding ${index + 1}`,
-      body: prompt,
-      type: 'review' as const,
-      order: parsed.concepts.length + index + 1,
-    })),
-  ]
-}
-
-function buildTaskItems(
-  module: Module,
-  parsed: ParsedModuleSource,
-  courseMap: Map<string, Course>,
-  now: Date,
-): TaskItem[] {
-  const course = courseMap.get(module.courseId!)
-  const freshnessScore = getModuleFreshnessScore(module, now)
-
-  return parsed.tasks.map((task, index) => ({
-    id: `${module.id}-task-${index + 1}`,
-    courseId: module.courseId!,
-    courseName: course?.name ?? 'Course',
-    moduleId: module.id,
-    moduleTitle: module.title,
-    title: task.title,
-    details: task.details,
-    status: task.status,
-    priority: task.priority,
-    deadline: task.deadline,
-    taskType: task.taskType,
-    estimatedMinutes: task.estimatedMinutes,
-    extractedFrom: module.title,
-    completionOrigin: null,
-    planningAnnotation: 'none',
-    moduleFreshnessScore: freshnessScore,
-    actionScore: computeActionScore(task.priority, task.deadline, task.status, freshnessScore),
-  }))
-}
-
-function parseRawModuleContent(rawContent: string, now: Date): ParsedModuleSource {
-  const lines = rawContent.split('\n').map((line) => line.trim()).filter(Boolean)
-
-  return {
-    summary: getSectionParagraph(lines, 'Overview:'),
-    concepts: getBulletSection(lines, 'Key concepts:'),
-    studyPrompts: getBulletSection(lines, 'Study prompts:'),
-    tasks: getBulletSection(lines, 'Tasks:').map((line) => parseTaskLine(line, now)),
-  }
-}
-
-function parseTaskLine(line: string, now: Date): ParsedTaskSeed {
-  const [title, duePart, priorityPart, statusPart, minutesPart, detailsPart] = line.split('|').map((part) => part.trim())
-
-  return {
-    title,
-    deadline: resolveRelativeDate(duePart?.replace(/^due\s+/i, '') ?? '', now),
-    priority: normalizePriority(priorityPart) ?? 'medium',
-    status: normalizeTaskStatus(statusPart),
-    estimatedMinutes: Number.parseInt(minutesPart?.replace(/m$/i, '') ?? '20', 10),
-    details: detailsPart ?? null,
-    taskType: inferTaskType(title),
-  }
-}
-
-function getSectionParagraph(lines: string[], heading: string) {
-  const start = lines.indexOf(heading)
-  if (start === -1) return ''
-  const collected: string[] = []
-
-  for (let index = start + 1; index < lines.length; index += 1) {
-    if (isHeading(lines[index])) break
-    collected.push(lines[index])
-  }
-
-  return collected.join(' ').trim()
-}
-
-function getBulletSection(lines: string[], heading: string) {
-  const start = lines.indexOf(heading)
-  if (start === -1) return []
-  const items: string[] = []
-
-  for (let index = start + 1; index < lines.length; index += 1) {
-    if (isHeading(lines[index])) break
-    if (lines[index].startsWith('- ')) {
-      items.push(lines[index].slice(2).trim())
-    }
-  }
-
-  return items
-}
-
-function isHeading(line: string) {
-  return /^(Course|Module|Overview|Key concepts|Study prompts|Tasks):$/i.test(line)
-}
-
-function resolveRelativeDate(token: string, now: Date) {
-  if (!token) return null
-  const match = token.match(/^([+-]?\d+)d(?:\s+(\d{1,2}):(\d{2}))?$/i)
-  if (!match) return token
-
-  return offsetDateTime(
-    now,
-    Number.parseInt(match[1], 10),
-    match[2] ? Number.parseInt(match[2], 10) : 12,
-    match[3] ? Number.parseInt(match[3], 10) : 0,
-  )
-}
-
-function offsetDateTime(base: Date, offsetDays: number, hours = 12, minutes = 0) {
-  const next = new Date(base)
-  next.setDate(next.getDate() + offsetDays)
-  next.setHours(hours, minutes, 0, 0)
-  return next.toISOString()
-}
-
 function getModuleFreshnessScoreFromModule(module: Module | undefined) {
   if (!module) return 4
   return getModuleFreshnessScore(module, new Date())
@@ -350,14 +155,4 @@ function normalizeTaskType(value: string | null | undefined): TaskItem['taskType
 function normalizeColorToken(value: string | null | undefined): Course['colorToken'] {
   if (value === 'yellow' || value === 'orange' || value === 'blue' || value === 'green') return value
   return 'yellow'
-}
-
-function inferTaskType(title: string): TaskItem['taskType'] {
-  const normalized = title.toLowerCase()
-  if (normalized.includes('quiz')) return 'quiz'
-  if (normalized.includes('read')) return 'reading'
-  if (normalized.includes('discussion') || normalized.includes('response')) return 'discussion'
-  if (normalized.includes('implement') || normalized.includes('project')) return 'project'
-  if (normalized.includes('set up') || normalized.includes('draft') || normalized.includes('start')) return 'prep'
-  return 'assignment'
 }

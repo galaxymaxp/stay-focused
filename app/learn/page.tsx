@@ -1,9 +1,19 @@
 import Link from 'next/link'
+import { SyncFirstEmptyState } from '@/components/SyncFirstEmptyState'
 import { getClarityWorkspace } from '@/lib/clarity-workspace'
 import { buildCourseLearnOverview, type CourseLearnOverview } from '@/lib/course-learn-overview'
 
 export default async function LearnPage() {
   const workspace = await getClarityWorkspace()
+
+  if (!workspace.hasSyncedData) {
+    return (
+      <main className="page-shell page-stack">
+        <SyncFirstEmptyState eyebrow="Learn" />
+      </main>
+    )
+  }
+
   const courseOverviews = (await Promise.all(
     workspace.courses.map((course) => buildCourseLearnOverview(workspace, course.id)),
   )).filter((course): course is CourseLearnOverview => Boolean(course))

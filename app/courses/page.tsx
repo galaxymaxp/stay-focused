@@ -1,9 +1,18 @@
 import Link from 'next/link'
+import { SyncFirstEmptyState } from '@/components/SyncFirstEmptyState'
 import { getClarityWorkspace, getCourseModules, getModuleTasks, getTaskUrgencyLabel } from '@/lib/clarity-workspace'
 import { buildLearnExperience } from '@/lib/module-workspace'
 
 export default async function CoursesPage() {
   const workspace = await getClarityWorkspace()
+
+  if (!workspace.hasSyncedData) {
+    return (
+      <main className="page-shell page-stack">
+        <SyncFirstEmptyState eyebrow="Courses" />
+      </main>
+    )
+  }
 
   return (
     <main className="page-shell page-stack">

@@ -1,8 +1,17 @@
 import { TodayDashboard } from '@/components/TodayDashboard'
+import { SyncFirstEmptyState } from '@/components/SyncFirstEmptyState'
 import { getClarityWorkspace } from '@/lib/clarity-workspace'
 
 export default async function Dashboard() {
   const workspace = await getClarityWorkspace()
+
+  if (!workspace.hasSyncedData) {
+    return (
+      <main className="page-shell">
+        <SyncFirstEmptyState eyebrow="Today" />
+      </main>
+    )
+  }
 
   return (
     <main className="page-shell">

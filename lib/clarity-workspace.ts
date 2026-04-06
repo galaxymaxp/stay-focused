@@ -3,6 +3,7 @@ import { deriveTaskPlanningAnnotation, labelForTaskPlanningAnnotation } from '@/
 import type { CalendarItem, Course, LearningItem, Module, TaskItem, TodayItem } from '@/lib/types'
 
 export interface ClarityWorkspace {
+  hasSyncedData: boolean
   courses: Course[]
   modules: Module[]
   learnItems: LearningItem[]
@@ -20,6 +21,7 @@ export interface ClarityWorkspace {
 
 export async function getClarityWorkspace(): Promise<ClarityWorkspace> {
   const source = await loadWorkspaceSource()
+  const hasSyncedData = source.courses.length > 0 || source.modules.length > 0 || source.learnItems.length > 0 || source.taskItems.length > 0
   const courseMap = new Map(source.courses.map((course) => [course.id, course]))
   const todayItems = [
     ...source.taskItems.filter((task) => task.status !== 'completed').map((task) => buildTodayTaskItem(task)),
@@ -34,6 +36,7 @@ export async function getClarityWorkspace(): Promise<ClarityWorkspace> {
   const heroId = nextBestMove?.id ?? null
 
   return {
+    hasSyncedData,
     ...source,
     todayItems,
     calendarItems: source.taskItems
