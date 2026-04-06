@@ -1,5 +1,6 @@
 import { getCourseModules, getModuleTasks, type ClarityWorkspace } from '@/lib/clarity-workspace'
 import { buildModuleLearnOverview } from '@/lib/module-learn-overview'
+import { buildModuleTermBank, type FinalReviewerTerm, type ModuleTermQuizItem, type ModuleTermSuggestion } from '@/lib/module-term-bank'
 import {
   buildLearnExperience,
   getLearnResourceHref,
@@ -8,7 +9,16 @@ import {
 } from '@/lib/module-workspace'
 import { getStudyFileProgressLabel } from '@/lib/study-file-manual-state'
 import { getLearnResourceKindLabel } from '@/lib/study-resource'
-import type { Course, Module, ModuleResourceWorkflowOverride, StudyFileProgressStatus } from '@/lib/types'
+import type { StudyFileOutlineSection } from '@/lib/study-file-reader'
+import type {
+  Course,
+  Module,
+  ModuleResourceWorkflowOverride,
+  StudyFileProgressStatus,
+  Task,
+  TaskCompletionOrigin,
+  TaskStatus,
+} from '@/lib/types'
 
 export type LearnReadinessLabel = 'Ready to study' | 'Limited' | 'Needs Canvas' | 'No study material'
 export type LearnReadinessTone = 'ready' | 'limited' | 'muted'
@@ -37,6 +47,8 @@ export interface CourseLearnStudyMaterialRow {
   required: boolean
   readerHref: string
   canvasHref: string | null
+  outlineSections: StudyFileOutlineSection[]
+  outlineHint: string | null
 }
 
 export interface CourseLearnActionRow {
@@ -59,6 +71,17 @@ export interface CourseLearnMoreRow {
   canvasHref: string | null
 }
 
+export interface CourseLearnTaskRow {
+  id: string
+  title: string
+  details: string | null
+  deadline: string | null
+  status: TaskStatus
+  completionOrigin: TaskCompletionOrigin | null
+  canvasUrl: string | null
+  priority: Task['priority']
+}
+
 export interface CourseLearnModuleCard {
   id: string
   courseId: string
@@ -72,6 +95,10 @@ export interface CourseLearnModuleCard {
   studyCount: number
   actionCount: number
   moreCount: number
+  outlineSectionCount: number
+  termCount: number
+  quizCount: number
+  dismissedTermCount: number
   progressCounts: {
     notStarted: number
     skimmed: number
@@ -82,6 +109,14 @@ export interface CourseLearnModuleCard {
   activityOverrides: CourseLearnStudyMaterialRow[]
   actionItems: CourseLearnActionRow[]
   moreItems: CourseLearnMoreRow[]
+  finalTerms: FinalReviewerTerm[]
+  suggestedTerms: ModuleTermSuggestion[]
+  quizItems: ModuleTermQuizItem[]
+  termsStateMessage: string
+  quizStateMessage: string
+  pendingTasks: CourseLearnTaskRow[]
+  completedTasks: CourseLearnTaskRow[]
+  sourceSupportNote: string
 }
 
 export interface CourseLearnOverview {
@@ -138,7 +173,8 @@ async function buildCourseLearnModuleCard(
   module: Module,
 ): Promise<CourseLearnModuleCard> {
   const moduleWorkspace = await getModuleWorkspace(module.id)
-  const pendingTaskCount = getModuleTasks(workspace, module.id).filter((task) => task.status !== 'completed').length
+  const workspaceTasks = getModuleTasks(workspace, module.id)
+  const pendingTaskCount = workspaceTasks.filter((task) => task.status !== 'completed').length
   const experience = buildLearnExperience(module, {
     taskCount: pendingTaskCount,
     deadlineCount: moduleWorkspace?.deadlines.length ?? 0,
@@ -151,7 +187,14 @@ async function buildCourseLearnModuleCard(
     doItems: experience.doItems,
     tasks: moduleWorkspace?.tasks ?? [],
   })
+  const termBank = buildModuleTermBank({
+    overview,
+    storedTerms: moduleWorkspace?.terms ?? [],
+  })
   const readiness = resolveModuleReadiness(overview)
+  const taskRows = sortTasks(moduleWorkspace?.tasks ?? [])
+  const pendingTasks = taskRows.filter((task) => task.status !== 'completed')
+  const completedTasks = taskRows.filter((task) => task.status === 'completed')
 
   return {
     id: module.id,
@@ -166,6 +209,10 @@ async function buildCourseLearnModuleCard(
     studyCount: overview.studyMaterials.length,
     actionCount: overview.actionItems.length + overview.activityOverrides.length,
     moreCount: overview.otherContextResources.length,
+    outlineSectionCount: overview.studyMaterials.reduce((total, material) => total + material.reader.outlineSections.length, 0),
+    termCount: termBank.finalTerms.length,
+    quizCount: termBank.quizItems.length,
+    dismissedTermCount: termBank.dismissedCount,
     progressCounts: overview.progressCounts,
     resumeCue: overview.resumeTarget
       ? {
@@ -192,6 +239,8 @@ async function buildCourseLearnModuleCard(
       required: material.resource.required,
       readerHref: getLearnResourceHref(module.id, material.resource.id),
       canvasHref: getResourceCanvasHref(material.resource),
+      outlineSections: material.reader.outlineSections,
+      outlineHint: material.reader.outlineHint,
     })),
     activityOverrides: overview.activityOverrides.map((material) => ({
       id: material.resource.id,
@@ -205,6 +254,8 @@ async function buildCourseLearnModuleCard(
       required: material.resource.required,
       readerHref: getLearnResourceHref(module.id, material.resource.id),
       canvasHref: getResourceCanvasHref(material.resource),
+      outlineSections: material.reader.outlineSections,
+      outlineHint: material.reader.outlineHint,
     })),
     actionItems: overview.actionItems.map((item) => ({
       id: item.id,
@@ -224,6 +275,14 @@ async function buildCourseLearnModuleCard(
       detailHref: getLearnResourceHref(module.id, item.id),
       canvasHref: getResourceCanvasHref(item),
     })),
+    finalTerms: termBank.finalTerms,
+    suggestedTerms: termBank.suggestedTerms,
+    quizItems: termBank.quizItems,
+    termsStateMessage: termBank.termsStateMessage,
+    quizStateMessage: termBank.quizStateMessage,
+    pendingTasks,
+    completedTasks,
+    sourceSupportNote: overview.coverageNote,
   }
 }
 
@@ -375,6 +434,46 @@ function formatDueLabel(value: string | null | undefined) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
   return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(date)
+}
+
+function sortTasks(tasks: Task[]): CourseLearnTaskRow[] {
+  return [...tasks]
+    .sort((left, right) => {
+      const statusDiff = Number(left.status === 'completed') - Number(right.status === 'completed')
+      if (statusDiff !== 0) return statusDiff
+
+      const leftDeadline = sortableDateValue(left.deadline)
+      const rightDeadline = sortableDateValue(right.deadline)
+      if (leftDeadline !== rightDeadline) return leftDeadline - rightDeadline
+
+      const priorityDiff = priorityWeight(right.priority) - priorityWeight(left.priority)
+      if (priorityDiff !== 0) return priorityDiff
+
+      return left.title.localeCompare(right.title)
+    })
+    .map((task) => ({
+      id: task.id,
+      title: task.title,
+      details: task.details,
+      deadline: task.deadline,
+      status: task.status,
+      completionOrigin: task.completionOrigin ?? null,
+      canvasUrl: task.canvasUrl ?? null,
+      priority: task.priority,
+    }))
+}
+
+function priorityWeight(priority: Task['priority']) {
+  if (priority === 'high') return 3
+  if (priority === 'medium') return 2
+  return 1
+}
+
+function sortableDateValue(value: string | null | undefined) {
+  if (!value || value === 'No due date') return Number.POSITIVE_INFINITY
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return Number.POSITIVE_INFINITY
+  return date.getTime()
 }
 
 function sortableOrder(value: string | null) {

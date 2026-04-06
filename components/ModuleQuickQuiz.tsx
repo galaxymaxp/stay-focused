@@ -6,9 +6,11 @@ import { labelForTermQuizStyle, type ModuleTermQuizItem } from '@/lib/module-ter
 export function ModuleQuickQuiz({
   quizItems,
   finalTermCount,
+  embedded = false,
 }: {
   quizItems: ModuleTermQuizItem[]
   finalTermCount: number
+  embedded?: boolean
 }) {
   const [activeIndex, setActiveIndex] = useState(0)
   const [selectedChoice, setSelectedChoice] = useState<string | null>(null)
@@ -26,7 +28,13 @@ export function ModuleQuickQuiz({
 
   if (quizItems.length === 0) {
     return (
-      <section className="motion-card motion-delay-3 section-shell section-shell-elevated" style={{ padding: '1.35rem 1.45rem' }}>
+      <section
+        className={embedded ? 'ui-card-soft' : 'motion-card motion-delay-3 section-shell section-shell-elevated'}
+        style={{
+          padding: embedded ? '1rem 1.05rem' : '1.35rem 1.45rem',
+          borderRadius: embedded ? 'var(--radius-panel)' : undefined,
+        }}
+      >
         <p className="ui-kicker">Quick self-quiz</p>
         <h3 style={{ margin: '0.42rem 0 0', fontSize: '1.08rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>
           Quiz from the same grounded term set when it is ready
@@ -49,7 +57,15 @@ export function ModuleQuickQuiz({
   const isCorrectChoice = isChoiceQuestion ? selectedChoice === currentItem.answer : null
 
   return (
-    <section className="motion-card motion-delay-3 section-shell section-shell-elevated" style={{ padding: '1.35rem 1.45rem', display: 'grid', gap: '1rem' }}>
+    <section
+      className={embedded ? 'ui-card-soft' : 'motion-card motion-delay-3 section-shell section-shell-elevated'}
+      style={{
+        padding: embedded ? '1rem 1.05rem' : '1.35rem 1.45rem',
+        display: 'grid',
+        gap: '1rem',
+        borderRadius: embedded ? 'var(--radius-panel)' : undefined,
+      }}
+    >
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.9rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
         <div style={{ minWidth: 0, flex: '1 1 460px' }}>
           <p className="ui-kicker">Quick self-quiz</p>

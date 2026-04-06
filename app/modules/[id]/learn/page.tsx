@@ -165,8 +165,8 @@ export default async function LearnPage({ params }: Props) {
                   </p>
                   <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
                     <ActionButton href={overview.resumeTarget.href} label={overview.resumeTarget.actionLabel} external={overview.resumeTarget.external} tone="secondary" />
-                    <Link href={`/modules/${module.id}/source`} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-                      Open Source
+                    <Link href={`/modules/${module.id}/learn#source-support`} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+                      View extracted source
                     </Link>
                   </div>
                 </div>
@@ -315,8 +315,8 @@ export default async function LearnPage({ params }: Props) {
               )}
 
               <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-                <Link href={`/modules/${module.id}/source`} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-                  Open full Source
+                <Link href={`/modules/${module.id}/learn#source-support`} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+                  View extracted source
                 </Link>
               </div>
             </section>
@@ -335,6 +335,45 @@ export default async function LearnPage({ params }: Props) {
 
         <div id="quiz">
           <ModuleQuickQuiz quizItems={termBank.quizItems} finalTermCount={termBank.finalTerms.length} />
+        </div>
+
+        <div id="source-support">
+          <details className="motion-card motion-delay-3 section-shell" style={{ padding: '1.2rem 1.25rem' }}>
+            <summary style={{ cursor: 'pointer', fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
+              View extracted source
+            </summary>
+            <div style={{ display: 'grid', gap: '0.85rem', marginTop: '0.8rem' }}>
+              <div>
+                <p className="ui-kicker">Source support</p>
+                <h3 style={{ margin: '0.42rem 0 0', fontSize: '1.02rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>
+                  Extracted readers and support context stay inside Learn as secondary validation
+                </h3>
+                <p style={{ margin: '0.42rem 0 0', fontSize: '14px', lineHeight: 1.68, color: 'var(--text-secondary)' }}>
+                  {overview.coverageNote}
+                </p>
+              </div>
+
+              {overview.studyMaterials.length > 0 ? (
+                <div style={{ display: 'grid', gap: '0.7rem' }}>
+                  {overview.studyMaterials.map((material) => (
+                    <SourceSupportRow key={`${material.resource.id}-source-support`} moduleId={module.id} material={material} />
+                  ))}
+                </div>
+              ) : (
+                <div className="ui-empty" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', fontSize: '14px', lineHeight: 1.68 }}>
+                  No extracted study readers are mapped into this module yet.
+                </div>
+              )}
+
+              {overview.otherContextResources.length > 0 && (
+                <div style={{ display: 'grid', gap: '0.7rem' }}>
+                  {overview.otherContextResources.map((item) => (
+                    <SupportContextRow key={item.id} moduleId={module.id} item={item} />
+                  ))}
+                </div>
+              )}
+            </div>
+          </details>
         </div>
       </div>
     </ModuleLensShell>
@@ -385,6 +424,75 @@ function StudyMaterialOutlineCard({
             Open in Canvas
           </a>
         )}
+      </div>
+    </article>
+  )
+}
+
+function SourceSupportRow({
+  moduleId,
+  material,
+}: {
+  moduleId: string
+  material: ModuleStudyMaterial
+}) {
+  const canvasHref = getResourceCanvasHref(material.resource)
+
+  return (
+    <article className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.9rem 0.95rem', display: 'grid', gap: '0.55rem' }}>
+      <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+        <StateBadge label={material.fileTypeLabel} tone="muted" />
+        <StateBadge
+          label={material.readinessLabel}
+          tone={material.readiness === 'ready' ? 'accent' : material.readiness === 'limited' ? 'warning' : 'muted'}
+        />
+      </div>
+
+      <div>
+        <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.5, color: 'var(--text-primary)', fontWeight: 650 }}>
+          {material.resource.title}
+        </p>
+        <p style={{ margin: '0.32rem 0 0', fontSize: '13px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
+          {material.note}
+        </p>
+      </div>
+
+      <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+        <Link href={getLearnResourceHref(moduleId, material.resource.id)} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+          Open reader
+        </Link>
+        {canvasHref && (
+          <a href={canvasHref} target="_blank" rel="noreferrer" className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+            Open in Canvas
+          </a>
+        )}
+      </div>
+    </article>
+  )
+}
+
+function SupportContextRow({
+  moduleId,
+  item,
+}: {
+  moduleId: string
+  item: { id: string; title: string; linkedContext?: string | null; whyItMatters?: string | null; moduleName?: string | null }
+}) {
+  return (
+    <article className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.9rem 0.95rem', display: 'grid', gap: '0.55rem' }}>
+      <div>
+        <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.5, color: 'var(--text-primary)', fontWeight: 650 }}>
+          {item.title}
+        </p>
+        <p style={{ margin: '0.32rem 0 0', fontSize: '13px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
+          {item.linkedContext ?? item.whyItMatters ?? item.moduleName ?? 'Supporting context'}
+        </p>
+      </div>
+
+      <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+        <Link href={getLearnResourceHref(moduleId, item.id)} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+          Open detail
+        </Link>
       </div>
     </article>
   )

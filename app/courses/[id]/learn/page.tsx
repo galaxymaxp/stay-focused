@@ -28,7 +28,7 @@ export default async function CourseLearnPage({ params }: Props) {
             </div>
             <h1 className="ui-page-title" style={{ marginTop: '0.5rem' }}>{course.name}</h1>
             <p className="ui-page-copy" style={{ maxWidth: '48rem' }}>
-              A calmer course workspace. Open one module at a time, then stay in the Study, Do, or More lane that actually fits what you need next.
+              A tighter course workspace. Scan compact module cards, expand one inline when you need it, and hide the rest when you want to focus on a single module.
             </p>
           </div>
           <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
@@ -84,7 +84,7 @@ export default async function CourseLearnPage({ params }: Props) {
           <p className="ui-kicker">Modules</p>
           <h2 className="ui-section-title" style={{ marginTop: '0.45rem' }}>Open only what you need</h2>
           <p className="ui-section-copy" style={{ marginTop: '0.45rem', maxWidth: '46rem' }}>
-            Every module stays collapsed by default. Expand one when you want it, then switch between Study, Do, and More instead of reading through one long stack.
+            Every module stays collapsed by default. Expand one to reveal the full study outline, inline terms, quick quiz, and source support without leaving the course list.
           </p>
         </div>
 

@@ -68,7 +68,7 @@ export function StudyFileReader({
             </p>
           </div>
           <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-            <Link href={`/modules/${moduleId}/learn`} className="ui-button ui-button-secondary">Back to module Learn</Link>
+            <Link href={`/modules/${moduleId}/learn#source-support`} className="ui-button ui-button-secondary">Back to module Learn</Link>
             {linkedTask && (
               <Link href={`/modules/${moduleId}/do#${linkedTask.id}`} className="ui-button ui-button-ghost">
                 Open related task

@@ -31,12 +31,14 @@ export function ModuleTermBank({
   finalTerms,
   suggestedTerms,
   dismissedCount,
+  embedded = false,
 }: {
   moduleId: string
   courseId?: string
   finalTerms: FinalReviewerTerm[]
   suggestedTerms: ModuleTermSuggestion[]
   dismissedCount: number
+  embedded?: boolean
 }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -204,7 +206,13 @@ export function ModuleTermBank({
 
   return (
     <div style={{ display: 'grid', gap: '1rem' }}>
-      <section className="motion-card motion-delay-2 section-shell section-shell-elevated" style={{ padding: '1.3rem 1.4rem' }}>
+      <section
+        className={embedded ? 'ui-card-soft' : 'motion-card motion-delay-2 section-shell section-shell-elevated'}
+        style={{
+          padding: embedded ? '1rem 1.05rem' : '1.3rem 1.4rem',
+          borderRadius: embedded ? 'var(--radius-panel)' : undefined,
+        }}
+      >
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.85rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
           <div>
             <p className="ui-kicker">Key terms</p>
@@ -265,7 +273,7 @@ export function ModuleTermBank({
         )}
 
         {finalTerms.length === 0 ? (
-          <EmptySurface body="Strong grounded terms have not surfaced yet. You can still keep learning from the study content above, inspect Source for evidence, or add a term manually if you already know what belongs here." />
+          <EmptySurface body="Strong grounded terms have not surfaced yet. You can still keep learning from the study content above, open the extracted source support when you need evidence, or add a term manually if you already know what belongs here." />
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '0.9rem', marginTop: '0.95rem' }}>
             {finalTerms.map((term) => {

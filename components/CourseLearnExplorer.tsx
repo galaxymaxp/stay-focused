@@ -2,10 +2,16 @@
 
 import Link from 'next/link'
 import { useState } from 'react'
-import { StudyFileManualStateControls } from '@/components/StudyFileManualStateControls'
-import type { CourseLearnActionRow, CourseLearnModuleCard, CourseLearnMoreRow, CourseLearnStudyMaterialRow } from '@/lib/course-learn-overview'
-
-type ModuleTab = 'study' | 'do' | 'more'
+import { ModuleQuickQuiz } from '@/components/ModuleQuickQuiz'
+import { ModuleTermBank } from '@/components/ModuleTermBank'
+import { StudyOutlineView } from '@/components/StudyOutlineView'
+import type {
+  CourseLearnModuleCard,
+  CourseLearnMoreRow,
+  CourseLearnStudyMaterialRow,
+  CourseLearnTaskRow,
+} from '@/lib/course-learn-overview'
+import type { Task } from '@/lib/types'
 
 export function CourseLearnExplorer({
   modules,
@@ -13,21 +19,47 @@ export function CourseLearnExplorer({
   modules: CourseLearnModuleCard[]
 }) {
   const [openModuleId, setOpenModuleId] = useState<string | null>(null)
-  const [tabByModuleId, setTabByModuleId] = useState<Record<string, ModuleTab>>({})
+  const [focusedModuleId, setFocusedModuleId] = useState<string | null>(null)
+
+  const visibleModules = focusedModuleId
+    ? modules.filter((module) => module.id === focusedModuleId)
+    : modules
+  const focusedModule = focusedModuleId
+    ? modules.find((module) => module.id === focusedModuleId) ?? null
+    : null
 
   function toggleModule(moduleId: string) {
     setOpenModuleId((current) => current === moduleId ? null : moduleId)
   }
 
-  function setModuleTab(moduleId: string, tab: ModuleTab) {
-    setTabByModuleId((current) => ({ ...current, [moduleId]: tab }))
+  function focusModule(moduleId: string) {
+    setFocusedModuleId(moduleId)
+    setOpenModuleId(moduleId)
+  }
+
+  function clearFocus() {
+    setFocusedModuleId(null)
   }
 
   return (
     <div style={{ display: 'grid', gap: '0.85rem' }}>
-      {modules.map((module, index) => {
+      {focusedModule && (
+        <section className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.95rem 1rem', display: 'flex', justifyContent: 'space-between', gap: '0.8rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ minWidth: 0, flex: '1 1 360px' }}>
+            <p className="ui-kicker">Focus mode</p>
+            <p style={{ margin: '0.38rem 0 0', fontSize: '14px', lineHeight: 1.68, color: 'var(--text-secondary)' }}>
+              Only <strong style={{ color: 'var(--text-primary)' }}>{focusedModule.title}</strong> is visible right now so the course list stays out of the way while you study this module.
+            </p>
+          </div>
+          <button type="button" onClick={clearFocus} className="ui-button ui-button-ghost ui-button-xs">
+            Show all modules
+          </button>
+        </section>
+      )}
+
+      {visibleModules.map((module, index) => {
         const expanded = openModuleId === module.id
-        const activeTab = tabByModuleId[module.id] ?? defaultTabForModule(module)
+        const focused = focusedModuleId === module.id
 
         return (
           <article
@@ -35,133 +67,199 @@ export function CourseLearnExplorer({
             className={`motion-card motion-delay-${Math.min(index + 1, 4)}`}
             style={{
               borderRadius: 'var(--radius-panel)',
-              border: '1px solid color-mix(in srgb, var(--border-subtle) 82%, transparent)',
+              border: expanded
+                ? '1px solid color-mix(in srgb, var(--accent-border) 26%, var(--border-subtle) 74%)'
+                : '1px solid color-mix(in srgb, var(--border-subtle) 84%, transparent)',
               background: expanded
-                ? 'color-mix(in srgb, var(--surface-elevated) 94%, transparent)'
-                : 'color-mix(in srgb, var(--surface-soft) 92%, transparent)',
+                ? 'color-mix(in srgb, var(--surface-elevated) 96%, transparent)'
+                : 'color-mix(in srgb, var(--surface-soft) 94%, transparent)',
               boxShadow: expanded ? 'var(--shadow-soft)' : 'none',
               overflow: 'hidden',
             }}
           >
-            <button
-              type="button"
-              onClick={() => toggleModule(module.id)}
-              aria-expanded={expanded}
-              style={{
-                width: '100%',
-                padding: '1rem 1.05rem',
-                border: 'none',
-                background: 'transparent',
-                display: 'grid',
-                gap: '0.65rem',
-                textAlign: 'left',
-                cursor: 'pointer',
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.85rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-                <div style={{ minWidth: 0, flex: '1 1 400px' }}>
-                  <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                    {module.orderLabel && (
-                      <span className="ui-kicker" style={{ color: 'var(--text-muted)' }}>{module.orderLabel}</span>
-                    )}
-                    <ReadinessPill tone={module.readinessTone} label={module.readinessLabel} />
-                  </div>
-                  <h2 style={{ margin: '0.45rem 0 0', fontSize: '20px', lineHeight: 1.25, fontWeight: 650, color: 'var(--text-primary)' }}>
+            <div style={{ display: 'flex', gap: '0.8rem', alignItems: 'stretch', flexWrap: 'wrap', padding: '0.9rem 0.95rem' }}>
+              <button
+                type="button"
+                onClick={() => toggleModule(module.id)}
+                aria-expanded={expanded}
+                style={{
+                  flex: '1 1 520px',
+                  minWidth: 0,
+                  border: 'none',
+                  background: 'transparent',
+                  padding: 0,
+                  display: 'grid',
+                  gap: '0.55rem',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                }}
+              >
+                <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                  {module.orderLabel && (
+                    <span className="ui-kicker" style={{ color: 'var(--text-muted)' }}>{module.orderLabel}</span>
+                  )}
+                  <ReadinessPill tone={module.readinessTone} label={module.readinessLabel} />
+                  <CountPill label={`${module.outlineSectionCount} outline`} />
+                  <CountPill label={`${module.termCount} term${module.termCount === 1 ? '' : 's'}`} />
+                  <CountPill label={`${module.pendingTasks.length} active`} />
+                  {module.completedTasks.length > 0 && <CountPill label={`${module.completedTasks.length} done`} />}
+                </div>
+
+                <div>
+                  <h2 style={{ margin: 0, fontSize: expanded ? '21px' : '18px', lineHeight: 1.28, fontWeight: 650, color: 'var(--text-primary)' }}>
                     {module.title}
                   </h2>
+                  <p style={{ margin: '0.42rem 0 0', fontSize: '14px', lineHeight: 1.68, color: 'var(--text-secondary)' }}>
+                    {module.coverageHint}
+                  </p>
+                  <p style={{ margin: '0.38rem 0 0', fontSize: '13px', lineHeight: 1.62, color: 'var(--text-muted)' }}>
+                    {truncateText(module.summary, expanded ? 240 : 170)}
+                  </p>
                 </div>
-                <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                  <CountPill label={`${module.studyCount} study`} />
-                  <CountPill label={`${module.actionCount} do`} />
-                  {module.moreCount > 0 && (
-                    <CountPill label={`${module.moreCount} more`} />
-                  )}
-                  <CountPill label={expanded ? 'Collapse' : 'Open'} />
-                </div>
-              </div>
+              </button>
 
-              <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.68, color: 'var(--text-secondary)' }}>
-                {module.coverageHint}
-              </p>
-            </button>
+              <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', alignItems: 'flex-start', justifyContent: 'flex-end' }}>
+                {expanded && (
+                  focused ? (
+                    <button type="button" onClick={clearFocus} className="ui-button ui-button-ghost ui-button-xs">
+                      Show all modules
+                    </button>
+                  ) : (
+                    <button type="button" onClick={() => focusModule(module.id)} className="ui-button ui-button-ghost ui-button-xs">
+                      Focus this module
+                    </button>
+                  )
+                )}
+                <Link href={module.moduleHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+                  Open full page
+                </Link>
+                <button type="button" onClick={() => toggleModule(module.id)} className="ui-button ui-button-secondary ui-button-xs" aria-expanded={expanded}>
+                  {expanded ? '- Collapse' : '+ Expand'}
+                </button>
+              </div>
+            </div>
 
             {expanded && (
               <div style={{
-                padding: '0 1.05rem 1rem',
+                padding: '0 0.95rem 1rem',
                 display: 'grid',
-                gap: '0.9rem',
-                borderTop: '1px solid color-mix(in srgb, var(--border-subtle) 80%, transparent)',
+                gap: '0.95rem',
+                borderTop: '1px solid color-mix(in srgb, var(--border-subtle) 84%, transparent)',
               }}>
                 <div style={{
                   paddingTop: '0.95rem',
                   display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+                  gridTemplateColumns: 'minmax(0, 1.05fr) minmax(280px, 0.95fr)',
                   gap: '0.85rem',
                   alignItems: 'start',
                 }}>
-                  <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.95rem 1rem' }}>
-                    <p className="ui-kicker">Module focus</p>
-                    <p style={{ margin: '0.48rem 0 0', fontSize: '14px', lineHeight: 1.72, color: 'var(--text-secondary)' }}>
-                      {module.summary}
+                  <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.9rem 0.95rem', display: 'grid', gap: '0.6rem' }}>
+                    <div>
+                      <p className="ui-kicker">Module focus</p>
+                      <p style={{ margin: '0.42rem 0 0', fontSize: '14px', lineHeight: 1.72, color: 'var(--text-secondary)' }}>
+                        {module.summary}
+                      </p>
+                    </div>
+                    <p style={{ margin: 0, fontSize: '12px', lineHeight: 1.62, color: 'var(--text-muted)' }}>
+                      {module.termsStateMessage}
                     </p>
                   </div>
 
-                  <div style={{ display: 'grid', gap: '0.65rem' }}>
+                  <div style={{ display: 'grid', gap: '0.75rem' }}>
+                    <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.9rem 0.95rem' }}>
+                      <p className="ui-kicker">Module status</p>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '0.7rem', marginTop: '0.7rem' }}>
+                        <MiniStat label="Study sources" value={String(module.studyCount)} />
+                        <MiniStat label="Quiz items" value={String(module.quizCount)} />
+                        <MiniStat label="Active work" value={String(module.pendingTasks.length)} />
+                        <MiniStat label="Completed" value={String(module.completedTasks.length)} />
+                      </div>
+                    </div>
+
                     {module.resumeCue && (
-                      <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.9rem 0.95rem' }}>
+                      <div className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.9rem 0.95rem', display: 'grid', gap: '0.4rem' }}>
                         <p className="ui-kicker">{module.resumeCue.promptLabel}</p>
-                        <p style={{ margin: '0.45rem 0 0', fontSize: '15px', lineHeight: 1.45, fontWeight: 650, color: 'var(--text-primary)' }}>
+                        <p style={{ margin: 0, fontSize: '15px', lineHeight: 1.45, fontWeight: 650, color: 'var(--text-primary)' }}>
                           {module.resumeCue.title}
                         </p>
-                        <p style={{ margin: '0.35rem 0 0', fontSize: '13px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
+                        <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
                           {module.resumeCue.note}
                         </p>
-                        <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', marginTop: '0.7rem' }}>
-                          <ActionLink
-                            href={module.resumeCue.href}
-                            label={module.resumeCue.actionLabel}
-                            external={module.resumeCue.external}
-                            tone="secondary"
-                          />
-                        </div>
                       </div>
                     )}
-
-                    <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-                      <ActionLink href={module.moduleHref} label="Open module Learn" tone="ghost" />
-                    </div>
                   </div>
                 </div>
 
-                <div className="ui-tab-group" style={{ width: 'fit-content', flexWrap: 'wrap' }}>
-                  <TabButton
-                    active={activeTab === 'study'}
-                    onClick={() => setModuleTab(module.id, 'study')}
-                    label={`Study (${module.studyCount})`}
-                  />
-                  <TabButton
-                    active={activeTab === 'do'}
-                    onClick={() => setModuleTab(module.id, 'do')}
-                    label={`Do (${module.actionCount})`}
-                  />
-                  <TabButton
-                    active={activeTab === 'more'}
-                    onClick={() => setModuleTab(module.id, 'more')}
-                    label={`More (${module.moreCount})`}
-                  />
-                </div>
+                <section style={{ display: 'grid', gap: '0.8rem' }}>
+                  <div>
+                    <p className="ui-kicker">Study outline</p>
+                    <h3 style={{ margin: '0.38rem 0 0', fontSize: '1rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>
+                      Full module notes stay inside the card
+                    </h3>
+                    <p style={{ margin: '0.4rem 0 0', fontSize: '14px', lineHeight: 1.68, color: 'var(--text-secondary)' }}>
+                      The expanded card reveals the full study outline directly here instead of sending you into another review layer.
+                    </p>
+                  </div>
 
-                {activeTab === 'study' && (
-                  <StudyTab module={module} />
-                )}
+                  {module.studyMaterials.length === 0 ? (
+                    <SectionEmpty body="No active study materials are ready in this module yet." />
+                  ) : (
+                    <div style={{ display: 'grid', gap: '0.8rem' }}>
+                      {module.studyMaterials.map((material) => (
+                        <StudyMaterialOutlineCard key={material.id} moduleId={module.id} material={material} />
+                      ))}
+                    </div>
+                  )}
+                </section>
 
-                {activeTab === 'do' && (
-                  <DoTab module={module} />
-                )}
+                <TaskStatusPanel moduleId={module.id} pendingTasks={module.pendingTasks} completedTasks={module.completedTasks} />
 
-                {activeTab === 'more' && (
-                  <MoreTab module={module} />
-                )}
+                <ModuleTermBank
+                  moduleId={module.id}
+                  courseId={module.courseId}
+                  finalTerms={module.finalTerms}
+                  suggestedTerms={module.suggestedTerms}
+                  dismissedCount={module.dismissedTermCount}
+                  embedded
+                />
+
+                <ModuleQuickQuiz
+                  quizItems={module.quizItems}
+                  finalTermCount={module.finalTerms.length}
+                  embedded
+                />
+
+                <details className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.95rem 1rem' }}>
+                  <summary style={{ cursor: 'pointer', fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                    View extracted source
+                  </summary>
+                  <p style={{ margin: '0.7rem 0 0', fontSize: '13px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
+                    {module.sourceSupportNote}
+                  </p>
+
+                  {module.studyMaterials.length > 0 && (
+                    <div style={{ display: 'grid', gap: '0.65rem', marginTop: '0.8rem' }}>
+                      {module.studyMaterials.map((material) => (
+                        <SourceItemRow
+                          key={`${material.id}-source`}
+                          title={material.title}
+                          meta={`${material.fileTypeLabel} / ${material.readinessLabel}`}
+                          note={material.note}
+                          detailHref={material.readerHref}
+                          canvasHref={material.canvasHref}
+                        />
+                      ))}
+                    </div>
+                  )}
+
+                  {module.moreItems.length > 0 && (
+                    <div style={{ display: 'grid', gap: '0.65rem', marginTop: '0.8rem' }}>
+                      {module.moreItems.map((item) => (
+                        <SupportSourceItemRow key={item.id} item={item} />
+                      ))}
+                    </div>
+                  )}
+                </details>
               </div>
             )}
           </article>
@@ -171,239 +269,199 @@ export function CourseLearnExplorer({
   )
 }
 
-function StudyTab({ module }: { module: CourseLearnModuleCard }) {
-  if (module.studyMaterials.length === 0) {
-    return (
-      <SectionEmpty
-        body={module.activityOverrides.length > 0
-          ? 'All study materials in this module are currently treated as activity instead.'
-          : 'No study materials are currently available in the main study lane for this module.'}
-      />
-    )
-  }
-
+function StudyMaterialOutlineCard({
+  moduleId,
+  material,
+}: {
+  moduleId: string
+  material: CourseLearnStudyMaterialRow
+}) {
   return (
-    <div style={{ display: 'grid', gap: '0.8rem' }}>
-      <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.8rem 0.9rem' }}>
-        <p className="ui-kicker">Study progress</p>
-        <p style={{ margin: '0.42rem 0 0', fontSize: '13px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
-          {module.progressCounts.reviewed} reviewed / {module.progressCounts.skimmed} skimmed / {module.progressCounts.notStarted} not started
+    <article
+      style={{
+        borderRadius: 'var(--radius-tight)',
+        border: '1px solid color-mix(in srgb, var(--border-subtle) 84%, transparent)',
+        background: 'color-mix(in srgb, var(--surface-elevated) 94%, transparent)',
+        padding: '0.95rem 1rem',
+        display: 'grid',
+        gap: '0.7rem',
+      }}
+    >
+      <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+        <CountPill label={material.fileTypeLabel} />
+        <CountPill label={material.readinessLabel} />
+        <CountPill label={material.progressLabel} />
+        {material.required && <CountPill label="Required" />}
+      </div>
+
+      <div>
+        <h4 style={{ margin: 0, fontSize: '15px', lineHeight: 1.42, color: 'var(--text-primary)', fontWeight: 650 }}>
+          {material.title}
+        </h4>
+        <p style={{ margin: '0.38rem 0 0', fontSize: '13px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
+          {material.note}
         </p>
       </div>
 
-      <div style={{ display: 'grid', gap: '0.75rem' }}>
-        {module.studyMaterials.map((material) => (
-          <StudyMaterialRow key={material.id} courseId={module.courseId} moduleId={module.id} material={material} />
-        ))}
+      {material.outlineSections.length > 0 ? (
+        <StudyOutlineView sections={material.outlineSections} sectionStyle={{ padding: '0.8rem 0.85rem' }} />
+      ) : (
+        <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.85rem 0.9rem' }}>
+          <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.68, color: 'var(--text-secondary)' }}>
+            {material.outlineHint ?? 'Structured study notes are not available for this source yet.'}
+          </p>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+        <Link href={material.readerHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
+          Open reader
+        </Link>
+        {material.canvasHref && (
+          <a href={material.canvasHref} target="_blank" rel="noreferrer" className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+            Open in Canvas
+          </a>
+        )}
+        <Link href={`/modules/${moduleId}/do`} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+          Open module Do
+        </Link>
       </div>
-    </div>
+    </article>
   )
 }
 
-function DoTab({ module }: { module: CourseLearnModuleCard }) {
-  if (module.actionItems.length === 0 && module.activityOverrides.length === 0) {
-    return <SectionEmpty body="Nothing is sitting in this module's Do lane right now." />
-  }
-
+function TaskStatusPanel({
+  moduleId,
+  pendingTasks,
+  completedTasks,
+}: {
+  moduleId: string
+  pendingTasks: CourseLearnTaskRow[]
+  completedTasks: CourseLearnTaskRow[]
+}) {
   return (
-    <div style={{ display: 'grid', gap: '0.85rem' }}>
-      {module.activityOverrides.length > 0 && (
-        <section className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.9rem 0.95rem', display: 'grid', gap: '0.7rem' }}>
-          <div>
-            <p className="ui-kicker">Marked as activity</p>
-            <p style={{ margin: '0.4rem 0 0', fontSize: '13px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
-              These are still study materials, but you moved them into the action lane for your own workflow.
-            </p>
-          </div>
-          <div style={{ display: 'grid', gap: '0.7rem' }}>
-            {module.activityOverrides.map((material) => (
-              <StudyMaterialRow key={material.id} courseId={module.courseId} moduleId={module.id} material={material} subdued />
-            ))}
-          </div>
-        </section>
-      )}
+    <section className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.95rem 1rem', display: 'grid', gap: '0.75rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+        <div>
+          <p className="ui-kicker">Task status</p>
+          <h3 style={{ margin: '0.38rem 0 0', fontSize: '1rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>
+            Completed Canvas work stays marked while unfinished work stays visible
+          </h3>
+        </div>
+        <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+          <CountPill label={`${pendingTasks.length} active`} />
+          <CountPill label={`${completedTasks.length} done`} />
+        </div>
+      </div>
 
-      {module.actionItems.length > 0 ? (
-        <div style={{ display: 'grid', gap: '0.7rem' }}>
-          {module.actionItems.map((item) => (
-            <ActionItemRow key={item.id} item={item} />
+      {pendingTasks.length === 0 ? (
+        <SectionEmpty body="Nothing unfinished is pulling attention in this module right now." />
+      ) : (
+        <div style={{ display: 'grid', gap: '0.65rem' }}>
+          {pendingTasks.slice(0, 3).map((task) => (
+            <article key={task.id} style={{ borderRadius: 'var(--radius-tight)', border: '1px solid color-mix(in srgb, var(--border-subtle) 84%, transparent)', background: 'color-mix(in srgb, var(--surface-elevated) 94%, transparent)', padding: '0.8rem 0.85rem', display: 'grid', gap: '0.5rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.65rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                <div style={{ minWidth: 0, flex: '1 1 260px' }}>
+                  <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginBottom: '0.28rem' }}>
+                    <TaskTonePill priority={task.priority} />
+                    {task.deadline && <CountPill label={formatDeadlineLabel(task.deadline)} />}
+                  </div>
+                  <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.5, color: 'var(--text-primary)', fontWeight: 650 }}>
+                    {task.title}
+                  </p>
+                  {task.details && (
+                    <p style={{ margin: '0.32rem 0 0', fontSize: '13px', lineHeight: 1.62, color: 'var(--text-secondary)' }}>
+                      {task.details}
+                    </p>
+                  )}
+                </div>
+                <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+                  <Link href={`/modules/${moduleId}/do#${task.id}`} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+                    Open in Do
+                  </Link>
+                  {task.canvasUrl && (
+                    <a href={task.canvasUrl} target="_blank" rel="noreferrer" className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+                      Canvas
+                    </a>
+                  )}
+                </div>
+              </div>
+            </article>
           ))}
         </div>
-      ) : (
-        <SectionEmpty body="No assignments, quizzes, or discussions are mapped into this module right now." />
       )}
-    </div>
+
+      {completedTasks.length > 0 && (
+        <details>
+          <summary style={{ cursor: 'pointer', fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)' }}>
+            Already done
+          </summary>
+          <div style={{ display: 'grid', gap: '0.55rem', marginTop: '0.7rem' }}>
+            {completedTasks.map((task) => (
+              <article key={task.id} style={{ borderRadius: 'var(--radius-tight)', border: '1px solid color-mix(in srgb, var(--border-subtle) 84%, transparent)', padding: '0.78rem 0.82rem', display: 'grid', gap: '0.4rem' }}>
+                <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+                  <CountPill label={task.completionOrigin === 'canvas' ? 'Done in Canvas' : 'Completed'} />
+                  {task.deadline && <CountPill label={formatDate(task.deadline)} />}
+                </div>
+                <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.55, color: 'var(--text-muted)', textDecoration: 'line-through' }}>
+                  {task.title}
+                </p>
+              </article>
+            ))}
+          </div>
+        </details>
+      )}
+    </section>
   )
 }
 
-function MoreTab({ module }: { module: CourseLearnModuleCard }) {
-  if (module.moreItems.length === 0) {
-    return <SectionEmpty body="No extra supporting items are sitting in the More lane for this module." />
-  }
-
-  return (
-    <div style={{ display: 'grid', gap: '0.7rem' }}>
-      {module.moreItems.map((item) => (
-        <MoreItemRow key={item.id} item={item} />
-      ))}
-    </div>
-  )
-}
-
-function StudyMaterialRow({
-  courseId,
-  moduleId,
-  material,
-  subdued = false,
+function SourceItemRow({
+  title,
+  meta,
+  note,
+  detailHref,
+  canvasHref,
 }: {
-  courseId: string
-  moduleId: string
-  material: CourseLearnStudyMaterialRow
-  subdued?: boolean
+  title: string
+  meta: string
+  note: string
+  detailHref: string
+  canvasHref: string | null
 }) {
-  const meta = [
-    material.fileTypeLabel,
-    material.readinessLabel,
-    material.progressLabel,
-    material.required ? 'Required' : null,
-    material.workflowOverride === 'activity' ? 'In Do lane' : null,
-  ].filter(Boolean)
-
   return (
-    <article
-      style={{
-        borderRadius: 'var(--radius-tight)',
-        border: '1px solid color-mix(in srgb, var(--border-subtle) 84%, transparent)',
-        background: subdued
-          ? 'color-mix(in srgb, var(--surface-soft) 92%, transparent)'
-          : 'color-mix(in srgb, var(--surface-elevated) 92%, transparent)',
-        padding: '0.95rem 1rem',
-        display: 'grid',
-        gap: '0.75rem',
-      }}
-    >
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.8rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-        <div style={{ minWidth: 0, flex: '1 1 380px' }}>
-          <p style={{ margin: 0, fontSize: '12px', lineHeight: 1.55, color: 'var(--text-muted)' }}>
-            {meta.join(' / ')}
-          </p>
-          <h3 style={{ margin: '0.34rem 0 0', fontSize: '16px', lineHeight: 1.42, fontWeight: 650, color: 'var(--text-primary)' }}>
-            {material.title}
-          </h3>
-          <p style={{ margin: '0.45rem 0 0', fontSize: '14px', lineHeight: 1.68, color: 'var(--text-secondary)' }}>
-            {material.note}
-          </p>
-        </div>
-        <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-          <ActionLink href={material.readerHref} label="Study reader" tone="secondary" />
-          {material.canvasHref && (
-            <ActionLink href={material.canvasHref} label="Canvas" external />
-          )}
-        </div>
-      </div>
-
-      <StudyFileManualStateControls
-        moduleId={moduleId}
-        resourceId={material.id}
-        courseId={courseId || undefined}
-        progressStatus={material.progressStatus}
-        workflowOverride={material.workflowOverride}
-        compact
-        variant="quiet"
-      />
-    </article>
-  )
-}
-
-function ActionItemRow({ item }: { item: CourseLearnActionRow }) {
-  const meta = [
-    item.kindLabel,
-    item.dueLabel ? `Due ${item.dueLabel}` : null,
-    item.required ? 'Required' : null,
-  ].filter(Boolean)
-
-  return (
-    <article
-      style={{
-        borderRadius: 'var(--radius-tight)',
-        border: '1px solid color-mix(in srgb, var(--border-subtle) 84%, transparent)',
-        background: 'color-mix(in srgb, var(--surface-elevated) 92%, transparent)',
-        padding: '0.9rem 0.95rem',
-        display: 'grid',
-        gap: '0.65rem',
-      }}
-    >
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-        <div style={{ minWidth: 0, flex: '1 1 360px' }}>
-          <p style={{ margin: 0, fontSize: '12px', lineHeight: 1.55, color: 'var(--text-muted)' }}>
-            {meta.join(' / ')}
-          </p>
-          <h3 style={{ margin: '0.34rem 0 0', fontSize: '16px', lineHeight: 1.42, fontWeight: 650, color: 'var(--text-primary)' }}>
-            {item.title}
-          </h3>
-          <p style={{ margin: '0.4rem 0 0', fontSize: '14px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
-            {item.note}
-          </p>
-        </div>
-        <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-          <ActionLink href={item.doHref} label="Open in Do" tone="secondary" />
-          {item.canvasHref && (
-            <ActionLink href={item.canvasHref} label="Canvas" external />
-          )}
-        </div>
-      </div>
-    </article>
-  )
-}
-
-function MoreItemRow({ item }: { item: CourseLearnMoreRow }) {
-  return (
-    <article
-      style={{
-        borderRadius: 'var(--radius-tight)',
-        border: '1px solid color-mix(in srgb, var(--border-subtle) 84%, transparent)',
-        background: 'color-mix(in srgb, var(--surface-soft) 92%, transparent)',
-        padding: '0.9rem 0.95rem',
-        display: 'grid',
-        gap: '0.55rem',
-      }}
-    >
+    <article style={{ borderRadius: 'var(--radius-tight)', border: '1px solid color-mix(in srgb, var(--border-subtle) 84%, transparent)', padding: '0.8rem 0.85rem', display: 'grid', gap: '0.45rem' }}>
       <p style={{ margin: 0, fontSize: '12px', lineHeight: 1.55, color: 'var(--text-muted)' }}>
-        {item.kindLabel}
+        {meta}
       </p>
-      <h3 style={{ margin: 0, fontSize: '16px', lineHeight: 1.42, fontWeight: 650, color: 'var(--text-primary)' }}>
-        {item.title}
-      </h3>
-      <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
-        {item.note}
+      <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.5, color: 'var(--text-primary)', fontWeight: 650 }}>
+        {title}
+      </p>
+      <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.62, color: 'var(--text-secondary)' }}>
+        {note}
       </p>
       <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-        <ActionLink href={item.detailHref} label="Open detail" tone="secondary" />
-        {item.canvasHref && (
-          <ActionLink href={item.canvasHref} label="Canvas" external />
+        <Link href={detailHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+          Open reader
+        </Link>
+        {canvasHref && (
+          <a href={canvasHref} target="_blank" rel="noreferrer" className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+            Canvas
+          </a>
         )}
       </div>
     </article>
   )
 }
 
-function TabButton({
-  active,
-  onClick,
-  label,
-}: {
-  active: boolean
-  onClick: () => void
-  label: string
-}) {
+function SupportSourceItemRow({ item }: { item: CourseLearnMoreRow }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={active ? 'ui-button ui-button-secondary ui-button-xs' : 'ui-button ui-button-ghost ui-button-xs'}
-    >
-      {label}
-    </button>
+    <SourceItemRow
+      title={item.title}
+      meta={item.kindLabel}
+      note={item.note}
+      detailHref={item.detailHref}
+      canvasHref={item.canvasHref}
+    />
   )
 }
 
@@ -462,32 +520,22 @@ function CountPill({ label }: { label: string }) {
   )
 }
 
-function ActionLink({
-  href,
-  label,
-  external = false,
-  tone = 'ghost',
-}: {
-  href: string
-  label: string
-  external?: boolean
-  tone?: 'ghost' | 'secondary'
-}) {
-  const className = `ui-button ${tone === 'secondary' ? 'ui-button-secondary' : 'ui-button-ghost'} ui-button-xs`
-
-  if (external) {
-    return (
-      <a href={href} target="_blank" rel="noreferrer" className={className} style={{ textDecoration: 'none' }}>
-        {label}
-      </a>
-    )
-  }
-
+function MiniStat({ label, value }: { label: string; value: string }) {
   return (
-    <Link href={href} className={className} style={{ textDecoration: 'none' }}>
-      {label}
-    </Link>
+    <div className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.72rem 0.75rem' }}>
+      <p style={{ margin: 0, fontSize: '10px', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
+        {label}
+      </p>
+      <p style={{ margin: '0.32rem 0 0', fontSize: '18px', lineHeight: 1.1, fontWeight: 650, color: 'var(--text-primary)' }}>
+        {value}
+      </p>
+    </div>
   )
+}
+
+function TaskTonePill({ priority }: { priority: Task['priority'] }) {
+  const label = `${priority} priority`
+  return <CountPill label={label} />
 }
 
 function SectionEmpty({ body }: { body: string }) {
@@ -498,8 +546,24 @@ function SectionEmpty({ body }: { body: string }) {
   )
 }
 
-function defaultTabForModule(module: CourseLearnModuleCard): ModuleTab {
-  if (module.studyCount > 0) return 'study'
-  if (module.actionCount > 0) return 'do'
-  return 'more'
+function truncateText(value: string, maxLength: number) {
+  if (value.length <= maxLength) return value
+  const clipped = value.slice(0, maxLength)
+  const spaceIndex = clipped.lastIndexOf(' ')
+  return `${clipped.slice(0, spaceIndex > 0 ? spaceIndex : maxLength).trim()}...`
+}
+
+function formatDate(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' }).format(date)
+}
+
+function formatDeadlineLabel(value: string) {
+  const daysUntil = Math.ceil((new Date(value).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+  if (daysUntil < 0) return 'Past due'
+  if (daysUntil === 0) return 'Due today'
+  if (daysUntil === 1) return 'Due tomorrow'
+  if (daysUntil <= 7) return `Due in ${daysUntil} days`
+  return formatDate(value)
 }
