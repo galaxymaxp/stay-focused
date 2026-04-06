@@ -435,14 +435,20 @@ async function ensureCourseRecord(course: CanvasCourse): Promise<ExistingCourseM
 
   const { data: insertedCourse, error: insertCourseError } = await supabase
     .from('courses')
-    .insert(sanitizeDatabaseValue({
-      code: databaseSafeCourse.course_code,
-      name: databaseSafeCourse.name,
-      term: databaseSafeCourse.term?.name ?? 'Current term',
-      instructor: 'Canvas course staff',
-      focus_label: 'Synced from Canvas',
-      color_token: pickCourseColorToken(databaseSafeCourse.course_code, databaseSafeCourse.name),
-    }))
+    .upsert(
+      sanitizeDatabaseValue({
+        code: databaseSafeCourse.course_code,
+        name: databaseSafeCourse.name,
+        term: databaseSafeCourse.term?.name ?? 'Current term',
+        instructor: 'Canvas course staff',
+        focus_label: 'Synced from Canvas',
+        color_token: pickCourseColorToken(databaseSafeCourse.course_code, databaseSafeCourse.name),
+      }),
+      {
+        onConflict: 'code,name',
+        ignoreDuplicates: false,
+      },
+    )
     .select('id')
     .single()
 
@@ -1055,6 +1061,11 @@ function createSupabaseStepError(step: string, error: SupabaseLikeError | null |
 
   if (process.env.NODE_ENV !== 'production') {
     return new Error(diagnostic)
+  }
+
+  if (step === 'insert course') {
+    const detail = [code, message].filter(Boolean).join(': ')
+    return new Error(detail ? `Canvas sync failed during ${step}: ${detail}.` : `Canvas sync failed during ${step}.`)
   }
 
   return new Error(`Canvas sync failed during ${step}.`)
