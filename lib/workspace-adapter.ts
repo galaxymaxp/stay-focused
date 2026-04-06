@@ -1,4 +1,5 @@
 import { seedCourses, seedModules } from '@/lib/mock-data'
+import { normalizeTaskPlanningAnnotation } from '@/lib/task-planning'
 import type { Course, LearningItem, Module, Priority, TaskItem, TaskStatus } from '@/lib/types'
 import type { WorkspaceCourseRow, WorkspaceLearningItemRow, WorkspaceModuleRow, WorkspaceQueryResult, WorkspaceTaskItemRow } from '@/lib/workspace-queries'
 
@@ -148,6 +149,10 @@ function adaptTaskItemRow(
     estimatedMinutes: row.estimated_minutes ?? 20,
     extractedFrom: row.extracted_from ?? linkedModule?.title ?? 'Task source',
     canvasUrl: row.canvas_url ?? null,
+    completionOrigin: row.completion_origin === 'manual' || row.completion_origin === 'canvas'
+      ? row.completion_origin
+      : null,
+    planningAnnotation: normalizeTaskPlanningAnnotation(row.planning_annotation),
     moduleFreshnessScore: freshnessScore,
     actionScore: computeActionScore(priority, deadline, status, freshnessScore),
   }
@@ -208,6 +213,8 @@ function buildTaskItems(
     taskType: task.taskType,
     estimatedMinutes: task.estimatedMinutes,
     extractedFrom: module.title,
+    completionOrigin: null,
+    planningAnnotation: 'none',
     moduleFreshnessScore: freshnessScore,
     actionScore: computeActionScore(task.priority, task.deadline, task.status, freshnessScore),
   }))

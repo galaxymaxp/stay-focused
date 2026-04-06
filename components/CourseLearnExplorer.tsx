@@ -3,12 +3,11 @@
 import Link from 'next/link'
 import { useState } from 'react'
 import { ModuleTermBank } from '@/components/ModuleTermBank'
-import { StudyOutlineView } from '@/components/StudyOutlineView'
+import { StudyResourceAccordionList } from '@/components/StudyResourceAccordionList'
 import { countQuizReadyStudyNotes } from '@/lib/study-note-quiz'
 import type {
   CourseLearnModuleCard,
   CourseLearnMoreRow,
-  CourseLearnStudyMaterialRow,
   CourseLearnTaskRow,
 } from '@/lib/course-learn-overview'
 import type { Task } from '@/lib/types'
@@ -198,22 +197,35 @@ export function CourseLearnExplorer({
                   <div>
                     <p className="ui-kicker">Study outline</p>
                     <h3 style={{ margin: '0.38rem 0 0', fontSize: '1rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>
-                      Open one note at a time inside the module
+                      Open one resource at a time, then open the notes inside it
                     </h3>
                     <p style={{ margin: '0.4rem 0 0', fontSize: '14px', lineHeight: 1.68, color: 'var(--text-secondary)' }}>
-                      Each outline section stays collapsed until you open it, and each note now launches its own grounded quiz instead of one broad module-wide set.
+                      Each module now keeps its resources and Canvas pages in a compact expandable list. Open one resource inline, then expand the note sections inside it when you are ready to study.
                     </p>
                   </div>
 
-                  {module.studyMaterials.length === 0 ? (
-                    <SectionEmpty body="No active study materials are ready in this module yet." />
-                  ) : (
-                    <div style={{ display: 'grid', gap: '0.8rem' }}>
-                      {module.studyMaterials.map((material) => (
-                        <StudyMaterialOutlineCard key={material.id} moduleId={module.id} material={material} />
-                      ))}
-                    </div>
-                  )}
+                  <StudyResourceAccordionList
+                    items={module.studyMaterials.map((material) => ({
+                      id: material.id,
+                      title: material.title,
+                      note: material.note,
+                      fileTypeLabel: material.fileTypeLabel,
+                      readinessLabel: material.readinessLabel,
+                      readinessTone: material.readinessLabel === 'Ready to study'
+                        ? 'accent'
+                        : material.readinessLabel === 'Limited'
+                          ? 'warning'
+                          : 'muted',
+                      required: material.required,
+                      outlineSections: material.outlineSections,
+                      outlineHint: material.outlineHint,
+                      readerHref: material.readerHref,
+                      canvasHref: material.canvasHref,
+                      extraActionHref: `/modules/${module.id}/do`,
+                      extraActionLabel: 'Open module Do',
+                    }))}
+                    emptyMessage="No active study materials are ready in this module yet."
+                  />
                 </section>
 
                 <TaskStatusPanel moduleId={module.id} pendingTasks={module.pendingTasks} completedTasks={module.completedTasks} />
@@ -264,67 +276,6 @@ export function CourseLearnExplorer({
         )
       })}
     </div>
-  )
-}
-
-function StudyMaterialOutlineCard({
-  moduleId,
-  material,
-}: {
-  moduleId: string
-  material: CourseLearnStudyMaterialRow
-}) {
-  return (
-    <article
-      style={{
-        borderRadius: 'var(--radius-tight)',
-        border: '1px solid color-mix(in srgb, var(--border-subtle) 84%, transparent)',
-        background: 'color-mix(in srgb, var(--surface-elevated) 94%, transparent)',
-        padding: '0.95rem 1rem',
-        display: 'grid',
-        gap: '0.7rem',
-      }}
-    >
-      <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-        <CountPill label={material.fileTypeLabel} />
-        <CountPill label={material.readinessLabel} />
-        <CountPill label={material.progressLabel} />
-        {material.required && <CountPill label="Required" />}
-      </div>
-
-      <div>
-        <h4 style={{ margin: 0, fontSize: '15px', lineHeight: 1.42, color: 'var(--text-primary)', fontWeight: 650 }}>
-          {material.title}
-        </h4>
-        <p style={{ margin: '0.38rem 0 0', fontSize: '13px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
-          {material.note}
-        </p>
-      </div>
-
-      {material.outlineSections.length > 0 ? (
-        <StudyOutlineView sections={material.outlineSections} sectionStyle={{ padding: '0.8rem 0.85rem' }} />
-      ) : (
-        <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.85rem 0.9rem' }}>
-          <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.68, color: 'var(--text-secondary)' }}>
-            {material.outlineHint ?? 'Structured study notes are not available for this source yet.'}
-          </p>
-        </div>
-      )}
-
-      <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-        <Link href={material.readerHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
-          Open reader
-        </Link>
-        {material.canvasHref && (
-          <a href={material.canvasHref} target="_blank" rel="noreferrer" className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-            Open in Canvas
-          </a>
-        )}
-        <Link href={`/modules/${moduleId}/do`} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-          Open module Do
-        </Link>
-      </div>
-    </article>
   )
 }
 

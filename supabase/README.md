@@ -15,6 +15,8 @@ Important migration for attachment-backed Learn:
 - `supabase/migrations/20260407_add_module_resource_study_last_opened_at.sql`
 - `supabase/migrations/20260408_add_module_terms.sql`
 - `supabase/migrations/20260409_add_task_canvas_completion_metadata.sql`
+- `supabase/migrations/20260410_add_task_planning_annotations.sql`
+- `supabase/migrations/20260411_backfill_task_item_planning_and_completion_metadata.sql`
 
 That migration creates:
 
@@ -60,6 +62,12 @@ Current app features that depend on `20260409_add_task_canvas_completion_metadat
 - assignment-like module work can sync into `completed` when Canvas already shows it as submitted, graded, or otherwise cleared
 - module Learn surfaces can show clearer "done in Canvas" state without making finished work compete with unfinished work
 - task rows keep a stored Canvas assignment id for safer future refresh/backfill work
+
+Current app features that depend on `20260410_add_task_planning_annotations.sql`:
+
+- Today and Calendar can show the same planner annotations (`Best next step`, `Needs attention`, `Worth reviewing`) for the same synced task
+- task items now keep their completion origin directly, so calendar-facing views can distinguish Canvas-completed work from manual completion without reading the legacy `tasks` table
+- setting a new `Best next step` clears the previous one so the planner keeps a single top focus item
 
 ## Fresh Project Reset
 

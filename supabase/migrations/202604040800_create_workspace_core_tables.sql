@@ -62,6 +62,10 @@ create table if not exists public.task_items (
   extracted_from text,
   canvas_url text,
   canvas_assignment_id bigint,
+  completion_origin text
+    check (completion_origin in ('manual', 'canvas')),
+  planning_annotation text
+    check (planning_annotation in ('best_next_step', 'needs_attention', 'worth_reviewing')),
   created_at timestamptz not null default now()
 );
 
@@ -79,6 +83,8 @@ create table if not exists public.tasks (
     check (status in ('pending', 'completed')),
   completion_origin text
     check (completion_origin in ('manual', 'canvas')),
+  planning_annotation text
+    check (planning_annotation in ('best_next_step', 'needs_attention', 'worth_reviewing')),
   created_at timestamptz not null default now()
 );
 
@@ -126,6 +132,12 @@ create index if not exists task_items_status_idx
 create index if not exists task_items_canvas_assignment_id_idx
   on public.task_items(canvas_assignment_id);
 
+create index if not exists task_items_completion_origin_idx
+  on public.task_items(completion_origin);
+
+create index if not exists task_items_planning_annotation_idx
+  on public.task_items(planning_annotation);
+
 create index if not exists tasks_module_id_idx
   on public.tasks(module_id);
 
@@ -137,6 +149,9 @@ create index if not exists tasks_status_idx
 
 create index if not exists tasks_canvas_assignment_id_idx
   on public.tasks(canvas_assignment_id);
+
+create index if not exists tasks_planning_annotation_idx
+  on public.tasks(planning_annotation);
 
 create index if not exists deadlines_module_id_idx
   on public.deadlines(module_id);

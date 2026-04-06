@@ -2,8 +2,8 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import type { CSSProperties, ReactNode } from 'react'
 import { ModuleLensShell } from '@/components/ModuleLensShell'
-import { StudyOutlineView } from '@/components/StudyOutlineView'
 import { ModuleTermBank } from '@/components/ModuleTermBank'
+import { StudyResourceAccordionList } from '@/components/StudyResourceAccordionList'
 import { TaskStatusToggle } from '@/components/TaskStatusToggle'
 import { buildModuleLearnOverview, type ModuleStudyMaterial } from '@/lib/module-learn-overview'
 import { countQuizReadyStudyNotes } from '@/lib/study-note-quiz'
@@ -192,23 +192,28 @@ export default async function LearnPage({ params }: Props) {
           <section id="study-notes" className="motion-card motion-delay-2 section-shell section-shell-elevated" style={{ padding: '1.35rem 1.45rem', display: 'grid', gap: '0.95rem' }}>
             <div>
               <p className="ui-kicker">Study notes</p>
-              <h3 style={{ margin: '0.42rem 0 0', fontSize: '1.08rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>Compact note rows that expand into the full extracted outline</h3>
+              <h3 style={{ margin: '0.42rem 0 0', fontSize: '1.08rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>Compact resource rows that open into notes inline</h3>
               <p className="ui-section-copy" style={{ marginTop: '0.45rem', maxWidth: '44rem' }}>
-                The main Learn body stays close to the extracted source structure, but each note now opens on demand. Expand a section to read its bullets and launch a quiz grounded only in that note.
+                The main Learn body now starts with the module&apos;s Canvas resources and pages as compact rows. Open one resource inline, then expand the note sections inside it when you are ready to read or quiz.
               </p>
             </div>
 
-            {overview.studyMaterials.length === 0 ? (
-              <div className="ui-empty" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', fontSize: '14px', lineHeight: 1.68 }}>
-                No mapped study readers are ready for this module yet. Learn will show fuller notes here as soon as readable extracted source text is available.
-              </div>
-            ) : (
-              <div style={{ display: 'grid', gap: '0.95rem' }}>
-                {overview.studyMaterials.map((material) => (
-                  <StudyMaterialOutlineCard key={material.resource.id} moduleId={module.id} material={material} />
-                ))}
-              </div>
-            )}
+            <StudyResourceAccordionList
+              items={overview.studyMaterials.map((material) => ({
+                id: material.resource.id,
+                title: material.resource.title,
+                note: material.note,
+                fileTypeLabel: material.fileTypeLabel,
+                readinessLabel: material.readinessLabel,
+                readinessTone: material.readinessTone,
+                required: material.resource.required,
+                outlineSections: material.reader.outlineSections,
+                outlineHint: material.reader.outlineHint,
+                readerHref: getLearnResourceHref(module.id, material.resource.id),
+                canvasHref: getResourceCanvasHref(material.resource),
+              }))}
+              emptyMessage="No mapped study readers are ready for this module yet. Learn will show fuller notes here as soon as readable extracted source text is available."
+            />
           </section>
 
           <aside style={{ display: 'grid', gap: '1rem' }}>
@@ -377,55 +382,6 @@ export default async function LearnPage({ params }: Props) {
         </div>
       </div>
     </ModuleLensShell>
-  )
-}
-
-function StudyMaterialOutlineCard({
-  moduleId,
-  material,
-}: {
-  moduleId: string
-  material: ModuleStudyMaterial
-}) {
-  const canvasHref = getResourceCanvasHref(material.resource)
-
-  return (
-    <article className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.92rem 0.95rem', display: 'grid', gap: '0.65rem' }}>
-      <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-        <StateBadge label={material.fileTypeLabel} tone="muted" />
-        <StateBadge
-          label={material.readinessLabel}
-          tone={material.readiness === 'ready' ? 'accent' : material.readiness === 'limited' ? 'warning' : 'muted'}
-        />
-        {material.resource.required && <StateBadge label="Required" tone="warning" />}
-      </div>
-
-      <div>
-        <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.5, color: 'var(--text-primary)', fontWeight: 650 }}>{material.resource.title}</p>
-        <p style={{ margin: '0.35rem 0 0', fontSize: '13px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>{material.note}</p>
-      </div>
-
-      {material.reader.outlineSections.length > 0 ? (
-        <StudyOutlineView sections={material.reader.outlineSections} />
-      ) : (
-        <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.9rem 0.95rem' }}>
-          <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.72, color: 'var(--text-secondary)' }}>
-            {material.reader.outlineHint ?? material.reader.overviewBody}
-          </p>
-        </div>
-      )}
-
-      <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-        <Link href={getLearnResourceHref(moduleId, material.resource.id)} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
-          Open reader
-        </Link>
-        {canvasHref && (
-          <a href={canvasHref} target="_blank" rel="noreferrer" className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-            Open in Canvas
-          </a>
-        )}
-      </div>
-    </article>
   )
 }
 

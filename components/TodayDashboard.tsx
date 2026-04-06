@@ -2,6 +2,8 @@
 
 import type { CSSProperties, ReactNode } from 'react'
 import Link from 'next/link'
+import { TaskPlanningAnnotationControl, TaskPlanningAnnotationPill } from '@/components/TaskPlanningAnnotationControl'
+import { TaskStatusToggle } from '@/components/TaskStatusToggle'
 import type { TodayItem } from '@/lib/types'
 
 export function TodayDashboard({
@@ -50,7 +52,7 @@ export function TodayDashboard({
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1rem', alignItems: 'start' }}>
         <SectionBlock
           eyebrow="Needs attention"
-          title="Needs Action"
+          title="Needs attention"
           description="Assignments, submissions, and deadlines that are best handled soon."
           items={needsAction}
           emptyMessage="Your action list is clear right now."
@@ -60,7 +62,7 @@ export function TodayDashboard({
 
         <SectionBlock
           eyebrow="Worth reviewing"
-          title="Needs Understanding"
+          title="Worth reviewing"
           description="Modules and course material to read through before they turn into rushed work."
           items={needsUnderstanding}
           emptyMessage="Nothing new needs a closer read at the moment."
@@ -116,6 +118,23 @@ function FocusHeroCard({ item }: { item: TodayItem }) {
       )}
 
       <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+        {item.kind === 'task' && item.taskItemId && (
+          <>
+            <TaskStatusToggle
+              status={item.completionStatus ?? 'pending'}
+              moduleId={item.moduleId}
+              title={item.title}
+              taskItemId={item.taskItemId}
+            />
+            <TaskPlanningAnnotationControl
+              annotation={item.planningAnnotation}
+              status={item.completionStatus ?? 'pending'}
+              moduleId={item.moduleId}
+              title={item.title}
+              taskItemId={item.taskItemId}
+            />
+          </>
+        )}
         <ItemActionButton item={item} primary />
         {item.href && (
           <Link href={item.href} className="ui-button ui-button-secondary" style={secondaryButtonStyle}>
@@ -210,6 +229,23 @@ function TodayItemCard({ item }: { item: TodayItem }) {
       </div>
 
       <div style={{ display: 'flex', gap: '0.65rem', flexWrap: 'wrap' }}>
+        {item.kind === 'task' && item.taskItemId && (
+          <>
+            <TaskStatusToggle
+              status={item.completionStatus ?? 'pending'}
+              moduleId={item.moduleId}
+              title={item.title}
+              taskItemId={item.taskItemId}
+            />
+            <TaskPlanningAnnotationControl
+              annotation={item.planningAnnotation}
+              status={item.completionStatus ?? 'pending'}
+              moduleId={item.moduleId}
+              title={item.title}
+              taskItemId={item.taskItemId}
+            />
+          </>
+        )}
         <ItemActionButton item={item} />
         {item.href && (
           <Link href={item.href} className="ui-button ui-button-ghost" style={ghostButtonStyle}>
@@ -231,6 +267,10 @@ function ItemActionButton({ item, primary = false }: { item: TodayItem; primary?
 }
 
 function TonePill({ item, emphasis = false }: { item: TodayItem; emphasis?: boolean }) {
+  if (item.planningAnnotation !== 'none') {
+    return <TaskPlanningAnnotationPill annotation={item.planningAnnotation} emphasis={emphasis} />
+  }
+
   const tone = getToneStyle(item.tone)
 
   return (

@@ -72,14 +72,14 @@ export function buildModuleLearnOverview({
   tasks: Task[]
 }): ModuleLearnOverviewModel {
   const allStudyFiles = resources
-    .filter((resource) => resource.kind === 'study_file')
+    .filter((resource) => resource.lane === 'learn')
     .map((resource) => buildStudyMaterial(resource))
     .sort(compareStudyMaterials)
   const studyMaterials = allStudyFiles.filter((material) => getWorkflowOverride(material.resource) !== 'activity')
   const activityOverrides = allStudyFiles.filter((material) => getWorkflowOverride(material.resource) === 'activity')
   const actionItems = [...doItems].sort(compareActionItems)
   const otherContextResources = resources
-    .filter((resource) => resource.kind !== 'study_file' && resource.lane !== 'do')
+    .filter((resource) => resource.lane === 'support')
     .sort((left, right) => left.title.localeCompare(right.title))
   const totalStudyFileCount = allStudyFiles.length
   const activeStudyFileCount = studyMaterials.length

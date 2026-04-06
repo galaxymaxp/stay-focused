@@ -326,6 +326,7 @@ async function syncSingleCourse(course: CanvasCourse, config: Partial<CanvasConf
         priority: task.priority,
         status: task.status,
         completion_origin: task.completionOrigin,
+        planning_annotation: null,
       }))
     )
 
@@ -520,6 +521,8 @@ function buildTaskItemsForSync(
     extracted_from: context.extractedFrom,
     canvas_url: task.canvasUrl,
     canvas_assignment_id: task.canvasAssignmentId,
+    completion_origin: task.completionOrigin,
+    planning_annotation: null,
   }))
 }
 

@@ -51,6 +51,8 @@ export interface WorkspaceTaskItemRow {
   estimated_minutes?: number | null
   extracted_from?: string | null
   canvas_url?: string | null
+  completion_origin?: string | null
+  planning_annotation?: string | null
 }
 
 export interface WorkspaceQueryResult {

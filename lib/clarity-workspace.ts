@@ -1,4 +1,5 @@
 import { loadWorkspaceSource } from '@/lib/workspace-source'
+import { deriveTaskPlanningAnnotation, labelForTaskPlanningAnnotation } from '@/lib/task-planning'
 import type { CalendarItem, Course, LearningItem, Module, TaskItem, TodayItem } from '@/lib/types'
 
 export interface ClarityWorkspace {
@@ -26,7 +27,10 @@ export async function getClarityWorkspace(): Promise<ClarityWorkspace> {
       .filter((module) => module.showInLearn !== false)
       .map((module) => buildTodayLearningItem(module, source.learnItems, source.taskItems, courseMap)),
   ].sort(compareTodayItems)
-  const nextBestMove = todayItems[0] ?? null
+  const explicitBestNext = todayItems
+    .filter((item) => item.planningAnnotation === 'best_next_step')
+    .sort(compareTodayItems)[0] ?? null
+  const nextBestMove = explicitBestNext ?? todayItems[0] ?? null
   const heroId = nextBestMove?.id ?? null
 
   return {
@@ -38,9 +42,9 @@ export async function getClarityWorkspace(): Promise<ClarityWorkspace> {
       .sort((a, b) => a.dateKey.localeCompare(b.dateKey) || compareCalendarItems(a, b)),
     today: {
       nextBestMove,
-      needsAction: todayItems.filter((item) => item.id !== heroId && item.tone === 'attention').slice(0, 4),
-      needsUnderstanding: todayItems.filter((item) => item.id !== heroId && item.tone === 'review').slice(0, 4),
-      comingUp: todayItems.filter((item) => item.id !== heroId && item.tone === 'upcoming').slice(0, 6),
+      needsAction: todayItems.filter((item) => item.id !== heroId && item.planningAnnotation === 'needs_attention').slice(0, 4),
+      needsUnderstanding: todayItems.filter((item) => item.id !== heroId && item.planningAnnotation === 'worth_reviewing').slice(0, 4),
+      comingUp: todayItems.filter((item) => item.id !== heroId && item.planningAnnotation === 'none').slice(0, 6),
       undatedTaskCount: source.taskItems.filter((task) => task.status !== 'completed' && !task.deadline).length,
     },
   }
@@ -85,11 +89,14 @@ export function getModuleFreshnessScore(module: Module, now = new Date()) {
 
 function buildTodayTaskItem(task: TaskItem): TodayItem {
   const daysUntil = getDaysUntil(task.deadline)
-  const tone = task.actionScore >= 70 ? 'attention' : task.actionScore >= 36 ? 'review' : 'upcoming'
+  const planningAnnotation = deriveTaskPlanningAnnotation(task)
+  const tone = toneForPlanningAnnotation(planningAnnotation)
+  const toneLabel = toneLabelForPlanningAnnotation(planningAnnotation)
 
   return {
     id: `today-${task.id}`,
     kind: 'task',
+    taskItemId: task.id,
     title: task.title,
     courseId: task.courseId,
     courseName: task.courseName,
@@ -99,13 +106,17 @@ function buildTodayTaskItem(task: TaskItem): TodayItem {
     dateTime: task.deadline,
     priority: task.priority,
     tone,
-    toneLabel: tone === 'attention' ? 'Needs action' : tone === 'review' ? 'Worth lining up' : 'Coming up',
+    toneLabel,
+    planningAnnotation,
+    planningAnnotationLabel: labelForTaskPlanningAnnotation(planningAnnotation),
     recommendationScore: task.actionScore,
     href: `/modules/${task.moduleId}/do#${task.id}`,
     actionLabel: 'Open in Do',
     whyNow: buildTaskReason(task, daysUntil),
     effortLabel: `${task.estimatedMinutes} min`,
     completionStatus: task.status,
+    completionOrigin: task.completionOrigin ?? null,
+    canvasUrl: task.canvasUrl ?? null,
   }
 }
 
@@ -124,10 +135,12 @@ function buildTodayLearningItem(
     + (module.priority_signal === 'high' ? 16 : module.priority_signal === 'medium' ? 8 : 2)
     + (freshestTask ? Math.round(freshestTask.actionScore / 3) : 0)
   const tone = freshnessScore >= 20 || (freshestTask?.actionScore ?? 0) >= 50 ? 'review' : 'upcoming'
+  const planningAnnotation = tone === 'review' ? 'worth_reviewing' : 'none'
 
   return {
     id: `today-module-${module.id}`,
     kind: 'module',
+    taskItemId: null,
     title: module.title,
     courseId: module.courseId ?? 'unknown-course',
     courseName: course?.name ?? 'Course',
@@ -138,20 +151,28 @@ function buildTodayLearningItem(
     priority: freshestTask?.priority ?? module.priority_signal ?? null,
     tone,
     toneLabel: tone === 'review' ? 'Worth reviewing' : 'Coming up',
+    planningAnnotation,
+    planningAnnotationLabel: labelForTaskPlanningAnnotation(planningAnnotation),
     recommendationScore,
     href: `/modules/${module.id}/learn`,
     actionLabel: 'Open in Learn',
     whyNow: buildModuleReason(module, freshestTask, freshnessScore),
     effortLabel: module.estimated_minutes ? `${module.estimated_minutes} min review` : null,
+    completionStatus: undefined,
+    completionOrigin: null,
+    canvasUrl: null,
   }
 }
 
 function buildCalendarItem(task: TaskItem): CalendarItem {
   const daysUntil = getDaysUntil(task.deadline)
+  const planningAnnotation = deriveTaskPlanningAnnotation(task)
 
   return {
     id: `calendar-${task.id}`,
     kind: 'task',
+    taskItemId: task.id,
+    moduleId: task.moduleId,
     title: task.title,
     courseName: task.courseName,
     moduleTitle: task.moduleTitle,
@@ -166,10 +187,27 @@ function buildCalendarItem(task: TaskItem): CalendarItem {
           ? 'dueSoon'
           : 'upcoming',
     completionStatus: task.status,
+    completionOrigin: task.completionOrigin ?? null,
+    planningAnnotation,
+    planningAnnotationLabel: labelForTaskPlanningAnnotation(planningAnnotation),
     priority: task.priority,
     recommendationScore: task.actionScore,
     href: `/modules/${task.moduleId}/do#${task.id}`,
+    canvasUrl: task.canvasUrl ?? null,
   }
+}
+
+function toneForPlanningAnnotation(annotation: TodayItem['planningAnnotation']) {
+  if (annotation === 'best_next_step' || annotation === 'needs_attention') return 'attention'
+  if (annotation === 'worth_reviewing') return 'review'
+  return 'upcoming'
+}
+
+function toneLabelForPlanningAnnotation(annotation: TodayItem['planningAnnotation']) {
+  if (annotation === 'best_next_step') return 'Best next step'
+  if (annotation === 'needs_attention') return 'Needs attention'
+  if (annotation === 'worth_reviewing') return 'Worth reviewing'
+  return 'Coming up'
 }
 
 function getDaysUntil(value: string | null) {

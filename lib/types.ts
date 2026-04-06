@@ -1,6 +1,7 @@
 export type ModuleStatus = 'pending' | 'processed' | 'error'
 export type TaskStatus = 'pending' | 'completed'
 export type TaskCompletionOrigin = 'manual' | 'canvas'
+export type TaskPlanningAnnotation = 'best_next_step' | 'needs_attention' | 'worth_reviewing' | 'none'
 export type Priority = 'high' | 'medium' | 'low'
 export type ModuleResourceExtractionStatus = 'pending' | 'extracted' | 'metadata_only' | 'unsupported' | 'empty' | 'failed'
 export type StudyFileProgressStatus = 'not_started' | 'skimmed' | 'reviewed'
@@ -96,6 +97,7 @@ export interface Task {
   priority: Priority
   status: TaskStatus
   completionOrigin?: TaskCompletionOrigin | null
+  planningAnnotation?: TaskPlanningAnnotation
   created_at: string
 }
 
@@ -132,6 +134,8 @@ export interface TaskItem {
   estimatedMinutes: number
   extractedFrom: string
   canvasUrl?: string | null
+  completionOrigin?: TaskCompletionOrigin | null
+  planningAnnotation: TaskPlanningAnnotation
   moduleFreshnessScore: number
   actionScore: number
 }
@@ -139,6 +143,7 @@ export interface TaskItem {
 export interface TodayItem {
   id: string
   kind: 'task' | 'learning' | 'module'
+  taskItemId?: string | null
   title: string
   courseId: string
   courseName: string
@@ -149,17 +154,23 @@ export interface TodayItem {
   priority: Priority | null
   tone: 'attention' | 'review' | 'upcoming'
   toneLabel: string
+  planningAnnotation: TaskPlanningAnnotation
+  planningAnnotationLabel: string
   recommendationScore: number
   href: string | null
   actionLabel: string
   whyNow: string
   effortLabel: string | null
   completionStatus?: TaskStatus
+  completionOrigin?: TaskCompletionOrigin | null
+  canvasUrl?: string | null
 }
 
 export interface CalendarItem {
   id: string
   kind: 'task' | 'learning'
+  taskItemId?: string | null
+  moduleId?: string | null
   title: string
   courseName: string
   moduleTitle: string | null
@@ -168,9 +179,13 @@ export interface CalendarItem {
   dateTime: string | null
   status: 'urgent' | 'dueSoon' | 'upcoming' | 'completed'
   completionStatus: TaskStatus
+  completionOrigin?: TaskCompletionOrigin | null
+  planningAnnotation: TaskPlanningAnnotation
+  planningAnnotationLabel: string
   priority: Priority | null
   recommendationScore: number
   href: string | null
+  canvasUrl?: string | null
 }
 
 // What we ask OpenAI to return

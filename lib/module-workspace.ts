@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { normalizeTaskPlanningAnnotation } from '@/lib/task-planning'
 import { getLearnResourceKindLabel, getStudySourceNoun } from '@/lib/study-resource'
 import type {
   Deadline,
@@ -1276,6 +1277,7 @@ function adaptTaskRow(row: Record<string, unknown>): Task {
     completionOrigin: row.completion_origin === 'manual' || row.completion_origin === 'canvas'
       ? row.completion_origin
       : null,
+    planningAnnotation: normalizeTaskPlanningAnnotation(typeof row.planning_annotation === 'string' ? row.planning_annotation : null),
     created_at: typeof row.created_at === 'string' ? row.created_at : new Date().toISOString(),
   }
 }

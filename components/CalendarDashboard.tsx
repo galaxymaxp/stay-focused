@@ -3,6 +3,8 @@
 import type { CSSProperties, ReactNode } from 'react'
 import Link from 'next/link'
 import { useState } from 'react'
+import { TaskPlanningAnnotationControl, TaskPlanningAnnotationPill } from '@/components/TaskPlanningAnnotationControl'
+import { TaskStatusToggle } from '@/components/TaskStatusToggle'
 import type { CalendarItem } from '@/lib/types'
 
 const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -338,6 +340,9 @@ function SelectedItemCard({ item }: { item: CalendarItem }) {
               <span style={{ width: '6px', height: '6px', borderRadius: '999px', background: statusStyle.dot }} />
               {statusStyle.label}
             </span>
+            {item.planningAnnotation !== 'none' && (
+              <TaskPlanningAnnotationPill annotation={item.planningAnnotation} />
+            )}
           </div>
           <h3 style={{
             margin: 0,
@@ -390,6 +395,36 @@ function SelectedItemCard({ item }: { item: CalendarItem }) {
         <div>
           <span style={{ color: 'var(--text-muted)' }}>Status:</span> {item.completionStatus}
         </div>
+        {item.completionOrigin && (
+          <div>
+            <span style={{ color: 'var(--text-muted)' }}>Completion source:</span> {item.completionOrigin === 'canvas' ? 'Canvas' : 'Manual'}
+          </div>
+        )}
+      </div>
+
+      <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+        {item.taskItemId && item.moduleId && (
+          <>
+            <TaskStatusToggle
+              status={item.completionStatus}
+              moduleId={item.moduleId}
+              title={item.title}
+              taskItemId={item.taskItemId}
+            />
+            <TaskPlanningAnnotationControl
+              annotation={item.planningAnnotation}
+              status={item.completionStatus}
+              moduleId={item.moduleId}
+              title={item.title}
+              taskItemId={item.taskItemId}
+            />
+          </>
+        )}
+        {item.canvasUrl && (
+          <a href={item.canvasUrl} target="_blank" rel="noreferrer" className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+            Open in Canvas
+          </a>
+        )}
       </div>
     </article>
   )
