@@ -431,20 +431,6 @@ async function findExistingSyncedModule(
 async function ensureCourseRecord(course: CanvasCourse): Promise<ExistingCourseMatch> {
   if (!supabase) throw new Error('Supabase is not configured yet.')
 
-  const { data: existingCourse, error: existingCourseError } = await supabase
-    .from('courses')
-    .select('id')
-    .eq('code', course.course_code)
-    .eq('name', course.name)
-    .limit(1)
-    .maybeSingle()
-
-  if (existingCourseError) throw createSupabaseStepError('check existing synced course', existingCourseError, {
-    courseCode: course.course_code,
-    courseName: course.name,
-  })
-  if (existingCourse) return existingCourse as ExistingCourseMatch
-
   const { data: insertedCourse, error: insertCourseError } = await supabase
     .from('courses')
     .insert({
@@ -458,12 +444,34 @@ async function ensureCourseRecord(course: CanvasCourse): Promise<ExistingCourseM
     .select('id')
     .single()
 
+  if (insertedCourse) return insertedCourse as ExistingCourseMatch
+
+  if (insertCourseError?.code === '23505') {
+    const { data: existingCourse, error: existingCourseError } = await supabase
+      .from('courses')
+      .select('id')
+      .eq('code', course.course_code)
+      .eq('name', course.name)
+      .limit(1)
+      .maybeSingle()
+
+    if (existingCourse) return existingCourse as ExistingCourseMatch
+
+    if (existingCourseError) {
+      throw createSupabaseStepError('resolve existing synced course after conflict', existingCourseError, {
+        courseCode: course.course_code,
+        courseName: course.name,
+      })
+    }
+  }
+
   if (insertCourseError || !insertedCourse) {
     throw createSupabaseStepError('insert course', insertCourseError, {
       courseCode: course.course_code,
       courseName: course.name,
     })
   }
+
   return insertedCourse as ExistingCourseMatch
 }
 
