@@ -2,8 +2,13 @@
 
 The app expects newer synced-resource tables and columns to exist in the connected Supabase project.
 
+The repo now includes a baseline core-schema migration for brand-new projects:
+
+- `supabase/migrations/202604040800_create_workspace_core_tables.sql`
+
 Important migration for attachment-backed Learn:
 
+- `supabase/migrations/202604040800_create_workspace_core_tables.sql`
 - `supabase/migrations/20260405_add_module_resources.sql`
 - `supabase/migrations/202604050900_add_learn_visibility_and_task_canvas_links.sql`
 - `supabase/migrations/20260406_add_module_resource_study_state.sql`
@@ -13,6 +18,7 @@ Important migration for attachment-backed Learn:
 
 That migration creates:
 
+- the baseline `courses`, `modules`, `learning_items`, `task_items`, `tasks`, and `deadlines` tables
 - `public.module_resources`
 - indexes used by resource sync and Learn drill-down
 - `public.module_resource_study_state`
@@ -54,5 +60,17 @@ Current app features that depend on `20260409_add_task_canvas_completion_metadat
 - assignment-like module work can sync into `completed` when Canvas already shows it as submitted, graded, or otherwise cleared
 - module Learn surfaces can show clearer "done in Canvas" state without making finished work compete with unfinished work
 - task rows keep a stored Canvas assignment id for safer future refresh/backfill work
+
+## Fresh Project Reset
+
+If you want a clean Supabase project instead of repairing a drifted one:
+
+1. Create a new project with the Supabase CLI.
+2. Link this repo to the new project.
+3. Run `npx supabase db push` from the repo root.
+4. Pull the new project's API keys with `npx supabase projects api-keys --project-ref <ref>`.
+5. Update `.env.local` so `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` point to the fresh project.
+
+With the baseline migration in place, a brand-new project can now be recreated from the repo migrations alone.
 
 The module delete flow is defensive if `module_resources` is missing, but the proper fix is still to apply the migration to the active Supabase environment.
