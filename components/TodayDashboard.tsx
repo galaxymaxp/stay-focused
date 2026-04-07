@@ -6,6 +6,7 @@ import { TaskPlanningAnnotationControl, TaskPlanningAnnotationPill } from '@/com
 import { TaskStatusToggle } from '@/components/TaskStatusToggle'
 import { ModuleBulletin } from '@/components/ModuleBulletin'
 import { AnnouncementsBand } from '@/components/AnnouncementsBand'
+import { DoNowButton } from '@/components/DoNowButton'
 import type { TodayItem, Module, Course } from '@/lib/types'
 import type { ParsedAnnouncement } from '@/lib/announcements'
 
@@ -150,6 +151,16 @@ function FocusHeroCard({ item }: { item: TodayItem }) {
             />
           </>
         )}
+        <DoNowButton context={{
+          taskTitle: item.title,
+          taskDetails: item.supportingText,
+          deadline: item.dateTime,
+          priority: item.priority,
+          courseName: item.courseName,
+          moduleTitle: item.moduleTitle,
+          canvasUrl: item.canvasUrl,
+          learnHref: item.kind === 'module' ? item.href : (item.moduleId ? `/modules/${item.moduleId}/learn` : null),
+        }} />
         <ItemActionButton item={item} primary />
         {item.href && (
           <Link href={item.href} className="ui-button ui-button-secondary" style={secondaryButtonStyle}>

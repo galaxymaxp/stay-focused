@@ -171,6 +171,6 @@ Canvas Page extraction is picked up during normal course sync. For courses synce
 - **No dedicated announcements table** — announcements are embedded in `raw_content` and parsed at render time from the most recent modules. A future migration should add an `announcements` table for persistent, queryable storage.
 - **No course classification** — courses cannot yet be marked as academic, non-academic, or announcements-only. All synced courses are treated identically.
 - **Quiz is a dedicated route** — `/modules/:id/quiz` is a full Quiz tab in the module lens shell. Questions are grounded in extracted study note bullets (`lib/study-note-quiz.ts`). The embedded per-note quiz has been removed from the Learn accordion.
-- **Do Now is not implemented** — the product direction calls for a focused activity-start prompt helper. Currently only the `nextBestMove` hero card on Today approximates this.
+- **Do Now is implemented** as a modal panel triggered from the Home hero card and each task card in the module Do view. It answers four questions (what first, what to produce, where to start, smallest step) derived from task details, `study_prompts[]`, and `concepts[]` — no AI calls at runtime.
 - **Review is a redirect** — `/modules/:id/review` redirects to the study-notes anchor in `/modules/:id/learn`. A distinct review experience is planned.
 - **No re-sync** — syncing a course that has already been synced throws an error. Incremental re-sync is not yet implemented.

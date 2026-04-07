@@ -4,6 +4,7 @@ import { ModuleLensShell } from '@/components/ModuleLensShell'
 import { TaskStatusToggle } from '@/components/TaskStatusToggle'
 import { buildLearnExperience, extractCourseName, findRecommendedStepTargets, getModuleWorkspace, getResourceCanvasHref, matchTaskToResource } from '@/lib/module-workspace'
 import { sortTasksByRecommendation } from '@/lib/task-ranking'
+import { DoNowButton } from '@/components/DoNowButton'
 
 interface Props {
   params: Promise<{ id: string }>
@@ -112,6 +113,19 @@ export default async function DoPage({ params }: Props) {
                   </div>
 
                   <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+                    <DoNowButton context={{
+                      taskTitle: task.title,
+                      taskDetails: task.details,
+                      deadline: task.deadline,
+                      priority: task.priority,
+                      courseName,
+                      moduleTitle: module.title,
+                      studyPrompts: module.study_prompts,
+                      concepts: module.concepts,
+                      moduleSummary: module.summary,
+                      canvasUrl: task.canvasUrl,
+                      learnHref: `/modules/${module.id}/learn`,
+                    }} />
                     <Link href={`/modules/${module.id}/learn`} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
                       Open Learn
                     </Link>
