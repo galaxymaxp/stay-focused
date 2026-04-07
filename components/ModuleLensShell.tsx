@@ -10,7 +10,7 @@ export function ModuleLensShell({
   summary,
   children,
 }: {
-  currentLens: 'learn' | 'do'
+  currentLens: 'learn' | 'do' | 'quiz'
   moduleId: string
   courseId?: string
   courseName: string
@@ -20,10 +20,14 @@ export function ModuleLensShell({
 }) {
   const lensLabel = currentLens === 'learn'
     ? 'Learn'
-    : 'Do'
+    : currentLens === 'quiz'
+      ? 'Quiz'
+      : 'Do'
   const lensCopy = currentLens === 'learn'
-    ? 'Learning material, extracted terms, and quick quiz all live together here so the module makes sense in one pass.'
-    : 'A clearer action lens for seeing exactly what still needs to get done.'
+    ? 'Learning material, extracted terms, and source files all together so the module makes sense in one pass.'
+    : currentLens === 'quiz'
+      ? 'Grounded questions drawn from extracted study note bullets. Pick a note, choose a question count, and test what you know.'
+      : 'A clearer action lens for seeing exactly what still needs to get done.'
 
   return (
     <main className="page-shell page-stack" style={{ gap: '1.4rem' }}>
@@ -57,6 +61,7 @@ export function ModuleLensShell({
         <div className="ui-tab-group" style={{ marginTop: '1.05rem' }}>
           <LensTab href={`/modules/${moduleId}/learn`} label="Learn" active={currentLens === 'learn'} />
           <LensTab href={`/modules/${moduleId}/do`} label="Do" active={currentLens === 'do'} />
+          <LensTab href={`/modules/${moduleId}/quiz`} label="Quiz" active={currentLens === 'quiz'} />
         </div>
       </section>
 

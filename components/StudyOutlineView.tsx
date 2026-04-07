@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, type CSSProperties } from 'react'
-import { ModuleQuickQuiz } from '@/components/ModuleQuickQuiz'
 import {
   buildStudyNotePreview,
   buildStudyNoteQuestionCountOptions,
@@ -106,19 +105,8 @@ function StudyNoteCard({
       </button>
 
       {expanded && (
-        <div style={{ display: 'grid', gap: '0.75rem' }}>
-          <div style={{ paddingTop: '0.15rem' }}>
-            <OutlineItemList items={section.items} path={`${index}`} depth={0} />
-          </div>
-
-          <ModuleQuickQuiz
-            quizItems={quizItems}
-            questionCountOptions={questionCountOptions}
-            embedded
-            title={`Quiz "${section.title}"`}
-            description="Pick a question count, then quiz only this note's extracted bullets."
-            emptyMessage="This note does not have enough grounded bullet detail for a reliable quiz yet. Expand another note or keep reviewing the outline first."
-          />
+        <div style={{ paddingTop: '0.15rem' }}>
+          <OutlineItemList items={section.items} path={`${index}`} depth={0} />
         </div>
       )}
     </section>

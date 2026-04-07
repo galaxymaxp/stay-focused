@@ -35,6 +35,7 @@ A calendar-first student workflow app that turns Canvas course and module conten
 | `/` | Today — command center: freshest module bulletin, best next step, urgency sections, announcements |
 | `/learn` | Learn overview — all modules by course |
 | `/modules/:id/learn` | Module Learn workspace — study notes, term bank, source files |
+| `/modules/:id/quiz` | Module Quiz — grounded questions from extracted study note bullets |
 | `/modules/:id/do` | Module task list with urgency scoring |
 | `/modules/:id/learn/resources/:resourceId` | Individual resource reader |
 | `/courses` | Course overview — all synced courses with module snapshots |
@@ -169,7 +170,7 @@ Canvas Page extraction is picked up during normal course sync. For courses synce
 
 - **No dedicated announcements table** — announcements are embedded in `raw_content` and parsed at render time from the most recent modules. A future migration should add an `announcements` table for persistent, queryable storage.
 - **No course classification** — courses cannot yet be marked as academic, non-academic, or announcements-only. All synced courses are treated identically.
-- **Quiz has no dedicated route** — `ModuleQuickQuiz` is embedded inside the study notes accordion in the module Learn workspace. A dedicated `/modules/:id/quiz` route is the planned next step.
+- **Quiz is a dedicated route** — `/modules/:id/quiz` is a full Quiz tab in the module lens shell. Questions are grounded in extracted study note bullets (`lib/study-note-quiz.ts`). The embedded per-note quiz has been removed from the Learn accordion.
 - **Do Now is not implemented** — the product direction calls for a focused activity-start prompt helper. Currently only the `nextBestMove` hero card on Today approximates this.
 - **Review is a redirect** — `/modules/:id/review` redirects to the study-notes anchor in `/modules/:id/learn`. A distinct review experience is planned.
 - **No re-sync** — syncing a course that has already been synced throws an error. Incremental re-sync is not yet implemented.
