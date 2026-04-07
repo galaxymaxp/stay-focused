@@ -4,7 +4,10 @@ import type { CSSProperties, ReactNode } from 'react'
 import Link from 'next/link'
 import { TaskPlanningAnnotationControl, TaskPlanningAnnotationPill } from '@/components/TaskPlanningAnnotationControl'
 import { TaskStatusToggle } from '@/components/TaskStatusToggle'
-import type { TodayItem } from '@/lib/types'
+import { ModuleBulletin } from '@/components/ModuleBulletin'
+import { AnnouncementsBand } from '@/components/AnnouncementsBand'
+import type { TodayItem, Module, Course } from '@/lib/types'
+import type { ParsedAnnouncement } from '@/lib/announcements'
 
 export function TodayDashboard({
   nextBestMove,
@@ -12,12 +15,18 @@ export function TodayDashboard({
   needsUnderstanding,
   comingUp,
   undatedTaskCount,
+  freshestModule,
+  freshestModuleCourse,
+  recentAnnouncements,
 }: {
   nextBestMove: TodayItem | null
   needsAction: TodayItem[]
   needsUnderstanding: TodayItem[]
   comingUp: TodayItem[]
   undatedTaskCount: number
+  freshestModule: Module | null
+  freshestModuleCourse: Course | null
+  recentAnnouncements: ParsedAnnouncement[]
 }) {
   return (
     <section className="page-stack" style={{ gap: '1.25rem' }}>
@@ -37,6 +46,10 @@ export function TodayDashboard({
         )}
       </header>
 
+      {freshestModule && (
+        <ModuleBulletin module={freshestModule} course={freshestModuleCourse} />
+      )}
+
       {nextBestMove ? (
         <FocusHeroCard item={nextBestMove} />
       ) : (
@@ -48,6 +61,8 @@ export function TodayDashboard({
           </p>
         </section>
       )}
+
+      <AnnouncementsBand announcements={recentAnnouncements} />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1rem', alignItems: 'start' }}>
         <SectionBlock

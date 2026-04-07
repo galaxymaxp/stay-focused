@@ -1,5 +1,7 @@
 import { loadWorkspaceSource } from '@/lib/workspace-source'
 import { deriveTaskPlanningAnnotation, labelForTaskPlanningAnnotation } from '@/lib/task-planning'
+import { getRecentAnnouncements } from '@/lib/announcements'
+import type { ParsedAnnouncement } from '@/lib/announcements'
 import type { CalendarItem, Course, LearningItem, Module, TaskItem, TodayItem } from '@/lib/types'
 
 export interface ClarityWorkspace {
@@ -10,6 +12,12 @@ export interface ClarityWorkspace {
   taskItems: TaskItem[]
   todayItems: TodayItem[]
   calendarItems: CalendarItem[]
+  /** The most recently released/synced processed module, for the home bulletin */
+  freshestModule: Module | null
+  /** Course record for freshestModule, null if module has no course */
+  freshestModuleCourse: Course | null
+  /** Aggregated announcements from the most recent modules' raw_content */
+  recentAnnouncements: ParsedAnnouncement[]
   today: {
     nextBestMove: TodayItem | null
     needsAction: TodayItem[]
@@ -35,6 +43,20 @@ export async function getClarityWorkspace(): Promise<ClarityWorkspace> {
   const nextBestMove = explicitBestNext ?? todayItems[0] ?? null
   const heroId = nextBestMove?.id ?? null
 
+  // Freshest module: the most recently released processed module (for the home bulletin)
+  const freshestModule = source.modules
+    .filter((m) => m.showInLearn !== false && m.status === 'processed')
+    .sort((a, b) => {
+      const aDate = a.released_at ?? a.created_at
+      const bDate = b.released_at ?? b.created_at
+      return new Date(bDate).getTime() - new Date(aDate).getTime()
+    })[0] ?? null
+  const freshestModuleCourse = freshestModule
+    ? courseMap.get(freshestModule.courseId ?? '') ?? null
+    : null
+
+  const recentAnnouncements = getRecentAnnouncements(source.modules, courseMap)
+
   return {
     hasSyncedData,
     ...source,
@@ -43,6 +65,9 @@ export async function getClarityWorkspace(): Promise<ClarityWorkspace> {
       .filter((task) => task.deadline)
       .map((task) => buildCalendarItem(task))
       .sort((a, b) => a.dateKey.localeCompare(b.dateKey) || compareCalendarItems(a, b)),
+    freshestModule,
+    freshestModuleCourse,
+    recentAnnouncements,
     today: {
       nextBestMove,
       needsAction: todayItems.filter((item) => item.id !== heroId && item.planningAnnotation === 'needs_attention').slice(0, 4),

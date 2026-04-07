@@ -136,6 +136,8 @@
 
 html {
   min-height: 100%;
+  /* Offset sticky topbar (~3.5rem height + 1rem top) so anchor links land below it */
+  scroll-padding-top: 5rem;
 }
 
 body {
@@ -429,7 +431,8 @@ select:focus-visible {
 
 .glass-panel {
   position: relative;
-  overflow: hidden;
+  /* overflow: hidden removed — ::before sheen uses border-radius:inherit so it
+     self-clips at its own corners; removing hidden lets dropdowns/popovers escape */
   isolation: isolate;
   background: var(--glass-panel-bg, var(--glass-surface));
   border: 1px solid var(--glass-panel-border, var(--glass-border));

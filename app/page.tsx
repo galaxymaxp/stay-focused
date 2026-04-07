@@ -21,6 +21,9 @@ export default async function Dashboard() {
         needsUnderstanding={workspace.today.needsUnderstanding}
         comingUp={workspace.today.comingUp}
         undatedTaskCount={workspace.today.undatedTaskCount}
+        freshestModule={workspace.freshestModule}
+        freshestModuleCourse={workspace.freshestModuleCourse}
+        recentAnnouncements={workspace.recentAnnouncements}
       />
     </main>
   )
