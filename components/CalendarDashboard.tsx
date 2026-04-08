@@ -1,7 +1,8 @@
 'use client'
 
-import type { CSSProperties, ReactNode } from 'react'
+import type { CSSProperties, FocusEvent, KeyboardEvent, MouseEvent, ReactNode } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { TaskPlanningAnnotationControl, TaskPlanningAnnotationPill } from '@/components/TaskPlanningAnnotationControl'
 import { TaskStatusToggle } from '@/components/TaskStatusToggle'
@@ -303,21 +304,21 @@ function DayMarkerStack({ items }: { items: CalendarItem[] }) {
 }
 
 function SelectedItemCard({ item }: { item: CalendarItem }) {
+  const router = useRouter()
   const isCompleted = item.completionStatus === 'completed'
   const statusStyle = STATUS_STYLES[item.status]
 
   return (
-    <article className="glass-panel" style={{
-      '--glass-panel-bg': 'var(--glass-surface-strong)',
-      '--glass-panel-border': 'var(--glass-border)',
-      '--glass-panel-shadow': item.status === 'urgent' || item.status === 'dueSoon' ? 'var(--glass-shadow-strong)' : 'var(--glass-shadow)',
-      '--glass-panel-glow': 'none',
-      borderRadius: 'var(--radius-panel)',
-      padding: '1rem',
-      display: 'flex',
-      flexDirection: 'column',
-      gap: '0.75rem',
-    } as CSSProperties}>
+    <article
+      className={`glass-panel${item.href ? ' ui-interactive-card' : ''}`}
+      style={selectedItemCardStyle(item)}
+      {...getCardLinkProps({
+        href: item.href,
+        label: item.title,
+        router,
+      })}
+    >
+    
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
         <div style={{ minWidth: 0 }}>
           <div style={{ display: 'flex', gap: '0.45rem', alignItems: 'center', flexWrap: 'wrap', marginBottom: '0.25rem' }}>
@@ -433,6 +434,62 @@ function SelectedItemCard({ item }: { item: CalendarItem }) {
       </div>
     </article>
   )
+}
+
+function getCardLinkProps({
+  href,
+  label,
+  router,
+}: {
+  href?: string | null
+  label: string
+  router: ReturnType<typeof useRouter>
+}) {
+  if (!href) return {}
+
+  return {
+    role: 'link' as const,
+    tabIndex: 0,
+    'aria-label': `Open ${label}`,
+    onClick: (event: MouseEvent<HTMLElement>) => {
+      if (shouldIgnoreCardNavigation(event.target, event.currentTarget)) return
+      router.push(href)
+    },
+    onKeyDown: (event: KeyboardEvent<HTMLElement>) => {
+      if (shouldIgnoreCardNavigation(event.target, event.currentTarget)) return
+      if (event.key !== 'Enter' && event.key !== ' ') return
+      event.preventDefault()
+      router.push(href)
+    },
+    onFocus: (event: FocusEvent<HTMLElement>) => {
+      event.currentTarget.style.boxShadow = '0 0 0 2px color-mix(in srgb, var(--accent-border) 78%, transparent), var(--glass-shadow-strong)'
+    },
+    onBlur: (event: FocusEvent<HTMLElement>) => {
+      event.currentTarget.style.boxShadow = ''
+    },
+  }
+}
+
+function shouldIgnoreCardNavigation(target: EventTarget | null, currentTarget: HTMLElement) {
+  if (!(target instanceof Element)) return false
+  const interactiveAncestor = target.closest('a, button, input, select, textarea, summary, [role="button"], [role="link"]')
+  return Boolean(interactiveAncestor && interactiveAncestor !== currentTarget)
+}
+
+function selectedItemCardStyle(item: CalendarItem): CSSProperties {
+  return {
+    '--glass-panel-bg': 'var(--glass-surface-strong)',
+    '--glass-panel-border': 'var(--glass-border)',
+    '--glass-panel-shadow': item.status === 'urgent' || item.status === 'dueSoon' ? 'var(--glass-shadow-strong)' : 'var(--glass-shadow)',
+    '--glass-panel-glow': 'none',
+    borderRadius: 'var(--radius-panel)',
+    padding: '1rem',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.75rem',
+    cursor: item.href ? 'pointer' : 'default',
+    transition: 'box-shadow 140ms ease, transform 140ms ease',
+  } as CSSProperties
 }
 
 function MonthButton({ children, onClick }: { children: ReactNode; onClick: () => void }) {

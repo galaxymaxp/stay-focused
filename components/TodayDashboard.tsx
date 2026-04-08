@@ -1,7 +1,8 @@
 'use client'
 
-import type { CSSProperties, ReactNode } from 'react'
+import type { CSSProperties, FocusEvent, KeyboardEvent, MouseEvent, ReactNode } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { TaskPlanningAnnotationPill } from '@/components/TaskPlanningAnnotationControl'
 import { TaskStatusToggle } from '@/components/TaskStatusToggle'
 import { ModuleBulletin } from '@/components/ModuleBulletin'
@@ -102,6 +103,8 @@ export function TodayDashboard({
 }
 
 function FocusHeroCard({ item }: { item: TodayItem }) {
+  const router = useRouter()
+  const cardHref = resolveTodayCardHref(item)
   const manualCopy = item.kind === 'task'
     ? buildManualCopyBundle({
         taskTitle: item.title,
@@ -113,17 +116,19 @@ function FocusHeroCard({ item }: { item: TodayItem }) {
     : null
 
   return (
-    <section className="glass-panel glass-accent motion-card" style={heroCardStyle}>
+    <section
+      className={`glass-panel glass-accent motion-card${cardHref ? ' ui-interactive-card' : ''}`}
+      style={heroCardStyle(cardHref)}
+      {...getCardLinkProps({
+        href: cardHref,
+        label: item.title,
+        router,
+      })}
+    >
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
         <div style={{ minWidth: 0, flex: '1 1 420px' }}>
           <p className="ui-kicker" style={{ color: 'var(--accent-foreground)' }}>Best next step</p>
-          {item.href ? (
-            <Link href={item.href} style={{ textDecoration: 'none' }}>
-              <h2 style={heroTitleStyle}>{item.title}</h2>
-            </Link>
-          ) : (
-            <h2 style={heroTitleStyle}>{item.title}</h2>
-          )}
+          <h2 style={heroTitleStyle}>{item.title}</h2>
           <p style={heroBodyStyle}>{item.whyNow}</p>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'flex-end', alignItems: 'flex-start' }}>
@@ -225,6 +230,8 @@ function SectionBlock({
 }
 
 function TodayItemCard({ item }: { item: TodayItem }) {
+  const router = useRouter()
+  const cardHref = resolveTodayCardHref(item)
   const tone = getToneStyle(item.tone)
   const manualCopy = item.kind === 'task'
     ? buildManualCopyBundle({
@@ -237,20 +244,22 @@ function TodayItemCard({ item }: { item: TodayItem }) {
     : null
 
   return (
-    <article className="glass-panel" style={itemCardStyle(item.tone)}>
+    <article
+      className={`glass-panel${cardHref ? ' ui-interactive-card' : ''}`}
+      style={itemCardStyle(item.tone, Boolean(cardHref))}
+      {...getCardLinkProps({
+        href: cardHref,
+        label: item.title,
+        router,
+      })}
+    >
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.85rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
         <div style={{ minWidth: 0, flex: '1 1 240px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap', marginBottom: '0.35rem' }}>
             <TonePill item={item} />
             <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{item.courseName}</span>
           </div>
-          {item.href ? (
-            <Link href={item.href} style={{ textDecoration: 'none' }}>
-              <h3 style={itemTitleStyle}>{item.title}</h3>
-            </Link>
-          ) : (
-            <h3 style={itemTitleStyle}>{item.title}</h3>
-          )}
+          <h3 style={itemTitleStyle}>{item.title}</h3>
         </div>
         <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', justifyContent: 'flex-end', alignItems: 'flex-start' }}>
           {item.kind === 'task' && item.taskItemId && (
@@ -312,6 +321,54 @@ function ItemActionButton({ item, primary = false }: { item: TodayItem; primary?
       {item.actionLabel}
     </Link>
   )
+}
+
+function getCardLinkProps({
+  href,
+  label,
+  router,
+}: {
+  href?: string | null
+  label: string
+  router: ReturnType<typeof useRouter>
+}) {
+  if (!href) return {}
+
+  return {
+    role: 'link' as const,
+    tabIndex: 0,
+    'aria-label': `Open ${label}`,
+    onClick: (event: MouseEvent<HTMLElement>) => {
+      if (shouldIgnoreCardNavigation(event.target, event.currentTarget)) return
+      router.push(href)
+    },
+    onKeyDown: (event: KeyboardEvent<HTMLElement>) => {
+      if (shouldIgnoreCardNavigation(event.target, event.currentTarget)) return
+      if (event.key !== 'Enter' && event.key !== ' ') return
+      event.preventDefault()
+      router.push(href)
+    },
+    onFocus: (event: FocusEvent<HTMLElement>) => {
+      event.currentTarget.style.boxShadow = '0 0 0 2px color-mix(in srgb, var(--accent-border) 78%, transparent), var(--glass-shadow-strong)'
+    },
+    onBlur: (event: FocusEvent<HTMLElement>) => {
+      event.currentTarget.style.boxShadow = ''
+    },
+  }
+}
+
+function shouldIgnoreCardNavigation(target: EventTarget | null, currentTarget: HTMLElement) {
+  if (!(target instanceof Element)) return false
+  const interactiveAncestor = target.closest('a, button, input, select, textarea, summary, [role="button"], [role="link"]')
+  return Boolean(interactiveAncestor && interactiveAncestor !== currentTarget)
+}
+
+function resolveTodayCardHref(item: TodayItem) {
+  if (item.kind === 'task') {
+    return item.href
+  }
+
+  return item.learnHref ?? item.href
 }
 
 function TonePill({ item, emphasis = false }: { item: TodayItem; emphasis?: boolean }) {
@@ -449,13 +506,17 @@ const heroBodyStyle: CSSProperties = {
   color: 'var(--text-secondary)',
 }
 
-const heroCardStyle: CSSProperties = {
-  borderRadius: 'var(--radius-page)',
-  padding: '1.2rem',
-  display: 'flex',
-  flexDirection: 'column',
-  gap: '0.9rem',
-  boxShadow: 'var(--shadow-medium), var(--highlight-sheen)',
+function heroCardStyle(isClickable: string | null | undefined): CSSProperties {
+  return {
+    borderRadius: 'var(--radius-page)',
+    padding: '1.2rem',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.9rem',
+    boxShadow: 'var(--shadow-medium), var(--highlight-sheen)',
+    cursor: isClickable ? 'pointer' : 'default',
+    transition: 'box-shadow 140ms ease, transform 140ms ease',
+  }
 }
 
 const supportCardStyle: CSSProperties = {
@@ -489,7 +550,7 @@ const metaCardStyle: CSSProperties = {
   padding: '0.85rem 0.9rem',
 }
 
-function itemCardStyle(tone: TodayItem['tone']): CSSProperties {
+function itemCardStyle(tone: TodayItem['tone'], isClickable: boolean): CSSProperties {
   const toneStyle = getToneStyle(tone)
 
   return {
@@ -505,6 +566,8 @@ function itemCardStyle(tone: TodayItem['tone']): CSSProperties {
     display: 'flex',
     flexDirection: 'column',
     gap: '0.72rem',
+    cursor: isClickable ? 'pointer' : 'default',
+    transition: 'box-shadow 140ms ease, transform 140ms ease',
   }
 }
 
