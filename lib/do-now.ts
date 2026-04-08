@@ -79,7 +79,7 @@ export function buildDoNowRequestPayload(ctx: DoNowContext): DoNowApiRequest {
   }
 }
 
-export function buildDoNowResourceSnippet(text: string | null | undefined, maxLength = 280) {
+export function buildDoNowResourceSnippet(text: string | null | undefined, maxLength = 600) {
   return compactOptionalText(text, maxLength)
 }
 
@@ -94,11 +94,14 @@ export function isDoNowPrompt(value: unknown): value is DoNowPrompt {
 }
 
 function buildWhatFirst(ctx: DoNowContext): string {
+  const snippetSentence = firstSentenceOf(ctx.resourceSnippet)
+  if (snippetSentence && snippetSentence.length > 30) return snippetSentence
+
+  const detailSentence = firstSentenceOf(ctx.taskDetails)
+  if (detailSentence) return detailSentence
+
   const firstPrompt = ctx.studyPrompts?.find((prompt) => prompt.trim().length > 0)
   if (firstPrompt) return trimToSentence(firstPrompt, 220)
-
-  const firstSentence = firstSentenceOf(ctx.taskDetails)
-  if (firstSentence) return firstSentence
 
   return `Open ${ctx.moduleTitle ?? ctx.taskTitle} and locate the material for this task.`
 }
@@ -136,12 +139,18 @@ function buildWhatToProduce(ctx: DoNowContext): string {
 }
 
 function buildWhereToStart(ctx: DoNowContext): string {
-  const secondPrompt = ctx.studyPrompts?.filter((prompt) => prompt.trim().length > 0)[1]
-  if (secondPrompt) return trimToSentence(secondPrompt, 220)
-
   if (ctx.canvasUrl) {
     return 'Open the assignment directly in Canvas, then read through the instructions before doing anything else.'
   }
+
+  const snippetSentence = secondSentenceOf(ctx.resourceSnippet) ?? firstSentenceOf(ctx.resourceSnippet)
+  if (snippetSentence && snippetSentence.length > 30) return trimToSentence(snippetSentence, 220)
+
+  const detailSentence = firstSentenceOf(ctx.taskDetails)
+  if (detailSentence && detailSentence.length > 40) return detailSentence
+
+  const secondPrompt = ctx.studyPrompts?.filter((prompt) => prompt.trim().length > 0)[1]
+  if (secondPrompt) return trimToSentence(secondPrompt, 220)
 
   if (ctx.learnHref) {
     const anchor = ctx.concepts?.[0]
@@ -150,18 +159,18 @@ function buildWhereToStart(ctx: DoNowContext): string {
     return `Open the module in Learn.${anchor}`
   }
 
-  const detail = firstSentenceOf(ctx.taskDetails)
-  if (detail && detail.length > 40) return detail
-
   return `Open ${ctx.moduleTitle ?? ctx.courseName} and find the part that covers "${ctx.taskTitle}".`
 }
 
 function buildSmallestStep(ctx: DoNowContext): string {
+  const snippetSecond = secondSentenceOf(ctx.resourceSnippet)
+  if (snippetSecond && snippetSecond.length > 30) return trimToSentence(snippetSecond, 220)
+
+  const detailSecond = secondSentenceOf(ctx.taskDetails)
+  if (detailSecond && detailSecond.length > 40) return detailSecond
+
   const thirdPrompt = ctx.studyPrompts?.filter((prompt) => prompt.trim().length > 0)[2]
   if (thirdPrompt) return trimToSentence(thirdPrompt, 220)
-
-  const secondSentence = secondSentenceOf(ctx.taskDetails)
-  if (secondSentence && secondSentence.length > 40) return secondSentence
 
   const concept = ctx.concepts?.[0]
   if (concept) {

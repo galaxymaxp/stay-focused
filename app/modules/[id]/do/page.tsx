@@ -108,10 +108,12 @@ export default async function DoPage({ params, searchParams }: Props) {
                     })
                 const canvasHref = task.canvasUrl ?? (matchedResource ? getResourceCanvasHref(matchedResource) : null)
                 const resourceSnippet = buildDoNowResourceSnippet(
-                  matchedResource?.extractedTextPreview
+                  matchedResource?.extractedText
+                    ?? matchedResource?.extractedTextPreview
                     ?? matchedResource?.linkedContext
                     ?? matchedResource?.whyItMatters
                     ?? null,
+                  600,
                 )
 
                 return (

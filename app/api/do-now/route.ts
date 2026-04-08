@@ -48,25 +48,40 @@ function getOpenAIConfig() {
 }
 
 function buildUserPrompt(input: DoNowApiRequest) {
-  return [
+  const lines = [
     'Help the student start this task right now without completing it for them.',
     'Keep every field concise, concrete, and cautious.',
     '',
     `Task title: ${input.taskTitle}`,
     `Task details: ${input.taskDetails ?? ''}`,
+  ]
+
+  if (input.resourceSnippet) {
+    lines.push(`Assignment body: ${input.resourceSnippet}`)
+  }
+
+  lines.push(
     `Course: ${input.courseName ?? ''}`,
     `Module: ${input.moduleTitle ?? ''}`,
     `Module summary: ${input.moduleSummary ?? ''}`,
     `Concepts: ${(input.concepts ?? []).join(', ')}`,
     `Study prompts: ${(input.studyPrompts ?? []).join(' | ')}`,
     `Deadline: ${input.deadline ?? ''}`,
-    `Resource snippet: ${input.resourceSnippet ?? ''}`,
     '',
     'Do not invent facts that are not supported by the input.',
     'Do not write the assignment for the student.',
+  )
+
+  if (input.resourceSnippet) {
+    lines.push('The assignment body above describes what the student must produce. Ground all four response fields in that content. Do not fall back to module concepts or study prompts when the assignment body is specific enough.')
+  }
+
+  lines.push(
     'If the context is thin, say that implicitly through cautious wording and still provide a practical next step.',
     'Return JSON only.',
-  ].join('\n')
+  )
+
+  return lines.join('\n')
 }
 
 function normalizeString(value: unknown, maxLength: number) {
@@ -108,7 +123,7 @@ function readRequestBody(body: unknown): DoNowApiRequest | null {
   const concepts = normalizeStringList(body.concepts, 6, 80)
   const studyPrompts = normalizeStringList(body.studyPrompts, 4, 160)
   const deadline = normalizeString(body.deadline, 80)
-  const resourceSnippet = normalizeString(body.resourceSnippet, 280)
+  const resourceSnippet = normalizeString(body.resourceSnippet, 600)
 
   return {
     taskTitle,
