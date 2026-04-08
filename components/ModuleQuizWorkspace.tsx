@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { ModuleQuickQuiz } from '@/components/ModuleQuickQuiz'
 import type { StudyNoteQuizItem } from '@/lib/study-note-quiz'
 
@@ -19,8 +20,10 @@ export interface QuizSection {
  */
 export function ModuleQuizWorkspace({
   quizSections,
+  inspectHref,
 }: {
   quizSections: QuizSection[]
+  inspectHref?: string
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(
     quizSections[0]?.id ?? null,
@@ -34,8 +37,15 @@ export function ModuleQuizWorkspace({
         <p className="ui-kicker">Quiz</p>
         <h2 className="ui-section-title">No quiz-ready notes yet</h2>
         <div className="ui-empty" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem 1.1rem', fontSize: '14px', lineHeight: 1.68 }}>
-          Quiz questions are generated from extracted study note bullets. This module does not have enough grounded study notes to quiz from yet. Open Learn and check whether the study sources have been extracted, or sync the course again if extraction has not run.
+          Quiz questions are generated from extracted study note bullets. This module does not have enough grounded study notes to quiz from yet. Open Learn to inspect the study sources, or use the resource inspection view to see which items are partial, unsupported, or failed.
         </div>
+        {inspectHref && (
+          <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+            <Link href={inspectHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
+              Inspect resources
+            </Link>
+          </div>
+        )}
       </section>
     )
   }

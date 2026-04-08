@@ -4,9 +4,10 @@ import type { CSSProperties, ReactNode } from 'react'
 import { ModuleLensShell } from '@/components/ModuleLensShell'
 import { ModuleTermBank } from '@/components/ModuleTermBank'
 import { StudyResourceAccordionList } from '@/components/StudyResourceAccordionList'
+import { getModuleResourceCapabilityInfo } from '@/lib/module-resource-capability'
 import { TaskStatusToggle } from '@/components/TaskStatusToggle'
 import { buildModuleLearnOverview, type ModuleStudyMaterial } from '@/lib/module-learn-overview'
-import { buildModuleDoHref, getSearchParamValue, getSupportElementId, getTaskElementId } from '@/lib/stay-focused-links'
+import { buildModuleDoHref, buildModuleInspectHref, getSearchParamValue, getSupportElementId, getTaskElementId } from '@/lib/stay-focused-links'
 import { countQuizReadyStudyNotes } from '@/lib/study-note-quiz'
 import { buildModuleTermBank } from '@/lib/module-term-bank'
 import {
@@ -182,6 +183,9 @@ export default async function LearnPage({ params, searchParams }: Props) {
                     <ActionButton href={overview.resumeTarget.href} label={overview.resumeTarget.actionLabel} external={overview.resumeTarget.external} tone="secondary" />
                     <Link href={`/modules/${module.id}/learn#source-support`} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
                       View extracted source
+                    </Link>
+                    <Link href={buildModuleInspectHref(module.id)} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+                      Inspect resources
                     </Link>
                   </div>
                 </div>
@@ -367,6 +371,9 @@ export default async function LearnPage({ params, searchParams }: Props) {
                 <Link href={`/modules/${module.id}/learn#source-support`} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
                   View extracted source
                 </Link>
+                <Link href={buildModuleInspectHref(module.id)} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+                  Inspect resources
+                </Link>
               </div>
             </section>
           </aside>
@@ -445,6 +452,8 @@ function SourceSupportRow({
   highlighted?: boolean
 }) {
   const canvasHref = getResourceCanvasHref(material.resource)
+  const capability = getModuleResourceCapabilityInfo(material.resource)
+  const note = capability.capability === 'supported' ? material.note : capability.reason
 
   return (
     <article
@@ -466,6 +475,7 @@ function SourceSupportRow({
           label={material.readinessLabel}
           tone={material.readiness === 'ready' ? 'accent' : material.readiness === 'limited' ? 'warning' : 'muted'}
         />
+        <StateBadge label={capability.capabilityLabel} tone={capability.capabilityTone} />
       </div>
 
       <div>
@@ -473,13 +483,16 @@ function SourceSupportRow({
           {material.resource.title}
         </p>
         <p style={{ margin: '0.32rem 0 0', fontSize: '13px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
-          {material.note}
+          {note}
         </p>
       </div>
 
       <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
         <Link href={getLearnResourceHref(moduleId, material.resource.id)} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
           Open reader
+        </Link>
+        <Link href={buildModuleInspectHref(moduleId, { resourceId: material.resource.id })} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+          Inspect
         </Link>
         {canvasHref && (
           <a href={canvasHref} target="_blank" rel="noreferrer" className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
@@ -501,6 +514,7 @@ function SupportContextRow({
   highlighted?: boolean
 }) {
   const canvasHref = getResourceCanvasHref(item)
+  const capability = getModuleResourceCapabilityInfo(item)
 
   return (
     <article
@@ -516,12 +530,16 @@ function SupportContextRow({
           : undefined,
       }}
     >
+      <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+        <StateBadge label={capability.capabilityLabel} tone={capability.capabilityTone} />
+      </div>
+
       <div>
         <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.5, color: 'var(--text-primary)', fontWeight: 650 }}>
           {item.title}
         </p>
         <p style={{ margin: '0.32rem 0 0', fontSize: '13px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
-          {item.linkedContext ?? item.whyItMatters ?? item.moduleName ?? 'Supporting context'}
+          {item.linkedContext ?? item.whyItMatters ?? item.capabilityReason ?? item.moduleName ?? 'Supporting context'}
         </p>
       </div>
 
@@ -535,6 +553,9 @@ function SupportContextRow({
             Open detail
           </Link>
         )}
+        <Link href={buildModuleInspectHref(moduleId, { resourceId: item.id })} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+          Inspect
+        </Link>
         {canvasHref && (
           <Link href={getLearnResourceHref(moduleId, item.id)} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
             Open detail
@@ -615,17 +636,21 @@ function StateBadge({
   tone,
 }: {
   label: string
-  tone: 'accent' | 'warning' | 'muted'
+  tone: 'accent' | 'warning' | 'muted' | 'danger'
 }) {
   const background = tone === 'accent'
     ? 'color-mix(in srgb, var(--surface-selected) 84%, var(--accent) 16%)'
     : tone === 'warning'
       ? 'color-mix(in srgb, var(--amber-light) 88%, transparent)'
+      : tone === 'danger'
+        ? 'color-mix(in srgb, var(--red-light) 88%, transparent)'
       : 'color-mix(in srgb, var(--surface-soft) 92%, transparent)'
   const border = tone === 'accent'
     ? 'color-mix(in srgb, var(--accent) 30%, var(--border-subtle) 70%)'
     : tone === 'warning'
       ? 'color-mix(in srgb, var(--amber) 24%, var(--border-subtle) 76%)'
+      : tone === 'danger'
+        ? 'color-mix(in srgb, var(--red) 24%, var(--border-subtle) 76%)'
       : 'var(--border-subtle)'
 
   return (

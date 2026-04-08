@@ -3,7 +3,9 @@ import type { ReactNode } from 'react'
 import { StudyFileManualStateControls } from '@/components/StudyFileManualStateControls'
 import { StudyFileOpenTracker } from '@/components/StudyFileOpenTracker'
 import { StudyFilePreviewExplorer } from '@/components/StudyFilePreviewExplorer'
+import { formatNormalizedModuleResourceSourceType, getModuleResourceCapabilityInfo } from '@/lib/module-resource-capability'
 import { getStudyFileProgressLabel } from '@/lib/study-file-manual-state'
+import { buildModuleInspectHref } from '@/lib/stay-focused-links'
 import { getStudySourceNoun } from '@/lib/study-resource'
 import { buildStudyFileReaderModel } from '@/lib/study-file-reader'
 import type { ModuleSourceResource } from '@/lib/module-workspace'
@@ -35,6 +37,7 @@ export function StudyFileReader({
   const studyProgress = resource.studyProgressStatus ?? 'not_started'
   const workflowOverride = resource.workflowOverride ?? 'study'
   const sourceNoun = getStudySourceNoun(resource)
+  const capability = getModuleResourceCapabilityInfo(resource)
   const progressTone = studyProgress === 'reviewed'
     ? 'accent'
     : studyProgress === 'skimmed'
@@ -69,6 +72,9 @@ export function StudyFileReader({
           </div>
           <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
             <Link href={`/modules/${moduleId}/learn#source-support`} className="ui-button ui-button-secondary">Back to module Learn</Link>
+            <Link href={buildModuleInspectHref(moduleId, { resourceId: resource.id })} className="ui-button ui-button-ghost">
+              Inspect resource
+            </Link>
             {linkedTask && (
               <Link href={`/modules/${moduleId}/do#${linkedTask.id}`} className="ui-button ui-button-ghost">
                 Open related task
@@ -85,6 +91,7 @@ export function StudyFileReader({
         <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
           <ReaderBadge tone="muted" label={reader.fileTypeLabel} />
           <ReaderBadge tone={reader.statusTone} label={reader.statusLabel} />
+          <ReaderBadge tone={capability.capabilityTone} label={capability.capabilityLabel} />
           <ReaderBadge tone={progressTone} label={getStudyFileProgressLabel(studyProgress)} />
           {workflowOverride === 'activity' && (
             <ReaderBadge tone="warning" label="Treated as activity" />
@@ -155,6 +162,11 @@ export function StudyFileReader({
       <ReaderSection title="Source transparency" kicker="What this page is actually using">
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '0.75rem' }}>
           <ReaderMetaCard label="Source type" value={reader.fileTypeLabel} />
+          <ReaderMetaCard
+            label="Normalized type"
+            value={resource.normalizedSourceType ? formatNormalizedModuleResourceSourceType(resource.normalizedSourceType) : 'Unknown'}
+          />
+          <ReaderMetaCard label="Capability" value={capability.capabilityLabel} />
           <ReaderMetaCard label="Extraction status" value={reader.statusLabel} />
           <ReaderMetaCard label="Readable characters" value={reader.charCount > 0 ? reader.charCount.toLocaleString() : 'Not available'} />
           <ReaderMetaCard label="Canvas source" value={canvasHref ? `Direct ${sourceNoun} link available` : 'No direct Canvas link stored'} />

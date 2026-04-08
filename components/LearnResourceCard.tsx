@@ -1,7 +1,9 @@
 import Link from 'next/link'
 import { StudyModeSwitcher } from '@/components/StudyModeSwitcher'
+import { getModuleResourceCapabilityInfo } from '@/lib/module-resource-capability'
 import { getLearnResourceKindLabel } from '@/lib/study-resource'
 import { getLearnResourceHref, getResourceCanvasHref, type LearnResourceUnit } from '@/lib/module-workspace'
+import { buildModuleInspectHref } from '@/lib/stay-focused-links'
 import { labelForExtractionStatus } from '@/lib/study-file-reader'
 
 export function LearnResourceCard({
@@ -15,6 +17,8 @@ export function LearnResourceCard({
 }) {
   const canvasHref = getResourceCanvasHref(unit.resource)
   const deepHref = getLearnResourceHref(moduleId, unit.resource.id)
+  const inspectHref = buildModuleInspectHref(moduleId, { resourceId: unit.resource.id })
+  const capability = getModuleResourceCapabilityInfo(unit.resource)
   const deepViewLabel = unit.resource.kind === 'study_file' ? 'Open study reader' : 'Open deep view'
   const previewLabel = unit.resource.kind === 'study_file'
     ? unit.grounding.hasGroundedAnalysis
@@ -40,6 +44,7 @@ export function LearnResourceCard({
           <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', marginBottom: '0.45rem' }}>
             <span className="ui-chip ui-chip-soft">{labelForResourceKind(unit.resource)}</span>
             <span className="ui-chip ui-chip-soft">{unit.grounding.label}</span>
+            <span className="ui-chip ui-chip-soft">{capability.capabilityLabel}</span>
             {unit.resource.extractionStatus && (
               <span className="ui-chip ui-chip-soft">{labelForExtractionStatus(unit.resource.extractionStatus)}</span>
             )}
@@ -59,6 +64,9 @@ export function LearnResourceCard({
         <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
           <Link href={deepHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
             {deepViewLabel}
+          </Link>
+          <Link href={inspectHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+            Inspect
           </Link>
           {canvasHref && (
             <a href={canvasHref} target="_blank" rel="noreferrer" className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>

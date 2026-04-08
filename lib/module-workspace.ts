@@ -1,4 +1,9 @@
 import { supabase } from '@/lib/supabase'
+import {
+  getModuleResourceCapabilityInfo,
+  type NormalizedModuleResourceSourceType,
+} from '@/lib/module-resource-capability'
+import { adaptModuleResourceRow } from '@/lib/module-resource-row'
 import { buildModuleDoHref, buildModuleLearnHref } from '@/lib/stay-focused-links'
 import { normalizeTaskPlanningAnnotation } from '@/lib/task-planning'
 import { getLearnResourceKindLabel, getStudySourceNoun } from '@/lib/study-resource'
@@ -6,6 +11,7 @@ import type {
   Deadline,
   Module,
   ModuleResource,
+  ModuleResourceCapability,
   ModuleResourceStudyState,
   ModuleTerm,
   ModuleResourceWorkflowOverride,
@@ -64,6 +70,9 @@ export interface ModuleSourceResource {
   extractedTextPreview?: string | null
   extractedCharCount?: number
   extractionError?: string | null
+  normalizedSourceType?: NormalizedModuleResourceSourceType | null
+  capability?: ModuleResourceCapability | null
+  capabilityReason?: string | null
   studyProgressStatus?: StudyFileProgressStatus
   workflowOverride?: ModuleResourceWorkflowOverride
   lastOpenedAt?: string | null
@@ -526,6 +535,7 @@ function adaptStoredResourceForLearn(resource: ModuleResource): ModuleSourceReso
     contentType: resource.contentType,
     hasExtractedText: Boolean(resource.extractedText?.trim()),
   })
+  const capability = getModuleResourceCapabilityInfo(resource)
 
   return {
     id: resource.id,
@@ -552,6 +562,9 @@ function adaptStoredResourceForLearn(resource: ModuleResource): ModuleSourceReso
     extractedTextPreview: resource.extractedTextPreview,
     extractedCharCount: resource.extractedCharCount,
     extractionError: resource.extractionError,
+    normalizedSourceType: capability.normalizedSourceType,
+    capability: capability.capability,
+    capabilityReason: capability.reason,
   }
 }
 
@@ -1062,6 +1075,7 @@ export function getResourceGrounding(resource: ModuleSourceResource): ResourceGr
   const evidenceText = resource.extractedText?.trim() || resource.extractedTextPreview?.trim() || ''
   const charCount = typeof resource.extractedCharCount === 'number' ? resource.extractedCharCount : 0
   const sourceNoun = getStudySourceNoun(resource)
+  const capability = getModuleResourceCapabilityInfo(resource)
 
   if (resource.extractionStatus === 'extracted' && charCount >= 900 && evidenceText) {
     return {
@@ -1097,13 +1111,24 @@ export function getResourceGrounding(resource: ModuleSourceResource): ResourceGr
   }
 
   if (resource.extractionStatus === 'metadata_only') {
+    if (capability.capability === 'unsupported') {
+      return {
+        state: 'unread',
+        label: 'Unread / extraction unavailable',
+        confidence: 'None',
+        evidenceSnippet: null,
+        hasGroundedAnalysis: false,
+        message: capability.reason,
+      }
+    }
+
     return {
       state: 'context_only',
       label: 'Context only',
       confidence: 'None',
       evidenceSnippet: null,
       hasGroundedAnalysis: false,
-      message: `Only the ${sourceNoun} title, module context, and linked tasks are available here. No readable ${sourceNoun} text was extracted.`,
+      message: capability.reason,
     }
   }
 
@@ -1119,24 +1144,25 @@ export function getResourceGrounding(resource: ModuleSourceResource): ResourceGr
 
 function buildUnreadGroundingMessage(resource: ModuleSourceResource) {
   const sourceNoun = getStudySourceNoun(resource)
+  const capability = getModuleResourceCapabilityInfo(resource)
 
   if (resource.extractionStatus === 'failed') {
-    return `The app could not prepare a readable text view for this ${sourceNoun} this time.${resource.extractionError ? ` ${resource.extractionError}` : ''}`
+    return capability.reason
   }
 
   if (resource.extractionStatus === 'unsupported') {
-    return `This ${sourceNoun} type is not readable in the current extraction pipeline, so the app is keeping the state explicit and linking back to Canvas.`
+    return capability.reason
   }
 
   if (resource.extractionStatus === 'empty') {
-    return `The ${sourceNoun} was parsed, but no usable text was found, so the reader is falling back to metadata and module context only.`
+    return capability.reason
   }
 
   if (resource.extractionStatus === 'pending') {
-    return `Extraction has not finished yet, so the reader is still waiting for usable ${sourceNoun} text.`
+    return capability.reason
   }
 
-  return 'No extraction evidence is available for this resource yet, so the app is not claiming to have read the document.'
+  return capability.reason || `No extraction evidence is available for this ${sourceNoun} yet, so the app is not claiming to have read it.`
 }
 
 function summarizeResource(sourceText: string, resource: ModuleSourceResource) {
@@ -1363,31 +1389,6 @@ function labelForKind(resource: Pick<ModuleSourceResource, 'kind' | 'type'>) {
   return getLearnResourceKindLabel(resource)
 }
 
-function adaptModuleResourceRow(row: Record<string, unknown>): ModuleResource {
-  return {
-    id: String(row.id ?? ''),
-    moduleId: String(row.module_id ?? ''),
-    courseId: typeof row.course_id === 'string' ? row.course_id : null,
-    canvasModuleId: typeof row.canvas_module_id === 'number' ? row.canvas_module_id : null,
-    canvasItemId: typeof row.canvas_item_id === 'number' ? row.canvas_item_id : null,
-    canvasFileId: typeof row.canvas_file_id === 'number' ? row.canvas_file_id : null,
-    title: typeof row.title === 'string' ? row.title : 'Resource',
-    resourceType: typeof row.resource_type === 'string' ? row.resource_type : 'Resource',
-    contentType: typeof row.content_type === 'string' ? row.content_type : null,
-    extension: typeof row.extension === 'string' ? row.extension : null,
-    sourceUrl: typeof row.source_url === 'string' ? row.source_url : null,
-    htmlUrl: typeof row.html_url === 'string' ? row.html_url : null,
-    extractionStatus: normalizeExtractionStatus(row.extraction_status),
-    extractedText: typeof row.extracted_text === 'string' ? row.extracted_text : null,
-    extractedTextPreview: typeof row.extracted_text_preview === 'string' ? row.extracted_text_preview : null,
-    extractedCharCount: typeof row.extracted_char_count === 'number' ? row.extracted_char_count : 0,
-    extractionError: typeof row.extraction_error === 'string' ? row.extraction_error : null,
-    required: Boolean(row.required),
-    metadata: isPlainRecord(row.metadata) ? row.metadata : {},
-    created_at: typeof row.created_at === 'string' ? row.created_at : new Date().toISOString(),
-  }
-}
-
 function adaptModuleWorkspaceRow(row: Record<string, unknown>): Module {
   return {
     id: String(row.id ?? ''),
@@ -1467,17 +1468,6 @@ function adaptModuleTermRow(row: Record<string, unknown>): ModuleTerm {
   }
 }
 
-function normalizeExtractionStatus(value: unknown): ModuleResource['extractionStatus'] {
-  return value === 'pending'
-    || value === 'extracted'
-    || value === 'metadata_only'
-    || value === 'unsupported'
-    || value === 'empty'
-    || value === 'failed'
-    ? value
-    : 'metadata_only'
-}
-
 function normalizeStudyProgressStatus(value: unknown): StudyFileProgressStatus {
   return value === 'skimmed' || value === 'reviewed' || value === 'not_started'
     ? value
@@ -1500,10 +1490,6 @@ function normalizeModuleTermOrigin(value: unknown): ModuleTerm['origin'] {
   return value === 'user' || value === 'ai'
     ? value
     : 'ai'
-}
-
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 function isMissingSchemaObjectError(error: { code?: string | null } | null | undefined) {

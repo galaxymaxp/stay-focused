@@ -19,6 +19,10 @@ interface ModuleDoHrefOptions {
   resourceId?: string | null
 }
 
+interface ModuleInspectHrefOptions {
+  resourceId?: string | null
+}
+
 
 interface CourseLearnHrefOptions {
   moduleId?: string | null
@@ -76,6 +80,18 @@ export function buildModuleDoHref(moduleId: string, options: ModuleDoHrefOptions
     `/modules/${moduleId}/do`,
     params,
     options.taskId ? getTaskElementId(options.taskId) : null,
+  )
+}
+
+export function buildModuleInspectHref(moduleId: string, options: ModuleInspectHrefOptions = {}) {
+  const params = new URLSearchParams()
+
+  if (options.resourceId) params.set('resource', options.resourceId)
+
+  return appendHref(
+    `/modules/${moduleId}/inspect`,
+    params,
+    options.resourceId ? getResourceElementId(options.resourceId) : null,
   )
 }
 

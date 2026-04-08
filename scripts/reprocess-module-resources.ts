@@ -1,10 +1,25 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { createClient } from '@supabase/supabase-js'
-import { extractCanvasFileContent } from '../lib/canvas-resource-extraction.ts'
+import { getModuleResourceCapabilityInfo, getNormalizedModuleResourceSourceType } from '../lib/module-resource-capability'
+import { adaptModuleResourceRow } from '../lib/module-resource-row'
+import { reprocessStoredModuleResource, shouldReprocessWeakModuleResource } from '../lib/module-resource-reprocess'
+
+type ScriptScope = 'weak' | 'all'
+
+interface ParsedArgs {
+  ids: string[]
+  titles: string[]
+  scope: ScriptScope
+  normalizedType: string | null
+  dryRun: boolean
+  limit: number | null
+}
 
 function loadEnvFile() {
   const envPath = path.join(process.cwd(), '.env.local')
+  if (!fs.existsSync(envPath)) return
+
   const contents = fs.readFileSync(envPath, 'utf8')
 
   for (const rawLine of contents.split(/\r?\n/)) {
@@ -30,11 +45,12 @@ function loadEnvFile() {
   }
 }
 
-function parseArgs(argv) {
-  const args = {
+function parseArgs(argv: string[]): ParsedArgs {
+  const args: ParsedArgs = {
     ids: [],
     titles: [],
-    failedPdfsOnly: true,
+    scope: 'weak',
+    normalizedType: null,
     dryRun: false,
     limit: 25,
   }
@@ -46,7 +62,7 @@ function parseArgs(argv) {
       const nextValue = argv[index + 1]
       if (!nextValue) throw new Error('Expected a value after --id')
       args.ids.push(nextValue)
-      args.failedPdfsOnly = false
+      args.limit = null
       index += 1
       continue
     }
@@ -55,18 +71,38 @@ function parseArgs(argv) {
       const nextValue = argv[index + 1]
       if (!nextValue) throw new Error('Expected a value after --title')
       args.titles.push(nextValue)
-      args.failedPdfsOnly = false
+      args.limit = null
       index += 1
       continue
     }
 
-    if (value === '--all-pdfs') {
-      args.failedPdfsOnly = false
+    if (value === '--scope') {
+      const nextValue = argv[index + 1]
+      if (nextValue !== 'weak' && nextValue !== 'all') {
+        throw new Error('Expected --scope weak or --scope all')
+      }
+      args.scope = nextValue
+      index += 1
+      continue
+    }
+
+    if (value === '--type') {
+      const nextValue = argv[index + 1]
+      if (!nextValue) throw new Error('Expected a value after --type')
+      args.normalizedType = nextValue.trim().toLowerCase()
+      index += 1
       continue
     }
 
     if (value === '--failed-pdfs') {
-      args.failedPdfsOnly = true
+      args.scope = 'weak'
+      args.normalizedType = 'pdf'
+      continue
+    }
+
+    if (value === '--all-pdfs') {
+      args.scope = 'all'
+      args.normalizedType = 'pdf'
       continue
     }
 
@@ -90,41 +126,7 @@ function parseArgs(argv) {
     throw new Error(`Unknown argument: ${value}`)
   }
 
-  if (args.ids.length > 0 || args.titles.length > 0) {
-    args.limit = null
-  }
-
   return args
-}
-
-function isPdfResource(resource) {
-  const extension = resource.extension?.toLowerCase() ?? null
-  const contentType = resource.content_type?.toLowerCase() ?? null
-
-  return extension === 'pdf' || contentType === 'application/pdf'
-}
-
-function buildMissingSourceResult(title) {
-  return {
-    extractionStatus: 'failed',
-    extractedText: null,
-    extractedTextPreview: null,
-    extractedCharCount: 0,
-    extractionError: `Reprocess failed: ${title} has no stored source URL.`,
-    supported: true,
-  }
-}
-
-async function fetchResourceBuffer(sourceUrl) {
-  const response = await fetch(sourceUrl)
-  if (!response.ok) {
-    throw new Error(`Download failed with HTTP ${response.status}.`)
-  }
-
-  return {
-    buffer: Buffer.from(await response.arrayBuffer()),
-    contentType: response.headers.get('content-type'),
-  }
 }
 
 async function main() {
@@ -141,12 +143,8 @@ async function main() {
   const supabase = createClient(supabaseUrl, supabaseKey)
   let query = supabase
     .from('module_resources')
-    .select('id,title,source_url,content_type,extension,extraction_status,extraction_error,created_at')
+    .select('*')
     .order('created_at', { ascending: false })
-
-  if (args.failedPdfsOnly) {
-    query = query.eq('extraction_status', 'failed')
-  }
 
   if (args.ids.length > 0) {
     query = query.in('id', args.ids)
@@ -156,51 +154,44 @@ async function main() {
     query = query.in('title', args.titles)
   }
 
-  if (typeof args.limit === 'number') {
+  if (typeof args.limit === 'number' && args.ids.length === 0 && args.titles.length === 0) {
     query = query.limit(args.limit)
   }
 
   const { data, error } = await query
   if (error) throw new Error(`Failed to load module_resources: ${error.message}`)
 
-  const pdfResources = (data ?? []).filter(isPdfResource)
-  const results = []
-
-  for (const resource of pdfResources) {
-    let extracted = buildMissingSourceResult(resource.title)
-
-    if (resource.source_url) {
-      try {
-        const downloaded = await fetchResourceBuffer(resource.source_url)
-        extracted = await extractCanvasFileContent({
-          buffer: downloaded.buffer,
-          title: resource.title,
-          extension: resource.extension,
-          contentType: resource.content_type ?? downloaded.contentType,
-        })
-      } catch (downloadError) {
-        extracted = {
-          extractionStatus: 'failed',
-          extractedText: null,
-          extractedTextPreview: null,
-          extractedCharCount: 0,
-          extractionError: downloadError instanceof Error
-            ? `Reprocess download failed: ${downloadError.message}`
-            : 'Reprocess download failed.',
-          supported: true,
-        }
-      }
+  const resources = (data ?? []).map((row) => adaptModuleResourceRow(row as Record<string, unknown>))
+  const filtered = resources.filter((resource) => {
+    if (args.normalizedType && getNormalizedModuleResourceSourceType(resource) !== args.normalizedType) {
+      return false
     }
+
+    if (args.scope === 'weak' && !shouldReprocessWeakModuleResource(resource)) {
+      return false
+    }
+
+    return true
+  })
+
+  const results: Array<Record<string, unknown>> = []
+
+  for (const resource of filtered) {
+    const before = getModuleResourceCapabilityInfo(resource)
+    const reprocessed = await reprocessStoredModuleResource(resource, {
+      triggeredBy: 'script',
+    })
 
     if (!args.dryRun) {
       const { error: updateError } = await supabase
         .from('module_resources')
         .update({
-          extraction_status: extracted.extractionStatus,
-          extracted_text: extracted.extractedText,
-          extracted_text_preview: extracted.extractedTextPreview,
-          extracted_char_count: extracted.extractedCharCount,
-          extraction_error: extracted.extractionError,
+          extraction_status: reprocessed.update.extractionStatus,
+          extracted_text: reprocessed.update.extractedText,
+          extracted_text_preview: reprocessed.update.extractedTextPreview,
+          extracted_char_count: reprocessed.update.extractedCharCount,
+          extraction_error: reprocessed.update.extractionError,
+          metadata: reprocessed.update.metadata,
           updated_at: new Date().toISOString(),
         })
         .eq('id', resource.id)
@@ -213,17 +204,22 @@ async function main() {
     results.push({
       id: resource.id,
       title: resource.title,
-      previousStatus: resource.extraction_status,
-      nextStatus: extracted.extractionStatus,
-      extractedCharCount: extracted.extractedCharCount,
-      extractionError: extracted.extractionError,
+      normalizedSourceType: before.normalizedSourceType,
+      previousStatus: resource.extractionStatus,
+      previousCapability: before.capability,
+      nextStatus: reprocessed.update.extractionStatus,
+      nextCapability: reprocessed.capability.capability,
+      extractedCharCount: reprocessed.update.extractedCharCount,
+      extractionError: reprocessed.update.extractionError,
       updated: !args.dryRun,
     })
   }
 
   console.log(JSON.stringify({
     dryRun: args.dryRun,
-    attempted: pdfResources.length,
+    scope: args.scope,
+    normalizedType: args.normalizedType,
+    attempted: filtered.length,
     results,
   }, null, 2))
 }

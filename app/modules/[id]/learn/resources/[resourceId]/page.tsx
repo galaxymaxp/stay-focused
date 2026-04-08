@@ -3,6 +3,8 @@ import { notFound } from 'next/navigation'
 import { ModuleLensShell } from '@/components/ModuleLensShell'
 import { StudyFileReader } from '@/components/StudyFileReader'
 import { StudyModeSwitcher } from '@/components/StudyModeSwitcher'
+import { formatNormalizedModuleResourceSourceType, getModuleResourceCapabilityInfo } from '@/lib/module-resource-capability'
+import { buildModuleInspectHref } from '@/lib/stay-focused-links'
 import { getLearnResourceKindLabel } from '@/lib/study-resource'
 import {
   buildLearnExperience,
@@ -39,6 +41,7 @@ export default async function ResourceDetailPage({ params }: Props) {
 
   const canvasHref = getResourceCanvasHref(resource)
   const grounding = unit?.grounding ?? getResourceGrounding(resource)
+  const capability = getModuleResourceCapabilityInfo(resource)
   const linkedTask = tasks.find((task) => matchesByTitle(resource.title, task.title)) ?? null
 
   if (resource.kind === 'study_file') {
@@ -84,6 +87,9 @@ export default async function ResourceDetailPage({ params }: Props) {
           </div>
           <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
             <Link href={`/modules/${module.id}/learn#source-support`} className="ui-button ui-button-secondary">Back to module Learn</Link>
+            <Link href={buildModuleInspectHref(module.id, { resourceId: resource.id })} className="ui-button ui-button-ghost">
+              Inspect resource
+            </Link>
             {linkedTask && (
               <Link href={`/modules/${module.id}/do#${linkedTask.id}`} className="ui-button ui-button-ghost">
                 Open related task
@@ -108,6 +114,7 @@ export default async function ResourceDetailPage({ params }: Props) {
             </div>
             <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
               <span className="ui-chip ui-chip-soft">Confidence: {grounding.confidence}</span>
+              <span className="ui-chip ui-chip-soft">Capability: {capability.capabilityLabel}</span>
               <span className="ui-chip ui-chip-soft">Status: {labelForExtractionStatus(resource.extractionStatus)}</span>
             </div>
           </div>
@@ -128,6 +135,7 @@ export default async function ResourceDetailPage({ params }: Props) {
           <MetaCard label="Course" value={resource.courseName ?? courseName} />
           <MetaCard label="Module / week" value={resource.moduleName ?? module.title} />
           <MetaCard label="Resource type" value={labelForResourceKind(resource)} />
+          <MetaCard label="Normalized source type" value={formatNormalizedModuleResourceSourceType(capability.normalizedSourceType)} />
           <MetaCard label="Original Canvas title" value={resource.originalTitle ?? resource.title} />
           <MetaCard label="Due date" value={resource.dueDate && resource.dueDate !== 'No due date' ? formatDate(resource.dueDate) : 'None surfaced'} />
           <MetaCard label="Linked context" value={resource.linkedContext ?? 'No linked task or assignment context surfaced yet'} />
@@ -170,7 +178,7 @@ export default async function ResourceDetailPage({ params }: Props) {
                     </p>
                   )}
                   <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
-                    <strong style={{ color: 'var(--text-primary)' }}>What you can do:</strong> Open the original Canvas item, review the file directly, and resync if you want extraction to try again.
+                    <strong style={{ color: 'var(--text-primary)' }}>What you can do:</strong> Open the original Canvas item, inspect the stored capability state, and reprocess the resource if you want the current extractor to try again.
                   </p>
                 </div>
               </div>
@@ -198,6 +206,8 @@ export default async function ResourceDetailPage({ params }: Props) {
               <p className="ui-kicker">Metadata and status</p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem', marginTop: '0.75rem' }}>
                 <MetaLine label="Canvas source" value={canvasHref ? 'Direct item link available' : 'No direct item URL stored'} />
+                <MetaLine label="Capability" value={capability.capabilityLabel} />
+                <MetaLine label="Capability note" value={capability.reason} />
                 <MetaLine label="Extraction status" value={labelForExtractionStatus(resource.extractionStatus)} />
                 <MetaLine label="Character count" value={typeof resource.extractedCharCount === 'number' && resource.extractedCharCount > 0 ? `${resource.extractedCharCount}` : 'Not available'} />
                 <MetaLine label="Grounding confidence" value={grounding.confidence} />

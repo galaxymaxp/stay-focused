@@ -3,6 +3,7 @@ import { ModuleLensShell } from '@/components/ModuleLensShell'
 import { ModuleQuizWorkspace } from '@/components/ModuleQuizWorkspace'
 import type { QuizSection } from '@/components/ModuleQuizWorkspace'
 import { buildModuleLearnOverview } from '@/lib/module-learn-overview'
+import { buildModuleInspectHref } from '@/lib/stay-focused-links'
 import {
   buildLearnExperience,
   extractCourseName,
@@ -74,7 +75,7 @@ export default async function QuizPage({ params }: Props) {
       title={module.title}
       summary={null}
     >
-      <ModuleQuizWorkspace quizSections={quizSections} />
+      <ModuleQuizWorkspace quizSections={quizSections} inspectHref={buildModuleInspectHref(module.id)} />
     </ModuleLensShell>
   )
 }

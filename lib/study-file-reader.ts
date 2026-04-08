@@ -1,3 +1,4 @@
+import { getModuleResourceCapabilityInfo } from '@/lib/module-resource-capability'
 import type { ModuleSourceResource } from '@/lib/module-workspace'
 import type { ModuleResourceExtractionStatus } from '@/lib/types'
 import { getCanvasSourceLabel, getStudySourceNoun, getStudySourceTypeLabel } from '@/lib/study-resource'
@@ -51,6 +52,7 @@ export function buildStudyFileReaderModel(resource: ModuleSourceResource): Study
   const paragraphs = buildPreviewParagraphs(normalizedText)
   const sourceNoun = getStudySourceNoun(resource)
   const canvasSourceLabel = getCanvasSourceLabel(resource)
+  const capability = getModuleResourceCapabilityInfo(resource)
 
   if (state === 'extracted' && normalizedText) {
     const summary = buildGroundedSummary(paragraphs)
@@ -99,9 +101,7 @@ export function buildStudyFileReaderModel(resource: ModuleSourceResource): Study
       keyPointsHint: `Key points stay hidden until the reader has real extracted ${sourceNoun} text to work from.`,
       outlineHint: `Study notes stay hidden until Learn has real extracted ${sourceNoun} text to structure.`,
       previewHint: `Open the original ${canvasSourceLabel.toLowerCase()} in Canvas if you want the full source material right away.`,
-      transparencyNote: resource.extractionError
-        ? `No readable ${sourceNoun} text is stored for this item. Note: ${resource.extractionError}`
-        : `No readable ${sourceNoun} text is stored for this item yet.`,
+      transparencyNote: capability.reason,
       charCount,
     }
   }
@@ -129,9 +129,7 @@ export function buildStudyFileReaderModel(resource: ModuleSourceResource): Study
       previewHint: likelyScanned
         ? `If this is a scanned handout or image-based PDF, the original ${canvasSourceLabel.toLowerCase()} will still be the best place to read it.`
         : `The ${sourceNoun} may still be useful in Canvas even though no readable text surfaced here.`,
-      transparencyNote: resource.extractionError
-        ? `Extraction completed, but no usable text was returned. Note: ${resource.extractionError}`
-        : 'Extraction completed, but no usable text was returned.',
+      transparencyNote: capability.reason,
       charCount,
     }
   }
@@ -150,9 +148,7 @@ export function buildStudyFileReaderModel(resource: ModuleSourceResource): Study
     keyPointsHint: `Key points are hidden because extraction did not complete cleanly for this ${sourceNoun}.`,
     outlineHint: `Structured study notes are hidden because extraction did not complete cleanly for this ${sourceNoun}.`,
     previewHint: `Use the Canvas link for the original ${sourceNoun}, then resync later if you want the reader to try again.`,
-    transparencyNote: resource.extractionError
-      ? `Extraction did not complete cleanly. Error: ${resource.extractionError}`
-      : `Extraction did not complete cleanly for this ${sourceNoun}.`,
+    transparencyNote: capability.reason,
     charCount,
   }
 }

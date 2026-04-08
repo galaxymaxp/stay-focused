@@ -2,95 +2,60 @@
 
 A calendar-first student workflow app that turns Canvas course and module content into a clearer command center.
 
-**Core problem it solves:** Canvas is noisy. Stay Focused syncs your courses, processes them with AI, and surfaces only what matters — what to do now, what to read next, and what's coming up.
+Core problem it solves: Canvas is noisy. Stay Focused syncs your courses, processes them with AI, and surfaces what matters most: what to do now, what to read next, and what is coming up.
 
 ---
 
 ## Stack
 
 | Layer | Tech |
-|---|---|
+| --- | --- |
 | Framework | Next.js 16 (App Router, React 19) |
 | Styling | Tailwind CSS v4 + custom design system in `globals.css` |
-| Database | Supabase (PostgreSQL, no auth, RLS disabled — personal use) |
-| AI processing | OpenAI — called once at sync time to extract structure from raw Canvas content |
-| Canvas integration | Canvas REST API v1 (courses, modules, assignments, announcements, files) |
+| Database | Supabase (PostgreSQL, no auth, RLS disabled for personal use) |
+| AI processing | OpenAI at sync time |
+| Canvas integration | Canvas REST API v1 |
 | Deployment | Vercel |
 
 ---
 
 ## How it works
 
-1. **Sync** — Visit `/canvas`, enter a Canvas URL and access token, select courses to sync.
-2. **Ingest** — For each course, the app fetches assignments, announcements, modules, and files. PDFs and HTML pages are extracted. Everything is compiled into a structured text blob (`raw_content`).
-3. **Process** — OpenAI parses `raw_content` into structured data: module title, summary, key concepts, tasks, deadlines, and study prompts.
-4. **Surface** — The processed data drives the entire UI: Today dashboard, Learn workspace, Do task list, Calendar, and Quiz.
+1. Sync: visit `/canvas`, enter a Canvas URL and access token, then choose courses to sync.
+2. Ingest: for each course, the app fetches assignments, announcements, modules, pages, discussions, and files. Readable source content is normalized into persisted `module_resources` extraction fields, while weak or unreadable items are marked honestly instead of being left blank.
+3. Process: OpenAI parses compiled module content into structured data such as title, summary, concepts, tasks, deadlines, and study prompts.
+4. Surface: the processed data drives Today, Learn, Do, Quiz, and supporting study flows.
 
 ---
 
 ## Key routes
 
 | Route | Purpose |
-|---|---|
-| `/` | Today — command center: freshest module bulletin, best next step, urgency sections, announcements |
-| `/learn` | Learn overview — all modules by course |
-| `/modules/:id/learn` | Module Learn workspace — study notes, term bank, source files |
-| `/modules/:id/quiz` | Module Quiz — grounded questions from extracted study note bullets |
-| `/modules/:id/do` | Module task list with urgency scoring |
-| `/modules/:id/learn/resources/:resourceId` | Individual resource reader |
-| `/courses` | Course overview — all synced courses with module snapshots |
-| `/do` | Global task list grouped by urgency |
-| `/calendar` | Calendar view of all deadlines |
-| `/canvas` | Canvas sync flow — connect, select courses, sync |
-| `/settings` | Appearance — theme mode and accent color |
+| --- | --- |
+| `/` | Today dashboard |
+| `/learn` | Learn overview across courses |
+| `/modules/:id/learn` | Module Learn workspace |
+| `/modules/:id/inspect` | Internal resource inspection and reprocess surface |
+| `/modules/:id/quiz` | Module Quiz grounded in extracted study notes |
+| `/modules/:id/do` | Module task list |
+| `/modules/:id/learn/resources/:resourceId` | Individual resource reader/detail page |
+| `/courses` | Course overview |
+| `/do` | Global task list |
+| `/calendar` | Calendar view |
+| `/canvas` | Canvas sync flow |
+| `/settings` | Appearance settings |
 
 ---
 
 ## Project structure
 
-```
+```text
 app/                    Next.js App Router pages
-  page.tsx              Today (home) dashboard
-  canvas/               Canvas sync flow
-  courses/              Course overview + per-course Learn
-  modules/[id]/         Module Learn, Do, Review, Source workspaces
-  learn/                Global Learn overview
-  do/                   Global task list
-  calendar/             Calendar view
-  settings/             Theme settings
-  globals.css           Full design system (CSS variables, layout, components)
-  layout.tsx            Root layout — AppShell + ThemeProvider
-
 actions/                Server actions
-  canvas.ts             Full Canvas sync pipeline
-  tasks.ts              Task status toggle
-  modules.ts            Module delete
-  module-resource-study-state.ts
-  module-terms.ts
-
-components/             React components (RSC + client)
-  AppShell.tsx          Sidebar nav + sticky topbar + layout grid
-  TodayDashboard.tsx    Home page sections (bulletin, hero, urgency groups)
-  ModuleBulletin.tsx    Freshest module bulletin card (Home)
-  AnnouncementsBand.tsx Canvas announcements feed (Home)
-  ModuleLensShell.tsx   Shared Learn/Do/Review module wrapper
-  ConnectCanvasFlow.tsx Canvas connection + sync UI (client, SSR-disabled)
-  ... (40+ component files)
-
-lib/                    Business logic + data layer
-  clarity-workspace.ts  Today/workspace orchestration + scoring
-  module-workspace.ts   Per-module Learn experience builder
-  workspace-queries.ts  All Supabase SELECT queries
-  workspace-adapter.ts  DB row → domain type mapping + action scoring
-  announcements.ts      Canvas announcement parser (for Home feed)
-  canvas.ts             Canvas REST API client
-  canvas-sync.ts        Sync normalization helpers
-  canvas-resource-extraction.ts  PDF/HTML/ZIP text extraction
-  openai.ts             OpenAI client + module processing prompt
-  supabase.ts           Supabase client singleton
-  types.ts              All domain type definitions
-
-supabase/migrations/    10 migration files — canonical schema
+components/             React components
+lib/                    Business logic, data access, extraction, normalization
+scripts/                Maintenance and backfill scripts
+supabase/migrations/    Canonical schema migrations
 ```
 
 ---
@@ -98,79 +63,113 @@ supabase/migrations/    10 migration files — canonical schema
 ## Local setup
 
 1. Clone the repo.
-2. Copy `.env.example` to `.env.local` and fill in the required values:
-   - `NEXT_PUBLIC_SUPABASE_URL` — your Supabase project URL
-   - `NEXT_PUBLIC_SUPABASE_ANON_KEY` — your Supabase anon key
-   - `OPENAI_API_KEY` — used only at sync time
-   - `CANVAS_API_URL` — your institution's Canvas base URL (optional; can be entered in the UI)
-   - `CANVAS_API_TOKEN` — your Canvas access token (optional; can be entered in the UI)
-3. Apply migrations to your Supabase project:
-   ```
-   supabase db push
-   ```
-   or apply each file in `supabase/migrations/` in order against your Supabase SQL editor.
-4. Install dependencies and start the dev server:
-   ```
-   npm install
-   npm run dev
-   ```
-
----
-
-## Home page (Today)
-
-The Home page (`/`) is the student command center. After syncing at least one course it shows:
-
-1. **Latest module bulletin** — the most recently released processed module, with its summary, key concepts, and direct links to Learn and Do.
-2. **Best next step** — the single highest-scored task or module item, with urgency context and inline controls.
-3. **Announcements** — recent Canvas announcements extracted from synced courses. Currently parsed from `raw_content` at render time (no separate `announcements` table yet — see limitations).
-4. **Needs attention** — tasks with `planning_annotation = needs_attention` (up to 4).
-5. **Worth reviewing** — modules and tasks marked `worth_reviewing` (up to 4).
-6. **Coming up** — lower-urgency upcoming items (up to 6).
-
----
-
-## Scoring and urgency
-
-Task and module items are ranked by `actionScore` (computed in `lib/workspace-adapter.ts`):
-
-- Overdue tasks score highest
-- Tasks due today or tomorrow score very high
-- Module freshness score (`getModuleFreshnessScore`) adds recency signal
-- `priority_signal = high` adds a fixed bonus
-- `planning_annotation` from the user overrides automatic scoring
-
----
-
-## Reprocess failed PDFs
-
-If older `module_resources` rows failed because PDF extraction was broken:
+2. Copy `.env.example` to `.env.local`.
+3. Fill in:
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - `OPENAI_API_KEY`
+   - `CANVAS_API_URL` optional but useful for sync and reprocess
+   - `CANVAS_API_TOKEN` optional but useful for sync and reprocess
+4. Apply Supabase migrations.
+5. Run:
 
 ```bash
-npm run reprocess:resources -- --failed-pdfs
+npm install
+npm run dev
 ```
 
-To target specific files:
+---
+
+## Reprocess persisted module resources
+
+Phase 2 adds a targeted backfill path for existing `module_resources` rows. It reuses the current extraction logic against stored resource URLs instead of requiring a destructive full resync.
+
+Common commands:
+
+```bash
+npm run reprocess:resources -- --scope weak
+```
+
+```bash
+npm run reprocess:resources -- --scope all --type docx
+```
 
 ```bash
 npm run reprocess:resources -- --title "Student Handbook.pdf"
 ```
 
-To rebuild the module-level AI summary after re-extraction, unsync that course in the app and sync it again from `/canvas`.
+Legacy PDF flags are still supported:
+
+```bash
+npm run reprocess:resources -- --failed-pdfs
+```
+
+Notes:
+
+- Reprocessing is safe to run repeatedly for normal use. It refreshes extraction fields and capability metadata in place.
+- Protected Canvas items may still need server-side `CANVAS_API_URL` and `CANVAS_API_TOKEN` so the reprocess pass can fetch them again.
+- Older rows that never stored a reusable source URL may still need a fresh sync to capture a reprocessable Canvas API URL.
+- Reprocessing improves persisted resource text for Learn, Do Now, Review, and Quiz, but it does not rerun module-level AI processing automatically.
 
 ---
 
-## Refresh Canvas Pages
+## Persisted resource contract
 
-Canvas Page extraction is picked up during normal course sync. For courses synced before Page support landed, unsync and re-sync from `/canvas`.
+Downstream surfaces rely on the shared `module_resources` extraction shape:
+
+- `extraction_status`
+- `extracted_text`
+- `extracted_text_preview`
+- `extracted_char_count`
+- `extraction_error`
+- `metadata`
+
+Phase 2 also relies on metadata hints such as:
+
+- `metadata.normalizedSourceType`
+- `metadata.capability`
+- `metadata.lastReprocessedAt`
+- `metadata.lastReprocessOutcome`
+- `metadata.lastReprocessReason`
+
+The important design point is that downstream features continue to consume persisted normalized resource data instead of branching per Canvas source type.
+
+---
+
+## Compatibility matrix
+
+### Supported
+
+- PDF with real text
+- PPTX with readable slide text
+- DOCX
+- TXT, Markdown, CSV, and HTML files
+- Canvas Pages with readable page body
+- Canvas Assignments with readable description or instructions
+- Canvas Discussions with readable prompt or body
+
+### Partial
+
+- Scanned or image-only PDFs
+- DOCX, PPTX, or PDF extractions that technically parse but surface thin text
+- Canvas Pages, Assignments, or Discussions whose stored body is minimal or empty
+- Older module resources whose stored source URL still exists but no longer returns a strong readable payload
+
+### Unsupported or link-only
+
+- External URLs
+- External tools
+- Module subheaders and non-content module items
+- Unknown binary file types
+- Legacy `.ppt`
+
+Unsupported or link-only items remain inspectable and routeable, but Stay Focused does not claim to have read them into the study pipeline.
 
 ---
 
 ## Known limitations and follow-up work
 
-- **No dedicated announcements table** — announcements are embedded in `raw_content` and parsed at render time from the most recent modules. A future migration should add an `announcements` table for persistent, queryable storage.
-- **No course classification** — courses cannot yet be marked as academic, non-academic, or announcements-only. All synced courses are treated identically.
-- **Quiz is a dedicated route** — `/modules/:id/quiz` is a full Quiz tab in the module lens shell. Questions are grounded in extracted study note bullets (`lib/study-note-quiz.ts`). The embedded per-note quiz has been removed from the Learn accordion.
-- **Do Now is implemented** as a modal panel triggered from the Home hero card and each task card in the module Do view. It answers four questions (what first, what to produce, where to start, smallest step) derived from task details, `study_prompts[]`, and `concepts[]` — no AI calls at runtime.
-- **Review is a redirect** — `/modules/:id/review` redirects to the study-notes anchor in `/modules/:id/learn`. A distinct review experience is planned.
-- **No re-sync** — syncing a course that has already been synced throws an error. Incremental re-sync is not yet implemented.
+- No dedicated announcements table yet. Announcements are still derived from synced module content.
+- Review is still a redirect to Learn rather than a separate review workspace.
+- Reprocessing depends on stored source URLs. It cannot invent missing Canvas API links for older rows.
+- Incremental course resync is still limited. Some older rows may still benefit from a fresh sync after extractor upgrades.

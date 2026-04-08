@@ -1,7 +1,8 @@
+import { getModuleResourceCapabilityInfo } from '@/lib/module-resource-capability'
 import { getResourceCanvasHref, getResourceGrounding, type ModuleSourceResource } from '@/lib/module-workspace'
 import { buildModuleDoHref, buildModuleLearnHref } from '@/lib/stay-focused-links'
 import { buildStudyFileReaderModel, getStudyFileTypeLabel, type StudyFileReaderModel } from '@/lib/study-file-reader'
-import { getCanvasSourceLabel, getStudySourceNoun } from '@/lib/study-resource'
+import { getStudySourceNoun } from '@/lib/study-resource'
 import type { ModuleResourceWorkflowOverride, StudyFileProgressStatus, Task } from '@/lib/types'
 
 export type ModuleStudyReadiness = 'ready' | 'limited' | 'unavailable'
@@ -138,7 +139,7 @@ export function buildModuleLearnOverview({
 function buildStudyMaterial(resource: ModuleSourceResource): ModuleStudyMaterial {
   const reader = buildStudyFileReaderModel(resource)
   const grounding = getResourceGrounding(resource)
-  const readiness = resolveStudyReadiness(reader, grounding.hasGroundedAnalysis)
+  const readiness = resolveStudyReadiness(resource, reader, grounding.hasGroundedAnalysis)
 
   return {
     resource,
@@ -151,7 +152,21 @@ function buildStudyMaterial(resource: ModuleSourceResource): ModuleStudyMaterial
   }
 }
 
-function resolveStudyReadiness(reader: StudyFileReaderModel, hasGroundedAnalysis: boolean): ModuleStudyReadiness {
+function resolveStudyReadiness(
+  resource: ModuleSourceResource,
+  reader: StudyFileReaderModel,
+  hasGroundedAnalysis: boolean,
+): ModuleStudyReadiness {
+  const capability = getModuleResourceCapabilityInfo(resource)
+
+  if (capability.capability === 'failed' || capability.capability === 'unsupported') {
+    return 'unavailable'
+  }
+
+  if (capability.capability === 'partial') {
+    return 'limited'
+  }
+
   if (reader.state === 'extracted' && hasGroundedAnalysis) {
     return 'ready'
   }
@@ -177,7 +192,7 @@ function toneForReadiness(readiness: ModuleStudyReadiness) {
 
 function buildStudyNote(resource: ModuleSourceResource, reader: StudyFileReaderModel, readiness: ModuleStudyReadiness) {
   const sourceNoun = getStudySourceNoun(resource)
-  const canvasSourceLabel = getCanvasSourceLabel(resource).toLowerCase()
+  const capability = getModuleResourceCapabilityInfo(resource)
 
   if (readiness === 'ready') {
     return reader.summary ?? `Readable text is available in the study reader for this ${sourceNoun}.`
@@ -188,7 +203,7 @@ function buildStudyNote(resource: ModuleSourceResource, reader: StudyFileReaderM
   }
 
   if (reader.state === 'metadata_only') {
-    return `Only ${sourceNoun} context is available here right now, so the original ${canvasSourceLabel} is still the fuller source.`
+    return capability.reason
   }
 
   if (reader.state === 'empty') {
@@ -196,18 +211,18 @@ function buildStudyNote(resource: ModuleSourceResource, reader: StudyFileReaderM
       return `The ${sourceNoun} was parsed, but it still looks more like a scanned or image-based document in Learn.`
     }
 
-    return `The ${sourceNoun} was parsed, but no usable text surfaced in Learn.`
+    return capability.reason
   }
 
   if (resource.extractionStatus === 'pending') {
-    return `The reader is still waiting on extraction for this ${sourceNoun}.`
+    return capability.reason
   }
 
   if (resource.extractionStatus === 'unsupported') {
-    return `This ${sourceNoun} type is not readable in the current study reader, so Canvas stays the source of truth.`
+    return capability.reason
   }
 
-  return `The reader could not prepare usable text for this ${sourceNoun} this time.`
+  return capability.reason || `The reader could not prepare usable text for this ${sourceNoun} this time.`
 }
 
 function buildGroundedModuleSummary(studyMaterials: ModuleStudyMaterial[]) {
