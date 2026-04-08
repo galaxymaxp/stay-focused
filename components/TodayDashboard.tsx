@@ -135,14 +135,14 @@ function FocusHeroCard({ item }: { item: TodayItem }) {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.85rem' }}>
         <MetaCard label="Course" value={item.courseName} />
-        <MetaCard label="Focus" value={item.moduleTitle ?? fallbackFocusLabel(item.kind)} />
-        <MetaCard label="Suggested action" value={item.actionLabel} />
+        <MetaCard label="Module" value={item.moduleTitle ?? fallbackFocusLabel(item.kind)} />
+        <MetaCard label="Auto Prompt" value={item.actionLabel} />
         <MetaCard label="Timing" value={item.dateTime ? formatDateTime(item.dateTime) : 'When you are ready'} />
       </div>
 
       {item.supportingText && (
         <div className="glass-panel glass-soft" style={supportCardStyle}>
-          <p style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>Why this is the clearest move</p>
+          <p style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>Description</p>
           <p style={{ margin: '0.45rem 0 0', fontSize: '14px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>{item.supportingText}</p>
         </div>
       )}
@@ -276,7 +276,7 @@ function TodayItemCard({ item }: { item: TodayItem }) {
         <div className="ui-meta-list">
           {item.moduleTitle && <span><strong>Module:</strong> {item.moduleTitle}</span>}
           {!item.moduleTitle && <span><strong>Type:</strong> {tone.kindLabel}</span>}
-          <span><strong>Suggested action:</strong> {item.actionLabel}</span>
+          <span><strong>Auto Prompt:</strong> {item.actionLabel}</span>
         </div>
       </div>
 
@@ -396,8 +396,8 @@ function getToneStyle(tone: TodayItem['tone']) {
 
 function fallbackFocusLabel(kind: TodayItem['kind']) {
   if (kind === 'module') return 'Review this module'
-  if (kind === 'learning') return 'Learning focus'
-  return 'Assignment focus'
+  if (kind === 'learning') return 'Learning'
+  return 'Assignment'
 }
 
 function formatDateTime(value: string) {

@@ -194,6 +194,50 @@ export function isTaskDraftResponse(value: unknown): value is TaskDraftResponse 
     && typeof value.smallestNextStep === 'string'
 }
 
+export const TASK_DRAFT_CACHE_VERSION = 'v1'
+
+export interface CachedDoNowDraft {
+  draft: TaskDraftResponse
+  rawText?: string
+  generatedAt: string
+  promptVersion: string
+}
+
+export function getDoNowDraftCacheKey(requestBody: string): string {
+  return `do-now:draft:${TASK_DRAFT_CACHE_VERSION}:${djb2Hash(requestBody)}`
+}
+
+export function loadCachedDoNowDraft(key: string): CachedDoNowDraft | null {
+  try {
+    const raw = typeof window !== 'undefined' ? localStorage.getItem(key) : null
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as unknown
+    if (!isValidCachedDoNowDraft(parsed)) return null
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+export function saveCachedDoNowDraft(
+  key: string,
+  draft: TaskDraftResponse,
+  rawText?: string,
+): void {
+  try {
+    if (typeof window === 'undefined') return
+    const entry: CachedDoNowDraft = {
+      draft,
+      ...(rawText !== undefined ? { rawText } : {}),
+      generatedAt: new Date().toISOString(),
+      promptVersion: TASK_DRAFT_CACHE_VERSION,
+    }
+    localStorage.setItem(key, JSON.stringify(entry))
+  } catch {
+    // Silently ignore — quota exceeded, private mode, or SSR
+  }
+}
+
 function buildTaskInstructions(ctx: TaskDraftContext) {
   const taskDetails = cleanBlockText(ctx.taskDetails)
   const resourceText = cleanBlockText(ctx.resourceSnippet)
@@ -627,6 +671,24 @@ const NUMBER_WORDS: Record<string, number> = {
   four: 4,
   five: 5,
   six: 6,
+}
+
+function isValidCachedDoNowDraft(value: unknown): value is CachedDoNowDraft {
+  if (!isPlainRecord(value)) return false
+  return (
+    isTaskDraftResponse(value.draft)
+    && typeof value.generatedAt === 'string'
+    && typeof value.promptVersion === 'string'
+  )
+}
+
+function djb2Hash(s: string): string {
+  let h = 5381
+  for (let i = 0; i < s.length; i++) {
+    h = ((h << 5) + h) ^ s.charCodeAt(i)
+    h = h >>> 0
+  }
+  return h.toString(36)
 }
 
 const SECTION_STARTERS: Record<string, string[]> = {
