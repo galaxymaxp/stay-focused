@@ -39,6 +39,12 @@ type PdfRuntimeGlobal = typeof globalThis & {
 
 type HtmlExtractionContext = 'canvas_page' | 'html_file'
 
+interface HtmlExtractionSection {
+  label: string
+  html?: string | null | undefined
+  text?: string | null | undefined
+}
+
 export async function extractCanvasFileContent(input: {
   buffer: Buffer
   title: string
@@ -72,6 +78,11 @@ export async function extractCanvasFileContent(input: {
       || contentType === 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
     ) {
       extractedText = await extractPptxText(input.buffer)
+    } else if (
+      extension === 'docx'
+      || contentType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    ) {
+      extractedText = await extractDocxText(input.buffer)
     } else if (extension === 'ppt' || contentType === 'application/vnd.ms-powerpoint') {
       return {
         extractionStatus: 'unsupported',
@@ -91,7 +102,7 @@ export async function extractCanvasFileContent(input: {
         extractedText: null,
         extractedTextPreview: null,
         extractedCharCount: 0,
-        extractionError: null,
+        extractionError: `Stay Focused cannot read this ${extension ? `.${extension}` : 'file'} type yet, so the item is kept as link-only context.`,
         supported: false,
       }
     }
@@ -132,15 +143,32 @@ export async function extractCanvasPageContent(input: {
   title: string
   html: string | null | undefined
 }): Promise<ExtractedCanvasResourceContent> {
+  return extractCanvasStructuredHtmlContent({
+    title: input.title,
+    sections: [
+      {
+        label: 'Page content',
+        html: input.html,
+      },
+    ],
+    emptyMessage: 'Canvas page fetched successfully, but no usable body text was found.',
+  })
+}
+
+export async function extractCanvasStructuredHtmlContent(input: {
+  title: string
+  sections: HtmlExtractionSection[]
+  emptyMessage: string
+}): Promise<ExtractedCanvasResourceContent> {
   try {
-    const cleaned = cleanExtractedText(extractReadableTextFromHtml(input.html ?? '', 'canvas_page'))
+    const cleaned = cleanExtractedText(buildStructuredHtmlExtraction(input.sections))
     if (!cleaned) {
       return {
         extractionStatus: 'empty',
         extractedText: null,
         extractedTextPreview: null,
         extractedCharCount: 0,
-        extractionError: 'Canvas page fetched successfully, but no usable body text was found.',
+        extractionError: input.emptyMessage,
         supported: true,
       }
     }
@@ -341,6 +369,47 @@ async function extractPptxText(buffer: Buffer) {
   return chunks.join('\n\n')
 }
 
+async function extractDocxText(buffer: Buffer) {
+  const jszipModule = await import('jszip')
+  const JSZip = jszipModule.default
+  const zip = await JSZip.loadAsync(buffer)
+  const docxSections = [
+    { path: 'word/document.xml', label: 'Document' },
+    ...Object.keys(zip.files)
+      .filter((name) => /^word\/header\d+\.xml$/i.test(name))
+      .sort()
+      .map((path) => ({ path, label: 'Header' })),
+    ...Object.keys(zip.files)
+      .filter((name) => /^word\/footnotes\.xml$/i.test(name))
+      .sort()
+      .map((path) => ({ path, label: 'Footnotes' })),
+    ...Object.keys(zip.files)
+      .filter((name) => /^word\/endnotes\.xml$/i.test(name))
+      .sort()
+      .map((path) => ({ path, label: 'Endnotes' })),
+    ...Object.keys(zip.files)
+      .filter((name) => /^word\/footer\d+\.xml$/i.test(name))
+      .sort()
+      .map((path) => ({ path, label: 'Footer' })),
+  ]
+
+  const chunks: string[] = []
+
+  for (const section of docxSections) {
+    const file = zip.files[section.path]
+    if (!file) continue
+
+    const xml = await file.async('string')
+    const text = extractReadableTextFromDocxXml(xml)
+
+    if (text) {
+      chunks.push(section.label === 'Document' ? text : `${section.label}: ${text}`)
+    }
+  }
+
+  return chunks.join('\n\n')
+}
+
 function extractReadableTextFromPptxXml(xml: string) {
   return decodeXmlEntities(
     xml
@@ -366,6 +435,40 @@ function comparePptxXmlPaths(a: string, b: string) {
 
 function decodeXmlEntities(value: string) {
   return decodeHtmlEntities(value)
+}
+
+function extractReadableTextFromDocxXml(xml: string) {
+  return decodeXmlEntities(
+    xml
+      .replace(/<w:tab\/>/gi, '\t')
+      .replace(/<w:br[^>]*\/>/gi, '\n')
+      .replace(/<w:cr[^>]*\/>/gi, '\n')
+      .replace(/<\/w:p>/gi, '\n\n')
+      .replace(/<\/w:tr>/gi, '\n')
+      .replace(/<w:t[^>]*>/gi, '')
+      .replace(/<\/w:t>/gi, ' ')
+      .replace(/<[^>]+>/g, ' '),
+  )
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
+function buildStructuredHtmlExtraction(sections: HtmlExtractionSection[]) {
+  const parts: string[] = []
+
+  for (const section of sections) {
+    const text = section.html
+      ? extractReadableTextFromHtml(section.html, 'canvas_page')
+      : cleanExtractedText(section.text ?? '')
+
+    const cleaned = cleanExtractedText(text)
+    if (!cleaned) continue
+
+    parts.push(`${section.label}:\n${cleaned}`)
+  }
+
+  return parts.join('\n\n')
 }
 
 function decodeHtmlEntities(value: string) {

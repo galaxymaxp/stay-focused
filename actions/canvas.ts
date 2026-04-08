@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache'
 import {
   compileCanvasContent,
   downloadCanvasBinary,
+  getCanvasDiscussionTopic,
   getCanvasFile,
   getCanvasPage,
   getAnnouncements,
@@ -16,8 +17,14 @@ import {
   type CanvasConfig,
   type CanvasAssignment,
   type CanvasCourse,
+  type CanvasModuleItem,
 } from '@/lib/canvas'
-import { extractCanvasFileContent, extractCanvasPageContent, normalizeExtension } from '@/lib/canvas-resource-extraction'
+import {
+  extractCanvasFileContent,
+  extractCanvasPageContent,
+  extractCanvasStructuredHtmlContent,
+  normalizeExtension,
+} from '@/lib/canvas-resource-extraction'
 import {
   normalizeCanvasCourseForSync,
   normalizeOptionalCanvasSyncText,
@@ -242,7 +249,7 @@ async function syncSingleCourse(course: CanvasCourse, config: Partial<CanvasConf
     throw new Error(`Canvas did not return any assignments, announcements, or module content for ${databaseSafeCourse.name} yet.`)
   }
 
-  const resourceIngestion = await ingestModuleResources(course.id, modules, resolvedConfig)
+  const resourceIngestion = await ingestModuleResources(course.id, modules, resolvedConfig, assignments)
   const taskCanvasLinks = buildTaskCanvasLinks(assignments, resourceIngestion)
   const rawContent = stripDatabaseNullCharacters(compileCanvasContent(
     databaseSafeCourse,
@@ -764,8 +771,10 @@ async function ingestModuleResources(
   courseId: number,
   modules: Awaited<ReturnType<typeof getModules>>,
   config: Partial<CanvasConfig>,
+  assignments: CanvasAssignment[],
 ): Promise<ResourceIngestionRecord[]> {
   const records: ResourceIngestionRecord[] = []
+  const assignmentsById = new Map(assignments.map((assignment) => [assignment.id, assignment]))
 
   for (const moduleItem of modules) {
     for (const item of moduleItem.items ?? []) {
@@ -790,6 +799,7 @@ async function ingestModuleResources(
           canvasModuleName: moduleItem.name,
           canvasModuleUrl: buildCanvasModuleUrl(config.url ?? null, courseId, moduleItem.id),
           completionRequirementType: item.completion_requirement?.type ?? null,
+          normalizedSourceType: normalizeModuleItemSourceType(item),
         },
       }
 
@@ -819,6 +829,7 @@ async function ingestModuleResources(
             extractionError: extracted.extractionError,
             metadata: {
               ...baseRecord.metadata,
+              capability: extracted.extractionStatus === 'extracted' ? 'supported' : 'partial',
               canvasPageUrl: page.url ?? item.page_url ?? null,
               pageUpdatedAt: page.updated_at ?? null,
               pagePublished: page.published ?? null,
@@ -835,6 +846,7 @@ async function ingestModuleResources(
             extractionError: error instanceof Error ? error.message : 'Unknown Canvas page ingestion error.',
             metadata: {
               ...baseRecord.metadata,
+              capability: 'partial',
               canvasPageUrl: item.page_url ?? null,
             },
           })
@@ -842,8 +854,138 @@ async function ingestModuleResources(
         continue
       }
 
+      if (isCanvasAssignmentModuleItem(item)) {
+        const assignment = typeof item.content_id === 'number'
+          ? assignmentsById.get(item.content_id) ?? null
+          : null
+
+        if (!assignment) {
+          records.push({
+            ...baseRecord,
+            contentType: 'text/html',
+            extractionStatus: 'metadata_only',
+            extractionError: 'This module-linked assignment was detected, but Canvas did not provide readable assignment details in the current sync payload.',
+            metadata: {
+              ...baseRecord.metadata,
+              capability: 'partial',
+              normalizedSourceType: 'assignment',
+            },
+          })
+          continue
+        }
+
+        const extracted = await extractCanvasStructuredHtmlContent({
+          title: assignment.name,
+          sections: [
+            {
+              label: 'Assignment',
+              text: assignment.name,
+            },
+            {
+              label: 'Submission types',
+              text: assignment.submission_types.length > 0 ? assignment.submission_types.join(', ') : null,
+            },
+            {
+              label: 'Instructions',
+              html: assignment.description,
+            },
+          ],
+          emptyMessage: 'Canvas assignment fetched successfully, but no readable instructions or body text were found.',
+        })
+
+        records.push({
+          ...baseRecord,
+          title: assignment.name,
+          contentType: 'text/html',
+          extension: null,
+          sourceUrl: assignment.url ?? baseRecord.sourceUrl,
+          htmlUrl: assignment.html_url ?? baseRecord.htmlUrl,
+          extractionStatus: extracted.extractionStatus,
+          extractedText: extracted.extractedText,
+          extractedTextPreview: extracted.extractedTextPreview,
+          extractedCharCount: extracted.extractedCharCount,
+          extractionError: extracted.extractionError,
+          metadata: {
+            ...baseRecord.metadata,
+            capability: extracted.extractionStatus === 'extracted' ? 'supported' : 'partial',
+            normalizedSourceType: 'assignment',
+            assignmentDueAt: assignment.due_at ?? null,
+            pointsPossible: assignment.points_possible ?? null,
+            submissionTypes: assignment.submission_types,
+          },
+        })
+        continue
+      }
+
+      if (isCanvasDiscussionModuleItem(item)) {
+        try {
+          const discussion = await getCanvasDiscussionTopic(courseId, {
+            topicId: typeof item.content_id === 'number' ? item.content_id : null,
+            apiUrl: item.url ?? null,
+          }, config)
+
+          const extracted = await extractCanvasStructuredHtmlContent({
+            title: discussion.title || item.title,
+            sections: [
+              {
+                label: 'Discussion',
+                text: discussion.title || item.title,
+              },
+              {
+                label: 'Prompt',
+                html: discussion.message,
+              },
+            ],
+            emptyMessage: 'Canvas discussion fetched successfully, but no readable prompt text was found.',
+          })
+
+          records.push({
+            ...baseRecord,
+            title: discussion.title?.trim() || item.title,
+            contentType: 'text/html',
+            extension: null,
+            sourceUrl: discussion.url ?? baseRecord.sourceUrl,
+            htmlUrl: discussion.html_url ?? baseRecord.htmlUrl,
+            extractionStatus: extracted.extractionStatus,
+            extractedText: extracted.extractedText,
+            extractedTextPreview: extracted.extractedTextPreview,
+            extractedCharCount: extracted.extractedCharCount,
+            extractionError: extracted.extractionError,
+            metadata: {
+              ...baseRecord.metadata,
+              capability: extracted.extractionStatus === 'extracted' ? 'supported' : 'partial',
+              normalizedSourceType: 'discussion',
+              discussionUpdatedAt: discussion.updated_at ?? null,
+              discussionPostedAt: discussion.posted_at ?? null,
+            },
+          })
+        } catch (error) {
+          records.push({
+            ...baseRecord,
+            contentType: 'text/html',
+            extension: null,
+            extractionStatus: 'failed',
+            extractionError: error instanceof Error ? error.message : 'Unknown Canvas discussion ingestion error.',
+            metadata: {
+              ...baseRecord.metadata,
+              capability: 'partial',
+              normalizedSourceType: 'discussion',
+            },
+          })
+        }
+        continue
+      }
+
       if (item.type.toLowerCase() !== 'file' || typeof item.content_id !== 'number') {
-        records.push(baseRecord)
+        records.push({
+          ...baseRecord,
+          extractionStatus: 'metadata_only',
+          extractionError: buildModuleItemCapabilityNote(item),
+          metadata: {
+            ...baseRecord.metadata,
+            capability: 'partial',
+          },
+        })
         continue
       }
 
@@ -894,6 +1036,7 @@ async function ingestModuleResources(
           extractionError: extracted.extractionError,
           metadata: {
             ...baseRecord.metadata,
+            capability: extracted.supported ? 'supported' : 'unsupported',
             fileSize: file.size ?? null,
             mimeClass: file.mime_class ?? null,
             fileUpdatedAt: file.updated_at ?? null,
@@ -904,6 +1047,10 @@ async function ingestModuleResources(
           ...baseRecord,
           extractionStatus: 'failed',
           extractionError: error instanceof Error ? error.message : 'Unknown Canvas file ingestion error.',
+          metadata: {
+            ...baseRecord.metadata,
+            capability: 'partial',
+          },
         })
       }
     }
@@ -1039,6 +1186,41 @@ function resolveCanvasUrl(baseUrl: string | null | undefined, value: string | nu
 function isCanvasPageModuleItem(item: { type?: string | null; page_url?: string | null }) {
   const type = item.type?.toLowerCase() ?? ''
   return Boolean(item.page_url) || type.includes('page') || type.includes('wiki')
+}
+
+function isCanvasAssignmentModuleItem(item: CanvasModuleItem) {
+  const type = item.type?.toLowerCase() ?? ''
+  return type.includes('assignment')
+}
+
+function isCanvasDiscussionModuleItem(item: CanvasModuleItem) {
+  const type = item.type?.toLowerCase() ?? ''
+  return type.includes('discussion')
+}
+
+function normalizeModuleItemSourceType(item: CanvasModuleItem) {
+  if (isCanvasPageModuleItem(item)) return 'page'
+  if (isCanvasAssignmentModuleItem(item)) return 'assignment'
+  if (isCanvasDiscussionModuleItem(item)) return 'discussion'
+  if ((item.type?.toLowerCase() ?? '') === 'file') return 'file'
+  return (item.type?.toLowerCase() ?? 'resource').replace(/\s+/g, '_')
+}
+
+function buildModuleItemCapabilityNote(item: CanvasModuleItem) {
+  const type = item.type?.trim() || 'resource'
+  const locked = item.content_details?.locked_for_user
+    ? ' Canvas currently marks it locked for this user.'
+    : ''
+
+  if ((item.type?.toLowerCase() ?? '').includes('external')) {
+    return `This ${type} is preserved as a module link, but Stay Focused cannot read its body content directly yet.${locked}`
+  }
+
+  if ((item.type?.toLowerCase() ?? '').includes('subheader')) {
+    return 'This module item is a structural subheader, so it is kept as navigation context instead of readable study content.'
+  }
+
+  return `This ${type} is linked from the module, but Stay Focused does not yet have direct readable extraction for this source type.${locked}`
 }
 
 function matchesCanvasTaskTitle(taskTitle: string, sourceTitle: string) {

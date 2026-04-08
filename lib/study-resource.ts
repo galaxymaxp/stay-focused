@@ -17,6 +17,8 @@ export function getStudySourceTypeLabel(resource: StudyResourceLike) {
   const contentType = resource.contentType?.toLowerCase() ?? null
 
   if (extension === 'pdf') return 'PDF'
+  if (extension === 'docx') return 'DOCX'
+  if (extension === 'doc') return 'DOC'
   if (extension === 'pptx') return 'PPTX'
   if (extension === 'ppt') return 'PPT'
   if (extension === 'txt') return 'TXT'
@@ -24,6 +26,8 @@ export function getStudySourceTypeLabel(resource: StudyResourceLike) {
   if (extension === 'csv') return 'CSV'
   if (extension === 'html' || extension === 'htm') return 'HTML'
   if (contentType?.includes('pdf')) return 'PDF'
+  if (contentType?.includes('wordprocessingml.document')) return 'DOCX'
+  if (contentType?.includes('msword')) return 'DOC'
   if (contentType?.includes('presentation')) return 'Slide deck'
   if (contentType?.includes('text/html')) return 'HTML'
 

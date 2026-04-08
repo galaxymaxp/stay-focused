@@ -64,6 +64,16 @@ export interface CanvasAnnouncement {
   url?: string | null
 }
 
+export interface CanvasDiscussionTopic {
+  id: number
+  title: string
+  message: string | null
+  html_url?: string | null
+  url?: string | null
+  posted_at?: string | null
+  updated_at?: string | null
+}
+
 export interface CanvasModuleItem {
   id: number
   title: string
@@ -237,6 +247,24 @@ export async function getAnnouncements(courseId: number, configOverride?: Partia
     `/courses/${courseId}/discussion_topics?only_announcements=true&order_by=recent_activity`,
     configOverride
   )
+}
+
+export async function getCanvasDiscussionTopic(
+  courseId: number,
+  input: { topicId?: number | null; apiUrl?: string | null },
+  configOverride?: Partial<CanvasConfig>,
+): Promise<CanvasDiscussionTopic> {
+  if (typeof input.topicId === 'number') {
+    return canvasFetch<CanvasDiscussionTopic>(`/courses/${courseId}/discussion_topics/${input.topicId}`, configOverride)
+  }
+
+  if (input.apiUrl) {
+    const config = resolveCanvasConfig(configOverride)
+    const absoluteUrl = new URL(input.apiUrl, `${config.url}/`).toString()
+    return canvasFetchAbsolute<CanvasDiscussionTopic>(absoluteUrl, configOverride)
+  }
+
+  throw new Error('Canvas discussion resource is missing both topic ID and API URL.')
 }
 
 export async function getModules(courseId: number, configOverride?: Partial<CanvasConfig>): Promise<CanvasModule[]> {
