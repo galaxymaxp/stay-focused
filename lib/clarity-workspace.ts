@@ -140,7 +140,7 @@ function buildTodayTaskItem(task: TaskItem): TodayItem {
     planningAnnotationLabel: labelForTaskPlanningAnnotation(planningAnnotation),
     recommendationScore: task.actionScore,
     href: buildModuleDoHref(task.moduleId, {
-      taskId: task.id,
+      taskTitle: task.title,
     }),
     learnHref: buildModuleLearnHref(task.moduleId, {
       taskId: task.id,
@@ -229,7 +229,7 @@ function buildCalendarItem(task: TaskItem): CalendarItem {
     priority: task.priority,
     recommendationScore: task.actionScore,
     href: buildModuleDoHref(task.moduleId, {
-      taskId: task.id,
+      taskTitle: task.title,
     }),
     canvasUrl: task.canvasUrl ?? null,
   }

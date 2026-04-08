@@ -1,15 +1,21 @@
 'use client'
 
 import type { CSSProperties } from 'react'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { buildDoNowPrompt } from '@/lib/do-now'
-import type { DoNowContext } from '@/lib/do-now'
+import {
+  buildDoNowPrompt,
+  buildDoNowRequestPayload,
+  isDoNowPrompt,
+  type DoNowContext,
+  type DoNowPrompt,
+} from '@/lib/do-now'
+
+type RequestState = 'loading' | 'success' | 'error'
 
 /**
- * Modal panel that answers four concrete questions to help the student start.
- * Receives a DoNowContext, derives the prompt text via buildDoNowPrompt, and
- * renders it. Closed via the backdrop click, Escape, or the close button.
+ * Modal panel that fetches a server-generated Do Now view when opened and
+ * falls back to the local prompt builder if generation fails.
  */
 export function DoNowPanel({
   context,
@@ -18,7 +24,12 @@ export function DoNowPanel({
   context: DoNowContext
   onClose: () => void
 }) {
-  const prompt = buildDoNowPrompt(context)
+  const fallbackPrompt = buildDoNowPrompt(context)
+  const requestBody = JSON.stringify(buildDoNowRequestPayload(context))
+  const [generatedPrompt, setGeneratedPrompt] = useState<DoNowPrompt | null>(null)
+  const [requestState, setRequestState] = useState<RequestState>('loading')
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const prompt = generatedPrompt ?? fallbackPrompt
 
   useEffect(() => {
     function handleEscape(event: KeyboardEvent) {
@@ -42,6 +53,61 @@ export function DoNowPanel({
       document.body.style.paddingRight = ''
     }
   }, [])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    let cancelled = false
+
+    async function loadDoNow() {
+      setGeneratedPrompt(null)
+      setRequestState('loading')
+      setErrorMessage(null)
+
+      try {
+        const response = await fetch('/api/do-now', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: requestBody,
+          signal: controller.signal,
+        })
+
+        const data = (await response.json().catch(() => null)) as unknown
+
+        if (!response.ok) {
+          throw new Error(extractErrorMessage(data))
+        }
+
+        if (!isPlainRecord(data) || data.ok !== true || !isDoNowPrompt(data.prompt)) {
+          throw new Error('Received an invalid Do Now response.')
+        }
+
+        if (cancelled) return
+
+        setGeneratedPrompt(data.prompt)
+        setRequestState('success')
+      } catch (error) {
+        if (controller.signal.aborted || cancelled) return
+
+        console.error('Do Now request failed:', error)
+        setGeneratedPrompt(null)
+        setRequestState('error')
+        setErrorMessage(
+          error instanceof Error
+            ? error.message
+            : 'Could not generate a tailored Do Now right now.',
+        )
+      }
+    }
+
+    void loadDoNow()
+
+    return () => {
+      cancelled = true
+      controller.abort()
+    }
+  }, [requestBody])
 
   return (
     <div
@@ -89,34 +155,44 @@ export function DoNowPanel({
           </button>
         </div>
 
-        {prompt.urgencyNote && (
-          <div className="ui-chip" style={urgencyNoticeStyle}>
-            {prompt.urgencyNote}
-          </div>
-        )}
+        <StatusBanner state={requestState} errorMessage={errorMessage} />
 
-        <div style={sectionsStyle}>
-          <PromptSection
-            number={1}
-            question="What should I do first?"
-            answer={prompt.whatFirst}
-          />
-          <PromptSection
-            number={2}
-            question="What am I trying to produce?"
-            answer={prompt.whatToProduce}
-          />
-          <PromptSection
-            number={3}
-            question="Where do I start right now?"
-            answer={prompt.whereToStart}
-          />
-          <PromptSection
-            number={4}
-            question="What is the smallest meaningful next step?"
-            answer={prompt.smallestStep}
-          />
-        </div>
+        {requestState === 'loading' ? (
+          <div className="ui-empty" style={loadingStateStyle}>
+            Generating a more tailored Do Now from the current task and module context.
+          </div>
+        ) : (
+          <>
+            {prompt.urgencyNote && (
+              <div className="ui-chip" style={urgencyNoticeStyle}>
+                {prompt.urgencyNote}
+              </div>
+            )}
+
+            <div style={sectionsStyle}>
+              <PromptSection
+                number={1}
+                question="What should I do first?"
+                answer={prompt.whatFirst}
+              />
+              <PromptSection
+                number={2}
+                question="What am I trying to produce?"
+                answer={prompt.whatToProduce}
+              />
+              <PromptSection
+                number={3}
+                question="Where do I start right now?"
+                answer={prompt.whereToStart}
+              />
+              <PromptSection
+                number={4}
+                question="What is the smallest meaningful next step?"
+                answer={prompt.smallestStep}
+              />
+            </div>
+          </>
+        )}
 
         <div style={footerStyle}>
           {context.canvasUrl && (
@@ -174,6 +250,45 @@ function PromptSection({
   )
 }
 
+function StatusBanner({
+  state,
+  errorMessage,
+}: {
+  state: RequestState
+  errorMessage: string | null
+}) {
+  return (
+    <div style={statusBannerStyle(state)}>
+      <p style={statusTitleStyle}>
+        {state === 'loading'
+          ? 'Generating tailored guidance'
+          : state === 'success'
+            ? 'Tailored with OpenAI'
+            : 'Using the local fallback'}
+      </p>
+      <p style={statusBodyStyle}>
+        {state === 'loading'
+          ? 'The server is building a more specific Do Now from this task, module summary, concepts, and study prompts.'
+          : state === 'success'
+            ? 'This Do Now was generated on demand from the current task context.'
+            : `${errorMessage ?? 'OpenAI generation failed.'} Showing the existing local Do Now instead.`}
+      </p>
+    </div>
+  )
+}
+
+function extractErrorMessage(value: unknown) {
+  if (isPlainRecord(value) && typeof value.error === 'string' && value.error.trim()) {
+    return value.error
+  }
+
+  return 'Could not generate a tailored Do Now right now.'
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
 function priorityChipStyle(priority: 'high' | 'medium' | 'low'): CSSProperties {
   if (priority === 'high') {
     return {
@@ -185,6 +300,7 @@ function priorityChipStyle(priority: 'high' | 'medium' | 'low'): CSSProperties {
       border: '1px solid color-mix(in srgb, var(--amber) 26%, var(--border-subtle) 74%)',
     }
   }
+
   if (priority === 'medium') {
     return {
       padding: '0.22rem 0.55rem',
@@ -195,6 +311,7 @@ function priorityChipStyle(priority: 'high' | 'medium' | 'low'): CSSProperties {
       border: '1px solid color-mix(in srgb, var(--accent-border) 32%, var(--border-subtle) 68%)',
     }
   }
+
   return {
     padding: '0.22rem 0.55rem',
     fontSize: '11px',
@@ -202,6 +319,33 @@ function priorityChipStyle(priority: 'high' | 'medium' | 'low'): CSSProperties {
     background: 'color-mix(in srgb, var(--surface-soft) 92%, transparent)',
     color: 'var(--text-secondary)',
     border: '1px solid var(--border-subtle)',
+  }
+}
+
+function statusBannerStyle(state: RequestState): CSSProperties {
+  if (state === 'success') {
+    return {
+      borderRadius: 'var(--radius-panel)',
+      padding: '0.8rem 0.9rem',
+      background: 'color-mix(in srgb, var(--blue-light) 44%, var(--surface-soft) 56%)',
+      border: '1px solid color-mix(in srgb, var(--blue) 24%, var(--border-subtle) 76%)',
+    }
+  }
+
+  if (state === 'error') {
+    return {
+      borderRadius: 'var(--radius-panel)',
+      padding: '0.8rem 0.9rem',
+      background: 'color-mix(in srgb, var(--amber-light) 42%, var(--surface-soft) 58%)',
+      border: '1px solid color-mix(in srgb, var(--amber) 22%, var(--border-subtle) 78%)',
+    }
+  }
+
+  return {
+    borderRadius: 'var(--radius-panel)',
+    padding: '0.8rem 0.9rem',
+    background: 'color-mix(in srgb, var(--accent-light) 42%, var(--surface-soft) 58%)',
+    border: '1px solid color-mix(in srgb, var(--accent-border) 22%, var(--border-subtle) 78%)',
   }
 }
 
@@ -267,6 +411,29 @@ const closeButtonStyle: CSSProperties = {
   padding: 0,
   fontSize: '13px',
   borderRadius: 'var(--radius-control)',
+}
+
+const statusTitleStyle: CSSProperties = {
+  margin: 0,
+  fontSize: '11px',
+  fontWeight: 700,
+  letterSpacing: '0.07em',
+  textTransform: 'uppercase',
+  color: 'var(--text-muted)',
+}
+
+const statusBodyStyle: CSSProperties = {
+  margin: '0.38rem 0 0',
+  fontSize: '13px',
+  lineHeight: 1.6,
+  color: 'var(--text-primary)',
+}
+
+const loadingStateStyle: CSSProperties = {
+  borderRadius: 'var(--radius-panel)',
+  padding: '1rem',
+  fontSize: '14px',
+  lineHeight: 1.65,
 }
 
 const urgencyNoticeStyle: CSSProperties = {

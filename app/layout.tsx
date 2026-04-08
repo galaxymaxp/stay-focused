@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import Script from 'next/script'
 import { AppShell } from '@/components/AppShell'
 import { ThemeProvider } from '@/components/ThemeProvider'
 import { getRecentAnnouncements } from '@/lib/announcements'
@@ -46,13 +47,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
   return (
     <html lang="en" suppressHydrationWarning>
-      <head>
-        <script
+      <body className="app-shell" style={{ background: 'var(--bg)', minHeight: '100vh' }}>
+        <Script
           id="theme-init"
+          strategy="beforeInteractive"
           dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }}
         />
-      </head>
-      <body className="app-shell" style={{ background: 'var(--bg)', minHeight: '100vh' }}>
         <ThemeProvider>
           <AppShell recentAnnouncements={recentAnnouncements}>{children}</AppShell>
         </ThemeProvider>

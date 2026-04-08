@@ -77,7 +77,7 @@ export default async function CoursesPage() {
               {nextTask && (
                 <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.82rem 0.88rem' }}>
                   <p style={{ margin: 0, fontSize: '12px', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Next action</p>
-                  <Link href={buildModuleDoHref(nextTask.moduleId, { taskId: nextTask.id })} style={{ textDecoration: 'none' }}>
+                  <Link href={buildModuleDoHref(nextTask.moduleId, { taskTitle: nextTask.title })} style={{ textDecoration: 'none' }}>
                     <p style={{ margin: '0.45rem 0 0', fontSize: '15px', fontWeight: 650, color: 'var(--text-primary)' }}>{nextTask.title}</p>
                   </Link>
                   <p style={{ margin: '0.35rem 0 0', fontSize: '13px', color: 'var(--text-secondary)' }}>{getTaskUrgencyLabel(nextTask)} in {nextTask.moduleTitle}</p>
@@ -121,7 +121,7 @@ export default async function CoursesPage() {
 
               <div style={{ display: 'flex', gap: '0.65rem', flexWrap: 'wrap' }}>
                 <Link href={courseHref} className="ui-button ui-button-secondary">Open course Learn</Link>
-                <Link href={nextTask ? buildModuleDoHref(nextTask.moduleId, { taskId: nextTask.id }) : '/do'} className="ui-button ui-button-ghost">Open next Do item</Link>
+                <Link href={nextTask ? buildModuleDoHref(nextTask.moduleId, { taskTitle: nextTask.title }) : '/do'} className="ui-button ui-button-ghost">Open next Do item</Link>
               </div>
             </section>
           )

@@ -8,7 +8,14 @@ interface ModuleLearnHrefOptions {
 }
 
 interface ModuleDoHrefOptions {
+  /** Use for links built from the tasks table (module workspace). Matches by ID on the Do page. */
   taskId?: string | null
+  /**
+   * Use for links built from task_items (global workspace — Calendar, Today, global Do page).
+   * task_items and tasks are separate tables with independent UUIDs, so taskId cannot be used
+   * for cross-table navigation. taskTitle triggers title-based matching on the Do page instead.
+   */
+  taskTitle?: string | null
   resourceId?: string | null
 }
 
@@ -57,11 +64,14 @@ export function buildModuleDoHref(moduleId: string, options: ModuleDoHrefOptions
   const params = new URLSearchParams()
 
   if (options.taskId) params.set('task', options.taskId)
+  if (options.taskTitle) params.set('taskTitle', options.taskTitle)
   if (options.resourceId) params.set('resource', options.resourceId)
   // Any task-targeted Do link auto-opens the Do Now panel on arrival.
   // Resource-only links do not, since they target a content item rather than a specific task.
-  if (options.taskId) params.set('donow', '1')
+  if (options.taskId || options.taskTitle) params.set('donow', '1')
 
+  // Hash anchors use task.id from the tasks table. taskTitle-based links skip the hash
+  // because the Do page derives the canonical Task.id only after title matching server-side.
   return appendHref(
     `/modules/${moduleId}/do`,
     params,

@@ -1,8 +1,5 @@
 /**
- * Do Now — activity prompt builder.
- *
- * Derives four concrete, actionable answers from already-processed data.
- * No AI calls. Pure function.
+ * Do Now activity prompt builders and API payload helpers.
  */
 
 export interface DoNowContext {
@@ -13,11 +10,12 @@ export interface DoNowContext {
   priority: 'high' | 'medium' | 'low' | null
   courseName: string
   moduleTitle: string | null
-  /** From module.study_prompts — AI-generated at sync time */
+  /** From module.study_prompts, AI-generated at sync time */
   studyPrompts?: string[] | null
   /** From module.concepts */
   concepts?: string[] | null
   moduleSummary?: string | null
+  resourceSnippet?: string | null
   canvasUrl?: string | null
   learnHref?: string | null
 }
@@ -35,6 +33,18 @@ export interface DoNowPrompt {
   urgencyNote: string | null
 }
 
+export interface DoNowApiRequest {
+  taskTitle: string
+  taskDetails?: string
+  courseName?: string
+  moduleTitle?: string
+  moduleSummary?: string
+  concepts?: string[]
+  studyPrompts?: string[]
+  deadline?: string
+  resourceSnippet?: string
+}
+
 export function buildDoNowPrompt(ctx: DoNowContext): DoNowPrompt {
   return {
     urgencyNote: buildUrgencyNote(ctx),
@@ -45,14 +55,48 @@ export function buildDoNowPrompt(ctx: DoNowContext): DoNowPrompt {
   }
 }
 
-// ─── Field builders ───────────────────────────────────────────────────────────
+export function buildDoNowRequestPayload(ctx: DoNowContext): DoNowApiRequest {
+  const taskTitle = compactOptionalText(ctx.taskTitle, 160) ?? ctx.taskTitle.trim()
+  const taskDetails = compactOptionalText(ctx.taskDetails, 700)
+  const courseName = compactOptionalText(ctx.courseName, 120)
+  const moduleTitle = compactOptionalText(ctx.moduleTitle, 160)
+  const moduleSummary = compactOptionalText(ctx.moduleSummary, 360)
+  const concepts = compactTextList(ctx.concepts, 6, 80)
+  const studyPrompts = compactTextList(ctx.studyPrompts, 4, 160)
+  const deadline = compactOptionalText(ctx.deadline, 80)
+  const resourceSnippet = buildDoNowResourceSnippet(ctx.resourceSnippet)
+
+  return {
+    taskTitle,
+    ...(taskDetails ? { taskDetails } : {}),
+    ...(courseName ? { courseName } : {}),
+    ...(moduleTitle ? { moduleTitle } : {}),
+    ...(moduleSummary ? { moduleSummary } : {}),
+    ...(concepts.length > 0 ? { concepts } : {}),
+    ...(studyPrompts.length > 0 ? { studyPrompts } : {}),
+    ...(deadline ? { deadline } : {}),
+    ...(resourceSnippet ? { resourceSnippet } : {}),
+  }
+}
+
+export function buildDoNowResourceSnippet(text: string | null | undefined, maxLength = 280) {
+  return compactOptionalText(text, maxLength)
+}
+
+export function isDoNowPrompt(value: unknown): value is DoNowPrompt {
+  if (!isPlainRecord(value)) return false
+
+  return typeof value.whatFirst === 'string'
+    && typeof value.whatToProduce === 'string'
+    && typeof value.whereToStart === 'string'
+    && typeof value.smallestStep === 'string'
+    && (typeof value.urgencyNote === 'string' || value.urgencyNote === null)
+}
 
 function buildWhatFirst(ctx: DoNowContext): string {
-  // Use the first study prompt if available — it was written specifically as a starting action
-  const firstPrompt = ctx.studyPrompts?.find((p) => p.trim().length > 0)
+  const firstPrompt = ctx.studyPrompts?.find((prompt) => prompt.trim().length > 0)
   if (firstPrompt) return trimToSentence(firstPrompt, 220)
 
-  // Fall back to the first sentence of task details
   const firstSentence = firstSentenceOf(ctx.taskDetails)
   if (firstSentence) return firstSentence
 
@@ -62,7 +106,6 @@ function buildWhatFirst(ctx: DoNowContext): string {
 function buildWhatToProduce(ctx: DoNowContext): string {
   const title = ctx.taskTitle.toLowerCase()
 
-  // Task type inference from title keywords
   if (/\b(quiz|test|exam|midterm|final)\b/.test(title)) {
     return `Complete and submit "${ctx.taskTitle}".`
   }
@@ -86,7 +129,6 @@ function buildWhatToProduce(ctx: DoNowContext): string {
     return `A completed and submitted "${ctx.taskTitle}".`
   }
 
-  // Concept-based fallback
   const conceptList = ctx.concepts?.slice(0, 3).join(', ')
   if (conceptList) return `A clear grasp of: ${conceptList}.`
 
@@ -94,12 +136,11 @@ function buildWhatToProduce(ctx: DoNowContext): string {
 }
 
 function buildWhereToStart(ctx: DoNowContext): string {
-  // Second study prompt is usually the "how to approach it" prompt
-  const secondPrompt = ctx.studyPrompts?.filter((p) => p.trim().length > 0)[1]
+  const secondPrompt = ctx.studyPrompts?.filter((prompt) => prompt.trim().length > 0)[1]
   if (secondPrompt) return trimToSentence(secondPrompt, 220)
 
   if (ctx.canvasUrl) {
-    return `Open the assignment directly in Canvas, then read through the instructions before doing anything else.`
+    return 'Open the assignment directly in Canvas, then read through the instructions before doing anything else.'
   }
 
   if (ctx.learnHref) {
@@ -116,41 +157,54 @@ function buildWhereToStart(ctx: DoNowContext): string {
 }
 
 function buildSmallestStep(ctx: DoNowContext): string {
-  // Third study prompt is typically a specific action step
-  const thirdPrompt = ctx.studyPrompts?.filter((p) => p.trim().length > 0)[2]
+  const thirdPrompt = ctx.studyPrompts?.filter((prompt) => prompt.trim().length > 0)[2]
   if (thirdPrompt) return trimToSentence(thirdPrompt, 220)
 
-  // If task details have a second sentence, use it
   const secondSentence = secondSentenceOf(ctx.taskDetails)
   if (secondSentence && secondSentence.length > 40) return secondSentence
 
-  // Concept-based smallest step
   const concept = ctx.concepts?.[0]
   if (concept) {
     return `Write one sentence in your own words explaining "${concept}", then continue from there.`
   }
 
-  // Module summary based
   if (ctx.moduleSummary) {
-    return `Skim the module summary, highlight anything unfamiliar, then open the specific section that covers it.`
+    return 'Skim the module summary, highlight anything unfamiliar, then open the specific section that covers it.'
   }
 
-  return `Write the task title at the top of a blank page, list three things you already know, then start from what is already clear.`
+  return 'Write the task title at the top of a blank page, list three things you already know, then start from what is already clear.'
 }
 
 function buildUrgencyNote(ctx: DoNowContext): string | null {
   if (!ctx.deadline) return null
+
   const daysUntil = Math.ceil(
     (new Date(ctx.deadline).getTime() - Date.now()) / (1000 * 60 * 60 * 24),
   )
-  if (daysUntil < 0) return `This task is past its due date. Completing it now limits further impact.`
-  if (daysUntil === 0) return `Due today — finishing this is the highest-value use of the next session.`
-  if (daysUntil === 1) return `Due tomorrow. Starting now leaves time to course-correct if needed.`
+
+  if (daysUntil < 0) return 'This task is past its due date. Completing it now limits further impact.'
+  if (daysUntil === 0) return 'Due today. Finishing this is the highest-value use of the next session.'
+  if (daysUntil === 1) return 'Due tomorrow. Starting now leaves time to course-correct if needed.'
   if (daysUntil <= 3) return `Due in ${daysUntil} days. Getting ahead of it now keeps the rest of the week lighter.`
   return null
 }
 
-// ─── Text helpers ─────────────────────────────────────────────────────────────
+function compactOptionalText(value: string | null | undefined, maxLength: number) {
+  const normalized = normalizeWhitespace(value)
+  if (!normalized) return null
+  return trimToSentence(normalized, maxLength)
+}
+
+function compactTextList(values: string[] | null | undefined, maxItems: number, maxLength: number) {
+  return (values ?? [])
+    .map((value) => compactOptionalText(value, maxLength))
+    .filter((value): value is string => Boolean(value))
+    .slice(0, maxItems)
+}
+
+function normalizeWhitespace(value: string | null | undefined) {
+  return value?.replace(/\s+/g, ' ').trim() ?? ''
+}
 
 function firstSentenceOf(text: string | null | undefined): string | null {
   if (!text) return null
@@ -167,5 +221,9 @@ function secondSentenceOf(text: string | null | undefined): string | null {
 function trimToSentence(text: string, maxLength: number): string {
   if (text.length <= maxLength) return text
   const boundary = text.slice(0, maxLength).match(/^(.+?[.!?])\s/)
-  return boundary?.[1] ?? `${text.slice(0, maxLength).trimEnd()}…`
+  return boundary?.[1] ?? `${text.slice(0, maxLength).trimEnd()}...`
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }

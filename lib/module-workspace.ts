@@ -98,6 +98,8 @@ export interface LearnExperience {
 export interface RecommendedStepTarget {
   id: string
   label: string
+  type: 'task' | 'learn' | 'review' | 'quiz' | 'module' | 'announcement'
+  actionLabel: string
   href: string
   destinationLabel: string
 }
@@ -831,44 +833,173 @@ export function findRecommendedStepTargets(
   experience: LearnExperience,
   tasks: Task[],
 ): RecommendedStepTarget[] {
-  const searchPool = [
-    ...experience.learnUnits.map((unit) => ({
-      id: unit.id,
-      title: unit.resource.title,
+  return (module.recommended_order ?? []).map((step, index) =>
+    resolveRecommendedStepTarget({
+      module,
+      step,
+      index,
+      experience,
+      tasks,
+    }),
+  )
+}
+
+function resolveRecommendedStepTarget({
+  module,
+  step,
+  index,
+  experience,
+  tasks,
+}: {
+  module: Module
+  step: string
+  index: number
+  experience: LearnExperience
+  tasks: Task[]
+}): RecommendedStepTarget {
+  const stepId = `${module.id}-step-${index + 1}`
+  const normalizedStep = normalizeLookup(step)
+  const exactTask = findExactTaskMatch(step, tasks)
+
+  if (exactTask) {
+    return {
+      id: stepId,
+      label: step,
+      type: 'task',
+      actionLabel: 'Open Do Now',
+      href: buildModuleDoHref(module.id, {
+        taskId: exactTask.id,
+      }),
+      destinationLabel: 'Task',
+    }
+  }
+
+  const exactResource = findExactResourceMatch(step, experience.resources)
+
+  if (exactResource?.kind === 'announcement') {
+    return {
+      id: stepId,
+      label: step,
+      type: 'announcement',
+      actionLabel: 'Open announcement',
       href: buildModuleLearnHref(module.id, {
-        resourceId: unit.resource.id,
+        supportId: exactResource.id,
+        panel: 'source-support',
+      }),
+      destinationLabel: 'Announcement',
+    }
+  }
+
+  if (exactResource?.kind === 'quiz' || looksLikeQuizStep(normalizedStep)) {
+    return {
+      id: stepId,
+      label: step,
+      type: 'quiz',
+      actionLabel: 'Open quiz',
+      href: `/modules/${module.id}/quiz`,
+      destinationLabel: 'Quiz',
+    }
+  }
+
+  if (looksLikeReviewStep(normalizedStep)) {
+    return {
+      id: stepId,
+      label: step,
+      type: 'review',
+      actionLabel: 'Open review',
+      href: `/modules/${module.id}/review`,
+      destinationLabel: 'Review',
+    }
+  }
+
+  if (exactResource && exactResource.lane === 'learn') {
+    return {
+      id: stepId,
+      label: step,
+      type: 'learn',
+      actionLabel: 'Open Learn',
+      href: buildModuleLearnHref(module.id, {
+        resourceId: exactResource.id,
         panel: 'study-notes',
       }),
-      destinationLabel: 'Open resource',
-    })),
-    ...experience.doItems.map((item) => ({
-      id: item.id,
-      title: item.title,
-      href: buildModuleDoHref(module.id, {
-        resourceId: item.id,
-      }),
-      destinationLabel: 'Open in Do',
-    })),
-    ...tasks.map((task) => ({
-      id: task.id,
-      title: task.title,
-      href: buildModuleDoHref(module.id, {
-        taskId: task.id,
-      }),
-      destinationLabel: 'Open task',
-    })),
-  ]
-
-  return (module.recommended_order ?? []).map((step, index) => {
-    const match = searchPool.find((entry) => matchesStepText(step, entry.title))
-
-    return {
-      id: `${module.id}-step-${index + 1}`,
-      label: step,
-      href: match?.href ?? `/modules/${module.id}/learn`,
-      destinationLabel: match?.destinationLabel ?? 'Open module learn',
+      destinationLabel: 'Learn',
     }
-  })
+  }
+
+  if (exactResource) {
+    return {
+      id: stepId,
+      label: step,
+      type: 'learn',
+      actionLabel: 'Open Learn',
+      href: buildModuleLearnHref(module.id, {
+        supportId: exactResource.id,
+        panel: 'source-support',
+      }),
+      destinationLabel: 'Learn support',
+    }
+  }
+
+  if (looksLikeLearnStep(normalizedStep)) {
+    return {
+      id: stepId,
+      label: step,
+      type: 'learn',
+      actionLabel: 'Open Learn',
+      href: buildModuleLearnHref(module.id),
+      destinationLabel: 'Learn',
+    }
+  }
+
+  if (looksLikeAnnouncementStep(normalizedStep)) {
+    return {
+      id: stepId,
+      label: step,
+      type: 'announcement',
+      actionLabel: 'Open announcements',
+      href: buildModuleLearnHref(module.id, {
+        panel: 'source-support',
+      }),
+      destinationLabel: 'Announcement',
+    }
+  }
+
+  return {
+    id: stepId,
+    label: step,
+    type: 'module',
+    actionLabel: 'Open module',
+    href: `/modules/${module.id}`,
+    destinationLabel: 'Module',
+  }
+}
+
+function findExactTaskMatch(step: string, tasks: Task[]) {
+  const normalizedStep = normalizeLookup(step)
+
+  return tasks.find((task) => normalizeLookup(task.title) === normalizedStep) ?? null
+}
+
+function findExactResourceMatch(step: string, resources: ModuleSourceResource[]) {
+  const normalizedStep = normalizeLookup(step)
+
+  return resources.find((resource) => normalizeLookup(resource.title) === normalizedStep) ?? null
+}
+
+function looksLikeQuizStep(step: string) {
+  return /\bquiz\b|\btest\b|\bexam\b|\bpractice quiz\b/.test(step)
+}
+
+function looksLikeReviewStep(step: string) {
+  return /\breview\b|\breviewer\b|\brecap\b|\bgo over\b/.test(step)
+}
+
+function looksLikeLearnStep(step: string) {
+  return /\bread\b|\bstudy\b|\blearn\b|\bunderstand\b|\bnotes\b|\bsummary\b/.test(step)
+}
+
+function looksLikeAnnouncementStep(step: string) {
+  return /\bannouncement\b|\bupdate\b|\bnotice\b|\breminder\b/.test(step)
 }
 
 function buildLearnUnit(resource: ModuleSourceResource, module: Module, index: number): LearnResourceUnit {
@@ -1157,12 +1288,6 @@ function buildWhyItMatters(
 
 function getCanvasUrl(htmlUrl?: string | null, sourceUrl?: string | null, moduleUrl?: string | null) {
   return htmlUrl ?? sourceUrl ?? moduleUrl ?? null
-}
-
-function matchesStepText(step: string, title: string) {
-  const normalizedStep = normalizeLookup(step)
-  const normalizedTitle = normalizeLookup(title)
-  return normalizedStep.includes(normalizedTitle) || normalizedTitle.includes(normalizedStep)
 }
 
 function matchesResourceTitle(left: string, right: string) {

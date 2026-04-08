@@ -112,7 +112,7 @@ export default async function DoPage() {
                       </div>
 
                       <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-                        <Link href={buildModuleDoHref(task.moduleId, { taskId: task.id })} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+                        <Link href={buildModuleDoHref(task.moduleId, { taskTitle: task.title })} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
                           Open module Do
                         </Link>
                         {task.canvasUrl && (
