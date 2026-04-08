@@ -1,8 +1,10 @@
 import Link from 'next/link'
 import type { ReactNode } from 'react'
+import { CopyTaskBundleActions } from '@/components/CopyTaskBundleActions'
 import { StudyFileManualStateControls } from '@/components/StudyFileManualStateControls'
 import { StudyFileOpenTracker } from '@/components/StudyFileOpenTracker'
 import { StudyFilePreviewExplorer } from '@/components/StudyFilePreviewExplorer'
+import { buildManualCopyBundle } from '@/lib/manual-copy-bundle'
 import { formatNormalizedModuleResourceSourceType, getModuleResourceCapabilityInfo } from '@/lib/module-resource-capability'
 import { getStudyFileProgressLabel } from '@/lib/study-file-manual-state'
 import { buildModuleInspectHref } from '@/lib/stay-focused-links'
@@ -43,6 +45,13 @@ export function StudyFileReader({
     : studyProgress === 'skimmed'
       ? 'warning'
       : 'muted'
+  const manualCopy = buildManualCopyBundle({
+    taskTitle: linkedTask?.title ?? resource.title,
+    courseName,
+    moduleName: moduleTitle,
+    dueDate: linkedTask?.deadline ?? resource.dueDate ?? null,
+    resource,
+  })
   const contextBits = [
     resource.courseName ?? courseName,
     resource.moduleName ?? moduleTitle,
@@ -71,6 +80,10 @@ export function StudyFileReader({
             </p>
           </div>
           <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <CopyTaskBundleActions
+              bundleText={manualCopy.bundleText}
+              promptText={manualCopy.promptText}
+            />
             <Link href={`/modules/${moduleId}/learn#source-support`} className="ui-button ui-button-secondary">Back to module Learn</Link>
             <Link href={buildModuleInspectHref(moduleId, { resourceId: resource.id })} className="ui-button ui-button-ghost">
               Inspect resource

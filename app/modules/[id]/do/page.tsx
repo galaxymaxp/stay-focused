@@ -6,7 +6,9 @@ import { buildLearnExperience, extractCourseName, findRecommendedStepTargets, ge
 import { buildModuleLearnHref, getSearchParamValue, getTaskElementId } from '@/lib/stay-focused-links'
 import { sortTasksByRecommendation } from '@/lib/task-ranking'
 import { DoNowButton } from '@/components/DoNowButton'
+import { CopyTaskBundleActions } from '@/components/CopyTaskBundleActions'
 import { buildDoNowResourceSnippet } from '@/lib/do-now'
+import { buildManualCopyBundle } from '@/lib/manual-copy-bundle'
 
 interface Props {
   params: Promise<{ id: string }>
@@ -115,6 +117,14 @@ export default async function DoPage({ params, searchParams }: Props) {
                     ?? null,
                   600,
                 )
+                const manualCopy = buildManualCopyBundle({
+                  taskTitle: task.title,
+                  courseName,
+                  moduleName: module.title,
+                  dueDate: task.deadline,
+                  taskDetails: task.details,
+                  resource: matchedResource,
+                })
 
                 return (
                   <article key={task.id} id={getTaskElementId(task.id)} className="glass-panel" style={{
@@ -166,6 +176,10 @@ export default async function DoPage({ params, searchParams }: Props) {
                     </div>
 
                     <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+                      <CopyTaskBundleActions
+                        bundleText={manualCopy.bundleText}
+                        promptText={manualCopy.promptText}
+                      />
                       <DoNowButton
                         defaultOpen={doNowAutoOpen && highlightedTaskId === task.id}
                         context={{

@@ -1,8 +1,10 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
+import { CopyTaskBundleActions } from '@/components/CopyTaskBundleActions'
 import { ModuleLensShell } from '@/components/ModuleLensShell'
 import { StudyFileReader } from '@/components/StudyFileReader'
 import { StudyModeSwitcher } from '@/components/StudyModeSwitcher'
+import { buildManualCopyBundle } from '@/lib/manual-copy-bundle'
 import { formatNormalizedModuleResourceSourceType, getModuleResourceCapabilityInfo } from '@/lib/module-resource-capability'
 import { getModuleResourceQualityInfo } from '@/lib/module-resource-quality'
 import { buildModuleInspectHref } from '@/lib/stay-focused-links'
@@ -45,6 +47,13 @@ export default async function ResourceDetailPage({ params }: Props) {
   const capability = getModuleResourceCapabilityInfo(resource)
   const quality = getModuleResourceQualityInfo(resource)
   const linkedTask = tasks.find((task) => matchesByTitle(resource.title, task.title)) ?? null
+  const manualCopy = buildManualCopyBundle({
+    taskTitle: linkedTask?.title ?? resource.title,
+    courseName: resource.courseName ?? courseName,
+    moduleName: resource.moduleName ?? module.title,
+    dueDate: linkedTask?.deadline ?? resource.dueDate ?? null,
+    resource,
+  })
 
   if (resource.kind === 'study_file') {
     return (
@@ -88,6 +97,10 @@ export default async function ResourceDetailPage({ params }: Props) {
             </p>
           </div>
           <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <CopyTaskBundleActions
+              bundleText={manualCopy.bundleText}
+              promptText={manualCopy.promptText}
+            />
             <Link href={`/modules/${module.id}/learn#source-support`} className="ui-button ui-button-secondary">Back to module Learn</Link>
             <Link href={buildModuleInspectHref(module.id, { resourceId: resource.id })} className="ui-button ui-button-ghost">
               Inspect resource

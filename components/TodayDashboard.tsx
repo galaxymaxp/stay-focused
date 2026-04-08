@@ -7,6 +7,8 @@ import { TaskStatusToggle } from '@/components/TaskStatusToggle'
 import { ModuleBulletin } from '@/components/ModuleBulletin'
 import { AnnouncementsBand } from '@/components/AnnouncementsBand'
 import { DoNowButton } from '@/components/DoNowButton'
+import { CopyTaskBundleActions } from '@/components/CopyTaskBundleActions'
+import { buildManualCopyBundle } from '@/lib/manual-copy-bundle'
 import type { TodayItem, Module, Course } from '@/lib/types'
 import type { ParsedAnnouncement } from '@/lib/announcements'
 
@@ -101,6 +103,16 @@ export function TodayDashboard({
 }
 
 function FocusHeroCard({ item }: { item: TodayItem }) {
+  const manualCopy = item.kind === 'task'
+    ? buildManualCopyBundle({
+        taskTitle: item.title,
+        courseName: item.courseName,
+        moduleName: item.moduleTitle,
+        dueDate: item.dateTime,
+        taskDetails: item.supportingText,
+      })
+    : null
+
   return (
     <section className="glass-panel glass-accent motion-card" style={heroCardStyle}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
@@ -152,6 +164,12 @@ function FocusHeroCard({ item }: { item: TodayItem }) {
               taskItemId={item.taskItemId}
             />
           </>
+        )}
+        {manualCopy && (
+          <CopyTaskBundleActions
+            bundleText={manualCopy.bundleText}
+            promptText={manualCopy.promptText}
+          />
         )}
         <DoNowButton context={{
           taskTitle: item.title,
@@ -218,6 +236,15 @@ function SectionBlock({
 
 function TodayItemCard({ item }: { item: TodayItem }) {
   const tone = getToneStyle(item.tone)
+  const manualCopy = item.kind === 'task'
+    ? buildManualCopyBundle({
+        taskTitle: item.title,
+        courseName: item.courseName,
+        moduleName: item.moduleTitle,
+        dueDate: item.dateTime,
+        taskDetails: item.supportingText,
+      })
+    : null
 
   return (
     <article className="glass-panel" style={itemCardStyle(item.tone)}>
@@ -270,6 +297,12 @@ function TodayItemCard({ item }: { item: TodayItem }) {
               taskItemId={item.taskItemId}
             />
           </>
+        )}
+        {manualCopy && (
+          <CopyTaskBundleActions
+            bundleText={manualCopy.bundleText}
+            promptText={manualCopy.promptText}
+          />
         )}
         <ItemActionButton item={item} />
       </div>

@@ -3,6 +3,8 @@ import { SyncFirstEmptyState } from '@/components/SyncFirstEmptyState'
 import { getClarityWorkspace, getTaskUrgencyLabel } from '@/lib/clarity-workspace'
 import { buildModuleDoHref } from '@/lib/stay-focused-links'
 import { TaskStatusToggle } from '@/components/TaskStatusToggle'
+import { CopyTaskBundleActions } from '@/components/CopyTaskBundleActions'
+import { buildManualCopyBundle } from '@/lib/manual-copy-bundle'
 import type { TaskItem } from '@/lib/types'
 
 const GROUPS: Array<{ key: string; title: string; description: string; filter: (task: TaskItem) => boolean }> = [
@@ -71,57 +73,7 @@ export default async function DoPage() {
               ) : (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '0.85rem' }}>
                   {items.map((task) => (
-                    <article key={task.id} id={task.id} className="glass-panel glass-hover" style={{
-                      ['--glass-panel-bg' as string]: 'var(--glass-surface-strong)',
-                      ['--glass-panel-border' as string]: 'var(--glass-border)',
-                      ['--glass-panel-shadow' as string]: 'var(--glass-shadow)',
-                      borderRadius: 'var(--radius-panel)',
-                      padding: '1rem',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '0.75rem',
-                      opacity: task.status === 'completed' ? 0.72 : 1,
-                    }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.65rem', flexWrap: 'wrap', alignItems: 'flex-start' }}>
-                        <div>
-                          <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', marginBottom: '0.4rem' }}>
-                            <span className="ui-chip" style={priorityChipStyle(task.priority)}>{task.priority} priority</span>
-                            <span className="ui-chip ui-chip-soft">{task.taskType}</span>
-                          </div>
-                          <h3 style={{ margin: 0, fontSize: '17px', lineHeight: 1.3, fontWeight: 650, color: 'var(--text-primary)', overflowWrap: 'anywhere' }}>{task.title}</h3>
-                        </div>
-                        <span className="ui-chip ui-chip-soft">{task.estimatedMinutes} min</span>
-                      </div>
-
-                      {task.details && (
-                        <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.62, color: 'var(--text-secondary)', overflowWrap: 'anywhere' }}>{task.details}</p>
-                      )}
-
-                      <TaskStatusToggle
-                        status={task.status}
-                        moduleId={task.moduleId}
-                        title={task.title}
-                        taskItemId={task.id}
-                      />
-
-                      <div className="ui-meta-list">
-                        <span><strong>Course:</strong> {task.courseName}</span>
-                        <span><strong>Module:</strong> {task.moduleTitle}</span>
-                        <span><strong>Timing:</strong> {getTaskUrgencyLabel(task)}</span>
-                        <span><strong>Status:</strong> {task.status}</span>
-                      </div>
-
-                      <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-                        <Link href={buildModuleDoHref(task.moduleId, { taskTitle: task.title })} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-                          Open module Do
-                        </Link>
-                        {task.canvasUrl && (
-                          <a href={task.canvasUrl} target="_blank" rel="noreferrer" className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
-                            Open in Canvas
-                          </a>
-                        )}
-                      </div>
-                    </article>
+                    <TaskCard key={task.id} task={task} />
                   ))}
                 </div>
               )}
@@ -193,6 +145,75 @@ export default async function DoPage() {
         </details>
       </section>
     </main>
+  )
+}
+
+function TaskCard({ task }: { task: TaskItem }) {
+  const manualCopy = buildManualCopyBundle({
+    taskTitle: task.title,
+    courseName: task.courseName,
+    moduleName: task.moduleTitle,
+    dueDate: task.deadline,
+    taskType: task.taskType,
+    taskDetails: task.details,
+  })
+
+  return (
+    <article id={task.id} className="glass-panel glass-hover" style={{
+      ['--glass-panel-bg' as string]: 'var(--glass-surface-strong)',
+      ['--glass-panel-border' as string]: 'var(--glass-border)',
+      ['--glass-panel-shadow' as string]: 'var(--glass-shadow)',
+      borderRadius: 'var(--radius-panel)',
+      padding: '1rem',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '0.75rem',
+      opacity: task.status === 'completed' ? 0.72 : 1,
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.65rem', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+        <div>
+          <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', marginBottom: '0.4rem' }}>
+            <span className="ui-chip" style={priorityChipStyle(task.priority)}>{task.priority} priority</span>
+            <span className="ui-chip ui-chip-soft">{task.taskType}</span>
+          </div>
+          <h3 style={{ margin: 0, fontSize: '17px', lineHeight: 1.3, fontWeight: 650, color: 'var(--text-primary)', overflowWrap: 'anywhere' }}>{task.title}</h3>
+        </div>
+        <span className="ui-chip ui-chip-soft">{task.estimatedMinutes} min</span>
+      </div>
+
+      {task.details && (
+        <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.62, color: 'var(--text-secondary)', overflowWrap: 'anywhere' }}>{task.details}</p>
+      )}
+
+      <TaskStatusToggle
+        status={task.status}
+        moduleId={task.moduleId}
+        title={task.title}
+        taskItemId={task.id}
+      />
+
+      <div className="ui-meta-list">
+        <span><strong>Course:</strong> {task.courseName}</span>
+        <span><strong>Module:</strong> {task.moduleTitle}</span>
+        <span><strong>Timing:</strong> {getTaskUrgencyLabel(task)}</span>
+        <span><strong>Status:</strong> {task.status}</span>
+      </div>
+
+      <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+        <CopyTaskBundleActions
+          bundleText={manualCopy.bundleText}
+          promptText={manualCopy.promptText}
+        />
+        <Link href={buildModuleDoHref(task.moduleId, { taskTitle: task.title })} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+          Open module Do
+        </Link>
+        {task.canvasUrl && (
+          <a href={task.canvasUrl} target="_blank" rel="noreferrer" className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
+            Open in Canvas
+          </a>
+        )}
+      </div>
+    </article>
   )
 }
 

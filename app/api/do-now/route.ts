@@ -139,10 +139,26 @@ function readRequestBody(body: unknown): DoNowApiRequest | null {
 }
 
 function parsePromptResponse(content: string): DoNowPrompt {
-  const parsed = JSON.parse(content) as unknown
+  const trimmed = content.trim()
+
+  if (!trimmed) {
+    throw new Error('Model returned an empty response')
+  }
+
+  // Strip markdown code fences the model may wrap JSON in (```json ... ``` or ``` ... ```)
+  const stripped = trimmed.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim()
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(stripped)
+  } catch {
+    console.error('Do Now JSON parse failed. Raw output_text:', content)
+    throw new Error('Model returned invalid JSON')
+  }
 
   if (!isDoNowPrompt(parsed)) {
-    throw new Error('OpenAI response did not match the expected Do Now shape')
+    console.error('Do Now shape mismatch. Parsed value:', parsed)
+    throw new Error('Model response did not match the expected Do Now shape')
   }
 
   return parsed
@@ -205,7 +221,9 @@ export async function POST(req: NextRequest) {
         'Be concise: each field should be one or two sentences at most.',
       ].join(' '),
       input: buildUserPrompt(body),
-      max_output_tokens: 500,
+      // Reasoning models (o3, o4-mini) spend tokens on internal reasoning before
+      // emitting output. 2048 provides headroom for both reasoning and JSON output.
+      max_output_tokens: 2048,
       text: {
         format: {
           type: 'json_schema',
@@ -216,6 +234,19 @@ export async function POST(req: NextRequest) {
         },
       },
     })
+
+    console.log('Do Now raw response shape:', JSON.stringify({
+      status: response.status,
+      incomplete_details: response.incomplete_details,
+      error: response.error,
+      output_text_length: response.output_text?.length ?? 0,
+      output_item_types: response.output.map((item) => item.type),
+    }))
+
+    if (response.status && response.status !== 'completed') {
+      const reason = response.incomplete_details?.reason ?? response.status
+      throw new Error(`Model response was not completed (${reason})`)
+    }
 
     const prompt = parsePromptResponse(response.output_text)
 
