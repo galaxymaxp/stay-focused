@@ -359,21 +359,31 @@ function SelectedItemCard({ item }: { item: CalendarItem }) {
             {item.title}
           </h3>
         </div>
-        {item.href && (
-          <Link
-            href={item.href}
-            className={`ui-button ${isCompleted ? 'ui-status-success' : 'ui-button-secondary'}`}
-            style={{
-              borderRadius: 'var(--radius-tight)',
-              padding: '0.4rem 0.6rem',
-              fontSize: '12px',
-              flexShrink: 0,
-              minHeight: '32px',
-            }}
-          >
-            {isCompleted ? 'Reviewed' : 'Open task'}
-          </Link>
-        )}
+        <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', alignItems: 'flex-start', flexShrink: 0 }}>
+          {item.taskItemId && item.moduleId && (
+            <TaskStatusToggle
+              status={item.completionStatus}
+              moduleId={item.moduleId}
+              title={item.title}
+              taskItemId={item.taskItemId}
+            />
+          )}
+          {item.href && (
+            <Link
+              href={item.href}
+              className={`ui-button ${isCompleted ? 'ui-status-success' : 'ui-button-secondary'}`}
+              style={{
+                borderRadius: 'var(--radius-tight)',
+                padding: '0.4rem 0.6rem',
+                fontSize: '12px',
+                flexShrink: 0,
+                minHeight: '32px',
+              }}
+            >
+              {isCompleted ? 'Reviewed' : 'Open task'}
+            </Link>
+          )}
+        </div>
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.38rem', fontSize: '13px', lineHeight: 1.5, color: 'var(--text-secondary)', overflowWrap: 'anywhere' }}>
@@ -407,21 +417,13 @@ function SelectedItemCard({ item }: { item: CalendarItem }) {
 
       <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
         {item.taskItemId && item.moduleId && (
-          <>
-            <TaskStatusToggle
-              status={item.completionStatus}
-              moduleId={item.moduleId}
-              title={item.title}
-              taskItemId={item.taskItemId}
-            />
-            <TaskPlanningAnnotationControl
-              annotation={item.planningAnnotation}
-              status={item.completionStatus}
-              moduleId={item.moduleId}
-              title={item.title}
-              taskItemId={item.taskItemId}
-            />
-          </>
+          <TaskPlanningAnnotationControl
+            annotation={item.planningAnnotation}
+            status={item.completionStatus}
+            moduleId={item.moduleId}
+            title={item.title}
+            taskItemId={item.taskItemId}
+          />
         )}
         {item.canvasUrl && (
           <a href={item.canvasUrl} target="_blank" rel="noreferrer" className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>

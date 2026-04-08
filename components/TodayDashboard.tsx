@@ -127,7 +127,15 @@ function FocusHeroCard({ item }: { item: TodayItem }) {
           )}
           <p style={heroBodyStyle}>{item.whyNow}</p>
         </div>
-        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'flex-end', alignItems: 'flex-start' }}>
+          {item.kind === 'task' && item.taskItemId && (
+            <TaskStatusToggle
+              status={item.completionStatus ?? 'pending'}
+              moduleId={item.moduleId}
+              title={item.title}
+              taskItemId={item.taskItemId}
+            />
+          )}
           <TonePill item={item} emphasis />
           {item.effortLabel && <MetaPill>{item.effortLabel}</MetaPill>}
         </div>
@@ -149,21 +157,13 @@ function FocusHeroCard({ item }: { item: TodayItem }) {
 
       <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
         {item.kind === 'task' && item.taskItemId && (
-          <>
-            <TaskStatusToggle
-              status={item.completionStatus ?? 'pending'}
-              moduleId={item.moduleId}
-              title={item.title}
-              taskItemId={item.taskItemId}
-            />
-            <TaskPlanningAnnotationControl
-              annotation={item.planningAnnotation}
-              status={item.completionStatus ?? 'pending'}
-              moduleId={item.moduleId}
-              title={item.title}
-              taskItemId={item.taskItemId}
-            />
-          </>
+          <TaskPlanningAnnotationControl
+            annotation={item.planningAnnotation}
+            status={item.completionStatus ?? 'pending'}
+            moduleId={item.moduleId}
+            title={item.title}
+            taskItemId={item.taskItemId}
+          />
         )}
         {manualCopy && (
           <CopyTaskBundleActions
@@ -262,7 +262,15 @@ function TodayItemCard({ item }: { item: TodayItem }) {
             <h3 style={itemTitleStyle}>{item.title}</h3>
           )}
         </div>
-        <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+        <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', justifyContent: 'flex-end', alignItems: 'flex-start' }}>
+          {item.kind === 'task' && item.taskItemId && (
+            <TaskStatusToggle
+              status={item.completionStatus ?? 'pending'}
+              moduleId={item.moduleId}
+              title={item.title}
+              taskItemId={item.taskItemId}
+            />
+          )}
           {item.effortLabel && <MetaPill>{item.effortLabel}</MetaPill>}
           {item.dateTime && <MetaPill>{formatDateTime(item.dateTime)}</MetaPill>}
         </div>
@@ -282,21 +290,13 @@ function TodayItemCard({ item }: { item: TodayItem }) {
 
       <div style={{ display: 'flex', gap: '0.65rem', flexWrap: 'wrap' }}>
         {item.kind === 'task' && item.taskItemId && (
-          <>
-            <TaskStatusToggle
-              status={item.completionStatus ?? 'pending'}
-              moduleId={item.moduleId}
-              title={item.title}
-              taskItemId={item.taskItemId}
-            />
-            <TaskPlanningAnnotationControl
-              annotation={item.planningAnnotation}
-              status={item.completionStatus ?? 'pending'}
-              moduleId={item.moduleId}
-              title={item.title}
-              taskItemId={item.taskItemId}
-            />
-          </>
+          <TaskPlanningAnnotationControl
+            annotation={item.planningAnnotation}
+            status={item.completionStatus ?? 'pending'}
+            moduleId={item.moduleId}
+            title={item.title}
+            taskItemId={item.taskItemId}
+          />
         )}
         {manualCopy && (
           <CopyTaskBundleActions

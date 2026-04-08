@@ -178,19 +178,20 @@ function TaskCard({ task }: { task: TaskItem }) {
           </div>
           <h3 style={{ margin: 0, fontSize: '17px', lineHeight: 1.3, fontWeight: 650, color: 'var(--text-primary)', overflowWrap: 'anywhere' }}>{task.title}</h3>
         </div>
-        <span className="ui-chip ui-chip-soft">{task.estimatedMinutes} min</span>
+        <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', alignItems: 'flex-start', flexShrink: 0 }}>
+          <TaskStatusToggle
+            status={task.status}
+            moduleId={task.moduleId}
+            title={task.title}
+            taskItemId={task.id}
+          />
+          <span className="ui-chip ui-chip-soft">{task.estimatedMinutes} min</span>
+        </div>
       </div>
 
       {task.details && (
         <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.62, color: 'var(--text-secondary)', overflowWrap: 'anywhere' }}>{task.details}</p>
       )}
-
-      <TaskStatusToggle
-        status={task.status}
-        moduleId={task.moduleId}
-        title={task.title}
-        taskItemId={task.id}
-      />
 
       <div className="ui-meta-list">
         <span><strong>Course:</strong> {task.courseName}</span>
