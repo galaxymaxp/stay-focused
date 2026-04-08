@@ -4,32 +4,32 @@ import type { CSSProperties } from 'react'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import {
-  buildDoNowPrompt,
-  buildDoNowRequestPayload,
-  isDoNowPrompt,
-  type DoNowContext,
-  type DoNowPrompt,
+  buildTaskDraftFallback,
+  buildTaskDraftRequestPayload,
+  isTaskDraftResponse,
+  type TaskDraftContext,
+  type TaskDraftResponse,
 } from '@/lib/do-now'
 
 type RequestState = 'loading' | 'success' | 'error'
 
 /**
- * Modal panel that fetches a server-generated Do Now view when opened and
- * falls back to the local prompt builder if generation fails.
+ * Modal panel that fetches a server-generated first draft when opened and
+ * falls back to the local deliverable-first builder if generation fails.
  */
-export function DoNowPanel({
+export function TaskDraftPanel({
   context,
   onClose,
 }: {
-  context: DoNowContext
+  context: TaskDraftContext
   onClose: () => void
 }) {
-  const fallbackPrompt = buildDoNowPrompt(context)
-  const requestBody = JSON.stringify(buildDoNowRequestPayload(context))
-  const [generatedPrompt, setGeneratedPrompt] = useState<DoNowPrompt | null>(null)
+  const fallbackDraft = buildTaskDraftFallback(context)
+  const requestBody = JSON.stringify(buildTaskDraftRequestPayload(context))
+  const [generatedDraft, setGeneratedDraft] = useState<TaskDraftResponse | null>(null)
   const [requestState, setRequestState] = useState<RequestState>('loading')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const prompt = generatedPrompt ?? fallbackPrompt
+  const draft = generatedDraft ?? fallbackDraft
 
   useEffect(() => {
     function handleEscape(event: KeyboardEvent) {
@@ -58,8 +58,8 @@ export function DoNowPanel({
     const controller = new AbortController()
     let cancelled = false
 
-    async function loadDoNow() {
-      setGeneratedPrompt(null)
+    async function loadTaskDraft() {
+      setGeneratedDraft(null)
       setRequestState('loading')
       setErrorMessage(null)
 
@@ -79,29 +79,29 @@ export function DoNowPanel({
           throw new Error(extractErrorMessage(data))
         }
 
-        if (!isPlainRecord(data) || data.ok !== true || !isDoNowPrompt(data.prompt)) {
-          throw new Error('Received an invalid Do Now response.')
+        if (!isPlainRecord(data) || data.ok !== true || !isTaskDraftResponse(data.draft)) {
+          throw new Error('Received an invalid draft output response.')
         }
 
         if (cancelled) return
 
-        setGeneratedPrompt(data.prompt)
+        setGeneratedDraft(data.draft)
         setRequestState('success')
       } catch (error) {
         if (controller.signal.aborted || cancelled) return
 
-        console.error('Do Now request failed:', error)
-        setGeneratedPrompt(null)
+        console.error('Task draft request failed:', error)
+        setGeneratedDraft(null)
         setRequestState('error')
         setErrorMessage(
           error instanceof Error
             ? error.message
-            : 'Could not generate a tailored Do Now right now.',
+            : 'Could not generate a draft output right now.',
         )
       }
     }
 
-    void loadDoNow()
+    void loadTaskDraft()
 
     return () => {
       cancelled = true
@@ -126,11 +126,11 @@ export function DoNowPanel({
         onClick={(event) => event.stopPropagation()}
         role="dialog"
         aria-modal="true"
-        aria-label={`Do Now - ${context.taskTitle}`}
+        aria-label={`Draft output - ${context.taskTitle}`}
       >
         <div style={headerStyle}>
           <div style={{ minWidth: 0 }}>
-            <p className="ui-kicker" style={{ margin: 0 }}>Do Now</p>
+            <p className="ui-kicker" style={{ margin: 0 }}>Draft Output</p>
             <h2 style={titleStyle}>{context.taskTitle}</h2>
             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.5rem' }}>
               <span className="ui-chip" style={courseChipStyle}>{context.courseName}</span>
@@ -148,7 +148,7 @@ export function DoNowPanel({
             type="button"
             onClick={onClose}
             className="ui-button ui-button-ghost"
-            aria-label="Close Do Now panel"
+            aria-label="Close draft output panel"
             style={closeButtonStyle}
           >
             X
@@ -159,39 +159,31 @@ export function DoNowPanel({
 
         {requestState === 'loading' ? (
           <div className="ui-empty" style={loadingStateStyle}>
-            Generating a more tailored Do Now from the current task and module context.
+            Generating a first-pass deliverable from the current task context.
           </div>
         ) : (
-          <>
-            {prompt.urgencyNote && (
-              <div className="ui-chip" style={urgencyNoticeStyle}>
-                {prompt.urgencyNote}
-              </div>
-            )}
-
-            <div style={sectionsStyle}>
-              <PromptSection
-                number={1}
-                question="What should I do first?"
-                answer={prompt.whatFirst}
-              />
-              <PromptSection
-                number={2}
-                question="What am I trying to produce?"
-                answer={prompt.whatToProduce}
-              />
-              <PromptSection
-                number={3}
-                question="Where do I start right now?"
-                answer={prompt.whereToStart}
-              />
-              <PromptSection
-                number={4}
-                question="What is the smallest meaningful next step?"
-                answer={prompt.smallestStep}
-              />
-            </div>
-          </>
+          <div style={sectionsStyle}>
+            <TextSection
+              heading="0. Requirement summary"
+              body={draft.requirementSummary}
+            />
+            <TextSection
+              heading="1. Draft output"
+              body={draft.draftOutput}
+            />
+            <TextSection
+              heading="2. What is still missing or unclear?"
+              body={draft.missingDetails}
+            />
+            <TextSection
+              heading="3. What should I do on the paper right now?"
+              body={draft.paperAction}
+            />
+            <TextSection
+              heading="4. Smallest next step"
+              body={draft.smallestNextStep}
+            />
+          </div>
         )}
 
         <div style={footerStyle}>
@@ -230,23 +222,18 @@ export function DoNowPanel({
   )
 }
 
-function PromptSection({
-  number,
-  question,
-  answer,
+function TextSection({
+  heading,
+  body,
 }: {
-  number: number
-  question: string
-  answer: string
+  heading: string
+  body: string
 }) {
   return (
-    <div style={sectionRowStyle}>
-      <div style={sectionNumberStyle}>{number}</div>
-      <div style={{ minWidth: 0, flex: 1 }}>
-        <p style={questionStyle}>{question}</p>
-        <p style={answerStyle}>{answer}</p>
-      </div>
-    </div>
+    <section style={sectionStyle}>
+      <p style={sectionHeadingStyle}>{heading}</p>
+      <div style={draftBodyStyle}>{body}</div>
+    </section>
   )
 }
 
@@ -261,17 +248,17 @@ function StatusBanner({
     <div style={statusBannerStyle(state)}>
       <p style={statusTitleStyle}>
         {state === 'loading'
-          ? 'Generating tailored guidance'
+          ? 'Generating draft output'
           : state === 'success'
-            ? 'Tailored with OpenAI'
-            : 'Using the local fallback'}
+            ? 'Generated with OpenAI'
+            : 'Using the local draft fallback'}
       </p>
       <p style={statusBodyStyle}>
         {state === 'loading'
-          ? 'The server is building a more specific Do Now from this task, module summary, concepts, and study prompts.'
+          ? 'The server is generating a usable first-pass deliverable from the surfaced task instructions.'
           : state === 'success'
-            ? 'This Do Now was generated on demand from the current task context.'
-            : `${errorMessage ?? 'OpenAI generation failed.'} Showing the existing local Do Now instead.`}
+            ? 'This draft output was generated on demand from the current task context.'
+            : `${errorMessage ?? 'OpenAI generation failed.'} Showing the existing local draft output instead.`}
       </p>
     </div>
   )
@@ -282,7 +269,7 @@ function extractErrorMessage(value: unknown) {
     return value.error
   }
 
-  return 'Could not generate a tailored Do Now right now.'
+  return 'Could not generate a draft output right now.'
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
@@ -364,7 +351,7 @@ const backdropStyle: CSSProperties = {
 
 const cardStyle: CSSProperties = {
   width: '100%',
-  maxWidth: '620px',
+  maxWidth: '720px',
   maxHeight: 'calc(100dvh - 2rem)',
   overflowY: 'auto',
   borderRadius: 'var(--radius-page)',
@@ -436,52 +423,20 @@ const loadingStateStyle: CSSProperties = {
   lineHeight: 1.65,
 }
 
-const urgencyNoticeStyle: CSSProperties = {
-  display: 'block',
-  padding: '0.65rem 0.85rem',
-  borderRadius: 'var(--radius-panel)',
-  fontSize: '13px',
-  lineHeight: 1.6,
-  fontWeight: 500,
-  background: 'color-mix(in srgb, var(--amber-light) 48%, var(--surface-soft) 52%)',
-  color: 'var(--amber)',
-  border: '1px solid color-mix(in srgb, var(--amber) 22%, var(--border-subtle) 78%)',
-}
-
 const sectionsStyle: CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
-  gap: '0',
+  gap: '0.8rem',
+}
+
+const sectionStyle: CSSProperties = {
   borderRadius: 'var(--radius-panel)',
   border: '1px solid var(--border-subtle)',
-  overflow: 'hidden',
-}
-
-const sectionRowStyle: CSSProperties = {
-  display: 'flex',
-  gap: '0.85rem',
-  padding: '0.9rem 0.95rem',
-  borderBottom: '1px solid var(--border-subtle)',
   background: 'var(--surface-base)',
+  padding: '0.95rem',
 }
 
-const sectionNumberStyle: CSSProperties = {
-  width: '1.55rem',
-  height: '1.55rem',
-  borderRadius: '999px',
-  background: 'color-mix(in srgb, var(--surface-selected) 84%, var(--accent) 16%)',
-  border: '1px solid color-mix(in srgb, var(--accent-border) 30%, var(--border-subtle) 70%)',
-  display: 'inline-flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  fontSize: '11px',
-  fontWeight: 700,
-  color: 'var(--text-primary)',
-  flexShrink: 0,
-  marginTop: '0.12rem',
-}
-
-const questionStyle: CSSProperties = {
+const sectionHeadingStyle: CSSProperties = {
   margin: 0,
   fontSize: '11px',
   fontWeight: 700,
@@ -490,11 +445,12 @@ const questionStyle: CSSProperties = {
   color: 'var(--text-muted)',
 }
 
-const answerStyle: CSSProperties = {
-  margin: '0.38rem 0 0',
+const draftBodyStyle: CSSProperties = {
+  marginTop: '0.45rem',
   fontSize: '14px',
   lineHeight: 1.68,
   color: 'var(--text-primary)',
+  whiteSpace: 'pre-wrap',
 }
 
 const footerStyle: CSSProperties = {

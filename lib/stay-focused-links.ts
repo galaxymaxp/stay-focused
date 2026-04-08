@@ -70,7 +70,7 @@ export function buildModuleDoHref(moduleId: string, options: ModuleDoHrefOptions
   if (options.taskId) params.set('task', options.taskId)
   if (options.taskTitle) params.set('taskTitle', options.taskTitle)
   if (options.resourceId) params.set('resource', options.resourceId)
-  // Any task-targeted Do link auto-opens the Do Now panel on arrival.
+  // Any task-targeted Do link auto-opens the draft output panel on arrival.
   // Resource-only links do not, since they target a content item rather than a specific task.
   if (options.taskId || options.taskTitle) params.set('donow', '1')
 

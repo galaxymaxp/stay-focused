@@ -896,7 +896,7 @@ function resolveRecommendedStepTarget({
       id: stepId,
       label: step,
       type: 'task',
-      actionLabel: 'Open Do Now',
+      actionLabel: 'Open Draft Output',
       href: buildModuleDoHref(module.id, {
         taskId: exactTask.id,
       }),

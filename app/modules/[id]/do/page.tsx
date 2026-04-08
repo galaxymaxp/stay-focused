@@ -5,9 +5,9 @@ import { TaskStatusToggle } from '@/components/TaskStatusToggle'
 import { buildLearnExperience, extractCourseName, findRecommendedStepTargets, getModuleWorkspace, getResourceCanvasHref, matchTaskToResource } from '@/lib/module-workspace'
 import { buildModuleLearnHref, getSearchParamValue, getTaskElementId } from '@/lib/stay-focused-links'
 import { sortTasksByRecommendation } from '@/lib/task-ranking'
-import { DoNowButton } from '@/components/DoNowButton'
+import { TaskDraftButton } from '@/components/DoNowButton'
 import { CopyTaskBundleActions } from '@/components/CopyTaskBundleActions'
-import { buildDoNowResourceSnippet } from '@/lib/do-now'
+import { buildTaskDraftContextText } from '@/lib/do-now'
 import { buildManualCopyBundle } from '@/lib/manual-copy-bundle'
 
 interface Props {
@@ -34,7 +34,7 @@ export default async function DoPage({ params, searchParams }: Props) {
   const targetTaskId = getSearchParamValue(resolvedSearchParams?.task)
   const targetTaskTitle = getSearchParamValue(resolvedSearchParams?.taskTitle)
   const targetResourceId = getSearchParamValue(resolvedSearchParams?.resource)
-  const doNowAutoOpen = getSearchParamValue(resolvedSearchParams?.donow) === '1'
+  const draftAutoOpen = getSearchParamValue(resolvedSearchParams?.donow) === '1'
   const allTasks = [...pendingTasks, ...completedTasks]
   // Resolve the targeted task using whichever matching strategy the URL encodes:
   //   ?task=     — ID match (module-internal links from tasks table, e.g. Suggested Order)
@@ -109,13 +109,13 @@ export default async function DoPage({ params, searchParams }: Props) {
                       panel: 'action-status',
                     })
                 const canvasHref = task.canvasUrl ?? (matchedResource ? getResourceCanvasHref(matchedResource) : null)
-                const resourceSnippet = buildDoNowResourceSnippet(
+                const resourceSnippet = buildTaskDraftContextText(
                   matchedResource?.extractedText
                     ?? matchedResource?.extractedTextPreview
                     ?? matchedResource?.linkedContext
                     ?? matchedResource?.whyItMatters
                     ?? null,
-                  600,
+                  1800,
                 )
                 const manualCopy = buildManualCopyBundle({
                   taskTitle: task.title,
@@ -180,8 +180,8 @@ export default async function DoPage({ params, searchParams }: Props) {
                         bundleText={manualCopy.bundleText}
                         promptText={manualCopy.promptText}
                       />
-                      <DoNowButton
-                        defaultOpen={doNowAutoOpen && highlightedTaskId === task.id}
+                      <TaskDraftButton
+                        defaultOpen={draftAutoOpen && highlightedTaskId === task.id}
                         context={{
                           taskTitle: task.title,
                           taskDetails: task.details,

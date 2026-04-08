@@ -1,8 +1,10 @@
+import { buildTaskRequirementSummary, inferTaskTypeLabelFromText } from '@/lib/manual-copy-bundle'
+
 /**
- * Do Now activity prompt builders and API payload helpers.
+ * Task draft prompt builders and API payload helpers.
  */
 
-export interface DoNowContext {
+export interface TaskDraftContext {
   taskTitle: string
   taskDetails: string | null
   /** ISO date string */
@@ -10,9 +12,7 @@ export interface DoNowContext {
   priority: 'high' | 'medium' | 'low' | null
   courseName: string
   moduleTitle: string | null
-  /** From module.study_prompts, AI-generated at sync time */
   studyPrompts?: string[] | null
-  /** From module.concepts */
   concepts?: string[] | null
   moduleSummary?: string | null
   resourceSnippet?: string | null
@@ -20,225 +20,642 @@ export interface DoNowContext {
   learnHref?: string | null
 }
 
-export interface DoNowPrompt {
-  /** What should I do first? */
-  whatFirst: string
-  /** What am I trying to produce? */
-  whatToProduce: string
-  /** Where do I start right now? */
-  whereToStart: string
-  /** What is the smallest meaningful next step? */
-  smallestStep: string
-  /** Urgency note to show at the top, if deadline is close */
-  urgencyNote: string | null
+export interface TaskDraftResponse {
+  requirementSummary: string
+  draftOutput: string
+  missingDetails: string
+  paperAction: string
+  smallestNextStep: string
 }
 
-export interface DoNowApiRequest {
-  taskTitle: string
-  taskDetails?: string
-  courseName?: string
-  moduleTitle?: string
-  moduleSummary?: string
-  concepts?: string[]
-  studyPrompts?: string[]
-  deadline?: string
-  resourceSnippet?: string
+export interface TaskDraftApiRequest {
+  title: string
+  course?: string
+  module?: string
+  dueDate?: string
+  type?: string
+  instructions: string
+  requirements?: string[]
 }
 
-export function buildDoNowPrompt(ctx: DoNowContext): DoNowPrompt {
+export const TASK_DRAFT_SYSTEM_PROMPT = [
+  'You are Stay Focused\'s task-completion assistant.',
+  '',
+  'Your job is to turn the following academic task into usable output immediately.',
+  '',
+  'Default to output-first behavior:',
+  '- identify the most likely required deliverable from the task text',
+  '- generate a strong first-pass version of that deliverable right away',
+  '- do not begin with planning, explanation, or generic advice',
+  '- do not rely on prior chat turns or surrounding conversation',
+  '- if details are missing, make the safest minimal assumptions and label them clearly',
+  '- after generating the output, briefly state what is still missing and what the student should do next on the actual paper or submission',
+  '',
+  'You are not a tutor, study coach, or motivator.',
+  'Do not give study tips, productivity advice, or filler.',
+  'Do not explain the lesson unless the task explicitly requires explanation.',
+  'Prefer direct completion over guidance.',
+  '',
+  'When the deliverable is already explicit, answer in terms of what should be written, typed, structured, or submitted.',
+  '',
+  'Output exactly in this format:',
+  '',
+  '0. Requirement summary',
+  '[one short grounded summary of what the following task requires]',
+  '',
+  '1. Draft output',
+  '[generate the actual deliverable here]',
+  '',
+  '2. What is still missing or unclear?',
+  '[only real missing or unclear details; if nothing blocks a first draft, say "None that block a first draft."]',
+  '',
+  '3. What should I do on the paper right now?',
+  '[one short concrete action on the actual output]',
+  '',
+  '4. Smallest next step',
+  '[one short concrete immediate next step]',
+].join('\n')
+
+export function buildTaskDraftFallback(ctx: TaskDraftContext): TaskDraftResponse {
+  return buildHeuristicTaskDraft(buildTaskDraftRequestPayload(ctx))
+}
+
+export function buildTaskDraftRequestPayload(ctx: TaskDraftContext): TaskDraftApiRequest {
+  const title = compactInlineText(ctx.taskTitle, 160) ?? ctx.taskTitle.trim()
+  const instructions = buildTaskInstructions(ctx)
+  const course = compactInlineText(ctx.courseName, 120)
+  const moduleName = compactInlineText(ctx.moduleTitle, 160)
+  const dueDate = compactInlineText(ctx.deadline, 80)
+  const type = compactInlineText(
+    inferTaskTypeLabelFromText(title, `${ctx.taskDetails ?? ''}\n${ctx.resourceSnippet ?? ''}`),
+    60,
+  )
+  const requirements = buildTaskRequirementSummary({
+    taskTitle: title,
+    instructionText: instructions,
+    dueDate: ctx.deadline,
+  })
+
   return {
-    urgencyNote: buildUrgencyNote(ctx),
-    whatFirst: buildWhatFirst(ctx),
-    whatToProduce: buildWhatToProduce(ctx),
-    whereToStart: buildWhereToStart(ctx),
-    smallestStep: buildSmallestStep(ctx),
+    title,
+    ...(course ? { course } : {}),
+    ...(moduleName ? { module: moduleName } : {}),
+    ...(dueDate ? { dueDate } : {}),
+    ...(type ? { type } : {}),
+    instructions,
+    ...(requirements.length > 0 ? { requirements } : {}),
   }
 }
 
-export function buildDoNowRequestPayload(ctx: DoNowContext): DoNowApiRequest {
-  const taskTitle = compactOptionalText(ctx.taskTitle, 160) ?? ctx.taskTitle.trim()
-  const taskDetails = compactOptionalText(ctx.taskDetails, 700)
-  const courseName = compactOptionalText(ctx.courseName, 120)
-  const moduleTitle = compactOptionalText(ctx.moduleTitle, 160)
-  const moduleSummary = compactOptionalText(ctx.moduleSummary, 360)
-  const concepts = compactTextList(ctx.concepts, 6, 80)
-  const studyPrompts = compactTextList(ctx.studyPrompts, 4, 160)
-  const deadline = compactOptionalText(ctx.deadline, 80)
-  const resourceSnippet = buildDoNowResourceSnippet(ctx.resourceSnippet)
+export function buildTaskDraftUserPrompt(input: TaskDraftApiRequest) {
+  return [
+    'Use only the following task data in this request. Do not rely on any other chat context.',
+    '',
+    'Task data:',
+    `Task title: ${input.title}`,
+    `Course: ${input.course ?? 'None surfaced'}`,
+    `Module: ${input.module ?? 'None surfaced'}`,
+    `Due date: ${input.dueDate ?? 'None surfaced'}`,
+    `Type: ${input.type ?? 'Task'}`,
+    '',
+    'Instructions:',
+    input.instructions,
+    '',
+    'Requirements:',
+    input.requirements && input.requirements.length > 0
+      ? input.requirements.map((requirement) => `- ${requirement}`).join('\n')
+      : 'None derived from the available task text.',
+    '',
+    'Treat the following task as a real assignment with a concrete deliverable.',
+    '',
+    'Rules:',
+    '- Ground the response strictly in the following task data.',
+    '- Produce the likely deliverable immediately.',
+    '- Make Draft output the primary action when the deliverable is clear.',
+    '- Do not start with planning language.',
+    '- Keep assumptions minimal and visible.',
+    '- If the task is overdue, prioritize immediate completion language but do not lecture.',
+    '- If something is unclear, do not stop; make the safest first-pass version possible.',
+  ].join('\n')
+}
 
-  return {
-    taskTitle,
-    ...(taskDetails ? { taskDetails } : {}),
-    ...(courseName ? { courseName } : {}),
-    ...(moduleTitle ? { moduleTitle } : {}),
-    ...(moduleSummary ? { moduleSummary } : {}),
-    ...(concepts.length > 0 ? { concepts } : {}),
-    ...(studyPrompts.length > 0 ? { studyPrompts } : {}),
-    ...(deadline ? { deadline } : {}),
-    ...(resourceSnippet ? { resourceSnippet } : {}),
+export function buildTaskDraftContextText(text: string | null | undefined, maxLength = 1600) {
+  const normalized = cleanBlockText(text)
+  if (!normalized) return null
+  if (normalized.length <= maxLength) return normalized
+
+  const clipped = normalized.slice(0, maxLength)
+  const paragraphBreak = clipped.lastIndexOf('\n\n')
+  if (paragraphBreak >= Math.floor(maxLength * 0.55)) {
+    return `${clipped.slice(0, paragraphBreak).trimEnd()}\n\n...`
   }
+
+  const sentenceBreak = Math.max(clipped.lastIndexOf('. '), clipped.lastIndexOf('? '), clipped.lastIndexOf('! '))
+  if (sentenceBreak >= Math.floor(maxLength * 0.55)) {
+    return `${clipped.slice(0, sentenceBreak + 1).trimEnd()}...`
+  }
+
+  return `${clipped.trimEnd()}...`
 }
 
-export function buildDoNowResourceSnippet(text: string | null | undefined, maxLength = 600) {
-  return compactOptionalText(text, maxLength)
+export function parseTaskDraftResponseText(content: string): TaskDraftResponse {
+  const normalized = content.replace(/\r\n/g, '\n').trim()
+
+  if (!normalized) {
+    throw new Error('Model returned an empty response')
+  }
+
+  const requirementSummary = extractNumberedSectionBody(normalized, '0. Requirement summary', '1. Draft output')
+  const draftOutput = extractNumberedSectionBody(normalized, '1. Draft output', '2. What is still missing or unclear?')
+  const missingDetails = extractNumberedSectionBody(normalized, '2. What is still missing or unclear?', '3. What should I do on the paper right now?')
+  const paperAction = extractNumberedSectionBody(normalized, '3. What should I do on the paper right now?', '4. Smallest next step')
+  const smallestNextStep = extractNumberedSectionBody(normalized, '4. Smallest next step')
+
+  if (!draftOutput) {
+    throw new Error('Model response did not include a Draft output section')
+  }
+
+  return normalizeTaskDraftResponse({
+    requirementSummary,
+    draftOutput,
+    missingDetails,
+    paperAction,
+    smallestNextStep,
+  })
 }
 
-export function isDoNowPrompt(value: unknown): value is DoNowPrompt {
+export function isTaskDraftResponse(value: unknown): value is TaskDraftResponse {
   if (!isPlainRecord(value)) return false
 
-  return typeof value.whatFirst === 'string'
-    && typeof value.whatToProduce === 'string'
-    && typeof value.whereToStart === 'string'
-    && typeof value.smallestStep === 'string'
-    && (typeof value.urgencyNote === 'string' || value.urgencyNote === null)
+  return typeof value.requirementSummary === 'string'
+    && typeof value.draftOutput === 'string'
+    && typeof value.missingDetails === 'string'
+    && typeof value.paperAction === 'string'
+    && typeof value.smallestNextStep === 'string'
 }
 
-function buildWhatFirst(ctx: DoNowContext): string {
-  const snippetSentence = firstSentenceOf(ctx.resourceSnippet)
-  if (snippetSentence && snippetSentence.length > 30) return snippetSentence
+function buildTaskInstructions(ctx: TaskDraftContext) {
+  const taskDetails = cleanBlockText(ctx.taskDetails)
+  const resourceText = cleanBlockText(ctx.resourceSnippet)
+  const moduleSummary = cleanBlockText(ctx.moduleSummary)
 
-  const detailSentence = firstSentenceOf(ctx.taskDetails)
-  if (detailSentence) return detailSentence
+  if (resourceText && taskDetails) {
+    const taskDetailsKey = normalizeComparisonText(taskDetails)
+    const resourceKey = normalizeComparisonText(resourceText)
 
-  const firstPrompt = ctx.studyPrompts?.find((prompt) => prompt.trim().length > 0)
-  if (firstPrompt) return trimToSentence(firstPrompt, 220)
+    if (resourceKey.includes(taskDetailsKey)) return resourceText
+    if (taskDetailsKey.includes(resourceKey)) return taskDetails
 
-  return `Open ${ctx.moduleTitle ?? ctx.taskTitle} and locate the material for this task.`
+    return [
+      'Task details:',
+      taskDetails,
+      '',
+      'Assignment context:',
+      resourceText,
+    ].join('\n')
+  }
+
+  if (resourceText) return resourceText
+  if (taskDetails) return taskDetails
+  if (moduleSummary) {
+    return `Full task instructions were not available. Closest surfaced module context: ${moduleSummary}`
+  }
+
+  return `Full task instructions were not available. The best surfaced detail is the task title: ${ctx.taskTitle}.`
 }
 
-function buildWhatToProduce(ctx: DoNowContext): string {
-  const title = ctx.taskTitle.toLowerCase()
+function buildHeuristicTaskDraft(input: TaskDraftApiRequest): TaskDraftResponse {
+  const requirements = parseRequirementSummary(input.requirements)
+  const taskType = (input.type ?? inferTaskTypeLabelFromText(input.title, input.instructions)).toLowerCase()
+  const requirementSummary = buildRequirementSummaryText(input, requirements)
+  const draftOutput = buildDraftOutput(input, requirements, taskType)
+  const missingDetails = buildMissingDetails(input, requirements, taskType)
+  const paperAction = buildPaperAction(input, requirements, taskType)
+  const smallestNextStep = buildSmallestNextStep(input, requirements, taskType)
 
-  if (/\b(quiz|test|exam|midterm|final)\b/.test(title)) {
-    return `Complete and submit "${ctx.taskTitle}".`
-  }
-
-  if (/\b(essay|paper|report|write|writing|draft)\b/.test(title)) {
-    return `Submit a written "${ctx.taskTitle}".`
-  }
-
-  if (/\b(discussion|post|response|reply|forum)\b/.test(title)) {
-    return `Post your response for "${ctx.taskTitle}".`
-  }
-
-  // For study-style tasks, module concepts are more useful than assignment body text.
-  if (/\b(read|reading|chapter|review|study|watch|video)\b/.test(title)) {
-    const conceptList = ctx.concepts?.slice(0, 3).join(', ')
-    if (conceptList) return `Be able to explain: ${conceptList}.`
-    if (ctx.moduleSummary) return `Understand the core idea: ${trimToSentence(ctx.moduleSummary, 160)}`
-    return `A solid understanding of "${ctx.taskTitle}" that you can explain in your own words.`
-  }
-
-  // When the assignment body is available it describes the deliverable more precisely
-  // than any title heuristic. Use its first sentence before falling back to generic output.
-  const snippetSentence = firstSentenceOf(ctx.resourceSnippet)
-  if (snippetSentence && snippetSentence.length > 40) return trimToSentence(snippetSentence, 220)
-
-  if (/\b(assignment|homework|problem|exercise|worksheet)\b/.test(title)) {
-    return `A completed and submitted "${ctx.taskTitle}".`
-  }
-
-  const conceptList = ctx.concepts?.slice(0, 3).join(', ')
-  if (conceptList) return `A clear grasp of: ${conceptList}.`
-
-  return `A completed "${ctx.taskTitle}".`
+  return normalizeTaskDraftResponse({
+    requirementSummary,
+    draftOutput,
+    missingDetails,
+    paperAction,
+    smallestNextStep,
+  })
 }
 
-function buildWhereToStart(ctx: DoNowContext): string {
-  if (ctx.canvasUrl) {
-    return 'Open the assignment directly in Canvas, then read through the instructions before doing anything else.'
+function buildRequirementSummaryText(input: TaskDraftApiRequest, requirements: ParsedRequirementSummary) {
+  const parts: string[] = []
+
+  if (requirements.deliverable) {
+    parts.push(`Deliverable: ${requirements.deliverable}.`)
   }
 
-  const snippetSentence = secondSentenceOf(ctx.resourceSnippet) ?? firstSentenceOf(ctx.resourceSnippet)
-  if (snippetSentence && snippetSentence.length > 30) return trimToSentence(snippetSentence, 220)
-
-  const detailSentence = firstSentenceOf(ctx.taskDetails)
-  if (detailSentence && detailSentence.length > 40) return detailSentence
-
-  const secondPrompt = ctx.studyPrompts?.filter((prompt) => prompt.trim().length > 0)[1]
-  if (secondPrompt) return trimToSentence(secondPrompt, 220)
-
-  if (ctx.learnHref) {
-    const anchor = ctx.concepts?.[0]
-      ? ` Look for the section on "${ctx.concepts[0]}" first.`
-      : ''
-    return `Open the module in Learn.${anchor}`
+  if (requirements.requiredSections.length > 0) {
+    parts.push(`Sections: ${requirements.requiredSections.join(', ')}.`)
   }
 
-  return `Open ${ctx.moduleTitle ?? ctx.courseName} and find the part that covers "${ctx.taskTitle}".`
+  if (requirements.quantity.length > 0) {
+    parts.push(`Quantity: ${requirements.quantity.join('; ')}.`)
+  }
+
+  if (requirements.format.length > 0) {
+    parts.push(`Format: ${requirements.format.join('; ')}.`)
+  }
+
+  if (requirements.urgency) {
+    parts.push(`Urgency: ${requirements.urgency}.`)
+  }
+
+  if (parts.length === 0) {
+    return `Produce the most likely ${input.type?.toLowerCase() ?? 'task'} deliverable using only the surfaced task details.`
+  }
+
+  return parts.join(' ')
 }
 
-function buildSmallestStep(ctx: DoNowContext): string {
-  const snippetSecond = secondSentenceOf(ctx.resourceSnippet)
-  if (snippetSecond && snippetSecond.length > 30) return trimToSentence(snippetSecond, 220)
-
-  const detailSecond = secondSentenceOf(ctx.taskDetails)
-  if (detailSecond && detailSecond.length > 40) return detailSecond
-
-  const thirdPrompt = ctx.studyPrompts?.filter((prompt) => prompt.trim().length > 0)[2]
-  if (thirdPrompt) return trimToSentence(thirdPrompt, 220)
-
-  const concept = ctx.concepts?.[0]
-  if (concept) {
-    return `Write one sentence in your own words explaining "${concept}", then continue from there.`
+function buildDraftOutput(
+  input: TaskDraftApiRequest,
+  requirements: ParsedRequirementSummary,
+  taskType: string,
+) {
+  if (requirements.requiredSections.length > 0) {
+    return buildSectionedDraft(input.title, requirements)
   }
 
-  if (ctx.moduleSummary) {
-    return 'Skim the module summary, highlight anything unfamiliar, then open the specific section that covers it.'
+  if (taskType.includes('discussion') || hasAnyPhrase(requirements.deliverable, ['response', 'reply', 'post'])) {
+    return buildDiscussionDraft(input, requirements)
   }
 
-  return 'Write the task title at the top of a blank page, list three things you already know, then start from what is already clear.'
+  if (taskType.includes('quiz') || hasAnyPhrase(input.title, ['quiz', 'test', 'exam', 'midterm', 'final'])) {
+    return [
+      `${input.title}`,
+      '',
+      'Working answer sheet',
+      '1. [Paste question 1 here]',
+      'Answer: [Write the direct answer here.]',
+      '',
+      '2. [Paste question 2 here]',
+      'Answer: [Write the direct answer here.]',
+      '',
+      '3. [Paste question 3 here]',
+      'Answer: [Write the direct answer here.]',
+    ].join('\n')
+  }
+
+  if (hasAnyPhrase(requirements.deliverable, ['slide', 'presentation', 'deck'])) {
+    return buildSlideDraft(input)
+  }
+
+  if (taskType.includes('project') || hasAnyPhrase(requirements.deliverable, ['project', 'prototype', 'design', 'build'])) {
+    return buildProjectDraft(input, requirements)
+  }
+
+  return buildWritingDraft(input, requirements)
 }
 
-function buildUrgencyNote(ctx: DoNowContext): string | null {
-  if (!ctx.deadline) return null
+function buildSectionedDraft(title: string, requirements: ParsedRequirementSummary) {
+  const entriesPerSection = Math.min(Math.max(requirements.entriesPerSection ?? 3, 2), 5)
+  const lines = [title, '']
 
-  const daysUntil = Math.ceil(
-    (new Date(ctx.deadline).getTime() - Date.now()) / (1000 * 60 * 60 * 24),
+  for (const section of requirements.requiredSections) {
+    lines.push(section)
+
+    const starterLines = buildSectionStarterLines(section, entriesPerSection)
+    for (const starterLine of starterLines) {
+      lines.push(starterLine)
+    }
+
+    lines.push('')
+  }
+
+  return lines.join('\n').trim()
+}
+
+function buildDiscussionDraft(input: TaskDraftApiRequest, requirements: ParsedRequirementSummary) {
+  const lines = [input.title, '']
+  const readingNeeded = requirements.quantity.some((entry) => /\breading example\b/i.test(entry))
+  const lectureNeeded = requirements.quantity.some((entry) => /\blecture idea\b/i.test(entry))
+
+  lines.push(`My main response is that [state your direct answer to ${input.title.toLowerCase()} here].`)
+
+  if (readingNeeded) {
+    lines.push('One reading example that supports this point is [insert the strongest reading example here].')
+  }
+
+  if (lectureNeeded) {
+    lines.push('One lecture idea that connects to this response is [insert the matching lecture idea here].')
+  }
+
+  lines.push('Overall, this means [write the short takeaway you want to submit].')
+  return lines.join('\n')
+}
+
+function buildSlideDraft(input: TaskDraftApiRequest) {
+  return [
+    `${input.title}`,
+    '',
+    'Slide 1: Title and main point',
+    '- [State the topic clearly]',
+    '- [Add the one-sentence takeaway]',
+    '',
+    'Slide 2: Core detail',
+    '- [Add the strongest supporting detail]',
+    '- [Explain why it matters]',
+    '',
+    'Slide 3: Example or evidence',
+    '- [Insert one concrete example]',
+    '- [Connect it back to the main point]',
+    '',
+    'Slide 4: Closing',
+    '- [State the final takeaway or recommendation]',
+  ].join('\n')
+}
+
+function buildProjectDraft(input: TaskDraftApiRequest, requirements: ParsedRequirementSummary) {
+  return [
+    `${input.title}`,
+    '',
+    'Project goal',
+    `Create ${requirements.deliverable ?? 'the required submission'} in a form that can be turned in quickly.`,
+    '',
+    'Core structure',
+    '- Goal: [state what the finished output should do]',
+    '- Main part 1: [add the first required piece]',
+    '- Main part 2: [add the next required piece]',
+    '- Final result: [state what will be submitted]',
+  ].join('\n')
+}
+
+function buildWritingDraft(input: TaskDraftApiRequest, requirements: ParsedRequirementSummary) {
+  const focus = extractFocusPhrase(input.title)
+  const deliverable = requirements.deliverable ?? 'the assignment'
+
+  return [
+    `${input.title}`,
+    '',
+    `This first draft addresses ${focus} by directly working toward ${deliverable}.`,
+    `My main point is that [write the clearest answer or thesis for ${focus} here].`,
+    `The strongest supporting detail is [insert the best example, source, or observation from the task here].`,
+    `This matters because [explain the result, interpretation, or takeaway the assignment needs].`,
+    `Overall, [write the short closing sentence you can submit or expand].`,
+  ].join('\n')
+}
+
+function buildMissingDetails(
+  input: TaskDraftApiRequest,
+  requirements: ParsedRequirementSummary,
+  taskType: string,
+) {
+  const missingDetails: string[] = []
+
+  if (/full task instructions were not available/i.test(input.instructions)) {
+    missingDetails.push('Full task instructions were not surfaced, so this stays conservative and title-grounded.')
+  }
+
+  if ((taskType.includes('discussion') || taskType.includes('quiz')) && !hasConcretePromptText(input.instructions)) {
+    missingDetails.push(`The exact ${taskType.includes('quiz') ? 'question text' : 'prompt wording'} was not visible.`)
+  }
+
+  if (requirements.requiredSections.length === 0 && !requirements.deliverable) {
+    missingDetails.push('The specific deliverable was not explicit.')
+  }
+
+  return missingDetails.length > 0
+    ? missingDetails.join(' ')
+    : 'None that block a first draft.'
+}
+
+function buildPaperAction(
+  input: TaskDraftApiRequest,
+  requirements: ParsedRequirementSummary,
+  taskType: string,
+) {
+  if (requirements.requiredSections.length > 0) {
+    return `Write the heading "${requirements.requiredSections[0]}" and add the first ${requirements.entriesPerSection ?? 3} entries under it.`
+  }
+
+  if (taskType.includes('discussion')) {
+    return 'Write the first sentence of the response exactly as your main answer to the prompt.'
+  }
+
+  if (taskType.includes('quiz')) {
+    return 'Write or paste the first question, then place a direct answer under it.'
+  }
+
+  return `Write the first two lines of the draft for "${input.title}" exactly on the paper or submission.`
+}
+
+function buildSmallestNextStep(
+  input: TaskDraftApiRequest,
+  requirements: ParsedRequirementSummary,
+  taskType: string,
+) {
+  if (requirements.requiredSections.length > 1) {
+    return `Finish the first entry under "${requirements.requiredSections[0]}", then move to "${requirements.requiredSections[1]}".`
+  }
+
+  if (taskType.includes('discussion')) {
+    return 'Replace the first placeholder with one real course example.'
+  }
+
+  if (taskType.includes('quiz')) {
+    return 'Answer the first question in one direct sentence.'
+  }
+
+  return `Replace the first placeholder in the draft for "${input.title}" with a real detail from the task.`
+}
+
+function normalizeTaskDraftResponse(value: TaskDraftResponse): TaskDraftResponse {
+  return {
+    requirementSummary: cleanSectionText(value.requirementSummary) || 'Use only the surfaced task details to produce the most likely deliverable.',
+    draftOutput: cleanSectionText(value.draftOutput),
+    missingDetails: cleanSectionText(value.missingDetails) || 'None that block a first draft.',
+    paperAction: cleanSectionText(value.paperAction) || 'Write the first concrete line of the deliverable now.',
+    smallestNextStep: cleanSectionText(value.smallestNextStep) || 'Replace one placeholder with a real task detail.',
+  }
+}
+
+function parseRequirementSummary(requirements: string[] | undefined): ParsedRequirementSummary {
+  const parsed: ParsedRequirementSummary = {
+    requiredSections: [],
+    quantity: [],
+    format: [],
+    entriesPerSection: null,
+    deliverable: null,
+    urgency: null,
+  }
+
+  for (const requirement of requirements ?? []) {
+    if (requirement.startsWith('Deliverable: ')) {
+      parsed.deliverable = requirement.slice('Deliverable: '.length).trim() || null
+      continue
+    }
+
+    if (requirement.startsWith('Required sections: ')) {
+      parsed.requiredSections = requirement
+        .slice('Required sections: '.length)
+        .split(',')
+        .map((section) => section.trim())
+        .filter(Boolean)
+      continue
+    }
+
+    if (requirement.startsWith('Quantity: ')) {
+      parsed.quantity = requirement
+        .slice('Quantity: '.length)
+        .split(';')
+        .map((entry) => entry.trim())
+        .filter(Boolean)
+      parsed.entriesPerSection = extractEntriesPerSection(parsed.quantity.join('; '))
+      continue
+    }
+
+    if (requirement.startsWith('Format / material: ')) {
+      parsed.format = requirement
+        .slice('Format / material: '.length)
+        .split(';')
+        .map((entry) => entry.trim())
+        .filter(Boolean)
+      continue
+    }
+
+    if (requirement.startsWith('Urgency: ')) {
+      parsed.urgency = requirement.slice('Urgency: '.length).trim() || null
+    }
+  }
+
+  return parsed
+}
+
+function extractNumberedSectionBody(text: string, heading: string, nextHeading?: string) {
+  const escapedHeading = escapeRegExp(heading)
+  const escapedNextHeading = nextHeading ? `\\n{2,}${escapeRegExp(nextHeading)}\\s*\\n` : '$'
+  const match = text.match(new RegExp(`${escapedHeading}\\s*\\n([\\s\\S]*?)(?=${escapedNextHeading})`, 'i'))
+  return match?.[1]?.trim() ?? ''
+}
+
+function buildSectionStarterLines(section: string, count: number) {
+  const normalizedSection = normalizeComparisonText(section)
+  const starters = SECTION_STARTERS[normalizedSection] ?? []
+
+  return Array.from({ length: count }, (_, index) => {
+    const starter = starters[index]
+    if (starter) return `${index + 1}. ${starter}`
+    return `${index + 1}. [Add ${section.toLowerCase()} point ${index + 1} here.]`
+  })
+}
+
+function extractEntriesPerSection(value: string) {
+  const match = value.match(/\b(one|two|three|four|five|six|\d+)\s+(?:entry|entries|bullet|bullets|point|points|idea|ideas)\s+per\s+(?:section|category|part|heading)\b/i)
+  if (!match?.[1]) return null
+
+  const word = match[1].toLowerCase()
+  if (/^\d+$/.test(word)) return Number(word)
+
+  return NUMBER_WORDS[word] ?? null
+}
+
+function extractFocusPhrase(title: string) {
+  const cleaned = cleanInlineText(
+    title
+      .replace(/\b(assignment|discussion|response|reply|post|task|activity|essay|paper|report|project|draft)\b/gi, '')
+      .replace(/\s+/g, ' '),
   )
 
-  if (daysUntil < 0) return 'This task is past its due date. Completing it now limits further impact.'
-  if (daysUntil === 0) return 'Due today. Finishing this is the highest-value use of the next session.'
-  if (daysUntil === 1) return 'Due tomorrow. Starting now leaves time to course-correct if needed.'
-  if (daysUntil <= 3) return `Due in ${daysUntil} days. Getting ahead of it now keeps the rest of the week lighter.`
-  return null
+  return cleaned ? `"${cleaned}"` : 'the following task'
 }
 
-function compactOptionalText(value: string | null | undefined, maxLength: number) {
-  const normalized = normalizeWhitespace(value)
+function hasConcretePromptText(text: string) {
+  return text.trim().length >= 80 && !/full task instructions were not available/i.test(text)
+}
+
+function hasAnyPhrase(value: string | null | undefined, phrases: string[]) {
+  const normalized = normalizeComparisonText(value)
+  return phrases.some((phrase) => normalized.includes(normalizeComparisonText(phrase)))
+}
+
+function cleanSectionText(value: string | null | undefined) {
+  return value
+    ?.replace(/\r/g, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim() ?? ''
+}
+
+function compactInlineText(value: string | null | undefined, maxLength: number) {
+  const normalized = cleanInlineText(value)
   if (!normalized) return null
-  return trimToSentence(normalized, maxLength)
+  if (normalized.length <= maxLength) return normalized
+  return `${normalized.slice(0, maxLength).trimEnd()}...`
 }
 
-function compactTextList(values: string[] | null | undefined, maxItems: number, maxLength: number) {
-  return (values ?? [])
-    .map((value) => compactOptionalText(value, maxLength))
-    .filter((value): value is string => Boolean(value))
-    .slice(0, maxItems)
-}
-
-function normalizeWhitespace(value: string | null | undefined) {
+function cleanInlineText(value: string | null | undefined) {
   return value?.replace(/\s+/g, ' ').trim() ?? ''
 }
 
-function firstSentenceOf(text: string | null | undefined): string | null {
-  if (!text) return null
-  const match = text.match(/^([^.!?]{20,}[.!?])/)
-  return match?.[1]?.trim() ?? null
+function cleanBlockText(value: string | null | undefined) {
+  return value
+    ?.replace(/\r/g, '')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim() ?? ''
 }
 
-function secondSentenceOf(text: string | null | undefined): string | null {
-  if (!text) return null
-  const sentences = text.match(/[^.!?]{20,}[.!?]/g) ?? []
-  return sentences[1]?.trim() ?? null
+function normalizeComparisonText(value: string | null | undefined) {
+  return cleanInlineText(value).toLowerCase()
 }
 
-function trimToSentence(text: string, maxLength: number): string {
-  if (text.length <= maxLength) return text
-  const boundary = text.slice(0, maxLength).match(/^(.+?[.!?])\s/)
-  return boundary?.[1] ?? `${text.slice(0, maxLength).trimEnd()}...`
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+interface ParsedRequirementSummary {
+  deliverable: string | null
+  requiredSections: string[]
+  quantity: string[]
+  format: string[]
+  urgency: string | null
+  entriesPerSection: number | null
+}
+
+const NUMBER_WORDS: Record<string, number> = {
+  one: 1,
+  two: 2,
+  three: 3,
+  four: 4,
+  five: 5,
+  six: 6,
+}
+
+const SECTION_STARTERS: Record<string, string[]> = {
+  expectations: [
+    'I expect to stay on schedule by checking the course at the start of each week.',
+    'I expect to read the task instructions before I begin writing or submitting anything.',
+    'I expect to finish the hardest part of each task before the due date.',
+    'I expect to ask for clarification early if the instructions are unclear.',
+    'I expect to review my work once before I submit it.',
+  ],
+  contributions: [
+    'I will contribute by showing up prepared for class tasks and discussions.',
+    'I will contribute by submitting work on time whenever possible.',
+    'I will contribute by participating respectfully and staying engaged with the course.',
+    'I will contribute by keeping my notes, files, and tasks organized.',
+    'I will contribute by following the task directions as closely as I can.',
+  ],
+  motivations: [
+    'I want to build stronger habits that help me finish work with less last-minute stress.',
+    'I want to improve my understanding of the course through consistent effort.',
+    'I want to submit cleaner work that reflects what I actually know.',
+    'I want to stay accountable so overdue work does not pile up.',
+    'I want to leave the course with skills I can use outside class.',
+  ],
+  hindrances: [
+    'A major risk is delaying the start when the task feels unclear or large.',
+    'I can lose time when I switch between too many tasks at once.',
+    'I sometimes wait too long before asking for help or checking the instructions again.',
+    'I can fall behind when I underestimate how long writing or revision will take.',
+    'Distractions and inconsistent routines can make it harder to finish on time.',
+  ],
 }

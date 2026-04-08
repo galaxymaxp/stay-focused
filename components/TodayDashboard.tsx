@@ -6,7 +6,7 @@ import { TaskPlanningAnnotationControl, TaskPlanningAnnotationPill } from '@/com
 import { TaskStatusToggle } from '@/components/TaskStatusToggle'
 import { ModuleBulletin } from '@/components/ModuleBulletin'
 import { AnnouncementsBand } from '@/components/AnnouncementsBand'
-import { DoNowButton } from '@/components/DoNowButton'
+import { TaskDraftButton } from '@/components/DoNowButton'
 import { CopyTaskBundleActions } from '@/components/CopyTaskBundleActions'
 import { buildManualCopyBundle } from '@/lib/manual-copy-bundle'
 import type { TodayItem, Module, Course } from '@/lib/types'
@@ -171,7 +171,7 @@ function FocusHeroCard({ item }: { item: TodayItem }) {
             promptText={manualCopy.promptText}
           />
         )}
-        <DoNowButton context={{
+        <TaskDraftButton context={{
           taskTitle: item.title,
           taskDetails: item.supportingText,
           deadline: item.dateTime,
