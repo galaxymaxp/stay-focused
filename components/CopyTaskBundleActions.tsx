@@ -7,43 +7,33 @@ type CopyState = 'idle' | 'success' | 'error'
 export function CopyTaskBundleActions({
   bundleText,
   promptText,
-  showPromptOnly = true,
-  fullLabel = 'Copy full context + prompt',
-  promptLabel = 'Copy prompt only',
+  fullLabel = 'Copy for external AI',
   fullTone = 'secondary',
-  promptTone = 'ghost',
 }: {
   bundleText: string
   promptText: string
-  showPromptOnly?: boolean
   fullLabel?: string
-  promptLabel?: string
   fullTone?: 'primary' | 'secondary' | 'ghost'
-  promptTone?: 'primary' | 'secondary' | 'ghost'
 }) {
   const [copyState, setCopyState] = useState<CopyState>('idle')
-  const [copiedLabel, setCopiedLabel] = useState<string | null>(null)
 
   useEffect(() => {
     if (copyState === 'idle') return
 
     const timeout = window.setTimeout(() => {
       setCopyState('idle')
-      setCopiedLabel(null)
     }, 2200)
 
     return () => window.clearTimeout(timeout)
   }, [copyState])
 
-  async function handleCopy(text: string, label: string) {
+  async function handleCopy(text: string) {
     try {
       await copyText(text)
       setCopyState('success')
-      setCopiedLabel(label)
     } catch (error) {
       console.error('Copy failed:', error)
       setCopyState('error')
-      setCopiedLabel(null)
     }
   }
 
@@ -51,21 +41,11 @@ export function CopyTaskBundleActions({
     <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', alignItems: 'center' }}>
       <button
         type="button"
-        onClick={() => void handleCopy(bundleText, fullLabel)}
+        onClick={() => void handleCopy(bundleText || promptText)}
         className={`ui-button ${toneToClassName(fullTone)} ui-button-xs`}
       >
         {fullLabel}
       </button>
-
-      {showPromptOnly && (
-        <button
-          type="button"
-          onClick={() => void handleCopy(promptText, promptLabel)}
-          className={`ui-button ${toneToClassName(promptTone)} ui-button-xs`}
-        >
-          {promptLabel}
-        </button>
-      )}
 
       <p aria-live="polite" style={{
         margin: 0,
@@ -75,7 +55,7 @@ export function CopyTaskBundleActions({
         color: copyState === 'error' ? 'var(--red)' : 'var(--text-secondary)',
       }}>
         {copyState === 'success'
-          ? `${copiedLabel ?? 'Copied'}`
+          ? 'Copied'
           : copyState === 'error'
             ? 'Copy failed. Try again.'
             : ''}

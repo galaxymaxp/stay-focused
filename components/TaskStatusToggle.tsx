@@ -1,5 +1,6 @@
 'use client'
 
+import type { CSSProperties } from 'react'
 import { useTransition } from 'react'
 import { updateTaskCompletion } from '@/actions/tasks'
 
@@ -10,6 +11,7 @@ interface TaskStatusToggleProps {
   taskItemId?: string | null
   legacyTaskId?: string | null
   align?: 'start' | 'end'
+  style?: CSSProperties
 }
 
 export function TaskStatusToggle({
@@ -19,6 +21,7 @@ export function TaskStatusToggle({
   taskItemId,
   legacyTaskId,
   align = 'start',
+  style,
 }: TaskStatusToggleProps) {
   const [isPending, startTransition] = useTransition()
   const nextStatus = status === 'completed' ? 'pending' : 'completed'
@@ -42,6 +45,7 @@ export function TaskStatusToggle({
       style={{
         alignSelf: align === 'end' ? 'flex-end' : 'flex-start',
         opacity: isPending ? 0.7 : 1,
+        ...style,
       }}
       aria-pressed={status === 'completed'}
       aria-label={status === 'completed' ? `Reopen ${title}` : `Mark ${title} as done`}

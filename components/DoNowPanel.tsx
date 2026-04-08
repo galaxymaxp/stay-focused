@@ -3,6 +3,7 @@
 import type { CSSProperties } from 'react'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { CopyTaskBundleActions } from '@/components/CopyTaskBundleActions'
 import {
   buildTaskDraftFallback,
   buildTaskDraftRequestPayload,
@@ -10,6 +11,7 @@ import {
   type TaskDraftContext,
   type TaskDraftResponse,
 } from '@/lib/do-now'
+import type { ManualCopyBundleResult } from '@/lib/manual-copy-bundle'
 
 type RequestState = 'loading' | 'success' | 'error'
 
@@ -19,9 +21,11 @@ type RequestState = 'loading' | 'success' | 'error'
  */
 export function TaskDraftPanel({
   context,
+  copyBundle,
   onClose,
 }: {
   context: TaskDraftContext
+  copyBundle?: Pick<ManualCopyBundleResult, 'bundleText' | 'promptText'>
   onClose: () => void
 }) {
   const fallbackDraft = buildTaskDraftFallback(context)
@@ -80,7 +84,7 @@ export function TaskDraftPanel({
         }
 
         if (!isPlainRecord(data) || data.ok !== true || !isTaskDraftResponse(data.draft)) {
-          throw new Error('Received an invalid draft output response.')
+          throw new Error('Received an invalid Auto Prompt response.')
         }
 
         if (cancelled) return
@@ -96,7 +100,7 @@ export function TaskDraftPanel({
         setErrorMessage(
           error instanceof Error
             ? error.message
-            : 'Could not generate a draft output right now.',
+            : 'Could not generate an Auto Prompt right now.',
         )
       }
     }
@@ -126,11 +130,11 @@ export function TaskDraftPanel({
         onClick={(event) => event.stopPropagation()}
         role="dialog"
         aria-modal="true"
-        aria-label={`Draft output - ${context.taskTitle}`}
+        aria-label={`Auto Prompt - ${context.taskTitle}`}
       >
         <div style={headerStyle}>
           <div style={{ minWidth: 0 }}>
-            <p className="ui-kicker" style={{ margin: 0 }}>Draft Output</p>
+            <p className="ui-kicker" style={{ margin: 0 }}>Auto Prompt</p>
             <h2 style={titleStyle}>{context.taskTitle}</h2>
             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.5rem' }}>
               <span className="ui-chip" style={courseChipStyle}>{context.courseName}</span>
@@ -148,7 +152,7 @@ export function TaskDraftPanel({
             type="button"
             onClick={onClose}
             className="ui-button ui-button-ghost"
-            aria-label="Close draft output panel"
+            aria-label="Close Auto Prompt panel"
             style={closeButtonStyle}
           >
             X
@@ -202,6 +206,14 @@ export function TaskDraftPanel({
               Open in Canvas
             </a>
           )}
+          {copyBundle && (
+            <CopyTaskBundleActions
+              bundleText={copyBundle.bundleText}
+              promptText={copyBundle.promptText}
+              fullLabel="Copy for external AI"
+              fullTone="secondary"
+            />
+          )}
           {context.learnHref && (
             <Link
               href={context.learnHref}
@@ -252,17 +264,17 @@ function StatusBanner({
     <div style={statusBannerStyle(state)}>
       <p style={statusTitleStyle}>
         {state === 'loading'
-          ? 'Generating draft output'
+          ? 'Generating Auto Prompt'
           : state === 'success'
             ? 'Generated with OpenAI'
-            : 'Using the local draft fallback'}
+            : 'Using the local Auto Prompt fallback'}
       </p>
       <p style={statusBodyStyle}>
         {state === 'loading'
           ? 'The server is generating a usable first-pass deliverable from the surfaced task instructions.'
           : state === 'success'
-            ? 'This draft output was generated on demand from the current task context.'
-            : `${errorMessage ?? 'OpenAI generation failed.'} Showing the existing local draft output instead.`}
+            ? 'This Auto Prompt was generated on demand from the current task context.'
+            : `${errorMessage ?? 'OpenAI generation failed.'} Showing the existing local Auto Prompt fallback instead.`}
       </p>
     </div>
   )
@@ -273,7 +285,7 @@ function extractErrorMessage(value: unknown) {
     return value.error
   }
 
-  return 'Could not generate a draft output right now.'
+  return 'Could not generate an Auto Prompt right now.'
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {

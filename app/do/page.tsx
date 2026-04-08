@@ -3,7 +3,7 @@ import { SyncFirstEmptyState } from '@/components/SyncFirstEmptyState'
 import { getClarityWorkspace, getTaskUrgencyLabel } from '@/lib/clarity-workspace'
 import { buildModuleDoHref } from '@/lib/stay-focused-links'
 import { TaskStatusToggle } from '@/components/TaskStatusToggle'
-import { CopyTaskBundleActions } from '@/components/CopyTaskBundleActions'
+import { TaskDraftButton } from '@/components/DoNowButton'
 import { buildManualCopyBundle } from '@/lib/manual-copy-bundle'
 import type { TaskItem } from '@/lib/types'
 
@@ -201,9 +201,17 @@ function TaskCard({ task }: { task: TaskItem }) {
       </div>
 
       <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-        <CopyTaskBundleActions
-          bundleText={manualCopy.bundleText}
-          promptText={manualCopy.promptText}
+        <TaskDraftButton
+          copyBundle={manualCopy}
+          context={{
+            taskTitle: task.title,
+            taskDetails: task.details,
+            deadline: task.deadline,
+            priority: task.priority,
+            courseName: task.courseName,
+            moduleTitle: task.moduleTitle,
+            canvasUrl: task.canvasUrl,
+          }}
         />
         <Link href={buildModuleDoHref(task.moduleId, { taskTitle: task.title })} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
           Open module Do

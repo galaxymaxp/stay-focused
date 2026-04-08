@@ -2,12 +2,11 @@
 
 import type { CSSProperties, ReactNode } from 'react'
 import Link from 'next/link'
-import { TaskPlanningAnnotationControl, TaskPlanningAnnotationPill } from '@/components/TaskPlanningAnnotationControl'
+import { TaskPlanningAnnotationPill } from '@/components/TaskPlanningAnnotationControl'
 import { TaskStatusToggle } from '@/components/TaskStatusToggle'
 import { ModuleBulletin } from '@/components/ModuleBulletin'
 import { AnnouncementsBand } from '@/components/AnnouncementsBand'
 import { TaskDraftButton } from '@/components/DoNowButton'
-import { CopyTaskBundleActions } from '@/components/CopyTaskBundleActions'
 import { buildManualCopyBundle } from '@/lib/manual-copy-bundle'
 import type { TodayItem, Module, Course } from '@/lib/types'
 import type { ParsedAnnouncement } from '@/lib/announcements'
@@ -134,6 +133,7 @@ function FocusHeroCard({ item }: { item: TodayItem }) {
               moduleId={item.moduleId}
               title={item.title}
               taskItemId={item.taskItemId}
+              style={heroStatusStyle(item)}
             />
           )}
           <TonePill item={item} emphasis />
@@ -155,32 +155,22 @@ function FocusHeroCard({ item }: { item: TodayItem }) {
         </div>
       )}
 
-      <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-        {item.kind === 'task' && item.taskItemId && (
-          <TaskPlanningAnnotationControl
-            annotation={item.planningAnnotation}
-            status={item.completionStatus ?? 'pending'}
-            moduleId={item.moduleId}
-            title={item.title}
-            taskItemId={item.taskItemId}
-          />
-        )}
+      <div style={footerActionsStyle}>
         {manualCopy && (
-          <CopyTaskBundleActions
-            bundleText={manualCopy.bundleText}
-            promptText={manualCopy.promptText}
+          <TaskDraftButton
+            copyBundle={manualCopy}
+            context={{
+              taskTitle: item.title,
+              taskDetails: item.supportingText,
+              deadline: item.dateTime,
+              priority: item.priority,
+              courseName: item.courseName,
+              moduleTitle: item.moduleTitle,
+              canvasUrl: item.canvasUrl,
+              learnHref: item.learnHref ?? item.href,
+            }}
           />
         )}
-        <TaskDraftButton context={{
-          taskTitle: item.title,
-          taskDetails: item.supportingText,
-          deadline: item.dateTime,
-          priority: item.priority,
-          courseName: item.courseName,
-          moduleTitle: item.moduleTitle,
-          canvasUrl: item.canvasUrl,
-          learnHref: item.learnHref ?? item.href,
-        }} />
         <ItemActionButton item={item} primary />
       </div>
     </section>
@@ -269,6 +259,7 @@ function TodayItemCard({ item }: { item: TodayItem }) {
               moduleId={item.moduleId}
               title={item.title}
               taskItemId={item.taskItemId}
+              style={itemStatusStyle(item)}
             />
           )}
           {item.effortLabel && <MetaPill>{item.effortLabel}</MetaPill>}
@@ -288,20 +279,20 @@ function TodayItemCard({ item }: { item: TodayItem }) {
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: '0.65rem', flexWrap: 'wrap' }}>
-        {item.kind === 'task' && item.taskItemId && (
-          <TaskPlanningAnnotationControl
-            annotation={item.planningAnnotation}
-            status={item.completionStatus ?? 'pending'}
-            moduleId={item.moduleId}
-            title={item.title}
-            taskItemId={item.taskItemId}
-          />
-        )}
+      <div style={footerActionsStyle}>
         {manualCopy && (
-          <CopyTaskBundleActions
-            bundleText={manualCopy.bundleText}
-            promptText={manualCopy.promptText}
+          <TaskDraftButton
+            copyBundle={manualCopy}
+            context={{
+              taskTitle: item.title,
+              taskDetails: item.supportingText,
+              deadline: item.dateTime,
+              priority: item.priority,
+              courseName: item.courseName,
+              moduleTitle: item.moduleTitle,
+              canvasUrl: item.canvasUrl,
+              learnHref: item.learnHref ?? item.href,
+            }}
           />
         )}
         <ItemActionButton item={item} />
@@ -313,7 +304,11 @@ function TodayItemCard({ item }: { item: TodayItem }) {
 function ItemActionButton({ item, primary = false }: { item: TodayItem; primary?: boolean }) {
   if (!item.href) return null
   return (
-    <Link href={item.href} className={`ui-button ${primary ? 'ui-button-primary' : 'ui-button-secondary'}`} style={primary ? primaryButtonStyle : secondaryButtonStyle}>
+    <Link
+      href={item.href}
+      className={`ui-button ${primary ? 'ui-button-primary' : 'ui-button-secondary'} ui-button-xs`}
+      style={actionButtonStyle}
+    >
       {item.actionLabel}
     </Link>
   )
@@ -391,6 +386,32 @@ function getToneStyle(tone: TodayItem['tone']) {
     border: 'var(--border-subtle)',
     background: 'color-mix(in srgb, var(--surface-soft) 92%, transparent)',
     kindLabel: 'Upcoming item',
+  }
+}
+
+function heroStatusStyle(item: TodayItem): CSSProperties {
+  const tone = getToneStyle(item.tone)
+  return {
+    minHeight: '2rem',
+    padding: '0.45rem 0.72rem',
+    fontSize: '12px',
+    fontWeight: 700,
+    background: tone.background,
+    color: tone.color,
+    border: `1px solid ${tone.border}`,
+  }
+}
+
+function itemStatusStyle(item: TodayItem): CSSProperties {
+  const tone = getToneStyle(item.tone)
+  return {
+    minHeight: '2rem',
+    padding: '0.42rem 0.68rem',
+    fontSize: '12px',
+    fontWeight: 700,
+    background: tone.background,
+    color: tone.color,
+    border: `1px solid ${tone.border}`,
   }
 }
 
@@ -487,14 +508,18 @@ function itemCardStyle(tone: TodayItem['tone']): CSSProperties {
   }
 }
 
-const primaryButtonStyle: CSSProperties = {
-  minHeight: '2.6rem',
-  padding: '0.72rem 1rem',
-  fontSize: '13px',
+const footerActionsStyle: CSSProperties = {
+  display: 'flex',
+  gap: '0.65rem',
+  flexWrap: 'wrap',
+  alignItems: 'center',
 }
 
-const secondaryButtonStyle: CSSProperties = {
-  minHeight: '2.6rem',
-  padding: '0.72rem 1rem',
-  fontSize: '13px',
+const actionButtonStyle: CSSProperties = {
+  minHeight: '2rem',
+  padding: '0.45rem 0.72rem',
+  fontSize: '12px',
+  fontWeight: 700,
+  borderRadius: 'var(--radius-control)',
+  textDecoration: 'none',
 }
