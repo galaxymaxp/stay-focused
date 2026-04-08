@@ -14,8 +14,8 @@ import type { DoNowContext } from '@/lib/do-now'
  * parents — without a portal, position:fixed would be contained to the nearest
  * backdrop-filter ancestor instead of the viewport.
  */
-export function DoNowButton({ context }: { context: DoNowContext }) {
-  const [open, setOpen] = useState(false)
+export function DoNowButton({ context, defaultOpen = false }: { context: DoNowContext; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen)
 
   return (
     <>

@@ -30,6 +30,7 @@ export default async function DoPage({ params, searchParams }: Props) {
   const suggestedSteps = findRecommendedStepTargets(module, learnExperience, tasks)
   const targetTaskId = getSearchParamValue(resolvedSearchParams?.task)
   const targetResourceId = getSearchParamValue(resolvedSearchParams?.resource)
+  const doNowAutoOpen = getSearchParamValue(resolvedSearchParams?.donow) === '1'
   const matchedTargetTask = targetResourceId
     ? pendingTasks.find((task) => matchTaskToResource(task.title, learnExperience.resources)?.id === targetResourceId)
       ?? completedTasks.find((task) => matchTaskToResource(task.title, learnExperience.resources)?.id === targetResourceId)
@@ -142,19 +143,22 @@ export default async function DoPage({ params, searchParams }: Props) {
                           })
 
                       return (
-                        <DoNowButton context={{
-                          taskTitle: task.title,
-                          taskDetails: task.details,
-                          deadline: task.deadline,
-                          priority: task.priority,
-                          courseName,
-                          moduleTitle: module.title,
-                          studyPrompts: module.study_prompts,
-                          concepts: module.concepts,
-                          moduleSummary: module.summary,
-                          canvasUrl: task.canvasUrl,
-                          learnHref,
-                        }} />
+                        <DoNowButton
+                          defaultOpen={doNowAutoOpen && highlightedTaskId === task.id}
+                          context={{
+                            taskTitle: task.title,
+                            taskDetails: task.details,
+                            deadline: task.deadline,
+                            priority: task.priority,
+                            courseName,
+                            moduleTitle: module.title,
+                            studyPrompts: module.study_prompts,
+                            concepts: module.concepts,
+                            moduleSummary: module.summary,
+                            canvasUrl: task.canvasUrl,
+                            learnHref,
+                          }}
+                        />
                       )
                     })()}
                     {(() => {

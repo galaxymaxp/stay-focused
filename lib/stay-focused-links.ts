@@ -12,6 +12,7 @@ interface ModuleDoHrefOptions {
   resourceId?: string | null
 }
 
+
 interface CourseLearnHrefOptions {
   moduleId?: string | null
   resourceId?: string | null
@@ -57,6 +58,9 @@ export function buildModuleDoHref(moduleId: string, options: ModuleDoHrefOptions
 
   if (options.taskId) params.set('task', options.taskId)
   if (options.resourceId) params.set('resource', options.resourceId)
+  // Any task-targeted Do link auto-opens the Do Now panel on arrival.
+  // Resource-only links do not, since they target a content item rather than a specific task.
+  if (options.taskId) params.set('donow', '1')
 
   return appendHref(
     `/modules/${moduleId}/do`,
