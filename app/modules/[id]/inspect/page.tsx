@@ -6,6 +6,7 @@ import {
   formatNormalizedModuleResourceSourceType,
   getModuleResourceCapabilityInfo,
 } from '@/lib/module-resource-capability'
+import { getModuleResourceQualityInfo } from '@/lib/module-resource-quality'
 import { extractCourseName, getModuleWorkspace } from '@/lib/module-workspace'
 import { getResourceElementId } from '@/lib/stay-focused-links'
 import { getStudySourceTypeLabel } from '@/lib/study-resource'
@@ -30,6 +31,7 @@ export default async function ModuleInspectPage({ params, searchParams }: Props)
     .map((resource) => ({
       resource,
       capability: getModuleResourceCapabilityInfo(resource),
+      quality: getModuleResourceQualityInfo(resource),
     }))
     .sort(compareInspectRows)
 
@@ -38,7 +40,10 @@ export default async function ModuleInspectPage({ params, searchParams }: Props)
     partial: rows.filter((row) => row.capability.capability === 'partial').length,
     unsupported: rows.filter((row) => row.capability.capability === 'unsupported').length,
     failed: rows.filter((row) => row.capability.capability === 'failed').length,
-    readable: rows.filter((row) => row.capability.hasReadableText).length,
+    strong: rows.filter((row) => row.quality.quality === 'strong').length,
+    usable: rows.filter((row) => row.quality.quality === 'usable').length,
+    weak: rows.filter((row) => row.quality.quality === 'weak').length,
+    empty: rows.filter((row) => row.quality.quality === 'empty').length,
   }
 
   const baseReturnPath = `/modules/${module.id}/inspect`
@@ -59,7 +64,7 @@ export default async function ModuleInspectPage({ params, searchParams }: Props)
               <p className="ui-kicker">Resource inspection</p>
               <h2 className="ui-section-title" style={{ marginTop: '0.45rem' }}>Compatibility, extraction, and reprocess status</h2>
               <p className="ui-section-copy" style={{ marginTop: '0.45rem', maxWidth: '50rem' }}>
-                Supported means readable text is actually persisted. Partial means the type is known but the stored result is still thin. Unsupported means Stay Focused can only link back out. Failed means the last extraction attempt did not complete cleanly.
+                Capability shows whether Stay Focused can read the source at all. Quality shows whether the persisted text is actually strong enough to trust for Learn and Quiz. Supported does not automatically mean useful.
               </p>
             </div>
             <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
@@ -95,7 +100,10 @@ export default async function ModuleInspectPage({ params, searchParams }: Props)
             <StatCard label="Partial" value={String(counts.partial)} tone="warning" />
             <StatCard label="Unsupported" value={String(counts.unsupported)} />
             <StatCard label="Failed" value={String(counts.failed)} tone="danger" />
-            <StatCard label="Readable" value={String(counts.readable)} tone="accent" />
+            <StatCard label="Strong" value={String(counts.strong)} tone="accent" />
+            <StatCard label="Usable" value={String(counts.usable)} tone="accent" />
+            <StatCard label="Weak" value={String(counts.weak)} tone="warning" />
+            <StatCard label="Empty" value={String(counts.empty)} />
           </div>
 
           {notice && (
@@ -115,12 +123,12 @@ export default async function ModuleInspectPage({ params, searchParams }: Props)
         </section>
 
         <section className="motion-card motion-delay-2 section-shell" style={{ padding: '1.1rem 1.15rem', display: 'grid', gap: '0.8rem' }}>
-          <div>
-            <p className="ui-kicker">Persisted resource rows</p>
-            <h3 style={{ margin: '0.42rem 0 0', fontSize: '1.04rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>
-              Title, type, capability, extraction state, char count, preview, and reason
-            </h3>
-          </div>
+              <div>
+                <p className="ui-kicker">Persisted resource rows</p>
+                <h3 style={{ margin: '0.42rem 0 0', fontSize: '1.04rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>
+              Title, type, capability, quality, grounding treatment, char count, preview, and reason
+                </h3>
+              </div>
 
           {rows.length === 0 ? (
             <div className="ui-empty" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', fontSize: '14px', lineHeight: 1.68 }}>
@@ -128,9 +136,9 @@ export default async function ModuleInspectPage({ params, searchParams }: Props)
             </div>
           ) : (
             <div style={{ display: 'grid', gap: '0.75rem' }}>
-              {rows.map(({ resource, capability }) => {
+              {rows.map(({ resource, capability, quality }) => {
                 const rowReturnPath = `${baseReturnPath}?resource=${encodeURIComponent(resource.id)}#${getResourceElementId(resource.id)}`
-                const preview = resource.extractedTextPreview?.trim() || resource.extractedText?.trim() || capability.reason
+                const preview = quality.meaningfulText || resource.extractedTextPreview?.trim() || resource.extractedText?.trim() || quality.reason
                 const lastReprocessedAt = typeof resource.metadata.lastReprocessedAt === 'string' ? resource.metadata.lastReprocessedAt : null
 
                 return (
@@ -155,6 +163,8 @@ export default async function ModuleInspectPage({ params, searchParams }: Props)
                       <div style={{ minWidth: 0, flex: '1 1 520px' }}>
                         <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.42rem' }}>
                           <StateBadge label={capability.capabilityLabel} tone={capability.capabilityTone} />
+                          <StateBadge label={quality.qualityLabel} tone={quality.qualityTone} />
+                          <StateBadge label={quality.groundingLabel} tone={quality.groundingLevel === 'strong' ? 'accent' : quality.groundingLevel === 'weak' ? 'warning' : 'muted'} />
                           <StateBadge label={labelForExtractionStatus(resource.extractionStatus)} tone={capability.capabilityTone === 'danger' ? 'danger' : 'muted'} />
                           <StateBadge label={getStudySourceTypeLabel({ type: resource.resourceType, extension: resource.extension, contentType: resource.contentType })} tone="muted" />
                           <StateBadge label={formatNormalizedModuleResourceSourceType(capability.normalizedSourceType)} tone="muted" />
@@ -194,8 +204,11 @@ export default async function ModuleInspectPage({ params, searchParams }: Props)
                       <MetaCard label="Source type" value={resource.resourceType} />
                       <MetaCard label="Normalized type" value={formatNormalizedModuleResourceSourceType(capability.normalizedSourceType)} />
                       <MetaCard label="Capability" value={capability.capabilityLabel} />
+                      <MetaCard label="Quality" value={quality.qualityLabel} />
+                      <MetaCard label="Grounding" value={quality.groundingLabel} />
                       <MetaCard label="Extraction status" value={labelForExtractionStatus(resource.extractionStatus)} />
                       <MetaCard label="Readable chars" value={resource.extractedCharCount > 0 ? resource.extractedCharCount.toLocaleString() : '0'} />
+                      <MetaCard label="Signal ratio" value={quality.totalCharCount > 0 ? `${Math.round(quality.signalRatio * 100)}%` : '0%'} />
                       <MetaCard label="Last reprocess" value={lastReprocessedAt ? formatDateTime(lastReprocessedAt) : 'Not yet'} />
                     </div>
 
@@ -207,10 +220,20 @@ export default async function ModuleInspectPage({ params, searchParams }: Props)
                         </p>
                       </div>
                       <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.8rem 0.85rem' }}>
-                        <p className="ui-kicker">Reason / fallback note</p>
+                        <p className="ui-kicker">Quality / fallback note</p>
                         <p style={{ margin: '0.45rem 0 0', fontSize: '13px', lineHeight: 1.68, color: 'var(--text-secondary)' }}>
-                          {capability.reason}
+                          {quality.reason}
                         </p>
+                        {quality.reason !== capability.reason && (
+                          <p style={{ margin: '0.55rem 0 0', fontSize: '12px', lineHeight: 1.62, color: 'var(--text-muted)' }}>
+                            Capability note: {capability.reason}
+                          </p>
+                        )}
+                        {resource.extractionError && (
+                          <p style={{ margin: '0.55rem 0 0', fontSize: '12px', lineHeight: 1.62, color: 'var(--text-muted)' }}>
+                            Stored extraction note: {resource.extractionError}
+                          </p>
+                        )}
                       </div>
                     </div>
                   </article>
@@ -291,11 +314,14 @@ function StateBadge({
 }
 
 function compareInspectRows(
-  left: { capability: ReturnType<typeof getModuleResourceCapabilityInfo>; resource: { title: string } },
-  right: { capability: ReturnType<typeof getModuleResourceCapabilityInfo>; resource: { title: string } },
+  left: { capability: ReturnType<typeof getModuleResourceCapabilityInfo>; quality: ReturnType<typeof getModuleResourceQualityInfo>; resource: { title: string } },
+  right: { capability: ReturnType<typeof getModuleResourceCapabilityInfo>; quality: ReturnType<typeof getModuleResourceQualityInfo>; resource: { title: string } },
 ) {
   const capabilityDiff = capabilityWeight(left.capability.capability) - capabilityWeight(right.capability.capability)
   if (capabilityDiff !== 0) return capabilityDiff
+
+  const qualityDiff = qualityWeight(left.quality.quality) - qualityWeight(right.quality.quality)
+  if (qualityDiff !== 0) return qualityDiff
 
   const charDiff = right.capability.readableCharCount - left.capability.readableCharCount
   if (charDiff !== 0) return charDiff
@@ -308,6 +334,15 @@ function capabilityWeight(value: ReturnType<typeof getModuleResourceCapabilityIn
   if (value === 'unsupported') return 1
   if (value === 'partial') return 2
   return 3
+}
+
+function qualityWeight(value: ReturnType<typeof getModuleResourceQualityInfo>['quality']) {
+  if (value === 'failed') return 0
+  if (value === 'unsupported') return 1
+  if (value === 'empty') return 2
+  if (value === 'weak') return 3
+  if (value === 'usable') return 4
+  return 5
 }
 
 function buildNotice(searchParams?: Record<string, string | string[] | undefined>) {

@@ -5,6 +5,7 @@ import { ModuleLensShell } from '@/components/ModuleLensShell'
 import { ModuleTermBank } from '@/components/ModuleTermBank'
 import { StudyResourceAccordionList } from '@/components/StudyResourceAccordionList'
 import { getModuleResourceCapabilityInfo } from '@/lib/module-resource-capability'
+import { getModuleResourceQualityInfo } from '@/lib/module-resource-quality'
 import { TaskStatusToggle } from '@/components/TaskStatusToggle'
 import { buildModuleLearnOverview, type ModuleStudyMaterial } from '@/lib/module-learn-overview'
 import { buildModuleDoHref, buildModuleInspectHref, getSearchParamValue, getSupportElementId, getTaskElementId } from '@/lib/stay-focused-links'
@@ -453,7 +454,8 @@ function SourceSupportRow({
 }) {
   const canvasHref = getResourceCanvasHref(material.resource)
   const capability = getModuleResourceCapabilityInfo(material.resource)
-  const note = capability.capability === 'supported' ? material.note : capability.reason
+  const quality = getModuleResourceQualityInfo(material.resource)
+  const note = material.note
 
   return (
     <article
@@ -476,6 +478,7 @@ function SourceSupportRow({
           tone={material.readiness === 'ready' ? 'accent' : material.readiness === 'limited' ? 'warning' : 'muted'}
         />
         <StateBadge label={capability.capabilityLabel} tone={capability.capabilityTone} />
+        <StateBadge label={quality.qualityLabel} tone={quality.qualityTone} />
       </div>
 
       <div>
@@ -515,6 +518,7 @@ function SupportContextRow({
 }) {
   const canvasHref = getResourceCanvasHref(item)
   const capability = getModuleResourceCapabilityInfo(item)
+  const quality = getModuleResourceQualityInfo(item)
 
   return (
     <article
@@ -532,6 +536,7 @@ function SupportContextRow({
     >
       <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
         <StateBadge label={capability.capabilityLabel} tone={capability.capabilityTone} />
+        <StateBadge label={quality.qualityLabel} tone={quality.qualityTone} />
       </div>
 
       <div>
@@ -539,7 +544,7 @@ function SupportContextRow({
           {item.title}
         </p>
         <p style={{ margin: '0.32rem 0 0', fontSize: '13px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
-          {item.linkedContext ?? item.whyItMatters ?? item.capabilityReason ?? item.moduleName ?? 'Supporting context'}
+          {item.linkedContext ?? item.whyItMatters ?? item.qualityReason ?? item.capabilityReason ?? item.moduleName ?? 'Supporting context'}
         </p>
       </div>
 

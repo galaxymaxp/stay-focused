@@ -3,6 +3,7 @@ import {
   getModuleResourceCapabilityInfo,
   type NormalizedModuleResourceSourceType,
 } from '@/lib/module-resource-capability'
+import { getModuleResourceQualityInfo } from '@/lib/module-resource-quality'
 import { adaptModuleResourceRow } from '@/lib/module-resource-row'
 import { buildModuleDoHref, buildModuleLearnHref } from '@/lib/stay-focused-links'
 import { normalizeTaskPlanningAnnotation } from '@/lib/task-planning'
@@ -12,6 +13,8 @@ import type {
   Module,
   ModuleResource,
   ModuleResourceCapability,
+  ModuleResourceGroundingLevel,
+  ModuleResourceQuality,
   ModuleResourceStudyState,
   ModuleTerm,
   ModuleResourceWorkflowOverride,
@@ -73,6 +76,9 @@ export interface ModuleSourceResource {
   normalizedSourceType?: NormalizedModuleResourceSourceType | null
   capability?: ModuleResourceCapability | null
   capabilityReason?: string | null
+  quality?: ModuleResourceQuality | null
+  qualityReason?: string | null
+  groundingLevel?: ModuleResourceGroundingLevel | null
   studyProgressStatus?: StudyFileProgressStatus
   workflowOverride?: ModuleResourceWorkflowOverride
   lastOpenedAt?: string | null
@@ -536,6 +542,14 @@ function adaptStoredResourceForLearn(resource: ModuleResource): ModuleSourceReso
     hasExtractedText: Boolean(resource.extractedText?.trim()),
   })
   const capability = getModuleResourceCapabilityInfo(resource)
+  const quality = getModuleResourceQualityInfo({
+    ...resource,
+    metadata: {
+      ...resource.metadata,
+      normalizedSourceType: capability.normalizedSourceType,
+      capability: capability.capability,
+    },
+  })
 
   return {
     id: resource.id,
@@ -565,6 +579,9 @@ function adaptStoredResourceForLearn(resource: ModuleResource): ModuleSourceReso
     normalizedSourceType: capability.normalizedSourceType,
     capability: capability.capability,
     capabilityReason: capability.reason,
+    quality: quality.quality,
+    qualityReason: quality.reason,
+    groundingLevel: quality.groundingLevel,
   }
 }
 
@@ -1017,7 +1034,10 @@ function looksLikeAnnouncementStep(step: string) {
 
 function buildLearnUnit(resource: ModuleSourceResource, module: Module, index: number): LearnResourceUnit {
   const grounding = getResourceGrounding(resource)
-  const sourceText = resource.extractedText?.trim()
+  const quality = getModuleResourceQualityInfo(resource)
+  const sourceText = quality.meaningfulText
+    || quality.normalizedText
+    || resource.extractedText?.trim()
     || resource.extractedTextPreview?.trim()
     || ''
   const summary = summarizeResource(sourceText, resource)
@@ -1072,63 +1092,50 @@ export function matchTaskToResource(taskTitle: string, resources: ModuleSourceRe
 }
 
 export function getResourceGrounding(resource: ModuleSourceResource): ResourceGrounding {
-  const evidenceText = resource.extractedText?.trim() || resource.extractedTextPreview?.trim() || ''
-  const charCount = typeof resource.extractedCharCount === 'number' ? resource.extractedCharCount : 0
-  const sourceNoun = getStudySourceNoun(resource)
-  const capability = getModuleResourceCapabilityInfo(resource)
+  const quality = getModuleResourceQualityInfo(resource)
+  const evidenceText = quality.meaningfulText || quality.normalizedText || resource.extractedText?.trim() || resource.extractedTextPreview?.trim() || ''
 
-  if (resource.extractionStatus === 'extracted' && charCount >= 900 && evidenceText) {
+  if (quality.groundingLevel === 'strong' && evidenceText) {
     return {
       state: 'grounded',
       label: 'Read from extracted content',
       confidence: 'High',
       evidenceSnippet: evidenceText.slice(0, 280),
       hasGroundedAnalysis: true,
-      message: `This view is grounded in extracted ${sourceNoun} text (${charCount} characters).`,
+      message: quality.reason,
     }
   }
 
-  if (resource.extractionStatus === 'extracted' && charCount >= 320 && evidenceText) {
+  if (quality.groundingLevel === 'weak' && evidenceText) {
     return {
       state: 'grounded',
       label: 'Read from extracted content',
       confidence: 'Medium',
       evidenceSnippet: evidenceText.slice(0, 280),
       hasGroundedAnalysis: true,
-      message: `This view is grounded in extracted ${sourceNoun} text, but the readable amount is still fairly limited (${charCount} characters).`,
+      message: quality.reason,
     }
   }
 
-  if (resource.extractionStatus === 'extracted' && evidenceText) {
+  if (quality.quality === 'weak' && evidenceText) {
     return {
       state: 'partial',
       label: 'Partially read',
       confidence: 'Low',
       evidenceSnippet: evidenceText.slice(0, 280),
       hasGroundedAnalysis: false,
-      message: `Only a small amount of readable ${sourceNoun} text was extracted (${charCount} characters), so the app keeps the reader lightweight instead of making deeper claims.`,
+      message: quality.reason,
     }
   }
 
-  if (resource.extractionStatus === 'metadata_only') {
-    if (capability.capability === 'unsupported') {
-      return {
-        state: 'unread',
-        label: 'Unread / extraction unavailable',
-        confidence: 'None',
-        evidenceSnippet: null,
-        hasGroundedAnalysis: false,
-        message: capability.reason,
-      }
-    }
-
+  if (resource.extractionStatus === 'metadata_only' || quality.quality === 'empty') {
     return {
-      state: 'context_only',
-      label: 'Context only',
+      state: quality.quality === 'empty' ? 'unread' : 'context_only',
+      label: quality.quality === 'empty' ? 'Unread / extraction unavailable' : 'Context only',
       confidence: 'None',
       evidenceSnippet: null,
       hasGroundedAnalysis: false,
-      message: capability.reason,
+      message: quality.reason,
     }
   }
 
@@ -1138,7 +1145,7 @@ export function getResourceGrounding(resource: ModuleSourceResource): ResourceGr
     confidence: 'None',
     evidenceSnippet: null,
     hasGroundedAnalysis: false,
-    message: buildUnreadGroundingMessage(resource),
+    message: quality.reason || buildUnreadGroundingMessage(resource),
   }
 }
 
@@ -1273,6 +1280,7 @@ function buildResourceNextSteps(resource: ModuleSourceResource) {
 }
 
 function getLearnPriorityScore(resource: ModuleSourceResource, index: number) {
+  const quality = getModuleResourceQualityInfo(resource)
   const kindScore = resource.kind === 'study_file'
     ? 50
     : resource.kind === 'practice_link'
@@ -1282,7 +1290,15 @@ function getLearnPriorityScore(resource: ModuleSourceResource, index: number) {
         : resource.kind === 'announcement'
           ? 12
           : 8
-  const extractionScore = resource.extractionStatus === 'extracted' ? 18 : resource.extractedTextPreview ? 10 : 0
+  const extractionScore = quality.quality === 'strong'
+    ? 24
+    : quality.quality === 'usable'
+      ? 18
+      : quality.quality === 'weak'
+        ? 8
+        : resource.extractedTextPreview
+          ? 4
+          : 0
   const requiredScore = resource.required ? 6 : 0
   return kindScore + extractionScore + requiredScore - index
 }

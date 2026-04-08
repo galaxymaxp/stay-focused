@@ -92,6 +92,8 @@ export function StudyFileReader({
           <ReaderBadge tone="muted" label={reader.fileTypeLabel} />
           <ReaderBadge tone={reader.statusTone} label={reader.statusLabel} />
           <ReaderBadge tone={capability.capabilityTone} label={capability.capabilityLabel} />
+          <ReaderBadge tone={reader.qualityTone} label={reader.qualityLabel} />
+          <ReaderBadge tone={reader.groundingLabel === 'Strong grounding' ? 'accent' : reader.groundingLabel === 'Weak grounding' ? 'warning' : 'muted'} label={reader.groundingLabel} />
           <ReaderBadge tone={progressTone} label={getStudyFileProgressLabel(studyProgress)} />
           {workflowOverride === 'activity' && (
             <ReaderBadge tone="warning" label="Treated as activity" />
@@ -120,7 +122,16 @@ export function StudyFileReader({
         />
       </div>
 
-      <ReaderSection title="What this material is about" kicker={reader.state === 'extracted' ? 'Grounded overview' : 'Honest state'}>
+      <ReaderSection
+        title="What this material is about"
+        kicker={reader.state === 'extracted'
+          ? reader.quality === 'strong'
+            ? 'Grounded overview'
+            : 'Usable overview'
+          : reader.state === 'weak'
+            ? 'Weak extract'
+            : 'Honest state'}
+      >
         <p className="ui-reading-copy" style={{ margin: 0, fontSize: '15px', lineHeight: 1.76, color: 'var(--text-secondary)' }}>
           {reader.overviewBody}
         </p>
@@ -151,7 +162,7 @@ export function StudyFileReader({
         )}
       </ReaderSection>
 
-      <ReaderSection title="Study preview" kicker={reader.state === 'extracted' ? 'Readable source preview' : 'Source stays quiet'}>
+      <ReaderSection title="Study preview" kicker={reader.state === 'extracted' || reader.state === 'weak' ? 'Readable source preview' : 'Source stays quiet'}>
         {reader.previewBlocks.length > 0 ? (
           <StudyFilePreviewExplorer previewBlocks={reader.previewBlocks} />
         ) : (
@@ -167,6 +178,8 @@ export function StudyFileReader({
             value={resource.normalizedSourceType ? formatNormalizedModuleResourceSourceType(resource.normalizedSourceType) : 'Unknown'}
           />
           <ReaderMetaCard label="Capability" value={capability.capabilityLabel} />
+          <ReaderMetaCard label="Quality" value={reader.qualityLabel} />
+          <ReaderMetaCard label="Grounding" value={reader.groundingLabel} />
           <ReaderMetaCard label="Extraction status" value={reader.statusLabel} />
           <ReaderMetaCard label="Readable characters" value={reader.charCount > 0 ? reader.charCount.toLocaleString() : 'Not available'} />
           <ReaderMetaCard label="Canvas source" value={canvasHref ? `Direct ${sourceNoun} link available` : 'No direct Canvas link stored'} />

@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { createClient } from '@supabase/supabase-js'
 import { getModuleResourceCapabilityInfo, getNormalizedModuleResourceSourceType } from '../lib/module-resource-capability'
+import { getModuleResourceQualityInfo } from '../lib/module-resource-quality'
 import { adaptModuleResourceRow } from '../lib/module-resource-row'
 import { reprocessStoredModuleResource, shouldReprocessWeakModuleResource } from '../lib/module-resource-reprocess'
 
@@ -178,6 +179,7 @@ async function main() {
 
   for (const resource of filtered) {
     const before = getModuleResourceCapabilityInfo(resource)
+    const beforeQuality = getModuleResourceQualityInfo(resource)
     const reprocessed = await reprocessStoredModuleResource(resource, {
       triggeredBy: 'script',
     })
@@ -207,10 +209,13 @@ async function main() {
       normalizedSourceType: before.normalizedSourceType,
       previousStatus: resource.extractionStatus,
       previousCapability: before.capability,
+      previousQuality: beforeQuality.quality,
       nextStatus: reprocessed.update.extractionStatus,
       nextCapability: reprocessed.capability.capability,
+      nextQuality: reprocessed.quality.quality,
       extractedCharCount: reprocessed.update.extractedCharCount,
       extractionError: reprocessed.update.extractionError,
+      qualityReason: reprocessed.quality.reason,
       updated: !args.dryRun,
     })
   }

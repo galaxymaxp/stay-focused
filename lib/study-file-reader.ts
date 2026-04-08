@@ -1,9 +1,13 @@
 import { getModuleResourceCapabilityInfo } from '@/lib/module-resource-capability'
+import {
+  getModuleResourceQualityInfo,
+  normalizeModuleResourceStudyText,
+} from '@/lib/module-resource-quality'
 import type { ModuleSourceResource } from '@/lib/module-workspace'
-import type { ModuleResourceExtractionStatus } from '@/lib/types'
+import type { ModuleResourceExtractionStatus, ModuleResourceQuality } from '@/lib/types'
 import { getCanvasSourceLabel, getStudySourceNoun, getStudySourceTypeLabel } from '@/lib/study-resource'
 
-export type StudyFileReaderState = 'extracted' | 'metadata_only' | 'empty' | 'failed'
+export type StudyFileReaderState = 'extracted' | 'weak' | 'metadata_only' | 'empty' | 'failed'
 
 export interface StudyFilePreviewBlock {
   id: string
@@ -23,6 +27,11 @@ export interface StudyFileOutlineSection {
 
 export interface StudyFileReaderModel {
   state: StudyFileReaderState
+  quality: ModuleResourceQuality
+  qualityLabel: string
+  qualityTone: 'accent' | 'warning' | 'muted' | 'danger'
+  qualityReason: string
+  groundingLabel: 'Strong grounding' | 'Weak grounding' | 'Not grounding'
   fileTypeLabel: string
   statusLabel: string
   statusTone: 'accent' | 'muted' | 'warning' | 'danger'
@@ -39,35 +48,44 @@ export interface StudyFileReaderModel {
   charCount: number
 }
 
-const PAGE_MARKER_PATTERN = /\n?--\s*\d+\s+of\s+\d+\s*--\n?/gi
-
 export function buildStudyFileReaderModel(resource: ModuleSourceResource): StudyFileReaderModel {
-  const state = resolveStudyFileReaderState(resource)
+  const quality = getModuleResourceQualityInfo(resource)
+  const state = resolveStudyFileReaderState(resource, quality.quality)
   const fileTypeLabel = getStudyFileTypeLabel(resource)
   const statusLabel = labelForExtractionStatus(resource.extractionStatus)
-  const normalizedText = normalizeReaderText(resource.extractedText ?? resource.extractedTextPreview ?? '')
+  const normalizedText = quality.normalizedText
+  const meaningfulText = quality.meaningfulText || normalizedText
   const charCount = typeof resource.extractedCharCount === 'number' && resource.extractedCharCount > 0
     ? resource.extractedCharCount
     : normalizedText.length
-  const paragraphs = buildPreviewParagraphs(normalizedText)
+  const paragraphs = buildPreviewParagraphs(meaningfulText || normalizedText)
   const sourceNoun = getStudySourceNoun(resource)
   const canvasSourceLabel = getCanvasSourceLabel(resource)
   const capability = getModuleResourceCapabilityInfo(resource)
+  const baseModel = {
+    quality: quality.quality,
+    qualityLabel: quality.qualityLabel,
+    qualityTone: quality.qualityTone,
+    qualityReason: quality.reason,
+    groundingLabel: quality.groundingLabel,
+    fileTypeLabel,
+    statusLabel,
+    charCount,
+  }
 
   if (state === 'extracted' && normalizedText) {
     const summary = buildGroundedSummary(paragraphs)
     const keyPoints = buildGroundedKeyPoints(paragraphs, summary)
-    const outlineSections = buildStudyOutline(normalizedText)
-    const previewBlocks = buildPreviewBlocks(normalizedText, paragraphs)
-    const transparencyBase = charCount >= 1200
-      ? 'This study page is grounded in real extracted source text.'
-      : 'This study page is grounded in real extracted source text, but the readable amount is still fairly light.'
+    const outlineSections = buildStudyOutline(meaningfulText || normalizedText)
+    const previewBlocks = buildPreviewBlocks(meaningfulText || normalizedText, paragraphs)
+    const transparencyBase = quality.quality === 'strong'
+      ? 'This study page is grounded in strong extracted source text.'
+      : 'This study page is grounded in usable extracted source text, but it is still lighter than the strongest sources.'
 
     return {
+      ...baseModel,
       state,
-      fileTypeLabel,
-      statusLabel,
-      statusTone: 'accent',
+      statusTone: quality.quality === 'strong' ? 'accent' : 'warning',
       summary,
       keyPoints,
       outlineSections,
@@ -80,17 +98,37 @@ export function buildStudyFileReaderModel(resource: ModuleSourceResource): Study
         : `Readable ${sourceNoun} text is available, but the outline parser could not recover stable structure from it yet.`,
       previewHint: null,
       transparencyNote: resource.extractionError
-        ? `${transparencyBase} Extraction note: ${resource.extractionError}`
-        : `${transparencyBase} The outline stays as close as possible to the extracted headings, bullets, and readable paragraphs.`,
-      charCount,
+        ? `${transparencyBase} ${quality.reason} Extraction note: ${resource.extractionError}`
+        : `${transparencyBase} ${quality.reason}`,
+    }
+  }
+
+  if (state === 'weak') {
+    const previewBlocks = buildPreviewBlocks(normalizedText, buildPreviewParagraphs(normalizedText))
+
+    return {
+      ...baseModel,
+      state,
+      statusTone: 'warning',
+      summary: null,
+      keyPoints: [],
+      outlineSections: [],
+      previewBlocks,
+      overviewTitle: 'What this material is about',
+      overviewBody: `Readable ${sourceNoun} text exists in Stay Focused, but it is still too thin or noisy to present as solid study notes. This page keeps the evidence visible without overstating what the extractor recovered.`,
+      keyPointsHint: `Key points are held back because the extracted ${sourceNoun} text is still weak for confident study use.`,
+      outlineHint: `Structured study notes are hidden because the extracted ${sourceNoun} text is not strong enough yet.`,
+      previewHint: previewBlocks.length > 0
+        ? null
+        : `The app did recover some source state, but not enough clean text to show a useful preview here.`,
+      transparencyNote: quality.reason,
     }
   }
 
   if (state === 'metadata_only') {
     return {
+      ...baseModel,
       state,
-      fileTypeLabel,
-      statusLabel,
       statusTone: 'muted',
       summary: null,
       keyPoints: [],
@@ -102,7 +140,6 @@ export function buildStudyFileReaderModel(resource: ModuleSourceResource): Study
       outlineHint: `Study notes stay hidden until Learn has real extracted ${sourceNoun} text to structure.`,
       previewHint: `Open the original ${canvasSourceLabel.toLowerCase()} in Canvas if you want the full source material right away.`,
       transparencyNote: capability.reason,
-      charCount,
     }
   }
 
@@ -110,9 +147,8 @@ export function buildStudyFileReaderModel(resource: ModuleSourceResource): Study
     const likelyScanned = /scanned|image-only|image based|image-based/i.test(resource.extractionError ?? '')
 
     return {
+      ...baseModel,
       state,
-      fileTypeLabel,
-      statusLabel,
       statusTone: 'warning',
       summary: null,
       keyPoints: [],
@@ -129,15 +165,13 @@ export function buildStudyFileReaderModel(resource: ModuleSourceResource): Study
       previewHint: likelyScanned
         ? `If this is a scanned handout or image-based PDF, the original ${canvasSourceLabel.toLowerCase()} will still be the best place to read it.`
         : `The ${sourceNoun} may still be useful in Canvas even though no readable text surfaced here.`,
-      transparencyNote: capability.reason,
-      charCount,
+      transparencyNote: quality.reason,
     }
   }
 
   return {
+    ...baseModel,
     state,
-    fileTypeLabel,
-    statusLabel,
     statusTone: 'danger',
     summary: null,
     keyPoints: [],
@@ -149,7 +183,6 @@ export function buildStudyFileReaderModel(resource: ModuleSourceResource): Study
     outlineHint: `Structured study notes are hidden because extraction did not complete cleanly for this ${sourceNoun}.`,
     previewHint: `Use the Canvas link for the original ${sourceNoun}, then resync later if you want the reader to try again.`,
     transparencyNote: capability.reason,
-    charCount,
   }
 }
 
@@ -167,46 +200,17 @@ export function labelForExtractionStatus(status?: ModuleResourceExtractionStatus
   return 'Pending'
 }
 
-function resolveStudyFileReaderState(resource: ModuleSourceResource): StudyFileReaderState {
+function resolveStudyFileReaderState(resource: ModuleSourceResource, quality: ModuleResourceQuality): StudyFileReaderState {
   if (resource.extractionStatus === 'metadata_only') return 'metadata_only'
-  if (resource.extractionStatus === 'empty') return 'empty'
+  if (resource.extractionStatus === 'empty' || quality === 'empty') return 'empty'
   if (resource.extractionStatus === 'failed' || resource.extractionStatus === 'unsupported' || resource.extractionStatus === 'pending') {
     return 'failed'
   }
+  if (quality === 'weak') return 'weak'
+  if (quality === 'strong' || quality === 'usable') return 'extracted'
 
-  const normalizedText = normalizeReaderText(resource.extractedText ?? resource.extractedTextPreview ?? '')
+  const normalizedText = normalizeModuleResourceStudyText(resource.extractedText ?? resource.extractedTextPreview ?? '')
   return normalizedText ? 'extracted' : 'empty'
-}
-
-function normalizeReaderText(text: string) {
-  return decodeBasicHtmlEntities(
-    text
-      .replace(PAGE_MARKER_PATTERN, '\n')
-      .replace(/(?:^|\n)\s*Speaker notes:\s*\d+\s*(?=\n|$)/gi, '\n\n')
-      .replace(/<\s*br\s*\/?>/gi, '\n')
-      .replace(/<\s*\/p\s*>/gi, '\n')
-      .replace(/<\s*p\s*>/gi, '\n')
-      .replace(/<\s*\/li\s*>/gi, '\n')
-      .replace(/<\s*li\s*>/gi, '\n- ')
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/(?:^|\n)[^\n|]{1,100}\|\s*\d+\s*(?=\n|$)/g, '\n')
-      .replace(/\r/g, '\n')
-      .replace(/[ \t]+\n/g, '\n')
-      .replace(/\u0000/g, ' ')
-      .replace(/\n{3,}/g, '\n\n')
-      .replace(/[ \t]{2,}/g, ' ')
-      .trim(),
-  )
-}
-
-function decodeBasicHtmlEntities(value: string) {
-  return value
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;/gi, "'")
 }
 
 function buildPreviewParagraphs(text: string) {

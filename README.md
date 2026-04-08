@@ -84,6 +84,8 @@ npm run dev
 
 Phase 2 adds a targeted backfill path for existing `module_resources` rows. It reuses the current extraction logic against stored resource URLs instead of requiring a destructive full resync.
 
+Phase 3 keeps that same reprocess path, but refreshes quality metadata at the same time. Reprocessing now updates both compatibility and trustworthiness signals in place.
+
 Common commands:
 
 ```bash
@@ -106,7 +108,7 @@ npm run reprocess:resources -- --failed-pdfs
 
 Notes:
 
-- Reprocessing is safe to run repeatedly for normal use. It refreshes extraction fields and capability metadata in place.
+- Reprocessing is safe to run repeatedly for normal use. It refreshes extraction fields, capability metadata, and quality metadata in place.
 - Protected Canvas items may still need server-side `CANVAS_API_URL` and `CANVAS_API_TOKEN` so the reprocess pass can fetch them again.
 - Older rows that never stored a reusable source URL may still need a fresh sync to capture a reprocessable Canvas API URL.
 - Reprocessing improves persisted resource text for Learn, Do Now, Review, and Quiz, but it does not rerun module-level AI processing automatically.
@@ -132,13 +134,21 @@ Phase 2 also relies on metadata hints such as:
 - `metadata.lastReprocessOutcome`
 - `metadata.lastReprocessReason`
 
+Phase 3 adds quality metadata alongside those hints:
+
+- `metadata.quality`
+- `metadata.qualityReason`
+- `metadata.groundingLevel`
+- `metadata.qualityMeaningfulCharCount`
+- `metadata.qualitySignalRatio`
+
 The important design point is that downstream features continue to consume persisted normalized resource data instead of branching per Canvas source type.
 
 ---
 
-## Compatibility matrix
+## Compatibility and quality matrix
 
-### Supported
+### Supported and commonly high-quality
 
 - PDF with real text
 - PPTX with readable slide text
@@ -148,22 +158,46 @@ The important design point is that downstream features continue to consume persi
 - Canvas Assignments with readable description or instructions
 - Canvas Discussions with readable prompt or body
 
-### Partial
+These sources can still land as `usable` instead of `strong` if the extracted text is structurally light.
+
+### Supported but often weak or partial
 
 - Scanned or image-only PDFs
 - DOCX, PPTX, or PDF extractions that technically parse but surface thin text
 - Canvas Pages, Assignments, or Discussions whose stored body is minimal or empty
 - Older module resources whose stored source URL still exists but no longer returns a strong readable payload
 
-### Unsupported or link-only
+These sources may be technically readable enough to persist text, but Phase 3 now grades them as `weak` or `empty` instead of treating them like normal study material.
+
+### Linkable but not readable
 
 - External URLs
 - External tools
 - Module subheaders and non-content module items
+
+These remain routeable and inspectable, but they stay `unsupported` in the shared study pipeline.
+
+### Unsupported
+
 - Unknown binary file types
 - Legacy `.ppt`
 
-Unsupported or link-only items remain inspectable and routeable, but Stay Focused does not claim to have read them into the study pipeline.
+### Failed or auth-blocked
+
+- Protected Canvas resources whose stored reprocess URL now needs server-side auth
+- Stored source URLs that no longer resolve
+- Any extractor run that returns a hard fetch or parser failure
+
+Failed or auth-blocked items remain inspectable, and the inspect view now shows the exact stored failure reason instead of flattening them into a generic weak state.
+
+### Quality classifications
+
+- `strong`: strong enough for grounded Learn and Quiz use
+- `usable`: real study material, but lighter or noisier than the strongest sources
+- `weak`: text exists, but it is too thin or noisy to trust as strong grounding
+- `empty`: no usable study text surfaced
+- `unsupported`: link-only or unreadable source type
+- `failed`: extraction or reprocess failed, including auth-blocked fetches
 
 ---
 

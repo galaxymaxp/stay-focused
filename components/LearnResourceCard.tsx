@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { StudyModeSwitcher } from '@/components/StudyModeSwitcher'
 import { getModuleResourceCapabilityInfo } from '@/lib/module-resource-capability'
+import { getModuleResourceQualityInfo } from '@/lib/module-resource-quality'
 import { getLearnResourceKindLabel } from '@/lib/study-resource'
 import { getLearnResourceHref, getResourceCanvasHref, type LearnResourceUnit } from '@/lib/module-workspace'
 import { buildModuleInspectHref } from '@/lib/stay-focused-links'
@@ -19,12 +20,13 @@ export function LearnResourceCard({
   const deepHref = getLearnResourceHref(moduleId, unit.resource.id)
   const inspectHref = buildModuleInspectHref(moduleId, { resourceId: unit.resource.id })
   const capability = getModuleResourceCapabilityInfo(unit.resource)
+  const quality = getModuleResourceQualityInfo(unit.resource)
   const deepViewLabel = unit.resource.kind === 'study_file' ? 'Open study reader' : 'Open deep view'
   const previewLabel = unit.resource.kind === 'study_file'
-    ? unit.grounding.hasGroundedAnalysis
+    ? quality.shouldUseForGrounding
       ? 'Study snapshot'
       : 'Reader status'
-    : unit.grounding.hasGroundedAnalysis
+    : quality.shouldUseForGrounding
       ? 'Resource Preview'
       : 'Grounding Note'
 
@@ -45,6 +47,7 @@ export function LearnResourceCard({
             <span className="ui-chip ui-chip-soft">{labelForResourceKind(unit.resource)}</span>
             <span className="ui-chip ui-chip-soft">{unit.grounding.label}</span>
             <span className="ui-chip ui-chip-soft">{capability.capabilityLabel}</span>
+            <span className="ui-chip ui-chip-soft">{quality.qualityLabel}</span>
             {unit.resource.extractionStatus && (
               <span className="ui-chip ui-chip-soft">{labelForExtractionStatus(unit.resource.extractionStatus)}</span>
             )}
@@ -104,7 +107,7 @@ export function LearnResourceCard({
         <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.85rem 0.95rem' }}>
           <p className="ui-kicker">Analysis availability</p>
           <p style={{ margin: '0.5rem 0 0', fontSize: '13px', lineHeight: 1.6, color: 'var(--text-secondary)' }}>
-            Deep analysis modes are hidden until enough readable source text is extracted.
+            {quality.reason}
           </p>
         </div>
       )}

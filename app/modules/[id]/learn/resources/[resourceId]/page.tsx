@@ -4,6 +4,7 @@ import { ModuleLensShell } from '@/components/ModuleLensShell'
 import { StudyFileReader } from '@/components/StudyFileReader'
 import { StudyModeSwitcher } from '@/components/StudyModeSwitcher'
 import { formatNormalizedModuleResourceSourceType, getModuleResourceCapabilityInfo } from '@/lib/module-resource-capability'
+import { getModuleResourceQualityInfo } from '@/lib/module-resource-quality'
 import { buildModuleInspectHref } from '@/lib/stay-focused-links'
 import { getLearnResourceKindLabel } from '@/lib/study-resource'
 import {
@@ -42,6 +43,7 @@ export default async function ResourceDetailPage({ params }: Props) {
   const canvasHref = getResourceCanvasHref(resource)
   const grounding = unit?.grounding ?? getResourceGrounding(resource)
   const capability = getModuleResourceCapabilityInfo(resource)
+  const quality = getModuleResourceQualityInfo(resource)
   const linkedTask = tasks.find((task) => matchesByTitle(resource.title, task.title)) ?? null
 
   if (resource.kind === 'study_file') {
@@ -115,6 +117,8 @@ export default async function ResourceDetailPage({ params }: Props) {
             <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
               <span className="ui-chip ui-chip-soft">Confidence: {grounding.confidence}</span>
               <span className="ui-chip ui-chip-soft">Capability: {capability.capabilityLabel}</span>
+              <span className="ui-chip ui-chip-soft">Quality: {quality.qualityLabel}</span>
+              <span className="ui-chip ui-chip-soft">{quality.groundingLabel}</span>
               <span className="ui-chip ui-chip-soft">Status: {labelForExtractionStatus(resource.extractionStatus)}</span>
             </div>
           </div>
@@ -136,6 +140,8 @@ export default async function ResourceDetailPage({ params }: Props) {
           <MetaCard label="Module / week" value={resource.moduleName ?? module.title} />
           <MetaCard label="Resource type" value={labelForResourceKind(resource)} />
           <MetaCard label="Normalized source type" value={formatNormalizedModuleResourceSourceType(capability.normalizedSourceType)} />
+          <MetaCard label="Quality" value={quality.qualityLabel} />
+          <MetaCard label="Grounding treatment" value={quality.groundingLabel} />
           <MetaCard label="Original Canvas title" value={resource.originalTitle ?? resource.title} />
           <MetaCard label="Due date" value={resource.dueDate && resource.dueDate !== 'No due date' ? formatDate(resource.dueDate) : 'None surfaced'} />
           <MetaCard label="Linked context" value={resource.linkedContext ?? 'No linked task or assignment context surfaced yet'} />
@@ -164,7 +170,7 @@ export default async function ResourceDetailPage({ params }: Props) {
               <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem' }}>
                 <p className="ui-kicker">Fallback view</p>
                 <p style={{ margin: '0.55rem 0 0', fontSize: '15px', lineHeight: 1.7, color: 'var(--text-secondary)' }}>
-                  Deep document analysis is hidden because the system does not have enough readable source text to support it honestly.
+                  {quality.reason}
                 </p>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.8rem' }}>
                   {resource.whyItMatters && (
@@ -208,6 +214,8 @@ export default async function ResourceDetailPage({ params }: Props) {
                 <MetaLine label="Canvas source" value={canvasHref ? 'Direct item link available' : 'No direct item URL stored'} />
                 <MetaLine label="Capability" value={capability.capabilityLabel} />
                 <MetaLine label="Capability note" value={capability.reason} />
+                <MetaLine label="Quality" value={quality.qualityLabel} />
+                <MetaLine label="Quality note" value={quality.reason} />
                 <MetaLine label="Extraction status" value={labelForExtractionStatus(resource.extractionStatus)} />
                 <MetaLine label="Character count" value={typeof resource.extractedCharCount === 'number' && resource.extractedCharCount > 0 ? `${resource.extractedCharCount}` : 'Not available'} />
                 <MetaLine label="Grounding confidence" value={grounding.confidence} />

@@ -1,5 +1,6 @@
 import { getModuleResourceCapabilityInfo } from '@/lib/module-resource-capability'
-import { getResourceCanvasHref, getResourceGrounding, type ModuleSourceResource } from '@/lib/module-workspace'
+import { getModuleResourceQualityInfo, type ModuleResourceQualityInfo } from '@/lib/module-resource-quality'
+import { getResourceCanvasHref, type ModuleSourceResource } from '@/lib/module-workspace'
 import { buildModuleDoHref, buildModuleLearnHref } from '@/lib/stay-focused-links'
 import { buildStudyFileReaderModel, getStudyFileTypeLabel, type StudyFileReaderModel } from '@/lib/study-file-reader'
 import { getStudySourceNoun } from '@/lib/study-resource'
@@ -10,6 +11,7 @@ export type ModuleStudyReadiness = 'ready' | 'limited' | 'unavailable'
 export interface ModuleStudyMaterial {
   resource: ModuleSourceResource
   reader: StudyFileReaderModel
+  quality: ModuleResourceQualityInfo
   fileTypeLabel: string
   readiness: ModuleStudyReadiness
   readinessLabel: 'Ready to study' | 'Limited' | 'Needs Canvas'
@@ -138,12 +140,13 @@ export function buildModuleLearnOverview({
 
 function buildStudyMaterial(resource: ModuleSourceResource): ModuleStudyMaterial {
   const reader = buildStudyFileReaderModel(resource)
-  const grounding = getResourceGrounding(resource)
-  const readiness = resolveStudyReadiness(resource, reader, grounding.hasGroundedAnalysis)
+  const quality = getModuleResourceQualityInfo(resource)
+  const readiness = resolveStudyReadiness(quality)
 
   return {
     resource,
     reader,
+    quality,
     fileTypeLabel: getStudyFileTypeLabel(resource),
     readiness,
     readinessLabel: labelForReadiness(readiness),
@@ -152,26 +155,12 @@ function buildStudyMaterial(resource: ModuleSourceResource): ModuleStudyMaterial
   }
 }
 
-function resolveStudyReadiness(
-  resource: ModuleSourceResource,
-  reader: StudyFileReaderModel,
-  hasGroundedAnalysis: boolean,
-): ModuleStudyReadiness {
-  const capability = getModuleResourceCapabilityInfo(resource)
-
-  if (capability.capability === 'failed' || capability.capability === 'unsupported') {
-    return 'unavailable'
-  }
-
-  if (capability.capability === 'partial') {
-    return 'limited'
-  }
-
-  if (reader.state === 'extracted' && hasGroundedAnalysis) {
+function resolveStudyReadiness(quality: ModuleResourceQualityInfo): ModuleStudyReadiness {
+  if (quality.quality === 'strong' || quality.quality === 'usable') {
     return 'ready'
   }
 
-  if (reader.state === 'extracted' || reader.state === 'metadata_only' || reader.state === 'empty') {
+  if (quality.quality === 'weak') {
     return 'limited'
   }
 
@@ -193,17 +182,22 @@ function toneForReadiness(readiness: ModuleStudyReadiness) {
 function buildStudyNote(resource: ModuleSourceResource, reader: StudyFileReaderModel, readiness: ModuleStudyReadiness) {
   const sourceNoun = getStudySourceNoun(resource)
   const capability = getModuleResourceCapabilityInfo(resource)
+  const quality = getModuleResourceQualityInfo(resource)
 
   if (readiness === 'ready') {
-    return reader.summary ?? `Readable text is available in the study reader for this ${sourceNoun}.`
+    return reader.summary ?? quality.reason
+  }
+
+  if (reader.state === 'weak') {
+    return quality.reason
   }
 
   if (reader.state === 'extracted') {
-    return 'Some readable text is available, but it is still too light for a fuller module-level read.'
+    return quality.reason
   }
 
   if (reader.state === 'metadata_only') {
-    return capability.reason
+    return quality.reason
   }
 
   if (reader.state === 'empty') {
@@ -467,9 +461,11 @@ function buildStudyStep(moduleId: string, material: ModuleStudyMaterial): Omit<M
     id: `${material.resource.id}-study-step`,
     title: material.resource.title,
     note: material.readiness === 'ready'
-      ? 'Readable extracted text is available, so this is the clearest place to get oriented.'
+      ? material.quality.quality === 'strong'
+        ? 'Readable extracted text looks strong enough to anchor your study pass here.'
+        : 'Readable extracted text is usable here, but it is still lighter than the strongest study sources.'
       : material.readiness === 'limited'
-        ? 'Use this as a guidepost, then keep the original Canvas source nearby for the fuller read.'
+        ? 'Use this as a guidepost only. The extracted text is still weak, so keep the original Canvas source nearby.'
         : 'Canvas is still the most reliable place to read this one in full.',
     href: useCanvas ? canvasHref! : buildModuleLearnHref(moduleId, {
       resourceId: material.resource.id,
@@ -549,6 +545,10 @@ function buildResumeNote(
     return 'No recently opened readable study material is available yet, so Learn is keeping the clearest context-only source close.'
   }
 
+  if (material.reader.state === 'weak') {
+    return 'No stronger reader is ready yet, so Learn is keeping the clearest weak extract nearby without treating it like solid grounding.'
+  }
+
   if (material.reader.state === 'empty') {
     return 'No recently opened readable study material is available yet, so Learn is keeping the closest parsed source nearby even though it did not surface usable text.'
   }
@@ -585,6 +585,7 @@ function buildActionStep(moduleId: string, item: ModuleSourceResource, tasks: Ta
 
 function compareStudyMaterials(left: ModuleStudyMaterial, right: ModuleStudyMaterial) {
   return readinessWeight(left.readiness) - readinessWeight(right.readiness)
+    || qualityWeight(left.quality.quality) - qualityWeight(right.quality.quality)
     || Number(right.resource.required) - Number(left.resource.required)
     || left.resource.title.localeCompare(right.resource.title)
 }
@@ -599,6 +600,15 @@ function readinessWeight(readiness: ModuleStudyReadiness) {
   if (readiness === 'ready') return 0
   if (readiness === 'limited') return 1
   return 2
+}
+
+function qualityWeight(quality: ModuleResourceQualityInfo['quality']) {
+  if (quality === 'strong') return 0
+  if (quality === 'usable') return 1
+  if (quality === 'weak') return 2
+  if (quality === 'empty') return 3
+  if (quality === 'unsupported') return 4
+  return 5
 }
 
 function hasReadableText(resource: ModuleSourceResource) {

@@ -25,6 +25,7 @@ import {
   extractCanvasStructuredHtmlContent,
   normalizeExtension,
 } from '@/lib/canvas-resource-extraction'
+import { buildModuleResourceAssessmentMetadata } from '@/lib/module-resource-quality'
 import {
   normalizeCanvasCourseForSync,
   normalizeOptionalCanvasSyncText,
@@ -566,26 +567,40 @@ function buildModuleResourcesForSync(
   resources: ResourceIngestionRecord[],
   context: { moduleId: string; courseId: string },
 ) {
-  return sanitizeDatabaseValue(resources.map((resource) => ({
-    module_id: context.moduleId,
-    course_id: context.courseId,
-    canvas_module_id: resource.canvasModuleId,
-    canvas_item_id: resource.canvasItemId,
-    canvas_file_id: resource.canvasFileId,
-    title: normalizeRequiredCanvasSyncText(resource.title, 'Canvas resource'),
-    resource_type: normalizeRequiredCanvasSyncText(resource.resourceType, 'resource'),
-    content_type: normalizeOptionalCanvasSyncText(resource.contentType),
-    extension: normalizeOptionalCanvasSyncText(resource.extension),
-    source_url: normalizeOptionalCanvasSyncText(resource.sourceUrl),
-    html_url: normalizeOptionalCanvasSyncText(resource.htmlUrl),
-    extraction_status: resource.extractionStatus,
-    extracted_text: normalizeOptionalCanvasSyncText(resource.extractedText),
-    extracted_text_preview: normalizeOptionalCanvasSyncText(resource.extractedTextPreview),
-    extracted_char_count: resource.extractedCharCount,
-    extraction_error: normalizeOptionalCanvasSyncText(resource.extractionError),
-    required: resource.required,
-    metadata: resource.metadata,
-  })))
+  return sanitizeDatabaseValue(resources.map((resource) => {
+    const assessmentMetadata = buildModuleResourceAssessmentMetadata({
+      type: resource.resourceType,
+      extension: resource.extension,
+      contentType: resource.contentType,
+      extractionStatus: resource.extractionStatus,
+      extractedText: resource.extractedText,
+      extractedTextPreview: resource.extractedTextPreview,
+      extractedCharCount: resource.extractedCharCount,
+      extractionError: resource.extractionError,
+      metadata: resource.metadata,
+    }, resource.metadata)
+
+    return {
+      module_id: context.moduleId,
+      course_id: context.courseId,
+      canvas_module_id: resource.canvasModuleId,
+      canvas_item_id: resource.canvasItemId,
+      canvas_file_id: resource.canvasFileId,
+      title: normalizeRequiredCanvasSyncText(resource.title, 'Canvas resource'),
+      resource_type: normalizeRequiredCanvasSyncText(resource.resourceType, 'resource'),
+      content_type: normalizeOptionalCanvasSyncText(resource.contentType),
+      extension: normalizeOptionalCanvasSyncText(resource.extension),
+      source_url: normalizeOptionalCanvasSyncText(resource.sourceUrl),
+      html_url: normalizeOptionalCanvasSyncText(resource.htmlUrl),
+      extraction_status: resource.extractionStatus,
+      extracted_text: normalizeOptionalCanvasSyncText(resource.extractedText),
+      extracted_text_preview: normalizeOptionalCanvasSyncText(resource.extractedTextPreview),
+      extracted_char_count: resource.extractedCharCount,
+      extraction_error: normalizeOptionalCanvasSyncText(resource.extractionError),
+      required: resource.required,
+      metadata: assessmentMetadata,
+    }
+  }))
 }
 
 function buildSyncedTaskDrafts(

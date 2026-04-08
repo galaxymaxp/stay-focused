@@ -21,9 +21,13 @@ export interface QuizSection {
 export function ModuleQuizWorkspace({
   quizSections,
   inspectHref,
+  withheldMaterialCount = 0,
+  weakMaterialCount = 0,
 }: {
   quizSections: QuizSection[]
   inspectHref?: string
+  withheldMaterialCount?: number
+  weakMaterialCount?: number
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(
     quizSections[0]?.id ?? null,
@@ -37,7 +41,11 @@ export function ModuleQuizWorkspace({
         <p className="ui-kicker">Quiz</p>
         <h2 className="ui-section-title">No quiz-ready notes yet</h2>
         <div className="ui-empty" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem 1.1rem', fontSize: '14px', lineHeight: 1.68 }}>
-          Quiz questions are generated from extracted study note bullets. This module does not have enough grounded study notes to quiz from yet. Open Learn to inspect the study sources, or use the resource inspection view to see which items are partial, unsupported, or failed.
+          {withheldMaterialCount > 0
+            ? weakMaterialCount > 0
+              ? 'Quiz questions are only generated from strong or usable study notes. This module has extracted material, but the current notes are still too weak or noisy to trust for quiz generation.'
+              : 'Quiz questions are only generated from strong or usable study notes. This module still needs stronger grounded study notes before quiz can use them safely.'
+            : 'Quiz questions are generated from extracted study note bullets. This module does not have enough grounded study notes to quiz from yet. Open Learn to inspect the study sources, or use the resource inspection view to see which items are partial, unsupported, or failed.'}
         </div>
         {inspectHref && (
           <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
@@ -62,6 +70,13 @@ export function ModuleQuizWorkspace({
             <p className="ui-section-copy" style={{ marginTop: '0.42rem' }}>
               Questions are grounded in extracted bullet content from each note. Pick a note, choose how many questions to run, then start.
             </p>
+            {withheldMaterialCount > 0 && (
+              <p style={{ margin: '0.55rem 0 0', fontSize: '13px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
+                {weakMaterialCount > 0
+                  ? `${withheldMaterialCount} study source${withheldMaterialCount === 1 ? ' was' : 's were'} withheld because the extracted text is still weak or too noisy for a trustworthy quiz.`
+                  : `${withheldMaterialCount} study source${withheldMaterialCount === 1 ? ' is' : 's are'} still outside the quiz lane because the current extraction quality is not strong enough yet.`}
+              </p>
+            )}
           </div>
           <span className="ui-chip ui-chip-soft" style={{ padding: '0.28rem 0.7rem', fontSize: '12px', fontWeight: 600 }}>
             {quizSections.reduce((sum, s) => sum + s.quizItems.length, 0)} total questions

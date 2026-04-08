@@ -50,9 +50,10 @@ export default async function QuizPage({ params }: Props) {
     tasks,
   })
 
-  // Build quiz sections: one entry per outline section that has enough content to quiz.
-  // Only sections with at least one valid question-count option are included.
-  const quizSections: QuizSection[] = overview.studyMaterials.flatMap((material) =>
+  const quizReadyMaterials = overview.studyMaterials.filter((material) => material.quality.shouldUseForQuiz)
+  const withheldMaterials = overview.studyMaterials.filter((material) => !material.quality.shouldUseForQuiz)
+
+  const quizSections: QuizSection[] = quizReadyMaterials.flatMap((material) =>
     material.reader.outlineSections.map((section, index) => {
       const quizItems = buildStudyNoteQuizItems(section)
       const questionCountOptions = buildStudyNoteQuestionCountOptions(quizItems.length)
@@ -75,7 +76,12 @@ export default async function QuizPage({ params }: Props) {
       title={module.title}
       summary={null}
     >
-      <ModuleQuizWorkspace quizSections={quizSections} inspectHref={buildModuleInspectHref(module.id)} />
+      <ModuleQuizWorkspace
+        quizSections={quizSections}
+        inspectHref={buildModuleInspectHref(module.id)}
+        withheldMaterialCount={withheldMaterials.length}
+        weakMaterialCount={withheldMaterials.filter((material) => material.quality.quality === 'weak').length}
+      />
     </ModuleLensShell>
   )
 }

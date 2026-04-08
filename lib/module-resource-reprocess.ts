@@ -10,6 +10,11 @@ import {
   getNormalizedModuleResourceSourceType,
   type ModuleResourceCapabilityInfo,
 } from './module-resource-capability'
+import {
+  buildModuleResourceAssessmentMetadata,
+  getModuleResourceQualityInfo,
+  type ModuleResourceQualityInfo,
+} from './module-resource-quality'
 import { resolveCanvasConfig, type CanvasConfig } from './canvas'
 import type { ModuleResource, ModuleResourceExtractionStatus } from './types'
 
@@ -57,10 +62,17 @@ export interface ReprocessedModuleResourceResult {
     metadata: Record<string, unknown>
   }
   capability: ModuleResourceCapabilityInfo
+  quality: ModuleResourceQualityInfo
 }
 
 export function shouldReprocessWeakModuleResource(resource: ModuleResource) {
-  return getModuleResourceCapabilityInfo(resource).capability !== 'supported'
+  const capability = getModuleResourceCapabilityInfo(resource)
+  if (capability.capability !== 'supported') {
+    return true
+  }
+
+  const quality = getModuleResourceQualityInfo(resource)
+  return quality.quality !== 'strong' && quality.quality !== 'usable'
 }
 
 export async function reprocessStoredModuleResource(
@@ -203,7 +215,7 @@ export async function reprocessStoredModuleResource(
     ...metadataPatch,
   }
 
-  const capability = getModuleResourceCapabilityInfo({
+  const nextResource = {
     ...resource,
     extractionStatus: extracted.extractionStatus,
     extractedText: extracted.extractedText,
@@ -211,7 +223,24 @@ export async function reprocessStoredModuleResource(
     extractedCharCount: extracted.extractedCharCount,
     extractionError: extracted.extractionError,
     metadata: provisionalMetadata,
+  }
+  const capability = getModuleResourceCapabilityInfo(nextResource)
+  const quality = getModuleResourceQualityInfo({
+    ...nextResource,
+    metadata: {
+      ...provisionalMetadata,
+      normalizedSourceType: capability.normalizedSourceType,
+      capability: capability.capability,
+    },
   })
+  const assessmentMetadata = buildModuleResourceAssessmentMetadata({
+    ...nextResource,
+    metadata: {
+      ...provisionalMetadata,
+      normalizedSourceType: capability.normalizedSourceType,
+      capability: capability.capability,
+    },
+  }, provisionalMetadata)
 
   return {
     update: {
@@ -221,9 +250,7 @@ export async function reprocessStoredModuleResource(
       extractedCharCount: extracted.extractedCharCount,
       extractionError: extracted.extractionError,
       metadata: {
-        ...provisionalMetadata,
-        normalizedSourceType: capability.normalizedSourceType,
-        capability: capability.capability,
+        ...assessmentMetadata,
         lastReprocessedAt: now,
         lastReprocessOutcome: capability.capability,
         lastReprocessReason: capability.reason,
@@ -231,6 +258,7 @@ export async function reprocessStoredModuleResource(
       },
     },
     capability,
+    quality,
   }
 }
 
