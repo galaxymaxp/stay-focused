@@ -1,5 +1,6 @@
 'use client'
 
+import type { CSSProperties } from 'react'
 import { useEffect, useEffectEvent, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { TaskDraftPanel } from '@/components/DoNowPanel'
@@ -19,14 +20,23 @@ export function TaskDraftButton({
   context,
   defaultOpen = false,
   copyBundle,
+  buttonStyle,
 }: {
   context: TaskDraftContext
   defaultOpen?: boolean
   copyBundle?: Pick<ManualCopyBundleResult, 'bundleText' | 'promptText'>
+  buttonStyle?: CSSProperties
 }) {
   const [open, setOpen] = useState(false)
   const openFromDefault = useEffectEvent(() => {
     setOpen(true)
+    if (typeof window === 'undefined') return
+
+    const url = new URL(window.location.href)
+    if (url.searchParams.get('donow') !== '1') return
+
+    url.searchParams.delete('donow')
+    window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`)
   })
 
   useEffect(() => {
@@ -44,7 +54,7 @@ export function TaskDraftButton({
           setOpen(true)
         }}
         className="ui-button ui-button-secondary ui-button-xs"
-        style={{ textDecoration: 'none' }}
+        style={{ textDecoration: 'none', ...buttonStyle }}
       >
         Auto Prompt
       </button>

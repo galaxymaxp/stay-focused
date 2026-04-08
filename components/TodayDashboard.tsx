@@ -311,10 +311,11 @@ function TodayItemCard({ item }: { item: TodayItem }) {
 }
 
 function ItemActionButton({ item, primary = false }: { item: TodayItem; primary?: boolean }) {
-  if (!item.href) return null
+  const href = resolveTodayCardHref(item)
+  if (!href) return null
   return (
     <Link
-      href={item.href}
+      href={href}
       className={`ui-button ${primary ? 'ui-button-primary' : 'ui-button-secondary'} ui-button-xs`}
       style={actionButtonStyle}
     >

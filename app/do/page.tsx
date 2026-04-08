@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { SyncFirstEmptyState } from '@/components/SyncFirstEmptyState'
 import { getClarityWorkspace, getTaskUrgencyLabel } from '@/lib/clarity-workspace'
-import { buildModuleDoHref } from '@/lib/stay-focused-links'
+import { buildModuleDoHref, getSearchParamValue } from '@/lib/stay-focused-links'
 import { TaskStatusToggle } from '@/components/TaskStatusToggle'
 import { TaskDraftButton } from '@/components/DoNowButton'
 import { buildManualCopyBundle } from '@/lib/manual-copy-bundle'
@@ -28,8 +28,13 @@ const GROUPS: Array<{ key: string; title: string; description: string; filter: (
   },
 ]
 
-export default async function DoPage() {
+interface Props {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>
+}
+
+export default async function DoPage({ searchParams }: Props) {
   const workspace = await getClarityWorkspace()
+  const resolvedSearchParams = await searchParams
   if (!workspace.hasSyncedData) {
     return (
       <main className="page-shell page-stack">
@@ -37,6 +42,23 @@ export default async function DoPage() {
       </main>
     )
   }
+
+  const targetTaskId = getSearchParamValue(resolvedSearchParams?.task)
+  const targetTaskTitle = getSearchParamValue(resolvedSearchParams?.taskTitle)
+  const draftAutoOpen = getSearchParamValue(resolvedSearchParams?.donow) === '1'
+  const highlightedTaskId = (() => {
+    if (targetTaskId) {
+      return workspace.taskItems.find((task) => task.id === targetTaskId)?.id ?? null
+    }
+
+    if (targetTaskTitle) {
+      const normalizedTitle = targetTaskTitle.trim().toLowerCase()
+      return workspace.taskItems.find((task) => task.title.trim().toLowerCase() === normalizedTitle)?.id ?? null
+    }
+
+    return null
+  })()
+
   const completedItems = workspace.taskItems
     .filter((task) => task.status === 'completed')
     .sort((a, b) => a.title.localeCompare(b.title))
@@ -73,7 +95,12 @@ export default async function DoPage() {
               ) : (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '0.85rem' }}>
                   {items.map((task) => (
-                    <TaskCard key={task.id} task={task} />
+                    <TaskCard
+                      key={task.id}
+                      task={task}
+                      highlighted={highlightedTaskId === task.id}
+                      autoOpenDraft={draftAutoOpen && highlightedTaskId === task.id}
+                    />
                   ))}
                 </div>
               )}
@@ -148,7 +175,15 @@ export default async function DoPage() {
   )
 }
 
-function TaskCard({ task }: { task: TaskItem }) {
+function TaskCard({
+  task,
+  highlighted = false,
+  autoOpenDraft = false,
+}: {
+  task: TaskItem
+  highlighted?: boolean
+  autoOpenDraft?: boolean
+}) {
   const manualCopy = buildManualCopyBundle({
     taskTitle: task.title,
     courseName: task.courseName,
@@ -161,8 +196,10 @@ function TaskCard({ task }: { task: TaskItem }) {
   return (
     <article id={task.id} className="glass-panel glass-hover" style={{
       ['--glass-panel-bg' as string]: 'var(--glass-surface-strong)',
-      ['--glass-panel-border' as string]: 'var(--glass-border)',
-      ['--glass-panel-shadow' as string]: 'var(--glass-shadow)',
+      ['--glass-panel-border' as string]: highlighted
+        ? 'color-mix(in srgb, var(--accent-border) 42%, var(--border-subtle) 58%)'
+        : 'var(--glass-border)',
+      ['--glass-panel-shadow' as string]: highlighted ? 'var(--glass-shadow-strong)' : 'var(--glass-shadow)',
       borderRadius: 'var(--radius-panel)',
       padding: '1rem',
       display: 'flex',
@@ -197,11 +234,11 @@ function TaskCard({ task }: { task: TaskItem }) {
         <span><strong>Course:</strong> {task.courseName}</span>
         <span><strong>Module:</strong> {task.moduleTitle}</span>
         <span><strong>Timing:</strong> {getTaskUrgencyLabel(task)}</span>
-        <span><strong>Status:</strong> {task.status}</span>
       </div>
 
       <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
         <TaskDraftButton
+          defaultOpen={autoOpenDraft}
           copyBundle={manualCopy}
           context={{
             taskTitle: task.title,
@@ -212,12 +249,13 @@ function TaskCard({ task }: { task: TaskItem }) {
             moduleTitle: task.moduleTitle,
             canvasUrl: task.canvasUrl,
           }}
+          buttonStyle={actionButtonStyle}
         />
-        <Link href={buildModuleDoHref(task.moduleId, { taskTitle: task.title })} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+        <Link href={buildModuleDoHref(task.moduleId, { taskTitle: task.title })} className="ui-button ui-button-ghost ui-button-xs" style={actionButtonStyle}>
           Open module Do
         </Link>
         {task.canvasUrl && (
-          <a href={task.canvasUrl} target="_blank" rel="noreferrer" className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
+          <a href={task.canvasUrl} target="_blank" rel="noreferrer" className="ui-button ui-button-secondary ui-button-xs" style={actionButtonStyle}>
             Open in Canvas
           </a>
         )}
@@ -257,4 +295,13 @@ function priorityChipStyle(priority: 'high' | 'medium' | 'low') {
     color: 'var(--text-secondary)',
     border: '1px solid var(--border-subtle)',
   }
+}
+
+const actionButtonStyle = {
+  minHeight: '2rem',
+  padding: '0.45rem 0.72rem',
+  fontSize: '12px',
+  fontWeight: 700,
+  borderRadius: 'var(--radius-control)',
+  textDecoration: 'none',
 }
