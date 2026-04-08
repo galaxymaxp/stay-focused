@@ -158,8 +158,12 @@ export function TaskDraftPanel({
         <StatusBanner state={requestState} errorMessage={errorMessage} />
 
         {requestState === 'loading' ? (
-          <div className="ui-empty" style={loadingStateStyle}>
-            Generating a first-pass deliverable from the current task context.
+          <div style={sectionsStyle}>
+            <div className="animate-pulse" style={skeletonBlockStyle(0, '3rem')} />
+            <div className="animate-pulse" style={skeletonBlockStyle(1, '7.5rem')} />
+            <div className="animate-pulse" style={skeletonBlockStyle(2, '3rem')} />
+            <div className="animate-pulse" style={skeletonBlockStyle(3, '3rem')} />
+            <div className="animate-pulse" style={skeletonBlockStyle(4, '3rem')} />
           </div>
         ) : (
           <div style={sectionsStyle}>
@@ -416,11 +420,14 @@ const statusBodyStyle: CSSProperties = {
   color: 'var(--text-primary)',
 }
 
-const loadingStateStyle: CSSProperties = {
-  borderRadius: 'var(--radius-panel)',
-  padding: '1rem',
-  fontSize: '14px',
-  lineHeight: 1.65,
+function skeletonBlockStyle(index: number, height: string): CSSProperties {
+  return {
+    height,
+    borderRadius: 'var(--radius-panel)',
+    border: '1px solid var(--border-subtle)',
+    background: 'color-mix(in srgb, var(--surface-soft) 94%, transparent)',
+    animationDelay: `${index * 80}ms`,
+  }
 }
 
 const sectionsStyle: CSSProperties = {
