@@ -121,12 +121,18 @@ function buildWhatToProduce(ctx: DoNowContext): string {
     return `Post your response for "${ctx.taskTitle}".`
   }
 
+  // For study-style tasks, module concepts are more useful than assignment body text.
   if (/\b(read|reading|chapter|review|study|watch|video)\b/.test(title)) {
     const conceptList = ctx.concepts?.slice(0, 3).join(', ')
     if (conceptList) return `Be able to explain: ${conceptList}.`
     if (ctx.moduleSummary) return `Understand the core idea: ${trimToSentence(ctx.moduleSummary, 160)}`
     return `A solid understanding of "${ctx.taskTitle}" that you can explain in your own words.`
   }
+
+  // When the assignment body is available it describes the deliverable more precisely
+  // than any title heuristic. Use its first sentence before falling back to generic output.
+  const snippetSentence = firstSentenceOf(ctx.resourceSnippet)
+  if (snippetSentence && snippetSentence.length > 40) return trimToSentence(snippetSentence, 220)
 
   if (/\b(assignment|homework|problem|exercise|worksheet)\b/.test(title)) {
     return `A completed and submitted "${ctx.taskTitle}".`

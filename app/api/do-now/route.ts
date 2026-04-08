@@ -202,12 +202,12 @@ export async function POST(req: NextRequest) {
         'Stay grounded in the provided context.',
         'Avoid invented facts.',
         'Make the next action feel immediately doable.',
+        'Be concise: each field should be one or two sentences at most.',
       ].join(' '),
       input: buildUserPrompt(body),
-      max_output_tokens: 420,
+      max_output_tokens: 500,
       temperature: 0.4,
       text: {
-        verbosity: 'low',
         format: {
           type: 'json_schema',
           name: 'stay_focused_do_now',
@@ -225,11 +225,12 @@ export async function POST(req: NextRequest) {
       prompt,
     })
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
     console.error('Do Now API error:', error)
     return NextResponse.json(
       {
         ok: false,
-        error: 'Failed to generate Do Now response',
+        error: `OpenAI request failed: ${message}`,
       },
       { status: 500 },
     )
