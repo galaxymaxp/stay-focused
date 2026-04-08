@@ -60,6 +60,8 @@ export interface CanvasAnnouncement {
   title: string
   message: string
   posted_at: string
+  html_url?: string | null
+  url?: string | null
 }
 
 export interface CanvasModuleItem {
@@ -317,6 +319,7 @@ export function compileCanvasContent(
       lines.push(`- ${announcement.title} (posted ${formatDate(announcement.posted_at)})`)
       const body = stripHtml(announcement.message).slice(0, 300)
       if (body) lines.push(`  ${body}`)
+      if (announcement.html_url) lines.push(`  Link: ${announcement.html_url}`)
     }
     lines.push('')
   }

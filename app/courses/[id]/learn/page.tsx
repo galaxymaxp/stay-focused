@@ -3,19 +3,28 @@ import { notFound } from 'next/navigation'
 import { CourseLearnExplorer } from '@/components/CourseLearnExplorer'
 import { getClarityWorkspace } from '@/lib/clarity-workspace'
 import { buildCourseLearnOverview } from '@/lib/course-learn-overview'
+import { getSearchParamValue } from '@/lib/stay-focused-links'
 
 interface Props {
   params: Promise<{ id: string }>
+  searchParams?: Promise<Record<string, string | string[] | undefined>>
 }
 
-export default async function CourseLearnPage({ params }: Props) {
+export default async function CourseLearnPage({ params, searchParams }: Props) {
   const { id } = await params
+  const resolvedSearchParams = await searchParams
   const workspace = await getClarityWorkspace()
   const courseOverview = await buildCourseLearnOverview(workspace, id)
 
   if (!courseOverview) notFound()
 
   const { course, modules, resumeCue } = courseOverview
+  const initialOpenModuleId = getSearchParamValue(resolvedSearchParams?.module)
+  const initialOpenResourceId = getSearchParamValue(resolvedSearchParams?.resource)
+  const initialTaskId = getSearchParamValue(resolvedSearchParams?.task)
+  const initialFocusedModuleId = getSearchParamValue(resolvedSearchParams?.focus) === '1'
+    ? initialOpenModuleId
+    : null
 
   return (
     <main className="page-shell page-shell-narrow page-stack">
@@ -95,7 +104,13 @@ export default async function CourseLearnPage({ params }: Props) {
               : 'No modules are available in Learn for this course yet.'}
           </div>
         ) : (
-          <CourseLearnExplorer modules={modules} />
+          <CourseLearnExplorer
+            modules={modules}
+            initialOpenModuleId={initialOpenModuleId}
+            initialFocusedModuleId={initialFocusedModuleId}
+            initialOpenResourceId={initialOpenResourceId}
+            initialTaskId={initialTaskId}
+          />
         )}
       </section>
     </main>

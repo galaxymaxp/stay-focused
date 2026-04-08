@@ -158,6 +158,7 @@ export interface TodayItem {
   planningAnnotationLabel: string
   recommendationScore: number
   href: string | null
+  learnHref?: string | null
   actionLabel: string
   whyNow: string
   effortLabel: string | null

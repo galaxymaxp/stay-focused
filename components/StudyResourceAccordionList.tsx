@@ -1,7 +1,8 @@
 'use client'
 
 import Link from 'next/link'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { getResourceElementId } from '@/lib/stay-focused-links'
 import { StudyOutlineView } from '@/components/StudyOutlineView'
 import type { StudyFileOutlineSection } from '@/lib/study-file-reader'
 
@@ -24,14 +25,42 @@ export interface StudyResourceAccordionItem {
 export function StudyResourceAccordionList({
   items,
   emptyMessage,
+  initialOpenResourceId = null,
 }: {
   items: StudyResourceAccordionItem[]
   emptyMessage: string
+  initialOpenResourceId?: string | null
 }) {
-  const [openResourceId, setOpenResourceId] = useState<string | null>(null)
+  const lastScrolledResourceId = useRef<string | null>(null)
+  const itemIdKey = items.map((item) => item.id).join('|')
+  const hasInitialOpenResource = Boolean(initialOpenResourceId && items.some((item) => item.id === initialOpenResourceId))
+  const routeKey = `${itemIdKey}:${initialOpenResourceId ?? ''}`
+  const [state, setState] = useState<{ routeKey: string; openResourceId: string | null }>({
+    routeKey,
+    openResourceId: hasInitialOpenResource ? initialOpenResourceId : null,
+  })
+  const openResourceId = state.routeKey === routeKey
+    ? state.openResourceId
+    : hasInitialOpenResource
+      ? initialOpenResourceId
+      : null
   const resolvedOpenResourceId = openResourceId && items.some((item) => item.id === openResourceId)
     ? openResourceId
     : null
+
+  useEffect(() => {
+    if (!initialOpenResourceId || resolvedOpenResourceId !== initialOpenResourceId || lastScrolledResourceId.current === initialOpenResourceId) {
+      return
+    }
+
+    const element = document.getElementById(getResourceElementId(initialOpenResourceId))
+    if (!element) return
+
+    lastScrolledResourceId.current = initialOpenResourceId
+    window.requestAnimationFrame(() => {
+      element.scrollIntoView({ block: 'start', behavior: 'smooth' })
+    })
+  }, [initialOpenResourceId, resolvedOpenResourceId])
 
   if (items.length === 0) {
     return (
@@ -49,18 +78,32 @@ export function StudyResourceAccordionList({
         return (
           <article
             key={item.id}
+            id={getResourceElementId(item.id)}
             className="glass-panel glass-soft ui-interactive-card"
             data-open={expanded ? 'true' : 'false'}
             style={{
+              ['--glass-panel-border' as string]: initialOpenResourceId === item.id
+                ? 'color-mix(in srgb, var(--accent-border) 36%, var(--border-subtle) 64%)'
+                : undefined,
               borderRadius: 'var(--radius-panel)',
-              padding: '0.9rem 0.95rem',
+              padding: '0.82rem 0.88rem',
               display: 'grid',
-              gap: expanded ? '0.8rem' : '0.55rem',
+              gap: expanded ? '0.72rem' : '0.48rem',
             }}
           >
             <button
               type="button"
-              onClick={() => setOpenResourceId((current) => current === item.id ? null : item.id)}
+              onClick={() => setState((current) => {
+                const nextOpenResourceId = openResourceId === item.id ? null : item.id
+                if (current.routeKey === routeKey && current.openResourceId === nextOpenResourceId) {
+                  return current
+                }
+
+                return {
+                  routeKey,
+                  openResourceId: nextOpenResourceId,
+                }
+              })}
               aria-expanded={expanded}
               className="ui-interactive-row"
               style={{
@@ -166,5 +209,7 @@ function ResourcePill({
 
 function truncateText(value: string, maxLength: number) {
   if (value.length <= maxLength) return value
-  return `${value.slice(0, maxLength).trim()}...`
+  const clipped = value.slice(0, maxLength)
+  const spaceIndex = clipped.lastIndexOf(' ')
+  return `${clipped.slice(0, spaceIndex > 0 ? spaceIndex : maxLength).trim()}...`
 }

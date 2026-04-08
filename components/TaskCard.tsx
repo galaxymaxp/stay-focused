@@ -133,5 +133,5 @@ function DeadlinePill({ deadline }: { deadline: string }) {
         ? 'var(--amber)'
         : 'var(--text-muted)'
 
-  return <p style={{ margin: '0.45rem 0 0', fontSize: '12px', color }}>{label} - {deadline}</p>
+  return <p style={{ margin: '0.45rem 0 0', fontSize: '12px', color, overflowWrap: 'anywhere' }}>{label} - {deadline}</p>
 }

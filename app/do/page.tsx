@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { SyncFirstEmptyState } from '@/components/SyncFirstEmptyState'
 import { getClarityWorkspace, getTaskUrgencyLabel } from '@/lib/clarity-workspace'
+import { buildModuleDoHref } from '@/lib/stay-focused-links'
 import { TaskStatusToggle } from '@/components/TaskStatusToggle'
 import type { TaskItem } from '@/lib/types'
 
@@ -87,13 +88,13 @@ export default async function DoPage() {
                             <span className="ui-chip" style={priorityChipStyle(task.priority)}>{task.priority} priority</span>
                             <span className="ui-chip ui-chip-soft">{task.taskType}</span>
                           </div>
-                          <h3 style={{ margin: 0, fontSize: '17px', lineHeight: 1.3, fontWeight: 650, color: 'var(--text-primary)' }}>{task.title}</h3>
+                          <h3 style={{ margin: 0, fontSize: '17px', lineHeight: 1.3, fontWeight: 650, color: 'var(--text-primary)', overflowWrap: 'anywhere' }}>{task.title}</h3>
                         </div>
                         <span className="ui-chip ui-chip-soft">{task.estimatedMinutes} min</span>
                       </div>
 
                       {task.details && (
-                        <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.62, color: 'var(--text-secondary)' }}>{task.details}</p>
+                        <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.62, color: 'var(--text-secondary)', overflowWrap: 'anywhere' }}>{task.details}</p>
                       )}
 
                       <TaskStatusToggle
@@ -111,7 +112,7 @@ export default async function DoPage() {
                       </div>
 
                       <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-                        <Link href={`/modules/${task.moduleId}/do#${task.id}`} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+                        <Link href={buildModuleDoHref(task.moduleId, { taskId: task.id })} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
                           Open module Do
                         </Link>
                         {task.canvasUrl && (

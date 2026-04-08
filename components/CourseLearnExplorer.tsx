@@ -1,9 +1,10 @@
 'use client'
 
 import Link from 'next/link'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ModuleTermBank } from '@/components/ModuleTermBank'
 import { StudyResourceAccordionList } from '@/components/StudyResourceAccordionList'
+import { buildModuleDoHref, getModuleElementId, getTaskElementId } from '@/lib/stay-focused-links'
 import { countQuizReadyStudyNotes } from '@/lib/study-note-quiz'
 import type {
   CourseLearnModuleCard,
@@ -14,11 +15,36 @@ import type { Task } from '@/lib/types'
 
 export function CourseLearnExplorer({
   modules,
+  initialOpenModuleId = null,
+  initialFocusedModuleId = null,
+  initialOpenResourceId = null,
+  initialTaskId = null,
 }: {
   modules: CourseLearnModuleCard[]
+  initialOpenModuleId?: string | null
+  initialFocusedModuleId?: string | null
+  initialOpenResourceId?: string | null
+  initialTaskId?: string | null
 }) {
-  const [openModuleId, setOpenModuleId] = useState<string | null>(null)
-  const [focusedModuleId, setFocusedModuleId] = useState<string | null>(null)
+  const lastScrolledModuleId = useRef<string | null>(null)
+  const validInitialOpenModuleId = initialOpenModuleId && modules.some((module) => module.id === initialOpenModuleId)
+    ? initialOpenModuleId
+    : null
+  const validInitialFocusedModuleId = initialFocusedModuleId && modules.some((module) => module.id === initialFocusedModuleId)
+    ? initialFocusedModuleId
+    : null
+  const routeKey = `${validInitialOpenModuleId ?? ''}:${validInitialFocusedModuleId ?? ''}`
+  const [state, setState] = useState<{
+    routeKey: string
+    openModuleId: string | null
+    focusedModuleId: string | null
+  }>({
+    routeKey,
+    openModuleId: validInitialOpenModuleId,
+    focusedModuleId: validInitialFocusedModuleId,
+  })
+  const openModuleId = state.routeKey === routeKey ? state.openModuleId : validInitialOpenModuleId
+  const focusedModuleId = state.routeKey === routeKey ? state.focusedModuleId : validInitialFocusedModuleId
 
   const visibleModules = focusedModuleId
     ? modules.filter((module) => module.id === focusedModuleId)
@@ -28,17 +54,55 @@ export function CourseLearnExplorer({
     : null
 
   function toggleModule(moduleId: string) {
-    setOpenModuleId((current) => current === moduleId ? null : moduleId)
+    setState((current) => ({
+      routeKey,
+      openModuleId: openModuleId === moduleId ? null : moduleId,
+      focusedModuleId: current.routeKey === routeKey ? current.focusedModuleId : validInitialFocusedModuleId,
+    }))
   }
 
   function focusModule(moduleId: string) {
-    setFocusedModuleId(moduleId)
-    setOpenModuleId(moduleId)
+    setState({
+      routeKey,
+      openModuleId: moduleId,
+      focusedModuleId: moduleId,
+    })
   }
 
   function clearFocus() {
-    setFocusedModuleId(null)
+    setState((current) => ({
+      routeKey,
+      openModuleId: current.routeKey === routeKey ? current.openModuleId : validInitialOpenModuleId,
+      focusedModuleId: null,
+    }))
   }
+
+  useEffect(() => {
+    if (!validInitialOpenModuleId || initialOpenResourceId || lastScrolledModuleId.current === validInitialOpenModuleId) {
+      return
+    }
+
+    const element = document.getElementById(getModuleElementId(validInitialOpenModuleId))
+    if (!element) return
+
+    lastScrolledModuleId.current = validInitialOpenModuleId
+    window.requestAnimationFrame(() => {
+      element.scrollIntoView({ block: 'start', behavior: 'smooth' })
+    })
+  }, [initialOpenResourceId, openModuleId, validInitialOpenModuleId])
+
+  useEffect(() => {
+    if (!initialTaskId || !validInitialOpenModuleId || openModuleId !== validInitialOpenModuleId) {
+      return
+    }
+
+    const element = document.getElementById(getTaskElementId(initialTaskId))
+    if (!element) return
+
+    window.requestAnimationFrame(() => {
+      element.scrollIntoView({ block: 'start', behavior: 'smooth' })
+    })
+  }, [initialTaskId, openModuleId, validInitialOpenModuleId])
 
   return (
     <div style={{ display: 'grid', gap: '0.85rem' }}>
@@ -67,6 +131,7 @@ export function CourseLearnExplorer({
         return (
           <article
             key={module.id}
+            id={getModuleElementId(module.id)}
             className={`ui-interactive-card motion-card motion-delay-${Math.min(index + 1, 4)}`}
             data-open={expanded ? 'true' : 'false'}
             style={{
@@ -81,7 +146,7 @@ export function CourseLearnExplorer({
               overflow: 'hidden',
             }}
           >
-            <div style={{ display: 'flex', gap: '0.8rem', alignItems: 'stretch', flexWrap: 'wrap', padding: '0.9rem 0.95rem' }}>
+            <div style={{ display: 'flex', gap: '0.72rem', alignItems: 'stretch', flexWrap: 'wrap', padding: '0.82rem 0.88rem' }}>
               <button
                 type="button"
                 onClick={() => toggleModule(module.id)}
@@ -114,7 +179,7 @@ export function CourseLearnExplorer({
                     {module.coverageHint}
                   </p>
                   <p style={{ margin: '0.38rem 0 0', fontSize: '13px', lineHeight: 1.62, color: 'var(--text-muted)' }}>
-                    {truncateText(module.summary, expanded ? 240 : 170)}
+                    {truncateText(module.summary, expanded ? 180 : 120)}
                   </p>
                 </div>
               </button>
@@ -142,16 +207,16 @@ export function CourseLearnExplorer({
 
             {expanded && (
               <div style={{
-                padding: '0 0.95rem 1rem',
+                padding: '0 0.88rem 0.92rem',
                 display: 'grid',
-                gap: '0.95rem',
+                gap: '0.85rem',
                 borderTop: '1px solid color-mix(in srgb, var(--border-subtle) 84%, transparent)',
               }}>
                 <div style={{
-                  paddingTop: '0.95rem',
+                  paddingTop: '0.88rem',
                   display: 'grid',
                   gridTemplateColumns: 'minmax(0, 1.05fr) minmax(280px, 0.95fr)',
-                  gap: '0.85rem',
+                  gap: '0.75rem',
                   alignItems: 'start',
                 }}>
                   <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.9rem 0.95rem', display: 'grid', gap: '0.6rem' }}>
@@ -219,14 +284,22 @@ export function CourseLearnExplorer({
                       outlineHint: material.outlineHint,
                       readerHref: material.readerHref,
                       canvasHref: material.canvasHref,
-                      extraActionHref: `/modules/${module.id}/do`,
+                      extraActionHref: buildModuleDoHref(module.id, {
+                        resourceId: material.id,
+                      }),
                       extraActionLabel: 'Open module Do',
                     }))}
+                    initialOpenResourceId={validInitialOpenModuleId === module.id ? initialOpenResourceId : null}
                     emptyMessage="No active study materials are ready in this module yet."
                   />
                 </section>
 
-                <TaskStatusPanel moduleId={module.id} pendingTasks={module.pendingTasks} completedTasks={module.completedTasks} />
+                <TaskStatusPanel
+                  moduleId={module.id}
+                  pendingTasks={module.pendingTasks}
+                  completedTasks={module.completedTasks}
+                  targetTaskId={validInitialOpenModuleId === module.id ? initialTaskId : null}
+                />
 
                 <ModuleTermBank
                   moduleId={module.id}
@@ -281,11 +354,16 @@ function TaskStatusPanel({
   moduleId,
   pendingTasks,
   completedTasks,
+  targetTaskId = null,
 }: {
   moduleId: string
   pendingTasks: CourseLearnTaskRow[]
   completedTasks: CourseLearnTaskRow[]
+  targetTaskId?: string | null
 }) {
+  const shouldOpenCompleted = Boolean(targetTaskId && completedTasks.some((task) => task.id === targetTaskId))
+  const displayedPendingTasks = buildDisplayedPendingTasks(pendingTasks, targetTaskId)
+
   return (
     <section className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.95rem 1rem', display: 'grid', gap: '0.75rem' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
@@ -305,25 +383,40 @@ function TaskStatusPanel({
         <SectionEmpty body="Nothing unfinished is pulling attention in this module right now." />
       ) : (
         <div style={{ display: 'grid', gap: '0.65rem' }}>
-          {pendingTasks.slice(0, 3).map((task) => (
-            <article key={task.id} style={{ borderRadius: 'var(--radius-tight)', border: '1px solid color-mix(in srgb, var(--border-subtle) 84%, transparent)', background: 'color-mix(in srgb, var(--surface-elevated) 94%, transparent)', padding: '0.8rem 0.85rem', display: 'grid', gap: '0.5rem' }}>
+          {displayedPendingTasks.map((task) => (
+            <article
+              key={task.id}
+              id={getTaskElementId(task.id)}
+              style={{
+                borderRadius: 'var(--radius-tight)',
+                border: targetTaskId === task.id
+                  ? '1px solid color-mix(in srgb, var(--accent-border) 36%, var(--border-subtle) 64%)'
+                  : '1px solid color-mix(in srgb, var(--border-subtle) 84%, transparent)',
+                background: targetTaskId === task.id
+                  ? 'color-mix(in srgb, var(--surface-selected) 84%, transparent)'
+                  : 'color-mix(in srgb, var(--surface-elevated) 94%, transparent)',
+                padding: '0.8rem 0.85rem',
+                display: 'grid',
+                gap: '0.5rem',
+              }}
+            >
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.65rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
                 <div style={{ minWidth: 0, flex: '1 1 260px' }}>
                   <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginBottom: '0.28rem' }}>
                     <TaskTonePill priority={task.priority} />
                     {task.deadline && <CountPill label={formatDeadlineLabel(task.deadline)} />}
                   </div>
-                  <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.5, color: 'var(--text-primary)', fontWeight: 650 }}>
+                  <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.5, color: 'var(--text-primary)', fontWeight: 650, overflowWrap: 'anywhere' }}>
                     {task.title}
                   </p>
                   {task.details && (
-                    <p style={{ margin: '0.32rem 0 0', fontSize: '13px', lineHeight: 1.62, color: 'var(--text-secondary)' }}>
+                    <p style={{ margin: '0.32rem 0 0', fontSize: '13px', lineHeight: 1.62, color: 'var(--text-secondary)', overflowWrap: 'anywhere' }}>
                       {task.details}
                     </p>
                   )}
                 </div>
                 <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-                  <Link href={`/modules/${moduleId}/do#${task.id}`} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+                  <Link href={buildModuleDoHref(moduleId, { taskId: task.id })} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
                     Open in Do
                   </Link>
                   {task.canvasUrl && (
@@ -339,18 +432,30 @@ function TaskStatusPanel({
       )}
 
       {completedTasks.length > 0 && (
-        <details>
+        <details open={shouldOpenCompleted}>
           <summary className="ui-interactive-summary" style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)' }}>
             Already done
           </summary>
           <div style={{ display: 'grid', gap: '0.55rem', marginTop: '0.7rem' }}>
             {completedTasks.map((task) => (
-              <article key={task.id} style={{ borderRadius: 'var(--radius-tight)', border: '1px solid color-mix(in srgb, var(--border-subtle) 84%, transparent)', padding: '0.78rem 0.82rem', display: 'grid', gap: '0.4rem' }}>
+              <article
+                key={task.id}
+                id={getTaskElementId(task.id)}
+                style={{
+                  borderRadius: 'var(--radius-tight)',
+                  border: targetTaskId === task.id
+                    ? '1px solid color-mix(in srgb, var(--accent-border) 36%, var(--border-subtle) 64%)'
+                    : '1px solid color-mix(in srgb, var(--border-subtle) 84%, transparent)',
+                  padding: '0.78rem 0.82rem',
+                  display: 'grid',
+                  gap: '0.4rem',
+                }}
+              >
                 <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
                   <CountPill label={task.completionOrigin === 'canvas' ? 'Done in Canvas' : 'Completed'} />
                   {task.deadline && <CountPill label={formatDate(task.deadline)} />}
                 </div>
-                <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.55, color: 'var(--text-muted)', textDecoration: 'line-through' }}>
+                <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.55, color: 'var(--text-muted)', textDecoration: 'line-through', overflowWrap: 'anywhere' }}>
                   {task.title}
                 </p>
               </article>
@@ -360,6 +465,20 @@ function TaskStatusPanel({
       )}
     </section>
   )
+}
+
+function buildDisplayedPendingTasks(tasks: CourseLearnTaskRow[], targetTaskId: string | null | undefined) {
+  const initial = tasks.slice(0, 3)
+  if (!targetTaskId || initial.some((task) => task.id === targetTaskId)) {
+    return initial
+  }
+
+  const targetTask = tasks.find((task) => task.id === targetTaskId)
+  if (!targetTask) {
+    return initial
+  }
+
+  return [targetTask, ...initial.slice(0, 2)]
 }
 
 function SourceItemRow({

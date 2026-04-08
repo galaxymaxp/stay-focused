@@ -6,6 +6,7 @@ import { ModuleTermBank } from '@/components/ModuleTermBank'
 import { StudyResourceAccordionList } from '@/components/StudyResourceAccordionList'
 import { TaskStatusToggle } from '@/components/TaskStatusToggle'
 import { buildModuleLearnOverview, type ModuleStudyMaterial } from '@/lib/module-learn-overview'
+import { buildModuleDoHref, getSearchParamValue, getSupportElementId, getTaskElementId } from '@/lib/stay-focused-links'
 import { countQuizReadyStudyNotes } from '@/lib/study-note-quiz'
 import { buildModuleTermBank } from '@/lib/module-term-bank'
 import {
@@ -14,15 +15,18 @@ import {
   getLearnResourceHref,
   getModuleWorkspace,
   getResourceCanvasHref,
+  type ModuleSourceResource,
 } from '@/lib/module-workspace'
 import type { Task } from '@/lib/types'
 
 interface Props {
   params: Promise<{ id: string }>
+  searchParams?: Promise<Record<string, string | string[] | undefined>>
 }
 
-export default async function LearnPage({ params }: Props) {
+export default async function LearnPage({ params, searchParams }: Props) {
   const { id } = await params
+  const resolvedSearchParams = await searchParams
   const workspace = await getModuleWorkspace(id)
   if (!workspace) notFound()
 
@@ -53,6 +57,12 @@ export default async function LearnPage({ params }: Props) {
     0,
   )
   const summaryText = overview.summary ?? module.summary ?? overview.coverageNote ?? termBank.termsStateMessage
+  const targetResourceId = getSearchParamValue(resolvedSearchParams?.resource)
+  const targetTaskId = getSearchParamValue(resolvedSearchParams?.task)
+  const targetSupportId = getSearchParamValue(resolvedSearchParams?.support)
+  const targetPanel = getSearchParamValue(resolvedSearchParams?.panel)
+  const shouldOpenSourceSupport = targetPanel === 'source-support' || Boolean(targetSupportId)
+  const shouldOpenCompletedTasks = Boolean(targetTaskId && completedTasks.some((task) => task.id === targetTaskId))
 
   if (module.status === 'error') {
     return (
@@ -190,7 +200,7 @@ export default async function LearnPage({ params }: Props) {
         </section>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.18fr) minmax(320px, 0.92fr)', gap: '1rem', alignItems: 'start' }}>
-          <section id="study-notes" className="motion-card motion-delay-2 section-shell section-shell-elevated" style={{ padding: '1.35rem 1.45rem', display: 'grid', gap: '0.95rem' }}>
+          <section id="study-notes" className="motion-card motion-delay-2 section-shell section-shell-elevated" style={{ padding: '1.2rem 1.3rem', display: 'grid', gap: '0.9rem' }}>
             <div>
               <p className="ui-kicker">Study notes</p>
               <h3 style={{ margin: '0.42rem 0 0', fontSize: '1.08rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>Compact resource rows that open into notes inline</h3>
@@ -213,12 +223,13 @@ export default async function LearnPage({ params }: Props) {
                 readerHref: getLearnResourceHref(module.id, material.resource.id),
                 canvasHref: getResourceCanvasHref(material.resource),
               }))}
+              initialOpenResourceId={targetResourceId}
               emptyMessage="No mapped study readers are ready for this module yet. Learn will show fuller notes here as soon as readable extracted source text is available."
             />
           </section>
 
           <aside style={{ display: 'grid', gap: '1rem' }}>
-            <section className="motion-card motion-delay-2 section-shell" style={{ padding: '1.2rem 1.25rem', display: 'grid', gap: '0.85rem' }}>
+            <section id="action-status" className="motion-card motion-delay-2 section-shell" style={{ padding: '1.1rem 1.15rem', display: 'grid', gap: '0.8rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
                 <div>
                   <p className="ui-kicker">Action status</p>
@@ -237,16 +248,32 @@ export default async function LearnPage({ params }: Props) {
               ) : (
                 <div style={{ display: 'grid', gap: '0.7rem' }}>
                   {pendingTasks.map((task) => (
-                    <article key={task.id} className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.92rem 0.95rem', display: 'grid', gap: '0.65rem' }}>
+                    <article
+                      key={task.id}
+                      id={getTaskElementId(task.id)}
+                      className="glass-panel glass-soft"
+                      style={{
+                        ['--glass-panel-border' as string]: targetTaskId === task.id
+                          ? 'color-mix(in srgb, var(--accent-border) 38%, var(--border-subtle) 62%)'
+                          : 'var(--glass-border)',
+                        borderRadius: 'var(--radius-panel)',
+                        padding: '0.82rem 0.88rem',
+                        display: 'grid',
+                        gap: '0.6rem',
+                        background: targetTaskId === task.id
+                          ? 'color-mix(in srgb, var(--surface-selected) 78%, var(--surface-elevated) 22%)'
+                          : undefined,
+                      }}
+                    >
                       <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.65rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
                         <div style={{ minWidth: 0, flex: '1 1 220px' }}>
                           <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.3rem' }}>
                             <PriorityBadge priority={task.priority} />
                             {task.deadline && <StateBadge label={formatDeadlineLabel(task.deadline)} tone={deadlineTone(task.deadline)} />}
                           </div>
-                          <p style={{ margin: 0, fontSize: '15px', lineHeight: 1.5, color: 'var(--text-primary)', fontWeight: 650 }}>{task.title}</p>
+                          <p style={{ margin: 0, fontSize: '15px', lineHeight: 1.5, color: 'var(--text-primary)', fontWeight: 650, overflowWrap: 'anywhere' }}>{task.title}</p>
                           {task.details && (
-                            <p style={{ margin: '0.35rem 0 0', fontSize: '13px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
+                            <p style={{ margin: '0.35rem 0 0', fontSize: '13px', lineHeight: 1.65, color: 'var(--text-secondary)', overflowWrap: 'anywhere' }}>
                               {task.details}
                             </p>
                           )}
@@ -255,7 +282,7 @@ export default async function LearnPage({ params }: Props) {
                       </div>
 
                       <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-                        <Link href={`/modules/${module.id}/do#${task.id}`} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+                        <Link href={buildModuleDoHref(module.id, { taskId: task.id })} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
                           Open in Do
                         </Link>
                         {task.canvasUrl && (
@@ -270,20 +297,32 @@ export default async function LearnPage({ params }: Props) {
               )}
 
               {completedTasks.length > 0 && (
-                <details className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.9rem 0.95rem' }}>
+                <details open={shouldOpenCompletedTasks} className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.9rem 0.95rem' }}>
                   <summary className="ui-interactive-summary" style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
                     Already done
                   </summary>
                   <div style={{ display: 'grid', gap: '0.6rem', marginTop: '0.8rem' }}>
                     {completedTasks.map((task) => (
-                      <article key={task.id} style={{ display: 'grid', gap: '0.5rem', padding: '0.8rem 0.85rem', borderRadius: 'var(--radius-tight)', border: '1px solid color-mix(in srgb, var(--border-subtle) 84%, transparent)' }}>
+                      <article
+                        key={task.id}
+                        id={getTaskElementId(task.id)}
+                        style={{
+                          display: 'grid',
+                          gap: '0.5rem',
+                          padding: '0.8rem 0.85rem',
+                          borderRadius: 'var(--radius-tight)',
+                          border: targetTaskId === task.id
+                            ? '1px solid color-mix(in srgb, var(--accent-border) 38%, var(--border-subtle) 62%)'
+                            : '1px solid color-mix(in srgb, var(--border-subtle) 84%, transparent)',
+                        }}
+                      >
                         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.65rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
                           <div style={{ minWidth: 0, flex: '1 1 220px' }}>
                             <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.3rem' }}>
                               <CompletionBadge origin={task.completionOrigin ?? null} />
                               {task.deadline && <StateBadge label={formatDate(task.deadline)} tone="muted" />}
                             </div>
-                            <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.5, color: 'var(--text-muted)', textDecoration: 'line-through' }}>{task.title}</p>
+                            <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.5, color: 'var(--text-muted)', textDecoration: 'line-through', overflowWrap: 'anywhere' }}>{task.title}</p>
                           </div>
                           <TaskStatusToggle status={task.status} moduleId={module.id} title={task.title} legacyTaskId={task.id} align="end" />
                         </div>
@@ -294,7 +333,7 @@ export default async function LearnPage({ params }: Props) {
               )}
             </section>
 
-            <section className="motion-card motion-delay-3 section-shell" style={{ padding: '1.2rem 1.25rem', display: 'grid', gap: '0.85rem' }}>
+            <section className="motion-card motion-delay-3 section-shell" style={{ padding: '1.1rem 1.15rem', display: 'grid', gap: '0.8rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
                 <div>
                   <p className="ui-kicker">Study coverage</p>
@@ -344,7 +383,7 @@ export default async function LearnPage({ params }: Props) {
         </div>
 
         <div id="source-support">
-          <details className="motion-card motion-delay-3 section-shell" style={{ padding: '1.2rem 1.25rem' }}>
+          <details open={shouldOpenSourceSupport} className="motion-card motion-delay-3 section-shell" style={{ padding: '1.1rem 1.15rem' }}>
             <summary className="ui-interactive-summary" style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
               View extracted source
             </summary>
@@ -362,7 +401,12 @@ export default async function LearnPage({ params }: Props) {
               {overview.studyMaterials.length > 0 ? (
                 <div style={{ display: 'grid', gap: '0.7rem' }}>
                   {overview.studyMaterials.map((material) => (
-                    <SourceSupportRow key={`${material.resource.id}-source-support`} moduleId={module.id} material={material} />
+                    <SourceSupportRow
+                      key={`${material.resource.id}-source-support`}
+                      moduleId={module.id}
+                      material={material}
+                      highlighted={targetSupportId === material.resource.id}
+                    />
                   ))}
                 </div>
               ) : (
@@ -374,7 +418,12 @@ export default async function LearnPage({ params }: Props) {
               {overview.otherContextResources.length > 0 && (
                 <div style={{ display: 'grid', gap: '0.7rem' }}>
                   {overview.otherContextResources.map((item) => (
-                    <SupportContextRow key={item.id} moduleId={module.id} item={item} />
+                    <SupportContextRow
+                      key={item.id}
+                      moduleId={module.id}
+                      item={item}
+                      highlighted={targetSupportId === item.id}
+                    />
                   ))}
                 </div>
               )}
@@ -389,14 +438,28 @@ export default async function LearnPage({ params }: Props) {
 function SourceSupportRow({
   moduleId,
   material,
+  highlighted = false,
 }: {
   moduleId: string
   material: ModuleStudyMaterial
+  highlighted?: boolean
 }) {
   const canvasHref = getResourceCanvasHref(material.resource)
 
   return (
-    <article className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.9rem 0.95rem', display: 'grid', gap: '0.55rem' }}>
+    <article
+      id={getSupportElementId(material.resource.id)}
+      className="ui-card-soft"
+      style={{
+        borderRadius: 'var(--radius-panel)',
+        padding: '0.82rem 0.88rem',
+        display: 'grid',
+        gap: '0.55rem',
+        border: highlighted
+          ? '1px solid color-mix(in srgb, var(--accent-border) 38%, var(--border-subtle) 62%)'
+          : undefined,
+      }}
+    >
       <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
         <StateBadge label={material.fileTypeLabel} tone="muted" />
         <StateBadge
@@ -431,12 +494,28 @@ function SourceSupportRow({
 function SupportContextRow({
   moduleId,
   item,
+  highlighted = false,
 }: {
   moduleId: string
-  item: { id: string; title: string; linkedContext?: string | null; whyItMatters?: string | null; moduleName?: string | null }
+  item: ModuleSourceResource
+  highlighted?: boolean
 }) {
+  const canvasHref = getResourceCanvasHref(item)
+
   return (
-    <article className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.9rem 0.95rem', display: 'grid', gap: '0.55rem' }}>
+    <article
+      id={getSupportElementId(item.id)}
+      className="ui-card-soft"
+      style={{
+        borderRadius: 'var(--radius-panel)',
+        padding: '0.82rem 0.88rem',
+        display: 'grid',
+        gap: '0.55rem',
+        border: highlighted
+          ? '1px solid color-mix(in srgb, var(--accent-border) 38%, var(--border-subtle) 62%)'
+          : undefined,
+      }}
+    >
       <div>
         <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.5, color: 'var(--text-primary)', fontWeight: 650 }}>
           {item.title}
@@ -447,9 +526,20 @@ function SupportContextRow({
       </div>
 
       <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-        <Link href={getLearnResourceHref(moduleId, item.id)} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-          Open detail
-        </Link>
+        {canvasHref ? (
+          <a href={canvasHref} target="_blank" rel="noreferrer" className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
+            Open target
+          </a>
+        ) : (
+          <Link href={getLearnResourceHref(moduleId, item.id)} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+            Open detail
+          </Link>
+        )}
+        {canvasHref && (
+          <Link href={getLearnResourceHref(moduleId, item.id)} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+            Open detail
+          </Link>
+        )}
       </div>
     </article>
   )

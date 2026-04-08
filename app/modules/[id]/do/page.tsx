@@ -3,15 +3,18 @@ import Link from 'next/link'
 import { ModuleLensShell } from '@/components/ModuleLensShell'
 import { TaskStatusToggle } from '@/components/TaskStatusToggle'
 import { buildLearnExperience, extractCourseName, findRecommendedStepTargets, getModuleWorkspace, getResourceCanvasHref, matchTaskToResource } from '@/lib/module-workspace'
+import { buildModuleLearnHref, getSearchParamValue, getTaskElementId } from '@/lib/stay-focused-links'
 import { sortTasksByRecommendation } from '@/lib/task-ranking'
 import { DoNowButton } from '@/components/DoNowButton'
 
 interface Props {
   params: Promise<{ id: string }>
+  searchParams?: Promise<Record<string, string | string[] | undefined>>
 }
 
-export default async function DoPage({ params }: Props) {
+export default async function DoPage({ params, searchParams }: Props) {
   const { id } = await params
+  const resolvedSearchParams = await searchParams
   const workspace = await getModuleWorkspace(id)
   if (!workspace) notFound()
 
@@ -25,6 +28,15 @@ export default async function DoPage({ params }: Props) {
     resources: storedResources,
   })
   const suggestedSteps = findRecommendedStepTargets(module, learnExperience, tasks)
+  const targetTaskId = getSearchParamValue(resolvedSearchParams?.task)
+  const targetResourceId = getSearchParamValue(resolvedSearchParams?.resource)
+  const matchedTargetTask = targetResourceId
+    ? pendingTasks.find((task) => matchTaskToResource(task.title, learnExperience.resources)?.id === targetResourceId)
+      ?? completedTasks.find((task) => matchTaskToResource(task.title, learnExperience.resources)?.id === targetResourceId)
+      ?? null
+    : null
+  const highlightedTaskId = targetTaskId ?? matchedTargetTask?.id ?? null
+  const shouldOpenCompleted = Boolean(highlightedTaskId && completedTasks.some((task) => task.id === highlightedTaskId))
 
   if (module.status === 'error') {
     return (
@@ -68,15 +80,19 @@ export default async function DoPage({ params }: Props) {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
               {pendingTasks.map((task, index) => (
-                <article key={task.id} id={task.id} className="glass-panel" style={{
+                <article key={task.id} id={getTaskElementId(task.id)} className="glass-panel" style={{
                   ['--glass-panel-bg' as string]: index === 0 ? 'color-mix(in srgb, var(--glass-surface-accent) 34%, var(--glass-surface-strong) 66%)' : 'var(--glass-surface-strong)',
-                  ['--glass-panel-border' as string]: index === 0 ? 'var(--accent-border)' : 'var(--glass-border)',
+                  ['--glass-panel-border' as string]: highlightedTaskId === task.id
+                    ? 'color-mix(in srgb, var(--accent-border) 42%, var(--border-subtle) 58%)'
+                    : index === 0
+                      ? 'var(--accent-border)'
+                      : 'var(--glass-border)',
                   ['--glass-panel-shadow' as string]: 'var(--glass-shadow)',
                   borderRadius: 'var(--radius-panel)',
-                  padding: '1rem',
+                  padding: '0.9rem 0.95rem',
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: '0.8rem',
+                  gap: '0.72rem',
                 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
                     <div style={{ minWidth: 0 }}>
@@ -90,13 +106,13 @@ export default async function DoPage({ params }: Props) {
                           </span>
                         )}
                       </div>
-                      <h3 style={{ margin: 0, fontSize: '17px', lineHeight: 1.3, fontWeight: 650, color: 'var(--text-primary)' }}>{task.title}</h3>
+                      <h3 style={{ margin: 0, fontSize: '17px', lineHeight: 1.3, fontWeight: 650, color: 'var(--text-primary)', overflowWrap: 'anywhere' }}>{task.title}</h3>
                     </div>
                     <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 600 }}>Step {index + 1}</span>
                   </div>
 
                   {task.details && (
-                    <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.62, color: 'var(--text-secondary)' }}>{task.details}</p>
+                    <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.62, color: 'var(--text-secondary)', overflowWrap: 'anywhere' }}>{task.details}</p>
                   )}
 
                   <TaskStatusToggle
@@ -113,22 +129,52 @@ export default async function DoPage({ params }: Props) {
                   </div>
 
                   <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-                    <DoNowButton context={{
-                      taskTitle: task.title,
-                      taskDetails: task.details,
-                      deadline: task.deadline,
-                      priority: task.priority,
-                      courseName,
-                      moduleTitle: module.title,
-                      studyPrompts: module.study_prompts,
-                      concepts: module.concepts,
-                      moduleSummary: module.summary,
-                      canvasUrl: task.canvasUrl,
-                      learnHref: `/modules/${module.id}/learn`,
-                    }} />
-                    <Link href={`/modules/${module.id}/learn`} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-                      Open Learn
-                    </Link>
+                    {(() => {
+                      const matchedResource = matchTaskToResource(task.title, learnExperience.resources)
+                      const learnHref = buildModuleLearnHref(module.id, matchedResource
+                        ? {
+                            resourceId: matchedResource.id,
+                            panel: 'study-notes',
+                          }
+                        : {
+                            taskId: task.id,
+                            panel: 'action-status',
+                          })
+
+                      return (
+                        <DoNowButton context={{
+                          taskTitle: task.title,
+                          taskDetails: task.details,
+                          deadline: task.deadline,
+                          priority: task.priority,
+                          courseName,
+                          moduleTitle: module.title,
+                          studyPrompts: module.study_prompts,
+                          concepts: module.concepts,
+                          moduleSummary: module.summary,
+                          canvasUrl: task.canvasUrl,
+                          learnHref,
+                        }} />
+                      )
+                    })()}
+                    {(() => {
+                      const matchedResource = matchTaskToResource(task.title, learnExperience.resources)
+                      const learnHref = buildModuleLearnHref(module.id, matchedResource
+                        ? {
+                            resourceId: matchedResource.id,
+                            panel: 'study-notes',
+                          }
+                        : {
+                            taskId: task.id,
+                            panel: 'action-status',
+                          })
+
+                      return (
+                        <Link href={learnHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+                          Open Learn
+                        </Link>
+                      )
+                    })()}
                     {(() => {
                       if (task.canvasUrl) {
                         return (
@@ -153,7 +199,7 @@ export default async function DoPage({ params }: Props) {
           )}
 
           {completedTasks.length > 0 && (
-            <details style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid color-mix(in srgb, var(--border-subtle) 82%, transparent)' }}>
+            <details open={shouldOpenCompleted} style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid color-mix(in srgb, var(--border-subtle) 82%, transparent)' }}>
               <summary className="ui-interactive-summary">
                 <div>
                   <p className="ui-kicker">
@@ -167,7 +213,21 @@ export default async function DoPage({ params }: Props) {
               </summary>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.85rem' }}>
                 {completedTasks.map((task) => (
-                  <div key={task.id} className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.8rem 0.9rem', display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+                  <div
+                    key={task.id}
+                    id={getTaskElementId(task.id)}
+                    className="ui-card-soft"
+                    style={{
+                      borderRadius: 'var(--radius-tight)',
+                      padding: '0.8rem 0.9rem',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.65rem',
+                      border: highlightedTaskId === task.id
+                        ? '1px solid color-mix(in srgb, var(--accent-border) 38%, var(--border-subtle) 62%)'
+                        : undefined,
+                    }}
+                  >
                     <p style={{ margin: 0, fontSize: '14px', color: 'var(--text-muted)', textDecoration: 'line-through' }}>{task.title}</p>
                     <TaskStatusToggle
                       status={task.status}

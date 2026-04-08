@@ -1,4 +1,5 @@
-import { getLearnResourceHref, getResourceCanvasHref, getResourceGrounding, type ModuleSourceResource } from '@/lib/module-workspace'
+import { getResourceCanvasHref, getResourceGrounding, type ModuleSourceResource } from '@/lib/module-workspace'
+import { buildModuleDoHref, buildModuleLearnHref } from '@/lib/stay-focused-links'
 import { buildStudyFileReaderModel, getStudyFileTypeLabel, type StudyFileReaderModel } from '@/lib/study-file-reader'
 import { getCanvasSourceLabel, getStudySourceNoun } from '@/lib/study-resource'
 import type { ModuleResourceWorkflowOverride, StudyFileProgressStatus, Task } from '@/lib/types'
@@ -455,7 +456,10 @@ function buildStudyStep(moduleId: string, material: ModuleStudyMaterial): Omit<M
       : material.readiness === 'limited'
         ? 'Use this as a guidepost, then keep the original Canvas source nearby for the fuller read.'
         : 'Canvas is still the most reliable place to read this one in full.',
-    href: useCanvas ? canvasHref! : getLearnResourceHref(moduleId, material.resource.id),
+    href: useCanvas ? canvasHref! : buildModuleLearnHref(moduleId, {
+      resourceId: material.resource.id,
+      panel: 'study-notes',
+    }),
     destinationLabel: useCanvas ? 'Canvas source' : 'Study reader',
     external: useCanvas,
   }
@@ -479,7 +483,10 @@ function buildResumeTargetModel(
     readinessLabel: material.readinessLabel,
     promptLabel,
     note: buildResumeNote(material, source, openedAtLabel),
-    href: useCanvas ? canvasHref! : getLearnResourceHref(moduleId, material.resource.id),
+    href: useCanvas ? canvasHref! : buildModuleLearnHref(moduleId, {
+      resourceId: material.resource.id,
+      panel: 'study-notes',
+    }),
     actionLabel: useCanvas ? 'Open in Canvas' : 'Continue reading',
     external: useCanvas,
   }
@@ -493,7 +500,10 @@ function buildActivityOverrideStep(moduleId: string, material: ModuleStudyMateri
     id: `${material.resource.id}-activity-override-step`,
     title: material.resource.title,
     note: 'You marked this study material as activity for your workflow, so it sits in the action lane even though the study reader is still available.',
-    href: useCanvas ? canvasHref! : getLearnResourceHref(moduleId, material.resource.id),
+    href: useCanvas ? canvasHref! : buildModuleLearnHref(moduleId, {
+      resourceId: material.resource.id,
+      panel: 'study-notes',
+    }),
     destinationLabel: useCanvas ? 'Canvas source' : 'Study reader',
     external: useCanvas,
   }
@@ -547,8 +557,8 @@ function buildActionStep(moduleId: string, item: ModuleSourceResource, tasks: Ta
       ? `This is an action item for the module and is due ${dueContext}.`
       : 'This is the clearest action item to tackle after the study pass.',
     href: matchedTask
-      ? `/modules/${moduleId}/do#${matchedTask.id}`
-      : canvasHref ?? `/modules/${moduleId}/do`,
+      ? buildModuleDoHref(moduleId, { taskId: matchedTask.id })
+      : canvasHref ?? buildModuleDoHref(moduleId, { resourceId: item.id }),
     destinationLabel: matchedTask
       ? 'Open task'
       : canvasHref

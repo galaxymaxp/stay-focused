@@ -1,6 +1,8 @@
 import type { Metadata } from 'next'
 import { AppShell } from '@/components/AppShell'
 import { ThemeProvider } from '@/components/ThemeProvider'
+import { getRecentAnnouncements } from '@/lib/announcements'
+import { loadWorkspaceSource } from '@/lib/workspace-source'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -35,7 +37,13 @@ const THEME_INIT_SCRIPT = `
   })();
 `
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const source = await loadWorkspaceSource()
+  const recentAnnouncements = getRecentAnnouncements(
+    source.modules,
+    new Map(source.courses.map((course) => [course.id, course])),
+  )
+
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
@@ -46,7 +54,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className="app-shell" style={{ background: 'var(--bg)', minHeight: '100vh' }}>
         <ThemeProvider>
-          <AppShell>{children}</AppShell>
+          <AppShell recentAnnouncements={recentAnnouncements}>{children}</AppShell>
         </ThemeProvider>
       </body>
     </html>

@@ -30,8 +30,8 @@ export function TodayDashboard({
   recentAnnouncements: ParsedAnnouncement[]
 }) {
   return (
-    <section className="page-stack" style={{ gap: '1.25rem' }}>
-      <header className="motion-card" style={{ display: 'flex', flexDirection: 'column', gap: '0.7rem' }}>
+    <section className="page-stack" style={{ gap: '1.1rem' }}>
+      <header className="motion-card section-shell section-shell-elevated" style={{ display: 'flex', flexDirection: 'column', gap: '0.62rem', padding: '1.15rem 1.2rem' }}>
         <div>
           <p className="ui-kicker">Today</p>
           <h1 className="ui-page-title">What should I do right now?</h1>
@@ -74,6 +74,7 @@ export function TodayDashboard({
           emptyMessage="Your action list is clear right now."
           actionHref="/do"
           actionLabel="Open Do"
+          scrollHeight="18.5rem"
         />
 
         <SectionBlock
@@ -84,6 +85,7 @@ export function TodayDashboard({
           emptyMessage="Nothing new needs a closer read at the moment."
           actionHref="/learn"
           actionLabel="Open Learn"
+          scrollHeight="18.5rem"
         />
       </div>
 
@@ -159,14 +161,9 @@ function FocusHeroCard({ item }: { item: TodayItem }) {
           courseName: item.courseName,
           moduleTitle: item.moduleTitle,
           canvasUrl: item.canvasUrl,
-          learnHref: item.kind === 'module' ? item.href : (item.moduleId ? `/modules/${item.moduleId}/learn` : null),
+          learnHref: item.learnHref ?? item.href,
         }} />
         <ItemActionButton item={item} primary />
-        {item.href && (
-          <Link href={item.href} className="ui-button ui-button-secondary" style={secondaryButtonStyle}>
-            Open details
-          </Link>
-        )}
       </div>
     </section>
   )
@@ -180,6 +177,7 @@ function SectionBlock({
   emptyMessage,
   actionHref,
   actionLabel,
+  scrollHeight,
 }: {
   eyebrow: string
   title: string
@@ -188,13 +186,14 @@ function SectionBlock({
   emptyMessage: string
   actionHref?: string
   actionLabel?: string
+  scrollHeight?: string
 }) {
   return (
-    <section className="motion-card motion-delay-1 section-shell section-shell-elevated">
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start', flexWrap: 'wrap', marginBottom: '1rem' }}>
+    <section className="motion-card motion-delay-1 section-shell section-shell-elevated" style={{ padding: '1rem 1.05rem', display: 'grid', gap: '0.8rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
           <p className="ui-kicker">{eyebrow}</p>
-          <h2 className="ui-section-title">{title}</h2>
+          <h2 className="ui-section-title" style={{ fontSize: '1.02rem' }}>{title}</h2>
           <p className="ui-section-copy">{description}</p>
         </div>
         {actionHref && actionLabel && (
@@ -207,7 +206,7 @@ function SectionBlock({
       {items.length === 0 ? (
         <div className="ui-empty" style={emptyBlockStyle}>{emptyMessage}</div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: scrollHeight, overflowY: scrollHeight ? 'auto' : 'visible', paddingRight: scrollHeight ? '0.18rem' : 0 }}>
           {items.map((item) => (
             <TodayItemCard key={item.id} item={item} />
           ))}
@@ -273,11 +272,6 @@ function TodayItemCard({ item }: { item: TodayItem }) {
           </>
         )}
         <ItemActionButton item={item} />
-        {item.href && (
-          <Link href={item.href} className="ui-button ui-button-ghost" style={ghostButtonStyle}>
-            Open details
-          </Link>
-        )}
       </div>
     </article>
   )
@@ -403,10 +397,10 @@ const heroBodyStyle: CSSProperties = {
 
 const heroCardStyle: CSSProperties = {
   borderRadius: 'var(--radius-page)',
-  padding: '1.4rem',
+  padding: '1.2rem',
   display: 'flex',
   flexDirection: 'column',
-  gap: '1rem',
+  gap: '0.9rem',
   boxShadow: 'var(--shadow-medium), var(--highlight-sheen)',
 }
 
@@ -431,7 +425,7 @@ const noticeStyle: CSSProperties = {
 
 const emptyBlockStyle: CSSProperties = {
   borderRadius: 'var(--radius-panel)',
-  padding: '1rem',
+  padding: '0.92rem 0.95rem',
   fontSize: '14px',
   lineHeight: 1.6,
 }
@@ -453,10 +447,10 @@ function itemCardStyle(tone: TodayItem['tone']): CSSProperties {
     ['--glass-panel-border' as string]: toneStyle.border,
     ['--glass-panel-shadow' as string]: 'var(--glass-shadow)',
     borderRadius: 'var(--radius-panel)',
-    padding: '1rem',
+    padding: '0.88rem 0.92rem',
     display: 'flex',
     flexDirection: 'column',
-    gap: '0.85rem',
+    gap: '0.72rem',
   }
 }
 
@@ -467,12 +461,6 @@ const primaryButtonStyle: CSSProperties = {
 }
 
 const secondaryButtonStyle: CSSProperties = {
-  minHeight: '2.6rem',
-  padding: '0.72rem 1rem',
-  fontSize: '13px',
-}
-
-const ghostButtonStyle: CSSProperties = {
   minHeight: '2.6rem',
   padding: '0.72rem 1rem',
   fontSize: '13px',

@@ -376,7 +376,7 @@ function SelectedItemCard({ item }: { item: CalendarItem }) {
         )}
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.38rem', fontSize: '13px', lineHeight: 1.5, color: 'var(--text-secondary)' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.38rem', fontSize: '13px', lineHeight: 1.5, color: 'var(--text-secondary)', overflowWrap: 'anywhere' }}>
         <div>
           <span style={{ color: 'var(--text-muted)' }}>Course:</span> {item.courseName}
         </div>

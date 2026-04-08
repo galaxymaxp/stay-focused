@@ -70,14 +70,7 @@ function ReleasedLabel({ value }: { value: string | undefined }) {
   if (!value) return null
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return null
-  const daysAgo = Math.floor((Date.now() - date.getTime()) / (1000 * 60 * 60 * 24))
-  const label = daysAgo === 0
-    ? 'Posted today'
-    : daysAgo === 1
-      ? 'Posted yesterday'
-      : daysAgo <= 6
-        ? `Posted ${daysAgo} days ago`
-        : `Posted ${new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(date)}`
+  const label = `Posted ${new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(date)}`
   return <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{label}</span>
 }
 

@@ -3,8 +3,10 @@
 import type { ReactNode } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { AnnouncementsMenu } from '@/components/AnnouncementsMenu'
 import { CanvasMenu } from '@/components/CanvasMenu'
 import { StayFocusedIcon } from '@/components/StayFocusedIcon'
+import type { ParsedAnnouncement } from '@/lib/announcements'
 
 const NAV_ITEMS = [
   {
@@ -75,7 +77,13 @@ const NAV_ITEMS = [
   },
 ] as const
 
-export function AppShell({ children }: { children: ReactNode }) {
+export function AppShell({
+  children,
+  recentAnnouncements,
+}: {
+  children: ReactNode
+  recentAnnouncements: ParsedAnnouncement[]
+}) {
   const pathname = usePathname()
 
   return (
@@ -133,6 +141,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <span>Clear modules, clear tasks, less noise.</span>
           </div>
           <div className="app-topbar-actions">
+            <AnnouncementsMenu announcements={recentAnnouncements} />
             <CanvasMenu />
           </div>
         </header>

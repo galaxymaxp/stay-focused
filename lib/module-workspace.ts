@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { buildModuleDoHref, buildModuleLearnHref } from '@/lib/stay-focused-links'
 import { normalizeTaskPlanningAnnotation } from '@/lib/task-planning'
 import { getLearnResourceKindLabel, getStudySourceNoun } from '@/lib/study-resource'
 import type {
@@ -315,6 +316,7 @@ interface ParsedCanvasAssignment {
 interface ParsedCanvasAnnouncement {
   title: string
   body: string | null
+  canvasUrl: string | null
 }
 
 interface ParsedCanvasModuleGroup {
@@ -390,14 +392,19 @@ function parseCompiledCanvasContent(rawContent: string): ParsedCanvasContent {
     if (section === 'announcements') {
       if (trimmed.startsWith('- ')) {
         currentAnnouncement = {
-          title: trimmed.slice(2).trim(),
+          title: normalizeParsedAnnouncementTitle(trimmed.slice(2).trim()),
           body: null,
+          canvasUrl: null,
         }
         parsed.announcements.push(currentAnnouncement)
         continue
       }
 
       if (!currentAnnouncement) continue
+      if (/^Link:\s+/i.test(trimmed)) {
+        currentAnnouncement.canvasUrl = trimmed.replace(/^Link:\s+/i, '').trim() || null
+        continue
+      }
       currentAnnouncement.body = currentAnnouncement.body
         ? `${currentAnnouncement.body} ${trimmed}`
         : trimmed
@@ -440,6 +447,11 @@ function parseModuleItem(value: string) {
   }
 }
 
+function normalizeParsedAnnouncementTitle(value: string) {
+  const match = value.match(/^(.*)\s+\((posted [^)]+)\)$/i)
+  return match?.[1]?.trim() || value
+}
+
 function buildSourceResources(parsed: ParsedCanvasContent): ModuleSourceResource[] {
   return [
     ...parsed.assignments.map((assignment, index) => ({
@@ -471,6 +483,7 @@ function buildSourceResources(parsed: ParsedCanvasContent): ModuleSourceResource
       category: 'announcement' as const,
       kind: 'announcement' as const,
       lane: 'support' as const,
+      canvasUrl: announcement.canvasUrl,
     })),
     ...parsed.modules.flatMap((moduleGroup, moduleIndex) =>
       moduleGroup.items.map((item, itemIndex) => ({
@@ -822,19 +835,26 @@ export function findRecommendedStepTargets(
     ...experience.learnUnits.map((unit) => ({
       id: unit.id,
       title: unit.resource.title,
-      href: getLearnResourceHref(module.id, unit.resource.id),
+      href: buildModuleLearnHref(module.id, {
+        resourceId: unit.resource.id,
+        panel: 'study-notes',
+      }),
       destinationLabel: 'Open resource',
     })),
     ...experience.doItems.map((item) => ({
       id: item.id,
       title: item.title,
-      href: `/modules/${module.id}/do`,
+      href: buildModuleDoHref(module.id, {
+        resourceId: item.id,
+      }),
       destinationLabel: 'Open in Do',
     })),
     ...tasks.map((task) => ({
       id: task.id,
       title: task.title,
-      href: `/modules/${module.id}/do#${task.id}`,
+      href: buildModuleDoHref(module.id, {
+        taskId: task.id,
+      }),
       destinationLabel: 'Open task',
     })),
   ]

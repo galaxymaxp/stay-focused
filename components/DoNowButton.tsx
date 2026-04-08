@@ -15,7 +15,10 @@ export function DoNowButton({ context }: { context: DoNowContext }) {
     <>
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={(event) => {
+          event.stopPropagation()
+          setOpen(true)
+        }}
         className="ui-button ui-button-secondary ui-button-xs"
         style={{ textDecoration: 'none' }}
       >

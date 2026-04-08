@@ -8,8 +8,8 @@ export function CanvasMenu() {
       href="/canvas"
       className="ui-button ui-button-primary"
       style={{
-        fontSize: '13px',
-        padding: '0.62rem 0.92rem',
+        fontSize: '12px',
+        padding: '0.55rem 0.82rem',
         borderRadius: 'var(--radius-control)',
         fontWeight: 700,
         textDecoration: 'none',

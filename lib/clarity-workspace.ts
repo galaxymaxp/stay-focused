@@ -1,4 +1,5 @@
 import { loadWorkspaceSource } from '@/lib/workspace-source'
+import { buildModuleDoHref, buildModuleLearnHref } from '@/lib/stay-focused-links'
 import { deriveTaskPlanningAnnotation, labelForTaskPlanningAnnotation } from '@/lib/task-planning'
 import { getRecentAnnouncements } from '@/lib/announcements'
 import type { ParsedAnnouncement } from '@/lib/announcements'
@@ -138,7 +139,13 @@ function buildTodayTaskItem(task: TaskItem): TodayItem {
     planningAnnotation,
     planningAnnotationLabel: labelForTaskPlanningAnnotation(planningAnnotation),
     recommendationScore: task.actionScore,
-    href: `/modules/${task.moduleId}/do#${task.id}`,
+    href: buildModuleDoHref(task.moduleId, {
+      taskId: task.id,
+    }),
+    learnHref: buildModuleLearnHref(task.moduleId, {
+      taskId: task.id,
+      panel: 'action-status',
+    }),
     actionLabel: 'Open in Do',
     whyNow: buildTaskReason(task, daysUntil),
     effortLabel: `${task.estimatedMinutes} min`,
@@ -182,7 +189,8 @@ function buildTodayLearningItem(
     planningAnnotation,
     planningAnnotationLabel: labelForTaskPlanningAnnotation(planningAnnotation),
     recommendationScore,
-    href: `/modules/${module.id}/learn`,
+    href: buildModuleLearnHref(module.id),
+    learnHref: buildModuleLearnHref(module.id),
     actionLabel: 'Open in Learn',
     whyNow: buildModuleReason(module, freshestTask, freshnessScore),
     effortLabel: module.estimated_minutes ? `${module.estimated_minutes} min review` : null,
@@ -220,7 +228,9 @@ function buildCalendarItem(task: TaskItem): CalendarItem {
     planningAnnotationLabel: labelForTaskPlanningAnnotation(planningAnnotation),
     priority: task.priority,
     recommendationScore: task.actionScore,
-    href: `/modules/${task.moduleId}/do#${task.id}`,
+    href: buildModuleDoHref(task.moduleId, {
+      taskId: task.id,
+    }),
     canvasUrl: task.canvasUrl ?? null,
   }
 }

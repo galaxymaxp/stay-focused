@@ -1,6 +1,7 @@
 'use client'
 
 import type { CSSProperties } from 'react'
+import { useEffect } from 'react'
 import Link from 'next/link'
 import { buildDoNowPrompt } from '@/lib/do-now'
 import type { DoNowContext } from '@/lib/do-now'
@@ -8,7 +9,7 @@ import type { DoNowContext } from '@/lib/do-now'
 /**
  * Modal panel that answers four concrete questions to help the student start.
  * Receives a DoNowContext, derives the prompt text via buildDoNowPrompt, and
- * renders it. Closed via the backdrop click or the close button.
+ * renders it. Closed via the backdrop click, Escape, or the close button.
  */
 export function DoNowPanel({
   context,
@@ -19,23 +20,36 @@ export function DoNowPanel({
 }) {
   const prompt = buildDoNowPrompt(context)
 
+  useEffect(() => {
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        onClose()
+      }
+    }
+
+    window.addEventListener('keydown', handleEscape)
+    return () => window.removeEventListener('keydown', handleEscape)
+  }, [onClose])
+
   return (
-    /* Backdrop */
     <div
       className="motion-modal-backdrop"
       style={backdropStyle}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
+      onClick={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose()
+        }
+      }}
       role="presentation"
     >
-      {/* Card */}
       <div
         className="glass-panel glass-strong motion-modal-card"
         style={cardStyle}
+        onClick={(event) => event.stopPropagation()}
         role="dialog"
         aria-modal="true"
-        aria-label={`Do Now — ${context.taskTitle}`}
+        aria-label={`Do Now - ${context.taskTitle}`}
       >
-        {/* Header */}
         <div style={headerStyle}>
           <div style={{ minWidth: 0 }}>
             <p className="ui-kicker" style={{ margin: 0 }}>Do Now</p>
@@ -59,18 +73,16 @@ export function DoNowPanel({
             aria-label="Close Do Now panel"
             style={closeButtonStyle}
           >
-            ✕
+            X
           </button>
         </div>
 
-        {/* Urgency notice */}
         {prompt.urgencyNote && (
           <div className="ui-chip" style={urgencyNoticeStyle}>
             {prompt.urgencyNote}
           </div>
         )}
 
-        {/* Four questions */}
         <div style={sectionsStyle}>
           <PromptSection
             number={1}
@@ -94,7 +106,6 @@ export function DoNowPanel({
           />
         </div>
 
-        {/* Footer actions */}
         <div style={footerStyle}>
           {context.canvasUrl && (
             <a
@@ -154,7 +165,9 @@ function PromptSection({
 function priorityChipStyle(priority: 'high' | 'medium' | 'low'): CSSProperties {
   if (priority === 'high') {
     return {
-      padding: '0.22rem 0.55rem', fontSize: '11px', fontWeight: 700,
+      padding: '0.22rem 0.55rem',
+      fontSize: '11px',
+      fontWeight: 700,
       background: 'color-mix(in srgb, var(--amber-light) 44%, var(--surface-soft) 56%)',
       color: 'var(--amber)',
       border: '1px solid color-mix(in srgb, var(--amber) 26%, var(--border-subtle) 74%)',
@@ -162,21 +175,23 @@ function priorityChipStyle(priority: 'high' | 'medium' | 'low'): CSSProperties {
   }
   if (priority === 'medium') {
     return {
-      padding: '0.22rem 0.55rem', fontSize: '11px', fontWeight: 700,
+      padding: '0.22rem 0.55rem',
+      fontSize: '11px',
+      fontWeight: 700,
       background: 'color-mix(in srgb, var(--accent-light) 46%, var(--surface-soft) 54%)',
       color: 'var(--accent-foreground)',
       border: '1px solid color-mix(in srgb, var(--accent-border) 32%, var(--border-subtle) 68%)',
     }
   }
   return {
-    padding: '0.22rem 0.55rem', fontSize: '11px', fontWeight: 700,
+    padding: '0.22rem 0.55rem',
+    fontSize: '11px',
+    fontWeight: 700,
     background: 'color-mix(in srgb, var(--surface-soft) 92%, transparent)',
     color: 'var(--text-secondary)',
     border: '1px solid var(--border-subtle)',
   }
 }
-
-// ─── Styles ───────────────────────────────────────────────────────────────────
 
 const backdropStyle: CSSProperties = {
   position: 'fixed',
@@ -197,10 +212,10 @@ const cardStyle: CSSProperties = {
   maxHeight: 'calc(100dvh - 2rem)',
   overflowY: 'auto',
   borderRadius: 'var(--radius-page)',
-  padding: '1.5rem',
+  padding: '1.35rem',
   display: 'flex',
   flexDirection: 'column',
-  gap: '1.1rem',
+  gap: '1rem',
 }
 
 const headerStyle: CSSProperties = {
@@ -238,7 +253,7 @@ const closeButtonStyle: CSSProperties = {
   minHeight: '2.2rem',
   width: '2.2rem',
   padding: 0,
-  fontSize: '14px',
+  fontSize: '13px',
   borderRadius: 'var(--radius-control)',
 }
 
@@ -266,7 +281,7 @@ const sectionsStyle: CSSProperties = {
 const sectionRowStyle: CSSProperties = {
   display: 'flex',
   gap: '0.85rem',
-  padding: '0.95rem 1rem',
+  padding: '0.9rem 0.95rem',
   borderBottom: '1px solid var(--border-subtle)',
   background: 'var(--surface-base)',
 }
@@ -305,13 +320,13 @@ const answerStyle: CSSProperties = {
 
 const footerStyle: CSSProperties = {
   display: 'flex',
-  gap: '0.6rem',
+  gap: '0.55rem',
   flexWrap: 'wrap',
-  paddingTop: '0.15rem',
+  paddingTop: '0.1rem',
 }
 
 const footerButtonStyle: CSSProperties = {
-  minHeight: '2.5rem',
-  padding: '0.65rem 1rem',
+  minHeight: '2.35rem',
+  padding: '0.58rem 0.9rem',
   fontSize: '13px',
 }

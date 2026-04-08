@@ -7,6 +7,7 @@ import {
   getModuleWorkspace,
   getResourceCanvasHref,
 } from '@/lib/module-workspace'
+import { buildModuleDoHref } from '@/lib/stay-focused-links'
 import { getStudyFileProgressLabel } from '@/lib/study-file-manual-state'
 import { getLearnResourceKindLabel } from '@/lib/study-resource'
 import type { StudyFileOutlineSection } from '@/lib/study-file-reader'
@@ -264,7 +265,9 @@ async function buildCourseLearnModuleCard(
       note: item.whyItMatters ?? 'This belongs in the action pass after you finish the main study materials.',
       dueLabel: formatDueLabel(item.dueDate),
       required: item.required,
-      doHref: `/modules/${module.id}/do`,
+      doHref: buildModuleDoHref(module.id, {
+        resourceId: item.id,
+      }),
       canvasHref: getResourceCanvasHref(item),
     })),
     moreItems: overview.otherContextResources.map((item) => ({
