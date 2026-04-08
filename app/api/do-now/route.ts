@@ -206,7 +206,6 @@ export async function POST(req: NextRequest) {
       ].join(' '),
       input: buildUserPrompt(body),
       max_output_tokens: 500,
-      temperature: 0.4,
       text: {
         format: {
           type: 'json_schema',
