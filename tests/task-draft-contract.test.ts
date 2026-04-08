@@ -4,6 +4,7 @@ import {
   buildTaskDraftFallback,
   buildTaskDraftRequestPayload,
   buildTaskDraftUserPrompt,
+  isTaskDraftApiResponse,
   parseTaskDraftResponseText,
 } from '../lib/do-now'
 
@@ -26,6 +27,7 @@ test('task draft contract stays deliverable-first and grounded in surfaced requi
 
   assert.equal(payload.title, 'Learning Contract')
   assert.equal(payload.type, 'Assignment')
+  assert.ok(payload.sourceKey.startsWith('task:'))
   assert.ok(payload.instructions.includes('one whole yellow sheet of paper'))
   assert.ok(payload.requirements?.includes('Deliverable: one handwritten learning contract on one whole yellow sheet of paper'))
   assert.ok(payload.requirements?.includes('Required sections: Expectations, Contributions, Motivations, Hindrances'))
@@ -36,6 +38,7 @@ test('task draft contract stays deliverable-first and grounded in surfaced requi
   const prompt = buildTaskDraftUserPrompt(payload)
   assert.ok(prompt.includes('Use only the following task data in this request.'))
   assert.ok(prompt.includes('Task title: Learning Contract'))
+  assert.ok(prompt.includes(`Source key: ${payload.sourceKey}`))
   assert.ok(prompt.includes('Requirements:'))
   assert.ok(prompt.includes('Treat the following task as a real assignment with a concrete deliverable.'))
   assert.ok(prompt.includes('- Ground the response strictly in the following task data.'))
@@ -74,4 +77,10 @@ test('task draft contract stays deliverable-first and grounded in surfaced requi
   assert.equal(parsed.missingDetails, 'None that block a first draft.')
   assert.ok(parsed.paperAction.includes('Write the heading "Expectations"'))
   assert.ok(parsed.smallestNextStep.includes('move to "Contributions"'))
+
+  assert.equal(isTaskDraftApiResponse({
+    ok: true,
+    draft: parsed,
+    cacheStatus: 'hit',
+  }), true)
 })

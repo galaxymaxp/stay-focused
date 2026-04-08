@@ -1,12 +1,12 @@
 import OpenAI from 'openai'
 import { NextRequest, NextResponse } from 'next/server'
 import {
-  buildTaskDraftUserPrompt,
   isTaskDraftResponse,
   parseTaskDraftResponseText,
   TASK_DRAFT_SYSTEM_PROMPT,
   type TaskDraftApiRequest,
 } from '@/lib/do-now'
+import { applyAutoPromptUserCookie, loadSavedAutoPrompt, saveAutoPromptResult } from '@/lib/do-now-store'
 
 export const runtime = 'nodejs'
 
@@ -72,8 +72,9 @@ function readRequestBody(body: unknown): TaskDraftApiRequest | null {
 
   const title = normalizeString(body.title, 160)
   const instructions = normalizeBlockString(body.instructions, 2400)
+  const sourceKey = normalizeString(body.sourceKey, 400)
 
-  if (!title || !instructions) return null
+  if (!title || !instructions || !sourceKey) return null
 
   const course = normalizeString(body.course, 120)
   const moduleName = normalizeString(body.module, 160)
@@ -89,6 +90,7 @@ function readRequestBody(body: unknown): TaskDraftApiRequest | null {
     ...(type ? { type } : {}),
     instructions,
     ...(requirements ? { requirements } : {}),
+    sourceKey,
   }
 }
 
@@ -113,7 +115,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         ok: false,
-        error: 'title and instructions are required',
+        error: 'title, instructions, and sourceKey are required',
       },
       { status: 400 },
     )
@@ -136,13 +138,24 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    const savedResult = await loadSavedAutoPrompt(req, body)
+    if (savedResult.cachedDraft) {
+      const response = NextResponse.json({
+        ok: true,
+        draft: savedResult.cachedDraft,
+        cacheStatus: 'hit',
+      })
+      applyAutoPromptUserCookie(response, savedResult.userKey)
+      return response
+    }
+
     const client = new OpenAI({ apiKey })
 
     const response = await client.responses.create({
       model,
       store: false,
       instructions: TASK_DRAFT_SYSTEM_PROMPT,
-      input: buildTaskDraftUserPrompt(body),
+      input: savedResult.promptText,
       max_output_tokens: 4096,
     })
 
@@ -165,10 +178,22 @@ export async function POST(req: NextRequest) {
       throw new Error('Model response did not match the expected draft output shape')
     }
 
-    return NextResponse.json({
+    await saveAutoPromptResult({
+      payload: body,
+      userKey: savedResult.userKey,
+      promptText: savedResult.promptText,
+      contentHash: savedResult.contentHash,
+      draft,
+      rawText: response.output_text ?? undefined,
+    })
+
+    const successResponse = NextResponse.json({
       ok: true,
       draft,
+      cacheStatus: 'miss',
     })
+    applyAutoPromptUserCookie(successResponse, savedResult.userKey)
+    return successResponse
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     console.error('Task draft API error:', error)

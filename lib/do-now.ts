@@ -36,6 +36,13 @@ export interface TaskDraftApiRequest {
   type?: string
   instructions: string
   requirements?: string[]
+  sourceKey: string
+}
+
+export interface TaskDraftApiResponse {
+  ok: true
+  draft: TaskDraftResponse
+  cacheStatus: 'hit' | 'miss'
 }
 
 export const TASK_DRAFT_SYSTEM_PROMPT = [
@@ -104,6 +111,7 @@ export function buildTaskDraftRequestPayload(ctx: TaskDraftContext): TaskDraftAp
     ...(type ? { type } : {}),
     instructions,
     ...(requirements.length > 0 ? { requirements } : {}),
+    sourceKey: buildTaskDraftSourceKey(ctx),
   }
 }
 
@@ -117,6 +125,7 @@ export function buildTaskDraftUserPrompt(input: TaskDraftApiRequest) {
     `Module: ${input.module ?? 'None surfaced'}`,
     `Due date: ${input.dueDate ?? 'None surfaced'}`,
     `Type: ${input.type ?? 'Task'}`,
+    `Source key: ${input.sourceKey}`,
     '',
     'Instructions:',
     input.instructions,
@@ -194,48 +203,12 @@ export function isTaskDraftResponse(value: unknown): value is TaskDraftResponse 
     && typeof value.smallestNextStep === 'string'
 }
 
-export const TASK_DRAFT_CACHE_VERSION = 'v1'
+export function isTaskDraftApiResponse(value: unknown): value is TaskDraftApiResponse {
+  if (!isPlainRecord(value)) return false
 
-export interface CachedDoNowDraft {
-  draft: TaskDraftResponse
-  rawText?: string
-  generatedAt: string
-  promptVersion: string
-}
-
-export function getDoNowDraftCacheKey(requestBody: string): string {
-  return `do-now:draft:${TASK_DRAFT_CACHE_VERSION}:${djb2Hash(requestBody)}`
-}
-
-export function loadCachedDoNowDraft(key: string): CachedDoNowDraft | null {
-  try {
-    const raw = typeof window !== 'undefined' ? localStorage.getItem(key) : null
-    if (!raw) return null
-    const parsed = JSON.parse(raw) as unknown
-    if (!isValidCachedDoNowDraft(parsed)) return null
-    return parsed
-  } catch {
-    return null
-  }
-}
-
-export function saveCachedDoNowDraft(
-  key: string,
-  draft: TaskDraftResponse,
-  rawText?: string,
-): void {
-  try {
-    if (typeof window === 'undefined') return
-    const entry: CachedDoNowDraft = {
-      draft,
-      ...(rawText !== undefined ? { rawText } : {}),
-      generatedAt: new Date().toISOString(),
-      promptVersion: TASK_DRAFT_CACHE_VERSION,
-    }
-    localStorage.setItem(key, JSON.stringify(entry))
-  } catch {
-    // Silently ignore — quota exceeded, private mode, or SSR
-  }
+  return value.ok === true
+    && isTaskDraftResponse(value.draft)
+    && (value.cacheStatus === 'hit' || value.cacheStatus === 'miss')
 }
 
 function buildTaskInstructions(ctx: TaskDraftContext) {
@@ -266,6 +239,22 @@ function buildTaskInstructions(ctx: TaskDraftContext) {
   }
 
   return `Full task instructions were not available. The best surfaced detail is the task title: ${ctx.taskTitle}.`
+}
+
+export function buildTaskDraftSourceKey(ctx: TaskDraftContext) {
+  const canvasUrl = compactInlineText(ctx.canvasUrl, 400)
+  if (canvasUrl) return `canvas:${canvasUrl}`
+
+  const learnHref = compactInlineText(ctx.learnHref, 400)
+  if (learnHref) return `learn:${learnHref}`
+
+  const parts = [
+    compactInlineText(ctx.courseName, 120) ?? 'course:none',
+    compactInlineText(ctx.moduleTitle, 160) ?? 'module:none',
+    compactInlineText(ctx.taskTitle, 160) ?? 'task:none',
+  ]
+
+  return `task:${parts.map((part) => normalizeComparisonText(part)).join('::')}`
 }
 
 function buildHeuristicTaskDraft(input: TaskDraftApiRequest): TaskDraftResponse {
@@ -671,24 +660,6 @@ const NUMBER_WORDS: Record<string, number> = {
   four: 4,
   five: 5,
   six: 6,
-}
-
-function isValidCachedDoNowDraft(value: unknown): value is CachedDoNowDraft {
-  if (!isPlainRecord(value)) return false
-  return (
-    isTaskDraftResponse(value.draft)
-    && typeof value.generatedAt === 'string'
-    && typeof value.promptVersion === 'string'
-  )
-}
-
-function djb2Hash(s: string): string {
-  let h = 5381
-  for (let i = 0; i < s.length; i++) {
-    h = ((h << 5) + h) ^ s.charCodeAt(i)
-    h = h >>> 0
-  }
-  return h.toString(36)
 }
 
 const SECTION_STARTERS: Record<string, string[]> = {

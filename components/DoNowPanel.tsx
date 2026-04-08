@@ -7,13 +7,14 @@ import { CopyTaskBundleActions } from '@/components/CopyTaskBundleActions'
 import {
   buildTaskDraftFallback,
   buildTaskDraftRequestPayload,
-  isTaskDraftResponse,
+  isTaskDraftApiResponse,
   type TaskDraftContext,
   type TaskDraftResponse,
 } from '@/lib/do-now'
 import type { ManualCopyBundleResult } from '@/lib/manual-copy-bundle'
 
 type RequestState = 'loading' | 'success' | 'error'
+type DraftSource = 'saved' | 'generated'
 
 /**
  * Modal panel that fetches a server-generated first draft when opened and
@@ -32,6 +33,7 @@ export function TaskDraftPanel({
   const requestBody = JSON.stringify(buildTaskDraftRequestPayload(context))
   const [generatedDraft, setGeneratedDraft] = useState<TaskDraftResponse | null>(null)
   const [requestState, setRequestState] = useState<RequestState>('loading')
+  const [draftSource, setDraftSource] = useState<DraftSource>('generated')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const draft = generatedDraft ?? fallbackDraft
 
@@ -65,6 +67,7 @@ export function TaskDraftPanel({
     async function loadTaskDraft() {
       setGeneratedDraft(null)
       setRequestState('loading')
+      setDraftSource('generated')
       setErrorMessage(null)
 
       try {
@@ -83,13 +86,14 @@ export function TaskDraftPanel({
           throw new Error(extractErrorMessage(data))
         }
 
-        if (!isPlainRecord(data) || data.ok !== true || !isTaskDraftResponse(data.draft)) {
+        if (!isTaskDraftApiResponse(data)) {
           throw new Error('Received an invalid Auto Prompt response.')
         }
 
         if (cancelled) return
 
         setGeneratedDraft(data.draft)
+        setDraftSource(data.cacheStatus === 'hit' ? 'saved' : 'generated')
         setRequestState('success')
       } catch (error) {
         if (controller.signal.aborted || cancelled) return
@@ -159,7 +163,7 @@ export function TaskDraftPanel({
           </button>
         </div>
 
-        <StatusBanner state={requestState} errorMessage={errorMessage} />
+        <StatusBanner state={requestState} draftSource={draftSource} errorMessage={errorMessage} />
 
         {requestState === 'loading' ? (
           <div style={sectionsStyle}>
@@ -255,9 +259,11 @@ function TextSection({
 
 function StatusBanner({
   state,
+  draftSource,
   errorMessage,
 }: {
   state: RequestState
+  draftSource: DraftSource
   errorMessage: string | null
 }) {
   return (
@@ -265,14 +271,18 @@ function StatusBanner({
       <p style={statusTitleStyle}>
         {state === 'loading'
           ? 'Generating Auto Prompt'
-          : state === 'success'
+          : state === 'success' && draftSource === 'saved'
+            ? 'Loaded saved Auto Prompt'
+            : state === 'success'
             ? 'Generated with OpenAI'
             : 'Using the local Auto Prompt fallback'}
       </p>
       <p style={statusBodyStyle}>
         {state === 'loading'
           ? 'The server is generating a usable first-pass deliverable from the surfaced task instructions.'
-          : state === 'success'
+          : state === 'success' && draftSource === 'saved'
+            ? 'This Auto Prompt was loaded from the saved server result because the task content has not changed.'
+            : state === 'success'
             ? 'This Auto Prompt was generated on demand from the current task context.'
             : `${errorMessage ?? 'OpenAI generation failed.'} Showing the existing local Auto Prompt fallback instead.`}
       </p>
