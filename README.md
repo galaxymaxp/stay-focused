@@ -12,7 +12,7 @@ Core problem it solves: Canvas is noisy. Stay Focused syncs your courses, proces
 | --- | --- |
 | Framework | Next.js 16 (App Router, React 19) |
 | Styling | Tailwind CSS v4 + custom design system in `globals.css` |
-| Database | Supabase (PostgreSQL, no auth, RLS disabled for personal use) |
+| Database | Supabase (PostgreSQL + Auth, RLS still disabled for personal use) |
 | AI processing | OpenAI at sync time |
 | Canvas integration | Canvas REST API v1 |
 | Deployment | Vercel |
@@ -70,6 +70,7 @@ supabase/migrations/    Canonical schema migrations
    - `OPENAI_API_KEY`
    - `CANVAS_API_URL` optional but useful for sync and reprocess
    - `CANVAS_API_TOKEN` optional but useful for sync and reprocess
+   - Supabase Auth providers you want to use, including Google if enabled
 4. Apply Supabase migrations.
 5. Run:
 
@@ -203,6 +204,8 @@ Failed or auth-blocked items remain inspectable, and the inspect view now shows 
 
 ## Known limitations and follow-up work
 
+- Auth is foundational only in this pass. App data tables still are not owned or filtered per authenticated user, and RLS is still disabled.
+- Canvas sync still relies on a manual URL + token entry flow. The next auth-adjacent step is a real user-owned Canvas connection model.
 - No dedicated announcements table yet. Announcements are still derived from synced module content.
 - Review is still a redirect to Learn rather than a separate review workspace.
 - Reprocessing depends on stored source URLs. It cannot invent missing Canvas API links for older rows.

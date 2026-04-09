@@ -1,6 +1,9 @@
 'use client'
 
+import Link from 'next/link'
 import { useThemeSettings } from '@/components/ThemeProvider'
+import { SignOutButton } from '@/components/SignOutButton'
+import { useAuthSummary } from '@/components/useAuthSummary'
 import { ACCENT_OPTIONS, type AccentName, type ThemeMode } from '@/lib/theme'
 
 const MODE_OPTIONS: { value: ThemeMode; label: string; description: string }[] = [
@@ -11,6 +14,7 @@ const MODE_OPTIONS: { value: ThemeMode; label: string; description: string }[] =
 
 export function SettingsPage() {
   const { mode, accent, resolvedTheme, setMode, setAccent } = useThemeSettings()
+  const authSummary = useAuthSummary()
 
   return (
     <main className="page-shell page-shell-narrow page-stack" style={{ gap: '1rem' }}>
@@ -21,6 +25,59 @@ export function SettingsPage() {
           Adjust the appearance of the app. These settings apply across Today, Learn, Do, Calendar, and module workspaces.
         </p>
       </header>
+
+      <SettingsSection
+        eyebrow="Account"
+        title="Authentication"
+        description="Email/password and Google sign-in are now available. The app still works without login, but authenticated sessions establish a stable user identity for future ownership hardening."
+      >
+        <div style={{ display: 'grid', gap: '0.8rem' }}>
+          {authSummary.user ? (
+            <div style={accountCardStyle}>
+              <div>
+                <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                  {authSummary.user.email ?? 'Signed-in user'}
+                </div>
+                <div style={{ marginTop: '0.22rem', fontSize: '13px', lineHeight: 1.55, color: 'var(--text-secondary)' }}>
+                  Session cookies are active. Auto Prompt can now promote saved anonymous results onto your authenticated identity without breaking existing cache hits.
+                </div>
+              </div>
+              <SignOutButton className="ui-button ui-button-secondary" style={{ minHeight: '2.4rem' }} />
+            </div>
+          ) : (
+            <div style={accountCardStyle}>
+              <div>
+                <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>Not signed in</div>
+                <div style={{ marginTop: '0.22rem', fontSize: '13px', lineHeight: 1.55, color: 'var(--text-secondary)' }}>
+                  Anonymous cookie identity still works, but sign-in is the path forward for durable user-owned persistence.
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+                <Link href="/sign-in?next=%2Fsettings" className="ui-button ui-button-primary" style={{ textDecoration: 'none' }}>
+                  Sign in
+                </Link>
+                <Link href="/sign-up?next=%2Fsettings" className="ui-button ui-button-secondary" style={{ textDecoration: 'none' }}>
+                  Create account
+                </Link>
+              </div>
+            </div>
+          )}
+
+          <div style={noteCardStyle}>
+            <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>Google sign-in</div>
+            <div style={{ marginTop: '0.22rem', fontSize: '13px', lineHeight: 1.6, color: 'var(--text-secondary)' }}>
+              Google OAuth is wired into the same session flow as email/password. Enable the Google provider in Supabase Auth and set the callback URL before using it in production.
+            </div>
+          </div>
+
+          <div style={noteCardStyle}>
+            <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>Canvas connect plan</div>
+            <div style={{ marginTop: '0.22rem', fontSize: '13px', lineHeight: 1.6, color: 'var(--text-secondary)' }}>
+              Canvas sync still uses the manual URL plus access-token flow. The intended next step is a user-owned Canvas connection record keyed to the authenticated Supabase user so the raw token entry UI can be replaced with a real connect/reconnect flow.
+            </div>
+          </div>
+        </div>
+      </SettingsSection>
 
       <SettingsSection
         eyebrow="Appearance"
@@ -173,4 +230,23 @@ const sectionStyle: React.CSSProperties = {
   background: 'color-mix(in srgb, var(--surface-elevated) 98%, transparent)',
   boxShadow: 'var(--highlight-sheen)',
   overflow: 'hidden',
+}
+
+const accountCardStyle: React.CSSProperties = {
+  borderRadius: '12px',
+  border: '1px solid color-mix(in srgb, var(--border-subtle) 88%, transparent)',
+  background: 'var(--surface-elevated)',
+  padding: '0.95rem',
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  gap: '0.9rem',
+  flexWrap: 'wrap',
+}
+
+const noteCardStyle: React.CSSProperties = {
+  borderRadius: '12px',
+  border: '1px solid color-mix(in srgb, var(--border-subtle) 88%, transparent)',
+  background: 'color-mix(in srgb, var(--surface-elevated) 92%, var(--surface-base) 8%)',
+  padding: '0.95rem',
 }

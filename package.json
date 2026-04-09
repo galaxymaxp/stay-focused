@@ -10,6 +10,7 @@
     "reprocess:resources": "tsx scripts/reprocess-module-resources.ts"
   },
   "dependencies": {
+    "@supabase/ssr": "^0.10.0",
     "@supabase/supabase-js": "^2.101.1",
     "jszip": "^3.10.1",
     "next": "16.2.2",

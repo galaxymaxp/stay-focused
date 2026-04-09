@@ -180,7 +180,9 @@ export async function POST(req: NextRequest) {
 
     await saveAutoPromptResult({
       payload: body,
+      userId: savedResult.userId,
       userKey: savedResult.userKey,
+      storageKey: savedResult.storageKey,
       promptText: savedResult.promptText,
       contentHash: savedResult.contentHash,
       draft,

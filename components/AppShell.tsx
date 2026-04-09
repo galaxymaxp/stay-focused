@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { AnnouncementsMenu } from '@/components/AnnouncementsMenu'
+import { AuthStatus } from '@/components/AuthStatus'
 import { CanvasMenu } from '@/components/CanvasMenu'
 import { StayFocusedIcon } from '@/components/StayFocusedIcon'
 import type { ParsedAnnouncement } from '@/lib/announcements'
@@ -141,6 +142,7 @@ export function AppShell({
             <span>Clear modules, clear tasks, less noise.</span>
           </div>
           <div className="app-topbar-actions">
+            <AuthStatus />
             <AnnouncementsMenu announcements={recentAnnouncements} />
             <CanvasMenu />
           </div>

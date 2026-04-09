@@ -8,12 +8,15 @@ import {
   type TaskDraftApiRequest,
   type TaskDraftResponse,
 } from '@/lib/do-now'
+import { getAuthenticatedUserIdFromRequest } from '@/lib/auth'
 import { serializeErrorForLogging, supabase } from '@/lib/supabase'
 
 const AUTO_PROMPT_USER_COOKIE = 'stay-focused-user-key'
 const AUTO_PROMPT_PROMPT_VERSION = 'v1'
+const AUTHENTICATED_AUTO_PROMPT_KEY_PREFIX = 'auth:'
 
 interface AutoPromptResultRow {
+  user_id: string | null
   user_key: string
   source_key: string
   content_hash: string
@@ -25,7 +28,9 @@ interface AutoPromptResultRow {
 }
 
 export interface AutoPromptLookupResult {
+  userId: string | null
   userKey: string
+  storageKey: string
   promptText: string
   contentHash: string
   cachedDraft: TaskDraftResponse | null
@@ -36,56 +41,113 @@ export async function loadSavedAutoPrompt(
   payload: TaskDraftApiRequest,
 ): Promise<AutoPromptLookupResult> {
   const userKey = getAutoPromptUserKey(request)
+  const userId = await getAuthenticatedUserIdFromRequest(request)
+  const storageKey = getAutoPromptStorageKey(userKey, userId)
   const promptText = buildTaskDraftUserPrompt(payload)
   const contentHash = getAutoPromptContentHash(promptText)
 
   if (!supabase) {
     return {
+      userId,
       userKey,
+      storageKey,
       promptText,
       contentHash,
       cachedDraft: null,
     }
   }
 
-  const { data, error } = await supabase
-    .from('auto_prompt_results')
-    .select('user_key, source_key, content_hash, prompt_text, output_json, output_text, created_at, updated_at')
-    .eq('user_key', userKey)
-    .eq('source_key', payload.sourceKey)
-    .eq('content_hash', contentHash)
-    .maybeSingle<AutoPromptResultRow>()
+  const authenticatedResult = await readAutoPromptResult({
+    identityKey: storageKey,
+    sourceKey: payload.sourceKey,
+    contentHash,
+  })
 
-  if (error) {
-    logAutoPromptStoreIssue('load_failed', error, {
+  if (authenticatedResult?.row) {
+    return {
+      userId,
       userKey,
+      storageKey,
+      promptText,
+      contentHash,
+      cachedDraft: isTaskDraftResponse(authenticatedResult.row.output_json) ? authenticatedResult.row.output_json : null,
+    }
+  }
+
+  if (userId) {
+    const anonymousFallbackResult = await readAutoPromptResult({
+      identityKey: userKey,
       sourceKey: payload.sourceKey,
       contentHash,
     })
+
+    if (anonymousFallbackResult?.row) {
+      const cachedDraft = isTaskDraftResponse(anonymousFallbackResult.row.output_json)
+        ? anonymousFallbackResult.row.output_json
+        : null
+
+      await saveAutoPromptRow({
+        payload,
+        userId,
+        userKey,
+        storageKey,
+        promptText: anonymousFallbackResult.row.prompt_text,
+        contentHash,
+        draft: cachedDraft,
+        rawText: anonymousFallbackResult.row.output_text ?? undefined,
+      })
+
+      return {
+        userId,
+        userKey,
+        storageKey,
+        promptText,
+        contentHash,
+        cachedDraft,
+      }
+    }
   }
 
   return {
+    userId,
     userKey,
+    storageKey,
     promptText,
     contentHash,
-    cachedDraft: isTaskDraftResponse(data?.output_json) ? data.output_json : null,
+    cachedDraft: null,
   }
 }
 
 export async function saveAutoPromptResult(input: {
   payload: TaskDraftApiRequest
+  userId: string | null
   userKey: string
+  storageKey: string
   promptText: string
   contentHash: string
   draft: TaskDraftResponse
   rawText?: string
 }) {
-  if (!supabase) return
+  await saveAutoPromptRow(input)
+}
+
+async function saveAutoPromptRow(input: {
+  payload: TaskDraftApiRequest
+  userId: string | null
+  userKey: string
+  storageKey: string
+  promptText: string
+  contentHash: string
+  draft: TaskDraftResponse | null
+  rawText?: string
+}) {
+  if (!supabase || !input.draft) return
 
   const { error } = await supabase
     .from('auto_prompt_results')
     .upsert({
-      user_key: input.userKey,
+      user_id: input.userId,
+      user_key: input.storageKey,
       source_key: input.payload.sourceKey,
       content_hash: input.contentHash,
       prompt_text: input.promptText,
@@ -98,7 +160,9 @@ export async function saveAutoPromptResult(input: {
 
   if (error) {
     logAutoPromptStoreIssue('save_failed', error, {
+      userId: input.userId,
       userKey: input.userKey,
+      storageKey: input.storageKey,
       sourceKey: input.payload.sourceKey,
       contentHash: input.contentHash,
     })
@@ -121,6 +185,11 @@ function getAutoPromptUserKey(request: NextRequest) {
   return randomUUID()
 }
 
+function getAutoPromptStorageKey(userKey: string, userId: string | null) {
+  if (!userId) return userKey
+  return `${AUTHENTICATED_AUTO_PROMPT_KEY_PREFIX}${userId}`
+}
+
 function getAutoPromptContentHash(promptText: string) {
   return createHash('sha256')
     .update(AUTO_PROMPT_PROMPT_VERSION)
@@ -137,4 +206,31 @@ function logAutoPromptStoreIssue(step: string, error: PostgrestError, context: R
     ...context,
     error: serializeErrorForLogging(error),
   })
+}
+
+async function readAutoPromptResult(input: {
+  identityKey: string
+  sourceKey: string
+  contentHash: string
+}) {
+  if (!supabase) return null
+
+  const { data, error } = await supabase
+    .from('auto_prompt_results')
+    .select('user_id, user_key, source_key, content_hash, prompt_text, output_json, output_text, created_at, updated_at')
+    .eq('user_key', input.identityKey)
+    .eq('source_key', input.sourceKey)
+    .eq('content_hash', input.contentHash)
+    .maybeSingle<AutoPromptResultRow>()
+
+  if (error) {
+    logAutoPromptStoreIssue('load_failed', error, {
+      identityKey: input.identityKey,
+      sourceKey: input.sourceKey,
+      contentHash: input.contentHash,
+    })
+    return null
+  }
+
+  return { row: data ?? null }
 }
