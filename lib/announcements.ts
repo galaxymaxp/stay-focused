@@ -2,6 +2,7 @@ import { buildModuleLearnHref } from '@/lib/stay-focused-links'
 import type { Course, Module } from '@/lib/types'
 
 export interface ParsedAnnouncement {
+  announcementKey: string
   title: string
   body: string | null
   postedLabel: string | null
@@ -97,8 +98,16 @@ export function getRecentAnnouncements(
         panel: 'source-support',
         supportId,
       })
+      const href = ann.targetHref ?? fallbackHref
 
       result.push({
+        announcementKey: buildAnnouncementKey({
+          moduleId: moduleRecord.id,
+          supportId,
+          title: ann.title,
+          postedLabel: ann.postedLabel,
+          href,
+        }),
         title: ann.title,
         body: ann.body,
         postedLabel: ann.postedLabel,
@@ -106,7 +115,7 @@ export function getRecentAnnouncements(
         courseId: moduleRecord.courseId ?? '',
         moduleId: moduleRecord.id,
         supportId,
-        href: ann.targetHref ?? fallbackHref,
+        href,
         external: Boolean(ann.targetHref),
         targetHref: ann.targetHref,
       })
@@ -114,6 +123,29 @@ export function getRecentAnnouncements(
   }
 
   return result
+}
+
+function buildAnnouncementKey(input: {
+  moduleId: string
+  supportId: string
+  title: string
+  postedLabel: string | null
+  href: string
+}) {
+  return [
+    input.moduleId,
+    input.supportId,
+    normalizeAnnouncementIdentityPart(input.title),
+    normalizeAnnouncementIdentityPart(input.postedLabel),
+    normalizeAnnouncementIdentityPart(input.href),
+  ].join('::')
+}
+
+function normalizeAnnouncementIdentityPart(value: string | null) {
+  return (value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
 }
 
 function parseAnnouncementTitle(value: string) {

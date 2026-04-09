@@ -1,7 +1,9 @@
 'use client'
 
 import type { CSSProperties } from 'react'
+import { useEffect, useMemo, useState, useTransition } from 'react'
 import Link from 'next/link'
+import { loadAnnouncementReadStates, markAnnouncementRead } from '@/actions/announcements'
 import type { ParsedAnnouncement } from '@/lib/announcements'
 
 /**
@@ -15,6 +17,42 @@ export function AnnouncementsBand({
 }: {
   announcements: ParsedAnnouncement[]
 }) {
+  const announcementKeys = useMemo(
+    () => announcements.map((announcement) => announcement.announcementKey),
+    [announcements],
+  )
+  const [readAnnouncementKeys, setReadAnnouncementKeys] = useState<string[]>([])
+  const [pendingAnnouncementKey, setPendingAnnouncementKey] = useState<string | null>(null)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [isPending, startTransition] = useTransition()
+
+  useEffect(() => {
+    let active = true
+
+    async function hydrateReadState() {
+      try {
+        const loadedKeys = await loadAnnouncementReadStates(announcementKeys)
+        if (!active) return
+        setReadAnnouncementKeys(loadedKeys)
+      } catch (error) {
+        if (!active) return
+        console.error('Announcement read-state load failed:', error)
+        setErrorMessage('Announcement read state could not be loaded right now.')
+      }
+    }
+
+    setErrorMessage(null)
+    setReadAnnouncementKeys([])
+
+    if (announcementKeys.length > 0) {
+      void hydrateReadState()
+    }
+
+    return () => {
+      active = false
+    }
+  }, [announcementKeys])
+
   return (
     <section className="motion-card motion-delay-1 section-shell section-shell-elevated" style={{ padding: '1rem 1.05rem', display: 'grid', gap: '0.75rem' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.75rem', flexWrap: 'wrap' }}>
@@ -28,6 +66,12 @@ export function AnnouncementsBand({
         <span className="ui-chip ui-chip-soft">{announcements.length} recent</span>
       </div>
 
+      {errorMessage && (
+        <div className="ui-empty" style={errorStyle}>
+          {errorMessage}
+        </div>
+      )}
+
       {announcements.length === 0 ? (
         <div className="ui-empty" style={emptyStyle}>
           Canvas announcements will appear here after syncing a course. Up to 5 recent announcements
@@ -36,7 +80,38 @@ export function AnnouncementsBand({
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem', maxHeight: '18.5rem', overflowY: 'auto', paddingRight: '0.18rem' }}>
           {announcements.map((announcement) => (
-            <AnnouncementCard key={`${announcement.moduleId}-${announcement.supportId}`} announcement={announcement} />
+            <AnnouncementCard
+              key={announcement.announcementKey}
+              announcement={announcement}
+              isRead={readAnnouncementKeys.includes(announcement.announcementKey)}
+              isPending={isPending && pendingAnnouncementKey === announcement.announcementKey}
+              onMarkAsRead={() => {
+                setErrorMessage(null)
+                setPendingAnnouncementKey(announcement.announcementKey)
+
+                startTransition(async () => {
+                  try {
+                    await markAnnouncementRead({
+                      announcementKey: announcement.announcementKey,
+                      moduleId: announcement.moduleId,
+                      supportId: announcement.supportId,
+                      title: announcement.title,
+                      postedLabel: announcement.postedLabel,
+                      href: announcement.href,
+                    })
+
+                    setReadAnnouncementKeys((current) => current.includes(announcement.announcementKey)
+                      ? current
+                      : [...current, announcement.announcementKey])
+                  } catch (error) {
+                    console.error('Announcement read-state save failed:', error)
+                    setErrorMessage('Mark as read could not be saved right now.')
+                  } finally {
+                    setPendingAnnouncementKey(null)
+                  }
+                })
+              }}
+            />
           ))}
         </div>
       )}
@@ -44,7 +119,17 @@ export function AnnouncementsBand({
   )
 }
 
-function AnnouncementCard({ announcement }: { announcement: ParsedAnnouncement }) {
+function AnnouncementCard({
+  announcement,
+  isRead,
+  isPending,
+  onMarkAsRead,
+}: {
+  announcement: ParsedAnnouncement
+  isRead: boolean
+  isPending: boolean
+  onMarkAsRead: () => void
+}) {
   const body = announcement.body
     ? announcement.body.length > 220
       ? `${announcement.body.slice(0, 220).trimEnd()}...`
@@ -55,27 +140,45 @@ function AnnouncementCard({ announcement }: { announcement: ParsedAnnouncement }
     <>
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.42rem', marginBottom: '0.3rem', flexWrap: 'wrap' }}>
         <span className="ui-chip" style={announceBadgeStyle}>Announcement</span>
+        {isRead && <span className="ui-chip" style={readBadgeStyle}>Read</span>}
         <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{announcement.courseName}</span>
         {announcement.postedLabel && <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{announcement.postedLabel}</span>}
       </div>
       <p style={titleStyle}>{announcement.title}</p>
       {body && <p style={bodyStyle}>{body}</p>}
-      <p style={{ margin: '0.38rem 0 0', fontSize: '11px', color: 'var(--text-muted)' }}>
-        {announcement.external ? 'Open announcement target' : 'Open module support view'}
-      </p>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'center', marginTop: '0.38rem', flexWrap: 'wrap' }}>
+        <p style={{ margin: 0, fontSize: '11px', color: 'var(--text-muted)' }}>
+          {announcement.external ? 'Open announcement target' : 'Open module support view'}
+        </p>
+        <button
+          type="button"
+          className={`ui-button ${isRead ? 'ui-button-ghost' : 'ui-button-secondary'} ui-button-xs`}
+          onClick={(event) => {
+            event.preventDefault()
+            event.stopPropagation()
+            if (!isRead && !isPending) {
+              onMarkAsRead()
+            }
+          }}
+          disabled={isRead || isPending}
+          style={{ minHeight: '1.95rem' }}
+        >
+          {isRead ? 'Read' : isPending ? 'Saving...' : 'Mark as Read'}
+        </button>
+      </div>
     </>
   )
 
   if (announcement.external) {
     return (
-      <a href={announcement.href} target="_blank" rel="noreferrer" className="glass-panel glass-hover" style={cardStyle}>
+      <a href={announcement.href} target="_blank" rel="noreferrer" className="glass-panel glass-hover" style={cardStyle(isRead)}>
         {content}
       </a>
     )
   }
 
   return (
-    <Link href={announcement.href} className="glass-panel glass-hover" style={cardStyle}>
+    <Link href={announcement.href} className="glass-panel glass-hover" style={cardStyle(isRead)}>
       {content}
     </Link>
   )
@@ -88,11 +191,21 @@ const emptyStyle: CSSProperties = {
   lineHeight: 1.6,
 }
 
-const cardStyle: CSSProperties = {
+const errorStyle: CSSProperties = {
   borderRadius: 'var(--radius-panel)',
-  padding: '0.78rem 0.88rem',
-  textDecoration: 'none',
-  display: 'block',
+  padding: '0.8rem 0.95rem',
+  fontSize: '13px',
+  lineHeight: 1.55,
+}
+
+function cardStyle(isRead: boolean): CSSProperties {
+  return {
+    borderRadius: 'var(--radius-panel)',
+    padding: '0.78rem 0.88rem',
+    textDecoration: 'none',
+    display: 'block',
+    opacity: isRead ? 0.78 : 1,
+  }
 }
 
 const announceBadgeStyle: CSSProperties = {
@@ -102,6 +215,15 @@ const announceBadgeStyle: CSSProperties = {
   background: 'color-mix(in srgb, var(--blue-light) 55%, var(--surface-soft) 45%)',
   color: 'var(--blue)',
   border: '1px solid color-mix(in srgb, var(--blue) 22%, var(--border-subtle) 78%)',
+}
+
+const readBadgeStyle: CSSProperties = {
+  padding: '0.2rem 0.55rem',
+  fontSize: '11px',
+  fontWeight: 700,
+  background: 'color-mix(in srgb, var(--surface-soft) 88%, transparent)',
+  color: 'var(--text-secondary)',
+  border: '1px solid var(--border-subtle)',
 }
 
 const titleStyle: CSSProperties = {

@@ -142,9 +142,9 @@ export function AppShell({
             <span>Clear modules, clear tasks, less noise.</span>
           </div>
           <div className="app-topbar-actions">
-            <AuthStatus />
             <AnnouncementsMenu announcements={recentAnnouncements} />
             <CanvasMenu />
+            <AuthStatus />
           </div>
         </header>
         {children}
