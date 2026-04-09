@@ -8,29 +8,37 @@ export async function GET(request: NextRequest) {
   const nextPath = getSafeRedirectPath(requestUrl.searchParams.get('next'), '/settings')
   const redirectUrl = new URL(nextPath, requestUrl.origin)
   const code = requestUrl.searchParams.get('code')
+  const error = requestUrl.searchParams.get('error')
+  const errorDescription = requestUrl.searchParams.get('error_description')
 
   if (!isSupabaseAuthConfigured) {
-    const signInUrl = new URL('/sign-in', requestUrl.origin)
-    signInUrl.searchParams.set('error', 'Supabase auth is not configured.')
-    signInUrl.searchParams.set('next', nextPath)
-    return NextResponse.redirect(signInUrl)
+    return redirectToSignIn(requestUrl, nextPath, 'Supabase auth is not configured.')
+  }
+
+  if (error || errorDescription) {
+    const message = errorDescription ?? error ?? 'Google sign-in did not complete.'
+    return redirectToSignIn(requestUrl, nextPath, message)
   }
 
   const response = NextResponse.redirect(redirectUrl)
 
   if (!code) {
-    return response
+    return redirectToSignIn(requestUrl, nextPath, 'Google sign-in did not complete.')
   }
 
   const supabase = createSupabaseRouteClient(request, response)
-  const { error } = await supabase.auth.exchangeCodeForSession(code)
+  const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
 
-  if (error) {
-    const signInUrl = new URL('/sign-in', requestUrl.origin)
-    signInUrl.searchParams.set('error', error.message)
-    signInUrl.searchParams.set('next', nextPath)
-    return NextResponse.redirect(signInUrl)
+  if (exchangeError) {
+    return redirectToSignIn(requestUrl, nextPath, exchangeError.message)
   }
 
   return response
+}
+
+function redirectToSignIn(requestUrl: URL, nextPath: string, errorMessage: string) {
+  const signInUrl = new URL('/sign-in', requestUrl.origin)
+  signInUrl.searchParams.set('error', errorMessage)
+  signInUrl.searchParams.set('next', nextPath)
+  return NextResponse.redirect(signInUrl)
 }
