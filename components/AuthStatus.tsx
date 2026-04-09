@@ -7,8 +7,7 @@ import { usePathname } from 'next/navigation'
 import { SignOutButton } from '@/components/SignOutButton'
 import { UserAvatar } from '@/components/UserAvatar'
 import { useAuthSummary } from '@/components/useAuthSummary'
-import { useUserAvatarProfile } from '@/components/useUserAvatarProfile'
-import { getUserInitialsFromEmail } from '@/lib/profile-avatar'
+import { useResolvedUserAvatar } from '@/components/useResolvedUserAvatar'
 
 export function AuthStatus() {
   const authSummary = useAuthSummary()
@@ -16,8 +15,7 @@ export function AuthStatus() {
   const next = pathname || '/settings'
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement | null>(null)
-  const avatarProfile = useUserAvatarProfile(Boolean(authSummary.user))
-  const fallbackInitials = getUserInitialsFromEmail(authSummary.user?.email ?? null)
+  const resolvedAvatar = useResolvedUserAvatar(authSummary.user)
 
   useEffect(() => {
     if (!open) return
@@ -59,8 +57,8 @@ export function AuthStatus() {
       >
         <UserAvatar
           value={{
-            url: authSummary.user ? avatarProfile.avatar?.resolved.url ?? null : null,
-            initials: authSummary.user ? avatarProfile.avatar?.resolved.initials ?? fallbackInitials : null,
+            url: authSummary.user ? resolvedAvatar.resolvedAvatar.url : null,
+            initials: authSummary.user ? resolvedAvatar.resolvedAvatar.initials : null,
           }}
           active={Boolean(authSummary.user)}
         />
@@ -89,9 +87,21 @@ export function AuthStatus() {
           {authSummary.user ? (
             <>
               <div style={summaryCardStyle}>
-                <p className="ui-kicker" style={{ margin: 0 }}>Account</p>
-                <div style={{ marginTop: '0.32rem', fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)', overflowWrap: 'anywhere' }}>
-                  {authSummary.user.email ?? 'Signed-in account'}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.7rem' }}>
+                  <UserAvatar
+                    value={{
+                      url: resolvedAvatar.resolvedAvatar.url,
+                      initials: resolvedAvatar.resolvedAvatar.initials,
+                    }}
+                    size={40}
+                    active
+                  />
+                  <div style={{ minWidth: 0 }}>
+                    <p className="ui-kicker" style={{ margin: 0 }}>Account</p>
+                    <div style={{ marginTop: '0.32rem', fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)', overflowWrap: 'anywhere' }}>
+                      {authSummary.user.email ?? 'Signed-in account'}
+                    </div>
+                  </div>
                 </div>
                 <div style={{ marginTop: '0.24rem', fontSize: '12px', lineHeight: 1.55, color: 'var(--text-secondary)' }}>
                   Session active. Canvas sync and user-owned read state follow this account.

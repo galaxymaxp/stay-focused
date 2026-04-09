@@ -2,12 +2,13 @@
 
 import { useRef, useState } from 'react'
 import Link from 'next/link'
+import { useResolvedUserAvatar } from '@/components/useResolvedUserAvatar'
 import { UserAvatar } from '@/components/UserAvatar'
 import { useThemeSettings } from '@/components/ThemeProvider'
 import { SignOutButton } from '@/components/SignOutButton'
 import { useAuthSummary } from '@/components/useAuthSummary'
-import { useUserAvatarProfile, type UserAvatarApiResponse } from '@/components/useUserAvatarProfile'
-import { getUserInitialsFromEmail, type AvatarSource } from '@/lib/profile-avatar'
+import type { UserAvatarApiResponse } from '@/components/useUserAvatarProfile'
+import type { AvatarSource } from '@/lib/profile-avatar'
 import { ACCENT_OPTIONS, type AccentName, type ThemeMode } from '@/lib/theme'
 
 const MODE_OPTIONS: { value: ThemeMode; label: string; description: string }[] = [
@@ -19,8 +20,7 @@ const MODE_OPTIONS: { value: ThemeMode; label: string; description: string }[] =
 export function SettingsPage() {
   const { mode, accent, resolvedTheme, setMode, setAccent } = useThemeSettings()
   const authSummary = useAuthSummary()
-  const avatarProfile = useUserAvatarProfile(Boolean(authSummary.user))
-  const fallbackInitials = getUserInitialsFromEmail(authSummary.user?.email ?? null)
+  const resolvedAvatar = useResolvedUserAvatar(authSummary.user)
   const uploadInputRef = useRef<HTMLInputElement | null>(null)
   const [avatarActionPending, setAvatarActionPending] = useState<'source' | 'upload' | 'remove' | null>(null)
   const [avatarActionError, setAvatarActionError] = useState<string | null>(null)
@@ -47,8 +47,8 @@ export function SettingsPage() {
         throw new Error((payload && 'error' in payload && typeof payload.error === 'string') ? payload.error : 'Could not update avatar source.')
       }
 
-      avatarProfile.setAvatar(payload)
-      setAvatarActionMessage(nextSource === 'google' ? 'Now using your Google photo.' : nextSource === 'upload' ? 'Now using your uploaded photo.' : 'Now using initials placeholder.')
+      resolvedAvatar.setAvatar(payload)
+      setAvatarActionMessage(nextSource === 'google' ? 'Now using your Google photo.' : 'Now using your uploaded photo.')
     } catch (error) {
       setAvatarActionError(error instanceof Error ? error.message : 'Could not update avatar source.')
     } finally {
@@ -77,7 +77,7 @@ export function SettingsPage() {
         throw new Error((payload && 'error' in payload && typeof payload.error === 'string') ? payload.error : 'Could not upload profile photo.')
       }
 
-      avatarProfile.setAvatar(payload)
+      resolvedAvatar.setAvatar(payload)
       setAvatarActionMessage('Custom photo uploaded.')
     } catch (error) {
       setAvatarActionError(error instanceof Error ? error.message : 'Could not upload profile photo.')
@@ -103,7 +103,7 @@ export function SettingsPage() {
         throw new Error((payload && 'error' in payload && typeof payload.error === 'string') ? payload.error : 'Could not remove uploaded profile photo.')
       }
 
-      avatarProfile.setAvatar(payload)
+      resolvedAvatar.setAvatar(payload)
       setAvatarActionMessage(payload.profile.avatarSource === 'google' ? 'Custom photo removed. Back to Google photo.' : 'Custom photo removed.')
     } catch (error) {
       setAvatarActionError(error instanceof Error ? error.message : 'Could not remove uploaded profile photo.')
@@ -130,12 +130,22 @@ export function SettingsPage() {
         <div style={{ display: 'grid', gap: '0.8rem' }}>
           {authSummary.user ? (
             <div style={accountCardStyle}>
-              <div>
-                <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>
-                  {authSummary.user.email ?? 'Signed-in user'}
-                </div>
-                <div style={{ marginTop: '0.22rem', fontSize: '13px', lineHeight: 1.55, color: 'var(--text-secondary)' }}>
-                  Session cookies are active. Auto Prompt can now promote saved anonymous results onto your authenticated identity without breaking existing cache hits.
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', minWidth: 0 }}>
+                <UserAvatar
+                  value={{
+                    url: resolvedAvatar.resolvedAvatar.url,
+                    initials: resolvedAvatar.resolvedAvatar.initials,
+                  }}
+                  size={56}
+                  active
+                />
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)', overflowWrap: 'anywhere' }}>
+                    {authSummary.user.email ?? 'Signed-in user'}
+                  </div>
+                  <div style={{ marginTop: '0.22rem', fontSize: '13px', lineHeight: 1.55, color: 'var(--text-secondary)' }}>
+                    Session cookies are active. Auto Prompt can now promote saved anonymous results onto your authenticated identity without breaking existing cache hits.
+                  </div>
                 </div>
               </div>
               <SignOutButton className="ui-button ui-button-secondary" style={{ minHeight: '2.4rem' }} />
@@ -158,6 +168,98 @@ export function SettingsPage() {
               </div>
             </div>
           )}
+
+          {authSummary.user ? (
+            <div style={profileControlCardStyle}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
+                <UserAvatar
+                  value={{
+                    url: resolvedAvatar.resolvedAvatar.url,
+                    initials: resolvedAvatar.resolvedAvatar.initials,
+                  }}
+                  size={64}
+                  active
+                />
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                    Profile photo
+                  </div>
+                  <div style={{ marginTop: '0.22rem', fontSize: '13px', lineHeight: 1.55, color: 'var(--text-secondary)' }}>
+                    Current source: {getAvatarSourceLabel(resolvedAvatar.resolvedAvatar.source)}
+                  </div>
+                  <div style={{ marginTop: '0.12rem', fontSize: '13px', lineHeight: 1.55, color: 'var(--text-secondary)' }}>
+                    {resolvedAvatar.loading
+                      ? 'Loading your avatar settings...'
+                      : resolvedAvatar.error
+                        ? 'Could not load your avatar settings right now.'
+                      : resolvedAvatar.hasGoogleAvatar
+                        ? 'Google photo is available for this account.'
+                        : 'No Google photo detected for this account. Placeholder initials will be used until you upload one.'}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.6rem', marginTop: '0.9rem' }}>
+                <button
+                  type="button"
+                  className="ui-button ui-button-secondary"
+                  onClick={() => setAvatarSource('google')}
+                  disabled={!resolvedAvatar.hasGoogleAvatar || Boolean(avatarActionPending)}
+                >
+                  Use Google photo
+                </button>
+                <button
+                  type="button"
+                  className="ui-button ui-button-primary"
+                  onClick={() => uploadInputRef.current?.click()}
+                  disabled={Boolean(avatarActionPending)}
+                >
+                  {avatarActionPending === 'upload' ? 'Uploading...' : 'Upload custom photo'}
+                </button>
+                <button
+                  type="button"
+                  className="ui-button ui-button-ghost"
+                  onClick={removeCustomPhoto}
+                  disabled={!resolvedAvatar.profile.avatarUrl || Boolean(avatarActionPending)}
+                >
+                  Remove custom photo
+                </button>
+              </div>
+
+              <input
+                ref={uploadInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                style={{ display: 'none' }}
+                onChange={(event) => {
+                  const file = event.currentTarget.files?.[0] ?? null
+                  if (file) {
+                    void uploadCustomPhoto(file)
+                  }
+                  event.currentTarget.value = ''
+                }}
+              />
+
+              <div style={{ marginTop: '0.9rem', fontSize: '13px', lineHeight: 1.55, color: 'var(--text-secondary)' }}>
+                Allowed types: JPG, PNG, WEBP, GIF. Max size: 5 MB. Avatar priority stays custom upload, then Google photo, then initials placeholder.
+              </div>
+              {resolvedAvatar.error ? (
+                <div style={{ marginTop: '0.32rem', fontSize: '13px', lineHeight: 1.55, color: 'var(--red)' }}>
+                  {resolvedAvatar.error}
+                </div>
+              ) : null}
+              {avatarActionError ? (
+                <div style={{ marginTop: '0.32rem', fontSize: '13px', lineHeight: 1.55, color: 'var(--red)' }}>
+                  {avatarActionError}
+                </div>
+              ) : null}
+              {avatarActionMessage ? (
+                <div style={{ marginTop: '0.32rem', fontSize: '13px', lineHeight: 1.55, color: 'var(--blue)' }}>
+                  {avatarActionMessage}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
 
           <div style={noteCardStyle}>
             <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>Google sign-in</div>
@@ -208,103 +310,6 @@ export function SettingsPage() {
           })}
         </div>
       </SettingsSection>
-
-      {authSummary.user ? (
-        <SettingsSection
-          eyebrow="Profile"
-          title="Profile picture"
-          description="Use your Google photo when available, upload your own image, or fall back to initials."
-        >
-          <div style={{ display: 'grid', gap: '0.8rem' }}>
-            <div style={avatarCardStyle}>
-              <UserAvatar
-                value={{
-                  url: avatarProfile.avatar?.resolved.url ?? null,
-                  initials: avatarProfile.avatar?.resolved.initials ?? fallbackInitials,
-                }}
-                size={64}
-                active
-              />
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>
-                  Current source: {getAvatarSourceLabel(avatarProfile.avatar?.resolved.source ?? 'none')}
-                </div>
-                <div style={{ marginTop: '0.22rem', fontSize: '13px', lineHeight: 1.55, color: 'var(--text-secondary)' }}>
-                  {avatarProfile.loading
-                    ? 'Loading your avatar settings...'
-                    : avatarProfile.error
-                      ? 'Could not load your avatar settings right now.'
-                    : avatarProfile.avatar?.hasGoogleAvatar
-                      ? 'Google photo is available for this account.'
-                      : 'No Google photo detected for this account.'}
-                </div>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.6rem' }}>
-              <button
-                type="button"
-                className="ui-button ui-button-secondary"
-                onClick={() => setAvatarSource('google')}
-                disabled={!avatarProfile.avatar?.hasGoogleAvatar || Boolean(avatarActionPending)}
-              >
-                Use Google photo
-              </button>
-              <button
-                type="button"
-                className="ui-button ui-button-primary"
-                onClick={() => uploadInputRef.current?.click()}
-                disabled={Boolean(avatarActionPending)}
-              >
-                {avatarActionPending === 'upload' ? 'Uploading...' : 'Upload custom photo'}
-              </button>
-              <button
-                type="button"
-                className="ui-button ui-button-ghost"
-                onClick={removeCustomPhoto}
-                disabled={!avatarProfile.avatar?.profile.avatarUrl || Boolean(avatarActionPending)}
-              >
-                Remove custom photo
-              </button>
-            </div>
-
-            <input
-              ref={uploadInputRef}
-              type="file"
-              accept="image/jpeg,image/png,image/webp,image/gif"
-              style={{ display: 'none' }}
-              onChange={(event) => {
-                const file = event.currentTarget.files?.[0] ?? null
-                if (file) {
-                  void uploadCustomPhoto(file)
-                }
-                event.currentTarget.value = ''
-              }}
-            />
-
-            <div style={noteCardStyle}>
-              <div style={{ fontSize: '13px', lineHeight: 1.55, color: 'var(--text-secondary)' }}>
-                Allowed types: JPG, PNG, WEBP, GIF. Max size: 5 MB. Placeholder initials are used automatically when no Google or uploaded photo is active.
-              </div>
-              {avatarProfile.error ? (
-                <div style={{ marginTop: '0.32rem', fontSize: '13px', lineHeight: 1.55, color: 'var(--red)' }}>
-                  {avatarProfile.error}
-                </div>
-              ) : null}
-              {avatarActionError ? (
-                <div style={{ marginTop: '0.32rem', fontSize: '13px', lineHeight: 1.55, color: 'var(--red)' }}>
-                  {avatarActionError}
-                </div>
-              ) : null}
-              {avatarActionMessage ? (
-                <div style={{ marginTop: '0.32rem', fontSize: '13px', lineHeight: 1.55, color: 'var(--blue)' }}>
-                  {avatarActionMessage}
-                </div>
-              ) : null}
-            </div>
-          </div>
-        </SettingsSection>
-      ) : null}
 
       <SettingsSection
         eyebrow="Accent"
@@ -444,14 +449,12 @@ const noteCardStyle: React.CSSProperties = {
   padding: '0.95rem',
 }
 
-const avatarCardStyle: React.CSSProperties = {
+const profileControlCardStyle: React.CSSProperties = {
   borderRadius: '12px',
   border: '1px solid color-mix(in srgb, var(--border-subtle) 88%, transparent)',
   background: 'var(--surface-elevated)',
   padding: '0.95rem',
-  display: 'flex',
-  alignItems: 'center',
-  gap: '0.8rem',
+  display: 'grid',
 }
 
 function getAvatarSourceLabel(source: AvatarSource) {

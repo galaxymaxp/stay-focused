@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import type { User } from '@supabase/supabase-js'
 import type { AuthSummary } from '@/lib/auth'
+import { extractGoogleAvatarUrlFromUser } from '@/lib/profile-avatar'
 import { createSupabaseBrowserClient } from '@/lib/supabase-auth-browser'
 import { isSupabaseAuthConfigured } from '@/lib/supabase-auth-config'
 
@@ -29,6 +30,7 @@ export function useAuthSummary() {
           ? {
               id: user.id,
               email: typeof user.email === 'string' ? user.email : null,
+              googleAvatarUrl: extractGoogleAvatarUrlFromUser(user),
             }
           : null,
       })

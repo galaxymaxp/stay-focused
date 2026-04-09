@@ -7,6 +7,7 @@ export interface AuthSummary {
   user: {
     id: string
     email: string | null
+    googleAvatarUrl: string | null
   } | null
 }
 

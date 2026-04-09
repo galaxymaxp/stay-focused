@@ -17,13 +17,40 @@ export interface UserAvatarApiResponse {
   hasGoogleAvatar: boolean
 }
 
-export function useUserAvatarProfile(enabled: boolean) {
-  const [avatar, setAvatar] = useState<UserAvatarApiResponse | null>(null)
+const AVATAR_PROFILE_EVENT = 'stay-focused-avatar-profile'
+const avatarProfileCache = new Map<string, UserAvatarApiResponse>()
+
+export function useUserAvatarProfile(userId: string | null) {
+  const [avatar, setAvatarState] = useState<UserAvatarApiResponse | null>(() => (
+    userId ? avatarProfileCache.get(userId) ?? null : null
+  ))
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const setAvatar = useCallback((nextAvatar: UserAvatarApiResponse | null) => {
+    if (userId) {
+      if (nextAvatar) {
+        avatarProfileCache.set(userId, nextAvatar)
+      } else {
+        avatarProfileCache.delete(userId)
+      }
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent(AVATAR_PROFILE_EVENT, {
+          detail: {
+            userId,
+            avatar: nextAvatar,
+          },
+        }))
+      }
+    }
+
+    setAvatarState(nextAvatar)
+    setError(null)
+  }, [userId])
+
   const refresh = useCallback(async () => {
-    if (!enabled) {
+    if (!userId) {
       setAvatar(null)
       setError(null)
       return
@@ -33,7 +60,11 @@ export function useUserAvatarProfile(enabled: boolean) {
     setError(null)
 
     try {
-      const response = await fetch('/api/profile/avatar', { method: 'GET', cache: 'no-store' })
+      const response = await fetch('/api/profile/avatar', {
+        method: 'GET',
+        cache: 'no-store',
+        credentials: 'include',
+      })
       if (!response.ok) {
         throw new Error(`Could not load avatar profile (${response.status}).`)
       }
@@ -45,11 +76,36 @@ export function useUserAvatarProfile(enabled: boolean) {
     } finally {
       setLoading(false)
     }
-  }, [enabled])
+  }, [setAvatar, userId])
 
   useEffect(() => {
+    if (!userId) {
+      setAvatarState(null)
+      setLoading(false)
+      setError(null)
+      return
+    }
+
+    setAvatarState(avatarProfileCache.get(userId) ?? null)
     void refresh()
-  }, [refresh])
+  }, [refresh, userId])
+
+  useEffect(() => {
+    if (!userId || typeof window === 'undefined') return
+
+    function handleAvatarProfile(event: Event) {
+      const detail = (event as CustomEvent<{ userId: string, avatar: UserAvatarApiResponse | null }>).detail
+      if (!detail || detail.userId !== userId) return
+      setAvatarState(detail.avatar)
+      setError(null)
+    }
+
+    window.addEventListener(AVATAR_PROFILE_EVENT, handleAvatarProfile)
+
+    return () => {
+      window.removeEventListener(AVATAR_PROFILE_EVENT, handleAvatarProfile)
+    }
+  }, [userId])
 
   const value = useMemo(() => {
     return {
@@ -59,7 +115,7 @@ export function useUserAvatarProfile(enabled: boolean) {
       error,
       refresh,
     }
-  }, [avatar, error, loading, refresh])
+  }, [avatar, error, loading, refresh, setAvatar])
 
   return value
 }
