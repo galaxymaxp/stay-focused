@@ -4,18 +4,11 @@ import type { CSSProperties } from 'react'
 import { useEffect, useEffectEvent, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { getTaskDraftSessionKey, TaskDraftPanel } from '@/components/DoNowPanel'
+import type { PromptBuildSnapshot } from '@/components/usePromptBuild'
 import type { TaskDraftContext } from '@/lib/do-now'
 import type { ManualCopyBundleResult } from '@/lib/manual-copy-bundle'
 
-type DraftSource = 'saved' | 'generated'
-
-interface DraftSessionSnapshot {
-  draft: import('@/lib/do-now').TaskDraftResponse
-  draftSource: DraftSource
-  requestBody: string
-}
-
-const draftSessionCache = new Map<string, DraftSessionSnapshot>()
+const draftSessionCache = new Map<string, PromptBuildSnapshot>()
 
 /**
  * Self-contained trigger button + panel for use inside server-rendered task cards.

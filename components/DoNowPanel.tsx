@@ -1,32 +1,22 @@
 'use client'
 
 import type { CSSProperties } from 'react'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { CopyTaskBundleActions } from '@/components/CopyTaskBundleActions'
+import { PromptBuildViewer } from '@/components/PromptBuildViewer'
+import { usePromptBuild, type PromptBuildSnapshot } from '@/components/usePromptBuild'
 import {
   buildTaskDraftFallback,
   buildTaskDraftSourceKey,
   buildTaskDraftRequestPayload,
-  isTaskDraftApiResponse,
   type TaskDraftContext,
-  type TaskDraftResponse,
 } from '@/lib/do-now'
 import type { ManualCopyBundleResult } from '@/lib/manual-copy-bundle'
 
-type RequestState = 'loading' | 'success' | 'error'
-type DraftSource = 'saved' | 'generated'
-type ReopenSource = 'session' | null
-
-interface DraftPanelSnapshot {
-  draft: TaskDraftResponse
-  draftSource: DraftSource
-  requestBody: string
-}
-
 /**
- * Modal panel that fetches a server-generated first draft when opened and
- * falls back to the local deliverable-first builder if generation fails.
+ * Modal panel that opens immediately, shows a prompt-building experience while
+ * the request runs, then hands off to the final usable Auto Prompt view.
  */
 export function TaskDraftPanel({
   context,
@@ -39,26 +29,25 @@ export function TaskDraftPanel({
 }: {
   context: TaskDraftContext
   copyBundle?: Pick<ManualCopyBundleResult, 'bundleText' | 'promptText'>
-  initialSnapshot?: DraftPanelSnapshot | null
+  initialSnapshot?: PromptBuildSnapshot | null
   entryOrigin?: 'today' | 'do'
   doPageHref?: string
-  onSnapshotChange?: (snapshot: DraftPanelSnapshot) => void
+  onSnapshotChange?: (snapshot: PromptBuildSnapshot) => void
   onClose: () => void
 }) {
   const fallbackDraft = buildTaskDraftFallback(context)
-  const requestPayload = buildTaskDraftRequestPayload(context)
-  const requestBody = JSON.stringify(requestPayload)
-  const hasReusableSnapshot = initialSnapshot?.requestBody === requestBody
-  const [generatedDraft, setGeneratedDraft] = useState<TaskDraftResponse | null>(
-    hasReusableSnapshot ? initialSnapshot.draft : null,
-  )
-  const [requestState, setRequestState] = useState<RequestState>(hasReusableSnapshot ? 'success' : 'loading')
-  const [draftSource, setDraftSource] = useState<DraftSource>(
-    hasReusableSnapshot ? initialSnapshot.draftSource : 'generated',
-  )
-  const [reopenSource, setReopenSource] = useState<ReopenSource>(hasReusableSnapshot ? 'session' : null)
-  const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const draft = generatedDraft ?? fallbackDraft
+  const requestPayload = useMemo(() => buildTaskDraftRequestPayload(context), [context])
+  const requestBody = useMemo(() => JSON.stringify(requestPayload), [requestPayload])
+  const [reusableSnapshot] = useState<PromptBuildSnapshot | null>(() => (
+    initialSnapshot?.requestBody === requestBody ? initialSnapshot : null
+  ))
+  const promptBuild = usePromptBuild({
+    initialSnapshot: reusableSnapshot,
+    onSnapshotChange,
+    requestBody,
+    requestPayload,
+  })
+  const draft = promptBuild.generatedDraft ?? fallbackDraft
 
   useEffect(() => {
     function handleEscape(event: KeyboardEvent) {
@@ -82,79 +71,6 @@ export function TaskDraftPanel({
       document.body.style.paddingRight = ''
     }
   }, [])
-
-  useEffect(() => {
-    if (hasReusableSnapshot) {
-      setGeneratedDraft(initialSnapshot.draft)
-      setRequestState('success')
-      setDraftSource(initialSnapshot.draftSource)
-      setReopenSource('session')
-      setErrorMessage(null)
-      return
-    }
-
-    const controller = new AbortController()
-    let cancelled = false
-
-    async function loadTaskDraft() {
-      setGeneratedDraft(null)
-      setRequestState('loading')
-      setDraftSource('generated')
-      setReopenSource(null)
-      setErrorMessage(null)
-
-      try {
-        const response = await fetch('/api/do-now', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: requestBody,
-          signal: controller.signal,
-        })
-
-        const data = (await response.json().catch(() => null)) as unknown
-
-        if (!response.ok) {
-          throw new Error(extractErrorMessage(data))
-        }
-
-        if (!isTaskDraftApiResponse(data)) {
-          throw new Error('Received an invalid Auto Prompt response.')
-        }
-
-        if (cancelled) return
-
-        setGeneratedDraft(data.draft)
-        const nextDraftSource = data.cacheStatus === 'hit' ? 'saved' : 'generated'
-        setDraftSource(nextDraftSource)
-        setRequestState('success')
-        onSnapshotChange?.({
-          draft: data.draft,
-          draftSource: nextDraftSource,
-          requestBody,
-        })
-      } catch (error) {
-        if (controller.signal.aborted || cancelled) return
-
-        console.error('Task draft request failed:', error)
-        setGeneratedDraft(null)
-        setRequestState('error')
-        setErrorMessage(
-          error instanceof Error
-            ? error.message
-            : 'Could not generate an Auto Prompt right now.',
-        )
-      }
-    }
-
-    void loadTaskDraft()
-
-    return () => {
-      cancelled = true
-      controller.abort()
-    }
-  }, [hasReusableSnapshot, initialSnapshot, onSnapshotChange, requestBody])
 
   return (
     <div
@@ -202,44 +118,45 @@ export function TaskDraftPanel({
           </button>
         </div>
 
-        <StatusBanner
-          state={requestState}
-          draftSource={draftSource}
-          reopenSource={reopenSource}
-          errorMessage={errorMessage}
-        />
-
-        {requestState === 'loading' ? (
-          <div style={sectionsStyle}>
-            <div className="animate-pulse" style={skeletonBlockStyle(0, '3rem')} />
-            <div className="animate-pulse" style={skeletonBlockStyle(1, '7.5rem')} />
-            <div className="animate-pulse" style={skeletonBlockStyle(2, '3rem')} />
-            <div className="animate-pulse" style={skeletonBlockStyle(3, '3rem')} />
-            <div className="animate-pulse" style={skeletonBlockStyle(4, '3rem')} />
-          </div>
+        {promptBuild.isBuilding ? (
+          <PromptBuildViewer
+            phase={promptBuild.phase}
+            progressValue={promptBuild.progressValue}
+            promptText={promptBuild.promptText}
+            taskTitle={context.taskTitle}
+          />
         ) : (
-          <div style={sectionsStyle}>
-            <TextSection
-              heading="0. Requirement summary"
-              body={draft.requirementSummary}
+          <>
+            <StatusBanner
+              phase={promptBuild.phase === 'error' ? 'error' : 'done'}
+              draftSource={promptBuild.draftSource}
+              reopenSource={promptBuild.reopenSource}
+              errorMessage={promptBuild.errorMessage}
             />
-            <TextSection
-              heading="1. Draft output"
-              body={draft.draftOutput}
-            />
-            <TextSection
-              heading="2. What is still missing or unclear?"
-              body={draft.missingDetails}
-            />
-            <TextSection
-              heading="3. What should I do on the paper right now?"
-              body={draft.paperAction}
-            />
-            <TextSection
-              heading="4. Smallest next step"
-              body={draft.smallestNextStep}
-            />
-          </div>
+
+            <div style={sectionsStyle}>
+              <TextSection
+                heading="0. Requirement summary"
+                body={draft.requirementSummary}
+              />
+              <TextSection
+                heading="1. Draft output"
+                body={draft.draftOutput}
+              />
+              <TextSection
+                heading="2. What is still missing or unclear?"
+                body={draft.missingDetails}
+              />
+              <TextSection
+                heading="3. What should I do on the paper right now?"
+                body={draft.paperAction}
+              />
+              <TextSection
+                heading="4. Smallest next step"
+                body={draft.smallestNextStep}
+              />
+            </div>
+          </>
         )}
 
         <div style={footerStyle}>
@@ -312,39 +229,29 @@ function TextSection({
 }
 
 function StatusBanner({
-  state,
+  phase,
   draftSource,
   reopenSource,
   errorMessage,
 }: {
-  state: RequestState
-  draftSource: DraftSource
-  reopenSource: ReopenSource
+  phase: 'done' | 'error'
+  draftSource: 'saved' | 'generated'
+  reopenSource: 'session' | null
   errorMessage: string | null
 }) {
   return (
-    <div style={statusBannerStyle(state)}>
-      <p style={statusTitleStyle}>
-        {state === 'loading'
-          ? 'Generating Auto Prompt'
-          : state === 'success' && reopenSource === 'session'
-            ? 'Reopened existing Auto Prompt'
-          : state === 'success' && draftSource === 'saved'
-            ? 'Loaded saved Auto Prompt'
-            : state === 'success'
-            ? 'Generated with OpenAI'
-            : 'Using the local Auto Prompt fallback'}
-      </p>
+    <div style={statusBannerStyle(phase)}>
+      <p style={statusTitleStyle}>{phase === 'error' ? 'Prompt build failed' : 'Prompt ready'}</p>
       <p style={statusBodyStyle}>
-        {state === 'loading'
-          ? 'The server is generating a usable first-pass deliverable from the surfaced task instructions.'
-          : state === 'success' && reopenSource === 'session'
+        {phase === 'error'
+          ? `${errorMessage ?? 'OpenAI generation failed.'} Showing the existing local Auto Prompt fallback instead.`
+          : reopenSource === 'session'
             ? draftSource === 'saved'
               ? 'This reopened the same saved Auto Prompt immediately from the current session because the task content has not changed.'
               : 'This reopened the same generated Auto Prompt immediately from the current session because the task content has not changed.'
-          : state === 'success' && draftSource === 'saved'
+          : draftSource === 'saved'
             ? 'This Auto Prompt was loaded from the saved server result because the task content has not changed.'
-            : state === 'success'
+            : phase === 'done'
             ? 'This Auto Prompt was generated on demand from the current task context.'
             : `${errorMessage ?? 'OpenAI generation failed.'} Showing the existing local Auto Prompt fallback instead.`}
       </p>
@@ -354,18 +261,6 @@ function StatusBanner({
 
 export function getTaskDraftSessionKey(context: TaskDraftContext) {
   return buildTaskDraftSourceKey(context)
-}
-
-function extractErrorMessage(value: unknown) {
-  if (isPlainRecord(value) && typeof value.error === 'string' && value.error.trim()) {
-    return value.error
-  }
-
-  return 'Could not generate an Auto Prompt right now.'
-}
-
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 function priorityChipStyle(priority: 'high' | 'medium' | 'low'): CSSProperties {
@@ -401,8 +296,8 @@ function priorityChipStyle(priority: 'high' | 'medium' | 'low'): CSSProperties {
   }
 }
 
-function statusBannerStyle(state: RequestState): CSSProperties {
-  if (state === 'success') {
+function statusBannerStyle(phase: 'done' | 'error'): CSSProperties {
+  if (phase === 'done') {
     return {
       borderRadius: 'var(--radius-panel)',
       padding: '0.8rem 0.9rem',
@@ -411,20 +306,11 @@ function statusBannerStyle(state: RequestState): CSSProperties {
     }
   }
 
-  if (state === 'error') {
-    return {
-      borderRadius: 'var(--radius-panel)',
-      padding: '0.8rem 0.9rem',
-      background: 'color-mix(in srgb, var(--amber-light) 42%, var(--surface-soft) 58%)',
-      border: '1px solid color-mix(in srgb, var(--amber) 22%, var(--border-subtle) 78%)',
-    }
-  }
-
   return {
     borderRadius: 'var(--radius-panel)',
     padding: '0.8rem 0.9rem',
-    background: 'color-mix(in srgb, var(--accent-light) 42%, var(--surface-soft) 58%)',
-    border: '1px solid color-mix(in srgb, var(--accent-border) 22%, var(--border-subtle) 78%)',
+    background: 'color-mix(in srgb, var(--amber-light) 42%, var(--surface-soft) 58%)',
+    border: '1px solid color-mix(in srgb, var(--amber) 22%, var(--border-subtle) 78%)',
   }
 }
 
@@ -506,16 +392,6 @@ const statusBodyStyle: CSSProperties = {
   fontSize: '13px',
   lineHeight: 1.6,
   color: 'var(--text-primary)',
-}
-
-function skeletonBlockStyle(index: number, height: string): CSSProperties {
-  return {
-    height,
-    borderRadius: 'var(--radius-panel)',
-    border: '1px solid var(--border-subtle)',
-    background: 'color-mix(in srgb, var(--surface-soft) 94%, transparent)',
-    animationDelay: `${index * 80}ms`,
-  }
 }
 
 const sectionsStyle: CSSProperties = {

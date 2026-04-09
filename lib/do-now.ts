@@ -148,6 +148,74 @@ export function buildTaskDraftUserPrompt(input: TaskDraftApiRequest) {
   ].join('\n')
 }
 
+export function buildTaskPromptBuildPreview(
+  input: TaskDraftApiRequest,
+  draft?: TaskDraftResponse,
+) {
+  const instructionFocus = buildTaskDraftContextText(input.instructions, 760)
+    ?? 'No assignment instructions were surfaced.'
+  const outputFocus = buildTaskDraftContextText(draft?.draftOutput, 520)
+  const lines = [
+    'mode: output-first academic draft generation',
+    '',
+    'task_context {',
+    `  title: "${input.title}"`,
+    `  course: "${input.course ?? 'None surfaced'}"`,
+    `  module: "${input.module ?? 'None surfaced'}"`,
+    `  due_date: "${input.dueDate ?? 'None surfaced'}"`,
+    `  task_type: "${input.type ?? 'Task'}"`,
+    `  source_key: "${input.sourceKey}"`,
+    '}',
+    '',
+    'draft_rules {',
+    '  - stay grounded in the surfaced assignment details',
+    '  - generate the likely deliverable before explanation',
+    '  - keep assumptions minimal and visible',
+    '  - end with the smallest concrete next step',
+    '}',
+    '',
+    'assignment_context <<',
+    instructionFocus,
+    '>>',
+  ]
+
+  if (input.requirements && input.requirements.length > 0) {
+    lines.push('', 'derived_requirements {')
+    for (const requirement of input.requirements.slice(0, 6)) {
+      lines.push(`  - ${requirement}`)
+    }
+    lines.push('}')
+  }
+
+  if (draft) {
+    lines.push(
+      '',
+      'draft_target {',
+      `  requirement_summary: ${toPromptBuildInlineText(draft.requirementSummary, 220)}`,
+      `  immediate_action: ${toPromptBuildInlineText(draft.smallestNextStep, 180)}`,
+    )
+
+    if (outputFocus) {
+      lines.push('  primary_output <<', indentPromptBuildBlock(outputFocus), '  >>')
+    }
+
+    lines.push('}')
+  }
+
+  lines.push(
+    '',
+    'response_shape {',
+    '  0. Requirement summary',
+    '  1. Draft output',
+    '  2. What is still missing or unclear?',
+    '  3. What should I do on the paper right now?',
+    '  4. Smallest next step',
+    '}',
+  )
+
+  return lines.join('\n')
+}
+
 export function buildTaskDraftContextText(text: string | null | undefined, maxLength = 1600) {
   const normalized = cleanBlockText(text)
   if (!normalized) return null
@@ -638,6 +706,17 @@ function normalizeComparisonText(value: string | null | undefined) {
 
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function indentPromptBuildBlock(value: string) {
+  return value
+    .split('\n')
+    .map((line) => `    ${line}`)
+    .join('\n')
+}
+
+function toPromptBuildInlineText(value: string | null | undefined, maxLength: number) {
+  return compactInlineText(value, maxLength) ?? 'None surfaced.'
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
