@@ -1,35 +1,20 @@
+import { PageLoadingStage } from '@/components/PageLoadingStage'
+
 /**
- * Do page loading skeleton.
- * Rendered by Next.js App Router while the server component fetches workspace data.
- * Structure mirrors the Do page: header → three urgency group sections.
+ * Do page loading state.
+ * Uses the shared route-entry loading language while previewing the stacked urgency groups below.
  */
 export default function DoLoading() {
   return (
-    <main className="page-shell page-stack">
-      {/* Page header */}
-      <div
-        className="animate-pulse"
-        style={{
-          height: '7rem',
-          borderRadius: 'var(--radius-page)',
-          border: '1px solid var(--border-subtle)',
-          background: 'color-mix(in srgb, var(--surface-soft) 94%, transparent)',
-        }}
-      />
-
-      {/* Urgency groups: needs action now, coming up soon, can wait */}
-      <div
-        className="section-shell section-shell-elevated animate-pulse"
-        style={{ height: '10rem', animationDelay: '60ms' }}
-      />
-      <div
-        className="section-shell section-shell-elevated animate-pulse"
-        style={{ height: '10rem', animationDelay: '120ms' }}
-      />
-      <div
-        className="section-shell section-shell-elevated animate-pulse"
-        style={{ height: '10rem', animationDelay: '180ms' }}
-      />
-    </main>
+    <PageLoadingStage
+      title="Loading action board"
+      description="Preparing urgency groups, task cards, and completed work."
+    >
+      <div className="page-loading-skeleton" style={{ height: '4rem' }} />
+      <div className="page-loading-skeleton" style={{ height: '8.75rem', animationDelay: '80ms' }} />
+      <div className="page-loading-skeleton" style={{ height: '8.75rem', animationDelay: '160ms' }} />
+      <div className="page-loading-skeleton" style={{ height: '8.75rem', animationDelay: '240ms' }} />
+      <div className="page-loading-skeleton page-loading-skeleton-soft" style={{ height: '6.25rem', animationDelay: '320ms' }} />
+    </PageLoadingStage>
   )
 }

@@ -45,6 +45,14 @@
   --shadow-medium: 0 16px 38px rgba(53, 35, 10, 0.1);
   --shadow-high: 0 24px 56px rgba(43, 30, 10, 0.14);
   --highlight-sheen: 0 1px 0 rgba(255, 255, 255, 0.56) inset;
+  --loading-surface: color-mix(in srgb, var(--surface-soft) 94%, transparent);
+  --loading-surface-pulse: color-mix(in srgb, var(--surface-soft) 82%, var(--surface-base) 18%);
+  --loading-surface-soft: color-mix(in srgb, var(--surface-soft) 86%, var(--surface-base) 14%);
+  --loading-surface-soft-pulse: color-mix(in srgb, var(--surface-soft) 74%, var(--surface-base) 26%);
+  --loading-border: color-mix(in srgb, var(--border-subtle) 88%, transparent);
+  --loading-border-pulse: color-mix(in srgb, var(--border-strong) 68%, transparent);
+  --loading-shadow: 0 1px 3px rgba(53, 35, 10, 0.032);
+  --loading-shadow-pulse: 0 2px 8px rgba(53, 35, 10, 0.052);
 
   --focus-ring: 0 0 0 1px color-mix(in srgb, var(--accent) 54%, #ffffff 46%), 0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent);
 
@@ -116,6 +124,14 @@
   --shadow-medium: 0 18px 46px rgba(0, 0, 0, 0.34);
   --shadow-high: 0 26px 64px rgba(0, 0, 0, 0.42);
   --highlight-sheen: 0 1px 0 rgba(255, 255, 255, 0.05) inset;
+  --loading-surface: color-mix(in srgb, var(--surface-soft) 94%, transparent);
+  --loading-surface-pulse: color-mix(in srgb, var(--surface-soft) 84%, var(--surface-base) 16%);
+  --loading-surface-soft: color-mix(in srgb, var(--surface-soft) 86%, var(--surface-base) 14%);
+  --loading-surface-soft-pulse: color-mix(in srgb, var(--surface-soft) 76%, var(--surface-base) 24%);
+  --loading-border: color-mix(in srgb, var(--border-subtle) 92%, transparent);
+  --loading-border-pulse: color-mix(in srgb, var(--border-strong) 70%, transparent);
+  --loading-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+  --loading-shadow-pulse: 0 2px 8px rgba(0, 0, 0, 0.22);
 
   --glass-edge-highlight: rgba(255, 255, 255, 0.08);
   --red: #f29b86;
@@ -884,6 +900,156 @@ details[open] > .ui-interactive-summary,
   font-weight: 600;
 }
 
+.page-loading-stage {
+  width: min(100%, 72rem);
+  min-height: min(35rem, calc(100vh - 8rem));
+  margin: 0 auto;
+  padding-block: clamp(0.75rem, 2.6vh, 1.75rem);
+  display: grid;
+  align-content: center;
+  gap: 1.25rem;
+}
+
+.page-loading-center {
+  display: grid;
+  width: min(100%, 32rem);
+  margin: 0 auto;
+  justify-items: center;
+  gap: 0.72rem;
+  text-align: center;
+}
+
+.page-loading-copy {
+  display: grid;
+  gap: 0.28rem;
+}
+
+.page-loading-kicker {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.page-loading-title {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.35;
+  font-weight: 650;
+  color: var(--text-primary);
+}
+
+.page-loading-note {
+  margin: 0;
+  max-width: 28rem;
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--text-secondary);
+}
+
+.page-loading-book {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-primary);
+}
+
+.page-loading-book svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.page-loading-book-frame,
+.page-loading-book-spine,
+.page-loading-book-base-mark {
+  stroke: color-mix(in srgb, var(--text-primary) 88%, var(--text-secondary) 12%);
+  stroke-width: 6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.page-loading-book-page {
+  stroke: color-mix(in srgb, var(--text-secondary) 84%, transparent);
+  stroke-width: 4.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.page-loading-book-flip {
+  stroke: color-mix(in srgb, var(--accent) 72%, var(--text-primary) 28%);
+  stroke-width: 4.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.page-loading-book-shell {
+  animation: page-book-settle 2.2s ease-in-out infinite;
+  transform-origin: center;
+}
+
+.page-loading-book-left-page {
+  animation: page-book-left-leaf 2.2s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: right center;
+}
+
+.page-loading-book-right-page {
+  animation: page-book-right-leaf 2.2s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: left center;
+}
+
+.page-loading-book-flip-page {
+  animation: page-book-flip 2.2s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: left center;
+}
+
+.page-loading-preview {
+  display: grid;
+  width: 100%;
+  gap: 0.78rem;
+  opacity: 1;
+}
+
+.page-loading-preview-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 0.85rem;
+  align-items: start;
+}
+
+.page-loading-skeleton {
+  --page-loading-skeleton-bg: var(--loading-surface);
+  --page-loading-skeleton-bg-pulse: var(--loading-surface-pulse);
+  --page-loading-skeleton-border: var(--loading-border);
+  --page-loading-skeleton-border-pulse: var(--loading-border-pulse);
+  --page-loading-skeleton-shadow: var(--loading-shadow);
+  --page-loading-skeleton-shadow-pulse: var(--loading-shadow-pulse);
+  position: relative;
+  border-radius: var(--radius-panel);
+  border: 1px solid var(--page-loading-skeleton-border);
+  background-color: var(--page-loading-skeleton-bg);
+  box-shadow: var(--page-loading-skeleton-shadow);
+  animation: page-loading-pulse 1.65s ease-in-out infinite;
+}
+
+.page-loading-skeleton::after {
+  content: none;
+}
+
+.page-loading-skeleton-soft {
+  --page-loading-skeleton-bg: var(--loading-surface-soft);
+  --page-loading-skeleton-bg-pulse: var(--loading-surface-soft-pulse);
+  --page-loading-skeleton-border: color-mix(in srgb, var(--loading-border) 88%, transparent);
+  --page-loading-skeleton-border-pulse: color-mix(in srgb, var(--loading-border-pulse) 92%, transparent);
+  animation-delay: 120ms;
+}
+
 .motion-card {
   opacity: 0;
   transform: translateY(10px);
@@ -926,6 +1092,88 @@ details[open] > .ui-interactive-summary,
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes page-book-settle {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-1.5px);
+  }
+}
+
+@keyframes page-book-left-leaf {
+  0%,
+  100% {
+    opacity: 0.72;
+    transform: rotate(0deg) translateX(0);
+  }
+  45% {
+    opacity: 0.9;
+    transform: rotate(-2deg) translateX(-1px);
+  }
+  70% {
+    opacity: 0.75;
+    transform: rotate(-4deg) translateX(-1px);
+  }
+}
+
+@keyframes page-book-right-leaf {
+  0%,
+  100% {
+    opacity: 0.76;
+    transform: rotate(0deg) translateX(0);
+  }
+  40% {
+    opacity: 0.82;
+    transform: rotate(2deg) translateX(1px);
+  }
+  72% {
+    opacity: 0.94;
+    transform: rotate(4deg) translateX(2px);
+  }
+}
+
+@keyframes page-book-flip {
+  0%,
+  12% {
+    opacity: 0;
+    transform: rotate(-12deg) translateX(-2px) scaleY(0.98);
+  }
+  22% {
+    opacity: 0.25;
+  }
+  42% {
+    opacity: 1;
+    transform: rotate(0deg) translateX(0) scaleY(1);
+  }
+  64% {
+    opacity: 0.95;
+    transform: rotate(11deg) translateX(4px) scaleY(1.01);
+  }
+  82%,
+  100% {
+    opacity: 0;
+    transform: rotate(18deg) translateX(7px) scaleY(1.01);
+  }
+}
+
+@keyframes page-loading-pulse {
+  0%,
+  100% {
+    opacity: 0.9;
+    background-color: var(--page-loading-skeleton-bg);
+    border-color: var(--page-loading-skeleton-border);
+    box-shadow: var(--page-loading-skeleton-shadow);
+  }
+  50% {
+    opacity: 1;
+    background-color: var(--page-loading-skeleton-bg-pulse);
+    border-color: var(--page-loading-skeleton-border-pulse);
+    box-shadow: var(--page-loading-skeleton-shadow-pulse);
   }
 }
 
@@ -991,6 +1239,15 @@ details[open] > .ui-interactive-summary,
     padding-bottom: 2.25rem;
   }
 
+  .page-loading-stage {
+    min-height: calc(100vh - 7.5rem);
+    gap: 1rem;
+  }
+
+  .page-loading-preview-columns {
+    grid-template-columns: 1fr !important;
+  }
+
   .ui-page-copy {
     font-size: 14px;
     line-height: 1.65;
@@ -1012,6 +1269,11 @@ details[open] > .ui-interactive-summary,
   .motion-subsection,
   .motion-modal-backdrop,
   .motion-modal-card,
+  .page-loading-book-shell,
+  .page-loading-book-left-page,
+  .page-loading-book-right-page,
+  .page-loading-book-flip-page,
+  .page-loading-skeleton,
   .glass-hover,
   .ui-control,
   .ui-button,
