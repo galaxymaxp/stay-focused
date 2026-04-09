@@ -32,12 +32,16 @@ export function TaskDraftPanel({
   context,
   copyBundle,
   initialSnapshot,
+  entryOrigin = 'do',
+  doPageHref,
   onSnapshotChange,
   onClose,
 }: {
   context: TaskDraftContext
   copyBundle?: Pick<ManualCopyBundleResult, 'bundleText' | 'promptText'>
   initialSnapshot?: DraftPanelSnapshot | null
+  entryOrigin?: 'today' | 'do'
+  doPageHref?: string
   onSnapshotChange?: (snapshot: DraftPanelSnapshot) => void
   onClose: () => void
 }) {
@@ -257,6 +261,16 @@ export function TaskDraftPanel({
               fullLabel="Copy for external AI"
               fullTone="secondary"
             />
+          )}
+          {entryOrigin === 'today' && doPageHref && (
+            <Link
+              href={doPageHref}
+              className="ui-button ui-button-secondary"
+              style={footerButtonStyle}
+              onClick={onClose}
+            >
+              Open in Do page
+            </Link>
           )}
           {context.learnHref && (
             <Link

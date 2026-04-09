@@ -164,6 +164,8 @@ function FocusHeroCard({ item }: { item: TodayItem }) {
         {manualCopy && (
           <TaskDraftButton
             copyBundle={manualCopy}
+            entryOrigin="today"
+            doPageHref={item.href ?? undefined}
             context={{
               taskTitle: item.title,
               taskDetails: item.supportingText,
@@ -292,6 +294,8 @@ function TodayItemCard({ item }: { item: TodayItem }) {
         {manualCopy && (
           <TaskDraftButton
             copyBundle={manualCopy}
+            entryOrigin="today"
+            doPageHref={item.href ?? undefined}
             context={{
               taskTitle: item.title,
               taskDetails: item.supportingText,
@@ -360,6 +364,8 @@ function getCardLinkProps({
 
 function shouldIgnoreCardNavigation(target: EventTarget | null, currentTarget: HTMLElement) {
   if (!(target instanceof Element)) return false
+  // Auto Prompt uses a portal, so modal clicks can bubble through React without originating in the card DOM.
+  if (!currentTarget.contains(target)) return true
   const interactiveAncestor = target.closest('a, button, input, select, textarea, summary, [role="button"], [role="link"]')
   return Boolean(interactiveAncestor && interactiveAncestor !== currentTarget)
 }

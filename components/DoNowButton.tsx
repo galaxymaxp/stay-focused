@@ -31,11 +31,15 @@ export function TaskDraftButton({
   defaultOpen = false,
   copyBundle,
   buttonStyle,
+  entryOrigin = 'do',
+  doPageHref,
 }: {
   context: TaskDraftContext
   defaultOpen?: boolean
   copyBundle?: Pick<ManualCopyBundleResult, 'bundleText' | 'promptText'>
   buttonStyle?: CSSProperties
+  entryOrigin?: 'today' | 'do'
+  doPageHref?: string
 }) {
   const [open, setOpen] = useState(false)
   const [, setCacheVersion] = useState(0)
@@ -94,6 +98,8 @@ export function TaskDraftButton({
           context={context}
           copyBundle={copyBundle}
           initialSnapshot={initialSnapshot}
+          entryOrigin={entryOrigin}
+          doPageHref={doPageHref}
           onSnapshotChange={(snapshot) => {
             draftSessionCache.set(sessionKey, snapshot)
             setCacheVersion((version) => version + 1)
