@@ -1276,6 +1276,21 @@ details[open] > .ui-interactive-summary,
   animation: prompt-build-caret 1.05s steps(1, end) infinite;
 }
 
+.sync-status-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sync-status-icon svg {
+  display: block;
+}
+
+.sync-status-icon-spinning {
+  animation: sync-status-spin 1s linear infinite;
+  transform-origin: center;
+}
+
 @keyframes prompt-build-icon-breathe {
   0%,
   100% {
@@ -1336,6 +1351,15 @@ details[open] > .ui-interactive-summary,
   46%,
   100% {
     opacity: 0.14;
+  }
+}
+
+@keyframes sync-status-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
   }
 }
 
@@ -1411,6 +1435,7 @@ details[open] > .ui-interactive-summary,
   .prompt-build-icon-line-2,
   .prompt-build-icon-line-3,
   .prompt-build-cursor,
+  .sync-status-icon-spinning,
   .glass-hover,
   .ui-control,
   .ui-button,

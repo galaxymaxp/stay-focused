@@ -5,7 +5,9 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { syncCourses, testCanvasConnection, type CanvasConnectionResult } from '@/actions/canvas'
+import { CanvasSyncStatusCard } from '@/components/CanvasSyncStatusCard'
 import { UnsyncButton } from '@/components/UnsyncButton'
+import { useCanvasSyncStatus, type CanvasSyncPhase, type SyncActivitySnapshot } from '@/components/useCanvasSyncStatus'
 import type { CanvasCourse } from '@/lib/canvas'
 import { buildCanvasCourseSyncKey } from '@/lib/canvas-sync'
 
@@ -16,11 +18,6 @@ interface SavedCanvasConnection {
   token: string
   testedAt: string
   courseCount?: number
-}
-
-interface SyncSnapshot {
-  label: string
-  tone: 'success' | 'neutral' | 'warning'
 }
 
 interface SyncedCanvasModule {
@@ -42,7 +39,7 @@ export function ConnectCanvasFlow({
   syncedModules,
 }: {
   initialConnectionUrl: string | null
-  lastSync: SyncSnapshot | null
+  lastSync: SyncActivitySnapshot | null
   syncedCourseKeys: string[]
   hasSyncedCourses: boolean
   initialAction: string | null
@@ -66,12 +63,23 @@ export function ConnectCanvasFlow({
   const [selectedCourseIds, setSelectedCourseIds] = useState<number[]>([])
   const [search, setSearch] = useState('')
   const [connectionError, setConnectionError] = useState<string | null>(null)
-  const [syncError, setSyncError] = useState<string | null>(null)
-  const [syncSuccess, setSyncSuccess] = useState<string | null>(null)
   const [savedConnection, setSavedConnection] = useState<SavedCanvasConnection | null>(initialSavedConnection)
   const [isTesting, startTesting] = useTransition()
   const [isSyncing, startSyncing] = useTransition()
   const initialActionHandledRef = useRef(false)
+  const syncStatus = useCanvasSyncStatus(lastSync)
+  const {
+    beginSync,
+    detail: syncDetail,
+    failSync,
+    finishSync,
+    isSyncing: isSyncStatusActive,
+    lastSync: latestSync,
+    phase: syncPhase,
+    progressValue: syncProgressValue,
+    resetSyncFeedback,
+    title: syncTitle,
+  } = syncStatus
   const connectionSummary = savedConnection ?? (initialConnectionUrl ? {
     url: initialConnectionUrl,
     token: '',
@@ -95,6 +103,7 @@ export function ConnectCanvasFlow({
 
   const canLoadCourses = Boolean(connectionSummary?.url && token.trim())
   const hasLoadedCourses = step === 'courses'
+  const isSyncActionPending = isSyncStatusActive || isSyncing
 
   function persistConnection(result: CanvasConnectionResult, nextToken: string) {
     const connection = {
@@ -139,7 +148,7 @@ export function ConnectCanvasFlow({
     const trimmedToken = token.trim()
 
     setConnectionError(null)
-    setSyncError(null)
+    resetSyncFeedback()
 
     startTesting(async () => {
       try {
@@ -163,7 +172,7 @@ export function ConnectCanvasFlow({
         setConnectionError(error instanceof Error ? error.message : 'We could not connect to Canvas just yet.')
       }
     })
-  }, [canvasUrl, token, startTesting])
+  }, [canvasUrl, token, startTesting, resetSyncFeedback])
 
   function handleUseSavedConnection() {
     if (!canvasUrl.trim() || !token.trim()) {
@@ -195,8 +204,7 @@ export function ConnectCanvasFlow({
     setSelectedCourseIds([])
     setSearch('')
     setConnectionError(null)
-    setSyncError(null)
-    setSyncSuccess(null)
+    resetSyncFeedback()
     openSetup('guide')
   }
 
@@ -210,8 +218,7 @@ export function ConnectCanvasFlow({
     setSearch('')
     setStep('connect')
     setConnectionError(null)
-    setSyncError(null)
-    setSyncSuccess(null)
+    resetSyncFeedback()
     openSetup('guide')
   }
 
@@ -226,8 +233,7 @@ export function ConnectCanvasFlow({
   function handleCourseSubmit() {
     if (selectedCourseIds.length === 0) return
 
-    setSyncError(null)
-    setSyncSuccess(null)
+    const syncRun = beginSync(selectedCourseIds.length)
     startSyncing(async () => {
       try {
         const selectedCourses = courses
@@ -248,19 +254,20 @@ export function ConnectCanvasFlow({
         })
 
         if ('error' in result) {
-          setSyncError(result.error)
+          failSync(syncRun, result.error)
           return
         }
 
-        setSyncSuccess(
+        await finishSync(
+          syncRun,
           result.syncedCount === 1
             ? `Synced ${result.syncedCourses[0]}.`
-            : `Synced ${result.syncedCount} courses successfully.`
+            : `Synced ${result.syncedCount} courses successfully.`,
         )
         setSelectedCourseIds([])
         router.refresh()
       } catch (error) {
-        setSyncError(error instanceof Error ? error.message : 'We could not sync those courses.')
+        failSync(syncRun, error instanceof Error ? error.message : 'We could not sync those courses.')
       }
     })
   }
@@ -291,13 +298,13 @@ export function ConnectCanvasFlow({
             />
             <div className="ui-meta-list">
               {savedConnection?.testedAt && <span><strong>Last checked:</strong> {new Date(savedConnection.testedAt).toLocaleString()}</span>}
-              {lastSync && <span><strong>Latest sync:</strong> {lastSync.label}</span>}
+              {latestSync && <span><strong>Latest sync:</strong> {latestSync.label}</span>}
             </div>
             <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
-              <button type="button" onClick={handleReconnect} disabled={isTesting || isSyncing} className="ui-button ui-button-secondary ui-button-sm">
+              <button type="button" onClick={handleReconnect} disabled={isTesting || isSyncActionPending} className="ui-button ui-button-secondary ui-button-sm">
                 Reconnect
               </button>
-              <button type="button" onClick={handleForgetConnection} disabled={isTesting || isSyncing} className="ui-button ui-button-ghost ui-button-sm">
+              <button type="button" onClick={handleForgetConnection} disabled={isTesting || isSyncActionPending} className="ui-button ui-button-ghost ui-button-sm">
                 Forget saved connection
               </button>
             </div>
@@ -325,129 +332,141 @@ export function ConnectCanvasFlow({
         title="Course sync"
         description="Load the list of available Canvas courses, select what you want to import, and run sync."
       >
-        {!hasLoadedCourses ? (
-          <div style={{ display: 'grid', gap: '0.85rem' }}>
-            <p style={bodyCopyStyle}>
-              {canLoadCourses
-                ? 'The saved connection is ready. Load your available courses when you want to sync more.'
-                : 'Connect Canvas first. After the connection check succeeds, this section becomes your course picker.'}
-            </p>
-            {connectionError && connectionSummary && <Message>{connectionError}</Message>}
-            <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
-              {canLoadCourses ? (
-                <button type="button" onClick={handleUseSavedConnection} disabled={isTesting} className="ui-button ui-button-primary ui-button-sm">
-                  {isTesting ? 'Loading courses...' : hasSyncedCourses ? 'Load more courses' : 'Load courses'}
+        <div style={{ display: 'grid', gap: '0.9rem' }}>
+          {!hasLoadedCourses ? (
+            <div style={{ display: 'grid', gap: '0.85rem' }}>
+              <p style={bodyCopyStyle}>
+                {canLoadCourses
+                  ? 'The saved connection is ready. Load your available courses when you want to sync more.'
+                  : 'Connect Canvas first. After the connection check succeeds, this section becomes your course picker.'}
+              </p>
+              {connectionError && connectionSummary && <Message>{connectionError}</Message>}
+              <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+                {canLoadCourses ? (
+                  <button type="button" onClick={handleUseSavedConnection} disabled={isTesting} className="ui-button ui-button-primary ui-button-sm">
+                    {isTesting ? 'Loading courses...' : hasSyncedCourses ? 'Load more courses' : 'Load courses'}
+                  </button>
+                ) : (
+                  <button type="button" onClick={() => openSetup('guide')} className="ui-button ui-button-primary ui-button-sm">
+                    Open setup
+                  </button>
+                )}
+                <button type="button" onClick={handleReconnect} disabled={isTesting || isSyncActionPending} className="ui-button ui-button-ghost ui-button-sm">
+                  Reconnect
                 </button>
-              ) : (
-                <button type="button" onClick={() => openSetup('guide')} className="ui-button ui-button-primary ui-button-sm">
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gap: '0.9rem' }}>
+              <StatusRow
+                title="Courses loaded"
+                detail="Choose one or more courses below. Courses already synced into the app are excluded from this list."
+                tone="success"
+              />
+
+              <div style={{ display: 'grid', gap: '0.4rem' }}>
+                <label style={labelStyle}>Search courses</label>
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Search your courses"
+                  disabled={isSyncActionPending}
+                  className="ui-input"
+                  style={inputStyle}
+                />
+                <p style={helperTextStyle}>
+                  {courses.length === 0
+                    ? 'No active courses were found for this account.'
+                    : filteredCourses.length === 0
+                      ? 'Everything available from this Canvas account is already synced.'
+                      : 'Select one or more courses to sync.'}
+                </p>
+              </div>
+
+              <div style={listShellStyle}>
+                {filteredCourses.length === 0 ? (
+                  <div style={{ padding: '0.9rem 1rem', fontSize: '13px', color: 'var(--text-secondary)' }}>
+                    {courses.some((course) => !isCourseAlreadySynced(course))
+                      ? 'No courses matched that search.'
+                      : 'All available courses from this Canvas account are already synced.'}
+                  </div>
+                ) : (
+                  filteredCourses.map((course, index) => {
+                    const isSelected = selectedCourseIds.includes(course.id)
+
+                    return (
+                      <button
+                        key={course.id}
+                        type="button"
+                        onClick={() => toggleCourseSelection(course.id)}
+                        aria-pressed={isSelected}
+                        className="ui-interactive-card"
+                        data-open={isSelected ? 'true' : 'false'}
+                        style={courseRowStyle(index < filteredCourses.length - 1, isSelected)}
+                      >
+                        <div style={{ minWidth: 0, flex: '1 1 220px' }}>
+                          <div style={{ fontSize: '14px', fontWeight: 600, lineHeight: 1.45, color: 'var(--text-primary)', overflowWrap: 'anywhere' }}>
+                            {course.name}
+                          </div>
+                          <div style={{ marginTop: '0.22rem', fontSize: '12px', color: 'var(--text-muted)', overflowWrap: 'anywhere' }}>
+                            {course.course_code}
+                          </div>
+                        </div>
+                        <span style={selectionStateStyle(isSelected)}>
+                          {isSelected ? 'Selected' : 'Select'}
+                        </span>
+                      </button>
+                    )
+                  })
+                )}
+              </div>
+
+              {selectedCourseIds.length > 0 && (
+                <p style={helperTextStyle}>
+                  {selectedCourseIds.length} course{selectedCourseIds.length === 1 ? '' : 's'} selected.
+                </p>
+              )}
+
+              <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={handleCourseSubmit}
+                  disabled={selectedCourseIds.length === 0 || isSyncActionPending || courses.length === 0}
+                  className="ui-button ui-button-primary ui-button-sm"
+                >
+                  {getSyncButtonLabel({
+                    isSyncing: isSyncActionPending,
+                    phase: syncPhase,
+                    selectedCourseCount: selectedCourseIds.length,
+                  })}
+                </button>
+                <button type="button" onClick={handleReconnect} disabled={isSyncActionPending} className="ui-button ui-button-ghost ui-button-sm">
                   Open setup
                 </button>
-              )}
-              <button type="button" onClick={handleReconnect} disabled={isTesting || isSyncing} className="ui-button ui-button-ghost ui-button-sm">
-                Reconnect
-              </button>
+              </div>
             </div>
-          </div>
-        ) : (
-          <div style={{ display: 'grid', gap: '0.9rem' }}>
-            <StatusRow
-              title="Courses loaded"
-              detail="Choose one or more courses below. Courses already synced into the app are excluded from this list."
-              tone="success"
-            />
+          )}
 
-            <div style={{ display: 'grid', gap: '0.4rem' }}>
-              <label style={labelStyle}>Search courses</label>
-              <input
-                type="text"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search your courses"
-                disabled={isSyncing}
-                className="ui-input"
-                style={inputStyle}
-              />
-              <p style={helperTextStyle}>
-                {courses.length === 0
-                  ? 'No active courses were found for this account.'
-                  : filteredCourses.length === 0
-                    ? 'Everything available from this Canvas account is already synced.'
-                    : 'Select one or more courses to sync.'}
-              </p>
-            </div>
-
-            <div style={listShellStyle}>
-              {filteredCourses.length === 0 ? (
-                <div style={{ padding: '0.9rem 1rem', fontSize: '13px', color: 'var(--text-secondary)' }}>
-                  {courses.some((course) => !isCourseAlreadySynced(course))
-                    ? 'No courses matched that search.'
-                    : 'All available courses from this Canvas account are already synced.'}
-                </div>
-              ) : (
-                filteredCourses.map((course, index) => {
-                  const isSelected = selectedCourseIds.includes(course.id)
-
-                  return (
-                    <button
-                      key={course.id}
-                      type="button"
-                      onClick={() => toggleCourseSelection(course.id)}
-                      aria-pressed={isSelected}
-                      className="ui-interactive-card"
-                      data-open={isSelected ? 'true' : 'false'}
-                      style={courseRowStyle(index < filteredCourses.length - 1, isSelected)}
-                    >
-                      <div style={{ minWidth: 0, flex: '1 1 220px' }}>
-                        <div style={{ fontSize: '14px', fontWeight: 600, lineHeight: 1.45, color: 'var(--text-primary)', overflowWrap: 'anywhere' }}>
-                          {course.name}
-                        </div>
-                        <div style={{ marginTop: '0.22rem', fontSize: '12px', color: 'var(--text-muted)', overflowWrap: 'anywhere' }}>
-                          {course.course_code}
-                        </div>
-                      </div>
-                      <span style={selectionStateStyle(isSelected)}>
-                        {isSelected ? 'Selected' : 'Select'}
-                      </span>
-                    </button>
-                  )
-                })
-              )}
-            </div>
-
-            {selectedCourseIds.length > 0 && (
-              <p style={helperTextStyle}>
-                {selectedCourseIds.length} course{selectedCourseIds.length === 1 ? '' : 's'} selected.
-              </p>
-            )}
-
-            {syncError && <Message>{syncError}</Message>}
-            {syncSuccess && <SuccessMessage>{syncSuccess}</SuccessMessage>}
-
-            <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
-              <button type="button" onClick={handleCourseSubmit} disabled={selectedCourseIds.length === 0 || isSyncing || courses.length === 0} className="ui-button ui-button-primary ui-button-sm">
-                {isSyncing ? 'Syncing...' : selectedCourseIds.length > 1 ? `Sync ${selectedCourseIds.length} courses` : 'Sync selected course'}
-              </button>
-              <button type="button" onClick={handleReconnect} disabled={isSyncing} className="ui-button ui-button-ghost ui-button-sm">
-                Open setup
-              </button>
-            </div>
-
-            {isSyncing && (
-              <p style={helperTextStyle}>
-                Pulling in assignments, announcements, and module content. This can take a few seconds.
-              </p>
-            )}
-          </div>
-        )}
+          <CanvasSyncStatusCard
+            phase={syncPhase}
+            progressValue={syncProgressValue}
+            title={syncTitle}
+            detail={syncDetail}
+            lastSync={latestSync}
+            onRetry={selectedCourseIds.length > 0 ? handleCourseSubmit : undefined}
+            showWhenIdle={Boolean(latestSync || hasLoadedCourses)}
+          />
+        </div>
       </PlainSection>
 
-      {lastSync && (
+      {latestSync && (
         <PlainSection
           eyebrow="Recent activity"
           title="Last sync"
           description="The latest sync result from this workspace."
         >
-          <StatusRow title="Latest run" detail={lastSync.label} tone={lastSync.tone} />
+          <StatusRow title="Latest run" detail={latestSync.label} tone={latestSync.tone} />
         </PlainSection>
       )}
 
@@ -665,7 +684,7 @@ function StatusRow({
 }: {
   title: string
   detail: string
-  tone: SyncSnapshot['tone'] | 'success'
+  tone: SyncActivitySnapshot['tone'] | 'success'
 }) {
   const borderColor = tone === 'success'
     ? 'color-mix(in srgb, var(--green) 22%, var(--border-subtle) 78%)'
@@ -689,6 +708,32 @@ function StatusRow({
       <p style={{ margin: '0.28rem 0 0', fontSize: '13px', lineHeight: 1.6, color: 'var(--text-secondary)' }}>{detail}</p>
     </div>
   )
+}
+
+function getSyncButtonLabel({
+  isSyncing,
+  phase,
+  selectedCourseCount,
+}: {
+  isSyncing: boolean
+  phase: CanvasSyncPhase
+  selectedCourseCount: number
+}) {
+  if (isSyncing) {
+    if (phase === 'starting') return 'Starting sync...'
+    if (phase === 'connecting') return 'Connecting...'
+    if (phase === 'fetchingCourses') return 'Fetching course data...'
+    if (phase === 'fetchingModules') return 'Fetching modules...'
+    if (phase === 'merging') return 'Merging data...'
+    if (phase === 'saving') return 'Saving...'
+    return 'Syncing...'
+  }
+
+  if (phase === 'error') {
+    return selectedCourseCount > 1 ? `Retry ${selectedCourseCount} courses` : 'Retry sync'
+  }
+
+  return selectedCourseCount > 1 ? `Sync ${selectedCourseCount} courses` : 'Sync selected course'
 }
 
 function Field({
@@ -731,22 +776,6 @@ function Message({ children }: { children: ReactNode }) {
       borderRadius: '12px',
       border: '1px solid color-mix(in srgb, var(--red) 22%, var(--border-subtle) 78%)',
       background: 'color-mix(in srgb, var(--red-light) 20%, var(--surface-elevated) 80%)',
-      padding: '0.85rem 0.95rem',
-      fontSize: '13px',
-      lineHeight: 1.6,
-      color: 'var(--text-secondary)',
-    }}>
-      {children}
-    </div>
-  )
-}
-
-function SuccessMessage({ children }: { children: ReactNode }) {
-  return (
-    <div style={{
-      borderRadius: '12px',
-      border: '1px solid color-mix(in srgb, var(--green) 22%, var(--border-subtle) 78%)',
-      background: 'color-mix(in srgb, var(--green-light) 18%, var(--surface-elevated) 82%)',
       padding: '0.85rem 0.95rem',
       fontSize: '13px',
       lineHeight: 1.6,
