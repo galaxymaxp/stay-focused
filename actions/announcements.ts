@@ -42,6 +42,10 @@ export async function loadAnnouncementReadStates(announcementKeys: string[]) {
     .filter((value): value is string => typeof value === 'string' && value.length > 0)
 }
 
+export async function loadAnnouncementViewedStates(announcementKeys: string[]) {
+  return loadAnnouncementReadStates(announcementKeys)
+}
+
 export async function markAnnouncementRead(input: {
   announcementKey: string
   moduleId: string
@@ -80,6 +84,43 @@ export async function markAnnouncementRead(input: {
       error: serializeErrorForLogging(error),
     })
     throw new Error('Could not save announcement read state.')
+  }
+
+  revalidatePath('/')
+}
+
+export async function markAnnouncementViewed(input: {
+  announcementKey: string
+  moduleId: string
+  supportId: string
+  title: string
+  postedLabel: string | null
+  href: string
+}) {
+  return markAnnouncementRead(input)
+}
+
+export async function markAnnouncementUnread(input: {
+  announcementKey: string
+}) {
+  if (!supabase) throw new Error('Supabase is not configured.')
+
+  const identity = await resolveAnnouncementReadStateIdentity()
+
+  const { error } = await supabase
+    .from(ANNOUNCEMENT_READ_STATE_TABLE)
+    .delete()
+    .eq('user_key', identity.userKey)
+    .eq('announcement_key', input.announcementKey)
+
+  if (error) {
+    console.error('[announcement-read-state] delete_failed', {
+      userId: identity.userId,
+      userKey: identity.userKey,
+      input,
+      error: serializeErrorForLogging(error),
+    })
+    throw new Error('Could not clear announcement viewed state.')
   }
 
   revalidatePath('/')

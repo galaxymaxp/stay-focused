@@ -1,10 +1,10 @@
 'use client'
 
 import type { CSSProperties } from 'react'
-import { useEffect, useMemo, useState, useTransition } from 'react'
 import Link from 'next/link'
-import { loadAnnouncementReadStates, markAnnouncementRead } from '@/actions/announcements'
+import { useRouter } from 'next/navigation'
 import type { ParsedAnnouncement } from '@/lib/announcements'
+import { useAnnouncementViewedState } from '@/components/useAnnouncementViewedState'
 
 /**
  * Displays recent Canvas announcements on the Home page.
@@ -17,41 +17,7 @@ export function AnnouncementsBand({
 }: {
   announcements: ParsedAnnouncement[]
 }) {
-  const announcementKeys = useMemo(
-    () => announcements.map((announcement) => announcement.announcementKey),
-    [announcements],
-  )
-  const [readAnnouncementKeys, setReadAnnouncementKeys] = useState<string[]>([])
-  const [pendingAnnouncementKey, setPendingAnnouncementKey] = useState<string | null>(null)
-  const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const [isPending, startTransition] = useTransition()
-
-  useEffect(() => {
-    let active = true
-
-    async function hydrateReadState() {
-      try {
-        const loadedKeys = await loadAnnouncementReadStates(announcementKeys)
-        if (!active) return
-        setReadAnnouncementKeys(loadedKeys)
-      } catch (error) {
-        if (!active) return
-        console.error('Announcement read-state load failed:', error)
-        setErrorMessage('Announcement read state could not be loaded right now.')
-      }
-    }
-
-    setErrorMessage(null)
-    setReadAnnouncementKeys([])
-
-    if (announcementKeys.length > 0) {
-      void hydrateReadState()
-    }
-
-    return () => {
-      active = false
-    }
-  }, [announcementKeys])
+  const state = useAnnouncementViewedState(announcements)
 
   return (
     <section className="motion-card motion-delay-1 section-shell section-shell-elevated" style={{ padding: '1rem 1.05rem', display: 'grid', gap: '0.75rem' }}>
@@ -66,9 +32,9 @@ export function AnnouncementsBand({
         <span className="ui-chip ui-chip-soft">{announcements.length} recent</span>
       </div>
 
-      {errorMessage && (
+      {state.errorMessage && (
         <div className="ui-empty" style={errorStyle}>
-          {errorMessage}
+          {state.errorMessage}
         </div>
       )}
 
@@ -83,34 +49,10 @@ export function AnnouncementsBand({
             <AnnouncementCard
               key={announcement.announcementKey}
               announcement={announcement}
-              isRead={readAnnouncementKeys.includes(announcement.announcementKey)}
-              isPending={isPending && pendingAnnouncementKey === announcement.announcementKey}
-              onMarkAsRead={() => {
-                setErrorMessage(null)
-                setPendingAnnouncementKey(announcement.announcementKey)
-
-                startTransition(async () => {
-                  try {
-                    await markAnnouncementRead({
-                      announcementKey: announcement.announcementKey,
-                      moduleId: announcement.moduleId,
-                      supportId: announcement.supportId,
-                      title: announcement.title,
-                      postedLabel: announcement.postedLabel,
-                      href: announcement.href,
-                    })
-
-                    setReadAnnouncementKeys((current) => current.includes(announcement.announcementKey)
-                      ? current
-                      : [...current, announcement.announcementKey])
-                  } catch (error) {
-                    console.error('Announcement read-state save failed:', error)
-                    setErrorMessage('Mark as read could not be saved right now.')
-                  } finally {
-                    setPendingAnnouncementKey(null)
-                  }
-                })
-              }}
+              isViewed={state.isViewed(announcement.announcementKey)}
+              isPending={state.isSaving && state.pendingAnnouncementKey === announcement.announcementKey}
+              onMarkViewed={() => state.markViewed(announcement.announcementKey)}
+              onMarkUnread={() => state.markUnread(announcement.announcementKey)}
             />
           ))}
         </div>
@@ -121,15 +63,18 @@ export function AnnouncementsBand({
 
 function AnnouncementCard({
   announcement,
-  isRead,
+  isViewed,
   isPending,
-  onMarkAsRead,
+  onMarkViewed,
+  onMarkUnread,
 }: {
   announcement: ParsedAnnouncement
-  isRead: boolean
+  isViewed: boolean
   isPending: boolean
-  onMarkAsRead: () => void
+  onMarkViewed: () => void
+  onMarkUnread: () => void
 }) {
+  const router = useRouter()
   const body = announcement.body
     ? announcement.body.length > 220
       ? `${announcement.body.slice(0, 220).trimEnd()}...`
@@ -140,7 +85,9 @@ function AnnouncementCard({
     <>
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.42rem', marginBottom: '0.3rem', flexWrap: 'wrap' }}>
         <span className="ui-chip" style={announceBadgeStyle}>Announcement</span>
-        {isRead && <span className="ui-chip" style={readBadgeStyle}>Read</span>}
+        <span className="ui-chip" style={isViewed ? viewedBadgeStyle : unviewedBadgeStyle}>
+          {isViewed ? 'Viewed' : 'New'}
+        </span>
         <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{announcement.courseName}</span>
         {announcement.postedLabel && <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{announcement.postedLabel}</span>}
       </div>
@@ -150,35 +97,81 @@ function AnnouncementCard({
         <p style={{ margin: 0, fontSize: '11px', color: 'var(--text-muted)' }}>
           {announcement.external ? 'Open announcement target' : 'Open module support view'}
         </p>
-        <button
-          type="button"
-          className={`ui-button ${isRead ? 'ui-button-ghost' : 'ui-button-secondary'} ui-button-xs`}
-          onClick={(event) => {
-            event.preventDefault()
-            event.stopPropagation()
-            if (!isRead && !isPending) {
-              onMarkAsRead()
-            }
-          }}
-          disabled={isRead || isPending}
-          style={{ minHeight: '1.95rem' }}
-        >
-          {isRead ? 'Read' : isPending ? 'Saving...' : 'Mark as Read'}
-        </button>
+        <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            className="ui-button ui-button-secondary ui-button-xs"
+            onClick={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+
+              if (!isViewed && !isPending) {
+                onMarkViewed()
+              }
+
+              if (announcement.external) {
+                window.open(announcement.href, '_blank', 'noopener,noreferrer')
+                return
+              }
+
+              router.push(announcement.href)
+            }}
+            style={{ minHeight: '1.95rem' }}
+          >
+            {isPending && !isViewed ? 'Saving...' : isViewed ? 'Open again' : 'Open and mark viewed'}
+          </button>
+          <button
+            type="button"
+            className={`ui-button ${isViewed ? 'ui-button-ghost' : 'ui-button-secondary'} ui-button-xs`}
+            onClick={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+              if (isPending) return
+              if (isViewed) {
+                onMarkUnread()
+                return
+              }
+              onMarkViewed()
+            }}
+            style={{ minHeight: '1.95rem' }}
+          >
+            {isPending && isViewed ? 'Saving...' : isViewed ? 'Mark unread' : 'Mark viewed'}
+          </button>
+        </div>
       </div>
     </>
   )
 
   if (announcement.external) {
     return (
-      <a href={announcement.href} target="_blank" rel="noreferrer" className="glass-panel glass-hover" style={cardStyle(isRead)}>
+      <a
+        href={announcement.href}
+        target="_blank"
+        rel="noreferrer"
+        className="glass-panel glass-hover"
+        style={cardStyle(isViewed)}
+        onClick={() => {
+          if (!isViewed && !isPending) {
+            onMarkViewed()
+          }
+        }}
+      >
         {content}
       </a>
     )
   }
 
   return (
-    <Link href={announcement.href} className="glass-panel glass-hover" style={cardStyle(isRead)}>
+    <Link
+      href={announcement.href}
+      className="glass-panel glass-hover"
+      style={cardStyle(isViewed)}
+      onClick={() => {
+        if (!isViewed && !isPending) {
+          onMarkViewed()
+        }
+      }}
+    >
       {content}
     </Link>
   )
@@ -198,13 +191,16 @@ const errorStyle: CSSProperties = {
   lineHeight: 1.55,
 }
 
-function cardStyle(isRead: boolean): CSSProperties {
+function cardStyle(isViewed: boolean): CSSProperties {
   return {
     borderRadius: 'var(--radius-panel)',
     padding: '0.78rem 0.88rem',
     textDecoration: 'none',
     display: 'block',
-    opacity: isRead ? 0.78 : 1,
+    opacity: isViewed ? 0.8 : 1,
+    border: isViewed
+      ? '1px solid color-mix(in srgb, var(--border-subtle) 85%, transparent)'
+      : '1px solid color-mix(in srgb, var(--blue) 20%, var(--border-subtle) 80%)',
   }
 }
 
@@ -217,13 +213,22 @@ const announceBadgeStyle: CSSProperties = {
   border: '1px solid color-mix(in srgb, var(--blue) 22%, var(--border-subtle) 78%)',
 }
 
-const readBadgeStyle: CSSProperties = {
+const viewedBadgeStyle: CSSProperties = {
   padding: '0.2rem 0.55rem',
   fontSize: '11px',
   fontWeight: 700,
   background: 'color-mix(in srgb, var(--surface-soft) 88%, transparent)',
   color: 'var(--text-secondary)',
   border: '1px solid var(--border-subtle)',
+}
+
+const unviewedBadgeStyle: CSSProperties = {
+  padding: '0.2rem 0.55rem',
+  fontSize: '11px',
+  fontWeight: 700,
+  background: 'color-mix(in srgb, var(--blue-light) 42%, var(--surface-soft) 58%)',
+  color: 'var(--blue)',
+  border: '1px solid color-mix(in srgb, var(--blue) 22%, var(--border-subtle) 78%)',
 }
 
 const titleStyle: CSSProperties = {

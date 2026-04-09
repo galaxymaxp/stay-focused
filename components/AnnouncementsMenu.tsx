@@ -1,8 +1,11 @@
 'use client'
 
+import type { CSSProperties } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
 import type { ParsedAnnouncement } from '@/lib/announcements'
+import { useAnnouncementViewedState } from '@/components/useAnnouncementViewedState'
 
 export function AnnouncementsMenu({
   announcements,
@@ -12,6 +15,8 @@ export function AnnouncementsMenu({
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement | null>(null)
   const latest = announcements[0] ?? null
+  const state = useAnnouncementViewedState(announcements)
+  const unviewedCount = announcements.filter((announcement) => !state.isViewed(announcement.announcementKey)).length
 
   useEffect(() => {
     if (!open) return
@@ -59,8 +64,13 @@ export function AnnouncementsMenu({
           Announcements
         </span>
         <span style={{ fontSize: '12px', lineHeight: 1.35, color: 'var(--text-primary)', maxWidth: '16rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {latest ? `${latest.title} · ${latest.courseName}` : 'No recent items'}
+          {latest ? `${latest.title} - ${latest.courseName}` : 'No recent items'}
         </span>
+        {unviewedCount > 0 && (
+          <span className="ui-chip" style={unviewedCountStyle}>
+            {unviewedCount} new
+          </span>
+        )}
       </button>
 
       {open && (
@@ -92,6 +102,12 @@ export function AnnouncementsMenu({
             </button>
           </div>
 
+          {state.errorMessage && (
+            <div className="ui-empty" style={{ borderRadius: 'var(--radius-tight)', padding: '0.8rem 0.9rem', fontSize: '13px', lineHeight: 1.55 }}>
+              {state.errorMessage}
+            </div>
+          )}
+
           {announcements.length === 0 ? (
             <div className="ui-empty" style={{ borderRadius: 'var(--radius-tight)', padding: '0.9rem 0.95rem', fontSize: '13px', lineHeight: 1.6 }}>
               Nothing has been captured yet. Sync a course to populate recent announcements here.
@@ -99,7 +115,15 @@ export function AnnouncementsMenu({
           ) : (
             <div style={{ display: 'grid', gap: '0.55rem', maxHeight: '19rem', overflowY: 'auto', paddingRight: '0.18rem' }}>
               {announcements.map((announcement) => (
-                <AnnouncementMenuItem key={`${announcement.moduleId}-${announcement.supportId}`} announcement={announcement} onSelect={() => setOpen(false)} />
+                <AnnouncementMenuItem
+                  key={announcement.announcementKey}
+                  announcement={announcement}
+                  isViewed={state.isViewed(announcement.announcementKey)}
+                  isPending={state.isSaving && state.pendingAnnouncementKey === announcement.announcementKey}
+                  onMarkViewed={() => state.markViewed(announcement.announcementKey)}
+                  onMarkUnread={() => state.markUnread(announcement.announcementKey)}
+                  onSelect={() => setOpen(false)}
+                />
               ))}
             </div>
           )}
@@ -111,11 +135,20 @@ export function AnnouncementsMenu({
 
 function AnnouncementMenuItem({
   announcement,
+  isViewed,
+  isPending,
+  onMarkViewed,
+  onMarkUnread,
   onSelect,
 }: {
   announcement: ParsedAnnouncement
+  isViewed: boolean
+  isPending: boolean
+  onMarkViewed: () => void
+  onMarkUnread: () => void
   onSelect: () => void
 }) {
+  const router = useRouter()
   const body = announcement.body
     ? announcement.body.length > 150
       ? `${announcement.body.slice(0, 150).trimEnd()}...`
@@ -126,6 +159,9 @@ function AnnouncementMenuItem({
     <>
       <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', alignItems: 'center' }}>
         <span className="ui-chip ui-chip-soft">Announcement</span>
+        <span className="ui-chip" style={isViewed ? viewedBadgeStyle : unviewedBadgeStyle}>
+          {isViewed ? 'Viewed' : 'New'}
+        </span>
         <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{announcement.courseName}</span>
         {announcement.postedLabel && <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{announcement.postedLabel}</span>}
       </div>
@@ -140,6 +176,47 @@ function AnnouncementMenuItem({
       <p style={{ margin: '0.38rem 0 0', fontSize: '11px', lineHeight: 1.45, color: 'var(--text-muted)' }}>
         {announcement.external ? 'Open announcement target' : 'Open module support view'}
       </p>
+      <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', marginTop: '0.5rem' }}>
+        <button
+          type="button"
+          className="ui-button ui-button-secondary ui-button-xs"
+          onClick={(event) => {
+            event.preventDefault()
+            event.stopPropagation()
+
+            if (!isViewed && !isPending) {
+              onMarkViewed()
+            }
+
+            onSelect()
+
+            if (announcement.external) {
+              window.open(announcement.href, '_blank', 'noopener,noreferrer')
+              return
+            }
+
+            router.push(announcement.href)
+          }}
+        >
+          {isPending && !isViewed ? 'Saving...' : isViewed ? 'Open again' : 'Open and mark viewed'}
+        </button>
+        <button
+          type="button"
+          className={`ui-button ${isViewed ? 'ui-button-ghost' : 'ui-button-secondary'} ui-button-xs`}
+          onClick={(event) => {
+            event.preventDefault()
+            event.stopPropagation()
+            if (isPending) return
+            if (isViewed) {
+              onMarkUnread()
+              return
+            }
+            onMarkViewed()
+          }}
+        >
+          {isPending && isViewed ? 'Saving...' : isViewed ? 'Mark unread' : 'Mark viewed'}
+        </button>
+      </div>
     </>
   )
 
@@ -149,9 +226,14 @@ function AnnouncementMenuItem({
         href={announcement.href}
         target="_blank"
         rel="noreferrer"
-        onClick={onSelect}
+        onClick={() => {
+          if (!isViewed && !isPending) {
+            onMarkViewed()
+          }
+          onSelect()
+        }}
         className="ui-card-soft"
-        style={{ borderRadius: 'var(--radius-tight)', padding: '0.75rem 0.8rem', textDecoration: 'none', display: 'block' }}
+        style={{ borderRadius: 'var(--radius-tight)', padding: '0.75rem 0.8rem', textDecoration: 'none', display: 'block', opacity: isViewed ? 0.82 : 1 }}
       >
         {content}
       </a>
@@ -161,11 +243,44 @@ function AnnouncementMenuItem({
   return (
     <Link
       href={announcement.href}
-      onClick={onSelect}
+      onClick={() => {
+        if (!isViewed && !isPending) {
+          onMarkViewed()
+        }
+        onSelect()
+      }}
       className="ui-card-soft"
-      style={{ borderRadius: 'var(--radius-tight)', padding: '0.75rem 0.8rem', textDecoration: 'none', display: 'block' }}
+      style={{ borderRadius: 'var(--radius-tight)', padding: '0.75rem 0.8rem', textDecoration: 'none', display: 'block', opacity: isViewed ? 0.82 : 1 }}
     >
       {content}
     </Link>
   )
+}
+
+const unviewedCountStyle: CSSProperties = {
+  marginTop: '0.2rem',
+  padding: '0.22rem 0.55rem',
+  fontSize: '11px',
+  fontWeight: 700,
+  background: 'color-mix(in srgb, var(--blue-light) 42%, var(--surface-soft) 58%)',
+  color: 'var(--blue)',
+  border: '1px solid color-mix(in srgb, var(--blue) 22%, var(--border-subtle) 78%)',
+}
+
+const viewedBadgeStyle: CSSProperties = {
+  padding: '0.2rem 0.55rem',
+  fontSize: '11px',
+  fontWeight: 700,
+  background: 'color-mix(in srgb, var(--surface-soft) 88%, transparent)',
+  color: 'var(--text-secondary)',
+  border: '1px solid var(--border-subtle)',
+}
+
+const unviewedBadgeStyle: CSSProperties = {
+  padding: '0.2rem 0.55rem',
+  fontSize: '11px',
+  fontWeight: 700,
+  background: 'color-mix(in srgb, var(--blue-light) 42%, var(--surface-soft) 58%)',
+  color: 'var(--blue)',
+  border: '1px solid color-mix(in srgb, var(--blue) 22%, var(--border-subtle) 78%)',
 }

@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import type { CSSProperties, ReactNode } from 'react'
+import { AnnouncementSupportRow } from '@/components/AnnouncementSupportRow'
 import { ModuleLensShell } from '@/components/ModuleLensShell'
 import { ModuleTermBank } from '@/components/ModuleTermBank'
 import { StudyResourceAccordionList } from '@/components/StudyResourceAccordionList'
@@ -432,6 +433,7 @@ export default async function LearnPage({ params, searchParams }: Props) {
                     <SupportContextRow
                       key={item.id}
                       moduleId={module.id}
+                      courseId={module.courseId}
                       item={item}
                       highlighted={targetSupportId === item.id}
                     />
@@ -512,13 +514,29 @@ function SourceSupportRow({
 
 function SupportContextRow({
   moduleId,
+  courseId,
   item,
   highlighted = false,
 }: {
   moduleId: string
+  courseId: string | null
   item: ModuleSourceResource
   highlighted?: boolean
 }) {
+  if (item.kind === 'announcement') {
+    return (
+      <AnnouncementSupportRow
+        moduleId={moduleId}
+        courseId={courseId}
+        supportId={item.id}
+        title={item.title}
+        canvasHref={getResourceCanvasHref(item)}
+        note={item.linkedContext ?? item.whyItMatters ?? item.qualityReason ?? item.capabilityReason ?? item.moduleName ?? 'Supporting context'}
+        highlighted={highlighted}
+      />
+    )
+  }
+
   const canvasHref = getResourceCanvasHref(item)
   const capability = getModuleResourceCapabilityInfo(item)
   const quality = getModuleResourceQualityInfo(item)

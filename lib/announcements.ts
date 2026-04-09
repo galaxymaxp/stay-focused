@@ -15,6 +15,14 @@ export interface ParsedAnnouncement {
   targetHref: string | null
 }
 
+interface AnnouncementIdentityInput {
+  courseId: string
+  title: string
+  postedLabel?: string | null
+  href?: string | null
+  targetHref?: string | null
+}
+
 /**
  * Parses the RECENT ANNOUNCEMENTS section out of a compiled Canvas raw_content blob.
  * The format produced by compileCanvasContent() is:
@@ -77,6 +85,7 @@ export function getRecentAnnouncements(
   maxTotal = 5,
 ): ParsedAnnouncement[] {
   const result: ParsedAnnouncement[] = []
+  const seenAnnouncementKeys = new Set<string>()
 
   const sortedModules = [...modules]
     .filter((m) => Boolean(m.raw_content))
@@ -99,15 +108,22 @@ export function getRecentAnnouncements(
         supportId,
       })
       const href = ann.targetHref ?? fallbackHref
+      const announcementKey = buildAnnouncementKey({
+        courseId: moduleRecord.courseId ?? '',
+        title: ann.title,
+        postedLabel: ann.postedLabel,
+        href,
+        targetHref: ann.targetHref,
+      })
+
+      if (seenAnnouncementKeys.has(announcementKey)) {
+        continue
+      }
+
+      seenAnnouncementKeys.add(announcementKey)
 
       result.push({
-        announcementKey: buildAnnouncementKey({
-          moduleId: moduleRecord.id,
-          supportId,
-          title: ann.title,
-          postedLabel: ann.postedLabel,
-          href,
-        }),
+        announcementKey,
         title: ann.title,
         body: ann.body,
         postedLabel: ann.postedLabel,
@@ -125,19 +141,36 @@ export function getRecentAnnouncements(
   return result
 }
 
-function buildAnnouncementKey(input: {
-  moduleId: string
-  supportId: string
-  title: string
-  postedLabel: string | null
-  href: string
-}) {
+export function buildAnnouncementKey(input: AnnouncementIdentityInput) {
+  const stableHref = input.targetHref ?? getStableAnnouncementHref(input.href)
+  const discussionTopicId = extractCanvasAnnouncementId(stableHref)
+
+  if (discussionTopicId) {
+    return [
+      normalizeAnnouncementIdentityPart(input.courseId),
+      'discussion-topic',
+      discussionTopicId,
+    ].join('::')
+  }
+
+  const normalizedTitle = normalizeAnnouncementIdentityPart(input.title)
+  const normalizedHref = normalizeAnnouncementIdentityPart(stableHref)
+  const normalizedPostedLabel = normalizeAnnouncementIdentityPart(input.postedLabel)
+
+  if (normalizedHref) {
+    return [
+      normalizeAnnouncementIdentityPart(input.courseId),
+      'href',
+      normalizedHref,
+      normalizedTitle,
+    ].join('::')
+  }
+
   return [
-    input.moduleId,
-    input.supportId,
-    normalizeAnnouncementIdentityPart(input.title),
-    normalizeAnnouncementIdentityPart(input.postedLabel),
-    normalizeAnnouncementIdentityPart(input.href),
+    normalizeAnnouncementIdentityPart(input.courseId),
+    'title',
+    normalizedTitle,
+    normalizedPostedLabel,
   ].join('::')
 }
 
@@ -146,6 +179,19 @@ function normalizeAnnouncementIdentityPart(value: string | null) {
     .trim()
     .toLowerCase()
     .replace(/\s+/g, ' ')
+}
+
+function extractCanvasAnnouncementId(value: string | null) {
+  if (!value) return null
+
+  const match = value.match(/\/discussion_topics\/(\d+)(?:[/?#]|$)/i)
+  return match?.[1] ?? null
+}
+
+function getStableAnnouncementHref(value: string | null | undefined) {
+  if (!value) return null
+  if (value.startsWith('/modules/')) return null
+  return value
 }
 
 function parseAnnouncementTitle(value: string) {
