@@ -279,20 +279,21 @@ function DayMarkerStack({ items }: { items: CalendarItem[] }) {
               display: 'inline-flex',
               alignItems: 'center',
               gap: '0.35rem',
-              width: 'fit-content',
               maxWidth: '100%',
+              overflow: 'hidden',
               padding: '0.18rem 0.4rem',
               borderRadius: '999px',
               fontSize: '11px',
               border: `1px solid ${style.chipBorder}`,
               background: style.chipBg,
               color: style.chipText,
-              whiteSpace: 'nowrap',
               fontWeight: 600,
             }}
           >
             <span style={{ width: '6px', height: '6px', borderRadius: '999px', background: style.dot, flexShrink: 0 }} />
-            {count} {style.label.toLowerCase()}
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
+              {count} {style.label.toLowerCase()}
+            </span>
           </span>
         )
       })}
