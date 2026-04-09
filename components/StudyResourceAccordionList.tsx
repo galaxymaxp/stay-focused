@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
 import { getResourceElementId } from '@/lib/stay-focused-links'
 import { StudyOutlineView } from '@/components/StudyOutlineView'
-import type { StudyFileOutlineSection } from '@/lib/study-file-reader'
+import type { StudyFileOutlineSection, StudyFileReaderState } from '@/lib/study-file-reader'
 
 export interface StudyResourceAccordionItem {
   id: string
@@ -13,11 +13,13 @@ export interface StudyResourceAccordionItem {
   fileTypeLabel: string
   readinessLabel: string
   readinessTone: 'accent' | 'warning' | 'muted'
+  readerState: StudyFileReaderState
   required: boolean
   outlineSections: StudyFileOutlineSection[]
   outlineHint: string | null
   readerHref: string
   canvasHref: string | null
+  originalFileHref?: string | null
   extraActionHref?: string | null
   extraActionLabel?: string | null
 }
@@ -74,6 +76,7 @@ export function StudyResourceAccordionList({
     <div style={{ display: 'grid', gap: '0.75rem' }}>
       {items.map((item, index) => {
         const expanded = resolvedOpenResourceId === item.id
+        const presentation = resolvePresentation(item)
 
         return (
           <article
@@ -126,7 +129,7 @@ export function StudyResourceAccordionList({
                   {item.title}
                 </h4>
                 <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.62, color: 'var(--text-secondary)' }}>
-                  {truncateText(item.note, expanded ? 240 : 170)}
+                  {truncateText(presentation.summary, expanded ? 240 : 170)}
                 </p>
               </div>
 
@@ -137,21 +140,52 @@ export function StudyResourceAccordionList({
 
             {expanded && (
               <div style={{ display: 'grid', gap: '0.75rem' }}>
-                {item.outlineSections.length > 0 ? (
+                {presentation.mode === 'notes_first' && item.outlineSections.length > 0 ? (
                   <StudyOutlineView sections={item.outlineSections} />
-                ) : (
+                ) : presentation.mode === 'notes_first' ? (
                   <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.9rem 0.95rem' }}>
                     <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.72, color: 'var(--text-secondary)' }}>
                       {item.outlineHint ?? 'Readable study notes are not available for this resource yet.'}
                     </p>
                   </div>
+                ) : (
+                  <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.9rem 0.95rem', display: 'grid', gap: '0.4rem' }}>
+                    <p className="ui-kicker" style={{ margin: 0 }}>
+                      {presentation.mode === 'reader_fallback' ? 'Use the original source first' : 'Source-first fallback'}
+                    </p>
+                    <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.72, color: 'var(--text-secondary)' }}>
+                      {presentation.detail}
+                    </p>
+                  </div>
                 )}
 
                 <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-                  <Link href={item.readerHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
-                    Open reader
-                  </Link>
-                  {item.canvasHref && (
+                  {presentation.mode === 'source_first' ? (
+                    <>
+                      {item.originalFileHref ? (
+                        <a href={item.originalFileHref} target="_blank" rel="noreferrer" className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
+                          Open original file
+                        </a>
+                      ) : item.canvasHref ? (
+                        <a href={item.canvasHref} target="_blank" rel="noreferrer" className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
+                          Open in Canvas
+                        </a>
+                      ) : null}
+                      <Link href={item.readerHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+                        Open reader
+                      </Link>
+                    </>
+                  ) : (
+                    <Link href={item.readerHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
+                      Open reader
+                    </Link>
+                  )}
+                  {presentation.mode !== 'source_first' && item.originalFileHref && (
+                    <a href={item.originalFileHref} target="_blank" rel="noreferrer" className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+                      Open original file
+                    </a>
+                  )}
+                  {item.canvasHref && (presentation.mode !== 'source_first' || item.originalFileHref) && (
                     <a href={item.canvasHref} target="_blank" rel="noreferrer" className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
                       Open in Canvas
                     </a>
@@ -169,6 +203,39 @@ export function StudyResourceAccordionList({
       })}
     </div>
   )
+}
+
+type StudyResourcePresentationMode = 'notes_first' | 'reader_fallback' | 'source_first'
+
+function resolvePresentation(item: StudyResourceAccordionItem) {
+  const mode: StudyResourcePresentationMode = item.readinessLabel === 'Ready to study' && item.readerState === 'extracted'
+    ? 'notes_first'
+    : item.readinessLabel === 'Limited' || item.readerState === 'weak'
+      ? 'reader_fallback'
+      : 'source_first'
+  const sourceLabel = item.originalFileHref ? 'file' : 'source'
+
+  if (mode === 'notes_first') {
+    return {
+      mode,
+      summary: item.note,
+      detail: item.outlineHint ?? item.note,
+    }
+  }
+
+  if (mode === 'reader_fallback') {
+    return {
+      mode,
+      summary: `Extraction is weak here. Use the original ${sourceLabel} for the full read; the reader only keeps a short preview.`,
+      detail: `The extracted text is too thin or noisy to trust as solid study notes. Open the original ${sourceLabel} for the full read, then use the reader only as a secondary preview.`,
+    }
+  }
+
+  return {
+    mode,
+    summary: `No usable extract surfaced here. Open the original ${sourceLabel} instead of relying on this reader.`,
+    detail: `Learn did not recover enough readable text to build a useful note card for this item. The original ${sourceLabel} is the main path here, and the reader stays as a status view only.`,
+  }
 }
 
 function ResourcePill({

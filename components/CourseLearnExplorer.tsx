@@ -279,11 +279,13 @@ export function CourseLearnExplorer({
                         : material.readinessLabel === 'Limited'
                           ? 'warning'
                           : 'muted',
+                      readerState: material.readerState,
                       required: material.required,
                       outlineSections: material.outlineSections,
                       outlineHint: material.outlineHint,
                       readerHref: material.readerHref,
                       canvasHref: material.canvasHref,
+                      originalFileHref: material.originalFileHref,
                       extraActionHref: buildModuleDoHref(module.id, {
                         resourceId: material.id,
                       }),

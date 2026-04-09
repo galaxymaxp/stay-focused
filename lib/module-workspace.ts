@@ -840,28 +840,160 @@ function summarizeExtractedText(text: string) {
 
 function mergeLearnResources(parsedResources: ModuleSourceResource[], storedResources: ModuleSourceResource[]) {
   const nonStored = parsedResources.filter((resource) => resource.category !== 'resource')
-  const seen = new Set<string>()
   const merged = [...nonStored]
-  const storedLookup = new Map<string, ModuleSourceResource>()
+  const consumedStoredIds = new Set<string>()
 
   for (const resource of storedResources) {
-    const key = `${resource.title.toLowerCase()}::${resource.kind}::${resource.moduleName ?? ''}`
-    if (seen.has(key)) continue
-    seen.add(key)
     merged.push(resource)
-    storedLookup.set(`${normalizeLookup(resource.title)}::${resource.kind}`, resource)
   }
 
   for (const resource of parsedResources.filter((entry) => entry.category === 'resource')) {
-    const storedMatch = storedLookup.get(`${normalizeLookup(resource.title)}::${resource.kind}`)
-    if (storedMatch) continue
-    const key = `${resource.title.toLowerCase()}::${resource.kind}::${resource.moduleName ?? ''}`
-    if (seen.has(key)) continue
-    seen.add(key)
+    const exactMatch = findStoredResourceMatch(resource, storedResources, consumedStoredIds, 'exact')
+    if (exactMatch) {
+      consumedStoredIds.add(exactMatch.id)
+      continue
+    }
+
+    const compatibleMatch = findStoredResourceMatch(resource, storedResources, consumedStoredIds, 'compatible')
+    if (compatibleMatch) {
+      consumedStoredIds.add(compatibleMatch.id)
+      continue
+    }
+
     merged.push(resource)
   }
 
   return merged
+}
+
+function findStoredResourceMatch(
+  parsedResource: ModuleSourceResource,
+  storedResources: ModuleSourceResource[],
+  consumedStoredIds: Set<string>,
+  strategy: 'exact' | 'compatible',
+) {
+  const candidates = storedResources.filter((storedResource) => {
+    if (consumedStoredIds.has(storedResource.id)) return false
+
+    return strategy === 'exact'
+      ? getParsedResourceMatchKey(storedResource) === getParsedResourceMatchKey(parsedResource)
+      : isCompatibleParsedStoredResourceMatch(parsedResource, storedResource)
+  })
+
+  if (candidates.length === 0) {
+    return null
+  }
+
+  if (strategy === 'compatible' && candidates.length !== 1) {
+    return null
+  }
+
+  return candidates[0]
+}
+
+function isCompatibleParsedStoredResourceMatch(parsedResource: ModuleSourceResource, storedResource: ModuleSourceResource) {
+  if (parsedResource.category !== 'resource' || storedResource.category !== 'resource') {
+    return false
+  }
+
+  if (normalizeLookup(parsedResource.moduleName ?? '') !== normalizeLookup(storedResource.moduleName ?? '')) {
+    return false
+  }
+
+  if (normalizeLookup(parsedResource.type) !== normalizeLookup(storedResource.type)) {
+    return false
+  }
+
+  if (parsedResource.required !== storedResource.required) {
+    return false
+  }
+
+  const parsedTitleIdentity = getResourceMergeTitleIdentity(parsedResource)
+  const storedTitleIdentity = getResourceMergeTitleIdentity(storedResource)
+
+  if (!parsedTitleIdentity || !storedTitleIdentity) {
+    return false
+  }
+
+  if (parsedTitleIdentity.core !== storedTitleIdentity.core) {
+    return false
+  }
+
+  if (
+    parsedTitleIdentity.extension
+    && storedTitleIdentity.extension
+    && parsedTitleIdentity.extension !== storedTitleIdentity.extension
+  ) {
+    return false
+  }
+
+  return parsedTitleIdentity.numericPrefix === storedTitleIdentity.numericPrefix
+}
+
+function getResourceMergeTitleIdentity(resource: ModuleSourceResource) {
+  const extension = normalizeResourceMergeExtension(resource.extension, resource.originalTitle ?? resource.title)
+  const titleWithoutExtension = stripResourceMergeExtension(resource.originalTitle ?? resource.title, extension)
+  const normalizedTitle = normalizeLookup(titleWithoutExtension)
+  if (!normalizedTitle) {
+    return null
+  }
+
+  const tokens = normalizedTitle.split(' ').filter(Boolean)
+  const numericPrefixTokens: string[] = []
+  let firstWordIndex = 0
+
+  while (firstWordIndex < tokens.length && /^\d+$/.test(tokens[firstWordIndex] ?? '')) {
+    numericPrefixTokens.push(tokens[firstWordIndex]!)
+    firstWordIndex += 1
+  }
+
+  while (numericPrefixTokens.length > 1 && numericPrefixTokens[numericPrefixTokens.length - 1] === '0') {
+    numericPrefixTokens.pop()
+  }
+
+  const coreTokens = tokens.slice(firstWordIndex)
+  if (coreTokens.length === 0) {
+    return null
+  }
+
+  return {
+    extension,
+    numericPrefix: numericPrefixTokens.join('.'),
+    core: coreTokens.join(' '),
+  }
+}
+
+function normalizeResourceMergeExtension(extension: string | null | undefined, title: string) {
+  const normalizedExtension = extension?.replace(/^\./, '').trim().toLowerCase()
+  if (normalizedExtension) {
+    return normalizedExtension
+  }
+
+  const match = title.toLowerCase().match(/\.([a-z0-9]+)$/)
+  return match?.[1] ?? null
+}
+
+function stripResourceMergeExtension(title: string, extension: string | null) {
+  if (!extension) {
+    return title
+  }
+
+  return title.replace(new RegExp(`\\.${escapeRegExp(extension)}$`, 'i'), '').trim()
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function getParsedResourceMatchKey(resource: ModuleSourceResource) {
+  if (resource.category !== 'resource') return null
+
+  const moduleName = normalizeLookup(resource.moduleName ?? '')
+  const sourceType = normalizeLookup(resource.type)
+  const title = normalizeLookup(resource.originalTitle ?? resource.title)
+  if (!sourceType || !title) return null
+
+  return `${moduleName}::${sourceType}::${title}::${resource.required ? 'required' : 'optional'}`
 }
 
 export function getLearnResourceHref(moduleId: string, resourceId: string) {
@@ -870,6 +1002,23 @@ export function getLearnResourceHref(moduleId: string, resourceId: string) {
 
 export function getResourceCanvasHref(resource: ModuleSourceResource) {
   return resource.canvasUrl ?? null
+}
+
+export function getResourceOriginalFileHref(resource: Pick<ModuleSourceResource, 'type' | 'extension' | 'sourceUrl' | 'canvasUrl'>) {
+  const sourceUrl = resource.sourceUrl ?? null
+  if (!sourceUrl) return null
+
+  const normalizedType = resource.type.toLowerCase()
+  const normalizedExtension = resource.extension?.replace(/^\./, '').trim().toLowerCase() ?? null
+  const looksFileLike = normalizedType === 'file'
+    || normalizedType === 'document'
+    || normalizedType === 'pdf'
+    || normalizedType === 'ppt'
+    || normalizedType === 'pptx'
+    || Boolean(normalizedExtension)
+
+  if (!looksFileLike) return null
+  return sourceUrl !== (resource.canvasUrl ?? null) ? sourceUrl : null
 }
 
 export function findRecommendedStepTargets(

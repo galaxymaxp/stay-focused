@@ -10,7 +10,7 @@ import { getStudyFileProgressLabel } from '@/lib/study-file-manual-state'
 import { buildModuleInspectHref } from '@/lib/stay-focused-links'
 import { getStudySourceNoun } from '@/lib/study-resource'
 import { buildStudyFileReaderModel } from '@/lib/study-file-reader'
-import type { ModuleSourceResource } from '@/lib/module-workspace'
+import { getResourceOriginalFileHref, type ModuleSourceResource } from '@/lib/module-workspace'
 
 interface LinkedTaskLike {
   id: string
@@ -52,11 +52,18 @@ export function StudyFileReader({
     dueDate: linkedTask?.deadline ?? resource.dueDate ?? null,
     resource,
   })
+  const originalFileHref = getResourceOriginalFileHref(resource)
   const contextBits = [
     resource.courseName ?? courseName,
     resource.moduleName ?? moduleTitle,
     resource.linkedContext,
   ].filter(Boolean)
+  const isWeakReader = reader.state === 'weak'
+  const isSourceFirstReader = reader.state === 'metadata_only' || reader.state === 'empty' || reader.state === 'failed'
+  const sourceLabel = originalFileHref ? 'original file' : 'original source'
+  const sourceFirstCopy = isWeakReader
+    ? `Extraction is weak here. Use the ${sourceLabel} for the full read and treat the in-app preview as secondary only.`
+    : `Learn did not recover enough usable text to build a trustworthy reading view here. Open the ${sourceLabel} instead.`
 
   return (
     <section className="motion-card motion-delay-1 section-shell section-shell-elevated" style={{ padding: '1.35rem 1.45rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -76,7 +83,9 @@ export function StudyFileReader({
             <p className="ui-kicker">Study reader</p>
             <h2 className="ui-section-title" style={{ marginTop: '0.45rem' }}>{resource.title}</h2>
             <p className="ui-section-copy" style={{ marginTop: '0.5rem' }}>
-              A calm reading surface over the original Canvas source, with grounded guidance only when the app has real text to stand on.
+              {isWeakReader || isSourceFirstReader
+                ? sourceFirstCopy
+                : 'A calm reading surface over the original Canvas source, with grounded guidance only when the app has real text to stand on.'}
             </p>
           </div>
           <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
@@ -84,6 +93,16 @@ export function StudyFileReader({
               bundleText={manualCopy.bundleText}
               promptText={manualCopy.promptText}
             />
+            {(isWeakReader || isSourceFirstReader) && originalFileHref && (
+              <a href={originalFileHref} target="_blank" rel="noreferrer" className="ui-button ui-button-secondary">
+                Open original file
+              </a>
+            )}
+            {(isWeakReader || isSourceFirstReader) && canvasHref && (
+              <a href={canvasHref} target="_blank" rel="noreferrer" className={`ui-button ${originalFileHref ? 'ui-button-ghost' : 'ui-button-secondary'}`}>
+                Open in Canvas
+              </a>
+            )}
             <Link href={`/modules/${moduleId}/learn#source-support`} className="ui-button ui-button-secondary">Back to module Learn</Link>
             <Link href={buildModuleInspectHref(moduleId, { resourceId: resource.id })} className="ui-button ui-button-ghost">
               Inspect resource
@@ -93,7 +112,7 @@ export function StudyFileReader({
                 Open related task
               </Link>
             )}
-            {canvasHref && (
+            {canvasHref && !(isWeakReader || isSourceFirstReader) && (
               <a href={canvasHref} target="_blank" rel="noreferrer" className="ui-button ui-button-ghost">
                 Open in Canvas
               </a>
@@ -135,53 +154,93 @@ export function StudyFileReader({
         />
       </div>
 
-      <ReaderSection
-        title="What this material is about"
-        kicker={reader.state === 'extracted'
-          ? reader.quality === 'strong'
-            ? 'Grounded overview'
-            : 'Usable overview'
-          : reader.state === 'weak'
-            ? 'Weak extract'
-            : 'Honest state'}
-      >
-        <p className="ui-reading-copy" style={{ margin: 0, fontSize: '15px', lineHeight: 1.76, color: 'var(--text-secondary)' }}>
-          {reader.overviewBody}
-        </p>
-        {resource.whyItMatters && (
-          <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.85rem 0.9rem', marginTop: '0.85rem' }}>
-            <p className="ui-kicker">Why it matters in this module</p>
-            <p style={{ margin: '0.45rem 0 0', fontSize: '14px', lineHeight: 1.68, color: 'var(--text-secondary)' }}>
-              {resource.whyItMatters}
+      {(isWeakReader || isSourceFirstReader) ? (
+        <>
+          <ReaderSection title="Use the original source" kicker={isWeakReader ? 'Weak extraction' : 'Needs Canvas'}>
+            <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.95rem 1rem', display: 'grid', gap: '0.7rem' }}>
+              <p style={{ margin: 0, fontSize: '15px', lineHeight: 1.76, color: 'var(--text-secondary)' }}>
+                {sourceFirstCopy}
+              </p>
+              <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+                {originalFileHref && (
+                  <a href={originalFileHref} target="_blank" rel="noreferrer" className="ui-button ui-button-secondary">
+                    Open original file
+                  </a>
+                )}
+                {canvasHref && (
+                  <a href={canvasHref} target="_blank" rel="noreferrer" className={`ui-button ${originalFileHref ? 'ui-button-ghost' : 'ui-button-secondary'}`}>
+                    Open in Canvas
+                  </a>
+                )}
+              </div>
+            </div>
+            {resource.whyItMatters && (
+              <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.85rem 0.9rem', marginTop: '0.85rem' }}>
+                <p className="ui-kicker">Why it matters in this module</p>
+                <p style={{ margin: '0.45rem 0 0', fontSize: '14px', lineHeight: 1.68, color: 'var(--text-secondary)' }}>
+                  {resource.whyItMatters}
+                </p>
+              </div>
+            )}
+          </ReaderSection>
+
+          {isWeakReader && (
+            <ReaderSection title="Weak extract preview" kicker="Secondary only">
+              {reader.previewBlocks.length > 0 ? (
+                <StudyFilePreviewExplorer previewBlocks={reader.previewBlocks} />
+              ) : (
+                <EmptyReaderState body={reader.previewHint ?? 'No readable preview is available from the weak extract.'} />
+              )}
+            </ReaderSection>
+          )}
+        </>
+      ) : (
+        <>
+          <ReaderSection
+            title="What this material is about"
+            kicker={reader.quality === 'strong'
+              ? 'Grounded overview'
+              : 'Usable overview'}
+          >
+            <p className="ui-reading-copy" style={{ margin: 0, fontSize: '15px', lineHeight: 1.76, color: 'var(--text-secondary)' }}>
+              {reader.overviewBody}
             </p>
-          </div>
-        )}
-      </ReaderSection>
+            {resource.whyItMatters && (
+              <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.85rem 0.9rem', marginTop: '0.85rem' }}>
+                <p className="ui-kicker">Why it matters in this module</p>
+                <p style={{ margin: '0.45rem 0 0', fontSize: '14px', lineHeight: 1.68, color: 'var(--text-secondary)' }}>
+                  {resource.whyItMatters}
+                </p>
+              </div>
+            )}
+          </ReaderSection>
 
-      <ReaderSection title="Key points" kicker={reader.state === 'extracted' ? 'Quick study frame' : 'Held back on purpose'}>
-        {reader.keyPoints.length > 0 ? (
-          <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: '0.7rem' }}>
-            {reader.keyPoints.map((point, index) => (
-              <li key={point} className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.85rem 0.9rem', display: 'flex', gap: '0.7rem', alignItems: 'flex-start' }}>
-                <span style={{ width: '1.55rem', height: '1.55rem', borderRadius: '999px', background: 'color-mix(in srgb, var(--surface-selected) 84%, var(--accent) 16%)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: 700, color: 'var(--text-primary)', flexShrink: 0 }}>
-                  {index + 1}
-                </span>
-                <span style={{ fontSize: '14px', lineHeight: 1.68, color: 'var(--text-secondary)' }}>{point}</span>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <EmptyReaderState body={reader.keyPointsHint ?? 'Key points are hidden until real extracted text is available.'} />
-        )}
-      </ReaderSection>
+          <ReaderSection title="Key points" kicker="Quick study frame">
+            {reader.keyPoints.length > 0 ? (
+              <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: '0.7rem' }}>
+                {reader.keyPoints.map((point, index) => (
+                  <li key={point} className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.85rem 0.9rem', display: 'flex', gap: '0.7rem', alignItems: 'flex-start' }}>
+                    <span style={{ width: '1.55rem', height: '1.55rem', borderRadius: '999px', background: 'color-mix(in srgb, var(--surface-selected) 84%, var(--accent) 16%)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: 700, color: 'var(--text-primary)', flexShrink: 0 }}>
+                      {index + 1}
+                    </span>
+                    <span style={{ fontSize: '14px', lineHeight: 1.68, color: 'var(--text-secondary)' }}>{point}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <EmptyReaderState body={reader.keyPointsHint ?? 'Key points are hidden until real extracted text is available.'} />
+            )}
+          </ReaderSection>
 
-      <ReaderSection title="Study preview" kicker={reader.state === 'extracted' || reader.state === 'weak' ? 'Readable source preview' : 'Source stays quiet'}>
-        {reader.previewBlocks.length > 0 ? (
-          <StudyFilePreviewExplorer previewBlocks={reader.previewBlocks} />
-        ) : (
-          <EmptyReaderState body={reader.previewHint ?? 'No readable study preview is available in the app yet.'} />
-        )}
-      </ReaderSection>
+          <ReaderSection title="Study preview" kicker="Readable source preview">
+            {reader.previewBlocks.length > 0 ? (
+              <StudyFilePreviewExplorer previewBlocks={reader.previewBlocks} />
+            ) : (
+              <EmptyReaderState body={reader.previewHint ?? 'No readable study preview is available in the app yet.'} />
+            )}
+          </ReaderSection>
+        </>
+      )}
 
       <ReaderSection title="Source transparency" kicker="What this page is actually using">
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '0.75rem' }}>

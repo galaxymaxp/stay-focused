@@ -5,12 +5,13 @@ import {
   buildLearnExperience,
   getLearnResourceHref,
   getModuleWorkspace,
+  getResourceOriginalFileHref,
   getResourceCanvasHref,
 } from '@/lib/module-workspace'
 import { buildModuleDoHref } from '@/lib/stay-focused-links'
 import { getStudyFileProgressLabel } from '@/lib/study-file-manual-state'
 import { getLearnResourceKindLabel } from '@/lib/study-resource'
-import type { StudyFileOutlineSection } from '@/lib/study-file-reader'
+import type { StudyFileOutlineSection, StudyFileReaderState } from '@/lib/study-file-reader'
 import type {
   Course,
   Module,
@@ -41,6 +42,7 @@ export interface CourseLearnStudyMaterialRow {
   title: string
   fileTypeLabel: string
   readinessLabel: Exclude<LearnReadinessLabel, 'No study material'>
+  readerState: StudyFileReaderState
   note: string
   progressStatus: StudyFileProgressStatus
   progressLabel: string
@@ -48,6 +50,7 @@ export interface CourseLearnStudyMaterialRow {
   required: boolean
   readerHref: string
   canvasHref: string | null
+  originalFileHref: string | null
   outlineSections: StudyFileOutlineSection[]
   outlineHint: string | null
 }
@@ -233,6 +236,7 @@ async function buildCourseLearnModuleCard(
       title: material.resource.title,
       fileTypeLabel: material.fileTypeLabel,
       readinessLabel: mapStudyMaterialReadiness(material.readinessLabel),
+      readerState: material.reader.state,
       note: material.note,
       progressStatus: material.resource.studyProgressStatus ?? 'not_started',
       progressLabel: getStudyFileProgressLabel(material.resource.studyProgressStatus ?? 'not_started'),
@@ -240,6 +244,7 @@ async function buildCourseLearnModuleCard(
       required: material.resource.required,
       readerHref: getLearnResourceHref(module.id, material.resource.id),
       canvasHref: getResourceCanvasHref(material.resource),
+      originalFileHref: getResourceOriginalFileHref(material.resource),
       outlineSections: material.reader.outlineSections,
       outlineHint: material.reader.outlineHint,
     })),
@@ -248,6 +253,7 @@ async function buildCourseLearnModuleCard(
       title: material.resource.title,
       fileTypeLabel: material.fileTypeLabel,
       readinessLabel: mapStudyMaterialReadiness(material.readinessLabel),
+      readerState: material.reader.state,
       note: material.note,
       progressStatus: material.resource.studyProgressStatus ?? 'not_started',
       progressLabel: getStudyFileProgressLabel(material.resource.studyProgressStatus ?? 'not_started'),
@@ -255,6 +261,7 @@ async function buildCourseLearnModuleCard(
       required: material.resource.required,
       readerHref: getLearnResourceHref(module.id, material.resource.id),
       canvasHref: getResourceCanvasHref(material.resource),
+      originalFileHref: getResourceOriginalFileHref(material.resource),
       outlineSections: material.reader.outlineSections,
       outlineHint: material.reader.outlineHint,
     })),

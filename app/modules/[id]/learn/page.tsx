@@ -16,6 +16,7 @@ import {
   extractCourseName,
   getLearnResourceHref,
   getModuleWorkspace,
+  getResourceOriginalFileHref,
   getResourceCanvasHref,
   type ModuleSourceResource,
 } from '@/lib/module-workspace'
@@ -222,11 +223,13 @@ export default async function LearnPage({ params, searchParams }: Props) {
                 fileTypeLabel: material.fileTypeLabel,
                 readinessLabel: material.readinessLabel,
                 readinessTone: material.readinessTone,
+                readerState: material.reader.state,
                 required: material.resource.required,
                 outlineSections: material.reader.outlineSections,
                 outlineHint: material.reader.outlineHint,
                 readerHref: getLearnResourceHref(module.id, material.resource.id),
                 canvasHref: getResourceCanvasHref(material.resource),
+                originalFileHref: getResourceOriginalFileHref(material.resource),
               }))}
               initialOpenResourceId={targetResourceId}
               emptyMessage="No mapped study readers are ready for this module yet. Learn will show fuller notes here as soon as readable extracted source text is available."
