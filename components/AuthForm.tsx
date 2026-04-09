@@ -19,6 +19,7 @@ export function AuthForm({
   const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [message, setMessage] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(initialError ?? null)
   const [isPending, startTransition] = useTransition()
@@ -81,6 +82,11 @@ export function AuthForm({
             event.preventDefault()
             setMessage(null)
             setErrorMessage(null)
+
+            if (mode === 'sign-up' && password !== confirmPassword) {
+              setErrorMessage('Passwords do not match.')
+              return
+            }
 
             startTransition(async () => {
               try {
@@ -145,6 +151,22 @@ export function AuthForm({
               style={inputStyle}
             />
           </label>
+
+          {mode === 'sign-up' ? (
+            <label style={fieldStyle}>
+              <span style={labelStyle}>Confirm password</span>
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={(event) => setConfirmPassword(event.target.value)}
+                required
+                minLength={6}
+                autoComplete="new-password"
+                className="ui-input"
+                style={inputStyle}
+              />
+            </label>
+          ) : null}
 
           <button type="submit" className="ui-button ui-button-primary" style={{ minHeight: '2.7rem' }} disabled={isPending}>
             {isPending ? 'Working...' : title}
