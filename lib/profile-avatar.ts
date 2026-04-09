@@ -85,11 +85,15 @@ export function extractGoogleAvatarUrlFromUser(user: User): string | null {
   const metadata = user.user_metadata && typeof user.user_metadata === 'object'
     ? user.user_metadata as Record<string, unknown>
     : null
+  const googleIdentityData = getGoogleIdentityData(user)
 
   const candidates = [
     metadata ? getStringValue(metadata, 'avatar_url') : null,
     metadata ? getStringValue(metadata, 'picture') : null,
     metadata ? getStringValue(metadata, 'photo_url') : null,
+    googleIdentityData ? getStringValue(googleIdentityData, 'avatar_url') : null,
+    googleIdentityData ? getStringValue(googleIdentityData, 'picture') : null,
+    googleIdentityData ? getStringValue(googleIdentityData, 'photo_url') : null,
   ]
 
   const match = candidates.find((value) => isHttpUrl(value))
@@ -144,6 +148,19 @@ function getUserProviders(user: User) {
   }
 
   return providers
+}
+
+function getGoogleIdentityData(user: User) {
+  for (const identity of user.identities ?? []) {
+    if (identity.provider !== 'google') continue
+
+    const rawIdentityData = (identity as { identity_data?: unknown }).identity_data
+    if (rawIdentityData && typeof rawIdentityData === 'object') {
+      return rawIdentityData as Record<string, unknown>
+    }
+  }
+
+  return null
 }
 
 function getStringValue(record: Record<string, unknown>, key: string) {

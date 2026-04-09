@@ -73,10 +73,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: uploadError.message }, { status: 500 })
   }
 
-  if (oldPath && oldPath !== objectPath) {
-    await supabase.storage.from(PROFILE_AVATAR_BUCKET).remove([oldPath])
-  }
-
   const { data: publicUrlData } = supabase.storage.from(PROFILE_AVATAR_BUCKET).getPublicUrl(objectPath)
   const nextAvatarUrl = publicUrlData.publicUrl
 
@@ -91,7 +87,15 @@ export async function POST(request: NextRequest) {
     .single()
 
   if (updateError || !updatedProfile) {
+    await supabase.storage.from(PROFILE_AVATAR_BUCKET).remove([objectPath])
     return NextResponse.json({ error: updateError?.message ?? 'Could not save uploaded avatar.' }, { status: 500 })
+  }
+
+  if (oldPath && oldPath !== objectPath) {
+    const { error: oldAvatarRemoveError } = await supabase.storage.from(PROFILE_AVATAR_BUCKET).remove([oldPath])
+    if (oldAvatarRemoveError) {
+      console.error('[avatar] Could not remove previous uploaded avatar.', oldAvatarRemoveError)
+    }
   }
 
   return NextResponse.json(toPayload({
@@ -115,10 +119,6 @@ export async function DELETE(request: NextRequest) {
   const profile = await getOrCreateUserProfileForUser(supabase, user)
   const oldPath = getStorageObjectPathFromPublicUrl(profile.avatar_url, PROFILE_AVATAR_BUCKET)
 
-  if (oldPath) {
-    await supabase.storage.from(PROFILE_AVATAR_BUCKET).remove([oldPath])
-  }
-
   const nextSource: AvatarSource = profile.google_avatar_url ? 'google' : 'none'
   const { data: updatedProfile, error: updateError } = await supabase
     .from('user_profiles')
@@ -132,6 +132,13 @@ export async function DELETE(request: NextRequest) {
 
   if (updateError || !updatedProfile) {
     return NextResponse.json({ error: updateError?.message ?? 'Could not remove uploaded avatar.' }, { status: 500 })
+  }
+
+  if (oldPath) {
+    const { error: oldAvatarRemoveError } = await supabase.storage.from(PROFILE_AVATAR_BUCKET).remove([oldPath])
+    if (oldAvatarRemoveError) {
+      console.error('[avatar] Could not remove uploaded avatar file.', oldAvatarRemoveError)
+    }
   }
 
   return NextResponse.json(toPayload({

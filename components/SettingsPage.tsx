@@ -227,11 +227,13 @@ export function SettingsPage() {
               />
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>
-                  Current source: {avatarProfile.avatar?.resolved.source ?? 'none'}
+                  Current source: {getAvatarSourceLabel(avatarProfile.avatar?.resolved.source ?? 'none')}
                 </div>
                 <div style={{ marginTop: '0.22rem', fontSize: '13px', lineHeight: 1.55, color: 'var(--text-secondary)' }}>
                   {avatarProfile.loading
                     ? 'Loading your avatar settings...'
+                    : avatarProfile.error
+                      ? 'Could not load your avatar settings right now.'
                     : avatarProfile.avatar?.hasGoogleAvatar
                       ? 'Google photo is available for this account.'
                       : 'No Google photo detected for this account.'}
@@ -264,14 +266,6 @@ export function SettingsPage() {
               >
                 Remove custom photo
               </button>
-              <button
-                type="button"
-                className="ui-button ui-button-ghost"
-                onClick={() => setAvatarSource('none')}
-                disabled={Boolean(avatarActionPending)}
-              >
-                Use initials placeholder
-              </button>
             </div>
 
             <input
@@ -290,8 +284,13 @@ export function SettingsPage() {
 
             <div style={noteCardStyle}>
               <div style={{ fontSize: '13px', lineHeight: 1.55, color: 'var(--text-secondary)' }}>
-                Allowed types: JPG, PNG, WEBP, GIF. Max size: 5 MB.
+                Allowed types: JPG, PNG, WEBP, GIF. Max size: 5 MB. Placeholder initials are used automatically when no Google or uploaded photo is active.
               </div>
+              {avatarProfile.error ? (
+                <div style={{ marginTop: '0.32rem', fontSize: '13px', lineHeight: 1.55, color: 'var(--red)' }}>
+                  {avatarProfile.error}
+                </div>
+              ) : null}
               {avatarActionError ? (
                 <div style={{ marginTop: '0.32rem', fontSize: '13px', lineHeight: 1.55, color: 'var(--red)' }}>
                   {avatarActionError}
@@ -453,4 +452,10 @@ const avatarCardStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: '0.8rem',
+}
+
+function getAvatarSourceLabel(source: AvatarSource) {
+  if (source === 'upload') return 'Custom photo'
+  if (source === 'google') return 'Google photo'
+  return 'Placeholder'
 }

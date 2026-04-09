@@ -23,11 +23,14 @@ export async function getOrCreateUserProfileForUser(supabase: SupabaseClient, us
     const initialSource: AvatarSource = googleAvatarUrl ? 'google' : 'none'
     const { data: insertedProfile, error: insertError } = await supabase
       .from('user_profiles')
-      .insert({
+      .upsert({
         user_id: user.id,
         avatar_source: initialSource,
         avatar_url: null,
         google_avatar_url: googleAvatarUrl,
+      }, {
+        onConflict: 'user_id',
+        ignoreDuplicates: false,
       })
       .select('user_id, avatar_source, avatar_url, google_avatar_url')
       .single()
@@ -41,12 +44,16 @@ export async function getOrCreateUserProfileForUser(supabase: SupabaseClient, us
 
   const updates: Partial<UserProfileRow> = {}
 
-  if (googleAvatarUrl && googleAvatarUrl !== currentProfile.google_avatar_url) {
+  if (googleAvatarUrl !== currentProfile.google_avatar_url) {
     updates.google_avatar_url = googleAvatarUrl
   }
 
   if (googleAvatarUrl && currentProfile.avatar_source === 'none') {
     updates.avatar_source = 'google'
+  }
+
+  if (!googleAvatarUrl && currentProfile.avatar_source === 'google') {
+    updates.avatar_source = 'none'
   }
 
   if (Object.keys(updates).length === 0) {
