@@ -433,7 +433,7 @@ export default async function LearnPage({ params, searchParams }: Props) {
                     <SupportContextRow
                       key={item.id}
                       moduleId={module.id}
-                      courseId={module.courseId}
+                      courseId={module.courseId ?? null}
                       item={item}
                       highlighted={targetSupportId === item.id}
                     />
