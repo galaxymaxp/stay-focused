@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { CopyTaskBundleActions } from '@/components/CopyTaskBundleActions'
 import {
   buildTaskDraftFallback,
+  buildTaskDraftSourceKey,
   buildTaskDraftRequestPayload,
   isTaskDraftApiResponse,
   type TaskDraftContext,
@@ -15,6 +16,13 @@ import type { ManualCopyBundleResult } from '@/lib/manual-copy-bundle'
 
 type RequestState = 'loading' | 'success' | 'error'
 type DraftSource = 'saved' | 'generated'
+type ReopenSource = 'session' | null
+
+interface DraftPanelSnapshot {
+  draft: TaskDraftResponse
+  draftSource: DraftSource
+  requestBody: string
+}
 
 /**
  * Modal panel that fetches a server-generated first draft when opened and
@@ -23,17 +31,28 @@ type DraftSource = 'saved' | 'generated'
 export function TaskDraftPanel({
   context,
   copyBundle,
+  initialSnapshot,
+  onSnapshotChange,
   onClose,
 }: {
   context: TaskDraftContext
   copyBundle?: Pick<ManualCopyBundleResult, 'bundleText' | 'promptText'>
+  initialSnapshot?: DraftPanelSnapshot | null
+  onSnapshotChange?: (snapshot: DraftPanelSnapshot) => void
   onClose: () => void
 }) {
   const fallbackDraft = buildTaskDraftFallback(context)
-  const requestBody = JSON.stringify(buildTaskDraftRequestPayload(context))
-  const [generatedDraft, setGeneratedDraft] = useState<TaskDraftResponse | null>(null)
-  const [requestState, setRequestState] = useState<RequestState>('loading')
-  const [draftSource, setDraftSource] = useState<DraftSource>('generated')
+  const requestPayload = buildTaskDraftRequestPayload(context)
+  const requestBody = JSON.stringify(requestPayload)
+  const hasReusableSnapshot = initialSnapshot?.requestBody === requestBody
+  const [generatedDraft, setGeneratedDraft] = useState<TaskDraftResponse | null>(
+    hasReusableSnapshot ? initialSnapshot.draft : null,
+  )
+  const [requestState, setRequestState] = useState<RequestState>(hasReusableSnapshot ? 'success' : 'loading')
+  const [draftSource, setDraftSource] = useState<DraftSource>(
+    hasReusableSnapshot ? initialSnapshot.draftSource : 'generated',
+  )
+  const [reopenSource, setReopenSource] = useState<ReopenSource>(hasReusableSnapshot ? 'session' : null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const draft = generatedDraft ?? fallbackDraft
 
@@ -61,6 +80,15 @@ export function TaskDraftPanel({
   }, [])
 
   useEffect(() => {
+    if (hasReusableSnapshot) {
+      setGeneratedDraft(initialSnapshot.draft)
+      setRequestState('success')
+      setDraftSource(initialSnapshot.draftSource)
+      setReopenSource('session')
+      setErrorMessage(null)
+      return
+    }
+
     const controller = new AbortController()
     let cancelled = false
 
@@ -68,6 +96,7 @@ export function TaskDraftPanel({
       setGeneratedDraft(null)
       setRequestState('loading')
       setDraftSource('generated')
+      setReopenSource(null)
       setErrorMessage(null)
 
       try {
@@ -93,8 +122,14 @@ export function TaskDraftPanel({
         if (cancelled) return
 
         setGeneratedDraft(data.draft)
-        setDraftSource(data.cacheStatus === 'hit' ? 'saved' : 'generated')
+        const nextDraftSource = data.cacheStatus === 'hit' ? 'saved' : 'generated'
+        setDraftSource(nextDraftSource)
         setRequestState('success')
+        onSnapshotChange?.({
+          draft: data.draft,
+          draftSource: nextDraftSource,
+          requestBody,
+        })
       } catch (error) {
         if (controller.signal.aborted || cancelled) return
 
@@ -115,7 +150,7 @@ export function TaskDraftPanel({
       cancelled = true
       controller.abort()
     }
-  }, [requestBody])
+  }, [hasReusableSnapshot, initialSnapshot, onSnapshotChange, requestBody])
 
   return (
     <div
@@ -163,7 +198,12 @@ export function TaskDraftPanel({
           </button>
         </div>
 
-        <StatusBanner state={requestState} draftSource={draftSource} errorMessage={errorMessage} />
+        <StatusBanner
+          state={requestState}
+          draftSource={draftSource}
+          reopenSource={reopenSource}
+          errorMessage={errorMessage}
+        />
 
         {requestState === 'loading' ? (
           <div style={sectionsStyle}>
@@ -260,10 +300,12 @@ function TextSection({
 function StatusBanner({
   state,
   draftSource,
+  reopenSource,
   errorMessage,
 }: {
   state: RequestState
   draftSource: DraftSource
+  reopenSource: ReopenSource
   errorMessage: string | null
 }) {
   return (
@@ -271,6 +313,8 @@ function StatusBanner({
       <p style={statusTitleStyle}>
         {state === 'loading'
           ? 'Generating Auto Prompt'
+          : state === 'success' && reopenSource === 'session'
+            ? 'Reopened existing Auto Prompt'
           : state === 'success' && draftSource === 'saved'
             ? 'Loaded saved Auto Prompt'
             : state === 'success'
@@ -280,6 +324,10 @@ function StatusBanner({
       <p style={statusBodyStyle}>
         {state === 'loading'
           ? 'The server is generating a usable first-pass deliverable from the surfaced task instructions.'
+          : state === 'success' && reopenSource === 'session'
+            ? draftSource === 'saved'
+              ? 'This reopened the same saved Auto Prompt immediately from the current session because the task content has not changed.'
+              : 'This reopened the same generated Auto Prompt immediately from the current session because the task content has not changed.'
           : state === 'success' && draftSource === 'saved'
             ? 'This Auto Prompt was loaded from the saved server result because the task content has not changed.'
             : state === 'success'
@@ -288,6 +336,10 @@ function StatusBanner({
       </p>
     </div>
   )
+}
+
+export function getTaskDraftSessionKey(context: TaskDraftContext) {
+  return buildTaskDraftSourceKey(context)
 }
 
 function extractErrorMessage(value: unknown) {

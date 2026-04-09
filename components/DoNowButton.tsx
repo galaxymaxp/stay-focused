@@ -3,9 +3,19 @@
 import type { CSSProperties } from 'react'
 import { useEffect, useEffectEvent, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { TaskDraftPanel } from '@/components/DoNowPanel'
+import { getTaskDraftSessionKey, TaskDraftPanel } from '@/components/DoNowPanel'
 import type { TaskDraftContext } from '@/lib/do-now'
 import type { ManualCopyBundleResult } from '@/lib/manual-copy-bundle'
+
+type DraftSource = 'saved' | 'generated'
+
+interface DraftSessionSnapshot {
+  draft: import('@/lib/do-now').TaskDraftResponse
+  draftSource: DraftSource
+  requestBody: string
+}
+
+const draftSessionCache = new Map<string, DraftSessionSnapshot>()
 
 /**
  * Self-contained trigger button + panel for use inside server-rendered task cards.
@@ -28,6 +38,10 @@ export function TaskDraftButton({
   buttonStyle?: CSSProperties
 }) {
   const [open, setOpen] = useState(false)
+  const [, setCacheVersion] = useState(0)
+  const sessionKey = getTaskDraftSessionKey(context)
+  const initialSnapshot = draftSessionCache.get(sessionKey) ?? null
+
   const openFromDefault = useEffectEvent(() => {
     setOpen(true)
     if (typeof window === 'undefined') return
@@ -59,8 +73,33 @@ export function TaskDraftButton({
         Auto Prompt
       </button>
 
+      {initialSnapshot && (
+        <span
+          className="ui-chip"
+          style={{
+            padding: '0.22rem 0.55rem',
+            fontSize: '11px',
+            fontWeight: 700,
+            background: 'color-mix(in srgb, var(--blue-light) 34%, var(--surface-soft) 66%)',
+            color: 'var(--blue)',
+            border: '1px solid color-mix(in srgb, var(--blue) 22%, var(--border-subtle) 78%)',
+          }}
+        >
+          {initialSnapshot.draftSource === 'saved' ? 'Saved draft ready' : 'Draft ready'}
+        </span>
+      )}
+
       {open && createPortal(
-        <TaskDraftPanel context={context} copyBundle={copyBundle} onClose={() => setOpen(false)} />,
+        <TaskDraftPanel
+          context={context}
+          copyBundle={copyBundle}
+          initialSnapshot={initialSnapshot}
+          onSnapshotChange={(snapshot) => {
+            draftSessionCache.set(sessionKey, snapshot)
+            setCacheVersion((version) => version + 1)
+          }}
+          onClose={() => setOpen(false)}
+        />,
         document.body,
       )}
     </>

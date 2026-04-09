@@ -6,7 +6,6 @@ import { buildLearnExperience, extractCourseName, findRecommendedStepTargets, ge
 import { buildModuleLearnHref, getSearchParamValue, getTaskElementId } from '@/lib/stay-focused-links'
 import { sortTasksByRecommendation } from '@/lib/task-ranking'
 import { TaskDraftButton } from '@/components/DoNowButton'
-import { CopyTaskBundleActions } from '@/components/CopyTaskBundleActions'
 import { buildTaskDraftContextText } from '@/lib/do-now'
 import { buildManualCopyBundle } from '@/lib/manual-copy-bundle'
 
@@ -176,12 +175,9 @@ export default async function DoPage({ params, searchParams }: Props) {
                     </div>
 
                     <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-                      <CopyTaskBundleActions
-                        bundleText={manualCopy.bundleText}
-                        promptText={manualCopy.promptText}
-                      />
                       <TaskDraftButton
                         defaultOpen={draftAutoOpen && highlightedTaskId === task.id}
+                        copyBundle={manualCopy}
                         context={{
                           taskTitle: task.title,
                           taskDetails: task.details,
@@ -227,29 +223,80 @@ export default async function DoPage({ params, searchParams }: Props) {
               </summary>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.85rem' }}>
                 {completedTasks.map((task) => (
-                  <div
-                    key={task.id}
-                    id={getTaskElementId(task.id)}
-                    className="ui-card-soft"
-                    style={{
-                      borderRadius: 'var(--radius-tight)',
-                      padding: '0.8rem 0.9rem',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '0.65rem',
-                      border: highlightedTaskId === task.id
-                        ? '1px solid color-mix(in srgb, var(--accent-border) 38%, var(--border-subtle) 62%)'
-                        : undefined,
-                    }}
-                  >
-                    <p style={{ margin: 0, fontSize: '14px', color: 'var(--text-muted)', textDecoration: 'line-through' }}>{task.title}</p>
-                    <TaskStatusToggle
-                      status={task.status}
-                      moduleId={module.id}
-                      title={task.title}
-                      legacyTaskId={task.id}
-                    />
-                  </div>
+                  (() => {
+                    const matchedResource = matchTaskToResource(task.title, learnExperience.resources)
+                    const learnHref = buildModuleLearnHref(module.id, matchedResource
+                      ? {
+                          resourceId: matchedResource.id,
+                          panel: 'study-notes',
+                        }
+                      : {
+                          taskId: task.id,
+                          panel: 'action-status',
+                        })
+                    const resourceSnippet = buildTaskDraftContextText(
+                      matchedResource?.extractedText
+                        ?? matchedResource?.extractedTextPreview
+                        ?? matchedResource?.linkedContext
+                        ?? matchedResource?.whyItMatters
+                        ?? null,
+                      1800,
+                    )
+                    const manualCopy = buildManualCopyBundle({
+                      taskTitle: task.title,
+                      courseName,
+                      moduleName: module.title,
+                      dueDate: task.deadline,
+                      taskDetails: task.details,
+                      resource: matchedResource,
+                    })
+
+                    return (
+                      <div
+                        key={task.id}
+                        id={getTaskElementId(task.id)}
+                        className="ui-card-soft"
+                        style={{
+                          borderRadius: 'var(--radius-tight)',
+                          padding: '0.8rem 0.9rem',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '0.65rem',
+                          border: highlightedTaskId === task.id
+                            ? '1px solid color-mix(in srgb, var(--accent-border) 38%, var(--border-subtle) 62%)'
+                            : undefined,
+                        }}
+                      >
+                        <p style={{ margin: 0, fontSize: '14px', color: 'var(--text-muted)', textDecoration: 'line-through' }}>{task.title}</p>
+                        <TaskStatusToggle
+                          status={task.status}
+                          moduleId={module.id}
+                          title={task.title}
+                          legacyTaskId={task.id}
+                        />
+                        <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+                          <TaskDraftButton
+                            defaultOpen={draftAutoOpen && highlightedTaskId === task.id}
+                            copyBundle={manualCopy}
+                            context={{
+                              taskTitle: task.title,
+                              taskDetails: task.details,
+                              deadline: task.deadline,
+                              priority: task.priority,
+                              courseName,
+                              moduleTitle: module.title,
+                              studyPrompts: module.study_prompts,
+                              concepts: module.concepts,
+                              moduleSummary: module.summary,
+                              resourceSnippet,
+                              canvasUrl: task.canvasUrl,
+                              learnHref,
+                            }}
+                          />
+                        </div>
+                      </div>
+                    )
+                  })()
                 ))}
               </div>
             </details>
