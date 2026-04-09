@@ -20,6 +20,7 @@ Important migration for attachment-backed Learn:
 - `supabase/migrations/20260412_add_canvas_course_identity.sql`
 - `supabase/migrations/20260413_add_auto_prompt_results.sql`
 - `supabase/migrations/20260414_add_auto_prompt_user_identity.sql`
+- `supabase/migrations/20260419_add_user_profile_avatars.sql`
 
 That migration creates:
 
@@ -83,6 +84,12 @@ Current app features that depend on `20260413_add_auto_prompt_results.sql` and `
 - Auto Prompt results can persist across reloads and navigation using the database instead of client storage
 - the current anonymous cookie identity continues to work
 - authenticated users can promote saved Auto Prompt results onto a real auth-backed identity without regenerating the content
+
+Current app features that depend on `20260419_add_user_profile_avatars.sql`:
+
+- Google sign-in can persist a default avatar URL in `public.user_profiles`
+- authenticated users can upload a custom avatar into the `profile-avatars` storage bucket
+- avatar APIs under `/api/profile/avatar` and `/api/profile/avatar/upload` resolve custom upload, Google avatar, then placeholder
 
 ## Fresh Project Reset
 
