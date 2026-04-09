@@ -9,7 +9,9 @@ import {
   type TaskDraftResponse,
 } from '@/lib/do-now'
 import { getAuthenticatedUserIdFromRequest } from '@/lib/auth'
-import { serializeErrorForLogging, supabase } from '@/lib/supabase'
+import { isSupabaseAuthConfigured } from '@/lib/supabase-auth-config'
+import { createSupabaseRouteClient } from '@/lib/supabase-auth-server'
+import { serializeErrorForLogging } from '@/lib/supabase'
 
 const AUTO_PROMPT_USER_COOKIE = 'stay-focused-user-key'
 const AUTO_PROMPT_PROMPT_VERSION = 'v1'
@@ -45,8 +47,9 @@ export async function loadSavedAutoPrompt(
   const storageKey = getAutoPromptStorageKey(userKey, userId)
   const promptText = buildTaskDraftUserPrompt(payload)
   const contentHash = getAutoPromptContentHash(promptText)
+  const client = getAutoPromptRouteClient(request)
 
-  if (!supabase) {
+  if (!client) {
     return {
       userId,
       userKey,
@@ -58,7 +61,8 @@ export async function loadSavedAutoPrompt(
   }
 
   const authenticatedResult = await readAutoPromptResult({
-    identityKey: storageKey,
+    client,
+    userKey,
     sourceKey: payload.sourceKey,
     contentHash,
   })
@@ -76,9 +80,11 @@ export async function loadSavedAutoPrompt(
 
   if (userId) {
     const anonymousFallbackResult = await readAutoPromptResult({
-      identityKey: userKey,
+      client,
+      userKey,
       sourceKey: payload.sourceKey,
       contentHash,
+      legacyAnonymous: true,
     })
 
     if (anonymousFallbackResult?.row) {
@@ -87,6 +93,7 @@ export async function loadSavedAutoPrompt(
         : null
 
       await saveAutoPromptRow({
+        request,
         payload,
         userId,
         userKey,
@@ -119,6 +126,7 @@ export async function loadSavedAutoPrompt(
 }
 
 export async function saveAutoPromptResult(input: {
+  request: NextRequest
   payload: TaskDraftApiRequest
   userId: string | null
   userKey: string
@@ -132,6 +140,7 @@ export async function saveAutoPromptResult(input: {
 }
 
 async function saveAutoPromptRow(input: {
+  request: NextRequest
   payload: TaskDraftApiRequest
   userId: string | null
   userKey: string
@@ -141,22 +150,19 @@ async function saveAutoPromptRow(input: {
   draft: TaskDraftResponse | null
   rawText?: string
 }) {
-  if (!supabase || !input.draft) return
+  if (!input.draft) return
 
-  const { error } = await supabase
-    .from('auto_prompt_results')
-    .upsert({
-      user_id: input.userId,
-      user_key: input.storageKey,
-      source_key: input.payload.sourceKey,
-      content_hash: input.contentHash,
-      prompt_text: input.promptText,
-      output_json: input.draft,
-      output_text: input.rawText ?? null,
-      updated_at: new Date().toISOString(),
-    }, {
-      onConflict: 'user_key,source_key,content_hash',
-    })
+  const client = getAutoPromptRouteClient(input.request)
+  if (!client) return
+
+  const { error } = await client.rpc('upsert_auto_prompt_result_for_request', {
+    p_user_key: input.userKey,
+    p_source_key: input.payload.sourceKey,
+    p_content_hash: input.contentHash,
+    p_prompt_text: input.promptText,
+    p_output_json: input.draft,
+    p_output_text: input.rawText ?? null,
+  })
 
   if (error) {
     logAutoPromptStoreIssue('save_failed', error, {
@@ -209,28 +215,46 @@ function logAutoPromptStoreIssue(step: string, error: PostgrestError, context: R
 }
 
 async function readAutoPromptResult(input: {
-  identityKey: string
+  client: ReturnType<typeof createSupabaseRouteClient>
+  userKey: string
   sourceKey: string
   contentHash: string
+  legacyAnonymous?: boolean
 }) {
-  if (!supabase) return null
+  const rpcName = input.legacyAnonymous
+    ? 'get_legacy_anonymous_auto_prompt_result'
+    : 'get_auto_prompt_result_for_request'
 
-  const { data, error } = await supabase
-    .from('auto_prompt_results')
-    .select('user_id, user_key, source_key, content_hash, prompt_text, output_json, output_text, created_at, updated_at')
-    .eq('user_key', input.identityKey)
-    .eq('source_key', input.sourceKey)
-    .eq('content_hash', input.contentHash)
-    .maybeSingle<AutoPromptResultRow>()
+  const { data, error } = await input.client.rpc(rpcName, {
+    p_user_key: input.userKey,
+    p_source_key: input.sourceKey,
+    p_content_hash: input.contentHash,
+  })
 
   if (error) {
     logAutoPromptStoreIssue('load_failed', error, {
-      identityKey: input.identityKey,
+      legacyAnonymous: Boolean(input.legacyAnonymous),
+      userKey: input.userKey,
       sourceKey: input.sourceKey,
       contentHash: input.contentHash,
     })
     return null
   }
 
-  return { row: data ?? null }
+  const row = Array.isArray(data)
+    ? (data[0] as AutoPromptResultRow | undefined)
+    : (data as AutoPromptResultRow | null)
+
+  return { row: row ?? null }
+}
+
+function getAutoPromptRouteClient(request: NextRequest) {
+  if (!isSupabaseAuthConfigured) return null
+
+  try {
+    return createSupabaseRouteClient(request)
+  } catch (error) {
+    console.error('[auto-prompt-store] Failed to create route client.', serializeErrorForLogging(error))
+    return null
+  }
 }

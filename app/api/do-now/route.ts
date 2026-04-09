@@ -179,6 +179,7 @@ export async function POST(req: NextRequest) {
     }
 
     await saveAutoPromptResult({
+      request: req,
       payload: body,
       userId: savedResult.userId,
       userKey: savedResult.userKey,
