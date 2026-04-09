@@ -1,9 +1,13 @@
 'use client'
 
+import { useRef, useState } from 'react'
 import Link from 'next/link'
+import { UserAvatar } from '@/components/UserAvatar'
 import { useThemeSettings } from '@/components/ThemeProvider'
 import { SignOutButton } from '@/components/SignOutButton'
 import { useAuthSummary } from '@/components/useAuthSummary'
+import { useUserAvatarProfile, type UserAvatarApiResponse } from '@/components/useUserAvatarProfile'
+import { getUserInitialsFromEmail, type AvatarSource } from '@/lib/profile-avatar'
 import { ACCENT_OPTIONS, type AccentName, type ThemeMode } from '@/lib/theme'
 
 const MODE_OPTIONS: { value: ThemeMode; label: string; description: string }[] = [
@@ -15,6 +19,98 @@ const MODE_OPTIONS: { value: ThemeMode; label: string; description: string }[] =
 export function SettingsPage() {
   const { mode, accent, resolvedTheme, setMode, setAccent } = useThemeSettings()
   const authSummary = useAuthSummary()
+  const avatarProfile = useUserAvatarProfile(Boolean(authSummary.user))
+  const fallbackInitials = getUserInitialsFromEmail(authSummary.user?.email ?? null)
+  const uploadInputRef = useRef<HTMLInputElement | null>(null)
+  const [avatarActionPending, setAvatarActionPending] = useState<'source' | 'upload' | 'remove' | null>(null)
+  const [avatarActionError, setAvatarActionError] = useState<string | null>(null)
+  const [avatarActionMessage, setAvatarActionMessage] = useState<string | null>(null)
+
+  async function setAvatarSource(nextSource: AvatarSource) {
+    if (!authSummary.user) return
+
+    setAvatarActionPending('source')
+    setAvatarActionError(null)
+    setAvatarActionMessage(null)
+
+    try {
+      const response = await fetch('/api/profile/avatar', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ avatarSource: nextSource }),
+      })
+      const payload = await response.json().catch(() => null) as UserAvatarApiResponse | { error?: string } | null
+
+      if (!response.ok || !payload || !('profile' in payload)) {
+        throw new Error((payload && 'error' in payload && typeof payload.error === 'string') ? payload.error : 'Could not update avatar source.')
+      }
+
+      avatarProfile.setAvatar(payload)
+      setAvatarActionMessage(nextSource === 'google' ? 'Now using your Google photo.' : nextSource === 'upload' ? 'Now using your uploaded photo.' : 'Now using initials placeholder.')
+    } catch (error) {
+      setAvatarActionError(error instanceof Error ? error.message : 'Could not update avatar source.')
+    } finally {
+      setAvatarActionPending(null)
+    }
+  }
+
+  async function uploadCustomPhoto(file: File) {
+    if (!authSummary.user) return
+
+    setAvatarActionPending('upload')
+    setAvatarActionError(null)
+    setAvatarActionMessage(null)
+
+    try {
+      const formData = new FormData()
+      formData.set('avatar', file)
+
+      const response = await fetch('/api/profile/avatar/upload', {
+        method: 'POST',
+        body: formData,
+      })
+      const payload = await response.json().catch(() => null) as UserAvatarApiResponse | { error?: string } | null
+
+      if (!response.ok || !payload || !('profile' in payload)) {
+        throw new Error((payload && 'error' in payload && typeof payload.error === 'string') ? payload.error : 'Could not upload profile photo.')
+      }
+
+      avatarProfile.setAvatar(payload)
+      setAvatarActionMessage('Custom photo uploaded.')
+    } catch (error) {
+      setAvatarActionError(error instanceof Error ? error.message : 'Could not upload profile photo.')
+    } finally {
+      setAvatarActionPending(null)
+    }
+  }
+
+  async function removeCustomPhoto() {
+    if (!authSummary.user) return
+
+    setAvatarActionPending('remove')
+    setAvatarActionError(null)
+    setAvatarActionMessage(null)
+
+    try {
+      const response = await fetch('/api/profile/avatar/upload', {
+        method: 'DELETE',
+      })
+      const payload = await response.json().catch(() => null) as UserAvatarApiResponse | { error?: string } | null
+
+      if (!response.ok || !payload || !('profile' in payload)) {
+        throw new Error((payload && 'error' in payload && typeof payload.error === 'string') ? payload.error : 'Could not remove uploaded profile photo.')
+      }
+
+      avatarProfile.setAvatar(payload)
+      setAvatarActionMessage(payload.profile.avatarSource === 'google' ? 'Custom photo removed. Back to Google photo.' : 'Custom photo removed.')
+    } catch (error) {
+      setAvatarActionError(error instanceof Error ? error.message : 'Could not remove uploaded profile photo.')
+    } finally {
+      setAvatarActionPending(null)
+    }
+  }
 
   return (
     <main className="page-shell page-shell-narrow page-stack" style={{ gap: '1rem' }}>
@@ -112,6 +208,104 @@ export function SettingsPage() {
           })}
         </div>
       </SettingsSection>
+
+      {authSummary.user ? (
+        <SettingsSection
+          eyebrow="Profile"
+          title="Profile picture"
+          description="Use your Google photo when available, upload your own image, or fall back to initials."
+        >
+          <div style={{ display: 'grid', gap: '0.8rem' }}>
+            <div style={avatarCardStyle}>
+              <UserAvatar
+                value={{
+                  url: avatarProfile.avatar?.resolved.url ?? null,
+                  initials: avatarProfile.avatar?.resolved.initials ?? fallbackInitials,
+                }}
+                size={64}
+                active
+              />
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                  Current source: {avatarProfile.avatar?.resolved.source ?? 'none'}
+                </div>
+                <div style={{ marginTop: '0.22rem', fontSize: '13px', lineHeight: 1.55, color: 'var(--text-secondary)' }}>
+                  {avatarProfile.loading
+                    ? 'Loading your avatar settings...'
+                    : avatarProfile.avatar?.hasGoogleAvatar
+                      ? 'Google photo is available for this account.'
+                      : 'No Google photo detected for this account.'}
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.6rem' }}>
+              <button
+                type="button"
+                className="ui-button ui-button-secondary"
+                onClick={() => setAvatarSource('google')}
+                disabled={!avatarProfile.avatar?.hasGoogleAvatar || Boolean(avatarActionPending)}
+              >
+                Use Google photo
+              </button>
+              <button
+                type="button"
+                className="ui-button ui-button-primary"
+                onClick={() => uploadInputRef.current?.click()}
+                disabled={Boolean(avatarActionPending)}
+              >
+                {avatarActionPending === 'upload' ? 'Uploading...' : 'Upload custom photo'}
+              </button>
+              <button
+                type="button"
+                className="ui-button ui-button-ghost"
+                onClick={removeCustomPhoto}
+                disabled={!avatarProfile.avatar?.profile.avatarUrl || Boolean(avatarActionPending)}
+              >
+                Remove custom photo
+              </button>
+              <button
+                type="button"
+                className="ui-button ui-button-ghost"
+                onClick={() => setAvatarSource('none')}
+                disabled={Boolean(avatarActionPending)}
+              >
+                Use initials placeholder
+              </button>
+            </div>
+
+            <input
+              ref={uploadInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              style={{ display: 'none' }}
+              onChange={(event) => {
+                const file = event.currentTarget.files?.[0] ?? null
+                if (file) {
+                  void uploadCustomPhoto(file)
+                }
+                event.currentTarget.value = ''
+              }}
+            />
+
+            <div style={noteCardStyle}>
+              <div style={{ fontSize: '13px', lineHeight: 1.55, color: 'var(--text-secondary)' }}>
+                Allowed types: JPG, PNG, WEBP, GIF. Max size: 5 MB.
+              </div>
+              {avatarActionError ? (
+                <div style={{ marginTop: '0.32rem', fontSize: '13px', lineHeight: 1.55, color: 'var(--red)' }}>
+                  {avatarActionError}
+                </div>
+              ) : null}
+              {avatarActionMessage ? (
+                <div style={{ marginTop: '0.32rem', fontSize: '13px', lineHeight: 1.55, color: 'var(--blue)' }}>
+                  {avatarActionMessage}
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </SettingsSection>
+      ) : null}
 
       <SettingsSection
         eyebrow="Accent"
@@ -249,4 +443,14 @@ const noteCardStyle: React.CSSProperties = {
   border: '1px solid color-mix(in srgb, var(--border-subtle) 88%, transparent)',
   background: 'color-mix(in srgb, var(--surface-elevated) 92%, var(--surface-base) 8%)',
   padding: '0.95rem',
+}
+
+const avatarCardStyle: React.CSSProperties = {
+  borderRadius: '12px',
+  border: '1px solid color-mix(in srgb, var(--border-subtle) 88%, transparent)',
+  background: 'var(--surface-elevated)',
+  padding: '0.95rem',
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.8rem',
 }

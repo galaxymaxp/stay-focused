@@ -46,7 +46,7 @@ function createStoredResource(overrides: Partial<ModuleResource> = {}): ModuleRe
 }
 
 test('buildLearnExperience merges a fallback file row into the richer stored file when numbering punctuation differs', () => {
-  const module = createModule([
+  const moduleRow = createModule([
     'Course: Test Course (TC101)',
     '',
     'MODULES:',
@@ -54,7 +54,7 @@ test('buildLearnExperience merges a fallback file row into the richer stored fil
     '  * 1.0 - Introduction to HTML.pdf (File) [required]',
   ].join('\n'))
 
-  const experience = buildLearnExperience(module, {
+  const experience = buildLearnExperience(moduleRow, {
     resources: [
       createStoredResource({
         title: '1. Introduction to HTML.pdf',
@@ -69,7 +69,7 @@ test('buildLearnExperience merges a fallback file row into the richer stored fil
 })
 
 test('buildLearnExperience does not merge distinct numbered file resources when the numbering prefix changes meaningfully', () => {
-  const module = createModule([
+  const moduleRow = createModule([
     'Course: Test Course (TC101)',
     '',
     'MODULES:',
@@ -77,7 +77,7 @@ test('buildLearnExperience does not merge distinct numbered file resources when 
     '  * 2.0 - Introduction to HTML.pdf (File) [required]',
   ].join('\n'))
 
-  const experience = buildLearnExperience(module, {
+  const experience = buildLearnExperience(moduleRow, {
     resources: [
       createStoredResource({
         title: '1. Introduction to HTML.pdf',

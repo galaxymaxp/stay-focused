@@ -1,11 +1,14 @@
 'use client'
 
 import type { CSSProperties } from 'react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { SignOutButton } from '@/components/SignOutButton'
+import { UserAvatar } from '@/components/UserAvatar'
 import { useAuthSummary } from '@/components/useAuthSummary'
+import { useUserAvatarProfile } from '@/components/useUserAvatarProfile'
+import { getUserInitialsFromEmail } from '@/lib/profile-avatar'
 
 export function AuthStatus() {
   const authSummary = useAuthSummary()
@@ -13,21 +16,8 @@ export function AuthStatus() {
   const next = pathname || '/settings'
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement | null>(null)
-
-  const avatarLabel = useMemo(() => {
-    const email = authSummary.user?.email?.trim()
-    if (!email) return null
-
-    const local = email.split('@')[0]?.replace(/[^a-z0-9]+/gi, ' ').trim()
-    if (!local) return email.slice(0, 2).toUpperCase()
-
-    return local
-      .split(/\s+/)
-      .slice(0, 2)
-      .map((part) => part[0]?.toUpperCase() ?? '')
-      .join('')
-      .slice(0, 2)
-  }, [authSummary.user?.email])
+  const avatarProfile = useUserAvatarProfile(Boolean(authSummary.user))
+  const fallbackInitials = getUserInitialsFromEmail(authSummary.user?.email ?? null)
 
   useEffect(() => {
     if (!open) return
@@ -67,13 +57,13 @@ export function AuthStatus() {
         aria-expanded={open}
         aria-haspopup="menu"
       >
-        <span style={avatarStyle(Boolean(authSummary.user))}>
-          {authSummary.user ? (
-            avatarLabel ?? <ProfileGlyph />
-          ) : (
-            <ProfileGlyph />
-          )}
-        </span>
+        <UserAvatar
+          value={{
+            url: authSummary.user ? avatarProfile.avatar?.resolved.url ?? null : null,
+            initials: authSummary.user ? avatarProfile.avatar?.resolved.initials ?? fallbackInitials : null,
+          }}
+          active={Boolean(authSummary.user)}
+        />
         <span style={{ display: 'grid', gap: '0.12rem', textAlign: 'left', minWidth: 0 }}>
           <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
             {authSummary.user ? 'Signed in' : 'Account'}
@@ -152,41 +142,11 @@ export function AuthStatus() {
   )
 }
 
-function ProfileGlyph() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M12 12a3.75 3.75 0 1 0 0-7.5a3.75 3.75 0 0 0 0 7.5Z" stroke="currentColor" strokeWidth="1.7" />
-      <path d="M5.5 19.25a6.5 6.5 0 0 1 13 0" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
-    </svg>
-  )
-}
-
 const triggerStyle: CSSProperties = {
   minHeight: '40px',
   padding: '0.42rem 0.55rem 0.42rem 0.45rem',
   gap: '0.55rem',
   borderRadius: '999px',
-}
-
-function avatarStyle(active: boolean): CSSProperties {
-  return {
-    width: '2rem',
-    height: '2rem',
-    borderRadius: '999px',
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-    fontSize: '11px',
-    fontWeight: 700,
-    background: active
-      ? 'color-mix(in srgb, var(--surface-selected) 84%, var(--accent) 16%)'
-      : 'color-mix(in srgb, var(--surface-soft) 88%, transparent)',
-    color: active ? 'var(--accent-foreground)' : 'var(--text-secondary)',
-    border: `1px solid ${active
-      ? 'color-mix(in srgb, var(--accent-border) 54%, var(--border-subtle) 46%)'
-      : 'color-mix(in srgb, var(--border-subtle) 88%, transparent)'}`,
-  }
 }
 
 const chevronStyle: CSSProperties = {

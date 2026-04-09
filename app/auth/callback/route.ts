@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSafeRedirectPath } from '@/lib/auth'
+import { getOrCreateUserProfileForUser } from '@/lib/user-profiles'
 import { isSupabaseAuthConfigured } from '@/lib/supabase-auth-config'
 import { createSupabaseRouteClient } from '@/lib/supabase-auth-server'
 
@@ -31,6 +32,18 @@ export async function GET(request: NextRequest) {
 
   if (exchangeError) {
     return redirectToSignIn(requestUrl, nextPath, exchangeError.message)
+  }
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (user) {
+    try {
+      await getOrCreateUserProfileForUser(supabase, user)
+    } catch (error) {
+      console.error('[avatar] Could not sync user profile during auth callback.', error)
+    }
   }
 
   return response

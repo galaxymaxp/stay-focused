@@ -46,7 +46,7 @@ function createStoredResource(overrides: Partial<ModuleResource> = {}): ModuleRe
 }
 
 test('buildLearnExperience does not duplicate a stored resource when extraction changes its Learn kind', () => {
-  const module = createModule([
+  const moduleRow = createModule([
     'Course: Test Course (TC101)',
     '',
     'MODULES:',
@@ -54,7 +54,7 @@ test('buildLearnExperience does not duplicate a stored resource when extraction 
     '  * Worksheet 1 (Page) [required]',
   ].join('\n'))
 
-  const experience = buildLearnExperience(module, {
+  const experience = buildLearnExperience(moduleRow, {
     resources: [createStoredResource()],
   })
 
@@ -65,7 +65,7 @@ test('buildLearnExperience does not duplicate a stored resource when extraction 
 })
 
 test('buildLearnExperience keeps distinct stored resources even when they share the same title and source type', () => {
-  const module = createModule([
+  const moduleRow = createModule([
     'Course: Test Course (TC101)',
     '',
     'MODULES:',
@@ -74,7 +74,7 @@ test('buildLearnExperience keeps distinct stored resources even when they share 
     '  * Lecture Notes (Page)',
   ].join('\n'))
 
-  const experience = buildLearnExperience(module, {
+  const experience = buildLearnExperience(moduleRow, {
     resources: [
       createStoredResource({
         id: 'resource-a',
