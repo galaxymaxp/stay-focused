@@ -5,7 +5,6 @@ import Link from 'next/link'
 import { useResolvedUserAvatar } from '@/components/useResolvedUserAvatar'
 import { UserAvatar } from '@/components/UserAvatar'
 import { useThemeSettings } from '@/components/ThemeProvider'
-import { SignOutButton } from '@/components/SignOutButton'
 import { useAuthSummary } from '@/components/useAuthSummary'
 import type { UserAvatarApiResponse } from '@/components/useUserAvatarProfile'
 import type { AvatarSource } from '@/lib/profile-avatar'
@@ -128,29 +127,7 @@ export function SettingsPage() {
         description="Email/password and Google sign-in are now available. The app still works without login, but authenticated sessions establish a stable user identity for future ownership hardening."
       >
         <div style={{ display: 'grid', gap: '0.8rem' }}>
-          {authSummary.user ? (
-            <div style={accountCardStyle}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', minWidth: 0 }}>
-                <UserAvatar
-                  value={{
-                    url: resolvedAvatar.resolvedAvatar.url,
-                    initials: resolvedAvatar.resolvedAvatar.initials,
-                  }}
-                  size={56}
-                  active
-                />
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)', overflowWrap: 'anywhere' }}>
-                    {authSummary.user.email ?? 'Signed-in user'}
-                  </div>
-                  <div style={{ marginTop: '0.22rem', fontSize: '13px', lineHeight: 1.55, color: 'var(--text-secondary)' }}>
-                    Session cookies are active. Auto Prompt can now promote saved anonymous results onto your authenticated identity without breaking existing cache hits.
-                  </div>
-                </div>
-              </div>
-              <SignOutButton className="ui-button ui-button-secondary" style={{ minHeight: '2.4rem' }} />
-            </div>
-          ) : (
+          {!authSummary.user ? (
             <div style={accountCardStyle}>
               <div>
                 <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>Not signed in</div>
@@ -167,7 +144,7 @@ export function SettingsPage() {
                 </Link>
               </div>
             </div>
-          )}
+          ) : null}
 
           {authSummary.user ? (
             <div style={profileControlCardStyle}>
