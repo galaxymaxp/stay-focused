@@ -155,7 +155,7 @@ export function buildAnnouncementKey(input: AnnouncementIdentityInput) {
 
   const normalizedTitle = normalizeAnnouncementIdentityPart(input.title)
   const normalizedHref = normalizeAnnouncementIdentityPart(stableHref)
-  const normalizedPostedLabel = normalizeAnnouncementIdentityPart(input.postedLabel)
+  const normalizedPostedLabel = normalizeAnnouncementIdentityPart(input.postedLabel ?? null)
 
   if (normalizedHref) {
     return [
