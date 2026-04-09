@@ -7,7 +7,7 @@ export async function updateSupabaseAuthSession(request: NextRequest) {
     return NextResponse.next()
   }
 
-  const response = NextResponse.next({
+  let response = NextResponse.next({
     request: {
       headers: request.headers,
     },
@@ -22,6 +22,16 @@ export async function updateSupabaseAuthSession(request: NextRequest) {
         }))
       },
       setAll(cookiesToSet, headers) {
+        cookiesToSet.forEach(({ name, value }) => {
+          request.cookies.set(name, value)
+        })
+
+        response = NextResponse.next({
+          request: {
+            headers: request.headers,
+          },
+        })
+
         cookiesToSet.forEach(({ name, value, options }) => {
           response.cookies.set(name, value, options)
         })
@@ -33,6 +43,6 @@ export async function updateSupabaseAuthSession(request: NextRequest) {
     },
   })
 
-  await supabase.auth.getUser()
+  await supabase.auth.getClaims()
   return response
 }
