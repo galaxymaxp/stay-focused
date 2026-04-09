@@ -68,6 +68,8 @@ supabase/migrations/    Canonical schema migrations
    - `NEXT_PUBLIC_SUPABASE_URL`
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
    - `OPENAI_API_KEY`
+   - `OPENAI_DO_NOW_MODEL` optional, defaults to `gpt-5-mini` for Auto Prompt draft generation
+   - `OPENAI_MODEL` optional legacy fallback for Auto Prompt if `OPENAI_DO_NOW_MODEL` is unset
    - `CANVAS_API_URL` optional but useful for sync and reprocess
    - `CANVAS_API_TOKEN` optional but useful for sync and reprocess
    - Supabase Auth providers you want to use, including Google if enabled

@@ -10,16 +10,16 @@ import { applyAutoPromptUserCookie, loadSavedAutoPrompt, saveAutoPromptResult } 
 
 export const runtime = 'nodejs'
 
+const DEFAULT_AUTO_PROMPT_MODEL = 'gpt-5-mini'
+
 function getOpenAIConfig() {
   const apiKey = process.env.OPENAI_API_KEY?.trim()
-  const model = process.env.OPENAI_MODEL?.trim()
+  const model = process.env.OPENAI_DO_NOW_MODEL?.trim()
+    || process.env.OPENAI_MODEL?.trim()
+    || DEFAULT_AUTO_PROMPT_MODEL
 
   if (!apiKey) {
     throw new Error('OPENAI_API_KEY is not set')
-  }
-
-  if (!model) {
-    throw new Error('OPENAI_MODEL is not set')
   }
 
   return { apiKey, model }
