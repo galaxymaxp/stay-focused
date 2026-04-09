@@ -2,6 +2,7 @@
 
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
+import { requireAuthenticatedUserServer } from '@/lib/auth-server'
 import {
   compileCanvasContent,
   downloadCanvasBinary,
@@ -109,6 +110,7 @@ interface SyncedTaskDraft {
 }
 
 export async function fetchCourses(config?: Partial<CanvasConfig>): Promise<CanvasCourse[]> {
+  await requireAuthenticatedUserServer()
   return getCourses(config)
 }
 
@@ -116,6 +118,14 @@ export async function testCanvasConnection(input: {
   canvasUrl: string
   accessToken: string
 }): Promise<CanvasConnectionResult | CanvasConnectionErrorResult> {
+  try {
+    await requireAuthenticatedUserServer()
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : 'You need to sign in before using Canvas sync.',
+    }
+  }
+
   try {
     const config = getRequiredCanvasConfig(input.canvasUrl, input.accessToken)
     const courses = await getCourses(config)
@@ -138,6 +148,7 @@ export async function syncCourse(formData: FormData): Promise<{ error: string } 
   if (!supabase) {
     return { error: 'Supabase is not configured yet.' }
   }
+  const user = await requireAuthenticatedUserServer()
 
   const courseId = Number(formData.get('courseId'))
   const courseName = formData.get('courseName') as string
@@ -158,7 +169,7 @@ export async function syncCourse(formData: FormData): Promise<{ error: string } 
       name: courseName,
       course_code: courseCode,
       enrollment_state: 'active',
-    }, config)
+    }, config, user.id)
   } catch (error) {
     logCanvasActionFailure('sync single course', error, {
       courseId,
@@ -183,6 +194,7 @@ export async function syncCourses(input: {
   if (!supabase) {
     return { error: 'Supabase is not configured yet.' }
   }
+  const user = await requireAuthenticatedUserServer()
 
   const config = getRequiredCanvasConfig(input.canvasUrl, input.accessToken)
 
@@ -199,7 +211,7 @@ export async function syncCourses(input: {
         name: course.courseName,
         course_code: course.courseCode,
         enrollment_state: 'active',
-      }, config)
+      }, config, user.id)
     } catch (error) {
       logCanvasActionFailure('sync selected courses', error, {
         courseId: course.courseId,
@@ -223,7 +235,7 @@ export async function syncCourses(input: {
   }
 }
 
-async function syncSingleCourse(course: CanvasCourse, config: Partial<CanvasConfig>): Promise<SyncCourseResult> {
+async function syncSingleCourse(course: CanvasCourse, config: Partial<CanvasConfig>, userId: string): Promise<SyncCourseResult> {
   if (!supabase) throw new Error('Supabase is not configured yet.')
   const resolvedConfig = resolveCanvasConfig(config)
   const normalizedCourse = normalizeCanvasCourseForSync(course, resolvedConfig.url)
@@ -265,7 +277,7 @@ async function syncSingleCourse(course: CanvasCourse, config: Partial<CanvasConf
         extractedText: resource.extractedText!,
       }))
   ))
-  const courseRecord = await upsertCanvasCourseRecord(normalizedCourse)
+  const courseRecord = await upsertCanvasCourseRecord(normalizedCourse, userId)
   const existingModule = await findExistingSyncedModule(courseRecord.id, {
     courseName: databaseSafeCourse.name,
     courseCode: databaseSafeCourse.course_code,
@@ -460,7 +472,7 @@ async function findExistingSyncedModule(
   return (data as ExistingModuleMatch | null) ?? null
 }
 
-async function upsertCanvasCourseRecord(course: NormalizedCanvasCourseForSync): Promise<ExistingCourseMatch> {
+async function upsertCanvasCourseRecord(course: NormalizedCanvasCourseForSync, userId: string): Promise<ExistingCourseMatch> {
   if (!supabase) throw new Error('Supabase is not configured yet.')
   const courseIdentityPayload = buildCanvasCourseIdentityPayload(course)
 
@@ -479,6 +491,7 @@ async function upsertCanvasCourseRecord(course: NormalizedCanvasCourseForSync): 
       .from('courses')
       .upsert(
         sanitizeDatabaseValue({
+          user_id: userId,
           canvas_instance_url: course.canvasInstanceUrl,
           canvas_course_id: course.canvasCourseId,
           code: course.courseCode,
@@ -489,7 +502,7 @@ async function upsertCanvasCourseRecord(course: NormalizedCanvasCourseForSync): 
           color_token: pickCourseColorToken(course.courseCode, course.name),
         }),
         {
-          onConflict: 'canvas_instance_url,canvas_course_id',
+          onConflict: 'user_id,canvas_instance_url,canvas_course_id',
           ignoreDuplicates: false,
         },
       )

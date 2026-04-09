@@ -1,3 +1,4 @@
+import { getAuthenticatedUserServer } from '@/lib/auth-server'
 import { supabase } from '@/lib/supabase'
 import {
   getModuleResourceCapabilityInfo,
@@ -130,9 +131,22 @@ export interface ResourceGrounding {
 
 export async function getModuleWorkspace(id: string): Promise<ModuleWorkspaceData | null> {
   if (!supabase) return null
+  const user = await getAuthenticatedUserServer()
+  if (!user) return null
 
   const { data: moduleRow } = await supabase.from('modules').select('*').eq('id', id).single()
   if (!moduleRow) return null
+  const courseId = typeof moduleRow.course_id === 'string' ? moduleRow.course_id : null
+  if (!courseId) return null
+
+  const { data: courseRow, error: courseError } = await supabase
+    .from('courses')
+    .select('id')
+    .eq('id', courseId)
+    .eq('user_id', user.id)
+    .maybeSingle()
+
+  if (courseError || !courseRow) return null
 
   const [tasksResult, deadlinesResult, resourcesResult, resourceStudyStateResult, termResult] = await Promise.all([
     supabase.from('tasks').select('*').eq('module_id', id).order('created_at'),

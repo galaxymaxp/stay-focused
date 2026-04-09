@@ -1,3 +1,4 @@
+import { getAuthenticatedUserServer } from '@/lib/auth-server'
 import { supabase } from '@/lib/supabase'
 
 export interface WorkspaceCourseRow {
@@ -64,25 +65,52 @@ export interface WorkspaceQueryResult {
 
 export async function fetchWorkspaceRows(): Promise<WorkspaceQueryResult | null> {
   if (!supabase) return null
+  const user = await getAuthenticatedUserServer()
+  if (!user) {
+    return {
+      courses: [],
+      modules: [],
+      learningItems: [],
+      taskItems: [],
+    }
+  }
+
+  const { data: courseRows, error: courseError } = await supabase
+    .from('courses')
+    .select('*')
+    .eq('user_id', user.id)
+    .order('name')
+
+  if (courseError) return null
+
+  const courses = (courseRows ?? []) as WorkspaceCourseRow[]
+  if (courses.length === 0) {
+    return {
+      courses: [],
+      modules: [],
+      learningItems: [],
+      taskItems: [],
+    }
+  }
+
+  const ownedCourseIds = courses.map((course) => course.id)
 
   const [
-    coursesResult,
     modulesResult,
     learningItemsResult,
     taskItemsResult,
   ] = await Promise.all([
-    supabase.from('courses').select('*').order('name'),
-    supabase.from('modules').select('*').order('order', { ascending: true }).order('created_at', { ascending: true }),
-    supabase.from('learning_items').select('*').order('order', { ascending: true }),
-    supabase.from('task_items').select('*').order('deadline', { ascending: true, nullsFirst: false }),
+    supabase.from('modules').select('*').in('course_id', ownedCourseIds).order('order', { ascending: true }).order('created_at', { ascending: true }),
+    supabase.from('learning_items').select('*').in('course_id', ownedCourseIds).order('order', { ascending: true }),
+    supabase.from('task_items').select('*').in('course_id', ownedCourseIds).order('deadline', { ascending: true, nullsFirst: false }),
   ])
 
-  if (coursesResult.error || modulesResult.error || learningItemsResult.error || taskItemsResult.error) {
+  if (modulesResult.error || learningItemsResult.error || taskItemsResult.error) {
     return null
   }
 
   return {
-    courses: (coursesResult.data ?? []) as WorkspaceCourseRow[],
+    courses,
     modules: (modulesResult.data ?? []) as WorkspaceModuleRow[],
     learningItems: (learningItemsResult.data ?? []) as WorkspaceLearningItemRow[],
     taskItems: (taskItemsResult.data ?? []) as WorkspaceTaskItemRow[],
