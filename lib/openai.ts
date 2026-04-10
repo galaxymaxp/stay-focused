@@ -54,23 +54,29 @@ export async function processModuleContent(content: string): Promise<AIResponse>
       { role: 'system', content: SYSTEM_PROMPT },
       { role: 'user', content: `Process this module content:\n\n${content}` }
     ],
-    max_tokens: 2000,
+    max_tokens: 4096,
     temperature: 0.2,  // low temp = more predictable structured output
   })
 
-  const raw = response.choices[0]?.message?.content
+  const choice = response.choices[0]
+  if (choice?.finish_reason === 'length') {
+    throw new Error('AI response was truncated (token limit reached) - module content may be too long')
+  }
+
+  const raw = choice?.message?.content
   if (!raw) throw new Error('Empty response from OpenAI')
 
+  let parsed: AIResponse
   try {
-    const parsed = JSON.parse(raw) as AIResponse
-    // Basic validation
-    if (!parsed.title || !parsed.summary || !Array.isArray(parsed.tasks)) {
-      throw new Error('AI response missing required fields')
-    }
-    parsed.concepts = Array.isArray(parsed.concepts) ? parsed.concepts : []
-    parsed.study_prompts = Array.isArray(parsed.study_prompts) ? parsed.study_prompts : []
-    return parsed
+    parsed = JSON.parse(raw) as AIResponse
   } catch {
     throw new Error(`Failed to parse AI response: ${raw.slice(0, 200)}`)
   }
+
+  if (!parsed.title || !parsed.summary || !Array.isArray(parsed.tasks)) {
+    throw new Error('AI response missing required fields')
+  }
+  parsed.concepts = Array.isArray(parsed.concepts) ? parsed.concepts : []
+  parsed.study_prompts = Array.isArray(parsed.study_prompts) ? parsed.study_prompts : []
+  return parsed
 }
