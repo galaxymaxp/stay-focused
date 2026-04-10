@@ -54,12 +54,13 @@ export async function processModuleContent(content: string): Promise<AIResponse>
       { role: 'system', content: SYSTEM_PROMPT },
       { role: 'user', content: `Process this module content:\n\n${content}` }
     ],
-    max_tokens: 4096,
+    max_tokens: 16384,
     temperature: 0.2,  // low temp = more predictable structured output
   })
 
   const choice = response.choices[0]
-  if (choice?.finish_reason === 'length') {
+  const finishReason = choice?.finish_reason
+  if (finishReason === 'length') {
     throw new Error('AI response was truncated (token limit reached) - module content may be too long')
   }
 
@@ -70,7 +71,7 @@ export async function processModuleContent(content: string): Promise<AIResponse>
   try {
     parsed = JSON.parse(raw) as AIResponse
   } catch {
-    throw new Error(`Failed to parse AI response: ${raw.slice(0, 200)}`)
+    throw new Error(`Failed to parse AI response (finish_reason=${finishReason}): ${raw.slice(0, 200)}`)
   }
 
   if (!parsed.title || !parsed.summary || !Array.isArray(parsed.tasks)) {
