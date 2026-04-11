@@ -52,7 +52,7 @@ export function buildStudyFileReaderModel(resource: ModuleSourceResource): Study
   const quality = getModuleResourceQualityInfo(resource)
   const state = resolveStudyFileReaderState(resource, quality.quality)
   const fileTypeLabel = getStudyFileTypeLabel(resource)
-  const statusLabel = labelForExtractionStatus(resource.extractionStatus)
+  const statusLabel = labelForExtractionStatus(resource.extractionStatus, resource.extractionError)
   const normalizedText = quality.normalizedText
   const meaningfulText = quality.meaningfulText || normalizedText
   const charCount = typeof resource.extractedCharCount === 'number' && resource.extractedCharCount > 0
@@ -190,14 +190,21 @@ export function getStudyFileTypeLabel(resource: Pick<ModuleSourceResource, 'type
   return getStudySourceTypeLabel(resource)
 }
 
-export function labelForExtractionStatus(status?: ModuleResourceExtractionStatus) {
+export function labelForExtractionStatus(status?: ModuleResourceExtractionStatus, extractionError?: string | null) {
+  const note = extractionError?.trim().toLowerCase() ?? ''
+
+  if (note.includes('attachments rather than the body')) return 'Attachment-only text'
+  if (note.includes('external link')) return 'External link only'
+  if (note.includes('cannot read this') || note.includes('unsupported file type')) return 'Unsupported file type'
+  if (note.includes('no readable text') || note.includes('no usable text')) return 'No readable text found'
+  if (status === 'pending') return 'Loading'
   if (!status) return 'Not available'
   if (status === 'extracted') return 'Text extracted'
   if (status === 'metadata_only') return 'Metadata only'
   if (status === 'empty') return 'No usable text found'
-  if (status === 'failed') return 'Extraction unavailable'
+  if (status === 'failed') return 'Extraction failed'
   if (status === 'unsupported') return 'Unsupported'
-  return 'Pending'
+  return 'Loading'
 }
 
 function resolveStudyFileReaderState(resource: ModuleSourceResource, quality: ModuleResourceQuality): StudyFileReaderState {
