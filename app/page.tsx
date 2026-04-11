@@ -1,6 +1,7 @@
 import { TodayDashboard } from '@/components/TodayDashboard'
 import { SyncFirstEmptyState } from '@/components/SyncFirstEmptyState'
 import { getClarityWorkspace } from '@/lib/clarity-workspace'
+import { buildHomeOverview } from '@/lib/home-overview'
 
 export default async function Dashboard() {
   const workspace = await getClarityWorkspace()
@@ -8,22 +9,22 @@ export default async function Dashboard() {
   if (!workspace.hasSyncedData) {
     return (
       <main className="page-shell">
-        <SyncFirstEmptyState eyebrow="Today" />
+        <SyncFirstEmptyState eyebrow="Home" />
       </main>
     )
   }
 
+  const overview = buildHomeOverview(workspace)
+
   return (
     <main className="page-shell">
       <TodayDashboard
-        nextBestMove={workspace.today.nextBestMove}
-        needsAction={workspace.today.needsAction}
-        needsUnderstanding={workspace.today.needsUnderstanding}
-        comingUp={workspace.today.comingUp}
-        undatedTaskCount={workspace.today.undatedTaskCount}
-        freshestModule={workspace.freshestModule}
-        freshestModuleCourse={workspace.freshestModuleCourse}
-        recentAnnouncements={workspace.recentAnnouncements}
+        primaryAction={overview.primaryAction}
+        upNext={overview.upNext}
+        dueSoon={overview.dueSoon}
+        recentActivity={overview.recentActivity}
+        courseSnapshots={overview.courseSnapshots}
+        undatedTaskCount={overview.undatedTaskCount}
       />
     </main>
   )

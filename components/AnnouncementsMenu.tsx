@@ -49,22 +49,21 @@ export function AnnouncementsMenu({
         onClick={() => setOpen((current) => !current)}
         aria-expanded={open}
         aria-haspopup="dialog"
-        className="ui-button ui-button-ghost"
-        style={{
-          minHeight: '40px',
-          padding: '0.45rem 0.75rem',
-          display: 'grid',
-          gap: '0.08rem',
-          justifyItems: 'start',
-          textAlign: 'left',
-          minWidth: 'min(18rem, calc(100vw - 8rem))',
-        }}
+        className="ui-button ui-button-secondary"
+        style={triggerStyle}
       >
-        <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
-          Announcements
+        <span aria-hidden="true" style={{ display: 'inline-flex', color: 'var(--text-secondary)' }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <path d="M6.25 8.25h11.5M6.25 12h11.5M6.25 15.75h7.25" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+          </svg>
         </span>
-        <span style={{ fontSize: '12px', lineHeight: 1.35, color: 'var(--text-primary)', maxWidth: '16rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {latest ? `${latest.title} - ${latest.courseName}` : 'No recent items'}
+        <span style={{ display: 'grid', gap: '0.06rem', textAlign: 'left' }}>
+          <span style={{ fontSize: '12px', fontWeight: 650, color: 'var(--text-primary)' }}>
+            Updates
+          </span>
+          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+            {latest ? latest.courseName : 'Nothing new'}
+          </span>
         </span>
         {unviewedCount > 0 && (
           <span className="ui-chip" style={unviewedCountStyle}>
@@ -94,7 +93,7 @@ export function AnnouncementsMenu({
             <div>
               <p className="ui-kicker">Announcements</p>
               <p style={{ margin: '0.3rem 0 0', fontSize: '13px', lineHeight: 1.55, color: 'var(--text-secondary)' }}>
-                Latest synced course announcements, with module fallback when no direct target is stored.
+                Recent course updates, with a fallback to the related module when a direct announcement link is missing.
               </p>
             </div>
             <button type="button" onClick={() => setOpen(false)} className="ui-button ui-button-ghost ui-button-xs">
@@ -258,13 +257,19 @@ function AnnouncementMenuItem({
 }
 
 const unviewedCountStyle: CSSProperties = {
-  marginTop: '0.2rem',
   padding: '0.22rem 0.55rem',
   fontSize: '11px',
   fontWeight: 700,
   background: 'color-mix(in srgb, var(--blue-light) 42%, var(--surface-soft) 58%)',
   color: 'var(--blue)',
   border: '1px solid color-mix(in srgb, var(--blue) 22%, var(--border-subtle) 78%)',
+}
+
+const triggerStyle: CSSProperties = {
+  minHeight: '2.6rem',
+  padding: '0.45rem 0.7rem',
+  gap: '0.55rem',
+  borderRadius: 'var(--radius-control)',
 }
 
 const viewedBadgeStyle: CSSProperties = {

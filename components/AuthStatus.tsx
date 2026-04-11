@@ -64,10 +64,10 @@ export function AuthStatus() {
         />
         <span style={{ display: 'grid', gap: '0.12rem', textAlign: 'left', minWidth: 0 }}>
           <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
-            {authSummary.user ? 'Signed in' : 'Account'}
+            {authSummary.user ? 'Profile' : 'Account'}
           </span>
-          <span style={{ fontSize: '13px', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '11rem' }}>
-            {authSummary.user?.email ?? 'Sign in or create an account'}
+          <span className="auth-status-label" style={{ fontSize: '12px', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '10rem' }}>
+            {authSummary.user?.email ?? 'Sign in'}
           </span>
         </span>
         <span aria-hidden="true" style={chevronStyle}>
@@ -153,10 +153,10 @@ export function AuthStatus() {
 }
 
 const triggerStyle: CSSProperties = {
-  minHeight: '40px',
-  padding: '0.42rem 0.55rem 0.42rem 0.45rem',
+  minHeight: '2.6rem',
+  padding: '0.42rem 0.6rem 0.42rem 0.45rem',
   gap: '0.55rem',
-  borderRadius: '999px',
+  borderRadius: 'var(--radius-control)',
 }
 
 const chevronStyle: CSSProperties = {

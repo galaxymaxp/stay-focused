@@ -1,20 +1,18 @@
 import { PageLoadingStage } from '@/components/PageLoadingStage'
 
 /**
- * Do page loading state.
- * Uses the shared route-entry loading language while previewing the stacked urgency groups below.
+ * Do Now loading state.
+ * Keeps the preview focused on a single recommended action instead of the full task board.
  */
 export default function DoLoading() {
   return (
     <PageLoadingStage
-      title="Loading action board"
-      description="Preparing urgency groups, task cards, and completed work."
+      title="Loading your next step"
+      description="Preparing the current recommendation and a short backup list."
     >
       <div className="page-loading-skeleton" style={{ height: '4rem' }} />
-      <div className="page-loading-skeleton" style={{ height: '8.75rem', animationDelay: '80ms' }} />
-      <div className="page-loading-skeleton" style={{ height: '8.75rem', animationDelay: '160ms' }} />
-      <div className="page-loading-skeleton" style={{ height: '8.75rem', animationDelay: '240ms' }} />
-      <div className="page-loading-skeleton page-loading-skeleton-soft" style={{ height: '6.25rem', animationDelay: '320ms' }} />
+      <div className="page-loading-skeleton" style={{ height: '14rem', animationDelay: '80ms' }} />
+      <div className="page-loading-skeleton page-loading-skeleton-soft" style={{ height: '8rem', animationDelay: '160ms' }} />
     </PageLoadingStage>
   )
 }

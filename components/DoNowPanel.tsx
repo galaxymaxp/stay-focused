@@ -15,8 +15,8 @@ import {
 import type { ManualCopyBundleResult } from '@/lib/manual-copy-bundle'
 
 /**
- * Modal panel that opens immediately, shows a prompt-building experience while
- * the request runs, then hands off to the final usable Auto Prompt view.
+ * Modal panel that opens immediately, shows a draft-building experience while
+ * the request runs, then hands off to the final usable starter draft view.
  */
 export function TaskDraftPanel({
   context,
@@ -89,11 +89,11 @@ export function TaskDraftPanel({
         onClick={(event) => event.stopPropagation()}
         role="dialog"
         aria-modal="true"
-        aria-label={`Auto Prompt - ${context.taskTitle}`}
+        aria-label={`Starter draft - ${context.taskTitle}`}
       >
         <div style={headerStyle}>
           <div style={{ minWidth: 0 }}>
-            <p className="ui-kicker" style={{ margin: 0 }}>Auto Prompt</p>
+            <p className="ui-kicker" style={{ margin: 0 }}>Starter draft</p>
             <h2 style={titleStyle}>{context.taskTitle}</h2>
             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.5rem' }}>
               <span className="ui-chip" style={courseChipStyle}>{context.courseName}</span>
@@ -111,7 +111,7 @@ export function TaskDraftPanel({
             type="button"
             onClick={onClose}
             className="ui-button ui-button-ghost"
-            aria-label="Close Auto Prompt panel"
+            aria-label="Close starter draft panel"
             style={closeButtonStyle}
           >
             X
@@ -175,7 +175,7 @@ export function TaskDraftPanel({
             <CopyTaskBundleActions
               bundleText={copyBundle.bundleText}
               promptText={copyBundle.promptText}
-              fullLabel="Copy for external AI"
+              fullLabel="Copy for another AI tool"
               fullTone="secondary"
             />
           )}
@@ -186,7 +186,7 @@ export function TaskDraftPanel({
               style={footerButtonStyle}
               onClick={onClose}
             >
-              Open in Do page
+              Open task page
             </Link>
           )}
           {context.learnHref && (
@@ -241,19 +241,19 @@ function StatusBanner({
 }) {
   return (
     <div style={statusBannerStyle(phase)}>
-      <p style={statusTitleStyle}>{phase === 'error' ? 'Prompt build failed' : 'Prompt ready'}</p>
+      <p style={statusTitleStyle}>{phase === 'error' ? 'Draft build failed' : 'Draft ready'}</p>
       <p style={statusBodyStyle}>
         {phase === 'error'
-          ? `${errorMessage ?? 'OpenAI generation failed.'} Showing the existing local Auto Prompt fallback instead.`
+          ? `${errorMessage ?? 'OpenAI generation failed.'} Showing the local starter draft instead.`
           : reopenSource === 'session'
             ? draftSource === 'saved'
-              ? 'This reopened the same saved Auto Prompt immediately from the current session because the task content has not changed.'
-              : 'This reopened the same generated Auto Prompt immediately from the current session because the task content has not changed.'
+              ? 'This reopened the same saved starter draft from the current session because the task content has not changed.'
+              : 'This reopened the same generated starter draft from the current session because the task content has not changed.'
           : draftSource === 'saved'
-            ? 'This Auto Prompt was loaded from the saved server result because the task content has not changed.'
+            ? 'This starter draft was loaded from the saved server result because the task content has not changed.'
             : phase === 'done'
-            ? 'This Auto Prompt was generated on demand from the current task context.'
-            : `${errorMessage ?? 'OpenAI generation failed.'} Showing the existing local Auto Prompt fallback instead.`}
+            ? 'This starter draft was generated from the current task context.'
+            : `${errorMessage ?? 'OpenAI generation failed.'} Showing the local starter draft instead.`}
       </p>
     </div>
   )

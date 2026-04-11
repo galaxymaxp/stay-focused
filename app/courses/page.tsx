@@ -121,7 +121,7 @@ export default async function CoursesPage() {
 
               <div style={{ display: 'flex', gap: '0.65rem', flexWrap: 'wrap' }}>
                 <Link href={courseHref} className="ui-button ui-button-secondary">Open course Learn</Link>
-                <Link href={nextTask ? buildModuleDoHref(nextTask.moduleId, { taskTitle: nextTask.title }) : '/do'} className="ui-button ui-button-ghost">Open next Do item</Link>
+                <Link href={nextTask ? buildModuleDoHref(nextTask.moduleId, { taskTitle: nextTask.title }) : '/tasks'} className="ui-button ui-button-ghost">Open next task</Link>
               </div>
             </section>
           )
