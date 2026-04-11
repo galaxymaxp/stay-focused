@@ -5,7 +5,7 @@ import { revalidatePath } from 'next/cache'
 import { requireAuthenticatedUserServer } from '@/lib/auth-server'
 import {
   compileCanvasContent,
-  downloadCanvasBinary,
+  downloadCanvasBinarySource,
   getCanvasDiscussionTopic,
   getCanvasFile,
   getCanvasPage,
@@ -20,12 +20,12 @@ import {
   type CanvasCourse,
   type CanvasModuleItem,
 } from '@/lib/canvas'
+import { normalizeExtension } from '@/lib/canvas-resource-extraction'
 import {
-  extractCanvasFileContent,
-  extractCanvasPageContent,
-  extractCanvasStructuredHtmlContent,
-  normalizeExtension,
-} from '@/lib/canvas-resource-extraction'
+  resolveCanvasContentForWorkspaceItem,
+  type ResolveCanvasAttachmentDownloadInput,
+  type ResolveCanvasContentResult,
+} from '@/lib/canvas-content-resolution'
 import { buildModuleResourceAssessmentMetadata } from '@/lib/module-resource-quality'
 import {
   normalizeCanvasCourseForSync,
@@ -803,6 +803,7 @@ async function ingestModuleResources(
 ): Promise<ResourceIngestionRecord[]> {
   const records: ResourceIngestionRecord[] = []
   const assignmentsById = new Map(assignments.map((assignment) => [assignment.id, assignment]))
+  const downloadAttachment = createCanvasAttachmentDownloader(courseId, config)
 
   for (const moduleItem of modules) {
     for (const item of moduleItem.items ?? []) {
@@ -838,31 +839,34 @@ async function ingestModuleResources(
             apiUrl: item.url ?? null,
           }, config)
           const title = page.title?.trim() || item.title
-          const extracted = await extractCanvasPageContent({
+          const resolved = await resolveCanvasContentForWorkspaceItem({
             title,
-            html: page.body ?? '',
+            sourceType: 'page',
+            mimeType: 'text/html',
+            sections: [
+              {
+                label: 'Page content',
+                html: page.body ?? '',
+              },
+            ],
+            courseId,
+            moduleId: moduleItem.id,
+          }, {
+            downloadAttachment,
           })
 
-          records.push({
-            ...baseRecord,
+          records.push(createResolvedResourceRecord(baseRecord, resolved, {
             title,
             contentType: 'text/html',
             extension: null,
             sourceUrl: buildCanvasPageApiUrl(config.url ?? null, courseId, page.url ?? item.page_url ?? null, item.url ?? null),
             htmlUrl: buildCanvasPageHtmlUrl(config.url ?? null, courseId, page.url ?? item.page_url ?? null, page.html_url ?? item.html_url ?? null),
-            extractionStatus: extracted.extractionStatus,
-            extractedText: extracted.extractedText,
-            extractedTextPreview: extracted.extractedTextPreview,
-            extractedCharCount: extracted.extractedCharCount,
-            extractionError: extracted.extractionError,
-            metadata: {
-              ...baseRecord.metadata,
-              capability: extracted.extractionStatus === 'extracted' ? 'supported' : 'partial',
+            metadataPatch: {
               canvasPageUrl: page.url ?? item.page_url ?? null,
               pageUpdatedAt: page.updated_at ?? null,
               pagePublished: page.published ?? null,
             },
-          })
+          }))
         } catch (error) {
           records.push({
             ...baseRecord,
@@ -874,7 +878,6 @@ async function ingestModuleResources(
             extractionError: error instanceof Error ? error.message : 'Unknown Canvas page ingestion error.',
             metadata: {
               ...baseRecord.metadata,
-              capability: 'partial',
               canvasPageUrl: item.page_url ?? null,
             },
           })
@@ -895,53 +898,42 @@ async function ingestModuleResources(
             extractionError: 'This module-linked assignment was detected, but Canvas did not provide readable assignment details in the current sync payload.',
             metadata: {
               ...baseRecord.metadata,
-              capability: 'partial',
               normalizedSourceType: 'assignment',
             },
           })
           continue
         }
 
-        const extracted = await extractCanvasStructuredHtmlContent({
+        const resolved = await resolveCanvasContentForWorkspaceItem({
           title: assignment.name,
+          sourceType: 'assignment',
+          mimeType: 'text/html',
           sections: [
-            {
-              label: 'Assignment',
-              text: assignment.name,
-            },
-            {
-              label: 'Submission types',
-              text: assignment.submission_types.length > 0 ? assignment.submission_types.join(', ') : null,
-            },
             {
               label: 'Instructions',
               html: assignment.description,
             },
           ],
-          emptyMessage: 'Canvas assignment fetched successfully, but no readable instructions or body text were found.',
+          dueAt: assignment.due_at ?? null,
+          courseId,
+          moduleId: moduleItem.id,
+        }, {
+          downloadAttachment,
         })
 
-        records.push({
-          ...baseRecord,
+        records.push(createResolvedResourceRecord(baseRecord, resolved, {
           title: assignment.name,
           contentType: 'text/html',
           extension: null,
           sourceUrl: assignment.url ?? baseRecord.sourceUrl,
           htmlUrl: assignment.html_url ?? baseRecord.htmlUrl,
-          extractionStatus: extracted.extractionStatus,
-          extractedText: extracted.extractedText,
-          extractedTextPreview: extracted.extractedTextPreview,
-          extractedCharCount: extracted.extractedCharCount,
-          extractionError: extracted.extractionError,
-          metadata: {
-            ...baseRecord.metadata,
-            capability: extracted.extractionStatus === 'extracted' ? 'supported' : 'partial',
+          metadataPatch: {
             normalizedSourceType: 'assignment',
             assignmentDueAt: assignment.due_at ?? null,
             pointsPossible: assignment.points_possible ?? null,
             submissionTypes: assignment.submission_types,
           },
-        })
+        }))
         continue
       }
 
@@ -952,41 +944,35 @@ async function ingestModuleResources(
             apiUrl: item.url ?? null,
           }, config)
 
-          const extracted = await extractCanvasStructuredHtmlContent({
+          const resolved = await resolveCanvasContentForWorkspaceItem({
             title: discussion.title || item.title,
+            sourceType: 'discussion',
+            mimeType: 'text/html',
             sections: [
-              {
-                label: 'Discussion',
-                text: discussion.title || item.title,
-              },
               {
                 label: 'Prompt',
                 html: discussion.message,
               },
             ],
-            emptyMessage: 'Canvas discussion fetched successfully, but no readable prompt text was found.',
+            postedAt: discussion.posted_at ?? null,
+            courseId,
+            moduleId: moduleItem.id,
+          }, {
+            downloadAttachment,
           })
 
-          records.push({
-            ...baseRecord,
+          records.push(createResolvedResourceRecord(baseRecord, resolved, {
             title: discussion.title?.trim() || item.title,
             contentType: 'text/html',
             extension: null,
             sourceUrl: discussion.url ?? baseRecord.sourceUrl,
             htmlUrl: discussion.html_url ?? baseRecord.htmlUrl,
-            extractionStatus: extracted.extractionStatus,
-            extractedText: extracted.extractedText,
-            extractedTextPreview: extracted.extractedTextPreview,
-            extractedCharCount: extracted.extractedCharCount,
-            extractionError: extracted.extractionError,
-            metadata: {
-              ...baseRecord.metadata,
-              capability: extracted.extractionStatus === 'extracted' ? 'supported' : 'partial',
+            metadataPatch: {
               normalizedSourceType: 'discussion',
               discussionUpdatedAt: discussion.updated_at ?? null,
               discussionPostedAt: discussion.posted_at ?? null,
             },
-          })
+          }))
         } catch (error) {
           records.push({
             ...baseRecord,
@@ -996,7 +982,6 @@ async function ingestModuleResources(
             extractionError: error instanceof Error ? error.message : 'Unknown Canvas discussion ingestion error.',
             metadata: {
               ...baseRecord.metadata,
-              capability: 'partial',
               normalizedSourceType: 'discussion',
             },
           })
@@ -1004,25 +989,44 @@ async function ingestModuleResources(
         continue
       }
 
-      if (item.type.toLowerCase() !== 'file' || typeof item.content_id !== 'number') {
+      if ((item.type?.toLowerCase() ?? '').includes('external')) {
+        const resolved = await resolveCanvasContentForWorkspaceItem({
+          title: item.title,
+          sourceType: 'external_link',
+          mimeType: item.content_details?.content_type ?? null,
+          attachments: [
+            buildModuleItemExternalLinkAttachment(item, baseRecord.sourceUrl),
+          ],
+          courseId,
+          moduleId: moduleItem.id,
+        })
+
+        records.push(createResolvedResourceRecord(baseRecord, resolved, {
+          extractionError: resolved.persisted.extractionError ?? buildModuleItemCapabilityNote(item),
+        }))
+        continue
+      }
+
+      if (item.type.toLowerCase() !== 'file') {
         records.push({
           ...baseRecord,
           extractionStatus: 'metadata_only',
           extractionError: buildModuleItemCapabilityNote(item),
           metadata: {
-            ...baseRecord.metadata,
-            capability: 'partial',
+              ...baseRecord.metadata,
           },
         })
         continue
       }
 
       try {
-        const file = await getCanvasFile(courseId, item.content_id, config)
-        const title = file.display_name?.trim() || file.filename?.trim() || item.title
-        const contentType = file.content_type ?? file['content-type'] ?? baseRecord.contentType
+        const file = typeof item.content_id === 'number'
+          ? await getCanvasFile(courseId, item.content_id, config)
+          : null
+        const title = file?.display_name?.trim() || file?.filename?.trim() || item.title
+        const contentType = file?.content_type ?? file?.['content-type'] ?? baseRecord.contentType
         const extension = normalizeExtension(null, title)
-        const sourceUrl = file.url ?? baseRecord.sourceUrl
+        const sourceUrl = file?.url ?? baseRecord.sourceUrl
 
         if (!sourceUrl) {
           records.push({
@@ -1034,42 +1038,43 @@ async function ingestModuleResources(
             extractionError: 'Canvas returned no downloadable URL for this file.',
             metadata: {
               ...baseRecord.metadata,
-              fileSize: file.size ?? null,
-              mimeClass: file.mime_class ?? null,
+              fileSize: file?.size ?? item.content_details?.size ?? null,
+              mimeClass: file?.mime_class ?? item.content_details?.mime_class ?? null,
             },
           })
           continue
         }
 
-        const fileBuffer = await downloadCanvasBinary(sourceUrl, config)
-        const extracted = await extractCanvasFileContent({
-          buffer: fileBuffer,
+        const resolved = await resolveCanvasContentForWorkspaceItem({
           title,
+          sourceType: 'file',
+          mimeType: contentType,
           extension,
-          contentType,
+          file: {
+            url: sourceUrl,
+            title,
+            mimeType: contentType,
+            extension,
+          },
+          courseId,
+          moduleId: moduleItem.id,
+        }, {
+          downloadAttachment,
         })
 
-        records.push({
-          ...baseRecord,
-          canvasFileId: file.id,
+        records.push(createResolvedResourceRecord(baseRecord, resolved, {
+          canvasFileId: file?.id ?? baseRecord.canvasFileId,
           title,
           contentType,
           extension,
           sourceUrl,
-          htmlUrl: file.preview_url ?? baseRecord.htmlUrl,
-          extractionStatus: extracted.extractionStatus,
-          extractedText: extracted.extractedText,
-          extractedTextPreview: extracted.extractedTextPreview,
-          extractedCharCount: extracted.extractedCharCount,
-          extractionError: extracted.extractionError,
-          metadata: {
-            ...baseRecord.metadata,
-            capability: extracted.supported ? 'supported' : 'unsupported',
-            fileSize: file.size ?? null,
-            mimeClass: file.mime_class ?? null,
-            fileUpdatedAt: file.updated_at ?? null,
+          htmlUrl: file?.preview_url ?? baseRecord.htmlUrl,
+          metadataPatch: {
+            fileSize: file?.size ?? item.content_details?.size ?? null,
+            mimeClass: file?.mime_class ?? item.content_details?.mime_class ?? null,
+            fileUpdatedAt: file?.updated_at ?? null,
           },
-        })
+        }))
       } catch (error) {
         records.push({
           ...baseRecord,
@@ -1077,7 +1082,6 @@ async function ingestModuleResources(
           extractionError: error instanceof Error ? error.message : 'Unknown Canvas file ingestion error.',
           metadata: {
             ...baseRecord.metadata,
-            capability: 'partial',
           },
         })
       }
@@ -1085,6 +1089,81 @@ async function ingestModuleResources(
   }
 
   return records
+}
+
+function createResolvedResourceRecord(
+  baseRecord: ResourceIngestionRecord,
+  resolved: ResolveCanvasContentResult,
+  overrides: Partial<ResourceIngestionRecord> & {
+    metadataPatch?: Record<string, unknown>
+    extractionError?: string | null
+  } = {},
+): ResourceIngestionRecord {
+  return {
+    ...baseRecord,
+    ...overrides,
+    title: resolved.content.title ?? overrides.title ?? baseRecord.title,
+    contentType: overrides.contentType ?? resolved.content.mimeType ?? baseRecord.contentType,
+    extractionStatus: resolved.persisted.extractionStatus,
+    extractedText: resolved.persisted.extractedText,
+    extractedTextPreview: resolved.persisted.extractedTextPreview,
+    extractedCharCount: resolved.persisted.extractedCharCount,
+    extractionError: overrides.extractionError ?? resolved.persisted.extractionError,
+    metadata: {
+      ...baseRecord.metadata,
+      ...resolved.persisted.metadataPatch,
+      ...(overrides.metadataPatch ?? {}),
+    },
+  }
+}
+
+function buildModuleItemExternalLinkAttachment(item: CanvasModuleItem, fallbackUrl: string | null) {
+  return {
+    name: item.title,
+    url: fallbackUrl ?? resolveCanvasUrl(null, item.content_details?.url ?? item.url ?? null),
+    mimeType: item.content_details?.content_type ?? null,
+    sourceType: 'external_link' as const,
+  }
+}
+
+function createCanvasAttachmentDownloader(courseId: number, config: Partial<CanvasConfig>) {
+  return async (input: ResolveCanvasAttachmentDownloadInput) => {
+    if (typeof input.canvasFileId === 'number') {
+      try {
+        const file = await getCanvasFile(courseId, input.canvasFileId, config)
+        const sourceUrl = file.url ?? input.url
+        if (!sourceUrl) {
+          throw new Error('Canvas returned a linked file without a downloadable URL.')
+        }
+
+        const downloaded = await downloadCanvasBinarySource(sourceUrl, config)
+        const title = file.display_name?.trim() || file.filename?.trim() || (input.title ?? null)
+
+        return {
+          buffer: downloaded.buffer,
+          contentType: file.content_type ?? file['content-type'] ?? downloaded.contentType,
+          title,
+          extension: normalizeExtension(null, title ?? 'Canvas attachment'),
+        }
+      } catch (error) {
+        if (!input.url) {
+          throw error
+        }
+      }
+    }
+
+    if (!input.url) {
+      throw new Error('Canvas attachment download is missing a URL.')
+    }
+
+    const downloaded = await downloadCanvasBinarySource(input.url, config)
+    return {
+      buffer: downloaded.buffer,
+      contentType: downloaded.contentType,
+      title: input.title,
+      extension: normalizeExtension(null, input.title ?? 'Canvas attachment'),
+    }
+  }
 }
 
 function pickCourseColorToken(courseCode: string, courseName: string): Course['colorToken'] {

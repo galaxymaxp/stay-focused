@@ -1,10 +1,4 @@
-import {
-  extractCanvasFileContent,
-  extractCanvasPageContent,
-  extractCanvasStructuredHtmlContent,
-  normalizeExtension,
-  type ExtractedCanvasResourceContent,
-} from './canvas-resource-extraction'
+import { normalizeExtension } from './canvas-resource-extraction'
 import {
   getModuleResourceCapabilityInfo,
   getNormalizedModuleResourceSourceType,
@@ -15,6 +9,10 @@ import {
   getModuleResourceQualityInfo,
   type ModuleResourceQualityInfo,
 } from './module-resource-quality'
+import {
+  resolveCanvasContentForWorkspaceItem,
+  type ResolveCanvasAttachmentDownloadInput,
+} from './canvas-content-resolution'
 import { resolveCanvasConfig, type CanvasConfig } from './canvas'
 import type { ModuleResource, ModuleResourceExtractionStatus } from './types'
 
@@ -83,8 +81,15 @@ export async function reprocessStoredModuleResource(
   const now = options.now ?? new Date().toISOString()
   const baseMetadata = asPlainRecord(resource.metadata)
   const canvasConfig = getOptionalCanvasConfig(options.canvasConfig)
-
-  let extracted: ExtractedCanvasResourceContent
+  const downloadAttachment = createStoredAttachmentDownloader(canvasConfig)
+  let update: {
+    extractionStatus: ModuleResourceExtractionStatus
+    extractedText: string | null
+    extractedTextPreview: string | null
+    extractedCharCount: number
+    extractionError: string | null
+    metadataPatch: Record<string, unknown>
+  } = buildFailedPersistedUpdate('Resource reprocess did not run.')
   let metadataPatch: Record<string, unknown> = {
     normalizedSourceType,
   }
@@ -92,55 +97,68 @@ export async function reprocessStoredModuleResource(
   if (normalizedSourceType === 'page') {
     const pageSourceUrl = resource.sourceUrl
     if (!pageSourceUrl) {
-      extracted = buildFailedExtraction('Reprocess failed: this Canvas Page has no stored source URL.')
+      update = buildFailedPersistedUpdate('Reprocess failed: this Canvas Page has no stored source URL.')
     } else {
       try {
         const page = await fetchStoredJson<CanvasPagePayload>(pageSourceUrl, canvasConfig)
         const title = page.title?.trim() || resource.title
-        extracted = await extractCanvasPageContent({
+        const resolved = await resolveCanvasContentForWorkspaceItem({
           title,
-          html: page.body ?? '',
+          sourceType: 'page',
+          mimeType: 'text/html',
+          sections: [
+            {
+              label: 'Page content',
+              html: page.body ?? '',
+            },
+          ],
+          courseId: resource.courseId,
+          moduleId: resource.moduleId,
+        }, {
+          downloadAttachment,
         })
+
+        update = resolved.persisted
         metadataPatch = {
           ...metadataPatch,
+          ...resolved.persisted.metadataPatch,
           canvasPageUrl: page.url ?? baseMetadata.canvasPageUrl ?? null,
           pageUpdatedAt: page.updated_at ?? baseMetadata.pageUpdatedAt ?? null,
           pagePublished: page.published ?? baseMetadata.pagePublished ?? null,
         }
       } catch (error) {
-        extracted = buildFailedExtraction(error instanceof Error ? error.message : 'Canvas page reprocess failed.')
+        update = buildFailedPersistedUpdate(error instanceof Error ? error.message : 'Canvas page reprocess failed.')
       }
     }
   } else if (normalizedSourceType === 'assignment') {
     const assignmentSourceUrl = resource.sourceUrl
     if (!assignmentSourceUrl) {
-      extracted = buildFailedExtraction('Reprocess failed: this Canvas Assignment has no stored source URL.')
+      update = buildFailedPersistedUpdate('Reprocess failed: this Canvas Assignment has no stored source URL.')
     } else {
       try {
         const assignment = await fetchStoredJson<CanvasAssignmentPayload>(assignmentSourceUrl, canvasConfig)
         const title = assignment.name?.trim() || resource.title
-        extracted = await extractCanvasStructuredHtmlContent({
+        const resolved = await resolveCanvasContentForWorkspaceItem({
           title,
+          sourceType: 'assignment',
+          mimeType: 'text/html',
           sections: [
-            {
-              label: 'Assignment',
-              text: title,
-            },
-            {
-              label: 'Submission types',
-              text: Array.isArray(assignment.submission_types) && assignment.submission_types.length > 0
-                ? assignment.submission_types.join(', ')
-                : null,
-            },
             {
               label: 'Instructions',
               html: assignment.description,
             },
           ],
-          emptyMessage: 'Canvas assignment fetched successfully, but no readable instructions or body text were found.',
+          dueAt: assignment.due_at ?? null,
+          courseId: resource.courseId,
+          moduleId: resource.moduleId,
+        }, {
+          downloadAttachment,
         })
+
+        update = resolved.persisted
         metadataPatch = {
           ...metadataPatch,
+          ...resolved.persisted.metadataPatch,
           assignmentDueAt: assignment.due_at ?? baseMetadata.assignmentDueAt ?? null,
           pointsPossible: assignment.points_possible ?? baseMetadata.pointsPossible ?? null,
           submissionTypes: Array.isArray(assignment.submission_types)
@@ -148,64 +166,110 @@ export async function reprocessStoredModuleResource(
             : baseMetadata.submissionTypes ?? [],
         }
       } catch (error) {
-        extracted = buildFailedExtraction(error instanceof Error ? error.message : 'Canvas assignment reprocess failed.')
+        update = buildFailedPersistedUpdate(error instanceof Error ? error.message : 'Canvas assignment reprocess failed.')
       }
     }
   } else if (normalizedSourceType === 'discussion') {
     const discussionSourceUrl = resource.sourceUrl
     if (!discussionSourceUrl) {
-      extracted = buildFailedExtraction('Reprocess failed: this Canvas Discussion has no stored source URL.')
+      update = buildFailedPersistedUpdate('Reprocess failed: this Canvas Discussion has no stored source URL.')
     } else {
       try {
         const discussion = await fetchStoredJson<CanvasDiscussionPayload>(discussionSourceUrl, canvasConfig)
         const title = discussion.title?.trim() || resource.title
-        extracted = await extractCanvasStructuredHtmlContent({
+        const resolved = await resolveCanvasContentForWorkspaceItem({
           title,
+          sourceType: 'discussion',
+          mimeType: 'text/html',
           sections: [
-            {
-              label: 'Discussion',
-              text: title,
-            },
             {
               label: 'Prompt',
               html: discussion.message,
             },
           ],
-          emptyMessage: 'Canvas discussion fetched successfully, but no readable prompt text was found.',
+          postedAt: discussion.posted_at ?? null,
+          courseId: resource.courseId,
+          moduleId: resource.moduleId,
+        }, {
+          downloadAttachment,
         })
+
+        update = resolved.persisted
         metadataPatch = {
           ...metadataPatch,
+          ...resolved.persisted.metadataPatch,
           discussionPostedAt: discussion.posted_at ?? baseMetadata.discussionPostedAt ?? null,
           discussionUpdatedAt: discussion.updated_at ?? baseMetadata.discussionUpdatedAt ?? null,
         }
       } catch (error) {
-        extracted = buildFailedExtraction(error instanceof Error ? error.message : 'Canvas discussion reprocess failed.')
+        update = buildFailedPersistedUpdate(error instanceof Error ? error.message : 'Canvas discussion reprocess failed.')
       }
     }
-  } else if (isUnsupportedLinkOnlyType(normalizedSourceType)) {
-    extracted = {
-      extractionStatus: 'unsupported',
+  } else if (normalizedSourceType === 'external_url' || normalizedSourceType === 'external_tool') {
+    const resolved = await resolveCanvasContentForWorkspaceItem({
+      title: resource.title,
+      sourceType: 'external_link',
+      mimeType: resource.contentType,
+      attachments: [
+        {
+          name: resource.title,
+          url: resource.htmlUrl ?? resource.sourceUrl,
+          mimeType: resource.contentType,
+          sourceType: 'external_link',
+        },
+      ],
+      courseId: resource.courseId,
+      moduleId: resource.moduleId,
+    })
+
+    update = {
+      ...resolved.persisted,
+      extractionError: resolved.persisted.extractionError
+        ?? 'This resource is link-only in Stay Focused right now. Reprocessing can keep the status honest, but it cannot turn the link into readable study text yet.',
+    }
+    metadataPatch = {
+      ...metadataPatch,
+      ...resolved.persisted.metadataPatch,
+    }
+  } else if (normalizedSourceType === 'subheader' || normalizedSourceType === 'module_item') {
+    update = {
+      extractionStatus: 'metadata_only',
       extractedText: null,
       extractedTextPreview: null,
       extractedCharCount: 0,
-      extractionError: 'This resource is link-only in Stay Focused right now. Reprocessing can keep the status honest, but it cannot turn the link into readable study text yet.',
-      supported: false,
+      extractionError: 'This resource is structural or link-only in Stay Focused right now, so reprocessing preserves the note instead of inventing readable content.',
+      metadataPatch: {},
     }
   } else {
     const fileSourceUrl = resource.sourceUrl
     if (!fileSourceUrl) {
-      extracted = buildFailedExtraction(`Reprocess failed: ${resource.title} has no stored source URL.`)
+      update = buildFailedPersistedUpdate(`Reprocess failed: ${resource.title} has no stored source URL.`)
     } else {
       try {
-        const downloaded = await fetchStoredBinary(fileSourceUrl, canvasConfig)
-        extracted = await extractCanvasFileContent({
-          buffer: downloaded.buffer,
+        const resolved = await resolveCanvasContentForWorkspaceItem({
           title: resource.title,
-          extension: resource.extension ?? normalizeExtension(downloaded.contentType, resource.title),
-          contentType: resource.contentType ?? downloaded.contentType,
+          sourceType: 'file',
+          mimeType: resource.contentType,
+          extension: resource.extension,
+          file: {
+            url: fileSourceUrl,
+            title: resource.title,
+            mimeType: resource.contentType,
+            extension: resource.extension ?? normalizeExtension(null, resource.title),
+          },
+          courseId: resource.courseId,
+          moduleId: resource.moduleId,
+        }, {
+          downloadAttachment,
         })
+
+        update = resolved.persisted
+        metadataPatch = {
+          ...metadataPatch,
+          ...resolved.persisted.metadataPatch,
+        }
       } catch (error) {
-        extracted = buildFailedExtraction(error instanceof Error ? error.message : 'File reprocess failed.')
+        update = buildFailedPersistedUpdate(error instanceof Error ? error.message : 'File reprocess failed.')
       }
     }
   }
@@ -217,11 +281,11 @@ export async function reprocessStoredModuleResource(
 
   const nextResource = {
     ...resource,
-    extractionStatus: extracted.extractionStatus,
-    extractedText: extracted.extractedText,
-    extractedTextPreview: extracted.extractedTextPreview,
-    extractedCharCount: extracted.extractedCharCount,
-    extractionError: extracted.extractionError,
+    extractionStatus: update.extractionStatus,
+    extractedText: update.extractedText,
+    extractedTextPreview: update.extractedTextPreview,
+    extractedCharCount: update.extractedCharCount,
+    extractionError: update.extractionError,
     metadata: provisionalMetadata,
   }
   const capability = getModuleResourceCapabilityInfo(nextResource)
@@ -244,11 +308,11 @@ export async function reprocessStoredModuleResource(
 
   return {
     update: {
-      extractionStatus: extracted.extractionStatus,
-      extractedText: extracted.extractedText,
-      extractedTextPreview: extracted.extractedTextPreview,
-      extractedCharCount: extracted.extractedCharCount,
-      extractionError: extracted.extractionError,
+      extractionStatus: update.extractionStatus,
+      extractedText: update.extractedText,
+      extractedTextPreview: update.extractedTextPreview,
+      extractedCharCount: update.extractedCharCount,
+      extractionError: update.extractionError,
       metadata: {
         ...assessmentMetadata,
         lastReprocessedAt: now,
@@ -359,21 +423,61 @@ function resolveStoredUrl(url: string, canvasConfig: CanvasConfig | null) {
   }
 }
 
-function isUnsupportedLinkOnlyType(normalizedSourceType: ReturnType<typeof getNormalizedModuleResourceSourceType>) {
-  return normalizedSourceType === 'external_url'
-    || normalizedSourceType === 'external_tool'
-    || normalizedSourceType === 'subheader'
-    || normalizedSourceType === 'module_item'
+async function resolveStoredBinaryUrl(url: string, canvasConfig: CanvasConfig | null) {
+  const absoluteUrl = resolveStoredUrl(url, canvasConfig)
+  const parsed = new URL(absoluteUrl)
+  const normalizedPathname = parsed.pathname.replace(/\/$/, '')
+
+  if (/\/api\/v1\/(?:courses\/\d+\/)?files\/\d+$/i.test(normalizedPathname)) {
+    const file = await fetchStoredJson<{ url?: string | null }>(absoluteUrl, canvasConfig)
+    if (!file.url) {
+      throw new Error('The stored Canvas file endpoint no longer returns a downloadable URL.')
+    }
+
+    return file.url
+  }
+
+  if (/\/courses\/\d+\/files\/\d+$/i.test(normalizedPathname)) {
+    parsed.pathname = `${normalizedPathname}/download`
+    return parsed.toString()
+  }
+
+  return absoluteUrl
 }
 
-function buildFailedExtraction(message: string): ExtractedCanvasResourceContent {
+function createStoredAttachmentDownloader(canvasConfig: CanvasConfig | null) {
+  return async (input: ResolveCanvasAttachmentDownloadInput) => {
+    if (!input.url) {
+      throw new Error('Stored attachment download is missing a URL.')
+    }
+
+    const resolvedUrl = await resolveStoredBinaryUrl(input.url, canvasConfig)
+    const downloaded = await fetchStoredBinary(resolvedUrl, canvasConfig)
+
+    return {
+      buffer: downloaded.buffer,
+      contentType: downloaded.contentType,
+      title: input.title,
+      extension: normalizeExtension(null, input.title ?? 'Canvas attachment'),
+    }
+  }
+}
+
+function buildFailedPersistedUpdate(message: string): {
+  extractionStatus: ModuleResourceExtractionStatus
+  extractedText: string | null
+  extractedTextPreview: string | null
+  extractedCharCount: number
+  extractionError: string | null
+  metadataPatch: Record<string, unknown>
+} {
   return {
     extractionStatus: 'failed',
     extractedText: null,
     extractedTextPreview: null,
     extractedCharCount: 0,
     extractionError: message,
-    supported: true,
+    metadataPatch: {},
   }
 }
 
