@@ -1,240 +1,182 @@
-'use client'
-
-import type { CSSProperties, FocusEvent, KeyboardEvent, MouseEvent, ReactNode } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import { TaskPlanningAnnotationPill } from '@/components/TaskPlanningAnnotationControl'
-import { TaskStatusToggle } from '@/components/TaskStatusToggle'
-import { ModuleBulletin } from '@/components/ModuleBulletin'
-import { AnnouncementsBand } from '@/components/AnnouncementsBand'
 import { TaskDraftButton } from '@/components/DoNowButton'
+import { TaskStatusToggle } from '@/components/TaskStatusToggle'
 import { buildManualCopyBundle } from '@/lib/manual-copy-bundle'
-import type { TodayItem, Module, Course } from '@/lib/types'
-import type { ParsedAnnouncement } from '@/lib/announcements'
+import type { HomeActivityItem, HomeCourseSnapshot, HomeDueSoonItem } from '@/lib/home-overview'
+import type { TodayItem } from '@/lib/types'
 
 export function TodayDashboard({
-  nextBestMove,
-  needsAction,
-  needsUnderstanding,
-  comingUp,
+  primaryAction,
+  upNext,
+  dueSoon,
+  recentActivity,
+  courseSnapshots,
   undatedTaskCount,
-  freshestModule,
-  freshestModuleCourse,
-  recentAnnouncements,
 }: {
-  nextBestMove: TodayItem | null
-  needsAction: TodayItem[]
-  needsUnderstanding: TodayItem[]
-  comingUp: TodayItem[]
+  primaryAction: TodayItem | null
+  upNext: TodayItem[]
+  dueSoon: HomeDueSoonItem[]
+  recentActivity: HomeActivityItem[]
+  courseSnapshots: HomeCourseSnapshot[]
   undatedTaskCount: number
-  freshestModule: Module | null
-  freshestModuleCourse: Course | null
-  recentAnnouncements: ParsedAnnouncement[]
 }) {
   return (
-    <section className="page-stack" style={{ gap: '1.1rem' }}>
-      <header className="motion-card section-shell section-shell-elevated" style={{ display: 'flex', flexDirection: 'column', gap: '0.62rem', padding: '1.15rem 1.2rem' }}>
+    <section className="page-stack" style={{ gap: '1.25rem' }}>
+      <header className="section-shell" style={{ display: 'grid', gap: '0.85rem', padding: '1.35rem' }}>
         <div>
-          <p className="ui-kicker">Today</p>
+          <p className="ui-kicker">Home</p>
           <h1 className="ui-page-title">What should I do right now?</h1>
-          <p className="ui-page-copy">
-            A calmer read on your workload. Start with the clearest next move, then scan what needs action, what is worth understanding, and what is coming up soon.
+          <p className="ui-page-copy" style={{ maxWidth: '44rem' }}>
+            Start with one clear move, then check what is due soon, what changed, and which courses need a quick look.
           </p>
         </div>
 
         {undatedTaskCount > 0 && (
-          <div className="glass-panel glass-soft ui-empty" style={noticeStyle}>
-            {undatedTaskCount} task{undatedTaskCount === 1 ? '' : 's'} still need a due date, so they are kept out of the recommendation flow for now.
+          <div className="ui-empty" style={{ borderRadius: 'var(--radius-panel)', padding: '0.85rem 0.95rem', fontSize: '14px', lineHeight: 1.6 }}>
+            {undatedTaskCount} task{undatedTaskCount === 1 ? '' : 's'} still need a due date, so they stay out of the main recommendation for now.
           </div>
         )}
       </header>
 
-      {freshestModule && (
-        <ModuleBulletin module={freshestModule} course={freshestModuleCourse} />
-      )}
-
-      {nextBestMove ? (
-        <FocusHeroCard item={nextBestMove} />
-      ) : (
-        <section className="motion-card motion-delay-1 section-shell section-shell-elevated" style={{ textAlign: 'center', padding: '3.2rem 1.5rem' }}>
-          <p className="ui-kicker">Best next step</p>
-          <h2 style={{ margin: '0.5rem 0 0', fontSize: '26px', lineHeight: 1.15, fontWeight: 650, letterSpacing: '-0.03em' }}>You are clear for now</h2>
-          <p style={{ margin: '0.85rem auto 0', maxWidth: '38rem', fontSize: '15px', lineHeight: 1.7, color: 'var(--text-secondary)' }}>
-            Nothing urgent is asking for you right now. Use this quieter moment to review a module or sync another course.
-          </p>
-        </section>
-      )}
-
-      <AnnouncementsBand announcements={recentAnnouncements} />
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1rem', alignItems: 'start' }}>
-        <SectionBlock
-          eyebrow="Needs attention"
-          title="Needs attention"
-          description="Assignments, submissions, and deadlines that are best handled soon."
-          items={needsAction}
-          emptyMessage="Your action list is clear right now."
-          actionHref="/do"
-          actionLabel="Open Do"
-          scrollHeight="18.5rem"
-        />
-
-        <SectionBlock
-          eyebrow="Worth reviewing"
-          title="Worth reviewing"
-          description="Modules and course material to read through before they turn into rushed work."
-          items={needsUnderstanding}
-          emptyMessage="Nothing new needs a closer read at the moment."
-          actionHref="/learn"
-          actionLabel="Open Learn"
-          scrollHeight="18.5rem"
-        />
-      </div>
-
-      <SectionBlock
-        eyebrow="Looking ahead"
-        title="Coming Up"
-        description="Near-future work and learning items so the next few days stay predictable."
-        items={comingUp}
-        emptyMessage="There is nothing notable coming up just yet."
-      />
-    </section>
-  )
-}
-
-function FocusHeroCard({ item }: { item: TodayItem }) {
-  const router = useRouter()
-  const cardHref = resolveTodayCardHref(item)
-  const manualCopy = item.kind === 'task'
-    ? buildManualCopyBundle({
-        taskTitle: item.title,
-        courseName: item.courseName,
-        moduleName: item.moduleTitle,
-        dueDate: item.dateTime,
-        taskDetails: item.supportingText,
-      })
-    : null
-
-  return (
-    <section
-      className={`glass-panel glass-accent motion-card${cardHref ? ' ui-interactive-card' : ''}`}
-      style={heroCardStyle(cardHref)}
-      {...getCardLinkProps({
-        href: cardHref,
-        label: item.title,
-        router,
-      })}
-    >
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-        <div style={{ minWidth: 0, flex: '1 1 420px' }}>
-          <p className="ui-kicker" style={{ color: 'var(--accent-foreground)' }}>Best next step</p>
-          <h2 style={heroTitleStyle}>{item.title}</h2>
-          <p style={heroBodyStyle}>{item.whyNow}</p>
-        </div>
-        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'flex-end', alignItems: 'flex-start' }}>
-          {item.kind === 'task' && item.taskItemId && (
-            <TaskStatusToggle
-              status={item.completionStatus ?? 'pending'}
-              moduleId={item.moduleId}
-              title={item.title}
-              taskItemId={item.taskItemId}
-              style={heroStatusStyle(item)}
+      <div className="home-layout">
+        <div className="home-main-column">
+          <section className="section-shell section-shell-elevated home-section-card">
+            <HomeSectionHeader
+              eyebrow="Do this now"
+              title={primaryAction ? 'Start here' : 'Nothing urgent right now'}
+              description={primaryAction
+                ? 'One recommended place to begin, with just enough context to get moving.'
+                : 'The work queue is quiet enough that you can review material or check a course on your own pace.'}
+              actionHref="/do"
+              actionLabel="Open Do Now"
             />
-          )}
-          <TonePill item={item} emphasis />
-          {item.effortLabel && <MetaPill>{item.effortLabel}</MetaPill>}
+
+            {primaryAction ? (
+              <PrimaryActionCard item={primaryAction} />
+            ) : (
+              <div className="ui-empty" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem 1.05rem', fontSize: '14px', lineHeight: 1.65 }}>
+                Nothing urgent is competing for attention right now.
+              </div>
+            )}
+
+            {upNext.length > 0 && (
+              <div className="home-secondary-list">
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <div>
+                    <p className="ui-kicker">After that</p>
+                    <p style={{ margin: '0.28rem 0 0', fontSize: '14px', lineHeight: 1.55, color: 'var(--text-secondary)' }}>
+                      Keep the queue short. These are the next few things worth touching.
+                    </p>
+                  </div>
+                  <Link href="/tasks" className="ui-button ui-button-ghost ui-button-xs">
+                    See all tasks
+                  </Link>
+                </div>
+
+                <div className="home-compact-list">
+                  {upNext.map((item) => (
+                    <CompactActionRow key={item.id} item={item} />
+                  ))}
+                </div>
+              </div>
+            )}
+          </section>
+
+          <section className="section-shell home-section-card">
+            <HomeSectionHeader
+              eyebrow="Due soon"
+              title="Due soon"
+              description="A short list of work with dates close enough to affect today."
+              actionHref="/tasks"
+              actionLabel="Open Tasks"
+            />
+
+            {dueSoon.length > 0 ? (
+              <div className="home-compact-list">
+                {dueSoon.map((item) => (
+                  <DueSoonRow key={item.id} item={item} />
+                ))}
+              </div>
+            ) : (
+              <div className="ui-empty" style={{ borderRadius: 'var(--radius-panel)', padding: '0.95rem 1rem', fontSize: '14px', lineHeight: 1.6 }}>
+                Nothing with a due date is crowding the next few days.
+              </div>
+            )}
+          </section>
         </div>
-      </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.85rem' }}>
-        <MetaCard label="Course" value={item.courseName} />
-        <MetaCard label="Module" value={item.moduleTitle ?? fallbackFocusLabel(item.kind)} />
-        <MetaCard label="Auto Prompt" value={item.actionLabel} />
-        <MetaCard label="Timing" value={item.dateTime ? formatDateTime(item.dateTime) : 'When you are ready'} />
-      </div>
+        <div className="home-side-column">
+          <section className="section-shell home-section-card">
+            <HomeSectionHeader
+              eyebrow="New activity"
+              title="New activity"
+              description="Recent updates without the full feed overload."
+            />
 
-      {item.supportingText && (
-        <div className="glass-panel glass-soft" style={supportCardStyle}>
-          <p style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>Description</p>
-          <p style={{ margin: '0.45rem 0 0', fontSize: '14px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>{item.supportingText}</p>
+            {recentActivity.length > 0 ? (
+              <div className="home-compact-list">
+                {recentActivity.map((item) => (
+                  <ActivityRow key={item.id} item={item} />
+                ))}
+              </div>
+            ) : (
+              <div className="ui-empty" style={{ borderRadius: 'var(--radius-panel)', padding: '0.95rem 1rem', fontSize: '14px', lineHeight: 1.6 }}>
+                No recent changes have been captured yet.
+              </div>
+            )}
+          </section>
+
+          <section className="section-shell home-section-card">
+            <HomeSectionHeader
+              eyebrow="Courses"
+              title="Courses"
+              description="A quick status line for each class, with urgent work surfaced first."
+              actionHref="/courses"
+              actionLabel="Open Courses"
+            />
+
+            <div className="home-compact-list">
+              {courseSnapshots.map((course) => (
+                <CourseSnapshotRow key={course.id} course={course} />
+              ))}
+            </div>
+          </section>
         </div>
-      )}
-
-      <div style={footerActionsStyle}>
-        {manualCopy && (
-          <TaskDraftButton
-            copyBundle={manualCopy}
-            entryOrigin="today"
-            doPageHref={item.href ?? undefined}
-            context={{
-              taskTitle: item.title,
-              taskDetails: item.supportingText,
-              deadline: item.dateTime,
-              priority: item.priority,
-              courseName: item.courseName,
-              moduleTitle: item.moduleTitle,
-              canvasUrl: item.canvasUrl,
-              learnHref: item.learnHref ?? item.href,
-            }}
-          />
-        )}
-        <ItemActionButton item={item} primary />
       </div>
     </section>
   )
 }
 
-function SectionBlock({
+function HomeSectionHeader({
   eyebrow,
   title,
   description,
-  items,
-  emptyMessage,
   actionHref,
   actionLabel,
-  scrollHeight,
 }: {
   eyebrow: string
   title: string
   description: string
-  items: TodayItem[]
-  emptyMessage: string
   actionHref?: string
   actionLabel?: string
-  scrollHeight?: string
 }) {
   return (
-    <section className="motion-card motion-delay-1 section-shell section-shell-elevated" style={{ padding: '1rem 1.05rem', display: 'grid', gap: '0.8rem' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
-          <p className="ui-kicker">{eyebrow}</p>
-          <h2 className="ui-section-title" style={{ fontSize: '1.02rem' }}>{title}</h2>
-          <p className="ui-section-copy">{description}</p>
-        </div>
-        {actionHref && actionLabel && (
-          <Link href={actionHref} className="ui-button ui-button-ghost ui-button-xs">
-            {actionLabel}
-          </Link>
-        )}
+    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.85rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+      <div style={{ minWidth: 0 }}>
+        <p className="ui-kicker">{eyebrow}</p>
+        <h2 className="ui-section-title" style={{ marginTop: '0.42rem' }}>{title}</h2>
+        <p className="ui-section-copy" style={{ marginTop: '0.4rem', maxWidth: '34rem' }}>{description}</p>
       </div>
-
-      {items.length === 0 ? (
-        <div className="ui-empty" style={emptyBlockStyle}>{emptyMessage}</div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: scrollHeight, overflowY: scrollHeight ? 'auto' : 'visible', paddingRight: scrollHeight ? '0.18rem' : 0 }}>
-          {items.map((item) => (
-            <TodayItemCard key={item.id} item={item} />
-          ))}
-        </div>
-      )}
-    </section>
+      {actionHref && actionLabel ? (
+        <Link href={actionHref} className="ui-button ui-button-ghost ui-button-xs">
+          {actionLabel}
+        </Link>
+      ) : null}
+    </div>
   )
 }
 
-function TodayItemCard({ item }: { item: TodayItem }) {
-  const router = useRouter()
-  const cardHref = resolveTodayCardHref(item)
-  const tone = getToneStyle(item.tone)
+function PrimaryActionCard({ item }: { item: TodayItem }) {
   const manualCopy = item.kind === 'task'
     ? buildManualCopyBundle({
         taskTitle: item.title,
@@ -244,54 +186,48 @@ function TodayItemCard({ item }: { item: TodayItem }) {
         taskDetails: item.supportingText,
       })
     : null
+  const primaryHref = resolveItemHref(item)
 
   return (
-    <article
-      className={`glass-panel${cardHref ? ' ui-interactive-card' : ''}`}
-      style={itemCardStyle(item.tone, Boolean(cardHref))}
-      {...getCardLinkProps({
-        href: cardHref,
-        label: item.title,
-        router,
-      })}
-    >
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.85rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-        <div style={{ minWidth: 0, flex: '1 1 240px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap', marginBottom: '0.35rem' }}>
-            <TonePill item={item} />
-            <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{item.courseName}</span>
+    <article className="home-primary-card">
+      <div className="home-primary-card-header">
+        <div style={{ minWidth: 0 }}>
+          <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', alignItems: 'center' }}>
+            <ToneBadge item={item} />
+            {item.dateTime ? <MetaBadge>{formatDateTime(item.dateTime)}</MetaBadge> : null}
+            {item.effortLabel ? <MetaBadge>{item.effortLabel}</MetaBadge> : null}
           </div>
-          <h3 style={itemTitleStyle}>{item.title}</h3>
+          <h3 className="home-primary-title">{item.title}</h3>
+          <p className="home-primary-copy">{item.whyNow}</p>
         </div>
-        <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', justifyContent: 'flex-end', alignItems: 'flex-start' }}>
-          {item.kind === 'task' && item.taskItemId && (
-            <TaskStatusToggle
-              status={item.completionStatus ?? 'pending'}
-              moduleId={item.moduleId}
-              title={item.title}
-              taskItemId={item.taskItemId}
-              style={itemStatusStyle(item)}
-            />
-          )}
-          {item.effortLabel && <MetaPill>{item.effortLabel}</MetaPill>}
-          {item.dateTime && <MetaPill>{formatDateTime(item.dateTime)}</MetaPill>}
-        </div>
+        {item.kind === 'task' && item.taskItemId ? (
+          <TaskStatusToggle
+            status={item.completionStatus ?? 'pending'}
+            moduleId={item.moduleId}
+            title={item.title}
+            taskItemId={item.taskItemId}
+            align="end"
+          />
+        ) : null}
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
-        <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.6, color: 'var(--text-secondary)' }}>{item.whyNow}</p>
-        {item.supportingText && (
-          <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.55, color: 'var(--text-muted)' }}>{item.supportingText}</p>
-        )}
-        <div className="ui-meta-list">
-          {item.moduleTitle && <span><strong>Module:</strong> {item.moduleTitle}</span>}
-          {!item.moduleTitle && <span><strong>Type:</strong> {tone.kindLabel}</span>}
-          <span><strong>Auto Prompt:</strong> {item.actionLabel}</span>
-        </div>
+      <div className="home-primary-meta-grid">
+        <MetaBlock label="Course" value={item.courseName} />
+        <MetaBlock label="Area" value={item.moduleTitle || fallbackAreaLabel(item)} />
+        <MetaBlock label="Next move" value={primaryButtonLabel(item)} />
       </div>
 
-      <div style={footerActionsStyle}>
-        {manualCopy && (
+      {item.supportingText ? (
+        <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.95rem 1rem' }}>
+          <p className="ui-kicker" style={{ margin: 0 }}>What to keep in mind</p>
+          <p style={{ margin: '0.4rem 0 0', fontSize: '14px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
+            {item.supportingText}
+          </p>
+        </div>
+      ) : null}
+
+      <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap', alignItems: 'center' }}>
+        {manualCopy ? (
           <TaskDraftButton
             copyBundle={manualCopy}
             entryOrigin="today"
@@ -307,182 +243,211 @@ function TodayItemCard({ item }: { item: TodayItem }) {
               learnHref: item.learnHref ?? item.href,
             }}
           />
-        )}
-        <ItemActionButton item={item} />
+        ) : null}
+        {primaryHref ? (
+          <Link href={primaryHref} className="ui-button ui-button-primary">
+            {primaryButtonLabel(item)}
+          </Link>
+        ) : null}
+        <Link href="/tasks" className="ui-button ui-button-ghost">
+          See all tasks
+        </Link>
       </div>
     </article>
   )
 }
 
-function ItemActionButton({ item, primary = false }: { item: TodayItem; primary?: boolean }) {
-  const href = resolveTodayCardHref(item)
-  if (!href) return null
+function CompactActionRow({ item }: { item: TodayItem }) {
+  const href = resolveItemHref(item)
+
   return (
-    <Link
-      href={href}
-      className={`ui-button ${primary ? 'ui-button-primary' : 'ui-button-secondary'} ui-button-xs`}
-      style={actionButtonStyle}
-    >
-      {item.actionLabel}
+    <div className="home-list-row">
+      <div style={{ minWidth: 0 }}>
+        <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', alignItems: 'center' }}>
+          <ToneBadge item={item} subtle />
+          <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{item.courseName}</span>
+        </div>
+        <p style={{ margin: '0.42rem 0 0', fontSize: '15px', lineHeight: 1.4, fontWeight: 650, color: 'var(--text-primary)' }}>
+          {item.title}
+        </p>
+        <p style={{ margin: '0.32rem 0 0', fontSize: '13px', lineHeight: 1.55, color: 'var(--text-secondary)' }}>
+          {item.whyNow}
+        </p>
+      </div>
+      {href ? (
+        <Link href={href} className="ui-button ui-button-secondary ui-button-xs">
+          Open
+        </Link>
+      ) : null}
+    </div>
+  )
+}
+
+function DueSoonRow({ item }: { item: HomeDueSoonItem }) {
+  return (
+    <div className="home-list-row">
+      <div style={{ minWidth: 0 }}>
+        <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', alignItems: 'center' }}>
+          <span className="ui-chip ui-chip-soft" style={{ fontWeight: 700 }}>
+            {item.urgencyLabel}
+          </span>
+          <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{item.courseName}</span>
+        </div>
+        <p style={{ margin: '0.42rem 0 0', fontSize: '15px', lineHeight: 1.4, fontWeight: 650, color: 'var(--text-primary)' }}>
+          {item.title}
+        </p>
+        <p style={{ margin: '0.28rem 0 0', fontSize: '13px', lineHeight: 1.55, color: 'var(--text-secondary)' }}>
+          {item.moduleTitle} • {item.timingLabel}
+        </p>
+      </div>
+      <Link href={item.href} className="ui-button ui-button-secondary ui-button-xs">
+        Open
+      </Link>
+    </div>
+  )
+}
+
+function ActivityRow({ item }: { item: HomeActivityItem }) {
+  const inner = (
+    <div className="home-list-row">
+      <div style={{ minWidth: 0 }}>
+        <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', alignItems: 'center' }}>
+          <span className="ui-chip ui-chip-soft" style={{ fontWeight: 700 }}>
+            {item.label}
+          </span>
+          <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{item.meta}</span>
+        </div>
+        <p style={{ margin: '0.42rem 0 0', fontSize: '15px', lineHeight: 1.4, fontWeight: 650, color: 'var(--text-primary)' }}>
+          {item.title}
+        </p>
+        <p style={{ margin: '0.32rem 0 0', fontSize: '13px', lineHeight: 1.55, color: 'var(--text-secondary)' }}>
+          {item.detail}
+        </p>
+      </div>
+      <span className="ui-button ui-button-ghost ui-button-xs" style={{ pointerEvents: 'none' }}>
+        Open
+      </span>
+    </div>
+  )
+
+  if (item.external) {
+    return (
+      <a href={item.href} target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>
+        {inner}
+      </a>
+    )
+  }
+
+  return (
+    <Link href={item.href} style={{ textDecoration: 'none' }}>
+      {inner}
     </Link>
   )
 }
 
-function getCardLinkProps({
-  href,
-  label,
-  router,
-}: {
-  href?: string | null
-  label: string
-  router: ReturnType<typeof useRouter>
-}) {
-  if (!href) return {}
-
-  return {
-    role: 'link' as const,
-    tabIndex: 0,
-    'aria-label': `Open ${label}`,
-    onClick: (event: MouseEvent<HTMLElement>) => {
-      if (shouldIgnoreCardNavigation(event.target, event.currentTarget)) return
-      router.push(href)
-    },
-    onKeyDown: (event: KeyboardEvent<HTMLElement>) => {
-      if (shouldIgnoreCardNavigation(event.target, event.currentTarget)) return
-      if (event.key !== 'Enter' && event.key !== ' ') return
-      event.preventDefault()
-      router.push(href)
-    },
-    onFocus: (event: FocusEvent<HTMLElement>) => {
-      event.currentTarget.style.boxShadow = '0 0 0 2px color-mix(in srgb, var(--accent-border) 78%, transparent), var(--glass-shadow-strong)'
-    },
-    onBlur: (event: FocusEvent<HTMLElement>) => {
-      event.currentTarget.style.boxShadow = ''
-    },
-  }
+function CourseSnapshotRow({ course }: { course: HomeCourseSnapshot }) {
+  return (
+    <article className="home-list-row">
+      <div style={{ minWidth: 0 }}>
+        <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', alignItems: 'center' }}>
+          <span className="ui-chip ui-chip-soft" style={{ fontWeight: 700 }}>
+            {course.code}
+          </span>
+          {course.urgentCount > 0 ? (
+            <span className="ui-chip ui-status-warning" style={{ padding: '0.24rem 0.55rem', fontSize: '11px', fontWeight: 700 }}>
+              {course.urgentCount} urgent
+            </span>
+          ) : null}
+        </div>
+        <Link href={course.href} style={{ textDecoration: 'none' }}>
+          <p style={{ margin: '0.42rem 0 0', fontSize: '15px', lineHeight: 1.4, fontWeight: 650, color: 'var(--text-primary)' }}>
+            {course.name}
+          </p>
+        </Link>
+        <p style={{ margin: '0.28rem 0 0', fontSize: '13px', lineHeight: 1.55, color: 'var(--text-secondary)' }}>
+          {course.statusSummary}
+        </p>
+        {course.latestChange ? (
+          <p style={{ margin: '0.22rem 0 0', fontSize: '12px', lineHeight: 1.5, color: 'var(--text-muted)' }}>
+            Latest: {course.latestChange}
+          </p>
+        ) : null}
+      </div>
+      <Link href={course.nextActionHref} className="ui-button ui-button-secondary ui-button-xs">
+        {course.nextActionLabel}
+      </Link>
+    </article>
+  )
 }
 
-function shouldIgnoreCardNavigation(target: EventTarget | null, currentTarget: HTMLElement) {
-  if (!(target instanceof Element)) return false
-  // Auto Prompt uses a portal, so modal clicks can bubble through React without originating in the card DOM.
-  if (!currentTarget.contains(target)) return true
-  const interactiveAncestor = target.closest('a, button, input, select, textarea, summary, [role="button"], [role="link"]')
-  return Boolean(interactiveAncestor && interactiveAncestor !== currentTarget)
-}
-
-function resolveTodayCardHref(item: TodayItem) {
-  if (item.kind === 'task') {
-    return item.href
-  }
-
-  return item.learnHref ?? item.href
-}
-
-function TonePill({ item, emphasis = false }: { item: TodayItem; emphasis?: boolean }) {
-  if (item.planningAnnotation !== 'none') {
-    return <TaskPlanningAnnotationPill annotation={item.planningAnnotation} emphasis={emphasis} />
-  }
-
-  const tone = getToneStyle(item.tone)
+function ToneBadge({ item, subtle = false }: { item: TodayItem; subtle?: boolean }) {
+  const toneStyle = item.tone === 'attention'
+    ? {
+        background: 'color-mix(in srgb, var(--accent-light) 58%, var(--surface-soft) 42%)',
+        color: 'var(--accent-foreground)',
+        border: '1px solid color-mix(in srgb, var(--accent-border) 38%, var(--border-subtle) 62%)',
+      }
+    : item.tone === 'review'
+      ? {
+          background: 'color-mix(in srgb, var(--blue-light) 46%, var(--surface-soft) 54%)',
+          color: 'var(--blue)',
+          border: '1px solid color-mix(in srgb, var(--blue) 24%, var(--border-subtle) 76%)',
+        }
+      : {
+          background: 'color-mix(in srgb, var(--surface-soft) 92%, transparent)',
+          color: 'var(--text-secondary)',
+          border: '1px solid var(--border-subtle)',
+        }
 
   return (
-    <span className="ui-chip" style={{
-      gap: '0.38rem',
-      padding: emphasis ? '0.32rem 0.68rem' : '0.25rem 0.55rem',
-      fontSize: emphasis ? '12px' : '11px',
-      fontWeight: 700,
-      background: tone.background,
-      color: tone.color,
-      border: `1px solid ${tone.border}`,
-    }}>
-      <span style={{ width: '7px', height: '7px', borderRadius: '999px', background: tone.dot }} />
+    <span
+      className="ui-chip"
+      style={{
+        padding: subtle ? '0.18rem 0.5rem' : '0.24rem 0.58rem',
+        fontSize: subtle ? '11px' : '12px',
+        fontWeight: 700,
+        ...toneStyle,
+      }}
+    >
       {item.toneLabel}
     </span>
   )
 }
 
-function MetaPill({ children }: { children: ReactNode }) {
+function MetaBadge({ children }: { children: string }) {
   return (
-    <span className="ui-chip" style={{
-      padding: '0.25rem 0.55rem',
-      fontSize: '11px',
-      fontWeight: 600,
-      color: 'var(--text-secondary)',
-    }}>
+    <span className="ui-chip ui-chip-soft" style={{ fontWeight: 600 }}>
       {children}
     </span>
   )
 }
 
-function MetaCard({ label, value }: { label: string; value: string }) {
+function MetaBlock({ label, value }: { label: string; value: string }) {
   return (
-    <div className="glass-panel glass-soft" style={metaCardStyle}>
-      <p style={{ margin: 0, fontSize: '11px', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{label}</p>
-      <p style={{ margin: '0.42rem 0 0', fontSize: '14px', lineHeight: 1.5, color: 'var(--text-primary)' }}>{value}</p>
+    <div className="home-meta-block">
+      <p className="ui-kicker" style={{ margin: 0 }}>{label}</p>
+      <p style={{ margin: '0.35rem 0 0', fontSize: '14px', lineHeight: 1.5, color: 'var(--text-primary)' }}>
+        {value}
+      </p>
     </div>
   )
 }
 
-function getToneStyle(tone: TodayItem['tone']) {
-  if (tone === 'attention') {
-    return {
-      dot: 'var(--amber)',
-      color: 'var(--amber)',
-      border: 'color-mix(in srgb, var(--amber) 24%, var(--border-subtle) 76%)',
-      background: 'color-mix(in srgb, var(--amber-light) 34%, var(--surface-soft) 66%)',
-      kindLabel: 'Action item',
-    }
-  }
-
-  if (tone === 'review') {
-    return {
-      dot: 'var(--blue)',
-      color: 'var(--blue)',
-      border: 'color-mix(in srgb, var(--blue) 24%, var(--border-subtle) 76%)',
-      background: 'color-mix(in srgb, var(--blue-light) 42%, var(--surface-soft) 58%)',
-      kindLabel: 'Learning item',
-    }
-  }
-
-  return {
-    dot: 'var(--text-muted)',
-    color: 'var(--text-secondary)',
-    border: 'var(--border-subtle)',
-    background: 'color-mix(in srgb, var(--surface-soft) 92%, transparent)',
-    kindLabel: 'Upcoming item',
-  }
+function resolveItemHref(item: TodayItem) {
+  if (item.kind === 'task') return item.href
+  return item.learnHref ?? item.href
 }
 
-function heroStatusStyle(item: TodayItem): CSSProperties {
-  const tone = getToneStyle(item.tone)
-  return {
-    minHeight: '2rem',
-    padding: '0.45rem 0.72rem',
-    fontSize: '12px',
-    fontWeight: 700,
-    background: tone.background,
-    color: tone.color,
-    border: `1px solid ${tone.border}`,
-  }
+function primaryButtonLabel(item: TodayItem) {
+  if (item.kind === 'task') return 'Open task'
+  if (item.kind === 'module') return 'Review module'
+  return 'Open study view'
 }
 
-function itemStatusStyle(item: TodayItem): CSSProperties {
-  const tone = getToneStyle(item.tone)
-  return {
-    minHeight: '2rem',
-    padding: '0.42rem 0.68rem',
-    fontSize: '12px',
-    fontWeight: 700,
-    background: tone.background,
-    color: tone.color,
-    border: `1px solid ${tone.border}`,
-  }
-}
-
-function fallbackFocusLabel(kind: TodayItem['kind']) {
-  if (kind === 'module') return 'Review this module'
-  if (kind === 'learning') return 'Learning'
-  return 'Assignment'
+function fallbackAreaLabel(item: TodayItem) {
+  if (item.kind === 'task') return 'Task'
+  if (item.kind === 'module') return 'Module'
+  return 'Study item'
 }
 
 function formatDateTime(value: string) {
@@ -494,102 +459,4 @@ function formatDateTime(value: string) {
     ? { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }
     : { weekday: 'short', month: 'short', day: 'numeric' }
   ).format(date)
-}
-
-const heroTitleStyle: CSSProperties = {
-  margin: '0.55rem 0 0',
-  fontSize: '30px',
-  lineHeight: 1.08,
-  fontWeight: 650,
-  letterSpacing: '-0.04em',
-  color: 'var(--text-primary)',
-}
-
-const heroBodyStyle: CSSProperties = {
-  margin: '0.9rem 0 0',
-  maxWidth: '42rem',
-  fontSize: '16px',
-  lineHeight: 1.65,
-  color: 'var(--text-secondary)',
-}
-
-function heroCardStyle(isClickable: string | null | undefined): CSSProperties {
-  return {
-    borderRadius: 'var(--radius-page)',
-    padding: '1.2rem',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.9rem',
-    boxShadow: 'var(--shadow-medium), var(--highlight-sheen)',
-    cursor: isClickable ? 'pointer' : 'default',
-    transition: 'box-shadow 140ms ease, transform 140ms ease',
-  }
-}
-
-const supportCardStyle: CSSProperties = {
-  borderRadius: 'var(--radius-panel)',
-  padding: '0.95rem 1rem',
-}
-
-const itemTitleStyle: CSSProperties = {
-  margin: 0,
-  fontSize: '17px',
-  lineHeight: 1.3,
-  fontWeight: 650,
-  color: 'var(--text-primary)',
-}
-
-const noticeStyle: CSSProperties = {
-  borderRadius: 'var(--radius-panel)',
-  padding: '0.8rem 0.95rem',
-  fontSize: '13px',
-}
-
-const emptyBlockStyle: CSSProperties = {
-  borderRadius: 'var(--radius-panel)',
-  padding: '0.92rem 0.95rem',
-  fontSize: '14px',
-  lineHeight: 1.6,
-}
-
-const metaCardStyle: CSSProperties = {
-  borderRadius: 'var(--radius-panel)',
-  padding: '0.85rem 0.9rem',
-}
-
-function itemCardStyle(tone: TodayItem['tone'], isClickable: boolean): CSSProperties {
-  const toneStyle = getToneStyle(tone)
-
-  return {
-    ['--glass-panel-bg' as string]: tone === 'review'
-      ? 'color-mix(in srgb, var(--glass-surface-soft) 72%, var(--blue-light) 28%)'
-      : tone === 'attention'
-        ? 'color-mix(in srgb, var(--glass-surface-strong) 76%, var(--accent-light) 24%)'
-        : 'var(--glass-surface)',
-    ['--glass-panel-border' as string]: toneStyle.border,
-    ['--glass-panel-shadow' as string]: 'var(--glass-shadow)',
-    borderRadius: 'var(--radius-panel)',
-    padding: '0.88rem 0.92rem',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.72rem',
-    cursor: isClickable ? 'pointer' : 'default',
-    transition: 'box-shadow 140ms ease, transform 140ms ease',
-  }
-}
-
-const footerActionsStyle: CSSProperties = {
-  display: 'flex',
-  gap: '0.65rem',
-  flexWrap: 'wrap',
-  alignItems: 'center',
-}
-
-const actionButtonStyle: CSSProperties = {
-  minHeight: '2rem',
-  padding: '0.45rem 0.72rem',
-  fontSize: '12px',
-  fontWeight: 700,
-  borderRadius: 'var(--radius-control)',
-  textDecoration: 'none',
 }

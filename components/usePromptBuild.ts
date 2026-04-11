@@ -176,7 +176,7 @@ export function usePromptBuild({
         }
 
         if (!isTaskDraftApiResponse(data)) {
-          throw new Error('Received an invalid Auto Prompt response.')
+          throw new Error('Received an invalid starter draft response.')
         }
 
         await preparationTimeline
@@ -239,7 +239,7 @@ export function usePromptBuild({
           reopenSource: null,
           errorMessage: error instanceof Error
             ? error.message
-            : 'Could not generate an Auto Prompt right now.',
+            : 'Could not generate draft help right now.',
         })
       }
     }
@@ -334,7 +334,7 @@ function extractErrorMessage(value: unknown) {
     return value.error
   }
 
-  return 'Could not generate an Auto Prompt right now.'
+  return 'Could not generate draft help right now.'
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {

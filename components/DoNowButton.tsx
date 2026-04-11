@@ -67,7 +67,7 @@ export function TaskDraftButton({
         className="ui-button ui-button-secondary ui-button-xs"
         style={{ textDecoration: 'none', ...buttonStyle }}
       >
-        Auto Prompt
+        Start with help
       </button>
 
       {initialSnapshot && (

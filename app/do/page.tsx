@@ -1,307 +1,286 @@
 import Link from 'next/link'
+import { redirect } from 'next/navigation'
 import { SyncFirstEmptyState } from '@/components/SyncFirstEmptyState'
-import { getClarityWorkspace, getTaskUrgencyLabel } from '@/lib/clarity-workspace'
-import { buildModuleDoHref, getSearchParamValue } from '@/lib/stay-focused-links'
-import { TaskStatusToggle } from '@/components/TaskStatusToggle'
 import { TaskDraftButton } from '@/components/DoNowButton'
+import { TaskStatusToggle } from '@/components/TaskStatusToggle'
+import { getClarityWorkspace } from '@/lib/clarity-workspace'
 import { buildManualCopyBundle } from '@/lib/manual-copy-bundle'
-import type { TaskItem } from '@/lib/types'
-
-const GROUPS: Array<{ key: string; title: string; description: string; filter: (task: TaskItem) => boolean }> = [
-  {
-    key: 'urgent',
-    title: 'Needs action now',
-    description: 'High-pressure or near-term work that should stay visible first.',
-    filter: (task) => task.status !== 'completed' && task.actionScore >= 70,
-  },
-  {
-    key: 'soon',
-    title: 'Coming up soon',
-    description: 'Active work that is not immediate yet, but should be lined up before it crowds the week.',
-    filter: (task) => task.status !== 'completed' && task.actionScore >= 36 && task.actionScore < 70,
-  },
-  {
-    key: 'later',
-    title: 'Can wait a bit',
-    description: 'Clear, lower-pressure tasks that are still worth keeping visible.',
-    filter: (task) => task.status !== 'completed' && task.actionScore < 36,
-  },
-]
+import type { TodayItem } from '@/lib/types'
 
 interface Props {
   searchParams?: Promise<Record<string, string | string[] | undefined>>
 }
 
-export default async function DoPage({ searchParams }: Props) {
-  const workspace = await getClarityWorkspace()
+export default async function DoNowPage({ searchParams }: Props) {
   const resolvedSearchParams = await searchParams
+  const legacyQuery = toSearchParamsString(resolvedSearchParams)
+
+  if (legacyQuery.has('task') || legacyQuery.has('taskTitle') || legacyQuery.has('donow')) {
+    redirect(`/tasks${legacyQuery.toString() ? `?${legacyQuery.toString()}` : ''}`)
+  }
+
+  const workspace = await getClarityWorkspace()
+
   if (!workspace.hasSyncedData) {
     return (
       <main className="page-shell page-stack">
-        <SyncFirstEmptyState eyebrow="Do" />
+        <SyncFirstEmptyState eyebrow="Do Now" />
       </main>
     )
   }
 
-  const targetTaskId = getSearchParamValue(resolvedSearchParams?.task)
-  const targetTaskTitle = getSearchParamValue(resolvedSearchParams?.taskTitle)
-  const draftAutoOpen = getSearchParamValue(resolvedSearchParams?.donow) === '1'
-  const highlightedTaskId = (() => {
-    if (targetTaskId) {
-      return workspace.taskItems.find((task) => task.id === targetTaskId)?.id ?? null
-    }
-
-    if (targetTaskTitle) {
-      const normalizedTitle = targetTaskTitle.trim().toLowerCase()
-      return workspace.taskItems.find((task) => task.title.trim().toLowerCase() === normalizedTitle)?.id ?? null
-    }
-
-    return null
-  })()
-
-  const completedItems = workspace.taskItems
-    .filter((task) => task.status === 'completed')
-    .sort((a, b) => a.title.localeCompare(b.title))
+  const primaryAction = workspace.today.nextBestMove
+  const backupItems = [...workspace.today.needsAction, ...workspace.today.needsUnderstanding]
+    .filter((item) => item.id !== primaryAction?.id)
+    .slice(0, 3)
 
   return (
     <main className="page-shell page-stack">
-      <header className="motion-card">
-        <p className="ui-kicker">Do</p>
-        <h1 className="ui-page-title">Actionable work, grouped by urgency and status</h1>
-        <p className="ui-page-copy">
-          This is the execution layer: extracted tasks, realistic timing, and enough context to act without reopening a messy course feed.
-        </p>
+      <header className="section-shell" style={{ display: 'grid', gap: '0.8rem', padding: '1.35rem' }}>
+        <div>
+          <p className="ui-kicker">Do Now</p>
+          <h1 className="ui-page-title">Start with one thing</h1>
+          <p className="ui-page-copy" style={{ maxWidth: '42rem' }}>
+            This page is for momentum, not sorting. Pick one useful next move, get enough context to begin, and keep the full task list in the background until you need it.
+          </p>
+        </div>
       </header>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-        {GROUPS.map((group) => {
-          const items = workspace.taskItems.filter(group.filter)
-
-          return (
-            <section key={group.key} className="motion-card motion-delay-1 section-shell section-shell-elevated" style={{ padding: '1.2rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
-                <div>
-                  <p className="ui-kicker">{group.key}</p>
-                  <h2 className="ui-section-title" style={{ marginTop: '0.45rem' }}>{group.title}</h2>
-                  <p className="ui-section-copy" style={{ marginTop: '0.45rem' }}>{group.description}</p>
-                </div>
-                <span className="ui-chip ui-chip-soft">{items.length} task{items.length === 1 ? '' : 's'}</span>
+      {primaryAction ? (
+        <section className="section-shell section-shell-elevated" style={{ display: 'grid', gap: '1rem', padding: '1.25rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.9rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                <ToneBadge item={primaryAction} />
+                {primaryAction.dateTime ? <MetaBadge>{formatDateTime(primaryAction.dateTime)}</MetaBadge> : null}
+                {primaryAction.effortLabel ? <MetaBadge>{primaryAction.effortLabel}</MetaBadge> : null}
               </div>
-
-              {items.length === 0 ? (
-                <div className="ui-empty" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', fontSize: '14px' }}>
-                  Nothing falls into this group right now.
-                </div>
-              ) : (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '0.85rem' }}>
-                  {items.map((task) => (
-                    <TaskCard
-                      key={task.id}
-                      task={task}
-                      highlighted={highlightedTaskId === task.id}
-                      autoOpenDraft={draftAutoOpen && highlightedTaskId === task.id}
-                    />
-                  ))}
-                </div>
-              )}
-            </section>
-          )
-        })}
-      </div>
-
-      <section className="motion-card motion-delay-2 section-shell" style={{ padding: '1.2rem' }}>
-        <details>
-          <summary style={{
-            cursor: 'pointer',
-            listStyle: 'none',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            gap: '0.75rem',
-          }}>
-            <div>
-              <p className="ui-kicker">Done</p>
-              <h2 className="ui-section-title" style={{ marginTop: '0.45rem' }}>Completed items</h2>
-              <p className="ui-section-copy" style={{ marginTop: '0.45rem' }}>
-                Hidden by default so active work stays easier to scan, but still available to reopen.
+              <h2 style={{ margin: '0.6rem 0 0', fontSize: 'clamp(1.9rem, 4vw, 2.7rem)', lineHeight: 1.04, letterSpacing: '-0.05em', fontWeight: 650, color: 'var(--text-primary)' }}>
+                {primaryAction.title}
+              </h2>
+              <p style={{ margin: '0.8rem 0 0', maxWidth: '44rem', fontSize: '16px', lineHeight: 1.7, color: 'var(--text-secondary)' }}>
+                {primaryAction.whyNow}
               </p>
             </div>
-            <span className="ui-chip ui-chip-soft">{completedItems.length} completed</span>
-          </summary>
 
-          <div style={{ marginTop: '1rem' }}>
-            {completedItems.length === 0 ? (
-              <div className="ui-empty" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', fontSize: '14px' }}>
-                Nothing has been marked complete yet.
-              </div>
-            ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '0.85rem' }}>
-                {completedItems.map((task) => (
-                  <article key={task.id} className="ui-card-soft" style={{
-                    borderRadius: 'var(--radius-panel)',
-                    padding: '1rem',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '0.75rem',
-                  }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.65rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-                      <div>
-                        <p style={{ margin: 0, fontSize: '16px', lineHeight: 1.35, fontWeight: 650, color: 'var(--text-muted)', textDecoration: 'line-through' }}>
-                          {task.title}
-                        </p>
-                        <p style={{ margin: '0.3rem 0 0', fontSize: '13px', color: 'var(--text-secondary)' }}>
-                          {task.courseName} • {task.moduleTitle}
-                        </p>
-                      </div>
-                      <span className="ui-chip ui-status-success" style={{ padding: '0.28rem 0.6rem', fontSize: '11px', fontWeight: 700 }}>
-                        Done
-                      </span>
-                    </div>
-
-                    <TaskStatusToggle
-                      status={task.status}
-                      moduleId={task.moduleId}
-                      title={task.title}
-                      taskItemId={task.id}
-                    />
-                  </article>
-                ))}
-              </div>
-            )}
+            {primaryAction.kind === 'task' && primaryAction.taskItemId ? (
+              <TaskStatusToggle
+                status={primaryAction.completionStatus ?? 'pending'}
+                moduleId={primaryAction.moduleId}
+                title={primaryAction.title}
+                taskItemId={primaryAction.taskItemId}
+                align="end"
+              />
+            ) : null}
           </div>
-        </details>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.8rem' }}>
+            <MetaCard label="Course" value={primaryAction.courseName} />
+            <MetaCard label="Area" value={primaryAction.moduleTitle || fallbackAreaLabel(primaryAction)} />
+            <MetaCard label="Smallest next step" value={smallestNextStepLabel(primaryAction)} />
+          </div>
+
+          {primaryAction.supportingText ? (
+            <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.95rem 1rem' }}>
+              <p className="ui-kicker" style={{ margin: 0 }}>Why it matters</p>
+              <p style={{ margin: '0.4rem 0 0', fontSize: '14px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
+                {primaryAction.supportingText}
+              </p>
+            </div>
+          ) : null}
+
+          <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+            {primaryAction.kind === 'task' ? (
+              <TaskDraftButton
+                copyBundle={buildManualCopyBundle({
+                  taskTitle: primaryAction.title,
+                  courseName: primaryAction.courseName,
+                  moduleName: primaryAction.moduleTitle,
+                  dueDate: primaryAction.dateTime,
+                  taskDetails: primaryAction.supportingText,
+                })}
+                context={{
+                  taskTitle: primaryAction.title,
+                  taskDetails: primaryAction.supportingText,
+                  deadline: primaryAction.dateTime,
+                  priority: primaryAction.priority,
+                  courseName: primaryAction.courseName,
+                  moduleTitle: primaryAction.moduleTitle,
+                  canvasUrl: primaryAction.canvasUrl,
+                  learnHref: primaryAction.learnHref ?? primaryAction.href,
+                }}
+              />
+            ) : null}
+            {resolveItemHref(primaryAction) ? (
+              <Link href={resolveItemHref(primaryAction)!} className="ui-button ui-button-primary">
+                {primaryButtonLabel(primaryAction)}
+              </Link>
+            ) : null}
+            <Link href="/tasks" className="ui-button ui-button-ghost">
+              Open full task list
+            </Link>
+          </div>
+        </section>
+      ) : (
+        <section className="section-shell section-shell-elevated" style={{ padding: '1.3rem' }}>
+          <p className="ui-kicker">Do Now</p>
+          <h2 className="ui-section-title" style={{ marginTop: '0.45rem' }}>You are clear for now</h2>
+          <p className="ui-section-copy" style={{ marginTop: '0.45rem', maxWidth: '34rem' }}>
+            Nothing urgent is asking for you right now. Use the quiet time to review a course or check the calendar.
+          </p>
+        </section>
+      )}
+
+      <section className="section-shell" style={{ display: 'grid', gap: '0.9rem', padding: '1.2rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.8rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+          <div>
+            <p className="ui-kicker">If not that</p>
+            <h2 className="ui-section-title" style={{ marginTop: '0.42rem' }}>Next options</h2>
+            <p className="ui-section-copy" style={{ marginTop: '0.4rem', maxWidth: '32rem' }}>
+              Keep backups short. These are the next few items worth touching if the main recommendation is blocked.
+            </p>
+          </div>
+          <Link href="/tasks" className="ui-button ui-button-ghost ui-button-xs">
+            Open Tasks
+          </Link>
+        </div>
+
+        {backupItems.length > 0 ? (
+          <div className="home-compact-list">
+            {backupItems.map((item) => (
+              <div key={item.id} className="home-list-row">
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <ToneBadge item={item} subtle />
+                    <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{item.courseName}</span>
+                  </div>
+                  <p style={{ margin: '0.42rem 0 0', fontSize: '15px', lineHeight: 1.4, fontWeight: 650, color: 'var(--text-primary)' }}>
+                    {item.title}
+                  </p>
+                  <p style={{ margin: '0.3rem 0 0', fontSize: '13px', lineHeight: 1.55, color: 'var(--text-secondary)' }}>
+                    {item.whyNow}
+                  </p>
+                </div>
+                {resolveItemHref(item) ? (
+                  <Link href={resolveItemHref(item)!} className="ui-button ui-button-secondary ui-button-xs">
+                    Open
+                  </Link>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="ui-empty" style={{ borderRadius: 'var(--radius-panel)', padding: '0.95rem 1rem', fontSize: '14px', lineHeight: 1.6 }}>
+            No backup items need attention right now.
+          </div>
+        )}
       </section>
     </main>
   )
 }
 
-function TaskCard({
-  task,
-  highlighted = false,
-  autoOpenDraft = false,
-}: {
-  task: TaskItem
-  highlighted?: boolean
-  autoOpenDraft?: boolean
-}) {
-  const manualCopy = buildManualCopyBundle({
-    taskTitle: task.title,
-    courseName: task.courseName,
-    moduleName: task.moduleTitle,
-    dueDate: task.deadline,
-    taskType: task.taskType,
-    taskDetails: task.details,
-  })
+function toSearchParamsString(searchParams: Record<string, string | string[] | undefined> | undefined) {
+  const params = new URLSearchParams()
+
+  for (const [key, value] of Object.entries(searchParams ?? {})) {
+    if (Array.isArray(value)) {
+      for (const entry of value) {
+        params.append(key, entry)
+      }
+      continue
+    }
+
+    if (typeof value === 'string') {
+      params.set(key, value)
+    }
+  }
+
+  return params
+}
+
+function resolveItemHref(item: TodayItem) {
+  if (item.kind === 'task') return item.href
+  return item.learnHref ?? item.href
+}
+
+function primaryButtonLabel(item: TodayItem) {
+  if (item.kind === 'task') return 'Open task'
+  if (item.kind === 'module') return 'Review module'
+  return 'Open study view'
+}
+
+function smallestNextStepLabel(item: TodayItem) {
+  if (item.kind === 'task') return 'Open the task and start the first pass.'
+  if (item.kind === 'module') return 'Review the module summary and key material.'
+  return 'Open the study view and keep moving.'
+}
+
+function fallbackAreaLabel(item: TodayItem) {
+  if (item.kind === 'task') return 'Task'
+  if (item.kind === 'module') return 'Module'
+  return 'Study item'
+}
+
+function formatDateTime(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+
+  const includesTime = /T\d{2}:\d{2}/.test(value)
+  return new Intl.DateTimeFormat(undefined, includesTime
+    ? { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }
+    : { weekday: 'short', month: 'short', day: 'numeric' }
+  ).format(date)
+}
+
+function ToneBadge({ item, subtle = false }: { item: TodayItem; subtle?: boolean }) {
+  const toneStyle = item.tone === 'attention'
+    ? {
+        background: 'color-mix(in srgb, var(--accent-light) 58%, var(--surface-soft) 42%)',
+        color: 'var(--accent-foreground)',
+        border: '1px solid color-mix(in srgb, var(--accent-border) 38%, var(--border-subtle) 62%)',
+      }
+    : item.tone === 'review'
+      ? {
+          background: 'color-mix(in srgb, var(--blue-light) 46%, var(--surface-soft) 54%)',
+          color: 'var(--blue)',
+          border: '1px solid color-mix(in srgb, var(--blue) 24%, var(--border-subtle) 76%)',
+        }
+      : {
+          background: 'color-mix(in srgb, var(--surface-soft) 92%, transparent)',
+          color: 'var(--text-secondary)',
+          border: '1px solid var(--border-subtle)',
+        }
 
   return (
-    <article id={task.id} className="glass-panel glass-hover" style={{
-      ['--glass-panel-bg' as string]: 'var(--glass-surface-strong)',
-      ['--glass-panel-border' as string]: highlighted
-        ? 'color-mix(in srgb, var(--accent-border) 42%, var(--border-subtle) 58%)'
-        : 'var(--glass-border)',
-      ['--glass-panel-shadow' as string]: highlighted ? 'var(--glass-shadow-strong)' : 'var(--glass-shadow)',
-      borderRadius: 'var(--radius-panel)',
-      padding: '1rem',
-      display: 'flex',
-      flexDirection: 'column',
-      gap: '0.75rem',
-      opacity: task.status === 'completed' ? 0.72 : 1,
-    }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.65rem', flexWrap: 'wrap', alignItems: 'flex-start' }}>
-        <div>
-          <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', marginBottom: '0.4rem' }}>
-            <span className="ui-chip" style={priorityChipStyle(task.priority)}>{task.priority} priority</span>
-            <span className="ui-chip ui-chip-soft">{task.taskType}</span>
-          </div>
-          <h3 style={{ margin: 0, fontSize: '17px', lineHeight: 1.3, fontWeight: 650, color: 'var(--text-primary)', overflowWrap: 'anywhere' }}>{task.title}</h3>
-        </div>
-        <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', alignItems: 'flex-start', flexShrink: 0 }}>
-          <TaskStatusToggle
-            status={task.status}
-            moduleId={task.moduleId}
-            title={task.title}
-            taskItemId={task.id}
-          />
-          <span className="ui-chip ui-chip-soft">{task.estimatedMinutes} min</span>
-        </div>
-      </div>
-
-      {task.details && (
-        <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.62, color: 'var(--text-secondary)', overflowWrap: 'anywhere' }}>{task.details}</p>
-      )}
-
-      <div className="ui-meta-list">
-        <span><strong>Course:</strong> {task.courseName}</span>
-        <span><strong>Module:</strong> {task.moduleTitle}</span>
-        <span><strong>Timing:</strong> {getTaskUrgencyLabel(task)}</span>
-      </div>
-
-      <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-        <TaskDraftButton
-          defaultOpen={autoOpenDraft}
-          copyBundle={manualCopy}
-          context={{
-            taskTitle: task.title,
-            taskDetails: task.details,
-            deadline: task.deadline,
-            priority: task.priority,
-            courseName: task.courseName,
-            moduleTitle: task.moduleTitle,
-            canvasUrl: task.canvasUrl,
-          }}
-          buttonStyle={actionButtonStyle}
-        />
-        <Link href={buildModuleDoHref(task.moduleId, { taskTitle: task.title })} className="ui-button ui-button-ghost ui-button-xs" style={actionButtonStyle}>
-          Open module Do
-        </Link>
-        {task.canvasUrl && (
-          <a href={task.canvasUrl} target="_blank" rel="noreferrer" className="ui-button ui-button-secondary ui-button-xs" style={actionButtonStyle}>
-            Open in Canvas
-          </a>
-        )}
-      </div>
-    </article>
+    <span
+      className="ui-chip"
+      style={{
+        padding: subtle ? '0.18rem 0.5rem' : '0.24rem 0.58rem',
+        fontSize: subtle ? '11px' : '12px',
+        fontWeight: 700,
+        ...toneStyle,
+      }}
+    >
+      {item.toneLabel}
+    </span>
   )
 }
 
-function priorityChipStyle(priority: 'high' | 'medium' | 'low') {
-  if (priority === 'high') {
-    return {
-      padding: '0.25rem 0.55rem',
-      fontSize: '11px',
-      fontWeight: 700,
-      background: 'color-mix(in srgb, var(--amber-light) 40%, var(--surface-soft) 60%)',
-      color: 'var(--amber)',
-      border: '1px solid color-mix(in srgb, var(--amber) 26%, var(--border-subtle) 74%)',
-    }
-  }
-
-  if (priority === 'medium') {
-    return {
-      padding: '0.25rem 0.55rem',
-      fontSize: '11px',
-      fontWeight: 700,
-      background: 'color-mix(in srgb, var(--accent-light) 44%, var(--surface-soft) 56%)',
-      color: 'var(--accent-foreground)',
-      border: '1px solid color-mix(in srgb, var(--accent-border) 32%, var(--border-subtle) 68%)',
-    }
-  }
-
-  return {
-    padding: '0.25rem 0.55rem',
-    fontSize: '11px',
-    fontWeight: 700,
-    background: 'color-mix(in srgb, var(--surface-soft) 92%, transparent)',
-    color: 'var(--text-secondary)',
-    border: '1px solid var(--border-subtle)',
-  }
+function MetaBadge({ children }: { children: string }) {
+  return (
+    <span className="ui-chip ui-chip-soft" style={{ fontWeight: 600 }}>
+      {children}
+    </span>
+  )
 }
 
-const actionButtonStyle = {
-  minHeight: '2rem',
-  padding: '0.45rem 0.72rem',
-  fontSize: '12px',
-  fontWeight: 700,
-  borderRadius: 'var(--radius-control)',
-  textDecoration: 'none',
+function MetaCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.95rem 1rem' }}>
+      <p className="ui-kicker" style={{ margin: 0 }}>{label}</p>
+      <p style={{ margin: '0.38rem 0 0', fontSize: '14px', lineHeight: 1.6, color: 'var(--text-primary)' }}>
+        {value}
+      </p>
+    </div>
+  )
 }

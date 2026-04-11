@@ -8,63 +8,85 @@ import { AuthStatus } from '@/components/AuthStatus'
 import { StayFocusedIcon } from '@/components/StayFocusedIcon'
 import type { ParsedAnnouncement } from '@/lib/announcements'
 
-const NAV_ITEMS = [
+const DESKTOP_NAV_ITEMS = [
   {
     href: '/',
-    label: 'Today',
-    description: 'Your clearest next focus',
+    label: 'Home',
+    title: 'Home',
+    note: 'What needs your attention first.',
+    matches: (pathname: string) => pathname === '/',
     icon: (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-        <path d="M4.75 6.75h14.5v10.5H4.75z" stroke="currentColor" strokeWidth="1.6" rx="2.5" />
-        <path d="M8 10.25h8M8 13.75h5.5" stroke="currentColor" strokeLinecap="round" strokeWidth="1.6" />
-      </svg>
+      <path d="M5.75 10.75 12 5.75l6.25 5v7.5h-4.5V13h-3.5v5.25h-4.5z" />
     ),
   },
   {
     href: '/courses',
     label: 'Courses',
-    description: 'See each class clearly',
+    title: 'Courses',
+    note: 'Open one class at a time, with less clutter.',
+    matches: (pathname: string) => pathname.startsWith('/courses') || pathname === '/learn' || pathname.includes('/learn'),
     icon: (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-        <path d="M5.75 6.75h12.5a2 2 0 0 1 2 2v8.5H7.75a2 2 0 0 0-2 2V6.75Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
-        <path d="M7.75 17.25V8.25a1.5 1.5 0 0 0-1.5-1.5h-.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-      </svg>
-    ),
-  },
-  {
-    href: '/learn',
-    label: 'Learn',
-    description: 'Open each module learning workspace',
-    icon: (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-        <path d="M5.75 8.25c0-1.1.9-2 2-2h10.5v11.5H7.75a2 2 0 0 0-2 2V8.25Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
-        <path d="M9.25 10.25h5.5M9.25 13.5h6.75" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-      </svg>
+      <>
+        <path d="M6 6.75h11.5a1.75 1.75 0 0 1 1.75 1.75v8.75H8a2 2 0 0 0-2 2V6.75Z" />
+        <path d="M8 17.25V8.5a1.75 1.75 0 0 0-1.75-1.75H5.5" />
+      </>
     ),
   },
   {
     href: '/do',
-    label: 'Do',
-    description: 'See the extracted work',
+    label: 'Do Now',
+    title: 'Do Now',
+    note: 'One clear starting point instead of a crowded board.',
+    matches: (pathname: string) => pathname === '/do',
     icon: (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-        <path d="M6.75 12.25 10 15.5l7.25-7.25" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z" stroke="currentColor" strokeWidth="1.6" />
-      </svg>
+      <>
+        <circle cx="12" cy="12" r="8.25" />
+        <path d="m9.75 12.1 1.6 1.65 3.2-3.45" />
+      </>
+    ),
+  },
+  {
+    href: '/tasks',
+    label: 'Tasks',
+    title: 'Tasks',
+    note: 'Your full task list, grouped for triage.',
+    matches: (pathname: string) => pathname === '/tasks' || /\/modules\/.+\/do/.test(pathname),
+    icon: (
+      <>
+        <rect x="5.75" y="6.5" width="12.5" height="11" rx="2" />
+        <path d="M9 10h6M9 13.25h6M9 16.5h3.75" />
+      </>
     ),
   },
   {
     href: '/calendar',
     label: 'Calendar',
-    description: 'Place work on the week',
+    title: 'Calendar',
+    note: 'See deadlines in time, not just in lists.',
+    matches: (pathname: string) => pathname.startsWith('/calendar'),
     icon: (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-        <path d="M7.25 4.75v2.5M16.75 4.75v2.5M5.75 8.25h12.5M6.75 6.25h10.5a1.5 1.5 0 0 1 1.5 1.5v9.5a1.5 1.5 0 0 1-1.5 1.5H6.75a1.5 1.5 0 0 1-1.5-1.5v-9.5a1.5 1.5 0 0 1 1.5-1.5Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
-        <path d="M9 11.5h2.25v2.25H9zM12.75 11.5H15v2.25h-2.25z" stroke="currentColor" strokeWidth="1.4" />
-      </svg>
+      <>
+        <path d="M7.5 5.5v2.25M16.5 5.5v2.25M5.75 9h12.5" />
+        <rect x="5.75" y="7.25" width="12.5" height="10.5" rx="2" />
+      </>
+    ),
+  },
+  {
+    href: '/settings',
+    label: 'Settings',
+    title: 'Settings',
+    note: 'Account, sync, and preferences.',
+    matches: (pathname: string) => pathname.startsWith('/settings') || pathname.startsWith('/canvas') || pathname.startsWith('/sign-in') || pathname.startsWith('/sign-up'),
+    icon: (
+      <>
+        <path d="M12 4.75v2.1M12 17.15v2.1M6.9 6.9l1.48 1.48M15.62 15.62l1.48 1.48M4.75 12h2.1M17.15 12h2.1M6.9 17.1l1.48-1.48M15.62 8.38l1.48-1.48" />
+        <circle cx="12" cy="12" r="3.05" />
+      </>
     ),
   },
 ] as const
+
+const MOBILE_NAV_ITEMS = DESKTOP_NAV_ITEMS.filter((item) => item.href !== '/settings')
 
 export function AppShell({
   children,
@@ -74,68 +96,74 @@ export function AppShell({
   recentAnnouncements: ParsedAnnouncement[]
 }) {
   const pathname = usePathname()
+  const activeSection = DESKTOP_NAV_ITEMS.find((item) => item.matches(pathname)) ?? DESKTOP_NAV_ITEMS[0]
 
   return (
     <div className="app-frame">
-      <aside className="app-sidebar glass-panel glass-soft">
-        <Link href="/" className="app-sidebar-header">
-          <span
-            className="app-sidebar-icon"
-            style={{
-              width: 'auto',
-              height: 'auto',
-              border: 'none',
-              background: 'transparent',
-              boxShadow: 'none',
-              borderRadius: 0,
-              color: 'var(--accent)',
-            }}
-          >
-            <StayFocusedIcon size={34} color="var(--accent)" />
-          </span>
-          <span>
-            <strong>Stay Focused</strong>
-            <span>Soft Focus Academic OS</span>
-          </span>
-        </Link>
+      <aside className="app-sidebar">
+        <div className="app-sidebar-inner">
+          <Link href="/" className="app-brand">
+            <span className="app-brand-mark" aria-hidden="true">
+              <StayFocusedIcon size={30} color="var(--accent)" />
+            </span>
+            <span className="app-brand-copy">
+              <strong>Stay Focused</strong>
+              <span>Calm school planning</span>
+            </span>
+          </Link>
 
-        <nav className="app-nav" aria-label="Primary">
-          {NAV_ITEMS.map((item) => {
-            const isActive = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href))
+          <nav className="app-nav" aria-label="Primary">
+            {DESKTOP_NAV_ITEMS.map((item) => {
+              const isActive = item.matches(pathname)
 
-            return (
-              <Link key={item.href} href={item.href} className="app-nav-link" data-active={isActive}>
-                <span className="app-nav-icon">{item.icon}</span>
-                <span className="app-nav-copy">
-                  <strong>{item.label}</strong>
-                  <span>{item.description}</span>
-                </span>
-              </Link>
-            )
-          })}
-        </nav>
-
-        <div className="app-sidebar-footer">
-          <div className="app-note">
-            <strong>Stay with the next thing</strong>
-            <p>Built to reduce Canvas clutter and keep your coursework readable when your energy is low.</p>
-          </div>
+              return (
+                <Link key={item.href} href={item.href} className="app-nav-link" data-active={isActive}>
+                  <span className="app-nav-icon" aria-hidden="true">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                      {item.icon}
+                    </svg>
+                  </span>
+                  <span>{item.label}</span>
+                </Link>
+              )
+            })}
+          </nav>
         </div>
       </aside>
 
       <div className="app-main">
-        <header className="app-topbar glass-panel glass-soft">
-          <div className="app-topbar-title">
-            <strong>Quiet workspace</strong>
-            <span>Clear modules, clear tasks, less noise.</span>
+        <header className="app-topbar">
+          <div className="app-topbar-copy">
+            <p className="ui-kicker" style={{ margin: 0 }}>{activeSection.label}</p>
+            <h1 className="app-topbar-title">{activeSection.title}</h1>
+            <p className="app-topbar-note">{activeSection.note}</p>
           </div>
+
           <div className="app-topbar-actions">
             <AnnouncementsMenu announcements={recentAnnouncements} />
             <AuthStatus />
           </div>
         </header>
-        {children}
+
+        <div className="app-content">
+          {children}
+        </div>
       </div>
+
+      <nav className="app-bottom-nav" aria-label="Primary mobile">
+        {MOBILE_NAV_ITEMS.map((item) => {
+          const isActive = item.matches(pathname)
+
+          return (
+            <Link key={item.href} href={item.href} className="app-bottom-nav-link" data-active={isActive}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                {item.icon}
+              </svg>
+              <span>{item.label}</span>
+            </Link>
+          )
+        })}
+      </nav>
     </div>
   )
 }

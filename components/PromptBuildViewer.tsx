@@ -44,8 +44,8 @@ export function PromptBuildViewer({
             <span className="prompt-build-icon-line prompt-build-icon-line-3" />
           </div>
           <div style={{ minWidth: 0 }}>
-            <p className="ui-kicker" style={{ margin: 0 }}>Auto Prompt</p>
-            <h3 style={headerTitleStyle}>Building prompt</h3>
+            <p className="ui-kicker" style={{ margin: 0 }}>Starter draft</p>
+            <h3 style={headerTitleStyle}>Building draft help</h3>
             <p aria-live="polite" style={phaseTextStyle}>{phaseCopy}</p>
           </div>
         </div>
@@ -84,8 +84,8 @@ function getPhaseCopy(phase: PromptBuildPhase) {
   if (phase === 'reading') return 'Reading assignment details...'
   if (phase === 'structuring') return 'Structuring prompt...'
   if (phase === 'streaming') return 'Writing draft prompt...'
-  if (phase === 'done') return 'Prompt ready'
-  if (phase === 'error') return 'Prompt build failed'
+  if (phase === 'done') return 'Draft ready'
+  if (phase === 'error') return 'Draft build failed'
   return 'Waiting to begin...'
 }
 
