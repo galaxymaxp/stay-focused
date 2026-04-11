@@ -21,69 +21,135 @@ export function TodayDashboard({
   undatedTaskCount: number
 }) {
   return (
-    <section className="page-stack" style={{ gap: '1.25rem' }}>
-      <header className="section-shell" style={{ display: 'grid', gap: '0.85rem', padding: '1.35rem' }}>
-        <div>
+    <section className="home-page">
+      <header className="home-page-header">
+        <div className="home-page-copy">
           <p className="ui-kicker">Home</p>
           <h1 className="ui-page-title">What should I do right now?</h1>
-          <p className="ui-page-copy" style={{ maxWidth: '44rem' }}>
-            Start with one clear move, then check what is due soon, what changed, and which courses need a quick look.
+          <p className="ui-page-copy" style={{ maxWidth: '38rem' }}>
+            A quick read on what matters today: one place to start, what is due next, and what changed since you last checked.
           </p>
         </div>
 
-        {undatedTaskCount > 0 && (
-          <div className="ui-empty" style={{ borderRadius: 'var(--radius-panel)', padding: '0.85rem 0.95rem', fontSize: '14px', lineHeight: 1.6 }}>
-            {undatedTaskCount} task{undatedTaskCount === 1 ? '' : 's'} still need a due date, so they stay out of the main recommendation for now.
-          </div>
-        )}
+        {undatedTaskCount > 0 ? (
+          <p className="home-page-note">
+            {undatedTaskCount} task{undatedTaskCount === 1 ? '' : 's'} still need a due date, so they are kept out of the main recommendation.
+          </p>
+        ) : null}
       </header>
 
       <div className="home-layout">
         <div className="home-main-column">
-          <section className="section-shell section-shell-elevated home-section-card">
-            <HomeSectionHeader
-              eyebrow="Do this now"
-              title={primaryAction ? 'Start here' : 'Nothing urgent right now'}
+          <section className="home-focus-card">
+            <SectionHeading
+              eyebrow="Start here"
+              title={primaryAction ? 'One clear next move' : 'Nothing urgent right now'}
               description={primaryAction
-                ? 'One recommended place to begin, with just enough context to get moving.'
-                : 'The work queue is quiet enough that you can review material or check a course on your own pace.'}
+                ? 'Keep the first move obvious. Open the task, start it, or get a draft started without sorting through extra panels.'
+                : 'The queue is calm enough that you can review a course or check the calendar at your own pace.'}
               actionHref="/do"
               actionLabel="Open Do Now"
             />
 
             {primaryAction ? (
-              <PrimaryActionCard item={primaryAction} />
+              <>
+                <div className="home-focus-layout">
+                  <div className="home-focus-main">
+                    <div className="home-focus-meta">
+                      <ToneBadge item={primaryAction} />
+                      {primaryAction.dateTime ? <MetaBadge>{formatDateTime(primaryAction.dateTime)}</MetaBadge> : null}
+                      {primaryAction.effortLabel ? <MetaBadge>{primaryAction.effortLabel}</MetaBadge> : null}
+                    </div>
+
+                    <h2 className="home-focus-title">{primaryAction.title}</h2>
+                    <p className="home-focus-copy">{primaryAction.whyNow}</p>
+
+                    {primaryAction.supportingText ? (
+                      <p className="home-focus-support">{primaryAction.supportingText}</p>
+                    ) : null}
+
+                    <div className="home-focus-actions">
+                      {resolveItemHref(primaryAction) ? (
+                        <Link href={resolveItemHref(primaryAction)!} className="ui-button ui-button-primary">
+                          {primaryButtonLabel(primaryAction)}
+                        </Link>
+                      ) : null}
+
+                      {primaryAction.kind === 'task' ? (
+                        <TaskDraftButton
+                          copyBundle={buildManualCopyBundle({
+                            taskTitle: primaryAction.title,
+                            courseName: primaryAction.courseName,
+                            moduleName: primaryAction.moduleTitle,
+                            dueDate: primaryAction.dateTime,
+                            taskDetails: primaryAction.supportingText,
+                          })}
+                          entryOrigin="today"
+                          doPageHref={primaryAction.href ?? undefined}
+                          context={{
+                            taskTitle: primaryAction.title,
+                            taskDetails: primaryAction.supportingText,
+                            deadline: primaryAction.dateTime,
+                            priority: primaryAction.priority,
+                            courseName: primaryAction.courseName,
+                            moduleTitle: primaryAction.moduleTitle,
+                            canvasUrl: primaryAction.canvasUrl,
+                            learnHref: primaryAction.learnHref ?? primaryAction.href,
+                          }}
+                        />
+                      ) : (
+                        <Link href="/tasks" className="ui-button ui-button-secondary">
+                          Open task list
+                        </Link>
+                      )}
+                    </div>
+                  </div>
+
+                  <aside className="home-focus-aside">
+                    {primaryAction.kind === 'task' && primaryAction.taskItemId ? (
+                      <TaskStatusToggle
+                        status={primaryAction.completionStatus ?? 'pending'}
+                        moduleId={primaryAction.moduleId}
+                        title={primaryAction.title}
+                        taskItemId={primaryAction.taskItemId}
+                        align="end"
+                      />
+                    ) : null}
+
+                    <dl className="home-focus-facts">
+                      <FactItem label="Due" value={primaryAction.dateTime ? formatDateTime(primaryAction.dateTime) : 'No due date'} />
+                      <FactItem label="Course" value={primaryAction.courseName} />
+                      <FactItem label="Where" value={primaryAction.moduleTitle || fallbackAreaLabel(primaryAction)} />
+                    </dl>
+                  </aside>
+                </div>
+
+                {upNext.length > 0 ? (
+                  <div className="home-inline-list">
+                    <div className="home-inline-list-header">
+                      <p className="ui-kicker">After that</p>
+                      <Link href="/tasks" className="home-subtle-link">
+                        See all tasks
+                      </Link>
+                    </div>
+
+                    <div className="home-sheet-list">
+                      {upNext.map((item) => (
+                        <CompactActionRow key={item.id} item={item} />
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </>
             ) : (
               <div className="ui-empty" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem 1.05rem', fontSize: '14px', lineHeight: 1.65 }}>
                 Nothing urgent is competing for attention right now.
               </div>
             )}
-
-            {upNext.length > 0 && (
-              <div className="home-secondary-list">
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                  <div>
-                    <p className="ui-kicker">After that</p>
-                    <p style={{ margin: '0.28rem 0 0', fontSize: '14px', lineHeight: 1.55, color: 'var(--text-secondary)' }}>
-                      Keep the queue short. These are the next few things worth touching.
-                    </p>
-                  </div>
-                  <Link href="/tasks" className="ui-button ui-button-ghost ui-button-xs">
-                    See all tasks
-                  </Link>
-                </div>
-
-                <div className="home-compact-list">
-                  {upNext.map((item) => (
-                    <CompactActionRow key={item.id} item={item} />
-                  ))}
-                </div>
-              </div>
-            )}
           </section>
 
-          <section className="section-shell home-section-card">
-            <HomeSectionHeader
+          <section className="home-sheet">
+            <SectionHeading
               eyebrow="Due soon"
               title="Due soon"
               description="A short list of work with dates close enough to affect today."
@@ -92,7 +158,7 @@ export function TodayDashboard({
             />
 
             {dueSoon.length > 0 ? (
-              <div className="home-compact-list">
+              <div className="home-sheet-list">
                 {dueSoon.map((item) => (
                   <DueSoonRow key={item.id} item={item} />
                 ))}
@@ -105,16 +171,16 @@ export function TodayDashboard({
           </section>
         </div>
 
-        <div className="home-side-column">
-          <section className="section-shell home-section-card">
-            <HomeSectionHeader
-              eyebrow="New activity"
-              title="New activity"
-              description="Recent updates without the full feed overload."
+        <aside className="home-rail">
+          <section className="home-sheet">
+            <SectionHeading
+              eyebrow="What changed"
+              title="What's new"
+              description="Recent updates without the full course feed."
             />
 
             {recentActivity.length > 0 ? (
-              <div className="home-compact-list">
+              <div className="home-sheet-list">
                 {recentActivity.map((item) => (
                   <ActivityRow key={item.id} item={item} />
                 ))}
@@ -126,28 +192,28 @@ export function TodayDashboard({
             )}
           </section>
 
-          <section className="section-shell home-section-card">
-            <HomeSectionHeader
+          <section className="home-sheet">
+            <SectionHeading
               eyebrow="Courses"
-              title="Courses"
-              description="A quick status line for each class, with urgent work surfaced first."
+              title="Course snapshot"
+              description="Each class reduced to what matters now."
               actionHref="/courses"
               actionLabel="Open Courses"
             />
 
-            <div className="home-compact-list">
+            <div className="home-sheet-list">
               {courseSnapshots.map((course) => (
                 <CourseSnapshotRow key={course.id} course={course} />
               ))}
             </div>
           </section>
-        </div>
+        </aside>
       </div>
     </section>
   )
 }
 
-function HomeSectionHeader({
+function SectionHeading({
   eyebrow,
   title,
   description,
@@ -161,14 +227,15 @@ function HomeSectionHeader({
   actionLabel?: string
 }) {
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.85rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+    <div className="home-section-heading">
       <div style={{ minWidth: 0 }}>
         <p className="ui-kicker">{eyebrow}</p>
         <h2 className="ui-section-title" style={{ marginTop: '0.42rem' }}>{title}</h2>
-        <p className="ui-section-copy" style={{ marginTop: '0.4rem', maxWidth: '34rem' }}>{description}</p>
+        <p className="ui-section-copy" style={{ marginTop: '0.38rem', maxWidth: '30rem' }}>{description}</p>
       </div>
+
       {actionHref && actionLabel ? (
-        <Link href={actionHref} className="ui-button ui-button-ghost ui-button-xs">
+        <Link href={actionHref} className="home-subtle-link">
           {actionLabel}
         </Link>
       ) : null}
@@ -176,180 +243,88 @@ function HomeSectionHeader({
   )
 }
 
-function PrimaryActionCard({ item }: { item: TodayItem }) {
-  const manualCopy = item.kind === 'task'
-    ? buildManualCopyBundle({
-        taskTitle: item.title,
-        courseName: item.courseName,
-        moduleName: item.moduleTitle,
-        dueDate: item.dateTime,
-        taskDetails: item.supportingText,
-      })
-    : null
-  const primaryHref = resolveItemHref(item)
-
-  return (
-    <article className="home-primary-card">
-      <div className="home-primary-card-header">
-        <div style={{ minWidth: 0 }}>
-          <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', alignItems: 'center' }}>
-            <ToneBadge item={item} />
-            {item.dateTime ? <MetaBadge>{formatDateTime(item.dateTime)}</MetaBadge> : null}
-            {item.effortLabel ? <MetaBadge>{item.effortLabel}</MetaBadge> : null}
-          </div>
-          <h3 className="home-primary-title">{item.title}</h3>
-          <p className="home-primary-copy">{item.whyNow}</p>
-        </div>
-        {item.kind === 'task' && item.taskItemId ? (
-          <TaskStatusToggle
-            status={item.completionStatus ?? 'pending'}
-            moduleId={item.moduleId}
-            title={item.title}
-            taskItemId={item.taskItemId}
-            align="end"
-          />
-        ) : null}
-      </div>
-
-      <div className="home-primary-meta-grid">
-        <MetaBlock label="Course" value={item.courseName} />
-        <MetaBlock label="Area" value={item.moduleTitle || fallbackAreaLabel(item)} />
-        <MetaBlock label="Next move" value={primaryButtonLabel(item)} />
-      </div>
-
-      {item.supportingText ? (
-        <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.95rem 1rem' }}>
-          <p className="ui-kicker" style={{ margin: 0 }}>What to keep in mind</p>
-          <p style={{ margin: '0.4rem 0 0', fontSize: '14px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
-            {item.supportingText}
-          </p>
-        </div>
-      ) : null}
-
-      <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap', alignItems: 'center' }}>
-        {manualCopy ? (
-          <TaskDraftButton
-            copyBundle={manualCopy}
-            entryOrigin="today"
-            doPageHref={item.href ?? undefined}
-            context={{
-              taskTitle: item.title,
-              taskDetails: item.supportingText,
-              deadline: item.dateTime,
-              priority: item.priority,
-              courseName: item.courseName,
-              moduleTitle: item.moduleTitle,
-              canvasUrl: item.canvasUrl,
-              learnHref: item.learnHref ?? item.href,
-            }}
-          />
-        ) : null}
-        {primaryHref ? (
-          <Link href={primaryHref} className="ui-button ui-button-primary">
-            {primaryButtonLabel(item)}
-          </Link>
-        ) : null}
-        <Link href="/tasks" className="ui-button ui-button-ghost">
-          See all tasks
-        </Link>
-      </div>
-    </article>
-  )
-}
-
 function CompactActionRow({ item }: { item: TodayItem }) {
   const href = resolveItemHref(item)
 
   return (
-    <div className="home-list-row">
+    <article className="home-sheet-row">
       <div style={{ minWidth: 0 }}>
-        <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', alignItems: 'center' }}>
+        <div className="home-row-meta">
           <ToneBadge item={item} subtle />
-          <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{item.courseName}</span>
+          <span>{item.courseName}</span>
         </div>
-        <p style={{ margin: '0.42rem 0 0', fontSize: '15px', lineHeight: 1.4, fontWeight: 650, color: 'var(--text-primary)' }}>
-          {item.title}
-        </p>
-        <p style={{ margin: '0.32rem 0 0', fontSize: '13px', lineHeight: 1.55, color: 'var(--text-secondary)' }}>
-          {item.whyNow}
-        </p>
+        <p className="home-row-title">{item.title}</p>
+        <p className="home-row-copy">{item.whyNow}</p>
       </div>
+
       {href ? (
-        <Link href={href} className="ui-button ui-button-secondary ui-button-xs">
+        <Link href={href} className="home-row-open">
           Open
         </Link>
       ) : null}
-    </div>
+    </article>
   )
 }
 
 function DueSoonRow({ item }: { item: HomeDueSoonItem }) {
   return (
-    <div className="home-list-row">
+    <article className="home-sheet-row">
       <div style={{ minWidth: 0 }}>
-        <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', alignItems: 'center' }}>
+        <div className="home-row-meta">
           <span className="ui-chip ui-chip-soft" style={{ fontWeight: 700 }}>
             {item.urgencyLabel}
           </span>
-          <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{item.courseName}</span>
+          <span>{item.courseName}</span>
         </div>
-        <p style={{ margin: '0.42rem 0 0', fontSize: '15px', lineHeight: 1.4, fontWeight: 650, color: 'var(--text-primary)' }}>
-          {item.title}
-        </p>
-        <p style={{ margin: '0.28rem 0 0', fontSize: '13px', lineHeight: 1.55, color: 'var(--text-secondary)' }}>
-          {item.moduleTitle} • {item.timingLabel}
-        </p>
+        <p className="home-row-title">{item.title}</p>
+        <p className="home-row-copy">{item.moduleTitle}. {item.timingLabel}</p>
       </div>
-      <Link href={item.href} className="ui-button ui-button-secondary ui-button-xs">
+
+      <Link href={item.href} className="home-row-open">
         Open
       </Link>
-    </div>
+    </article>
   )
 }
 
 function ActivityRow({ item }: { item: HomeActivityItem }) {
-  const inner = (
-    <div className="home-list-row">
+  const content = (
+    <article className="home-sheet-row home-sheet-row-link">
       <div style={{ minWidth: 0 }}>
-        <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', alignItems: 'center' }}>
+        <div className="home-row-meta">
           <span className="ui-chip ui-chip-soft" style={{ fontWeight: 700 }}>
             {item.label}
           </span>
-          <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{item.meta}</span>
+          <span>{item.meta}</span>
         </div>
-        <p style={{ margin: '0.42rem 0 0', fontSize: '15px', lineHeight: 1.4, fontWeight: 650, color: 'var(--text-primary)' }}>
-          {item.title}
-        </p>
-        <p style={{ margin: '0.32rem 0 0', fontSize: '13px', lineHeight: 1.55, color: 'var(--text-secondary)' }}>
-          {item.detail}
-        </p>
+        <p className="home-row-title">{item.title}</p>
+        <p className="home-row-copy">{item.detail}</p>
       </div>
-      <span className="ui-button ui-button-ghost ui-button-xs" style={{ pointerEvents: 'none' }}>
-        Open
-      </span>
-    </div>
+
+      <span className="home-row-open">Open</span>
+    </article>
   )
 
   if (item.external) {
     return (
-      <a href={item.href} target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>
-        {inner}
+      <a href={item.href} target="_blank" rel="noreferrer" style={{ textDecoration: 'none', display: 'block' }}>
+        {content}
       </a>
     )
   }
 
   return (
-    <Link href={item.href} style={{ textDecoration: 'none' }}>
-      {inner}
+    <Link href={item.href} style={{ textDecoration: 'none', display: 'block' }}>
+      {content}
     </Link>
   )
 }
 
 function CourseSnapshotRow({ course }: { course: HomeCourseSnapshot }) {
   return (
-    <article className="home-list-row">
+    <article className="home-sheet-row">
       <div style={{ minWidth: 0 }}>
-        <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', alignItems: 'center' }}>
+        <div className="home-row-meta">
           <span className="ui-chip ui-chip-soft" style={{ fontWeight: 700 }}>
             {course.code}
           </span>
@@ -360,20 +335,15 @@ function CourseSnapshotRow({ course }: { course: HomeCourseSnapshot }) {
           ) : null}
         </div>
         <Link href={course.href} style={{ textDecoration: 'none' }}>
-          <p style={{ margin: '0.42rem 0 0', fontSize: '15px', lineHeight: 1.4, fontWeight: 650, color: 'var(--text-primary)' }}>
-            {course.name}
-          </p>
+          <p className="home-row-title">{course.name}</p>
         </Link>
-        <p style={{ margin: '0.28rem 0 0', fontSize: '13px', lineHeight: 1.55, color: 'var(--text-secondary)' }}>
-          {course.statusSummary}
-        </p>
+        <p className="home-row-copy">{course.statusSummary}</p>
         {course.latestChange ? (
-          <p style={{ margin: '0.22rem 0 0', fontSize: '12px', lineHeight: 1.5, color: 'var(--text-muted)' }}>
-            Latest: {course.latestChange}
-          </p>
+          <p className="home-row-note">{course.latestChange}</p>
         ) : null}
       </div>
-      <Link href={course.nextActionHref} className="ui-button ui-button-secondary ui-button-xs">
+
+      <Link href={course.nextActionHref} className="home-row-open">
         {course.nextActionLabel}
       </Link>
     </article>
@@ -403,7 +373,7 @@ function ToneBadge({ item, subtle = false }: { item: TodayItem; subtle?: boolean
     <span
       className="ui-chip"
       style={{
-        padding: subtle ? '0.18rem 0.5rem' : '0.24rem 0.58rem',
+        padding: subtle ? '0.16rem 0.48rem' : '0.24rem 0.58rem',
         fontSize: subtle ? '11px' : '12px',
         fontWeight: 700,
         ...toneStyle,
@@ -422,13 +392,11 @@ function MetaBadge({ children }: { children: string }) {
   )
 }
 
-function MetaBlock({ label, value }: { label: string; value: string }) {
+function FactItem({ label, value }: { label: string; value: string }) {
   return (
-    <div className="home-meta-block">
-      <p className="ui-kicker" style={{ margin: 0 }}>{label}</p>
-      <p style={{ margin: '0.35rem 0 0', fontSize: '14px', lineHeight: 1.5, color: 'var(--text-primary)' }}>
-        {value}
-      </p>
+    <div className="home-focus-fact">
+      <dt>{label}</dt>
+      <dd>{value}</dd>
     </div>
   )
 }
