@@ -132,7 +132,7 @@ export default async function ResourceDetailPage({ params }: Props) {
               <span className="ui-chip ui-chip-soft">Capability: {capability.capabilityLabel}</span>
               <span className="ui-chip ui-chip-soft">Quality: {quality.qualityLabel}</span>
               <span className="ui-chip ui-chip-soft">{quality.groundingLabel}</span>
-              <span className="ui-chip ui-chip-soft">Status: {labelForExtractionStatus(resource.extractionStatus)}</span>
+              <span className="ui-chip ui-chip-soft">Status: {labelForExtractionStatus(resource.extractionStatus, resource.extractionError)}</span>
             </div>
           </div>
           <p style={{ margin: '0.65rem 0 0', fontSize: '14px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
@@ -229,7 +229,7 @@ export default async function ResourceDetailPage({ params }: Props) {
                 <MetaLine label="Capability note" value={capability.reason} />
                 <MetaLine label="Quality" value={quality.qualityLabel} />
                 <MetaLine label="Quality note" value={quality.reason} />
-                <MetaLine label="Extraction status" value={labelForExtractionStatus(resource.extractionStatus)} />
+                <MetaLine label="Extraction status" value={labelForExtractionStatus(resource.extractionStatus, resource.extractionError)} />
                 <MetaLine label="Character count" value={typeof resource.extractedCharCount === 'number' && resource.extractedCharCount > 0 ? `${resource.extractedCharCount}` : 'Not available'} />
                 <MetaLine label="Grounding confidence" value={grounding.confidence} />
                 <MetaLine label="Required" value={resource.required ? 'Yes' : 'No'} />

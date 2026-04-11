@@ -122,6 +122,7 @@ export function buildModuleResourceAssessmentMetadata(
     normalizedSourceType: capability.normalizedSourceType,
     capability: capability.capability,
     capabilityReason: capability.reason,
+    recommendationStrength: resolveRecommendationStrength(capability.capability, quality.quality),
     quality: quality.quality,
     qualityReason: quality.reason,
     groundingLevel: quality.groundingLevel,
@@ -341,6 +342,15 @@ function normalizeExtractionStatus(value: unknown) {
     || value === 'failed'
     ? value
     : 'metadata_only'
+}
+
+function resolveRecommendationStrength(
+  capability: ModuleResourceCapabilityInfo['capability'],
+  quality: ModuleResourceQuality,
+) {
+  if (quality === 'strong' || quality === 'usable') return 'strong'
+  if (capability === 'unsupported' || capability === 'failed') return 'fallback'
+  return 'weak'
 }
 
 function asPlainRecord(value: unknown): Record<string, unknown> {

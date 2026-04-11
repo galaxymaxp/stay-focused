@@ -165,7 +165,7 @@ export default async function ModuleInspectPage({ params, searchParams }: Props)
                           <StateBadge label={capability.capabilityLabel} tone={capability.capabilityTone} />
                           <StateBadge label={quality.qualityLabel} tone={quality.qualityTone} />
                           <StateBadge label={quality.groundingLabel} tone={quality.groundingLevel === 'strong' ? 'accent' : quality.groundingLevel === 'weak' ? 'warning' : 'muted'} />
-                          <StateBadge label={labelForExtractionStatus(resource.extractionStatus)} tone={capability.capabilityTone === 'danger' ? 'danger' : 'muted'} />
+                          <StateBadge label={labelForExtractionStatus(resource.extractionStatus, resource.extractionError)} tone={capability.capabilityTone === 'danger' ? 'danger' : 'muted'} />
                           <StateBadge label={getStudySourceTypeLabel({ type: resource.resourceType, extension: resource.extension, contentType: resource.contentType })} tone="muted" />
                           <StateBadge label={formatNormalizedModuleResourceSourceType(capability.normalizedSourceType)} tone="muted" />
                         </div>
@@ -206,7 +206,7 @@ export default async function ModuleInspectPage({ params, searchParams }: Props)
                       <MetaCard label="Capability" value={capability.capabilityLabel} />
                       <MetaCard label="Quality" value={quality.qualityLabel} />
                       <MetaCard label="Grounding" value={quality.groundingLabel} />
-                      <MetaCard label="Extraction status" value={labelForExtractionStatus(resource.extractionStatus)} />
+                      <MetaCard label="Extraction status" value={labelForExtractionStatus(resource.extractionStatus, resource.extractionError)} />
                       <MetaCard label="Readable chars" value={resource.extractedCharCount > 0 ? resource.extractedCharCount.toLocaleString() : '0'} />
                       <MetaCard label="Signal ratio" value={quality.totalCharCount > 0 ? `${Math.round(quality.signalRatio * 100)}%` : '0%'} />
                       <MetaCard label="Last reprocess" value={lastReprocessedAt ? formatDateTime(lastReprocessedAt) : 'Not yet'} />
