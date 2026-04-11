@@ -62,13 +62,8 @@ export function AuthStatus() {
           }}
           active={Boolean(authSummary.user)}
         />
-        <span style={{ display: 'grid', gap: '0.12rem', textAlign: 'left', minWidth: 0 }}>
-          <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
-            {authSummary.user ? 'Profile' : 'Account'}
-          </span>
-          <span className="auth-status-label" style={{ fontSize: '12px', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '10rem' }}>
-            {authSummary.user?.email ?? 'Sign in'}
-          </span>
+        <span style={{ fontSize: '12px', fontWeight: 650, color: 'var(--text-primary)' }}>
+          {authSummary.user ? 'Account' : 'Sign in'}
         </span>
         <span aria-hidden="true" style={chevronStyle}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
@@ -154,8 +149,8 @@ export function AuthStatus() {
 
 const triggerStyle: CSSProperties = {
   minHeight: '2.6rem',
-  padding: '0.42rem 0.6rem 0.42rem 0.45rem',
-  gap: '0.55rem',
+  padding: '0.42rem 0.52rem 0.42rem 0.42rem',
+  gap: '0.4rem',
   borderRadius: 'var(--radius-control)',
 }
 

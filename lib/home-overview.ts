@@ -88,7 +88,7 @@ export function buildHomeOverview(workspace: ClarityWorkspace): HomeOverview {
       label: 'Announcement',
       title: announcement.title,
       detail: toShortSentence(announcement.body) ?? 'New course update posted.',
-      meta: [announcement.courseName, announcement.postedLabel].filter(Boolean).join(' • '),
+      meta: [announcement.courseName, announcement.postedLabel].filter(Boolean).join(' | '),
       href: announcement.href,
       external: announcement.external,
     })
@@ -113,12 +113,12 @@ export function buildHomeOverview(workspace: ClarityWorkspace): HomeOverview {
       })[0] ?? null
 
       const latestChange = latestAnnouncement?.title
-        ?? (newestModule ? `New module: ${newestModule.title}` : null)
+        ?? (newestModule ? `New module posted: ${newestModule.title}` : null)
 
       const statusSummary = urgentCount > 0
-        ? `${urgentCount} thing${urgentCount === 1 ? '' : 's'} need attention.`
+        ? `${urgentCount} task${urgentCount === 1 ? '' : 's'} need attention.`
         : nextTask
-          ? `${pendingTasks.length} open task${pendingTasks.length === 1 ? '' : 's'}. ${getTaskUrgencyLabel(nextTask)}.`
+          ? `${getTaskUrgencyLabel(nextTask)}. ${pendingTasks.length} open task${pendingTasks.length === 1 ? '' : 's'} in the queue.`
           : newestModule
             ? 'New material is ready to review.'
             : 'Nothing urgent right now.'

@@ -14,7 +14,6 @@ export function AnnouncementsMenu({
 }) {
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement | null>(null)
-  const latest = announcements[0] ?? null
   const state = useAnnouncementViewedState(announcements)
   const unviewedCount = announcements.filter((announcement) => !state.isViewed(announcement.announcementKey)).length
 
@@ -57,17 +56,10 @@ export function AnnouncementsMenu({
             <path d="M6.25 8.25h11.5M6.25 12h11.5M6.25 15.75h7.25" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
           </svg>
         </span>
-        <span style={{ display: 'grid', gap: '0.06rem', textAlign: 'left' }}>
-          <span style={{ fontSize: '12px', fontWeight: 650, color: 'var(--text-primary)' }}>
-            Updates
-          </span>
-          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-            {latest ? latest.courseName : 'Nothing new'}
-          </span>
-        </span>
+        <span style={{ fontSize: '12px', fontWeight: 650, color: 'var(--text-primary)' }}>Updates</span>
         {unviewedCount > 0 && (
           <span className="ui-chip" style={unviewedCountStyle}>
-            {unviewedCount} new
+            {unviewedCount}
           </span>
         )}
       </button>
@@ -91,7 +83,7 @@ export function AnnouncementsMenu({
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'center' }}>
             <div>
-              <p className="ui-kicker">Announcements</p>
+              <p className="ui-kicker">Updates</p>
               <p style={{ margin: '0.3rem 0 0', fontSize: '13px', lineHeight: 1.55, color: 'var(--text-secondary)' }}>
                 Recent course updates, with a fallback to the related module when a direct announcement link is missing.
               </p>
@@ -267,8 +259,8 @@ const unviewedCountStyle: CSSProperties = {
 
 const triggerStyle: CSSProperties = {
   minHeight: '2.6rem',
-  padding: '0.45rem 0.7rem',
-  gap: '0.55rem',
+  padding: '0.45rem 0.62rem',
+  gap: '0.42rem',
   borderRadius: 'var(--radius-control)',
 }
 
