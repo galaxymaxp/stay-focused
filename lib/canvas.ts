@@ -200,9 +200,36 @@ async function canvasFetchAbsolute<T>(url: string, configOverride?: Partial<Canv
   return res.json()
 }
 
-export async function downloadCanvasBinary(url: string, configOverride?: Partial<CanvasConfig>): Promise<Buffer> {
+async function resolveCanvasBinaryUrl(url: string, configOverride?: Partial<CanvasConfig>) {
   const config = resolveCanvasConfig(configOverride)
-  const res = await fetch(url, {
+  const absoluteUrl = new URL(url, `${config.url}/`).toString()
+  const parsed = new URL(absoluteUrl)
+  const normalizedPathname = parsed.pathname.replace(/\/$/, '')
+
+  if (/\/api\/v1\/(?:courses\/\d+\/)?files\/\d+$/i.test(normalizedPathname)) {
+    const file = await canvasFetchAbsolute<CanvasFile>(absoluteUrl, configOverride)
+    if (!file.url) {
+      throw new Error('Canvas returned a file record without a downloadable URL.')
+    }
+
+    return file.url
+  }
+
+  if (/\/courses\/\d+\/files\/\d+$/i.test(normalizedPathname)) {
+    parsed.pathname = `${normalizedPathname}/download`
+    return parsed.toString()
+  }
+
+  return absoluteUrl
+}
+
+export async function downloadCanvasBinarySource(
+  url: string,
+  configOverride?: Partial<CanvasConfig>,
+): Promise<{ buffer: Buffer; contentType: string | null; url: string }> {
+  const config = resolveCanvasConfig(configOverride)
+  const resolvedUrl = await resolveCanvasBinaryUrl(url, configOverride)
+  const res = await fetch(resolvedUrl, {
     headers: {
       Authorization: `Bearer ${config.token}`,
     },
@@ -213,7 +240,16 @@ export async function downloadCanvasBinary(url: string, configOverride?: Partial
     throw new Error(`Canvas returned an unexpected error (${res.status}) while downloading a file.`)
   }
 
-  return Buffer.from(await res.arrayBuffer())
+  return {
+    buffer: Buffer.from(await res.arrayBuffer()),
+    contentType: res.headers.get('content-type'),
+    url: resolvedUrl,
+  }
+}
+
+export async function downloadCanvasBinary(url: string, configOverride?: Partial<CanvasConfig>): Promise<Buffer> {
+  const downloaded = await downloadCanvasBinarySource(url, configOverride)
+  return downloaded.buffer
 }
 
 export async function getCourses(configOverride?: Partial<CanvasConfig>): Promise<CanvasCourse[]> {
