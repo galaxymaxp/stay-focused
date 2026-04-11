@@ -7,21 +7,24 @@ import { TaskDraftButton } from '@/components/DoNowButton'
 import { buildManualCopyBundle } from '@/lib/manual-copy-bundle'
 import type { TaskItem } from '@/lib/types'
 
-const GROUPS: Array<{ key: string; title: string; description: string; filter: (task: TaskItem) => boolean }> = [
+const GROUPS: Array<{ key: string; eyebrow: string; title: string; description: string; filter: (task: TaskItem) => boolean }> = [
   {
     key: 'urgent',
+    eyebrow: 'Urgent',
     title: 'Overdue or due soon',
     description: 'Work that is already pressing on today or the next few days.',
     filter: (task) => task.status !== 'completed' && task.actionScore >= 70,
   },
   {
     key: 'soon',
+    eyebrow: 'Coming up',
     title: 'Coming up next',
     description: 'Tasks that are active, but not at panic level yet.',
     filter: (task) => task.status !== 'completed' && task.actionScore >= 36 && task.actionScore < 70,
   },
   {
     key: 'later',
+    eyebrow: 'Later',
     title: 'Later',
     description: 'Clear, lower-pressure tasks that can wait a bit without disappearing.',
     filter: (task) => task.status !== 'completed' && task.actionScore < 36,
@@ -65,25 +68,25 @@ export default async function TasksPage({ searchParams }: Props) {
 
   return (
     <main className="page-shell page-stack">
-      <header className="motion-card">
+      <header className="motion-card page-intro">
         <p className="ui-kicker">Tasks</p>
-        <h1 className="ui-page-title">Your task list, grouped by what matters first</h1>
-        <p className="ui-page-copy">
+        <h1 className="ui-page-title">Tasks, grouped by what matters first</h1>
+        <p className="ui-page-copy page-intro-copy">
           Keep the active list compact: urgent work first, lower-pressure work later, and completed items hidden until you need them.
         </p>
       </header>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
         {GROUPS.map((group) => {
           const items = workspace.taskItems.filter(group.filter)
 
           return (
-            <section key={group.key} className="motion-card motion-delay-1 section-shell" style={{ padding: '1.2rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+            <section key={group.key} className="motion-card motion-delay-1 section-shell" style={{ padding: '1.05rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '0.9rem' }}>
                 <div>
-                  <p className="ui-kicker">{group.key}</p>
-                  <h2 className="ui-section-title" style={{ marginTop: '0.45rem' }}>{group.title}</h2>
-                  <p className="ui-section-copy" style={{ marginTop: '0.45rem' }}>{group.description}</p>
+                  <p className="ui-kicker">{group.eyebrow}</p>
+                  <h2 className="ui-section-title" style={{ marginTop: '0.36rem' }}>{group.title}</h2>
+                  <p className="ui-section-copy" style={{ marginTop: '0.32rem' }}>{group.description}</p>
                 </div>
                 <span className="ui-chip ui-chip-soft">{items.length} task{items.length === 1 ? '' : 's'}</span>
               </div>
@@ -109,7 +112,7 @@ export default async function TasksPage({ searchParams }: Props) {
         })}
       </div>
 
-      <section className="motion-card motion-delay-2 section-shell" style={{ padding: '1.2rem' }}>
+      <section className="motion-card motion-delay-2 section-shell" style={{ padding: '1.05rem' }}>
         <details>
           <summary style={{
             cursor: 'pointer',
@@ -121,8 +124,8 @@ export default async function TasksPage({ searchParams }: Props) {
           }}>
             <div>
               <p className="ui-kicker">Done</p>
-              <h2 className="ui-section-title" style={{ marginTop: '0.45rem' }}>Completed items</h2>
-              <p className="ui-section-copy" style={{ marginTop: '0.45rem' }}>
+              <h2 className="ui-section-title" style={{ marginTop: '0.36rem' }}>Completed items</h2>
+              <p className="ui-section-copy" style={{ marginTop: '0.32rem' }}>
                 Hidden by default so active work stays easier to scan.
               </p>
             </div>
@@ -150,7 +153,7 @@ export default async function TasksPage({ searchParams }: Props) {
                           {task.title}
                         </p>
                         <p style={{ margin: '0.3rem 0 0', fontSize: '13px', color: 'var(--text-secondary)' }}>
-                          {task.courseName} • {task.moduleTitle}
+                          {task.courseName} | {task.moduleTitle}
                         </p>
                       </div>
                       <span className="ui-chip ui-status-success" style={{ padding: '0.28rem 0.6rem', fontSize: '11px', fontWeight: 700 }}>
@@ -196,14 +199,14 @@ function TaskCard({
   return (
     <article id={task.id} className="ui-card" style={{
       borderColor: highlighted
-        ? 'color-mix(in srgb, var(--accent-border) 44%, var(--border-subtle) 56%)'
+        ? 'color-mix(in srgb, var(--accent-border) 32%, var(--border-subtle) 68%)'
         : 'var(--border-subtle)',
-      boxShadow: highlighted ? 'var(--shadow-medium)' : 'var(--shadow-low)',
+      boxShadow: highlighted ? 'var(--shadow-low)' : 'none',
       borderRadius: 'var(--radius-panel)',
-      padding: '1rem',
+      padding: '0.92rem',
       display: 'flex',
       flexDirection: 'column',
-      gap: '0.75rem',
+      gap: '0.68rem',
       opacity: task.status === 'completed' ? 0.72 : 1,
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.65rem', flexWrap: 'wrap', alignItems: 'flex-start' }}>
@@ -212,7 +215,7 @@ function TaskCard({
             <span className="ui-chip" style={priorityChipStyle(task.priority)}>{task.priority} priority</span>
             <span className="ui-chip ui-chip-soft">{task.taskType}</span>
           </div>
-          <h3 style={{ margin: 0, fontSize: '17px', lineHeight: 1.3, fontWeight: 650, color: 'var(--text-primary)', overflowWrap: 'anywhere' }}>{task.title}</h3>
+          <h3 style={{ margin: 0, fontSize: '16px', lineHeight: 1.34, fontWeight: 650, color: 'var(--text-primary)', overflowWrap: 'anywhere' }}>{task.title}</h3>
         </div>
         <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', alignItems: 'flex-start', flexShrink: 0 }}>
           <TaskStatusToggle
@@ -226,7 +229,7 @@ function TaskCard({
       </div>
 
       {task.details && (
-        <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.62, color: 'var(--text-secondary)', overflowWrap: 'anywhere' }}>{task.details}</p>
+        <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.58, color: 'var(--text-secondary)', overflowWrap: 'anywhere' }}>{task.details}</p>
       )}
 
       <div className="ui-meta-list">
