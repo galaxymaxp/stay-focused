@@ -27,13 +27,13 @@ export function TodayDashboard({
           <p className="ui-kicker">Home</p>
           <h1 className="ui-page-title">What should I do right now?</h1>
           <p className="ui-page-copy" style={{ maxWidth: '38rem' }}>
-            A quick read on what matters today: one place to start, what is due next, and what changed since you last checked.
+            One place to start, what is due next, and what changed since you last checked.
           </p>
         </div>
 
         {undatedTaskCount > 0 ? (
           <p className="home-page-note">
-            {undatedTaskCount} task{undatedTaskCount === 1 ? '' : 's'} still need a due date, so they are kept out of the main recommendation.
+            {undatedTaskCount} task{undatedTaskCount === 1 ? '' : 's'} still need a due date, so they stay out of today&apos;s first recommendation.
           </p>
         ) : null}
       </header>
@@ -45,7 +45,7 @@ export function TodayDashboard({
               eyebrow="Start here"
               title={primaryAction ? 'One clear next move' : 'Nothing urgent right now'}
               description={primaryAction
-                ? 'Keep the first move obvious. Open the task, start it, or get a draft started without sorting through extra panels.'
+                ? 'Keep the first move obvious, then leave the rest of the list in the background.'
                 : 'The queue is calm enough that you can review a course or check the calendar at your own pace.'}
               actionHref="/do"
               actionLabel="Open Do Now"
@@ -57,7 +57,6 @@ export function TodayDashboard({
                   <div className="home-focus-main">
                     <div className="home-focus-meta">
                       <ToneBadge item={primaryAction} />
-                      {primaryAction.dateTime ? <MetaBadge>{formatDateTime(primaryAction.dateTime)}</MetaBadge> : null}
                       {primaryAction.effortLabel ? <MetaBadge>{primaryAction.effortLabel}</MetaBadge> : null}
                     </div>
 
@@ -230,8 +229,8 @@ function SectionHeading({
     <div className="home-section-heading">
       <div style={{ minWidth: 0 }}>
         <p className="ui-kicker">{eyebrow}</p>
-        <h2 className="ui-section-title" style={{ marginTop: '0.42rem' }}>{title}</h2>
-        <p className="ui-section-copy" style={{ marginTop: '0.38rem', maxWidth: '30rem' }}>{description}</p>
+        <h2 className="ui-section-title" style={{ marginTop: '0.36rem' }}>{title}</h2>
+        <p className="ui-section-copy" style={{ marginTop: '0.32rem', maxWidth: '30rem' }}>{description}</p>
       </div>
 
       {actionHref && actionLabel ? (
@@ -352,16 +351,16 @@ function CourseSnapshotRow({ course }: { course: HomeCourseSnapshot }) {
 
 function ToneBadge({ item, subtle = false }: { item: TodayItem; subtle?: boolean }) {
   const toneStyle = item.tone === 'attention'
-    ? {
-        background: 'color-mix(in srgb, var(--accent-light) 58%, var(--surface-soft) 42%)',
-        color: 'var(--accent-foreground)',
-        border: '1px solid color-mix(in srgb, var(--accent-border) 38%, var(--border-subtle) 62%)',
-      }
-    : item.tone === 'review'
       ? {
-          background: 'color-mix(in srgb, var(--blue-light) 46%, var(--surface-soft) 54%)',
+          background: 'color-mix(in srgb, var(--accent-light) 46%, var(--surface-soft) 54%)',
+          color: 'var(--accent-foreground)',
+          border: '1px solid color-mix(in srgb, var(--accent-border) 28%, var(--border-subtle) 72%)',
+        }
+      : item.tone === 'review'
+      ? {
+          background: 'color-mix(in srgb, var(--blue-light) 38%, var(--surface-soft) 62%)',
           color: 'var(--blue)',
-          border: '1px solid color-mix(in srgb, var(--blue) 24%, var(--border-subtle) 76%)',
+          border: '1px solid color-mix(in srgb, var(--blue) 18%, var(--border-subtle) 82%)',
         }
       : {
           background: 'color-mix(in srgb, var(--surface-soft) 92%, transparent)',

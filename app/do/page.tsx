@@ -36,18 +36,16 @@ export default async function DoNowPage({ searchParams }: Props) {
 
   return (
     <main className="page-shell page-stack">
-      <header className="section-shell" style={{ display: 'grid', gap: '0.8rem', padding: '1.35rem' }}>
-        <div>
-          <p className="ui-kicker">Do Now</p>
-          <h1 className="ui-page-title">Start with one thing</h1>
-          <p className="ui-page-copy" style={{ maxWidth: '42rem' }}>
-            This page is for momentum, not sorting. Pick one useful next move, get enough context to begin, and keep the full task list in the background until you need it.
-          </p>
-        </div>
+      <header className="page-intro">
+        <p className="ui-kicker">Do Now</p>
+        <h1 className="ui-page-title">Start with one thing</h1>
+        <p className="ui-page-copy page-intro-copy">
+          This page is for momentum, not sorting. Pick one useful next move, get enough context to begin, and leave the full task list in the background until you need it.
+        </p>
       </header>
 
       {primaryAction ? (
-        <section className="section-shell section-shell-elevated" style={{ display: 'grid', gap: '1rem', padding: '1.25rem' }}>
+        <section className="section-shell section-shell-elevated" style={{ display: 'grid', gap: '0.95rem', padding: '1.12rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.9rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
             <div style={{ minWidth: 0 }}>
               <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', alignItems: 'center' }}>
@@ -55,10 +53,10 @@ export default async function DoNowPage({ searchParams }: Props) {
                 {primaryAction.dateTime ? <MetaBadge>{formatDateTime(primaryAction.dateTime)}</MetaBadge> : null}
                 {primaryAction.effortLabel ? <MetaBadge>{primaryAction.effortLabel}</MetaBadge> : null}
               </div>
-              <h2 style={{ margin: '0.6rem 0 0', fontSize: 'clamp(1.9rem, 4vw, 2.7rem)', lineHeight: 1.04, letterSpacing: '-0.05em', fontWeight: 650, color: 'var(--text-primary)' }}>
+              <h2 style={{ margin: '0.5rem 0 0', fontSize: 'clamp(1.7rem, 3vw, 2.25rem)', lineHeight: 1.06, letterSpacing: '-0.05em', fontWeight: 650, color: 'var(--text-primary)' }}>
                 {primaryAction.title}
               </h2>
-              <p style={{ margin: '0.8rem 0 0', maxWidth: '44rem', fontSize: '16px', lineHeight: 1.7, color: 'var(--text-secondary)' }}>
+              <p style={{ margin: '0.65rem 0 0', maxWidth: '40rem', fontSize: '15px', lineHeight: 1.62, color: 'var(--text-secondary)' }}>
                 {primaryAction.whyNow}
               </p>
             </div>
@@ -74,22 +72,27 @@ export default async function DoNowPage({ searchParams }: Props) {
             ) : null}
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.8rem' }}>
-            <MetaCard label="Course" value={primaryAction.courseName} />
-            <MetaCard label="Area" value={primaryAction.moduleTitle || fallbackAreaLabel(primaryAction)} />
-            <MetaCard label="Smallest next step" value={smallestNextStepLabel(primaryAction)} />
+          <div className="workspace-fact-grid">
+            <FactItem label="Course" value={primaryAction.courseName} />
+            <FactItem label="Where" value={primaryAction.moduleTitle || fallbackAreaLabel(primaryAction)} />
+            <FactItem label="Smallest next step" value={smallestNextStepLabel(primaryAction)} />
           </div>
 
           {primaryAction.supportingText ? (
-            <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.95rem 1rem' }}>
+            <div className="workspace-quiet-panel" style={{ gap: '0.32rem' }}>
               <p className="ui-kicker" style={{ margin: 0 }}>Why it matters</p>
-              <p style={{ margin: '0.4rem 0 0', fontSize: '14px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
+              <p className="workspace-quiet-panel-copy">
                 {primaryAction.supportingText}
               </p>
             </div>
           ) : null}
 
           <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+            {resolveItemHref(primaryAction) ? (
+              <Link href={resolveItemHref(primaryAction)!} className="ui-button ui-button-primary">
+                {primaryButtonLabel(primaryAction)}
+              </Link>
+            ) : null}
             {primaryAction.kind === 'task' ? (
               <TaskDraftButton
                 copyBundle={buildManualCopyBundle({
@@ -111,32 +114,27 @@ export default async function DoNowPage({ searchParams }: Props) {
                 }}
               />
             ) : null}
-            {resolveItemHref(primaryAction) ? (
-              <Link href={resolveItemHref(primaryAction)!} className="ui-button ui-button-primary">
-                {primaryButtonLabel(primaryAction)}
-              </Link>
-            ) : null}
             <Link href="/tasks" className="ui-button ui-button-ghost">
               Open full task list
             </Link>
           </div>
         </section>
       ) : (
-        <section className="section-shell section-shell-elevated" style={{ padding: '1.3rem' }}>
+        <section className="section-shell section-shell-elevated" style={{ padding: '1.2rem' }}>
           <p className="ui-kicker">Do Now</p>
-          <h2 className="ui-section-title" style={{ marginTop: '0.45rem' }}>You are clear for now</h2>
-          <p className="ui-section-copy" style={{ marginTop: '0.45rem', maxWidth: '34rem' }}>
+          <h2 className="ui-section-title" style={{ marginTop: '0.38rem' }}>You are clear for now</h2>
+          <p className="ui-section-copy" style={{ marginTop: '0.35rem', maxWidth: '34rem' }}>
             Nothing urgent is asking for you right now. Use the quiet time to review a course or check the calendar.
           </p>
         </section>
       )}
 
-      <section className="section-shell" style={{ display: 'grid', gap: '0.9rem', padding: '1.2rem' }}>
+      <section className="section-shell" style={{ display: 'grid', gap: '0.8rem', padding: '1.05rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.8rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
           <div>
             <p className="ui-kicker">If not that</p>
-            <h2 className="ui-section-title" style={{ marginTop: '0.42rem' }}>Next options</h2>
-            <p className="ui-section-copy" style={{ marginTop: '0.4rem', maxWidth: '32rem' }}>
+            <h2 className="ui-section-title" style={{ marginTop: '0.36rem' }}>Next options</h2>
+            <p className="ui-section-copy" style={{ marginTop: '0.32rem', maxWidth: '32rem' }}>
               Keep backups short. These are the next few items worth touching if the main recommendation is blocked.
             </p>
           </div>
@@ -234,17 +232,17 @@ function formatDateTime(value: string) {
 
 function ToneBadge({ item, subtle = false }: { item: TodayItem; subtle?: boolean }) {
   const toneStyle = item.tone === 'attention'
-    ? {
-        background: 'color-mix(in srgb, var(--accent-light) 58%, var(--surface-soft) 42%)',
+      ? {
+        background: 'color-mix(in srgb, var(--accent-light) 46%, var(--surface-soft) 54%)',
         color: 'var(--accent-foreground)',
-        border: '1px solid color-mix(in srgb, var(--accent-border) 38%, var(--border-subtle) 62%)',
+        border: '1px solid color-mix(in srgb, var(--accent-border) 28%, var(--border-subtle) 72%)',
       }
     : item.tone === 'review'
       ? {
-          background: 'color-mix(in srgb, var(--blue-light) 46%, var(--surface-soft) 54%)',
-          color: 'var(--blue)',
-          border: '1px solid color-mix(in srgb, var(--blue) 24%, var(--border-subtle) 76%)',
-        }
+        background: 'color-mix(in srgb, var(--blue-light) 38%, var(--surface-soft) 62%)',
+        color: 'var(--blue)',
+        border: '1px solid color-mix(in srgb, var(--blue) 18%, var(--border-subtle) 82%)',
+      }
       : {
           background: 'color-mix(in srgb, var(--surface-soft) 92%, transparent)',
           color: 'var(--text-secondary)',
@@ -274,13 +272,11 @@ function MetaBadge({ children }: { children: string }) {
   )
 }
 
-function MetaCard({ label, value }: { label: string; value: string }) {
+function FactItem({ label, value }: { label: string; value: string }) {
   return (
-    <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.95rem 1rem' }}>
-      <p className="ui-kicker" style={{ margin: 0 }}>{label}</p>
-      <p style={{ margin: '0.38rem 0 0', fontSize: '14px', lineHeight: 1.6, color: 'var(--text-primary)' }}>
-        {value}
-      </p>
+    <div className="workspace-fact">
+      <p className="workspace-fact-label">{label}</p>
+      <p className="workspace-fact-value">{value}</p>
     </div>
   )
 }
