@@ -20,6 +20,8 @@ export function TodayDashboard({
   courseSnapshots: HomeCourseSnapshot[]
   undatedTaskCount: number
 }) {
+  const primaryHref = primaryAction ? resolveItemHref(primaryAction) : null
+
   return (
     <section className="home-page">
       <header className="home-page-header">
@@ -55,21 +57,39 @@ export function TodayDashboard({
               <>
                 <div className="home-focus-layout">
                   <div className="home-focus-main">
-                    <div className="home-focus-meta">
-                      <ToneBadge item={primaryAction} />
-                      {primaryAction.effortLabel ? <MetaBadge>{primaryAction.effortLabel}</MetaBadge> : null}
-                    </div>
+                    {primaryHref ? (
+                      <Link href={primaryHref} className="ui-interactive-row home-focus-target">
+                        <div className="home-focus-meta">
+                          <ToneBadge item={primaryAction} />
+                          {primaryAction.effortLabel ? <MetaBadge>{primaryAction.effortLabel}</MetaBadge> : null}
+                        </div>
 
-                    <h2 className="home-focus-title">{primaryAction.title}</h2>
-                    <p className="home-focus-copy">{primaryAction.whyNow}</p>
+                        <h2 className="home-focus-title">{primaryAction.title}</h2>
+                        <p className="home-focus-copy">{primaryAction.whyNow}</p>
 
-                    {primaryAction.supportingText ? (
-                      <p className="home-focus-support">{primaryAction.supportingText}</p>
-                    ) : null}
+                        {primaryAction.supportingText ? (
+                          <p className="home-focus-support">{primaryAction.supportingText}</p>
+                        ) : null}
+                      </Link>
+                    ) : (
+                      <>
+                        <div className="home-focus-meta">
+                          <ToneBadge item={primaryAction} />
+                          {primaryAction.effortLabel ? <MetaBadge>{primaryAction.effortLabel}</MetaBadge> : null}
+                        </div>
+
+                        <h2 className="home-focus-title">{primaryAction.title}</h2>
+                        <p className="home-focus-copy">{primaryAction.whyNow}</p>
+
+                        {primaryAction.supportingText ? (
+                          <p className="home-focus-support">{primaryAction.supportingText}</p>
+                        ) : null}
+                      </>
+                    )}
 
                     <div className="home-focus-actions">
-                      {resolveItemHref(primaryAction) ? (
-                        <Link href={resolveItemHref(primaryAction)!} className="ui-button ui-button-primary">
+                      {primaryHref ? (
+                        <Link href={primaryHref} className="ui-button ui-button-primary">
                           {primaryButtonLabel(primaryAction)}
                         </Link>
                       ) : null}
@@ -244,43 +264,50 @@ function SectionHeading({
 
 function CompactActionRow({ item }: { item: TodayItem }) {
   const href = resolveItemHref(item)
+  const content = (
+    <>
+      <div className="home-row-meta">
+        <ToneBadge item={item} subtle />
+        <span>{item.courseName}</span>
+      </div>
+      <p className="home-row-title">{item.title}</p>
+      <p className="home-row-copy">{item.whyNow}</p>
+    </>
+  )
 
   return (
     <article className="home-sheet-row">
-      <div style={{ minWidth: 0 }}>
-        <div className="home-row-meta">
-          <ToneBadge item={item} subtle />
-          <span>{item.courseName}</span>
-        </div>
-        <p className="home-row-title">{item.title}</p>
-        <p className="home-row-copy">{item.whyNow}</p>
-      </div>
-
       {href ? (
-        <Link href={href} className="home-row-open">
-          Open
+        <Link href={href} className="ui-interactive-row home-row-main">
+          {content}
         </Link>
-      ) : null}
+      ) : (
+        <div className="home-row-main">
+          {content}
+        </div>
+      )}
     </article>
   )
 }
 
 function DueSoonRow({ item }: { item: HomeDueSoonItem }) {
+  const content = (
+    <>
+      <div className="home-row-meta">
+        <span className="ui-chip ui-chip-soft" style={{ fontWeight: 700 }}>
+          {item.urgencyLabel}
+        </span>
+        <span>{item.courseName}</span>
+      </div>
+      <p className="home-row-title">{item.title}</p>
+      <p className="home-row-copy">{item.moduleTitle}. {item.timingLabel}</p>
+    </>
+  )
+
   return (
     <article className="home-sheet-row">
-      <div style={{ minWidth: 0 }}>
-        <div className="home-row-meta">
-          <span className="ui-chip ui-chip-soft" style={{ fontWeight: 700 }}>
-            {item.urgencyLabel}
-          </span>
-          <span>{item.courseName}</span>
-        </div>
-        <p className="home-row-title">{item.title}</p>
-        <p className="home-row-copy">{item.moduleTitle}. {item.timingLabel}</p>
-      </div>
-
-      <Link href={item.href} className="home-row-open">
-        Open
+      <Link href={item.href} className="ui-interactive-row home-row-main">
+        {content}
       </Link>
     </article>
   )
@@ -288,32 +315,28 @@ function DueSoonRow({ item }: { item: HomeDueSoonItem }) {
 
 function ActivityRow({ item }: { item: HomeActivityItem }) {
   const content = (
-    <article className="home-sheet-row home-sheet-row-link">
-      <div style={{ minWidth: 0 }}>
-        <div className="home-row-meta">
-          <span className="ui-chip ui-chip-soft" style={{ fontWeight: 700 }}>
-            {item.label}
-          </span>
-          <span>{item.meta}</span>
-        </div>
-        <p className="home-row-title">{item.title}</p>
-        <p className="home-row-copy">{item.detail}</p>
+    <>
+      <div className="home-row-meta">
+        <span className="ui-chip ui-chip-soft" style={{ fontWeight: 700 }}>
+          {item.label}
+        </span>
+        <span>{item.meta}</span>
       </div>
-
-      <span className="home-row-open">Open</span>
-    </article>
+      <p className="home-row-title">{item.title}</p>
+      <p className="home-row-copy">{item.detail}</p>
+    </>
   )
 
   if (item.external) {
     return (
-      <a href={item.href} target="_blank" rel="noreferrer" style={{ textDecoration: 'none', display: 'block' }}>
+      <a href={item.href} target="_blank" rel="noreferrer" className="home-activity-link ui-interactive-row home-row-main">
         {content}
       </a>
     )
   }
 
   return (
-    <Link href={item.href} style={{ textDecoration: 'none', display: 'block' }}>
+    <Link href={item.href} className="home-activity-link ui-interactive-row home-row-main">
       {content}
     </Link>
   )
@@ -321,31 +344,28 @@ function ActivityRow({ item }: { item: HomeActivityItem }) {
 
 function CourseSnapshotRow({ course }: { course: HomeCourseSnapshot }) {
   return (
-    <article className="home-sheet-row">
-      <div style={{ minWidth: 0 }}>
-        <div className="home-row-meta">
-          <span className="ui-chip ui-chip-soft" style={{ fontWeight: 700 }}>
-            {course.code}
+    <Link href={course.href} className="home-course-link ui-interactive-row home-row-main">
+      <div className="home-row-meta">
+        <span className="ui-chip ui-chip-soft" style={{ fontWeight: 700 }}>
+          {course.code}
+        </span>
+        {course.urgentCount > 0 ? (
+          <span className="ui-chip ui-status-warning" style={{ padding: '0.24rem 0.55rem', fontSize: '11px', fontWeight: 700 }}>
+            {course.urgentCount} urgent
           </span>
-          {course.urgentCount > 0 ? (
-            <span className="ui-chip ui-status-warning" style={{ padding: '0.24rem 0.55rem', fontSize: '11px', fontWeight: 700 }}>
-              {course.urgentCount} urgent
-            </span>
-          ) : null}
-        </div>
-        <Link href={course.href} style={{ textDecoration: 'none' }}>
-          <p className="home-row-title">{course.name}</p>
-        </Link>
-        <p className="home-row-copy">{course.statusSummary}</p>
-        {course.latestChange ? (
-          <p className="home-row-note">{course.latestChange}</p>
         ) : null}
       </div>
-
-      <Link href={course.nextActionHref} className="home-row-open">
-        {course.nextActionLabel}
-      </Link>
-    </article>
+      <p className="home-row-title">{course.name}</p>
+      <p className="home-row-copy">{course.statusSummary}</p>
+      {course.latestChange ? (
+        <p className="home-row-note">{course.latestChange}</p>
+      ) : null}
+      {course.nextActionLabel ? (
+        <p className="home-row-note">
+          {course.nextActionLabel === 'Open next task' ? 'Next task is ready inside this course.' : course.nextActionLabel}
+        </p>
+      ) : null}
+    </Link>
   )
 }
 

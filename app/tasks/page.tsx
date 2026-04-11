@@ -139,36 +139,42 @@ export default async function TasksPage({ searchParams }: Props) {
               </div>
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '0.85rem' }}>
-                {completedItems.map((task) => (
-                  <article key={task.id} className="ui-card-soft" style={{
-                    borderRadius: 'var(--radius-panel)',
-                    padding: '1rem',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '0.75rem',
-                  }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.65rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-                      <div>
-                        <p style={{ margin: 0, fontSize: '16px', lineHeight: 1.35, fontWeight: 650, color: 'var(--text-muted)', textDecoration: 'line-through' }}>
-                          {task.title}
-                        </p>
-                        <p style={{ margin: '0.3rem 0 0', fontSize: '13px', color: 'var(--text-secondary)' }}>
-                          {task.courseName} | {task.moduleTitle}
-                        </p>
-                      </div>
-                      <span className="ui-chip ui-status-success" style={{ padding: '0.28rem 0.6rem', fontSize: '11px', fontWeight: 700 }}>
-                        Done
-                      </span>
-                    </div>
+                {completedItems.map((task) => {
+                  const taskHref = buildModuleDoHref(task.moduleId, { taskTitle: task.title })
 
-                    <TaskStatusToggle
-                      status={task.status}
-                      moduleId={task.moduleId}
-                      title={task.title}
-                      taskItemId={task.id}
-                    />
-                  </article>
-                ))}
+                  return (
+                    <article key={task.id} className="ui-card-soft ui-interactive-card task-card-shell task-card-shell-complete" style={{
+                      borderRadius: 'var(--radius-panel)',
+                      padding: '1rem',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.75rem',
+                    }}>
+                      <div className="task-card-frame">
+                        <Link href={taskHref} className="ui-interactive-row task-card-link">
+                          <p className="task-card-title" style={{ margin: 0, fontSize: '16px', lineHeight: 1.35, fontWeight: 650, color: 'var(--text-muted)', textDecoration: 'line-through' }}>
+                            {task.title}
+                          </p>
+                          <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-secondary)' }}>
+                            {task.courseName} | {task.moduleTitle}
+                          </p>
+                        </Link>
+                        <div className="task-card-side task-card-side-compact">
+                          <span className="ui-chip ui-status-success task-card-side-chip" style={{ padding: '0.28rem 0.6rem', fontSize: '11px', fontWeight: 700 }}>
+                            Done
+                          </span>
+                          <TaskStatusToggle
+                            status={task.status}
+                            moduleId={task.moduleId}
+                            title={task.title}
+                            taskItemId={task.id}
+                            style={{ justifyContent: 'center' }}
+                          />
+                        </div>
+                      </div>
+                    </article>
+                  )
+                })}
               </div>
             )}
           </div>
@@ -187,6 +193,7 @@ function TaskCard({
   highlighted?: boolean
   autoOpenDraft?: boolean
 }) {
+  const taskHref = buildModuleDoHref(task.moduleId, { taskTitle: task.title })
   const manualCopy = buildManualCopyBundle({
     taskTitle: task.title,
     courseName: task.courseName,
@@ -197,7 +204,7 @@ function TaskCard({
   })
 
   return (
-    <article id={task.id} className="ui-card" style={{
+    <article id={task.id} className="ui-card ui-interactive-card task-card-shell" style={{
       borderColor: highlighted
         ? 'color-mix(in srgb, var(--accent-border) 32%, var(--border-subtle) 68%)'
         : 'var(--border-subtle)',
@@ -209,33 +216,31 @@ function TaskCard({
       gap: '0.68rem',
       opacity: task.status === 'completed' ? 0.72 : 1,
     }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.65rem', flexWrap: 'wrap', alignItems: 'flex-start' }}>
-        <div>
+      <div className="task-card-frame">
+        <Link href={taskHref} className="ui-interactive-row task-card-link">
           <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', marginBottom: '0.4rem' }}>
             <span className="ui-chip" style={priorityChipStyle(task.priority)}>{task.priority} priority</span>
             <span className="ui-chip ui-chip-soft">{task.taskType}</span>
           </div>
-          <h3 style={{ margin: 0, fontSize: '16px', lineHeight: 1.34, fontWeight: 650, color: 'var(--text-primary)', overflowWrap: 'anywhere' }}>{task.title}</h3>
-        </div>
-        <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', alignItems: 'flex-start', flexShrink: 0 }}>
+          <h3 className="task-card-title" style={{ margin: 0, fontSize: '16px', lineHeight: 1.34, fontWeight: 650, color: 'var(--text-primary)', overflowWrap: 'anywhere' }}>{task.title}</h3>
+          {task.details && (
+            <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.58, color: 'var(--text-secondary)', overflowWrap: 'anywhere' }}>{task.details}</p>
+          )}
+          <div className="ui-meta-list">
+            <span><strong>Course:</strong> {task.courseName}</span>
+            <span><strong>Module:</strong> {task.moduleTitle}</span>
+            <span><strong>Timing:</strong> {getTaskUrgencyLabel(task)}</span>
+          </div>
+        </Link>
+        <div className="task-card-side">
+          <span className="ui-chip ui-chip-soft task-card-side-chip">{task.estimatedMinutes} min</span>
           <TaskStatusToggle
             status={task.status}
             moduleId={task.moduleId}
             title={task.title}
             taskItemId={task.id}
           />
-          <span className="ui-chip ui-chip-soft">{task.estimatedMinutes} min</span>
         </div>
-      </div>
-
-      {task.details && (
-        <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.58, color: 'var(--text-secondary)', overflowWrap: 'anywhere' }}>{task.details}</p>
-      )}
-
-      <div className="ui-meta-list">
-        <span><strong>Course:</strong> {task.courseName}</span>
-        <span><strong>Module:</strong> {task.moduleTitle}</span>
-        <span><strong>Timing:</strong> {getTaskUrgencyLabel(task)}</span>
       </div>
 
       <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
@@ -253,9 +258,6 @@ function TaskCard({
           }}
           buttonStyle={actionButtonStyle}
         />
-        <Link href={buildModuleDoHref(task.moduleId, { taskTitle: task.title })} className="ui-button ui-button-ghost ui-button-xs" style={actionButtonStyle}>
-          Open module task
-        </Link>
         {task.canvasUrl && (
           <a href={task.canvasUrl} target="_blank" rel="noreferrer" className="ui-button ui-button-secondary ui-button-xs" style={actionButtonStyle}>
             Open in Canvas
