@@ -30,6 +30,7 @@ export default async function DoNowPage({ searchParams }: Props) {
   }
 
   const primaryAction = workspace.today.nextBestMove
+  const primaryHref = primaryAction ? resolveItemHref(primaryAction) : null
   const backupItems = [...workspace.today.needsAction, ...workspace.today.needsUnderstanding]
     .filter((item) => item.id !== primaryAction?.id)
     .slice(0, 3)
@@ -48,17 +49,35 @@ export default async function DoNowPage({ searchParams }: Props) {
         <section className="section-shell section-shell-elevated" style={{ display: 'grid', gap: '0.95rem', padding: '1.12rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.9rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
             <div style={{ minWidth: 0 }}>
-              <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                <ToneBadge item={primaryAction} />
-                {primaryAction.dateTime ? <MetaBadge>{formatDateTime(primaryAction.dateTime)}</MetaBadge> : null}
-                {primaryAction.effortLabel ? <MetaBadge>{primaryAction.effortLabel}</MetaBadge> : null}
-              </div>
-              <h2 style={{ margin: '0.5rem 0 0', fontSize: 'clamp(1.7rem, 3vw, 2.25rem)', lineHeight: 1.06, letterSpacing: '-0.05em', fontWeight: 650, color: 'var(--text-primary)' }}>
-                {primaryAction.title}
-              </h2>
-              <p style={{ margin: '0.65rem 0 0', maxWidth: '40rem', fontSize: '15px', lineHeight: 1.62, color: 'var(--text-secondary)' }}>
-                {primaryAction.whyNow}
-              </p>
+              {primaryHref ? (
+                <Link href={primaryHref} className="ui-interactive-row workspace-primary-link">
+                  <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <ToneBadge item={primaryAction} />
+                    {primaryAction.dateTime ? <MetaBadge>{formatDateTime(primaryAction.dateTime)}</MetaBadge> : null}
+                    {primaryAction.effortLabel ? <MetaBadge>{primaryAction.effortLabel}</MetaBadge> : null}
+                  </div>
+                  <h2 className="workspace-primary-link-title" style={{ margin: 0, fontSize: 'clamp(1.7rem, 3vw, 2.25rem)', lineHeight: 1.06, letterSpacing: '-0.05em', fontWeight: 650, color: 'var(--text-primary)' }}>
+                    {primaryAction.title}
+                  </h2>
+                  <p style={{ margin: 0, maxWidth: '40rem', fontSize: '15px', lineHeight: 1.62, color: 'var(--text-secondary)' }}>
+                    {primaryAction.whyNow}
+                  </p>
+                </Link>
+              ) : (
+                <>
+                  <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <ToneBadge item={primaryAction} />
+                    {primaryAction.dateTime ? <MetaBadge>{formatDateTime(primaryAction.dateTime)}</MetaBadge> : null}
+                    {primaryAction.effortLabel ? <MetaBadge>{primaryAction.effortLabel}</MetaBadge> : null}
+                  </div>
+                  <h2 style={{ margin: '0.5rem 0 0', fontSize: 'clamp(1.7rem, 3vw, 2.25rem)', lineHeight: 1.06, letterSpacing: '-0.05em', fontWeight: 650, color: 'var(--text-primary)' }}>
+                    {primaryAction.title}
+                  </h2>
+                  <p style={{ margin: '0.65rem 0 0', maxWidth: '40rem', fontSize: '15px', lineHeight: 1.62, color: 'var(--text-secondary)' }}>
+                    {primaryAction.whyNow}
+                  </p>
+                </>
+              )}
             </div>
 
             {primaryAction.kind === 'task' && primaryAction.taskItemId ? (
@@ -88,8 +107,8 @@ export default async function DoNowPage({ searchParams }: Props) {
           ) : null}
 
           <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
-            {resolveItemHref(primaryAction) ? (
-              <Link href={resolveItemHref(primaryAction)!} className="ui-button ui-button-primary">
+            {primaryHref ? (
+              <Link href={primaryHref} className="ui-button ui-button-primary">
                 {primaryButtonLabel(primaryAction)}
               </Link>
             ) : null}
@@ -145,27 +164,37 @@ export default async function DoNowPage({ searchParams }: Props) {
 
         {backupItems.length > 0 ? (
           <div className="home-compact-list">
-            {backupItems.map((item) => (
-              <div key={item.id} className="home-list-row">
-                <div style={{ minWidth: 0 }}>
+            {backupItems.map((item) => {
+              const href = resolveItemHref(item)
+              const content = (
+                <>
                   <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', alignItems: 'center' }}>
                     <ToneBadge item={item} subtle />
                     <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{item.courseName}</span>
                   </div>
-                  <p style={{ margin: '0.42rem 0 0', fontSize: '15px', lineHeight: 1.4, fontWeight: 650, color: 'var(--text-primary)' }}>
+                  <p className="home-row-title" style={{ marginTop: '0.42rem' }}>
                     {item.title}
                   </p>
                   <p style={{ margin: '0.3rem 0 0', fontSize: '13px', lineHeight: 1.55, color: 'var(--text-secondary)' }}>
                     {item.whyNow}
                   </p>
-                </div>
-                {resolveItemHref(item) ? (
-                  <Link href={resolveItemHref(item)!} className="ui-button ui-button-secondary ui-button-xs">
-                    Open
-                  </Link>
-                ) : null}
-              </div>
-            ))}
+                </>
+              )
+
+              return (
+                <article key={item.id} className="home-list-row">
+                  {href ? (
+                    <Link href={href} className="ui-interactive-row home-row-main">
+                      {content}
+                    </Link>
+                  ) : (
+                    <div className="home-row-main">
+                      {content}
+                    </div>
+                  )}
+                </article>
+              )
+            })}
           </div>
         ) : (
           <div className="ui-empty" style={{ borderRadius: 'var(--radius-panel)', padding: '0.95rem 1rem', fontSize: '14px', lineHeight: 1.6 }}>

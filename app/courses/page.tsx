@@ -46,13 +46,11 @@ export default async function CoursesPage() {
           return (
             <section key={course.id} className="motion-card motion-delay-1 section-shell" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-                <div>
+                <Link href={courseHref} className="ui-interactive-row course-card-link">
                   <p className="ui-kicker">{course.code}</p>
-                  <Link href={courseHref} style={{ textDecoration: 'none' }}>
-                    <h2 className="ui-section-title" style={{ marginTop: '0.38rem' }}>{course.name}</h2>
-                  </Link>
+                  <h2 className="ui-section-title course-card-title" style={{ marginTop: '0.38rem' }}>{course.name}</h2>
                   <p className="ui-section-copy" style={{ marginTop: '0.3rem' }}>{toOneSentence(course.focusLabel)}</p>
-                </div>
+                </Link>
                 <span className="ui-chip ui-chip-soft">{modules.length} module{modules.length === 1 ? '' : 's'}</span>
               </div>
 
@@ -65,23 +63,19 @@ export default async function CoursesPage() {
               {(newestModule || nextTask) && (
                 <div className="workspace-summary-grid">
                   {newestModule && (
-                    <div className="workspace-quiet-panel">
+                    <Link href={buildCourseLearnHref(course.id, { moduleId: newestModule.id })} className="workspace-quiet-panel workspace-panel-link ui-interactive-card">
                       <p className="ui-kicker" style={{ margin: 0 }}>Latest change</p>
-                      <Link href={buildCourseLearnHref(course.id, { moduleId: newestModule.id })} style={{ textDecoration: 'none' }}>
-                        <p className="workspace-quiet-panel-title">{newestModule.title}</p>
-                      </Link>
+                      <p className="workspace-quiet-panel-title">{newestModule.title}</p>
                       <p className="workspace-quiet-panel-copy">{toOneSentence(newestModule.summary)}</p>
-                    </div>
+                    </Link>
                   )}
 
                   {nextTask && (
-                    <div className="workspace-quiet-panel">
+                    <Link href={buildModuleDoHref(nextTask.moduleId, { taskTitle: nextTask.title })} className="workspace-quiet-panel workspace-panel-link ui-interactive-card">
                       <p className="ui-kicker" style={{ margin: 0 }}>Needs attention</p>
-                      <Link href={buildModuleDoHref(nextTask.moduleId, { taskTitle: nextTask.title })} style={{ textDecoration: 'none' }}>
-                        <p className="workspace-quiet-panel-title">{nextTask.title}</p>
-                      </Link>
+                      <p className="workspace-quiet-panel-title">{nextTask.title}</p>
                       <p className="workspace-quiet-panel-copy">{getTaskUrgencyLabel(nextTask)} in {nextTask.moduleTitle}</p>
-                    </div>
+                    </Link>
                   )}
                 </div>
               )}
@@ -94,7 +88,7 @@ export default async function CoursesPage() {
                       Open course
                     </Link>
                   </div>
-                  <div className="workspace-list" style={{ maxHeight: '16rem', overflowY: 'auto', paddingRight: '0.15rem' }}>
+                  <div className="workspace-list workspace-list-scroll" style={{ maxHeight: '16rem', overflowY: 'auto' }}>
                     {moduleSnapshots.map(({ module, experience, taskCount }) => (
                       <Link
                         key={module.id}
@@ -110,7 +104,6 @@ export default async function CoursesPage() {
                             {experience.learnUnits.length} study unit{experience.learnUnits.length === 1 ? '' : 's'} / {taskCount} active task{taskCount === 1 ? '' : 's'}{module.showInLearn === false ? ' / hidden from global Learn' : ''}
                           </p>
                         </div>
-                        <span className="workspace-row-link">Open</span>
                       </Link>
                     ))}
                   </div>
@@ -119,7 +112,7 @@ export default async function CoursesPage() {
 
               <div style={{ display: 'flex', gap: '0.55rem', flexWrap: 'wrap' }}>
                 <Link href={courseHref} className="ui-button ui-button-secondary ui-button-xs">Open course</Link>
-                <Link href={nextTask ? buildModuleDoHref(nextTask.moduleId, { taskTitle: nextTask.title }) : '/tasks'} className="ui-button ui-button-ghost ui-button-xs">Open next task</Link>
+                <Link href={nextTask ? buildModuleDoHref(nextTask.moduleId, { taskTitle: nextTask.title }) : '/tasks'} className="ui-button ui-button-ghost ui-button-xs">Go to next task</Link>
               </div>
             </section>
           )
