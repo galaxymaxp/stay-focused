@@ -1,6 +1,8 @@
 import { getCourseModules, getModuleTasks, type ClarityWorkspace } from '@/lib/clarity-workspace'
 import { buildModuleLearnOverview } from '@/lib/module-learn-overview'
 import { buildModuleTermBank, type FinalReviewerTerm, type ModuleTermQuizItem, type ModuleTermSuggestion } from '@/lib/module-term-bank'
+import { listDeepLearnNotesForModule } from '@/lib/deep-learn-store'
+import { getDeepLearnResourceUiState } from '@/lib/deep-learn-ui'
 import {
   buildLearnExperience,
   getLearnResourceHref,
@@ -59,6 +61,18 @@ export interface CourseLearnStudyMaterialRow {
   originalFileHref: string | null
   outlineSections: StudyFileOutlineSection[]
   outlineHint: string | null
+  deepLearnStatus: 'not_started' | 'pending' | 'ready' | 'failed'
+  deepLearnStatusLabel: 'No note yet' | 'Generating' | 'Ready' | 'Failed'
+  deepLearnTone: 'accent' | 'warning' | 'muted'
+  deepLearnSummary: string
+  deepLearnDetail: string
+  deepLearnPrimaryLabel: 'Deep Learn this' | 'Open Deep Learn note' | 'Retry Deep Learn'
+  deepLearnNoteHref: string
+  deepLearnQuizHref: string
+  deepLearnQuizReady: boolean
+  deepLearnTermCount: number
+  deepLearnFactCount: number
+  deepLearnNoteFailure: string | null
 }
 
 export interface CourseLearnActionRow {
@@ -201,6 +215,8 @@ async function buildCourseLearnModuleCard(
     overview,
     storedTerms: moduleWorkspace?.terms ?? [],
   })
+  const deepLearnNotes = await listDeepLearnNotesForModule(module.id)
+  const deepLearnNoteByResourceId = new Map(deepLearnNotes.map((note) => [note.resourceId, note]))
   const readiness = resolveModuleReadiness(overview)
   const taskRows = sortTasks(moduleWorkspace?.tasks ?? [])
   const pendingTasks = taskRows.filter((task) => task.status !== 'completed')
@@ -238,6 +254,7 @@ async function buildCourseLearnModuleCard(
         }
       : null,
     studyMaterials: overview.studyMaterials.map((material) => ({
+      ...(buildDeepLearnRowState(module.id, material.resource.id, deepLearnNoteByResourceId.get(material.resource.id) ?? null)),
       id: material.resource.id,
       title: material.resource.title,
       fileTypeLabel: material.fileTypeLabel,
@@ -260,6 +277,7 @@ async function buildCourseLearnModuleCard(
       outlineHint: material.reader.outlineHint,
     })),
     activityOverrides: overview.activityOverrides.map((material) => ({
+      ...(buildDeepLearnRowState(module.id, material.resource.id, deepLearnNoteByResourceId.get(material.resource.id) ?? null)),
       id: material.resource.id,
       title: material.resource.title,
       fileTypeLabel: material.fileTypeLabel,
@@ -359,7 +377,7 @@ function buildModuleCoverageHint(overview: {
   }
 
   if (overview.readyStudyFileCount > 0) {
-    const fragments = [`${overview.readyStudyFileCount} ready in the reader`]
+    const fragments = [`${overview.readyStudyFileCount} grounded study source${overview.readyStudyFileCount === 1 ? '' : 's'}`]
     if (overview.limitedStudyFileCount > 0) {
       fragments.push(`${overview.limitedStudyFileCount} partial`)
     }
@@ -374,11 +392,11 @@ function buildModuleCoverageHint(overview: {
 
   if (overview.limitedStudyFileCount > 0) {
     return overview.unavailableStudyFileCount > 0
-      ? `${overview.limitedStudyFileCount} partial in Learn, and ${overview.unavailableStudyFileCount} still read better from the original source.`
-      : `${overview.limitedStudyFileCount} partial in Learn, but the originals are still the cleanest full read.`
+      ? `${overview.limitedStudyFileCount} study source${overview.limitedStudyFileCount === 1 ? ' is' : 's are'} partial in Learn, and ${overview.unavailableStudyFileCount} still depend on the original source.`
+      : `${overview.limitedStudyFileCount} study source${overview.limitedStudyFileCount === 1 ? ' is' : 's are'} partial in Learn, but the originals are still the cleanest full read.`
   }
 
-  return `${overview.totalStudyFileCount} study material${overview.totalStudyFileCount === 1 ? '' : 's'} mapped, but the original sources are still the main path.`
+  return `${overview.totalStudyFileCount} study source${overview.totalStudyFileCount === 1 ? '' : 's'} mapped, but the original sources are still the main grounding path.`
 }
 
 function buildModuleSummaryFallback(overview: {
@@ -390,15 +408,15 @@ function buildModuleSummaryFallback(overview: {
   actionItems: unknown[]
 }) {
   if (overview.readyStudyFileCount > 0) {
-    return 'Readable study material is available here, so Learn can help you study before you switch into action.'
+    return 'Grounded study material is available here, so Deep Learn can turn it into saved notes before you switch into action.'
   }
 
   if (overview.limitedStudyFileCount > 0) {
-    return 'Learn can show part of the reading here, but some materials still read better from the original source.'
+    return 'Deep Learn can still help here, but some materials still need the original source nearby because the current extract is only partial.'
   }
 
   if (overview.totalStudyFileCount > 0) {
-    return 'This module still reads more cleanly through the original sources, so Learn keeps the in-app reader light and honest.'
+    return 'This module still depends heavily on the original sources, so Deep Learn treats the saved note as the main destination and keeps the reader light and honest.'
   }
 
   if (overview.actionItems.length > 0 || overview.activityOverrideCount > 0) {
@@ -449,6 +467,39 @@ function buildCourseResumeCue(modules: CourseLearnModuleCard[]): CourseLearnResu
   }
 
   return modules.find((module) => module.resumeCue)?.resumeCue ?? null
+}
+
+function buildDeepLearnRowState(moduleId: string, resourceId: string, note: Parameters<typeof getDeepLearnResourceUiState>[2]) {
+  const deepLearnUi = getDeepLearnResourceUiState(moduleId, resourceId, note)
+
+  return {
+    deepLearnStatus: deepLearnUi.status,
+    deepLearnStatusLabel: deepLearnUi.statusLabel,
+    deepLearnTone: deepLearnUi.tone,
+    deepLearnSummary: deepLearnUi.summary,
+    deepLearnDetail: deepLearnUi.detail,
+    deepLearnPrimaryLabel: deepLearnUi.primaryLabel,
+    deepLearnNoteHref: deepLearnUi.noteHref,
+    deepLearnQuizHref: deepLearnUi.quizHref,
+    deepLearnQuizReady: deepLearnUi.quizReady,
+    deepLearnTermCount: note?.coreTerms.length ?? 0,
+    deepLearnFactCount: note?.keyFacts.length ?? 0,
+    deepLearnNoteFailure: note?.errorMessage ?? null,
+  } satisfies Pick<
+    CourseLearnStudyMaterialRow,
+    | 'deepLearnStatus'
+    | 'deepLearnStatusLabel'
+    | 'deepLearnTone'
+    | 'deepLearnSummary'
+    | 'deepLearnDetail'
+    | 'deepLearnPrimaryLabel'
+    | 'deepLearnNoteHref'
+    | 'deepLearnQuizHref'
+    | 'deepLearnQuizReady'
+    | 'deepLearnTermCount'
+    | 'deepLearnFactCount'
+    | 'deepLearnNoteFailure'
+  >
 }
 
 function mapStudyMaterialReadiness(label: 'Ready' | 'Partial' | 'Source first' | 'Link only' | 'Unsupported' | 'No extract' | 'Loading' | 'Unavailable') {

@@ -5,7 +5,6 @@ import { useEffect, useRef, useState } from 'react'
 import { ModuleTermBank } from '@/components/ModuleTermBank'
 import { StudyResourceAccordionList } from '@/components/StudyResourceAccordionList'
 import { buildModuleDoHref, getModuleElementId, getTaskElementId } from '@/lib/stay-focused-links'
-import { countQuizReadyStudyNotes } from '@/lib/study-note-quiz'
 import type {
   CourseLearnModuleCard,
   CourseLearnMoreRow,
@@ -123,10 +122,8 @@ export function CourseLearnExplorer({
       {visibleModules.map((module, index) => {
         const expanded = openModuleId === module.id
         const focused = focusedModuleId === module.id
-        const quizReadyNoteCount = module.studyMaterials.reduce(
-          (total, material) => total + countQuizReadyStudyNotes(material.outlineSections),
-          0,
-        )
+        const deepLearnReadyCount = module.studyMaterials.filter((material) => material.deepLearnStatus === 'ready').length
+        const quizReadyNoteCount = module.studyMaterials.filter((material) => material.deepLearnQuizReady).length
 
         return (
           <article
@@ -165,7 +162,7 @@ export function CourseLearnExplorer({
                     <span className="ui-kicker" style={{ color: 'var(--text-muted)' }}>{module.orderLabel}</span>
                   )}
                   <ReadinessPill tone={module.readinessTone} label={module.readinessLabel} />
-                  <CountPill label={`${module.outlineSectionCount} outline`} />
+                  <CountPill label={`${deepLearnReadyCount} Deep Learn`} />
                   <CountPill label={`${module.termCount} term${module.termCount === 1 ? '' : 's'}`} />
                   <CountPill label={`${module.pendingTasks.length} active`} />
                   {module.completedTasks.length > 0 && <CountPill label={`${module.completedTasks.length} done`} />}
@@ -236,6 +233,7 @@ export function CourseLearnExplorer({
                       <p className="ui-kicker">Module status</p>
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '0.7rem', marginTop: '0.7rem' }}>
                         <MiniStat label="Study sources" value={String(module.studyCount)} />
+                        <MiniStat label="Deep Learn ready" value={String(deepLearnReadyCount)} />
                         <MiniStat label="Quiz-ready notes" value={String(quizReadyNoteCount)} />
                         <MiniStat label="Active work" value={String(module.pendingTasks.length)} />
                         <MiniStat label="Completed" value={String(module.completedTasks.length)} />
@@ -258,17 +256,19 @@ export function CourseLearnExplorer({
 
                 <section style={{ display: 'grid', gap: '0.8rem' }}>
                   <div>
-                    <p className="ui-kicker">Study outline</p>
+                    <p className="ui-kicker">Deep Learn notes</p>
                     <h3 style={{ margin: '0.38rem 0 0', fontSize: '1rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>
-                      Open one resource at a time, then open the notes inside it
+                      Generate or open the saved note before dropping into reader fallback
                     </h3>
                     <p style={{ margin: '0.4rem 0 0', fontSize: '14px', lineHeight: 1.68, color: 'var(--text-secondary)' }}>
-                      Each module now keeps its resources and Canvas pages in a compact expandable list. Open one resource inline, then expand the note sections inside it when you are ready to study.
+                      The course view now keeps Deep Learn front and center. Each resource can generate a saved note, keep exact terminology visible, and carry that note forward to quiz while the old reader stays secondary.
                     </p>
                   </div>
 
                   <StudyResourceAccordionList
                     items={module.studyMaterials.map((material) => ({
+                      moduleId: module.id,
+                      courseId: module.courseId,
                       id: material.id,
                       title: material.title,
                       note: material.note,
@@ -290,6 +290,18 @@ export function CourseLearnExplorer({
                         resourceId: material.id,
                       }),
                       extraActionLabel: 'Open module Do',
+                      deepLearnStatus: material.deepLearnStatus,
+                      deepLearnStatusLabel: material.deepLearnStatusLabel,
+                      deepLearnTone: material.deepLearnTone,
+                      deepLearnSummary: material.deepLearnSummary,
+                      deepLearnDetail: material.deepLearnDetail,
+                      deepLearnPrimaryLabel: material.deepLearnPrimaryLabel,
+                      deepLearnNoteHref: material.deepLearnNoteHref,
+                      deepLearnQuizHref: material.deepLearnQuizHref,
+                      deepLearnQuizReady: material.deepLearnQuizReady,
+                      deepLearnTermCount: material.deepLearnTermCount,
+                      deepLearnFactCount: material.deepLearnFactCount,
+                      deepLearnNoteFailure: material.deepLearnNoteFailure,
                     }))}
                     initialOpenResourceId={validInitialOpenModuleId === module.id ? initialOpenResourceId : null}
                     emptyMessage="No active study materials are ready in this module yet."

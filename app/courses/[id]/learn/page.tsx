@@ -19,6 +19,14 @@ export default async function CourseLearnPage({ params, searchParams }: Props) {
   if (!courseOverview) notFound()
 
   const { course, modules, resumeCue } = courseOverview
+  const deepLearnReadyCount = modules.reduce(
+    (total, module) => total + module.studyMaterials.filter((material) => material.deepLearnStatus === 'ready').length,
+    0,
+  )
+  const quizReadyDeepLearnCount = modules.reduce(
+    (total, module) => total + module.studyMaterials.filter((material) => material.deepLearnQuizReady).length,
+    0,
+  )
   const initialOpenModuleId = getSearchParamValue(resolvedSearchParams?.module)
   const initialOpenResourceId = getSearchParamValue(resolvedSearchParams?.resource)
   const initialTaskId = getSearchParamValue(resolvedSearchParams?.task)
@@ -37,7 +45,7 @@ export default async function CourseLearnPage({ params, searchParams }: Props) {
             </div>
             <h1 className="ui-page-title" style={{ marginTop: '0.5rem' }}>{course.name}</h1>
             <p className="ui-page-copy" style={{ maxWidth: '48rem' }}>
-              A tighter course workspace. Scan compact module cards, expand one inline when you need it, and hide the rest when you want to focus on a single module.
+              A tighter Deep Learn workspace. Scan compact module cards, generate or reopen saved notes inline, and drop to reader/source fallback only when you need direct evidence.
             </p>
           </div>
           <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
@@ -47,7 +55,8 @@ export default async function CourseLearnPage({ params, searchParams }: Props) {
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.8rem' }}>
           <StatTile label="Modules in Learn" value={String(courseOverview.visibleModuleCount)} />
-          <StatTile label="Study items" value={String(courseOverview.studyCount)} />
+          <StatTile label="Deep Learn notes" value={String(deepLearnReadyCount)} />
+          <StatTile label="Quiz-ready notes" value={String(quizReadyDeepLearnCount)} />
           <StatTile label="Action items" value={String(courseOverview.actionCount)} />
           <StatTile label="Hidden modules" value={String(courseOverview.hiddenModuleCount)} />
         </div>
@@ -91,9 +100,9 @@ export default async function CourseLearnPage({ params, searchParams }: Props) {
       <section className="motion-card motion-delay-1 section-shell" style={{ padding: '1.2rem 1.25rem', display: 'grid', gap: '0.9rem' }}>
         <div>
           <p className="ui-kicker">Modules</p>
-          <h2 className="ui-section-title" style={{ marginTop: '0.45rem' }}>Open only what you need</h2>
+          <h2 className="ui-section-title" style={{ marginTop: '0.45rem' }}>Open only what you need, and keep Deep Learn first</h2>
           <p className="ui-section-copy" style={{ marginTop: '0.45rem', maxWidth: '46rem' }}>
-            Every module stays collapsed by default. Expand one to reveal the full study outline, inline terms, quick quiz, and source support without leaving the course list.
+            Every module stays collapsed by default. Expand one to generate or reopen saved Deep Learn notes, see quiz readiness, and keep source support nearby without turning the old reader into the main destination.
           </p>
         </div>
 
