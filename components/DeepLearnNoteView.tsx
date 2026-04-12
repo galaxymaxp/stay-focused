@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { DeepLearnGenerateButton } from '@/components/DeepLearnGenerateButton'
 import { getDeepLearnResourceUiState } from '@/lib/deep-learn-ui'
 import { buildModuleQuizHref } from '@/lib/stay-focused-links'
-import type { DeepLearnNote } from '@/lib/types'
+import type { DeepLearnNote, DeepLearnNoteLoadAvailability } from '@/lib/types'
 import type { ModuleSourceResource } from '@/lib/module-workspace'
 
 export function DeepLearnNoteView({
@@ -10,6 +10,8 @@ export function DeepLearnNoteView({
   courseId,
   resource,
   note,
+  noteAvailability = 'available',
+  noteAvailabilityMessage = null,
   readerHref,
   sourceHref,
 }: {
@@ -17,10 +19,15 @@ export function DeepLearnNoteView({
   courseId: string | null
   resource: ModuleSourceResource
   note: DeepLearnNote | null
+  noteAvailability?: DeepLearnNoteLoadAvailability
+  noteAvailabilityMessage?: string | null
   readerHref: string
   sourceHref: string | null
 }) {
-  const ui = getDeepLearnResourceUiState(moduleId, resource.id, note)
+  const ui = getDeepLearnResourceUiState(moduleId, resource.id, note, {
+    notesAvailability: noteAvailability,
+    unavailableMessage: noteAvailabilityMessage,
+  })
   const quizHref = buildModuleQuizHref(moduleId, { resourceId: resource.id })
 
   return (
@@ -39,6 +46,10 @@ export function DeepLearnNoteView({
           {note?.status === 'ready' ? (
             <Link href={ui.noteHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
               Open Deep Learn note
+            </Link>
+          ) : ui.status === 'unavailable' ? (
+            <Link href={readerHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
+              {ui.primaryLabel}
             </Link>
           ) : (
             <DeepLearnGenerateButton
@@ -173,6 +184,11 @@ export function DeepLearnNoteView({
           <p style={{ margin: 0, fontSize: '15px', lineHeight: 1.76, color: 'var(--text-secondary)' }}>
             {ui.summary}
           </p>
+          {ui.status === 'unavailable' && noteAvailabilityMessage && (
+            <p style={{ margin: '0.6rem 0 0', fontSize: '13px', lineHeight: 1.62, color: 'var(--text-secondary)' }}>
+              {noteAvailabilityMessage}
+            </p>
+          )}
           {note?.errorMessage && (
             <p style={{ margin: '0.6rem 0 0', fontSize: '13px', lineHeight: 1.62, color: 'var(--red)' }}>
               {note.errorMessage}

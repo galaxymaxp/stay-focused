@@ -26,6 +26,7 @@ export function ModuleQuizWorkspace({
   learnHref,
   withheldMaterialCount = 0,
   notReadyDeepLearnCount = 0,
+  noteAvailabilityMessage = null,
 }: {
   quizSections: QuizSection[]
   initialSelectedId?: string | null
@@ -33,6 +34,7 @@ export function ModuleQuizWorkspace({
   learnHref?: string
   withheldMaterialCount?: number
   notReadyDeepLearnCount?: number
+  noteAvailabilityMessage?: string | null
 }) {
   const defaultSelectedId = initialSelectedId && quizSections.some((section) => section.id === initialSelectedId)
     ? initialSelectedId
@@ -55,6 +57,11 @@ export function ModuleQuizWorkspace({
               : 'Quiz only opens after a Deep Learn note exists. Generate a saved note from Learn first, then come back once the note is ready.'
             : 'No saved Deep Learn notes are ready for quiz yet. Open Learn to generate a note, or inspect the resource state if the source grounding is still too weak.'}
         </div>
+        {noteAvailabilityMessage && (
+          <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
+            {noteAvailabilityMessage}
+          </p>
+        )}
         {(learnHref || inspectHref) && (
           <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
             {learnHref && (

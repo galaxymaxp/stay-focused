@@ -17,6 +17,8 @@ import type { StudyFileOutlineSection, StudyFileReaderState } from '@/lib/study-
 import type { LearnResourceActionPriority, LearnResourceStatusKey } from '@/lib/learn-resource-ui'
 import type {
   Course,
+  DeepLearnNoteLoadAvailability,
+  DeepLearnNoteLoadReason,
   Module,
   ModuleResourceWorkflowOverride,
   StudyFileProgressStatus,
@@ -61,18 +63,19 @@ export interface CourseLearnStudyMaterialRow {
   originalFileHref: string | null
   outlineSections: StudyFileOutlineSection[]
   outlineHint: string | null
-  deepLearnStatus: 'not_started' | 'pending' | 'ready' | 'failed'
-  deepLearnStatusLabel: 'No note yet' | 'Generating' | 'Ready' | 'Failed'
+  deepLearnStatus: 'not_started' | 'pending' | 'ready' | 'failed' | 'unavailable'
+  deepLearnStatusLabel: 'No note yet' | 'Generating' | 'Ready' | 'Failed' | 'Unavailable'
   deepLearnTone: 'accent' | 'warning' | 'muted'
   deepLearnSummary: string
   deepLearnDetail: string
-  deepLearnPrimaryLabel: 'Deep Learn this' | 'Open Deep Learn note' | 'Retry Deep Learn'
+  deepLearnPrimaryLabel: 'Deep Learn this' | 'Open Deep Learn note' | 'Retry Deep Learn' | 'View reader fallback'
   deepLearnNoteHref: string
   deepLearnQuizHref: string
   deepLearnQuizReady: boolean
   deepLearnTermCount: number
   deepLearnFactCount: number
   deepLearnNoteFailure: string | null
+  deepLearnAvailability: DeepLearnNoteLoadAvailability
 }
 
 export interface CourseLearnActionRow {
@@ -141,6 +144,9 @@ export interface CourseLearnModuleCard {
   pendingTasks: CourseLearnTaskRow[]
   completedTasks: CourseLearnTaskRow[]
   sourceSupportNote: string
+  deepLearnNotesAvailability: DeepLearnNoteLoadAvailability
+  deepLearnNotesReason: DeepLearnNoteLoadReason
+  deepLearnNotesMessage: string | null
 }
 
 export interface CourseLearnOverview {
@@ -153,18 +159,25 @@ export interface CourseLearnOverview {
   moreCount: number
   note: string
   resumeCue: CourseLearnResumeCue | null
+  deepLearnUnavailableModuleCount: number
+}
+
+interface CourseLearnOverviewDependencies {
+  getModuleWorkspace?: typeof getModuleWorkspace
+  listDeepLearnNotesForModule?: typeof listDeepLearnNotesForModule
 }
 
 export async function buildCourseLearnOverview(
   workspace: ClarityWorkspace,
   courseId: string,
+  dependencies: CourseLearnOverviewDependencies = {},
 ): Promise<CourseLearnOverview | null> {
   const course = workspace.courses.find((entry) => entry.id === courseId)
   if (!course) return null
 
   const allModules = getCourseModules(workspace, course.id)
   const visibleModules = allModules.filter((module) => module.showInLearn !== false)
-  const moduleCards = await Promise.all(visibleModules.map((module) => buildCourseLearnModuleCard(workspace, module)))
+  const moduleCards = await Promise.all(visibleModules.map((module) => buildCourseLearnModuleCard(workspace, module, dependencies)))
   const modules = moduleCards.sort((left, right) =>
     sortableOrder(left.orderLabel) - sortableOrder(right.orderLabel)
     || left.title.localeCompare(right.title),
@@ -172,6 +185,7 @@ export async function buildCourseLearnOverview(
   const studyCount = modules.reduce((total, module) => total + module.studyCount, 0)
   const actionCount = modules.reduce((total, module) => total + module.actionCount, 0)
   const moreCount = modules.reduce((total, module) => total + module.moreCount, 0)
+  const deepLearnUnavailableModuleCount = modules.filter((module) => module.deepLearnNotesAvailability === 'unavailable').length
   const hiddenModuleCount = Math.max(0, allModules.length - visibleModules.length)
 
   return {
@@ -189,14 +203,18 @@ export async function buildCourseLearnOverview(
       actionCount,
     }),
     resumeCue: buildCourseResumeCue(modules),
+    deepLearnUnavailableModuleCount,
   }
 }
 
 async function buildCourseLearnModuleCard(
   workspace: ClarityWorkspace,
   module: Module,
+  dependencies: CourseLearnOverviewDependencies,
 ): Promise<CourseLearnModuleCard> {
-  const moduleWorkspace = await getModuleWorkspace(module.id)
+  const getModuleWorkspaceImpl = dependencies.getModuleWorkspace ?? getModuleWorkspace
+  const listDeepLearnNotesForModuleImpl = dependencies.listDeepLearnNotesForModule ?? listDeepLearnNotesForModule
+  const moduleWorkspace = await getModuleWorkspaceImpl(module.id)
   const workspaceTasks = getModuleTasks(workspace, module.id)
   const pendingTaskCount = workspaceTasks.filter((task) => task.status !== 'completed').length
   const experience = buildLearnExperience(module, {
@@ -215,8 +233,8 @@ async function buildCourseLearnModuleCard(
     overview,
     storedTerms: moduleWorkspace?.terms ?? [],
   })
-  const deepLearnNotes = await listDeepLearnNotesForModule(module.id)
-  const deepLearnNoteByResourceId = new Map(deepLearnNotes.map((note) => [note.resourceId, note]))
+  const deepLearnNotesResult = await listDeepLearnNotesForModuleImpl(module.id)
+  const deepLearnNoteByResourceId = new Map(deepLearnNotesResult.notes.map((note) => [note.resourceId, note]))
   const readiness = resolveModuleReadiness(overview)
   const taskRows = sortTasks(moduleWorkspace?.tasks ?? [])
   const pendingTasks = taskRows.filter((task) => task.status !== 'completed')
@@ -254,7 +272,13 @@ async function buildCourseLearnModuleCard(
         }
       : null,
     studyMaterials: overview.studyMaterials.map((material) => ({
-      ...(buildDeepLearnRowState(module.id, material.resource.id, deepLearnNoteByResourceId.get(material.resource.id) ?? null)),
+      ...(buildDeepLearnRowState(
+        module.id,
+        material.resource.id,
+        deepLearnNoteByResourceId.get(material.resource.id) ?? null,
+        deepLearnNotesResult.availability,
+        deepLearnNotesResult.message,
+      )),
       id: material.resource.id,
       title: material.resource.title,
       fileTypeLabel: material.fileTypeLabel,
@@ -277,7 +301,13 @@ async function buildCourseLearnModuleCard(
       outlineHint: material.reader.outlineHint,
     })),
     activityOverrides: overview.activityOverrides.map((material) => ({
-      ...(buildDeepLearnRowState(module.id, material.resource.id, deepLearnNoteByResourceId.get(material.resource.id) ?? null)),
+      ...(buildDeepLearnRowState(
+        module.id,
+        material.resource.id,
+        deepLearnNoteByResourceId.get(material.resource.id) ?? null,
+        deepLearnNotesResult.availability,
+        deepLearnNotesResult.message,
+      )),
       id: material.resource.id,
       title: material.resource.title,
       fileTypeLabel: material.fileTypeLabel,
@@ -327,6 +357,9 @@ async function buildCourseLearnModuleCard(
     pendingTasks,
     completedTasks,
     sourceSupportNote: overview.coverageNote,
+    deepLearnNotesAvailability: deepLearnNotesResult.availability,
+    deepLearnNotesReason: deepLearnNotesResult.reason,
+    deepLearnNotesMessage: deepLearnNotesResult.message,
   }
 }
 
@@ -469,8 +502,17 @@ function buildCourseResumeCue(modules: CourseLearnModuleCard[]): CourseLearnResu
   return modules.find((module) => module.resumeCue)?.resumeCue ?? null
 }
 
-function buildDeepLearnRowState(moduleId: string, resourceId: string, note: Parameters<typeof getDeepLearnResourceUiState>[2]) {
-  const deepLearnUi = getDeepLearnResourceUiState(moduleId, resourceId, note)
+function buildDeepLearnRowState(
+  moduleId: string,
+  resourceId: string,
+  note: Parameters<typeof getDeepLearnResourceUiState>[2],
+  notesAvailability: DeepLearnNoteLoadAvailability,
+  unavailableMessage: string | null,
+) {
+  const deepLearnUi = getDeepLearnResourceUiState(moduleId, resourceId, note, {
+    notesAvailability,
+    unavailableMessage,
+  })
 
   return {
     deepLearnStatus: deepLearnUi.status,
@@ -485,6 +527,7 @@ function buildDeepLearnRowState(moduleId: string, resourceId: string, note: Para
     deepLearnTermCount: note?.coreTerms.length ?? 0,
     deepLearnFactCount: note?.keyFacts.length ?? 0,
     deepLearnNoteFailure: note?.errorMessage ?? null,
+    deepLearnAvailability: notesAvailability,
   } satisfies Pick<
     CourseLearnStudyMaterialRow,
     | 'deepLearnStatus'
@@ -499,6 +542,7 @@ function buildDeepLearnRowState(moduleId: string, resourceId: string, note: Para
     | 'deepLearnTermCount'
     | 'deepLearnFactCount'
     | 'deepLearnNoteFailure'
+    | 'deepLearnAvailability'
   >
 }
 

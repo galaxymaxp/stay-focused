@@ -61,6 +61,15 @@ export default async function CourseLearnPage({ params, searchParams }: Props) {
           <StatTile label="Hidden modules" value={String(courseOverview.hiddenModuleCount)} />
         </div>
 
+        {courseOverview.deepLearnUnavailableModuleCount > 0 && (
+          <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.95rem 1rem', border: '1px solid color-mix(in srgb, var(--amber) 24%, var(--border-subtle) 76%)' }}>
+            <p className="ui-kicker">Deep Learn note status unavailable</p>
+            <p style={{ margin: '0.45rem 0 0', fontSize: '14px', lineHeight: 1.68, color: 'var(--text-secondary)' }}>
+              {courseOverview.deepLearnUnavailableModuleCount} module{courseOverview.deepLearnUnavailableModuleCount === 1 ? '' : 's'} could not load saved Deep Learn notes right now. Course Learn still renders from the module resources and fallback reader/source surfaces.
+            </p>
+          </div>
+        )}
+
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '0.85rem' }}>
           <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.95rem 1rem' }}>
             <p className="ui-kicker">Course view</p>

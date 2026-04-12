@@ -51,8 +51,8 @@ export default async function QuizPage({ params, searchParams }: Props) {
     tasks,
   })
 
-  const deepLearnNotes = await listDeepLearnNotesForModule(module.id)
-  const readyDeepLearnNotes = deepLearnNotes.filter((note) => note.status === 'ready')
+  const deepLearnNotesResult = await listDeepLearnNotesForModule(module.id)
+  const readyDeepLearnNotes = deepLearnNotesResult.notes.filter((note) => note.status === 'ready')
   const quizReadyNotes = readyDeepLearnNotes.filter((note) => note.quizReady)
   const targetResourceId = getSearchParamValue(resolvedSearchParams?.resource)
   const targetSectionId = targetResourceId ? `quiz-note-${encodeURIComponent(targetResourceId)}` : null
@@ -96,6 +96,7 @@ export default async function QuizPage({ params, searchParams }: Props) {
         learnHref={buildModuleLearnHref(module.id, { panel: 'study-notes', resourceId: targetResourceId })}
         withheldMaterialCount={withheldMaterialCount}
         notReadyDeepLearnCount={readyButNotQuizReadyCount}
+        noteAvailabilityMessage={deepLearnNotesResult.availability === 'unavailable' ? deepLearnNotesResult.message : null}
       />
     </ModuleLensShell>
   )

@@ -1,4 +1,9 @@
-import type { DeepLearnNote, DeepLearnNoteStatus } from '@/lib/types'
+import type {
+  DeepLearnNote,
+  DeepLearnNoteLoadAvailability,
+  DeepLearnNoteLoadReason,
+  DeepLearnNoteStatus,
+} from '@/lib/types'
 import {
   DEEP_LEARN_PROMPT_VERSION,
   buildDeepLearnNoteBody,
@@ -8,10 +13,37 @@ import {
   normalizeDeepLearnSourceGrounding,
   normalizeDeepLearnStatus,
 } from '@/lib/deep-learn'
-import { getAuthenticatedSupabaseServerContext } from '@/lib/supabase-auth-app'
+import {
+  getAuthenticatedSupabaseServerContext,
+  type AuthenticatedSupabaseServerContext,
+} from '@/lib/supabase-auth-app'
+import { isSupabaseAuthConfigured } from '@/lib/supabase-auth-config'
 import { serializeErrorForLogging } from '@/lib/supabase'
 
 const TABLE_NAME = 'deep_learn_notes'
+
+export interface DeepLearnNoteListResult {
+  notes: DeepLearnNote[]
+  availability: DeepLearnNoteLoadAvailability
+  reason: DeepLearnNoteLoadReason
+  message: string | null
+  userId: string | null
+}
+
+export interface DeepLearnNoteResult {
+  note: DeepLearnNote | null
+  availability: DeepLearnNoteLoadAvailability
+  reason: DeepLearnNoteLoadReason
+  message: string | null
+  userId: string | null
+}
+
+interface DeepLearnStoreDependencies {
+  isAuthConfigured?: boolean
+  getAuthContext?: () => Promise<AuthenticatedSupabaseServerContext | null>
+  executeListModuleQuery?: (auth: AuthenticatedSupabaseServerContext, moduleId: string) => Promise<{ data: unknown[] | null; error: unknown | null }>
+  executeResourceNoteQuery?: (auth: AuthenticatedSupabaseServerContext, moduleId: string, resourceId: string) => Promise<{ data: unknown | null; error: unknown | null }>
+}
 
 interface DeepLearnNoteRow {
   id: string
@@ -38,48 +70,113 @@ interface DeepLearnNoteRow {
   generated_at: string | null
 }
 
-export async function listDeepLearnNotesForModule(moduleId: string) {
-  const auth = await getAuthenticatedSupabaseServerContext()
-  if (!auth) return []
-
-  const { data, error } = await auth.client
-    .from(TABLE_NAME)
-    .select('*')
-    .eq('module_id', moduleId)
-    .order('updated_at', { ascending: false })
-
-  if (error) {
-    console.error('[deep-learn-store] list_failed', {
-      moduleId,
-      error: serializeErrorForLogging(error),
-    })
-    throw new Error('Could not load Deep Learn notes.')
+export async function listDeepLearnNotesForModule(
+  moduleId: string,
+  dependencies: DeepLearnStoreDependencies = {},
+): Promise<DeepLearnNoteListResult> {
+  const isAuthConfigured = dependencies.isAuthConfigured ?? isSupabaseAuthConfigured
+  if (!isAuthConfigured) {
+    return buildUnavailableDeepLearnNoteListResult('not_configured', null)
   }
 
-  return (data ?? []).map((row) => adaptDeepLearnNoteRow(row as DeepLearnNoteRow))
+  const getAuthContext = dependencies.getAuthContext ?? getAuthenticatedSupabaseServerContext
+  const executeListModuleQuery = dependencies.executeListModuleQuery ?? defaultExecuteListModuleQuery
+  const auth = await getAuthContext()
+  if (!auth) {
+    return buildUnavailableDeepLearnNoteListResult('unauthenticated', null)
+  }
+
+  try {
+    const { data, error } = await executeListModuleQuery(auth, moduleId)
+
+    if (error) {
+      const failure = classifyDeepLearnStoreFailure(error)
+      logDeepLearnStoreFailure('list_failed', {
+        moduleId,
+        userId: auth.user.id,
+        queryIntent: 'list_notes_for_module_learn',
+        authConfigured: isAuthConfigured,
+        failureReason: failure.reason,
+        error,
+      })
+      return buildUnavailableDeepLearnNoteListResult(failure.reason, auth.user.id)
+    }
+
+    return {
+      notes: (data ?? []).map((row) => adaptDeepLearnNoteRow(row as DeepLearnNoteRow)),
+      availability: 'available',
+      reason: 'ok',
+      message: null,
+      userId: auth.user.id,
+    }
+  } catch (error) {
+    const failure = classifyDeepLearnStoreFailure(error)
+    logDeepLearnStoreFailure('list_failed', {
+      moduleId,
+      userId: auth.user.id,
+      queryIntent: 'list_notes_for_module_learn',
+      authConfigured: isAuthConfigured,
+      failureReason: failure.reason,
+      error,
+    })
+    return buildUnavailableDeepLearnNoteListResult(failure.reason, auth.user.id)
+  }
 }
 
-export async function getDeepLearnNoteForResource(moduleId: string, resourceId: string) {
-  const auth = await getAuthenticatedSupabaseServerContext()
-  if (!auth) return null
-
-  const { data, error } = await auth.client
-    .from(TABLE_NAME)
-    .select('*')
-    .eq('module_id', moduleId)
-    .eq('resource_id', resourceId)
-    .maybeSingle()
-
-  if (error) {
-    console.error('[deep-learn-store] load_failed', {
-      moduleId,
-      resourceId,
-      error: serializeErrorForLogging(error),
-    })
-    throw new Error('Could not load the Deep Learn note.')
+export async function getDeepLearnNoteForResource(
+  moduleId: string,
+  resourceId: string,
+  dependencies: DeepLearnStoreDependencies = {},
+): Promise<DeepLearnNoteResult> {
+  const isAuthConfigured = dependencies.isAuthConfigured ?? isSupabaseAuthConfigured
+  if (!isAuthConfigured) {
+    return buildUnavailableDeepLearnNoteResult('not_configured', null)
   }
 
-  return data ? adaptDeepLearnNoteRow(data as DeepLearnNoteRow) : null
+  const getAuthContext = dependencies.getAuthContext ?? getAuthenticatedSupabaseServerContext
+  const executeResourceNoteQuery = dependencies.executeResourceNoteQuery ?? defaultExecuteResourceNoteQuery
+  const auth = await getAuthContext()
+  if (!auth) {
+    return buildUnavailableDeepLearnNoteResult('unauthenticated', null)
+  }
+
+  try {
+    const { data, error } = await executeResourceNoteQuery(auth, moduleId, resourceId)
+
+    if (error) {
+      const failure = classifyDeepLearnStoreFailure(error)
+      logDeepLearnStoreFailure('load_failed', {
+        moduleId,
+        resourceId,
+        userId: auth.user.id,
+        queryIntent: 'load_note_for_resource',
+        authConfigured: isAuthConfigured,
+        failureReason: failure.reason,
+        error,
+      })
+      return buildUnavailableDeepLearnNoteResult(failure.reason, auth.user.id)
+    }
+
+    return {
+      note: data ? adaptDeepLearnNoteRow(data as DeepLearnNoteRow) : null,
+      availability: 'available',
+      reason: 'ok',
+      message: null,
+      userId: auth.user.id,
+    }
+  } catch (error) {
+    const failure = classifyDeepLearnStoreFailure(error)
+    logDeepLearnStoreFailure('load_failed', {
+      moduleId,
+      resourceId,
+      userId: auth.user.id,
+      queryIntent: 'load_note_for_resource',
+      authConfigured: isAuthConfigured,
+      failureReason: failure.reason,
+      error,
+    })
+    return buildUnavailableDeepLearnNoteResult(failure.reason, auth.user.id)
+  }
 }
 
 export async function saveDeepLearnNote(input: {
@@ -150,10 +247,15 @@ export async function saveDeepLearnNote(input: {
     .single()
 
   if (error || !data) {
+    const failure = classifyDeepLearnStoreFailure(error)
     console.error('[deep-learn-store] save_failed', {
       moduleId: input.moduleId,
       resourceId: input.resourceId,
+      userId: auth.user.id,
       status: input.status,
+      tableName: TABLE_NAME,
+      queryIntent: 'save_note',
+      failureReason: failure.reason,
       error: serializeErrorForLogging(error),
     })
     throw new Error('Could not save the Deep Learn note.')
@@ -186,5 +288,112 @@ function adaptDeepLearnNoteRow(row: DeepLearnNoteRow): DeepLearnNote {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     generatedAt: row.generated_at,
+  })
+}
+
+async function defaultExecuteListModuleQuery(auth: AuthenticatedSupabaseServerContext, moduleId: string) {
+  return auth.client
+    .from(TABLE_NAME)
+    .select('*')
+    .eq('module_id', moduleId)
+    .order('updated_at', { ascending: false })
+}
+
+async function defaultExecuteResourceNoteQuery(auth: AuthenticatedSupabaseServerContext, moduleId: string, resourceId: string) {
+  return auth.client
+    .from(TABLE_NAME)
+    .select('*')
+    .eq('module_id', moduleId)
+    .eq('resource_id', resourceId)
+    .maybeSingle()
+}
+
+function buildUnavailableDeepLearnNoteListResult(reason: Exclude<DeepLearnNoteLoadReason, 'ok'>, userId: string | null): DeepLearnNoteListResult {
+  return {
+    notes: [],
+    availability: 'unavailable',
+    reason,
+    message: messageForDeepLearnLoadReason(reason),
+    userId,
+  }
+}
+
+function buildUnavailableDeepLearnNoteResult(reason: Exclude<DeepLearnNoteLoadReason, 'ok'>, userId: string | null): DeepLearnNoteResult {
+  return {
+    note: null,
+    availability: 'unavailable',
+    reason,
+    message: messageForDeepLearnLoadReason(reason),
+    userId,
+  }
+}
+
+function classifyDeepLearnStoreFailure(error: unknown): { reason: Exclude<DeepLearnNoteLoadReason, 'ok' | 'not_configured' | 'unauthenticated'> } {
+  const serialized = serializeErrorForLogging(error)
+  const code = typeof serialized?.code === 'string' ? serialized.code : null
+  const message = typeof serialized?.message === 'string'
+    ? serialized.message.toLowerCase()
+    : ''
+
+  if (code === 'PGRST205' || code === '42P01' || message.includes('could not find the table') || message.includes('relation') && message.includes('does not exist')) {
+    return { reason: 'table_missing' }
+  }
+
+  if (code === 'PGRST204' || code === '42703' || message.includes('column') && message.includes('does not exist')) {
+    return { reason: 'column_missing' }
+  }
+
+  if (code === '42501' || message.includes('permission denied') || message.includes('insufficient privilege')) {
+    return { reason: 'permission_denied' }
+  }
+
+  return { reason: 'query_failed' }
+}
+
+function messageForDeepLearnLoadReason(reason: Exclude<DeepLearnNoteLoadReason, 'ok'>) {
+  if (reason === 'not_configured') {
+    return 'Saved Deep Learn notes are unavailable because Supabase auth is not configured in this environment.'
+  }
+
+  if (reason === 'unauthenticated') {
+    return 'Saved Deep Learn notes are unavailable until you are signed in.'
+  }
+
+  if (reason === 'table_missing') {
+    return 'Saved Deep Learn notes are unavailable because the deep_learn_notes table is missing in this environment.'
+  }
+
+  if (reason === 'column_missing') {
+    return 'Saved Deep Learn notes are unavailable because the database schema is behind the current code.'
+  }
+
+  if (reason === 'permission_denied') {
+    return 'Saved Deep Learn notes are unavailable because this session cannot read them right now.'
+  }
+
+  return 'Saved Deep Learn notes are temporarily unavailable right now.'
+}
+
+function logDeepLearnStoreFailure(
+  event: 'list_failed' | 'load_failed',
+  input: {
+    moduleId: string
+    resourceId?: string
+    userId: string | null
+    queryIntent: string
+    authConfigured: boolean
+    failureReason: Exclude<DeepLearnNoteLoadReason, 'ok' | 'not_configured' | 'unauthenticated'>
+    error: unknown
+  },
+) {
+  console.error(`[deep-learn-store] ${event}`, {
+    tableName: TABLE_NAME,
+    moduleId: input.moduleId,
+    resourceId: input.resourceId ?? null,
+    userId: input.userId,
+    queryIntent: input.queryIntent,
+    authConfigured: input.authConfigured,
+    failureReason: input.failureReason,
+    error: serializeErrorForLogging(input.error),
   })
 }

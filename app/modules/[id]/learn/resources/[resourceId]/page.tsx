@@ -64,7 +64,7 @@ export default async function ResourceDetailPage({ params }: Props) {
     dueDate: linkedTask?.deadline ?? resource.dueDate ?? null,
     resource,
   })
-  const deepLearnNote = await getDeepLearnNoteForResource(module.id, resource.id)
+  const deepLearnNoteResult = await getDeepLearnNoteForResource(module.id, resource.id)
 
   if (resource.kind === 'study_file') {
     return (
@@ -81,7 +81,9 @@ export default async function ResourceDetailPage({ params }: Props) {
             moduleId={module.id}
             courseId={module.courseId ?? null}
             resource={resource}
-            note={deepLearnNote}
+            note={deepLearnNoteResult.note}
+            noteAvailability={deepLearnNoteResult.availability}
+            noteAvailabilityMessage={deepLearnNoteResult.message}
             readerHref={`/modules/${module.id}/learn/resources/${encodeURIComponent(resource.id)}`}
             sourceHref={sourceHref}
           />
@@ -113,7 +115,9 @@ export default async function ResourceDetailPage({ params }: Props) {
           moduleId={module.id}
           courseId={module.courseId ?? null}
           resource={resource}
-          note={deepLearnNote}
+          note={deepLearnNoteResult.note}
+          noteAvailability={deepLearnNoteResult.availability}
+          noteAvailabilityMessage={deepLearnNoteResult.message}
           readerHref={`/modules/${module.id}/learn/resources/${encodeURIComponent(resource.id)}`}
           sourceHref={sourceHref}
         />
