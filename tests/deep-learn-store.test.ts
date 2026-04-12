@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { buildCourseLearnOverview } from '../lib/course-learn-overview'
-import { listDeepLearnNotesForModule } from '../lib/deep-learn-store'
+import { getDeepLearnNoteForResource, listDeepLearnNotesForModule } from '../lib/deep-learn-store'
 import type { ClarityWorkspace } from '../lib/clarity-workspace'
 import type { ModuleWorkspaceData } from '../lib/module-workspace'
 import type { Course, Module } from '../lib/types'
@@ -56,6 +56,64 @@ test('listDeepLearnNotesForModule degrades gracefully when the deep_learn_notes 
   assert.equal(result.reason, 'table_missing')
   assert.equal(result.notes.length, 0)
   assert.match(result.message ?? '', /deep_learn_notes table is missing/i)
+})
+
+test('getDeepLearnNoteForResource returns missing without logging when no note exists yet', async () => {
+  const originalError = console.error
+  const logCalls: unknown[][] = []
+  console.error = (...args: unknown[]) => {
+    logCalls.push(args)
+  }
+
+  try {
+    const result = await getDeepLearnNoteForResource('module-1', 'resource-1', {
+      isAuthConfigured: true,
+      getAuthContext: async () => createAuthContext(),
+      executeResourceNoteQuery: async () => ({
+        data: null,
+        error: null,
+      }),
+    })
+
+    assert.equal(result.availability, 'available')
+    assert.equal(result.reason, 'missing')
+    assert.equal(result.note, null)
+    assert.equal(result.message, null)
+    assert.equal(logCalls.length, 0)
+  } finally {
+    console.error = originalError
+  }
+})
+
+test('getDeepLearnNoteForResource treats no-row query errors as missing instead of load failures', async () => {
+  const originalError = console.error
+  const logCalls: unknown[][] = []
+  console.error = (...args: unknown[]) => {
+    logCalls.push(args)
+  }
+
+  try {
+    const result = await getDeepLearnNoteForResource('module-1', 'resource-1', {
+      isAuthConfigured: true,
+      getAuthContext: async () => createAuthContext(),
+      executeResourceNoteQuery: async () => ({
+        data: null,
+        error: {
+          code: 'PGRST116',
+          message: 'JSON object requested, multiple (or no) rows returned',
+          details: 'Results contain 0 rows, application/vnd.pgrst.object+json requires 1 row',
+          hint: null,
+        },
+      }),
+    })
+
+    assert.equal(result.availability, 'available')
+    assert.equal(result.reason, 'missing')
+    assert.equal(result.note, null)
+    assert.equal(logCalls.length, 0)
+  } finally {
+    console.error = originalError
+  }
 })
 
 test('course learn overview still builds when deep learn note listing is unavailable', async () => {
