@@ -49,7 +49,7 @@ export function LearnResourceCard({
             <span className="ui-chip ui-chip-soft">{capability.capabilityLabel}</span>
             <span className="ui-chip ui-chip-soft">{quality.qualityLabel}</span>
             {unit.resource.extractionStatus && (
-              <span className="ui-chip ui-chip-soft">{labelForExtractionStatus(unit.resource.extractionStatus)}</span>
+              <span className="ui-chip ui-chip-soft">{labelForExtractionStatus(unit.resource.extractionStatus, unit.resource.extractionError, unit.resource)}</span>
             )}
             {unit.resource.required && (
               <span className="ui-chip ui-status-warning" style={{ padding: '0.28rem 0.6rem', fontSize: '11px', fontWeight: 700 }}>Required</span>

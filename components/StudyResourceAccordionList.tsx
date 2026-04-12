@@ -17,6 +17,8 @@ export interface StudyResourceAccordionItem {
   required: boolean
   outlineSections: StudyFileOutlineSection[]
   outlineHint: string | null
+  previewState?: 'full_text_available' | 'preview_only' | 'no_text_available' | null
+  fallbackReason?: string | null
   readerHref: string
   canvasHref: string | null
   originalFileHref?: string | null
@@ -224,10 +226,50 @@ function resolvePresentation(item: StudyResourceAccordionItem) {
   }
 
   if (mode === 'reader_fallback') {
+    if (item.previewState === 'full_text_available') {
+      return {
+        mode,
+        summary: `Full extracted text exists here, but Learn still treats it as limited because the signal is noisy or repetitive enough that it should not act overly confident.`,
+        detail: `Stay Focused has the full extracted text for this resource, but the study layer still scores it as limited evidence rather than clean grounding. Use the reader for the recovered text, then open the original ${sourceLabel} when you need the cleanest read.`,
+      }
+    }
+
+    if (item.previewState === 'preview_only') {
+      return {
+        mode,
+        summary: `Extraction is weak here, and only a stored preview is available in the reader.`,
+        detail: `The extracted text is too thin or noisy to trust as solid study notes, and the stored reader state is preview-only. Open the original ${sourceLabel} for the full read, then use the reader only as a secondary preview.`,
+      }
+    }
+
     return {
       mode,
-      summary: `Extraction is weak here. Use the original ${sourceLabel} for the full read; the reader only keeps a short preview.`,
-      detail: `The extracted text is too thin or noisy to trust as solid study notes. Open the original ${sourceLabel} for the full read, then use the reader only as a secondary preview.`,
+      summary: `Extraction is weak here. Use the original ${sourceLabel} for the full read, and treat the in-app reader as limited evidence only.`,
+      detail: `The extracted text is too thin or noisy to trust as solid study notes. Open the original ${sourceLabel} for the full read, then use the reader only as a secondary aid.`,
+    }
+  }
+
+  if (item.fallbackReason === 'canvas_resolution_required') {
+    return {
+      mode,
+      summary: 'This item still needs authenticated Canvas resolution before Learn can fetch the real target content.',
+      detail: `The stored module item points at an internal Canvas redirect or launch path, but the readable target still has to be resolved before extraction can happen. Open the original ${sourceLabel} in Canvas or reprocess with Canvas credentials.`,
+    }
+  }
+
+  if (item.fallbackReason === 'canvas_fetch_failed') {
+    return {
+      mode,
+      summary: 'Canvas target resolution failed before readable content could be fetched here.',
+      detail: `Stay Focused reached a Canvas-dependent path for this item, but the final fetch failed before a readable body could be stored. Open the original ${sourceLabel} and inspect the stored resolution note if you need the exact failure.`,
+    }
+  }
+
+  if (item.fallbackReason === 'external_link_only') {
+    return {
+      mode,
+      summary: 'This resource stays link-only because it resolves outside Canvas-readable content.',
+      detail: `Learn did not fake extraction for this item because the target is an external link. Open the original ${sourceLabel} instead of relying on the in-app reader.`,
     }
   }
 

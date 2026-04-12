@@ -80,6 +80,19 @@ export interface ModuleSourceResource {
   quality?: ModuleResourceQuality | null
   qualityReason?: string | null
   groundingLevel?: ModuleResourceGroundingLevel | null
+  originalResourceKind?: string | null
+  resolvedTargetType?: string | null
+  sourceUrlCategory?: string | null
+  resolvedUrlCategory?: string | null
+  resolvedUrl?: string | null
+  resolutionState?: string | null
+  fallbackReason?: string | null
+  recommendationStrength?: 'strong' | 'weak' | 'fallback' | null
+  previewState?: 'full_text_available' | 'preview_only' | 'no_text_available' | null
+  fullTextAvailable?: boolean
+  storedTextLength?: number | null
+  storedPreviewLength?: number | null
+  storedWordCount?: number | null
   studyProgressStatus?: StudyFileProgressStatus
   workflowOverride?: ModuleResourceWorkflowOverride
   lastOpenedAt?: string | null
@@ -547,6 +560,7 @@ function buildSourceResources(parsed: ParsedCanvasContent): ModuleSourceResource
 }
 
 function adaptStoredResourceForLearn(resource: ModuleResource): ModuleSourceResource {
+  const metadata = asPlainRecord(resource.metadata)
   const kind = classifyLearnResourceKind({
     title: resource.title,
     sourceType: resource.resourceType,
@@ -559,7 +573,7 @@ function adaptStoredResourceForLearn(resource: ModuleResource): ModuleSourceReso
   const quality = getModuleResourceQualityInfo({
     ...resource,
     metadata: {
-      ...resource.metadata,
+      ...metadata,
       normalizedSourceType: capability.normalizedSourceType,
       capability: capability.capability,
     },
@@ -596,7 +610,30 @@ function adaptStoredResourceForLearn(resource: ModuleResource): ModuleSourceReso
     quality: quality.quality,
     qualityReason: quality.reason,
     groundingLevel: quality.groundingLevel,
+    originalResourceKind: readStringMetadata(metadata.originalResourceKind) ?? resource.resourceType,
+    resolvedTargetType: readStringMetadata(metadata.resolvedTargetType),
+    sourceUrlCategory: readStringMetadata(metadata.sourceUrlCategory),
+    resolvedUrlCategory: readStringMetadata(metadata.resolvedUrlCategory),
+    resolvedUrl: readStringMetadata(metadata.resolvedUrl),
+    resolutionState: readStringMetadata(metadata.resolutionState),
+    fallbackReason: quality.fallbackReason,
+    recommendationStrength: quality.recommendationStrength,
+    previewState: quality.previewState,
+    fullTextAvailable: quality.fullTextAvailable,
+    storedTextLength: quality.storedTextLength,
+    storedPreviewLength: quality.storedPreviewLength,
+    storedWordCount: quality.wordCount,
   }
+}
+
+function readStringMetadata(value: unknown) {
+  return typeof value === 'string' && value.trim() ? value.trim() : null
+}
+
+function asPlainRecord(value: unknown): Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? { ...value as Record<string, unknown> }
+    : {}
 }
 
 function enrichResourceContext(

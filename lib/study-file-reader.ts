@@ -46,13 +46,20 @@ export interface StudyFileReaderModel {
   previewHint: string | null
   transparencyNote: string
   charCount: number
+  wordCount: number
+  previewState: 'full_text_available' | 'preview_only' | 'no_text_available'
+  fullTextAvailable: boolean
+  storedTextLength: number
+  storedPreviewLength: number
+  fallbackReason: string | null
+  recommendationStrength: 'strong' | 'weak' | 'fallback'
 }
 
 export function buildStudyFileReaderModel(resource: ModuleSourceResource): StudyFileReaderModel {
   const quality = getModuleResourceQualityInfo(resource)
   const state = resolveStudyFileReaderState(resource, quality.quality)
   const fileTypeLabel = getStudyFileTypeLabel(resource)
-  const statusLabel = labelForExtractionStatus(resource.extractionStatus, resource.extractionError)
+  const statusLabel = labelForExtractionStatus(resource.extractionStatus, resource.extractionError, resource)
   const normalizedText = quality.normalizedText
   const meaningfulText = quality.meaningfulText || normalizedText
   const charCount = typeof resource.extractedCharCount === 'number' && resource.extractedCharCount > 0
@@ -71,6 +78,13 @@ export function buildStudyFileReaderModel(resource: ModuleSourceResource): Study
     fileTypeLabel,
     statusLabel,
     charCount,
+    wordCount: quality.wordCount,
+    previewState: quality.previewState,
+    fullTextAvailable: quality.fullTextAvailable,
+    storedTextLength: quality.storedTextLength,
+    storedPreviewLength: quality.storedPreviewLength,
+    fallbackReason: quality.fallbackReason,
+    recommendationStrength: quality.recommendationStrength,
   }
 
   if (state === 'extracted' && normalizedText) {
@@ -115,17 +129,24 @@ export function buildStudyFileReaderModel(resource: ModuleSourceResource): Study
       outlineSections: [],
       previewBlocks,
       overviewTitle: 'What this material is about',
-      overviewBody: `Readable ${sourceNoun} text exists in Stay Focused, but it is still too thin or noisy to present as solid study notes. This page keeps the evidence visible without overstating what the extractor recovered.`,
+      overviewBody: quality.previewState === 'full_text_available'
+        ? `Full extracted ${sourceNoun} text is stored in Stay Focused, but the extract is still noisy enough that the app keeps it as limited evidence instead of presenting it as confident study notes.`
+        : `Readable ${sourceNoun} text exists in Stay Focused, but it is still too thin or noisy to present as solid study notes. This page keeps the evidence visible without overstating what the extractor recovered.`,
       keyPointsHint: `Key points are held back because the extracted ${sourceNoun} text is still weak for confident study use.`,
       outlineHint: `Structured study notes are hidden because the extracted ${sourceNoun} text is not strong enough yet.`,
       previewHint: previewBlocks.length > 0
         ? null
         : `The app did recover some source state, but not enough clean text to show a useful preview here.`,
-      transparencyNote: quality.reason,
+      transparencyNote: quality.previewState === 'full_text_available'
+        ? `${quality.reason} Full extracted text is stored, but the reader still treats it as limited because the signal is not clean enough yet.`
+        : quality.reason,
     }
   }
 
   if (state === 'metadata_only') {
+    const resolutionBlocked = quality.fallbackReason === 'canvas_resolution_required'
+    const externalOnly = quality.fallbackReason === 'external_link_only'
+
     return {
       ...baseModel,
       state,
@@ -135,10 +156,16 @@ export function buildStudyFileReaderModel(resource: ModuleSourceResource): Study
       outlineSections: [],
       previewBlocks: [],
       overviewTitle: 'What this material is about',
-      overviewBody: `Only the ${sourceNoun} title, type, and module context are available here right now. The app did not extract readable ${sourceNoun} text for this item, so it is not pretending to summarize it.`,
+      overviewBody: resolutionBlocked
+        ? `This ${sourceNoun} still needs authenticated Canvas target resolution before Stay Focused can fetch the real content. The app keeps the module context visible without pretending it already read the underlying material.`
+        : externalOnly
+          ? `This ${sourceNoun} resolves outside Canvas-readable content, so Stay Focused keeps it link-only instead of pretending it extracted a body.`
+          : `Only the ${sourceNoun} title, type, and module context are available here right now. The app did not extract readable ${sourceNoun} text for this item, so it is not pretending to summarize it.`,
       keyPointsHint: `Key points stay hidden until the reader has real extracted ${sourceNoun} text to work from.`,
       outlineHint: `Study notes stay hidden until Learn has real extracted ${sourceNoun} text to structure.`,
-      previewHint: `Open the original ${canvasSourceLabel.toLowerCase()} in Canvas if you want the full source material right away.`,
+      previewHint: resolutionBlocked
+        ? `Open the original ${canvasSourceLabel.toLowerCase()} in Canvas or reprocess with Canvas API credentials if you want the real target fetched into Learn.`
+        : `Open the original ${canvasSourceLabel.toLowerCase()} in Canvas if you want the full source material right away.`,
       transparencyNote: capability.reason,
     }
   }
@@ -190,12 +217,25 @@ export function getStudyFileTypeLabel(resource: Pick<ModuleSourceResource, 'type
   return getStudySourceTypeLabel(resource)
 }
 
-export function labelForExtractionStatus(status?: ModuleResourceExtractionStatus, extractionError?: string | null) {
+export function labelForExtractionStatus(
+  status?: ModuleResourceExtractionStatus,
+  extractionError?: string | null,
+  resource?: Pick<ModuleSourceResource, 'fallbackReason' | 'previewState'> | null,
+) {
   const note = extractionError?.trim().toLowerCase() ?? ''
+  const fallbackReason = resource?.fallbackReason?.trim().toLowerCase() ?? ''
+  const previewState = resource?.previewState?.trim().toLowerCase() ?? ''
 
+  if (fallbackReason === 'canvas_resolution_required') return 'Canvas resolution required'
+  if (fallbackReason === 'canvas_fetch_failed') return 'Canvas fetch failed'
   if (note.includes('attachments rather than the body')) return 'Attachment-only text'
+  if (fallbackReason === 'attachment_only') return 'Attachment-only text'
   if (note.includes('external link')) return 'External link only'
+  if (fallbackReason === 'external_link_only') return 'External link only'
   if (note.includes('cannot read this') || note.includes('unsupported file type')) return 'Unsupported file type'
+  if (fallbackReason === 'unsupported_file_type') return 'Unsupported file type'
+  if (fallbackReason === 'no_text_in_file') return 'No text in file'
+  if (previewState === 'preview_only') return 'Preview only'
   if (note.includes('no readable text') || note.includes('no usable text')) return 'No readable text found'
   if (status === 'pending') return 'Loading'
   if (!status) return 'Not available'

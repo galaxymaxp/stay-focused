@@ -26,6 +26,13 @@ export interface ModuleResourceQualityInfo {
   noiseLineCount: number
   repeatedLineCount: number
   signalRatio: number
+  storedTextLength: number
+  storedPreviewLength: number
+  wordCount: number
+  previewState: 'full_text_available' | 'preview_only' | 'no_text_available'
+  fullTextAvailable: boolean
+  fallbackReason: string | null
+  recommendationStrength: 'strong' | 'weak' | 'fallback'
   reason: string
 }
 
@@ -37,6 +44,7 @@ export function getModuleResourceQualityInfo(resource: ModuleResourceQualityLike
   const capability = getModuleResourceCapabilityInfo(resource)
   const normalizedText = normalizeModuleResourceStudyText(resource.extractedText ?? resource.extractedTextPreview ?? '')
   const lines = normalizedText.split('\n').map((line) => line.trim()).filter(Boolean)
+  const baseMetadata = asPlainRecord(resource.metadata)
   const repeatedLineCount = countRepeatedLines(lines)
   const noiseLines = lines.filter((line) => looksLikeNoiseLine(line))
   const meaningfulLines = lines.filter((line) => !looksLikeNoiseLine(line) && isMeaningfulLine(line))
@@ -50,6 +58,18 @@ export function getModuleResourceQualityInfo(resource: ModuleResourceQualityLike
   const meaningfulCharCount = meaningfulText.length
   const signalRatio = totalCharCount > 0 ? meaningfulCharCount / totalCharCount : 0
   const likelyScanned = SCANNED_NOTE_PATTERN.test(resource.extractionError ?? '')
+  const storedTextLength = typeof resource.extractedText === 'string'
+    ? resource.extractedText.trim().length
+    : 0
+  const storedPreviewLength = typeof resource.extractedTextPreview === 'string'
+    ? resource.extractedTextPreview.trim().length
+    : 0
+  const previewState = storedTextLength > 0
+    ? 'full_text_available' as const
+    : storedPreviewLength > 0
+      ? 'preview_only' as const
+      : 'no_text_available' as const
+  const fallbackReason = normalizeFallbackReason(baseMetadata)
 
   const quality = resolveModuleResourceQuality({
     capability,
@@ -61,7 +81,10 @@ export function getModuleResourceQualityInfo(resource: ModuleResourceQualityLike
     repeatedLineCount,
     noiseLineCount: noiseLines.length,
     likelyScanned,
+    previewState,
   })
+  const recommendationStrength = normalizeRecommendationStrength(baseMetadata.recommendationStrength)
+    ?? resolveRecommendationStrength(capability.capability, quality)
   const groundingLevel = resolveGroundingLevel(quality)
 
   return {
@@ -83,6 +106,13 @@ export function getModuleResourceQualityInfo(resource: ModuleResourceQualityLike
     noiseLineCount: noiseLines.length,
     repeatedLineCount,
     signalRatio,
+    storedTextLength,
+    storedPreviewLength,
+    wordCount: countWords(normalizedText),
+    previewState,
+    fullTextAvailable: previewState === 'full_text_available',
+    fallbackReason,
+    recommendationStrength,
     reason: buildQualityReason({
       resource,
       capability,
@@ -95,6 +125,8 @@ export function getModuleResourceQualityInfo(resource: ModuleResourceQualityLike
       repeatedLineCount,
       noiseLineCount: noiseLines.length,
       likelyScanned,
+      previewState,
+      fallbackReason,
     }),
   }
 }
@@ -131,6 +163,12 @@ export function buildModuleResourceAssessmentMetadata(
     qualitySentenceCount: quality.sentenceCount,
     qualityNoiseLineCount: quality.noiseLineCount,
     qualityRepeatedLineCount: quality.repeatedLineCount,
+    fallbackReason: quality.fallbackReason,
+    previewState: quality.previewState,
+    fullTextAvailable: quality.fullTextAvailable,
+    storedTextLength: quality.storedTextLength,
+    storedPreviewLength: quality.storedPreviewLength,
+    storedWordCount: quality.wordCount,
   }
 }
 
@@ -189,6 +227,7 @@ function resolveModuleResourceQuality(input: {
   repeatedLineCount: number
   noiseLineCount: number
   likelyScanned: boolean
+  previewState: 'full_text_available' | 'preview_only' | 'no_text_available'
 }): ModuleResourceQuality {
   if (input.capability.capability === 'failed') return 'failed'
   if (input.capability.capability === 'unsupported') return 'unsupported'
@@ -210,12 +249,23 @@ function resolveModuleResourceQuality(input: {
     return 'strong'
   }
 
+  const relaxedUsableForLongStructuredExtract = input.previewState === 'full_text_available'
+    && input.meaningfulCharCount >= 1200
+    && input.meaningfulBlockCount >= 2
+    && input.sentenceCount >= 6
+    && input.signalRatio >= 0.3
+    && input.repeatedLineCount <= 20
+    && input.noiseLineCount <= 8
+
   if (
-    input.meaningfulCharCount >= 280
-    && input.meaningfulBlockCount >= 1
-    && input.sentenceCount >= 2
-    && input.signalRatio >= 0.28
-    && input.repeatedLineCount <= 8
+    relaxedUsableForLongStructuredExtract
+    || (
+      input.meaningfulCharCount >= 280
+      && input.meaningfulBlockCount >= 1
+      && input.sentenceCount >= 2
+      && input.signalRatio >= 0.28
+      && input.repeatedLineCount <= 8
+    )
   ) {
     return 'usable'
   }
@@ -241,12 +291,30 @@ function buildQualityReason(input: {
   repeatedLineCount: number
   noiseLineCount: number
   likelyScanned: boolean
+  previewState: 'full_text_available' | 'preview_only' | 'no_text_available'
+  fallbackReason: string | null
 }) {
   if (input.quality === 'failed' || input.quality === 'unsupported') {
     return input.capability.reason
   }
 
   if (input.quality === 'empty') {
+    if (input.fallbackReason === 'canvas_resolution_required') {
+      return 'This resource still needs authenticated Canvas target resolution before Stay Focused can fetch the real study content.'
+    }
+
+    if (input.fallbackReason === 'canvas_fetch_failed') {
+      return 'Canvas resolution failed before readable text could be fetched from the real target.'
+    }
+
+    if (input.fallbackReason === 'external_link_only') {
+      return 'This resource is still link-only because it resolves outside Canvas-readable content.'
+    }
+
+    if (input.fallbackReason === 'no_text_in_file') {
+      return 'The file was fetched, but no readable text surfaced from the file body.'
+    }
+
     if (input.likelyScanned) {
       return 'The extractor found little or no usable text, and the stored note still looks scanned or image-based.'
     }
@@ -259,6 +327,10 @@ function buildQualityReason(input: {
   }
 
   if (input.quality === 'weak') {
+    if (input.previewState === 'full_text_available' && input.meaningfulCharCount >= 600) {
+      return 'Full extracted text is stored for this resource, but the signal is still noisy enough that Learn keeps it as limited evidence instead of strong study grounding.'
+    }
+
     if (input.meaningfulCharCount < 220) {
       return `Readable text exists, but it is still too thin for confident study grounding (${input.meaningfulCharCount.toLocaleString()} meaningful characters).`
     }
@@ -351,6 +423,21 @@ function resolveRecommendationStrength(
   if (quality === 'strong' || quality === 'usable') return 'strong'
   if (capability === 'unsupported' || capability === 'failed') return 'fallback'
   return 'weak'
+}
+
+function countWords(value: string) {
+  return value.split(/\s+/).filter(Boolean).length
+}
+
+function normalizeFallbackReason(metadata: Record<string, unknown>) {
+  const value = metadata.fallbackReason ?? metadata.fallbackState
+  return typeof value === 'string' && value.trim() ? value.trim() : null
+}
+
+function normalizeRecommendationStrength(value: unknown): 'strong' | 'weak' | 'fallback' | null {
+  return value === 'strong' || value === 'weak' || value === 'fallback'
+    ? value
+    : null
 }
 
 function asPlainRecord(value: unknown): Record<string, unknown> {

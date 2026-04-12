@@ -62,8 +62,14 @@ export function StudyFileReader({
   const isSourceFirstReader = reader.state === 'metadata_only' || reader.state === 'empty' || reader.state === 'failed'
   const sourceLabel = originalFileHref ? 'original file' : 'original source'
   const sourceFirstCopy = isWeakReader
-    ? `Extraction is weak here. Use the ${sourceLabel} for the full read and treat the in-app preview as secondary only.`
-    : `Learn did not recover enough usable text to build a trustworthy reading view here. Open the ${sourceLabel} instead.`
+    ? resource.previewState === 'full_text_available'
+      ? 'Full extracted text is stored here, but the signal is still noisy enough that Learn treats it as limited evidence instead of confident study notes.'
+      : `Extraction is weak here. Use the ${sourceLabel} for the full read and treat the in-app reader as secondary only.`
+    : resource.fallbackReason === 'canvas_resolution_required'
+      ? `This item still needs authenticated Canvas resolution before Learn can fetch the real target content. Open the ${sourceLabel} or reprocess with Canvas credentials.`
+      : resource.fallbackReason === 'canvas_fetch_failed'
+        ? `Canvas target resolution failed before readable content could be fetched here. Open the ${sourceLabel} and inspect the stored resolution note.`
+        : `Learn did not recover enough usable text to build a trustworthy reading view here. Open the ${sourceLabel} instead.`
 
   return (
     <section className="motion-card motion-delay-1 section-shell section-shell-elevated" style={{ padding: '1.35rem 1.45rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -254,6 +260,9 @@ export function StudyFileReader({
           <ReaderMetaCard label="Grounding" value={reader.groundingLabel} />
           <ReaderMetaCard label="Extraction status" value={reader.statusLabel} />
           <ReaderMetaCard label="Readable characters" value={reader.charCount > 0 ? reader.charCount.toLocaleString() : 'Not available'} />
+          <ReaderMetaCard label="Word count" value={reader.wordCount > 0 ? reader.wordCount.toLocaleString() : 'Not available'} />
+          <ReaderMetaCard label="Preview state" value={formatPreviewState(resource.previewState)} />
+          <ReaderMetaCard label="Recommendation" value={formatRecommendationStrength(resource.recommendationStrength)} />
           <ReaderMetaCard label="Canvas source" value={canvasHref ? `Direct ${sourceNoun} link available` : 'No direct Canvas link stored'} />
         </div>
 
@@ -263,13 +272,21 @@ export function StudyFileReader({
           </p>
         </div>
 
-        {(resource.extractionError || linkedTask) && (
+        {(resource.extractionError || resource.fallbackReason || linkedTask) && (
           <div style={{ display: 'grid', gridTemplateColumns: linkedTask ? 'minmax(0, 1fr) minmax(240px, 0.8fr)' : 'minmax(0, 1fr)', gap: '0.8rem', marginTop: '0.85rem' }}>
             {resource.extractionError && (
               <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.9rem 1rem' }}>
                 <p className="ui-kicker">Stored extraction note</p>
                 <p style={{ margin: '0.45rem 0 0', fontSize: '13px', lineHeight: 1.68, color: 'var(--text-secondary)' }}>
                   {resource.extractionError}
+                </p>
+              </div>
+            )}
+            {resource.fallbackReason && (
+              <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.9rem 1rem' }}>
+                <p className="ui-kicker">Fallback reason</p>
+                <p style={{ margin: '0.45rem 0 0', fontSize: '13px', lineHeight: 1.68, color: 'var(--text-secondary)' }}>
+                  {resource.fallbackReason}
                 </p>
               </div>
             )}
@@ -368,4 +385,17 @@ function formatDate(value: string) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
   return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' }).format(date)
+}
+
+function formatPreviewState(value: ModuleSourceResource['previewState']) {
+  if (value === 'full_text_available') return 'Full text stored'
+  if (value === 'preview_only') return 'Preview only'
+  return 'No text stored'
+}
+
+function formatRecommendationStrength(value: ModuleSourceResource['recommendationStrength']) {
+  if (value === 'strong') return 'Strong'
+  if (value === 'weak') return 'Weak'
+  if (value === 'fallback') return 'Fallback'
+  return 'Not set'
 }
