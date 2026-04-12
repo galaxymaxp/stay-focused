@@ -1,7 +1,8 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { buildLearnExperience, extractCourseName, getModuleWorkspace } from '@/lib/module-workspace'
+import { getAuthenticatedUserServer } from '@/lib/auth-server'
+import { buildLearnExperience, extractCourseName, getModuleWorkspace, resolveLearnResourceSelection } from '@/lib/module-workspace'
 import { generateDeepLearnNoteForResource } from '@/lib/deep-learn-generation'
 import { DEEP_LEARN_PROMPT_VERSION, buildDeepLearnNoteBody, computeDeepLearnQuizReady } from '@/lib/deep-learn'
 import { saveDeepLearnNote } from '@/lib/deep-learn-store'
@@ -12,14 +13,25 @@ export async function generateDeepLearnNoteAction(input: {
   resourceId: string
   courseId?: string | null
 }) {
+  const user = await getAuthenticatedUserServer()
+  console.info('[deep-learn-action] generate_requested', {
+    moduleId: input.moduleId,
+    resourceId: input.resourceId,
+    userId: user?.id ?? null,
+    queryIntent: 'generate_note_for_resource_detail_or_learn_card',
+    lookupMode: 'app_resource_id_first',
+  })
+
   const workspace = await getModuleWorkspace(input.moduleId)
   if (!workspace) {
+    console.error('[deep-learn-action] module_lookup_failed', {
+      moduleId: input.moduleId,
+      resourceId: input.resourceId,
+      userId: user?.id ?? null,
+      queryIntent: 'generate_note_for_resource_detail_or_learn_card',
+      failureReason: 'module_not_available',
+    })
     throw new Error('The module could not be loaded for Deep Learn.')
-  }
-
-  const storedResource = workspace.resources.find((resource) => resource.id === input.resourceId)
-  if (!storedResource) {
-    throw new Error('The selected resource could not be found.')
   }
 
   const courseName = extractCourseName(workspace.module.raw_content)
@@ -29,18 +41,55 @@ export async function generateDeepLearnNoteAction(input: {
     resources: workspace.resources,
     resourceStudyStates: workspace.resourceStudyStates,
   })
-  const resource = experience.resources.find((entry) => entry.id === input.resourceId)
+  const selection = resolveLearnResourceSelection(experience, workspace.resources, input.resourceId)
 
-  if (!resource) {
+  if (!selection) {
+    console.error('[deep-learn-action] resource_lookup_failed', {
+      moduleId: input.moduleId,
+      resourceId: input.resourceId,
+      userId: user?.id ?? null,
+      queryIntent: 'generate_note_for_resource_detail_or_learn_card',
+      lookupMode: 'not_found_in_learn_experience',
+      failureReason: 'resource_missing',
+    })
     throw new Error('The selected study resource is not available in Learn.')
   }
+
+  const {
+    resource,
+    storedResource,
+    canonicalResourceId,
+    matchedBy,
+  } = selection
+
+  if (!storedResource || !canonicalResourceId) {
+    console.error('[deep-learn-action] resource_lookup_failed', {
+      moduleId: input.moduleId,
+      resourceId: input.resourceId,
+      userId: user?.id ?? null,
+      resolvedResourceId: null,
+      queryIntent: 'generate_note_for_resource_detail_or_learn_card',
+      lookupMode: matchedBy,
+      failureReason: 'stored_resource_missing',
+    })
+    throw new Error('This resource is visible in Learn, but its synced resource record is not ready for Deep Learn yet.')
+  }
+
+  console.info('[deep-learn-action] resource_resolved', {
+    moduleId: input.moduleId,
+    resourceId: input.resourceId,
+    resolvedResourceId: canonicalResourceId,
+    userId: user?.id ?? null,
+    queryIntent: 'generate_note_for_resource_detail_or_learn_card',
+    lookupMode: matchedBy,
+  })
 
   const linkedTask = workspace.tasks.find((task) => matchesByTitle(task.title, resource.title)) ?? null
 
   await saveDeepLearnNote({
     moduleId: workspace.module.id,
     courseId: workspace.module.courseId ?? input.courseId ?? null,
-    resourceId: resource.id,
+    resourceId: canonicalResourceId,
     status: 'pending',
     title: resource.title,
     overview: 'Deep Learn is preparing the study note.',
@@ -93,7 +142,7 @@ export async function generateDeepLearnNoteAction(input: {
     const note = await saveDeepLearnNote({
       moduleId: workspace.module.id,
       courseId: workspace.module.courseId ?? input.courseId ?? null,
-      resourceId: resource.id,
+      resourceId: canonicalResourceId,
       status: 'ready',
       title: generated.content.title,
       overview: generated.content.overview,
@@ -111,12 +160,17 @@ export async function generateDeepLearnNoteAction(input: {
       generatedAt: new Date().toISOString(),
     })
 
-    revalidateDeepLearnPaths(workspace.module.id, workspace.module.courseId ?? input.courseId ?? null, resource.id)
+    revalidateDeepLearnPaths(
+      workspace.module.id,
+      workspace.module.courseId ?? input.courseId ?? null,
+      canonicalResourceId,
+      input.resourceId,
+    )
 
     return {
       status: note.status,
       moduleId: workspace.module.id,
-      resourceId: resource.id,
+      resourceId: canonicalResourceId,
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Deep Learn generation failed.'
@@ -124,7 +178,7 @@ export async function generateDeepLearnNoteAction(input: {
     await saveDeepLearnNote({
       moduleId: workspace.module.id,
       courseId: workspace.module.courseId ?? input.courseId ?? null,
-      resourceId: resource.id,
+      resourceId: canonicalResourceId,
       status: 'failed',
       title: resource.title,
       overview: 'Deep Learn could not build a trustworthy note from the current source evidence.',
@@ -150,18 +204,23 @@ export async function generateDeepLearnNoteAction(input: {
       generatedAt: null,
     })
 
-    revalidateDeepLearnPaths(workspace.module.id, workspace.module.courseId ?? input.courseId ?? null, resource.id)
+    revalidateDeepLearnPaths(
+      workspace.module.id,
+      workspace.module.courseId ?? input.courseId ?? null,
+      canonicalResourceId,
+      input.resourceId,
+    )
 
     return {
       status: 'failed' as const,
       moduleId: workspace.module.id,
-      resourceId: resource.id,
+      resourceId: canonicalResourceId,
       error: message,
     }
   }
 }
 
-function revalidateDeepLearnPaths(moduleId: string, courseId: string | null, resourceId: string) {
+function revalidateDeepLearnPaths(moduleId: string, courseId: string | null, resourceId: string, detailResourceId = resourceId) {
   revalidatePath('/learn')
   revalidatePath('/courses')
   if (courseId) {
@@ -172,6 +231,9 @@ function revalidateDeepLearnPaths(moduleId: string, courseId: string | null, res
   revalidatePath(`/modules/${moduleId}/quiz`)
   revalidatePath(`/modules/${moduleId}/learn/notes/${encodeURIComponent(resourceId)}`)
   revalidatePath(`/modules/${moduleId}/learn/resources/${encodeURIComponent(resourceId)}`)
+  if (detailResourceId !== resourceId) {
+    revalidatePath(`/modules/${moduleId}/learn/resources/${encodeURIComponent(detailResourceId)}`)
+  }
 }
 
 function matchesByTitle(left: string, right: string) {

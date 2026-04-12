@@ -124,6 +124,21 @@ export interface LearnExperience {
   audit: LearnAudit
 }
 
+export type LearnResourceSelectionMatchStrategy =
+  | 'resource_id'
+  | 'parsed_exact_match'
+  | 'parsed_compatible_match'
+  | 'parsed_title_type_match'
+  | 'parsed_title_match'
+  | 'no_stored_match'
+
+export interface LearnResourceSelection {
+  resource: ModuleSourceResource
+  storedResource: ModuleResource | null
+  canonicalResourceId: string | null
+  matchedBy: LearnResourceSelectionMatchStrategy
+}
+
 export interface RecommendedStepTarget {
   id: string
   label: string
@@ -1033,6 +1048,55 @@ function getParsedResourceMatchKey(resource: ModuleSourceResource) {
   return `${moduleName}::${sourceType}::${title}::${resource.required ? 'required' : 'optional'}`
 }
 
+function buildLearnResourceSelection(
+  resource: ModuleSourceResource,
+  storedResource: ModuleResource | null,
+  matchedBy: Exclude<LearnResourceSelectionMatchStrategy, 'no_stored_match'>,
+): LearnResourceSelection {
+  return {
+    resource,
+    storedResource,
+    canonicalResourceId: storedResource?.id ?? null,
+    matchedBy,
+  }
+}
+
+function findUniqueStoredResourceMatchByTitleAndType(
+  parsedResource: ModuleSourceResource,
+  storedResources: ModuleSourceResource[],
+) {
+  const normalizedTitle = normalizeLookup(parsedResource.originalTitle ?? parsedResource.title)
+  const normalizedType = normalizeLookup(parsedResource.type)
+  if (!normalizedTitle || !normalizedType) {
+    return null
+  }
+
+  const candidates = storedResources.filter((storedResource) => (
+    storedResource.category === 'resource'
+    && normalizeLookup(storedResource.originalTitle ?? storedResource.title) === normalizedTitle
+    && normalizeLookup(storedResource.type) === normalizedType
+  ))
+
+  return candidates.length === 1 ? candidates[0] : null
+}
+
+function findUniqueStoredResourceMatchByTitle(
+  parsedResource: ModuleSourceResource,
+  storedResources: ModuleSourceResource[],
+) {
+  const normalizedTitle = normalizeLookup(parsedResource.originalTitle ?? parsedResource.title)
+  if (!normalizedTitle) {
+    return null
+  }
+
+  const candidates = storedResources.filter((storedResource) => (
+    storedResource.category === 'resource'
+    && normalizeLookup(storedResource.originalTitle ?? storedResource.title) === normalizedTitle
+  ))
+
+  return candidates.length === 1 ? candidates[0] : null
+}
+
 export function getLearnResourceHref(moduleId: string, resourceId: string) {
   return `/modules/${moduleId}/learn/resources/${encodeURIComponent(resourceId)}`
 }
@@ -1285,6 +1349,65 @@ export function findDoResourceById(experience: LearnExperience, resourceId: stri
     ?? experience.supportItems.find((item) => item.id === resourceId)
     ?? experience.resources.find((item) => item.id === resourceId)
     ?? null
+}
+
+export function resolveLearnResourceSelection(
+  experience: LearnExperience,
+  storedResources: ModuleResource[],
+  resourceId: string,
+): LearnResourceSelection | null {
+  const resource = findLearnUnitByResourceId(experience, resourceId)?.resource ?? findDoResourceById(experience, resourceId)
+  if (!resource) {
+    return null
+  }
+
+  const directStoredResource = storedResources.find((entry) => entry.id === resourceId) ?? null
+  if (directStoredResource) {
+    return {
+      resource,
+      storedResource: directStoredResource,
+      canonicalResourceId: directStoredResource.id,
+      matchedBy: 'resource_id',
+    }
+  }
+
+  if (resource.category !== 'resource') {
+    return {
+      resource,
+      storedResource: null,
+      canonicalResourceId: null,
+      matchedBy: 'no_stored_match',
+    }
+  }
+
+  const storedLearnResources = storedResources.map(adaptStoredResourceForLearn)
+  const storedResourceById = new Map(storedResources.map((entry) => [entry.id, entry]))
+  const exactMatch = findStoredResourceMatch(resource, storedLearnResources, new Set<string>(), 'exact')
+  if (exactMatch) {
+    return buildLearnResourceSelection(resource, storedResourceById.get(exactMatch.id) ?? null, 'parsed_exact_match')
+  }
+
+  const compatibleMatch = findStoredResourceMatch(resource, storedLearnResources, new Set<string>(), 'compatible')
+  if (compatibleMatch) {
+    return buildLearnResourceSelection(resource, storedResourceById.get(compatibleMatch.id) ?? null, 'parsed_compatible_match')
+  }
+
+  const titleTypeMatch = findUniqueStoredResourceMatchByTitleAndType(resource, storedLearnResources)
+  if (titleTypeMatch) {
+    return buildLearnResourceSelection(resource, storedResourceById.get(titleTypeMatch.id) ?? null, 'parsed_title_type_match')
+  }
+
+  const titleMatch = findUniqueStoredResourceMatchByTitle(resource, storedLearnResources)
+  if (titleMatch) {
+    return buildLearnResourceSelection(resource, storedResourceById.get(titleMatch.id) ?? null, 'parsed_title_match')
+  }
+
+  return {
+    resource,
+    storedResource: null,
+    canonicalResourceId: null,
+    matchedBy: 'no_stored_match',
+  }
 }
 
 export function matchTaskToResource(taskTitle: string, resources: ModuleSourceResource[]) {

@@ -9,6 +9,7 @@ export function DeepLearnNoteView({
   moduleId,
   courseId,
   resource,
+  deepLearnResourceId = resource.id,
   note,
   noteAvailability = 'available',
   noteAvailabilityMessage = null,
@@ -18,17 +19,23 @@ export function DeepLearnNoteView({
   moduleId: string
   courseId: string | null
   resource: ModuleSourceResource
+  deepLearnResourceId?: string | null
   note: DeepLearnNote | null
   noteAvailability?: DeepLearnNoteLoadAvailability
   noteAvailabilityMessage?: string | null
   readerHref: string
   sourceHref: string | null
 }) {
-  const ui = getDeepLearnResourceUiState(moduleId, resource.id, note, {
-    notesAvailability: noteAvailability,
-    unavailableMessage: noteAvailabilityMessage,
+  const resolvedDeepLearnResourceId = deepLearnResourceId ?? resource.id
+  const effectiveAvailability = deepLearnResourceId ? noteAvailability : 'unavailable'
+  const effectiveAvailabilityMessage = deepLearnResourceId
+    ? noteAvailabilityMessage
+    : noteAvailabilityMessage ?? 'Deep Learn needs a synced resource record for this item before it can save notes.'
+  const ui = getDeepLearnResourceUiState(moduleId, resolvedDeepLearnResourceId, note, {
+    notesAvailability: effectiveAvailability,
+    unavailableMessage: effectiveAvailabilityMessage,
   })
-  const quizHref = buildModuleQuizHref(moduleId, { resourceId: resource.id })
+  const quizHref = buildModuleQuizHref(moduleId, { resourceId: resolvedDeepLearnResourceId })
 
   return (
     <section className="motion-card motion-delay-1 section-shell section-shell-elevated" style={{ padding: '1.35rem 1.45rem', display: 'grid', gap: '1rem' }}>
@@ -54,7 +61,7 @@ export function DeepLearnNoteView({
           ) : (
             <DeepLearnGenerateButton
               moduleId={moduleId}
-              resourceId={resource.id}
+              resourceId={resolvedDeepLearnResourceId}
               courseId={courseId}
               label={ui.primaryLabel}
               className="ui-button ui-button-secondary ui-button-xs"
@@ -184,9 +191,9 @@ export function DeepLearnNoteView({
           <p style={{ margin: 0, fontSize: '15px', lineHeight: 1.76, color: 'var(--text-secondary)' }}>
             {ui.summary}
           </p>
-          {ui.status === 'unavailable' && noteAvailabilityMessage && (
+          {ui.status === 'unavailable' && effectiveAvailabilityMessage && (
             <p style={{ margin: '0.6rem 0 0', fontSize: '13px', lineHeight: 1.62, color: 'var(--text-secondary)' }}>
-              {noteAvailabilityMessage}
+              {effectiveAvailabilityMessage}
             </p>
           )}
           {note?.errorMessage && (

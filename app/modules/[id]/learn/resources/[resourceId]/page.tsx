@@ -21,6 +21,7 @@ import {
   getResourceGrounding,
   getResourceCanvasHref,
   getResourceOriginalFileHref,
+  resolveLearnResourceSelection,
 } from '@/lib/module-workspace'
 
 interface Props {
@@ -41,7 +42,8 @@ export default async function ResourceDetailPage({ params }: Props) {
     resourceStudyStates,
   })
   const unit = findLearnUnitByResourceId(experience, resourceId)
-  const resource = unit?.resource ?? findDoResourceById(experience, resourceId)
+  const resourceSelection = resolveLearnResourceSelection(experience, storedResources, resourceId)
+  const resource = resourceSelection?.resource ?? unit?.resource ?? findDoResourceById(experience, resourceId)
 
   if (!resource) notFound()
 
@@ -64,7 +66,19 @@ export default async function ResourceDetailPage({ params }: Props) {
     dueDate: linkedTask?.deadline ?? resource.dueDate ?? null,
     resource,
   })
-  const deepLearnNoteResult = await getDeepLearnNoteForResource(module.id, resource.id)
+  const deepLearnResourceId = resourceSelection?.canonicalResourceId ?? null
+  const deepLearnNoteResult = deepLearnResourceId
+    ? await getDeepLearnNoteForResource(module.id, deepLearnResourceId)
+    : {
+        note: null,
+        availability: 'available' as const,
+        reason: 'missing' as const,
+        message: null,
+        userId: null,
+      }
+  const deepLearnAvailabilityMessage = deepLearnResourceId
+    ? deepLearnNoteResult.message
+    : 'Deep Learn needs a synced resource record for this item before it can save notes or generate a quiz-ready note.'
 
   if (resource.kind === 'study_file') {
     return (
@@ -81,9 +95,10 @@ export default async function ResourceDetailPage({ params }: Props) {
             moduleId={module.id}
             courseId={module.courseId ?? null}
             resource={resource}
+            deepLearnResourceId={deepLearnResourceId}
             note={deepLearnNoteResult.note}
             noteAvailability={deepLearnNoteResult.availability}
-            noteAvailabilityMessage={deepLearnNoteResult.message}
+            noteAvailabilityMessage={deepLearnAvailabilityMessage}
             readerHref={`/modules/${module.id}/learn/resources/${encodeURIComponent(resource.id)}`}
             sourceHref={sourceHref}
           />
@@ -115,9 +130,10 @@ export default async function ResourceDetailPage({ params }: Props) {
           moduleId={module.id}
           courseId={module.courseId ?? null}
           resource={resource}
+          deepLearnResourceId={deepLearnResourceId}
           note={deepLearnNoteResult.note}
           noteAvailability={deepLearnNoteResult.availability}
-          noteAvailabilityMessage={deepLearnNoteResult.message}
+          noteAvailabilityMessage={deepLearnAvailabilityMessage}
           readerHref={`/modules/${module.id}/learn/resources/${encodeURIComponent(resource.id)}`}
           sourceHref={sourceHref}
         />
