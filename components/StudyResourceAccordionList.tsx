@@ -83,12 +83,13 @@ export function StudyResourceAccordionList({
     <div style={{ display: 'grid', gap: '0.75rem' }}>
       {items.map((item, index) => {
         const expanded = resolvedOpenResourceId === item.id
+        const sourceHref = item.originalFileHref ?? item.canvasHref
+        const showSourceAsPrimary = item.primaryAction === 'source' && Boolean(sourceHref)
         const presentationMode: StudyResourcePresentationMode = item.statusKey === 'ready'
           ? 'notes_first'
-          : item.statusKey === 'partial'
-            ? 'reader_fallback'
-            : 'source_first'
-        const sourceHref = item.originalFileHref ?? item.canvasHref
+          : showSourceAsPrimary
+            ? 'source_first'
+            : 'reader_fallback'
 
         return (
           <article
@@ -172,7 +173,7 @@ export function StudyResourceAccordionList({
                 )}
 
                 <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-                  {item.primaryAction === 'source' && sourceHref ? (
+                  {showSourceAsPrimary ? (
                     <>
                       <a href={sourceHref} target="_blank" rel="noreferrer" className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
                         {item.sourceActionLabel}
@@ -186,7 +187,7 @@ export function StudyResourceAccordionList({
                       Open reader
                     </Link>
                   )}
-                  {item.primaryAction !== 'source' && sourceHref && (
+                  {!showSourceAsPrimary && sourceHref && (
                     <a href={sourceHref} target="_blank" rel="noreferrer" className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
                       {item.sourceActionLabel}
                     </a>

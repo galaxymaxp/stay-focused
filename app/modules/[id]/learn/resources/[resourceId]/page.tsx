@@ -18,6 +18,7 @@ import {
   getModuleWorkspace,
   getResourceGrounding,
   getResourceCanvasHref,
+  getResourceOriginalFileHref,
 } from '@/lib/module-workspace'
 
 interface Props {
@@ -43,9 +44,13 @@ export default async function ResourceDetailPage({ params }: Props) {
   if (!resource) notFound()
 
   const canvasHref = getResourceCanvasHref(resource)
+  const originalFileHref = getResourceOriginalFileHref(resource)
   const uiState = getLearnResourceUiState(resource, {
+    hasOriginalFile: Boolean(originalFileHref),
     hasCanvasLink: Boolean(canvasHref),
   })
+  const sourceHref = originalFileHref ?? canvasHref
+  const showSourceAsPrimary = uiState.primaryAction === 'source' && Boolean(sourceHref)
   const grounding = unit?.grounding ?? getResourceGrounding(resource)
   const capability = getModuleResourceCapabilityInfo(resource)
   const quality = getModuleResourceQualityInfo(resource)
@@ -113,7 +118,17 @@ export default async function ResourceDetailPage({ params }: Props) {
                 Open related task
               </Link>
             )}
-            {canvasHref && (
+            {originalFileHref && (
+              <a href={originalFileHref} target="_blank" rel="noreferrer" className={`ui-button ${showSourceAsPrimary ? 'ui-button-secondary' : 'ui-button-ghost'}`}>
+                {uiState.sourceActionLabel}
+              </a>
+            )}
+            {canvasHref && !originalFileHref && (
+              <a href={canvasHref} target="_blank" rel="noreferrer" className={`ui-button ${showSourceAsPrimary ? 'ui-button-secondary' : 'ui-button-ghost'}`}>
+                {uiState.sourceActionLabel}
+              </a>
+            )}
+            {canvasHref && originalFileHref && (
               <a href={canvasHref} target="_blank" rel="noreferrer" className="ui-button ui-button-ghost">
                 Open in Canvas
               </a>
@@ -205,7 +220,11 @@ export default async function ResourceDetailPage({ params }: Props) {
                     </p>
                   )}
                   <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
-                    <strong style={{ color: 'var(--text-primary)' }}>What you can do:</strong> {uiState.sourceActionLabel}. The reader is acting as a fallback view for this item right now.
+                    <strong style={{ color: 'var(--text-primary)' }}>Best next step:</strong> {showSourceAsPrimary
+                      ? `${uiState.sourceActionLabel}. The reader view here is only a fallback for this item right now.`
+                      : uiState.statusKey === 'source_first'
+                        ? 'Stay in this detail view for the limited context available here. The original source is not linked from this page right now.'
+                        : 'Use this detail view to review the context that is available here.'}
                   </p>
                 </div>
               </div>

@@ -65,7 +65,7 @@ export function StudyFileReader({
     resource.linkedContext,
   ].filter(Boolean)
   const isReadyReader = uiState.statusKey === 'ready'
-  const showSourceAsPrimary = !isReadyReader && uiState.primaryAction === 'source'
+  const showSourceAsPrimary = !isReadyReader && uiState.primaryAction === 'source' && Boolean(originalFileHref ?? canvasHref)
 
   return (
     <section className="motion-card motion-delay-1 section-shell section-shell-elevated" style={{ padding: '1.35rem 1.45rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -163,7 +163,7 @@ export function StudyFileReader({
 
       {!isReadyReader ? (
         <>
-          <ReaderSection title={showSourceAsPrimary ? 'Use the original source' : 'Reader guidance'} kicker={uiState.statusLabel}>
+          <ReaderSection title={showSourceAsPrimary ? 'Open the original source first' : 'Reader guidance'} kicker={uiState.statusLabel}>
             <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.95rem 1rem', display: 'grid', gap: '0.7rem' }}>
               <p style={{ margin: 0, fontSize: '15px', lineHeight: 1.76, color: 'var(--text-secondary)' }}>
                 {uiState.detail}

@@ -328,8 +328,10 @@ export function CourseLearnExplorer({
                           title={material.title}
                           meta={`${material.fileTypeLabel} / ${material.readinessLabel}`}
                           note={material.note}
-                          detailHref={material.readerHref}
-                          canvasHref={material.canvasHref}
+                          readerHref={material.readerHref}
+                          sourceHref={material.originalFileHref ?? material.canvasHref}
+                          sourceActionLabel={material.sourceActionLabel}
+                          primaryAction={material.primaryAction}
                         />
                       ))}
                     </div>
@@ -487,15 +489,21 @@ function SourceItemRow({
   title,
   meta,
   note,
-  detailHref,
-  canvasHref,
+  readerHref,
+  sourceHref,
+  sourceActionLabel,
+  primaryAction,
 }: {
   title: string
   meta: string
   note: string
-  detailHref: string
-  canvasHref: string | null
+  readerHref: string
+  sourceHref: string | null
+  sourceActionLabel: string
+  primaryAction: 'reader' | 'source'
 }) {
+  const showSourceAsPrimary = primaryAction === 'source' && Boolean(sourceHref)
+
   return (
     <article style={{ borderRadius: 'var(--radius-tight)', border: '1px solid color-mix(in srgb, var(--border-subtle) 84%, transparent)', padding: '0.8rem 0.85rem', display: 'grid', gap: '0.45rem' }}>
       <p style={{ margin: 0, fontSize: '12px', lineHeight: 1.55, color: 'var(--text-muted)' }}>
@@ -508,12 +516,23 @@ function SourceItemRow({
         {note}
       </p>
       <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-        <Link href={detailHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-          Open reader
-        </Link>
-        {canvasHref && (
-          <a href={canvasHref} target="_blank" rel="noreferrer" className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-            Canvas
+        {showSourceAsPrimary ? (
+          <>
+            <a href={sourceHref!} target="_blank" rel="noreferrer" className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
+              {sourceActionLabel}
+            </a>
+            <Link href={readerHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+              Open reader
+            </Link>
+          </>
+        ) : (
+          <Link href={readerHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
+            Open reader
+          </Link>
+        )}
+        {!showSourceAsPrimary && sourceHref && (
+          <a href={sourceHref} target="_blank" rel="noreferrer" className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+            {sourceActionLabel}
           </a>
         )}
       </div>
@@ -527,8 +546,10 @@ function SupportSourceItemRow({ item }: { item: CourseLearnMoreRow }) {
       title={item.title}
       meta={item.kindLabel}
       note={item.note}
-      detailHref={item.detailHref}
-      canvasHref={item.canvasHref}
+      readerHref={item.detailHref}
+      sourceHref={item.canvasHref}
+      sourceActionLabel="Canvas"
+      primaryAction="reader"
     />
   )
 }
