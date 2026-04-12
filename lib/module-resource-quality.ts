@@ -328,11 +328,11 @@ function buildQualityReason(input: {
 
   if (input.quality === 'weak') {
     if (input.previewState === 'full_text_available' && input.meaningfulCharCount >= 600) {
-      return 'Full extracted text is stored for this resource, but the signal is still noisy enough that Learn keeps it as limited evidence instead of strong study grounding.'
+      return 'Readable text was recovered for this resource, but parts of it are still noisy or repetitive. Use the reader for a first pass and the original source for the cleanest full read.'
     }
 
     if (input.meaningfulCharCount < 220) {
-      return `Readable text exists, but it is still too thin for confident study grounding (${input.meaningfulCharCount.toLocaleString()} meaningful characters).`
+      return `Readable text exists, but it is still too thin for a full in-app study read (${input.meaningfulCharCount.toLocaleString()} meaningful characters).`
     }
 
     if (input.signalRatio < 0.34 || input.noiseLineCount >= 6) {

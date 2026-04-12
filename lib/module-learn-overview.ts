@@ -1,6 +1,7 @@
 import { getModuleResourceCapabilityInfo } from '@/lib/module-resource-capability'
+import { getLearnResourceUiState, type LearnResourceActionPriority, type LearnResourceStatusKey } from '@/lib/learn-resource-ui'
 import { getModuleResourceQualityInfo, type ModuleResourceQualityInfo } from '@/lib/module-resource-quality'
-import { getResourceCanvasHref, type ModuleSourceResource } from '@/lib/module-workspace'
+import { getResourceCanvasHref, getResourceOriginalFileHref, type ModuleSourceResource } from '@/lib/module-workspace'
 import { buildModuleDoHref, buildModuleLearnHref } from '@/lib/stay-focused-links'
 import { buildStudyFileReaderModel, getStudyFileTypeLabel, type StudyFileReaderModel } from '@/lib/study-file-reader'
 import { getStudySourceNoun } from '@/lib/study-resource'
@@ -14,9 +15,13 @@ export interface ModuleStudyMaterial {
   quality: ModuleResourceQualityInfo
   fileTypeLabel: string
   readiness: ModuleStudyReadiness
-  readinessLabel: 'Ready to study' | 'Limited' | 'Needs Canvas'
+  readinessLabel: 'Ready' | 'Partial' | 'Source first' | 'Link only' | 'Unsupported' | 'No extract' | 'Loading'
   readinessTone: 'accent' | 'warning' | 'muted'
+  statusKey: LearnResourceStatusKey
   note: string
+  detailNote: string
+  primaryAction: LearnResourceActionPriority
+  sourceActionLabel: string
 }
 
 export interface ModuleSuggestedStudyStep {
@@ -142,6 +147,11 @@ function buildStudyMaterial(resource: ModuleSourceResource): ModuleStudyMaterial
   const reader = buildStudyFileReaderModel(resource)
   const quality = getModuleResourceQualityInfo(resource)
   const readiness = resolveStudyReadiness(quality)
+  const uiState = getLearnResourceUiState(resource, {
+    readerState: reader.state,
+    hasOriginalFile: Boolean(getResourceOriginalFileHref(resource)),
+    hasCanvasLink: Boolean(getResourceCanvasHref(resource)),
+  })
 
   return {
     resource,
@@ -149,9 +159,13 @@ function buildStudyMaterial(resource: ModuleSourceResource): ModuleStudyMaterial
     quality,
     fileTypeLabel: getStudyFileTypeLabel(resource),
     readiness,
-    readinessLabel: labelForReadiness(readiness),
-    readinessTone: toneForReadiness(readiness),
-    note: buildStudyNote(resource, reader, readiness),
+    readinessLabel: uiState.statusLabel,
+    readinessTone: uiState.tone,
+    statusKey: uiState.statusKey,
+    note: buildStudyNote(resource, reader, readiness, uiState),
+    detailNote: buildStudyDetail(reader, readiness, uiState),
+    primaryAction: uiState.primaryAction,
+    sourceActionLabel: uiState.sourceActionLabel,
   }
 }
 
@@ -167,37 +181,17 @@ function resolveStudyReadiness(quality: ModuleResourceQualityInfo): ModuleStudyR
   return 'unavailable'
 }
 
-function labelForReadiness(readiness: ModuleStudyReadiness) {
-  if (readiness === 'ready') return 'Ready to study'
-  if (readiness === 'limited') return 'Limited'
-  return 'Needs Canvas'
-}
-
-function toneForReadiness(readiness: ModuleStudyReadiness) {
-  if (readiness === 'ready') return 'accent'
-  if (readiness === 'limited') return 'warning'
-  return 'muted'
-}
-
-function buildStudyNote(resource: ModuleSourceResource, reader: StudyFileReaderModel, readiness: ModuleStudyReadiness) {
+function buildStudyNote(
+  resource: ModuleSourceResource,
+  reader: StudyFileReaderModel,
+  readiness: ModuleStudyReadiness,
+  uiState: ReturnType<typeof getLearnResourceUiState>,
+) {
   const sourceNoun = getStudySourceNoun(resource)
   const capability = getModuleResourceCapabilityInfo(resource)
-  const quality = getModuleResourceQualityInfo(resource)
 
   if (readiness === 'ready') {
-    return reader.summary ?? quality.reason
-  }
-
-  if (reader.state === 'weak') {
-    return quality.reason
-  }
-
-  if (reader.state === 'extracted') {
-    return quality.reason
-  }
-
-  if (reader.state === 'metadata_only') {
-    return quality.reason
+    return reader.summary ?? uiState.summary
   }
 
   if (reader.state === 'empty') {
@@ -205,18 +199,30 @@ function buildStudyNote(resource: ModuleSourceResource, reader: StudyFileReaderM
       return `The ${sourceNoun} was parsed, but it still looks more like a scanned or image-based document in Learn.`
     }
 
-    return capability.reason
+    return uiState.summary
   }
 
   if (resource.extractionStatus === 'pending') {
-    return capability.reason
+    return uiState.summary
   }
 
   if (resource.extractionStatus === 'unsupported') {
-    return capability.reason
+    return uiState.summary
   }
 
-  return capability.reason || `The reader could not prepare usable text for this ${sourceNoun} this time.`
+  return uiState.summary || capability.reason || `The reader could not prepare usable text for this ${sourceNoun} this time.`
+}
+
+function buildStudyDetail(
+  reader: StudyFileReaderModel,
+  readiness: ModuleStudyReadiness,
+  uiState: ReturnType<typeof getLearnResourceUiState>,
+) {
+  if (readiness === 'ready') {
+    return reader.outlineHint ?? uiState.detail
+  }
+
+  return uiState.detail
 }
 
 function buildGroundedModuleSummary(studyMaterials: ModuleStudyMaterial[]) {
@@ -252,30 +258,30 @@ function buildSummaryStateMessage({
   unavailableStudyFileCount: number
 }) {
   if (totalStudyFileCount === 0) {
-    return 'No study materials are mapped to this module yet, so Learn stays at the resource and action level instead of pretending to summarize the module.'
+    return 'No study materials are mapped to this module yet, so Learn stays focused on resources and tasks instead of guessing at a module summary.'
   }
 
   if (activeStudyFileCount === 0 && activityOverrideCount > 0) {
-    return 'All study materials in this module are currently treated as activity instead, so Learn is not building a study-lane summary from them.'
+    return 'All mapped study materials are currently treated as activity, so Learn is keeping this module in task mode instead of building a reading summary.'
   }
 
   if (readyStudyFileCount > 0) {
-    return 'A grounded module summary is available because at least one study material in the current study lane produced enough readable text to support it.'
+    return 'Learn has enough readable study material to give this module a reliable in-app reading pass.'
   }
 
   if (extractedStudyFileCount > 0) {
-    return 'Some study materials have readable text, but not enough of the current study lane is strong enough for a grounded module summary yet.'
+    return 'Some study materials are readable here, but the module still reads best as a mix of in-app notes and original sources.'
   }
 
   if (limitedStudyFileCount > 0) {
-    return 'The mapped study materials are still limited in Learn, so this page stays at the source and action level instead of inventing a theme.'
+    return 'The mapped study materials are still partial in Learn, so this page stays honest and keeps the original sources close.'
   }
 
   if (unavailableStudyFileCount > 0) {
-    return 'The mapped study materials are still unreadable in Learn right now, so the overview stays honest and keeps Canvas close by.'
+    return 'The mapped study materials still need their original sources more than the in-app reader right now.'
   }
 
-  return 'Learn is waiting on stronger study-file coverage before it creates a grounded module summary.'
+  return 'Learn is waiting on stronger study-file coverage before it turns this module into a fuller reading lane.'
 }
 
 function buildCoverageNote({
@@ -306,19 +312,19 @@ function buildCoverageNote({
   if (readyStudyFileCount > 0) {
     fragments.push(
       readyStudyFileCount === activeStudyFileCount
-        ? `Grounded from all ${readyStudyFileCount} study material${readyStudyFileCount === 1 ? '' : 's'} still in the study lane.`
-        : `Grounded from ${readyStudyFileCount} of ${activeStudyFileCount} study material${activeStudyFileCount === 1 ? '' : 's'} in the study lane.`,
+        ? `${readyStudyFileCount} study material${readyStudyFileCount === 1 ? '' : 's'} are ready in the reader.`
+        : `${readyStudyFileCount} of ${activeStudyFileCount} study material${activeStudyFileCount === 1 ? '' : 's'} are ready in the reader.`,
     )
   } else {
-    fragments.push('No study materials in the current study lane have enough readable text for a grounded module summary yet.')
+    fragments.push('No study materials in the current study lane are fully reader-ready yet.')
   }
 
   if (limitedStudyFileCount > 0) {
-    fragments.push(`${limitedStudyFileCount} ${limitedStudyFileCount === 1 ? 'file is' : 'files are'} visible with limited readability.`)
+    fragments.push(`${limitedStudyFileCount} ${limitedStudyFileCount === 1 ? 'file is' : 'files are'} partial in the reader.`)
   }
 
   if (unavailableStudyFileCount > 0) {
-    fragments.push(`${unavailableStudyFileCount} ${unavailableStudyFileCount === 1 ? 'file still needs' : 'files still need'} Canvas for the full read.`)
+    fragments.push(`${unavailableStudyFileCount} ${unavailableStudyFileCount === 1 ? 'item is' : 'items are'} source-first right now.`)
   }
 
   if (activityOverrideCount > 0) {
@@ -454,25 +460,21 @@ function buildSuggestedStudySteps({
 }
 
 function buildStudyStep(moduleId: string, material: ModuleStudyMaterial): Omit<ModuleSuggestedStudyStep, 'slotLabel'> {
-  const canvasHref = getResourceCanvasHref(material.resource)
-  const useCanvas = material.readiness === 'unavailable' && Boolean(canvasHref)
+  const destination = resolveStudyMaterialDestination(moduleId, material)
 
   return {
     id: `${material.resource.id}-study-step`,
     title: material.resource.title,
     note: material.readiness === 'ready'
       ? material.quality.quality === 'strong'
-        ? 'Readable extracted text looks strong enough to anchor your study pass here.'
-        : 'Readable extracted text is usable here, but it is still lighter than the strongest study sources.'
+        ? 'Start in the reader here. The recovered text is strong enough for a reliable study pass.'
+        : 'Start in the reader here. The recovered text should be good enough for a first pass.'
       : material.readiness === 'limited'
-        ? 'Use this as a guidepost only. The extracted text is still weak, so keep the original Canvas source nearby.'
-        : 'Canvas is still the most reliable place to read this one in full.',
-    href: useCanvas ? canvasHref! : buildModuleLearnHref(moduleId, {
-      resourceId: material.resource.id,
-      panel: 'study-notes',
-    }),
-    destinationLabel: useCanvas ? 'Canvas source' : 'Study reader',
-    external: useCanvas,
+        ? 'Start in the reader for a quick pass, then open the original source when you want the clearest full version.'
+        : 'Start with the original source. The reader is only a fallback view for this item right now.',
+    href: destination.href,
+    destinationLabel: destination.destinationLabel,
+    external: destination.external,
   }
 }
 
@@ -481,8 +483,7 @@ function buildResumeTargetModel(
   material: ModuleStudyMaterial,
   source: 'recent' | 'fallback_readable' | 'recent_fallback' | 'fallback_available',
 ): ModuleStudyResumeTarget {
-  const canvasHref = getResourceCanvasHref(material.resource)
-  const useCanvas = material.readiness === 'unavailable' && Boolean(canvasHref)
+  const destination = resolveStudyMaterialDestination(moduleId, material)
   const openedAtLabel = formatOpenedAt(material.resource.lastOpenedAt)
   const promptLabel = source === 'recent' || source === 'recent_fallback'
     ? 'Resume where you left off'
@@ -494,29 +495,24 @@ function buildResumeTargetModel(
     readinessLabel: material.readinessLabel,
     promptLabel,
     note: buildResumeNote(material, source, openedAtLabel),
-    href: useCanvas ? canvasHref! : buildModuleLearnHref(moduleId, {
-      resourceId: material.resource.id,
-      panel: 'study-notes',
-    }),
-    actionLabel: useCanvas ? 'Open in Canvas' : 'Continue reading',
-    external: useCanvas,
+    href: destination.href,
+    actionLabel: destination.actionLabel,
+    external: destination.external,
   }
 }
 
 function buildActivityOverrideStep(moduleId: string, material: ModuleStudyMaterial): Omit<ModuleSuggestedStudyStep, 'slotLabel'> {
-  const canvasHref = getResourceCanvasHref(material.resource)
-  const useCanvas = material.readiness === 'unavailable' && Boolean(canvasHref)
+  const destination = resolveStudyMaterialDestination(moduleId, material)
 
   return {
     id: `${material.resource.id}-activity-override-step`,
     title: material.resource.title,
-    note: 'You marked this study material as activity for your workflow, so it sits in the action lane even though the study reader is still available.',
-    href: useCanvas ? canvasHref! : buildModuleLearnHref(moduleId, {
-      resourceId: material.resource.id,
-      panel: 'study-notes',
-    }),
-    destinationLabel: useCanvas ? 'Canvas source' : 'Study reader',
-    external: useCanvas,
+    note: material.primaryAction === 'source'
+      ? 'You marked this as activity, and the original source is still the clearest place to read it.'
+      : 'You marked this as activity, but the reader is still available if you want a quick study pass before doing the work.',
+    href: destination.href,
+    destinationLabel: destination.destinationLabel,
+    external: destination.external,
   }
 }
 
@@ -527,37 +523,66 @@ function buildResumeNote(
 ) {
   if (source === 'recent') {
     return openedAtLabel
-      ? `Last opened ${openedAtLabel}. This study material is still in your study lane, so Learn keeps it ready to reopen.`
-      : 'This is the most recent readable study material still in your study lane.'
+      ? `Last opened ${openedAtLabel}. This item is still the clearest next place to pick up your reading.`
+      : 'This is the most recent study item that still makes sense to reopen from Learn.'
   }
 
   if (source === 'fallback_readable') {
-    return 'No recent study material is saved in the active study lane, so Learn is pointing to the clearest readable source in this module.'
+    return 'No recent study item is pinned yet, so Learn is pointing you to the clearest readable source in this module.'
   }
 
   if (source === 'recent_fallback') {
     return openedAtLabel
-      ? `Last opened ${openedAtLabel}. Learn could not find a stronger readable study material in the current study lane, so this stays closest at hand.`
-      : 'This was the most recent study material in your active study lane, and no stronger readable source is available yet.'
+      ? `Last opened ${openedAtLabel}. This still looks like the best next place to continue, even though the reader is limited here.`
+      : 'This was the most recent study item in your lane, and it still makes the most sense to keep close.'
   }
 
   if (material.reader.state === 'metadata_only') {
-    return 'No recently opened readable study material is available yet, so Learn is keeping the clearest context-only source close.'
+    return 'No readable study item is pinned yet, so Learn is keeping the closest source-first item nearby.'
   }
 
   if (material.reader.state === 'weak') {
-    return 'No stronger reader is ready yet, so Learn is keeping the clearest weak extract nearby without treating it like solid grounding.'
+    return 'No stronger reader is ready yet, so Learn is keeping the clearest partial read nearby.'
   }
 
   if (material.reader.state === 'empty') {
-    return 'No recently opened readable study material is available yet, so Learn is keeping the closest parsed source nearby even though it did not surface usable text.'
+    return 'No readable study item is pinned yet, so Learn is keeping the closest source nearby even though no useful text surfaced in the reader.'
   }
 
   if (material.readiness === 'unavailable') {
-    return 'No recently opened readable study material is available yet, so Learn is pointing you back to the original Canvas source for the cleanest reopen.'
+    return 'No reader-ready study item is pinned yet, so Learn is sending you back to the original source for the cleanest reopen.'
   }
 
-  return 'No recently opened readable study material is available yet, so Learn is keeping the clearest available study source close.'
+  return 'No recent study item is pinned yet, so Learn is keeping the clearest available source close.'
+}
+
+function resolveStudyMaterialDestination(moduleId: string, material: ModuleStudyMaterial) {
+  const originalFileHref = getResourceOriginalFileHref(material.resource)
+  const canvasHref = getResourceCanvasHref(material.resource)
+  const shouldUseSource = material.primaryAction === 'source' && Boolean(originalFileHref ?? canvasHref)
+
+  if (shouldUseSource) {
+    return {
+      href: originalFileHref ?? canvasHref!,
+      actionLabel: material.sourceActionLabel,
+      destinationLabel: originalFileHref
+        ? 'Original file'
+        : material.statusKey === 'link_only'
+          ? 'Original link'
+          : 'Canvas source',
+      external: true,
+    }
+  }
+
+  return {
+    href: buildModuleLearnHref(moduleId, {
+      resourceId: material.resource.id,
+      panel: 'study-notes',
+    }),
+    actionLabel: 'Open reader',
+    destinationLabel: 'Study reader',
+    external: false,
+  }
 }
 
 function buildActionStep(moduleId: string, item: ModuleSourceResource, tasks: Task[]): Omit<ModuleSuggestedStudyStep, 'slotLabel'> {

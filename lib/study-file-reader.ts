@@ -130,15 +130,15 @@ export function buildStudyFileReaderModel(resource: ModuleSourceResource): Study
       previewBlocks,
       overviewTitle: 'What this material is about',
       overviewBody: quality.previewState === 'full_text_available'
-        ? `Full extracted ${sourceNoun} text is stored in Stay Focused, but the extract is still noisy enough that the app keeps it as limited evidence instead of presenting it as confident study notes.`
-        : `Readable ${sourceNoun} text exists in Stay Focused, but it is still too thin or noisy to present as solid study notes. This page keeps the evidence visible without overstating what the extractor recovered.`,
-      keyPointsHint: `Key points are held back because the extracted ${sourceNoun} text is still weak for confident study use.`,
+        ? `Readable ${sourceNoun} text was recovered, but parts of it still look noisy or repetitive. Use this as a first pass, then open the original source when you want the cleanest read.`
+        : `Readable ${sourceNoun} text exists in Stay Focused, but it is still too thin or noisy to use as a full study read. This page keeps the recovered text visible without pretending it is the complete source.`,
+      keyPointsHint: `Key points are held back because the extracted ${sourceNoun} text is still too limited for a full study read.`,
       outlineHint: `Structured study notes are hidden because the extracted ${sourceNoun} text is not strong enough yet.`,
       previewHint: previewBlocks.length > 0
         ? null
         : `The app did recover some source state, but not enough clean text to show a useful preview here.`,
       transparencyNote: quality.previewState === 'full_text_available'
-        ? `${quality.reason} Full extracted text is stored, but the reader still treats it as limited because the signal is not clean enough yet.`
+        ? `${quality.reason} Full extracted text is stored, but the original source is still the better place to read it cleanly.`
         : quality.reason,
     }
   }

@@ -167,7 +167,7 @@ export default async function LearnPage({ params, searchParams }: Props) {
 
             <div className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem 1.05rem', display: 'grid', gap: '0.8rem' }}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '0.7rem' }}>
-                <StatCard label="Grounded sources" value={String(termBank.groundedSourceCount)} />
+                <StatCard label="Usable sources" value={String(termBank.groundedSourceCount)} />
                 <StatCard label="Readable chars" value={termBank.groundedCharCount.toLocaleString()} />
                 <StatCard label="Ready readers" value={String(overview.readyStudyFileCount)} />
                 <StatCard label="Quiz-ready notes" value={String(quizReadyNoteCount)} />
@@ -196,7 +196,7 @@ export default async function LearnPage({ params, searchParams }: Props) {
 
               {experience.audit.note && (
                 <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.85rem 0.9rem' }}>
-                  <p className="ui-kicker">Grounding note</p>
+                  <p className="ui-kicker">Coverage note</p>
                   <p style={{ margin: '0.45rem 0 0', fontSize: '13px', lineHeight: 1.68, color: 'var(--text-secondary)' }}>
                     {experience.audit.note}
                   </p>
@@ -221,10 +221,14 @@ export default async function LearnPage({ params, searchParams }: Props) {
                 id: material.resource.id,
                 title: material.resource.title,
                 note: material.note,
+                detailNote: material.detailNote,
                 fileTypeLabel: material.fileTypeLabel,
                 readinessLabel: material.readinessLabel,
                 readinessTone: material.readinessTone,
+                statusKey: material.statusKey,
                 readerState: material.reader.state,
+                primaryAction: material.primaryAction,
+                sourceActionLabel: material.sourceActionLabel,
                 required: material.resource.required,
                 outlineSections: material.reader.outlineSections,
                 outlineHint: material.reader.outlineHint,
@@ -352,7 +356,7 @@ export default async function LearnPage({ params, searchParams }: Props) {
                 </div>
                 <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
                   <StateBadge label={`${overview.readyStudyFileCount} ready`} tone="accent" />
-                  {overview.limitedStudyFileCount > 0 && <StateBadge label={`${overview.limitedStudyFileCount} limited`} tone="warning" />}
+                  {overview.limitedStudyFileCount > 0 && <StateBadge label={`${overview.limitedStudyFileCount} partial`} tone="warning" />}
                 </div>
               </div>
 
@@ -369,7 +373,7 @@ export default async function LearnPage({ params, searchParams }: Props) {
                     <StatCard label="Study sources" value={String(overview.studyMaterials.length)} />
                     <StatCard label="Outline sections" value={String(outlineSectionCount)} />
                     <StatCard label="Readable files" value={String(overview.extractedStudyFileCount)} />
-                    <StatCard label="Limited files" value={String(overview.limitedStudyFileCount)} />
+                    <StatCard label="Partial files" value={String(overview.limitedStudyFileCount)} />
                   </div>
                 </>
               )}
@@ -463,6 +467,8 @@ function SourceSupportRow({
   const capability = getModuleResourceCapabilityInfo(material.resource)
   const quality = getModuleResourceQualityInfo(material.resource)
   const note = material.note
+  const originalFileHref = getResourceOriginalFileHref(material.resource)
+  const sourceHref = originalFileHref ?? canvasHref
 
   return (
     <article
@@ -498,17 +504,28 @@ function SourceSupportRow({
       </div>
 
       <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-        <Link href={getLearnResourceHref(moduleId, material.resource.id)} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-          Open reader
-        </Link>
+        {material.primaryAction === 'source' && sourceHref ? (
+          <a href={sourceHref} target="_blank" rel="noreferrer" className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
+            {material.sourceActionLabel}
+          </a>
+        ) : (
+          <Link href={getLearnResourceHref(moduleId, material.resource.id)} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
+            Open reader
+          </Link>
+        )}
+        {material.primaryAction !== 'source' && sourceHref && (
+          <a href={sourceHref} target="_blank" rel="noreferrer" className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+            {material.sourceActionLabel}
+          </a>
+        )}
+        {material.primaryAction === 'source' && (
+          <Link href={getLearnResourceHref(moduleId, material.resource.id)} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+            Open reader
+          </Link>
+        )}
         <Link href={buildModuleInspectHref(moduleId, { resourceId: material.resource.id })} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
           Inspect
         </Link>
-        {canvasHref && (
-          <a href={canvasHref} target="_blank" rel="noreferrer" className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-            Open in Canvas
-          </a>
-        )}
       </div>
     </article>
   )

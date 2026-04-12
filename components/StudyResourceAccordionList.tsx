@@ -5,15 +5,20 @@ import { useEffect, useRef, useState } from 'react'
 import { getResourceElementId } from '@/lib/stay-focused-links'
 import { StudyOutlineView } from '@/components/StudyOutlineView'
 import type { StudyFileOutlineSection, StudyFileReaderState } from '@/lib/study-file-reader'
+import type { LearnResourceActionPriority, LearnResourceStatusKey } from '@/lib/learn-resource-ui'
 
 export interface StudyResourceAccordionItem {
   id: string
   title: string
   note: string
+  detailNote: string
   fileTypeLabel: string
   readinessLabel: string
   readinessTone: 'accent' | 'warning' | 'muted'
+  statusKey: LearnResourceStatusKey
   readerState: StudyFileReaderState
+  primaryAction: LearnResourceActionPriority
+  sourceActionLabel: string
   required: boolean
   outlineSections: StudyFileOutlineSection[]
   outlineHint: string | null
@@ -78,7 +83,12 @@ export function StudyResourceAccordionList({
     <div style={{ display: 'grid', gap: '0.75rem' }}>
       {items.map((item, index) => {
         const expanded = resolvedOpenResourceId === item.id
-        const presentation = resolvePresentation(item)
+        const presentationMode: StudyResourcePresentationMode = item.statusKey === 'ready'
+          ? 'notes_first'
+          : item.statusKey === 'partial'
+            ? 'reader_fallback'
+            : 'source_first'
+        const sourceHref = item.originalFileHref ?? item.canvasHref
 
         return (
           <article
@@ -131,7 +141,7 @@ export function StudyResourceAccordionList({
                   {item.title}
                 </h4>
                 <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.62, color: 'var(--text-secondary)' }}>
-                  {truncateText(presentation.summary, expanded ? 240 : 170)}
+                  {truncateText(item.note, expanded ? 240 : 170)}
                 </p>
               </div>
 
@@ -142,37 +152,31 @@ export function StudyResourceAccordionList({
 
             {expanded && (
               <div style={{ display: 'grid', gap: '0.75rem' }}>
-                {presentation.mode === 'notes_first' && item.outlineSections.length > 0 ? (
+                {presentationMode === 'notes_first' && item.outlineSections.length > 0 ? (
                   <StudyOutlineView sections={item.outlineSections} />
-                ) : presentation.mode === 'notes_first' ? (
+                ) : presentationMode === 'notes_first' ? (
                   <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.9rem 0.95rem' }}>
                     <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.72, color: 'var(--text-secondary)' }}>
-                      {item.outlineHint ?? 'Readable study notes are not available for this resource yet.'}
+                      {item.outlineHint ?? item.detailNote}
                     </p>
                   </div>
                 ) : (
                   <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.9rem 0.95rem', display: 'grid', gap: '0.4rem' }}>
                     <p className="ui-kicker" style={{ margin: 0 }}>
-                      {presentation.mode === 'reader_fallback' ? 'Use the original source first' : 'Source-first fallback'}
+                      {presentationMode === 'reader_fallback' ? 'Reader guidance' : item.readinessLabel}
                     </p>
                     <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.72, color: 'var(--text-secondary)' }}>
-                      {presentation.detail}
+                      {item.detailNote}
                     </p>
                   </div>
                 )}
 
                 <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-                  {presentation.mode === 'source_first' ? (
+                  {item.primaryAction === 'source' && sourceHref ? (
                     <>
-                      {item.originalFileHref ? (
-                        <a href={item.originalFileHref} target="_blank" rel="noreferrer" className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
-                          Open original file
-                        </a>
-                      ) : item.canvasHref ? (
-                        <a href={item.canvasHref} target="_blank" rel="noreferrer" className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
-                          Open in Canvas
-                        </a>
-                      ) : null}
+                      <a href={sourceHref} target="_blank" rel="noreferrer" className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
+                        {item.sourceActionLabel}
+                      </a>
                       <Link href={item.readerHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
                         Open reader
                       </Link>
@@ -182,14 +186,9 @@ export function StudyResourceAccordionList({
                       Open reader
                     </Link>
                   )}
-                  {presentation.mode !== 'source_first' && item.originalFileHref && (
-                    <a href={item.originalFileHref} target="_blank" rel="noreferrer" className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-                      Open original file
-                    </a>
-                  )}
-                  {item.canvasHref && (presentation.mode !== 'source_first' || item.originalFileHref) && (
-                    <a href={item.canvasHref} target="_blank" rel="noreferrer" className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-                      Open in Canvas
+                  {item.primaryAction !== 'source' && sourceHref && (
+                    <a href={sourceHref} target="_blank" rel="noreferrer" className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+                      {item.sourceActionLabel}
                     </a>
                   )}
                   {item.extraActionHref && item.extraActionLabel && (
@@ -208,77 +207,6 @@ export function StudyResourceAccordionList({
 }
 
 type StudyResourcePresentationMode = 'notes_first' | 'reader_fallback' | 'source_first'
-
-function resolvePresentation(item: StudyResourceAccordionItem) {
-  const mode: StudyResourcePresentationMode = item.readinessLabel === 'Ready to study' && item.readerState === 'extracted'
-    ? 'notes_first'
-    : item.readinessLabel === 'Limited' || item.readerState === 'weak'
-      ? 'reader_fallback'
-      : 'source_first'
-  const sourceLabel = item.originalFileHref ? 'file' : 'source'
-
-  if (mode === 'notes_first') {
-    return {
-      mode,
-      summary: item.note,
-      detail: item.outlineHint ?? item.note,
-    }
-  }
-
-  if (mode === 'reader_fallback') {
-    if (item.previewState === 'full_text_available') {
-      return {
-        mode,
-        summary: `Full extracted text exists here, but Learn still treats it as limited because the signal is noisy or repetitive enough that it should not act overly confident.`,
-        detail: `Stay Focused has the full extracted text for this resource, but the study layer still scores it as limited evidence rather than clean grounding. Use the reader for the recovered text, then open the original ${sourceLabel} when you need the cleanest read.`,
-      }
-    }
-
-    if (item.previewState === 'preview_only') {
-      return {
-        mode,
-        summary: `Extraction is weak here, and only a stored preview is available in the reader.`,
-        detail: `The extracted text is too thin or noisy to trust as solid study notes, and the stored reader state is preview-only. Open the original ${sourceLabel} for the full read, then use the reader only as a secondary preview.`,
-      }
-    }
-
-    return {
-      mode,
-      summary: `Extraction is weak here. Use the original ${sourceLabel} for the full read, and treat the in-app reader as limited evidence only.`,
-      detail: `The extracted text is too thin or noisy to trust as solid study notes. Open the original ${sourceLabel} for the full read, then use the reader only as a secondary aid.`,
-    }
-  }
-
-  if (item.fallbackReason === 'canvas_resolution_required') {
-    return {
-      mode,
-      summary: 'This item still needs authenticated Canvas resolution before Learn can fetch the real target content.',
-      detail: `The stored module item points at an internal Canvas redirect or launch path, but the readable target still has to be resolved before extraction can happen. Open the original ${sourceLabel} in Canvas or reprocess with Canvas credentials.`,
-    }
-  }
-
-  if (item.fallbackReason === 'canvas_fetch_failed') {
-    return {
-      mode,
-      summary: 'Canvas target resolution failed before readable content could be fetched here.',
-      detail: `Stay Focused reached a Canvas-dependent path for this item, but the final fetch failed before a readable body could be stored. Open the original ${sourceLabel} and inspect the stored resolution note if you need the exact failure.`,
-    }
-  }
-
-  if (item.fallbackReason === 'external_link_only') {
-    return {
-      mode,
-      summary: 'This resource stays link-only because it resolves outside Canvas-readable content.',
-      detail: `Learn did not fake extraction for this item because the target is an external link. Open the original ${sourceLabel} instead of relying on the in-app reader.`,
-    }
-  }
-
-  return {
-    mode,
-    summary: `No usable extract surfaced here. Open the original ${sourceLabel} instead of relying on this reader.`,
-    detail: `Learn did not recover enough readable text to build a useful note card for this item. The original ${sourceLabel} is the main path here, and the reader stays as a status view only.`,
-  }
-}
 
 function ResourcePill({
   label,

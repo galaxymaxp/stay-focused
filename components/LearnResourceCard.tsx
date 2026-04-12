@@ -1,11 +1,11 @@
 import Link from 'next/link'
 import { StudyModeSwitcher } from '@/components/StudyModeSwitcher'
+import { getLearnResourceUiState } from '@/lib/learn-resource-ui'
 import { getModuleResourceCapabilityInfo } from '@/lib/module-resource-capability'
 import { getModuleResourceQualityInfo } from '@/lib/module-resource-quality'
 import { getLearnResourceKindLabel } from '@/lib/study-resource'
 import { getLearnResourceHref, getResourceCanvasHref, type LearnResourceUnit } from '@/lib/module-workspace'
 import { buildModuleInspectHref } from '@/lib/stay-focused-links'
-import { labelForExtractionStatus } from '@/lib/study-file-reader'
 
 export function LearnResourceCard({
   moduleId,
@@ -21,7 +21,11 @@ export function LearnResourceCard({
   const inspectHref = buildModuleInspectHref(moduleId, { resourceId: unit.resource.id })
   const capability = getModuleResourceCapabilityInfo(unit.resource)
   const quality = getModuleResourceQualityInfo(unit.resource)
+  const uiState = getLearnResourceUiState(unit.resource, {
+    hasCanvasLink: Boolean(canvasHref),
+  })
   const deepViewLabel = unit.resource.kind === 'study_file' ? 'Open study reader' : 'Open deep view'
+  const shouldPreferSource = uiState.primaryAction === 'source' && Boolean(canvasHref)
   const previewLabel = unit.resource.kind === 'study_file'
     ? quality.shouldUseForGrounding
       ? 'Study snapshot'
@@ -48,9 +52,7 @@ export function LearnResourceCard({
             <span className="ui-chip ui-chip-soft">{unit.grounding.label}</span>
             <span className="ui-chip ui-chip-soft">{capability.capabilityLabel}</span>
             <span className="ui-chip ui-chip-soft">{quality.qualityLabel}</span>
-            {unit.resource.extractionStatus && (
-              <span className="ui-chip ui-chip-soft">{labelForExtractionStatus(unit.resource.extractionStatus, unit.resource.extractionError, unit.resource)}</span>
-            )}
+            <span className="ui-chip ui-chip-soft">{uiState.statusLabel}</span>
             {unit.resource.required && (
               <span className="ui-chip ui-status-warning" style={{ padding: '0.28rem 0.6rem', fontSize: '11px', fontWeight: 700 }}>Required</span>
             )}
@@ -65,17 +67,23 @@ export function LearnResourceCard({
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-          <Link href={deepHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
+          {canvasHref && (
+            <a
+              href={canvasHref}
+              target="_blank"
+              rel="noreferrer"
+              className={`ui-button ${shouldPreferSource ? 'ui-button-secondary' : 'ui-button-ghost'} ui-button-xs`}
+              style={{ textDecoration: 'none' }}
+            >
+              {uiState.sourceActionLabel}
+            </a>
+          )}
+          <Link href={deepHref} className={`ui-button ${shouldPreferSource ? 'ui-button-ghost' : 'ui-button-secondary'} ui-button-xs`} style={{ textDecoration: 'none' }}>
             {deepViewLabel}
           </Link>
           <Link href={inspectHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
             Inspect
           </Link>
-          {canvasHref && (
-            <a href={canvasHref} target="_blank" rel="noreferrer" className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-              Open in Canvas
-            </a>
-          )}
         </div>
       </div>
 
