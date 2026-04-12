@@ -2,15 +2,17 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import type { CSSProperties, ReactNode } from 'react'
 import { AnnouncementSupportRow } from '@/components/AnnouncementSupportRow'
+import { DeepLearnGenerateButton } from '@/components/DeepLearnGenerateButton'
 import { ModuleLensShell } from '@/components/ModuleLensShell'
 import { ModuleTermBank } from '@/components/ModuleTermBank'
 import { StudyResourceAccordionList } from '@/components/StudyResourceAccordionList'
+import { listDeepLearnNotesForModule } from '@/lib/deep-learn-store'
+import { getDeepLearnResourceUiState } from '@/lib/deep-learn-ui'
 import { getModuleResourceCapabilityInfo } from '@/lib/module-resource-capability'
 import { getModuleResourceQualityInfo } from '@/lib/module-resource-quality'
 import { TaskStatusToggle } from '@/components/TaskStatusToggle'
 import { buildModuleLearnOverview, type ModuleStudyMaterial } from '@/lib/module-learn-overview'
 import { buildModuleDoHref, buildModuleInspectHref, getSearchParamValue, getSupportElementId, getTaskElementId } from '@/lib/stay-focused-links'
-import { countQuizReadyStudyNotes } from '@/lib/study-note-quiz'
 import { buildModuleTermBank } from '@/lib/module-term-bank'
 import {
   buildLearnExperience,
@@ -52,14 +54,12 @@ export default async function LearnPage({ params, searchParams }: Props) {
     overview,
     storedTerms: terms,
   })
+  const deepLearnNotes = await listDeepLearnNotesForModule(module.id)
+  const deepLearnNoteByResourceId = new Map(deepLearnNotes.map((note) => [note.resourceId, note]))
   const sortedTasks = sortModuleTasks(tasks)
   const pendingTasks = sortedTasks.filter((task) => task.status !== 'completed')
   const completedTasks = sortedTasks.filter((task) => task.status === 'completed')
   const outlineSectionCount = overview.studyMaterials.reduce((total, material) => total + material.reader.outlineSections.length, 0)
-  const quizReadyNoteCount = overview.studyMaterials.reduce(
-    (total, material) => total + countQuizReadyStudyNotes(material.reader.outlineSections),
-    0,
-  )
   const summaryText = overview.summary ?? module.summary ?? overview.coverageNote ?? termBank.termsStateMessage
   const targetResourceId = getSearchParamValue(resolvedSearchParams?.resource)
   const targetTaskId = getSearchParamValue(resolvedSearchParams?.task)
@@ -67,6 +67,15 @@ export default async function LearnPage({ params, searchParams }: Props) {
   const targetPanel = getSearchParamValue(resolvedSearchParams?.panel)
   const shouldOpenSourceSupport = targetPanel === 'source-support' || Boolean(targetSupportId)
   const shouldOpenCompletedTasks = Boolean(targetTaskId && completedTasks.some((task) => task.id === targetTaskId))
+  const readyDeepLearnNoteCount = deepLearnNotes.filter((note) => note.status === 'ready').length
+  const quizReadyDeepLearnNoteCount = deepLearnNotes.filter((note) => note.status === 'ready' && note.quizReady).length
+  const resumeTargetDeepLearnUi = overview.resumeTarget
+    ? getDeepLearnResourceUiState(
+      module.id,
+      overview.resumeTarget.resource.id,
+      deepLearnNoteByResourceId.get(overview.resumeTarget.resource.id) ?? null,
+    )
+    : null
 
   if (module.status === 'error') {
     return (
@@ -92,16 +101,16 @@ export default async function LearnPage({ params, searchParams }: Props) {
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.9rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
             <div style={{ minWidth: 0, flex: '1 1 460px' }}>
               <p className="ui-kicker">Unified Learn workspace</p>
-              <h2 className="ui-section-title" style={{ marginTop: '0.45rem' }}>Study one note at a time, then quiz that same note in place</h2>
+              <h2 className="ui-section-title" style={{ marginTop: '0.45rem' }}>Deep Learn notes come first, with source and reader fallback behind them</h2>
               <p className="ui-section-copy" style={{ marginTop: '0.45rem', maxWidth: '46rem' }}>
-                Learn keeps the source-grounded notes front and center, but the flow is tighter now. Open the notes you need, expand one section at a time, then quiz only that note instead of the whole module at once.
+                The main study path now starts at the resource, turns it into a saved Deep Learn note, then carries that note into quiz. The old reader still stays nearby for source transparency and fallback, but it no longer leads the workflow.
               </p>
             </div>
             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
               <span className="ui-chip ui-chip-soft">{overview.studyMaterials.length} study source{overview.studyMaterials.length === 1 ? '' : 's'}</span>
-              <span className="ui-chip ui-chip-soft">{outlineSectionCount} outline section{outlineSectionCount === 1 ? '' : 's'}</span>
+              <span className="ui-chip ui-chip-soft">{readyDeepLearnNoteCount} Deep Learn note{readyDeepLearnNoteCount === 1 ? '' : 's'}</span>
               <span className="ui-chip ui-chip-soft">{termBank.finalTerms.length} key term{termBank.finalTerms.length === 1 ? '' : 's'}</span>
-              <span className="ui-chip ui-chip-soft">{quizReadyNoteCount} quiz-ready note{quizReadyNoteCount === 1 ? '' : 's'}</span>
+              <span className="ui-chip ui-chip-soft">{quizReadyDeepLearnNoteCount} quiz-ready note{quizReadyDeepLearnNoteCount === 1 ? '' : 's'}</span>
               <span className="ui-chip ui-chip-soft">{pendingTasks.length} active task{pendingTasks.length === 1 ? '' : 's'}</span>
               {completedTasks.length > 0 && <span className="ui-chip ui-chip-soft">{completedTasks.length} done</span>}
             </div>
@@ -167,10 +176,10 @@ export default async function LearnPage({ params, searchParams }: Props) {
 
             <div className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem 1.05rem', display: 'grid', gap: '0.8rem' }}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '0.7rem' }}>
+                <StatCard label="Deep Learn ready" value={String(readyDeepLearnNoteCount)} />
+                <StatCard label="Quiz-ready notes" value={String(quizReadyDeepLearnNoteCount)} />
                 <StatCard label="Usable sources" value={String(termBank.groundedSourceCount)} />
                 <StatCard label="Readable chars" value={termBank.groundedCharCount.toLocaleString()} />
-                <StatCard label="Ready readers" value={String(overview.readyStudyFileCount)} />
-                <StatCard label="Quiz-ready notes" value={String(quizReadyNoteCount)} />
               </div>
 
               {overview.resumeTarget && (
@@ -180,10 +189,29 @@ export default async function LearnPage({ params, searchParams }: Props) {
                     {overview.resumeTarget.resource.title}
                   </p>
                   <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
-                    {overview.resumeTarget.note}
+                    {resumeTargetDeepLearnUi?.summary ?? overview.resumeTarget.note}
                   </p>
                   <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-                    <ActionButton href={overview.resumeTarget.href} label={overview.resumeTarget.actionLabel} external={overview.resumeTarget.external} tone="secondary" />
+                    {resumeTargetDeepLearnUi && (resumeTargetDeepLearnUi.status === 'not_started' || resumeTargetDeepLearnUi.status === 'failed') ? (
+                      <DeepLearnGenerateButton
+                        moduleId={module.id}
+                        resourceId={overview.resumeTarget.resource.id}
+                        courseId={module.courseId ?? null}
+                        label={resumeTargetDeepLearnUi.primaryLabel}
+                      />
+                    ) : resumeTargetDeepLearnUi ? (
+                      <Link href={resumeTargetDeepLearnUi.noteHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
+                        {resumeTargetDeepLearnUi.primaryLabel}
+                      </Link>
+                    ) : (
+                      <ActionButton href={overview.resumeTarget.href} label={overview.resumeTarget.actionLabel} external={overview.resumeTarget.external} tone="secondary" />
+                    )}
+                    {resumeTargetDeepLearnUi?.quizReady && (
+                      <Link href={resumeTargetDeepLearnUi.quizHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+                        Quiz this
+                      </Link>
+                    )}
+                    <ActionButton href={overview.resumeTarget.href} label={overview.resumeTarget.actionLabel} external={overview.resumeTarget.external} tone="ghost" />
                     <Link href={`/modules/${module.id}/learn#source-support`} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
                       View extracted source
                     </Link>
@@ -209,15 +237,18 @@ export default async function LearnPage({ params, searchParams }: Props) {
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.18fr) minmax(320px, 0.92fr)', gap: '1rem', alignItems: 'start' }}>
           <section id="study-notes" className="motion-card motion-delay-2 section-shell section-shell-elevated" style={{ padding: '1.2rem 1.3rem', display: 'grid', gap: '0.9rem' }}>
             <div>
-              <p className="ui-kicker">Study notes</p>
-              <h3 style={{ margin: '0.42rem 0 0', fontSize: '1.08rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>Compact resource rows that open into notes inline</h3>
+              <p className="ui-kicker">Deep Learn notes</p>
+              <h3 style={{ margin: '0.42rem 0 0', fontSize: '1.08rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>Generate a saved note first, then use the reader only when you need the source surface</h3>
               <p className="ui-section-copy" style={{ marginTop: '0.45rem', maxWidth: '44rem' }}>
-                The main Learn body now starts with the module&apos;s Canvas resources and pages as compact rows. Open one resource inline, then expand the note sections inside it when you are ready to read or quiz.
+                Each resource now leads with Deep Learn. Generate or open the saved note here, see whether it is quiz-ready, and keep the source or reader behind it as validation instead of the main destination.
               </p>
             </div>
 
             <StudyResourceAccordionList
               items={overview.studyMaterials.map((material) => ({
+                ...buildDeepLearnAccordionState(module.id, module.courseId ?? null, material.resource.id, deepLearnNoteByResourceId.get(material.resource.id) ?? null),
+                moduleId: module.id,
+                courseId: module.courseId ?? null,
                 id: material.resource.id,
                 title: material.resource.title,
                 note: material.note,
@@ -239,7 +270,7 @@ export default async function LearnPage({ params, searchParams }: Props) {
                 originalFileHref: getResourceOriginalFileHref(material.resource),
               }))}
               initialOpenResourceId={targetResourceId}
-              emptyMessage="No mapped study readers are ready for this module yet. Learn will show fuller notes here as soon as readable extracted source text is available."
+              emptyMessage="No mapped study resources are available for Deep Learn in this module yet."
             />
           </section>
 
@@ -783,4 +814,30 @@ function deadlineTone(value: string): 'warning' | 'accent' | 'muted' {
   if (daysUntil <= 1) return 'warning'
   if (daysUntil <= 7) return 'accent'
   return 'muted'
+}
+
+function buildDeepLearnAccordionState(
+  moduleId: string,
+  courseId: string | null,
+  resourceId: string,
+  note: Parameters<typeof getDeepLearnResourceUiState>[2],
+) {
+  const deepLearnUi = getDeepLearnResourceUiState(moduleId, resourceId, note)
+
+  return {
+    moduleId,
+    courseId,
+    deepLearnStatus: deepLearnUi.status,
+    deepLearnStatusLabel: deepLearnUi.statusLabel,
+    deepLearnTone: deepLearnUi.tone,
+    deepLearnSummary: deepLearnUi.summary,
+    deepLearnDetail: deepLearnUi.detail,
+    deepLearnPrimaryLabel: deepLearnUi.primaryLabel,
+    deepLearnNoteHref: deepLearnUi.noteHref,
+    deepLearnQuizHref: deepLearnUi.quizHref,
+    deepLearnQuizReady: deepLearnUi.quizReady,
+    deepLearnTermCount: note?.coreTerms.length ?? 0,
+    deepLearnFactCount: note?.keyFacts.length ?? 0,
+    deepLearnNoteFailure: note?.errorMessage ?? null,
+  }
 }
