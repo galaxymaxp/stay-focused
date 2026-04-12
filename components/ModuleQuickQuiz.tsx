@@ -149,7 +149,7 @@ export function ModuleQuickQuiz({
             {title}
           </h3>
           <p style={{ margin: '0.38rem 0 0', fontSize: '13px', lineHeight: 1.68, color: 'var(--text-secondary)' }}>
-            Only this note&apos;s extracted content is used here.
+            Only this note&apos;s grounded study content is used here.
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>

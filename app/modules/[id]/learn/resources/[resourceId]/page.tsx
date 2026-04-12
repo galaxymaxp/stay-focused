@@ -1,9 +1,11 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { CopyTaskBundleActions } from '@/components/CopyTaskBundleActions'
+import { DeepLearnNoteView } from '@/components/DeepLearnNoteView'
 import { ModuleLensShell } from '@/components/ModuleLensShell'
 import { StudyFileReader } from '@/components/StudyFileReader'
 import { StudyModeSwitcher } from '@/components/StudyModeSwitcher'
+import { getDeepLearnNoteForResource } from '@/lib/deep-learn-store'
 import { getLearnResourceUiState } from '@/lib/learn-resource-ui'
 import { buildManualCopyBundle } from '@/lib/manual-copy-bundle'
 import { formatNormalizedModuleResourceSourceType, getModuleResourceCapabilityInfo } from '@/lib/module-resource-capability'
@@ -62,6 +64,7 @@ export default async function ResourceDetailPage({ params }: Props) {
     dueDate: linkedTask?.deadline ?? resource.dueDate ?? null,
     resource,
   })
+  const deepLearnNote = await getDeepLearnNoteForResource(module.id, resource.id)
 
   if (resource.kind === 'study_file') {
     return (
@@ -73,15 +76,25 @@ export default async function ResourceDetailPage({ params }: Props) {
         title={module.title}
         summary={module.summary}
       >
-        <StudyFileReader
-          moduleId={module.id}
-          courseId={module.courseId}
-          courseName={courseName}
-          moduleTitle={module.title}
-          resource={resource}
-          canvasHref={canvasHref}
-          linkedTask={linkedTask}
-        />
+        <div style={{ display: 'grid', gap: '1rem' }}>
+          <DeepLearnNoteView
+            moduleId={module.id}
+            courseId={module.courseId ?? null}
+            resource={resource}
+            note={deepLearnNote}
+            readerHref={`/modules/${module.id}/learn/resources/${encodeURIComponent(resource.id)}`}
+            sourceHref={sourceHref}
+          />
+          <StudyFileReader
+            moduleId={module.id}
+            courseId={module.courseId}
+            courseName={courseName}
+            moduleTitle={module.title}
+            resource={resource}
+            canvasHref={canvasHref}
+            linkedTask={linkedTask}
+          />
+        </div>
       </ModuleLensShell>
     )
   }
@@ -95,13 +108,22 @@ export default async function ResourceDetailPage({ params }: Props) {
       title={module.title}
       summary={module.summary}
     >
-      <section className="motion-card motion-delay-1 section-shell section-shell-elevated" style={{ padding: '1.35rem 1.45rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      <div style={{ display: 'grid', gap: '1rem' }}>
+        <DeepLearnNoteView
+          moduleId={module.id}
+          courseId={module.courseId ?? null}
+          resource={resource}
+          note={deepLearnNote}
+          readerHref={`/modules/${module.id}/learn/resources/${encodeURIComponent(resource.id)}`}
+          sourceHref={sourceHref}
+        />
+        <section className="motion-card motion-delay-1 section-shell section-shell-elevated" style={{ padding: '1.35rem 1.45rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
           <div style={{ minWidth: 0, flex: '1 1 480px' }}>
-            <p className="ui-kicker">Resource deep view</p>
+            <p className="ui-kicker">Fallback source detail</p>
             <h2 className="ui-section-title" style={{ marginTop: '0.45rem' }}>{resource.title}</h2>
             <p className="ui-section-copy" style={{ marginTop: '0.5rem' }}>
-              Honest resource evidence, context, and source actions for this individual Canvas item.
+              Deep Learn is the main study path. This page stays focused on source evidence, fallback context, and direct source actions for this individual Canvas item.
             </p>
           </div>
           <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
@@ -142,7 +164,7 @@ export default async function ResourceDetailPage({ params }: Props) {
         <div className={grounding.hasGroundedAnalysis ? 'ui-card' : 'ui-card-soft'} style={{ borderRadius: 'var(--radius-panel)', padding: '1rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
             <div>
-              <p className="ui-kicker">Grounding</p>
+              <p className="ui-kicker">Source grounding</p>
               <p style={{ margin: '0.45rem 0 0', fontSize: '16px', lineHeight: 1.45, color: 'var(--text-primary)', fontWeight: 650 }}>{grounding.label}</p>
             </div>
             <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
@@ -197,7 +219,7 @@ export default async function ResourceDetailPage({ params }: Props) {
             {unit && unit.modes.length > 0 ? (
               <>
                 <div className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem' }}>
-                  <p className="ui-kicker">Reader preview</p>
+                  <p className="ui-kicker">Fallback reader preview</p>
                   <p style={{ margin: '0.55rem 0 0', fontSize: '15px', lineHeight: 1.72, color: 'var(--text-secondary)' }}>{unit.preview}</p>
                 </div>
                 <StudyModeSwitcher modes={unit.modes} summaryLabel="Learning modes are collapsed by default here too" />
@@ -287,7 +309,8 @@ export default async function ResourceDetailPage({ params }: Props) {
             )}
           </aside>
         </div>
-      </section>
+        </section>
+      </div>
     </ModuleLensShell>
   )
 }

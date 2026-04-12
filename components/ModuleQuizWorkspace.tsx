@@ -9,6 +9,7 @@ export interface QuizSection {
   id: string
   title: string
   resourceTitle: string
+  noteHref: string
   quizItems: StudyNoteQuizItem[]
   questionCountOptions: number[]
 }
@@ -20,17 +21,24 @@ export interface QuizSection {
  */
 export function ModuleQuizWorkspace({
   quizSections,
+  initialSelectedId = null,
   inspectHref,
+  learnHref,
   withheldMaterialCount = 0,
-  weakMaterialCount = 0,
+  notReadyDeepLearnCount = 0,
 }: {
   quizSections: QuizSection[]
+  initialSelectedId?: string | null
   inspectHref?: string
+  learnHref?: string
   withheldMaterialCount?: number
-  weakMaterialCount?: number
+  notReadyDeepLearnCount?: number
 }) {
+  const defaultSelectedId = initialSelectedId && quizSections.some((section) => section.id === initialSelectedId)
+    ? initialSelectedId
+    : quizSections[0]?.id ?? null
   const [selectedId, setSelectedId] = useState<string | null>(
-    quizSections[0]?.id ?? null,
+    defaultSelectedId,
   )
 
   const selected = quizSections.find((s) => s.id === selectedId) ?? null
@@ -42,16 +50,23 @@ export function ModuleQuizWorkspace({
         <h2 className="ui-section-title">No quiz-ready notes yet</h2>
         <div className="ui-empty" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem 1.1rem', fontSize: '14px', lineHeight: 1.68 }}>
           {withheldMaterialCount > 0
-            ? weakMaterialCount > 0
-              ? 'Quiz questions are only generated from strong or usable study notes. This module has extracted material, but the current notes are still too weak or noisy to trust for quiz generation.'
-              : 'Quiz questions are only generated from strong or usable study notes. This module still needs stronger grounded study notes before quiz can use them safely.'
-            : 'Quiz questions are generated from extracted study note bullets. This module does not have enough grounded study notes to quiz from yet. Open Learn to inspect the study sources, or use the resource inspection view to see which items are partial, unsupported, or failed.'}
+            ? notReadyDeepLearnCount > 0
+              ? 'Quiz only opens from saved Deep Learn notes that keep enough exact terms, key facts, and distinctions. This module has notes, but they are not structured strongly enough for quiz yet.'
+              : 'Quiz only opens after a Deep Learn note exists. Generate a saved note from Learn first, then come back once the note is ready.'
+            : 'No saved Deep Learn notes are ready for quiz yet. Open Learn to generate a note, or inspect the resource state if the source grounding is still too weak.'}
         </div>
-        {inspectHref && (
+        {(learnHref || inspectHref) && (
           <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-            <Link href={inspectHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
-              Inspect resources
-            </Link>
+            {learnHref && (
+              <Link href={learnHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
+                Open Learn
+              </Link>
+            )}
+            {inspectHref && (
+              <Link href={inspectHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
+                Inspect resources
+              </Link>
+            )}
           </div>
         )}
       </section>
@@ -63,18 +78,18 @@ export function ModuleQuizWorkspace({
       <section className="motion-card motion-delay-1 section-shell section-shell-elevated" style={{ padding: '1.35rem 1.45rem', display: 'grid', gap: '0.85rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.9rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
           <div>
-            <p className="ui-kicker">Select a note to quiz</p>
+            <p className="ui-kicker">Select a Deep Learn note to quiz</p>
             <h2 className="ui-section-title" style={{ marginTop: '0.42rem' }}>
               {quizSections.length} quiz-ready note{quizSections.length === 1 ? '' : 's'}
             </h2>
             <p className="ui-section-copy" style={{ marginTop: '0.42rem' }}>
-              Questions are grounded in extracted bullet content from each note. Pick a note, choose how many questions to run, then start.
+              Questions come from each saved note&apos;s preserved terms, key facts, and distinctions. Pick a note, choose how many questions to run, then start.
             </p>
             {withheldMaterialCount > 0 && (
               <p style={{ margin: '0.55rem 0 0', fontSize: '13px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
-                {weakMaterialCount > 0
-                  ? `${withheldMaterialCount} study source${withheldMaterialCount === 1 ? ' was' : 's were'} withheld because the extracted text is still weak or too noisy for a trustworthy quiz.`
-                  : `${withheldMaterialCount} study source${withheldMaterialCount === 1 ? ' is' : 's are'} still outside the quiz lane because the current extraction quality is not strong enough yet.`}
+                {notReadyDeepLearnCount > 0
+                  ? `${notReadyDeepLearnCount} saved note${notReadyDeepLearnCount === 1 ? ' is' : 's are'} still below the quiz-ready threshold because the current term, fact, or distinction structure is too thin.`
+                  : `${withheldMaterialCount} study source${withheldMaterialCount === 1 ? ' is' : 's are'} still outside the quiz lane because no saved Deep Learn note is ready yet.`}
               </p>
             )}
           </div>
@@ -89,6 +104,7 @@ export function ModuleQuizWorkspace({
             return (
               <button
                 key={section.id}
+                id={section.id}
                 type="button"
                 onClick={() => setSelectedId(section.id)}
                 aria-pressed={isSelected}
@@ -125,9 +141,22 @@ export function ModuleQuizWorkspace({
           quizItems={selected.quizItems}
           questionCountOptions={selected.questionCountOptions}
           title={`Quiz: ${selected.title}`}
-          description={`Questions drawn from grounded bullets in "${selected.resourceTitle}". Pick a count and start.`}
-          emptyMessage="This note does not have enough extracted bullet detail for a reliable quiz."
+          description={`Questions drawn from the saved Deep Learn note for "${selected.resourceTitle}". Pick a count and start.`}
+          emptyMessage="This Deep Learn note does not have enough quiz-ready structure yet."
         />
+      )}
+
+      {selected && (
+        <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+          <Link href={selected.noteHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+            Open note
+          </Link>
+          {learnHref && (
+            <Link href={learnHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+              Back to Learn
+            </Link>
+          )}
+        </div>
       )}
     </div>
   )
