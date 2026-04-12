@@ -10,10 +10,11 @@ import {
   type ModuleResourceQualityInfo,
 } from './module-resource-quality'
 import {
+  buildCanvasContentPlaceholderResult,
   resolveCanvasContentForWorkspaceItem,
   type ResolveCanvasAttachmentDownloadInput,
 } from './canvas-content-resolution'
-import { resolveCanvasConfig, type CanvasConfig } from './canvas'
+import { resolveCanvasConfig, resolveCanvasLinkedTarget, type CanvasConfig } from './canvas'
 import type { ModuleResource, ModuleResourceExtractionStatus } from './types'
 
 type CanvasPagePayload = {
@@ -205,33 +206,30 @@ export async function reprocessStoredModuleResource(
         update = buildFailedPersistedUpdate(error instanceof Error ? error.message : 'Canvas discussion reprocess failed.')
       }
     }
-  } else if (normalizedSourceType === 'external_url' || normalizedSourceType === 'external_tool') {
-    const resolved = await resolveCanvasContentForWorkspaceItem({
-      title: resource.title,
-      sourceType: 'external_link',
-      mimeType: resource.contentType,
-      attachments: [
-        {
-          name: resource.title,
-          url: resource.htmlUrl ?? resource.sourceUrl,
-          mimeType: resource.contentType,
-          sourceType: 'external_link',
-        },
-      ],
-      courseId: resource.courseId,
-      moduleId: resource.moduleId,
+  } else if (normalizedSourceType === 'external_url' || normalizedSourceType === 'external_tool' || normalizedSourceType === 'module_item') {
+    const resolvedTarget = await reprocessResolvedCanvasLinkTarget({
+      resource,
+      canvasConfig,
+      downloadAttachment,
     })
 
-    update = {
-      ...resolved.persisted,
-      extractionError: resolved.persisted.extractionError
-        ?? 'This resource is link-only in Stay Focused right now. Reprocessing can keep the status honest, but it cannot turn the link into readable study text yet.',
+    if (resolvedTarget) {
+      update = resolvedTarget.update
+      metadataPatch = {
+        ...metadataPatch,
+        ...resolvedTarget.metadataPatch,
+      }
+    } else {
+      update = {
+        extractionStatus: 'metadata_only',
+        extractedText: null,
+        extractedTextPreview: null,
+        extractedCharCount: 0,
+        extractionError: 'This stored module link has no resolvable Canvas or external URL yet, so reprocessing keeps it as context-only metadata.',
+        metadataPatch: {},
+      }
     }
-    metadataPatch = {
-      ...metadataPatch,
-      ...resolved.persisted.metadataPatch,
-    }
-  } else if (normalizedSourceType === 'subheader' || normalizedSourceType === 'module_item') {
+  } else if (normalizedSourceType === 'subheader') {
     update = {
       extractionStatus: 'metadata_only',
       extractedText: null,
@@ -339,6 +337,354 @@ function getOptionalCanvasConfig(override?: Partial<CanvasConfig>) {
   } catch {
     return null
   }
+}
+
+async function reprocessResolvedCanvasLinkTarget(input: {
+  resource: ModuleResource
+  canvasConfig: CanvasConfig | null
+  downloadAttachment: ReturnType<typeof createStoredAttachmentDownloader>
+}) {
+  const candidateUrl = input.resource.htmlUrl ?? input.resource.sourceUrl
+  if (!candidateUrl) {
+    return null
+  }
+
+  const target = await resolveCanvasLinkedTarget(candidateUrl, input.canvasConfig)
+  const metadataPatch = buildStoredCanvasTargetMetadataPatch(input.resource, target)
+
+  if (target.resolutionState === 'resolved' && target.resolvedTargetType === 'page') {
+    const pageApiUrl = buildResolvedCanvasPageApiUrl(target, input.canvasConfig)
+    if (!pageApiUrl) {
+      return buildStoredCanvasResolutionPlaceholder({
+        resource: input.resource,
+        target,
+        extractionStatus: 'metadata_only',
+        fallbackState: 'canvas_resolution_required',
+        reason: 'Canvas resolved this item to a page, but reprocessing still needs Canvas API credentials to fetch the page body.',
+      })
+    }
+
+    try {
+      const page = await fetchStoredJson<CanvasPagePayload>(pageApiUrl, input.canvasConfig)
+      const title = page.title?.trim() || input.resource.title
+      const resolved = await resolveCanvasContentForWorkspaceItem({
+        title,
+        sourceType: 'page',
+        mimeType: 'text/html',
+        sections: [
+          {
+            label: 'Page content',
+            html: page.body ?? '',
+          },
+        ],
+        courseId: input.resource.courseId,
+        moduleId: input.resource.moduleId,
+      }, {
+        downloadAttachment: input.downloadAttachment,
+      })
+
+      return {
+        update: resolved.persisted,
+        metadataPatch: {
+          ...metadataPatch,
+          ...resolved.persisted.metadataPatch,
+          normalizedSourceType: 'page',
+          canvasPageUrl: page.url ?? target.pageUrl ?? null,
+          pageUpdatedAt: page.updated_at ?? null,
+          pagePublished: page.published ?? null,
+        },
+      }
+    } catch (error) {
+      return buildStoredCanvasResolutionPlaceholder({
+        resource: input.resource,
+        target,
+        extractionStatus: 'failed',
+        fallbackState: 'canvas_fetch_failed',
+        reason: error instanceof Error ? error.message : 'Canvas page reprocess failed.',
+      })
+    }
+  }
+
+  if (target.resolutionState === 'resolved' && target.resolvedTargetType === 'assignment') {
+    const assignmentApiUrl = buildResolvedCanvasAssignmentApiUrl(target, input.canvasConfig)
+    if (!assignmentApiUrl) {
+      return buildStoredCanvasResolutionPlaceholder({
+        resource: input.resource,
+        target,
+        extractionStatus: 'metadata_only',
+        fallbackState: 'canvas_resolution_required',
+        reason: 'Canvas resolved this item to an assignment, but reprocessing still needs Canvas API credentials to fetch the assignment instructions.',
+      })
+    }
+
+    try {
+      const assignment = await fetchStoredJson<CanvasAssignmentPayload>(assignmentApiUrl, input.canvasConfig)
+      const title = assignment.name?.trim() || input.resource.title
+      const resolved = await resolveCanvasContentForWorkspaceItem({
+        title,
+        sourceType: 'assignment',
+        mimeType: 'text/html',
+        sections: [
+          {
+            label: 'Instructions',
+            html: assignment.description,
+          },
+        ],
+        dueAt: assignment.due_at ?? null,
+        courseId: input.resource.courseId,
+        moduleId: input.resource.moduleId,
+      }, {
+        downloadAttachment: input.downloadAttachment,
+      })
+
+      return {
+        update: resolved.persisted,
+        metadataPatch: {
+          ...metadataPatch,
+          ...resolved.persisted.metadataPatch,
+          normalizedSourceType: 'assignment',
+          assignmentDueAt: assignment.due_at ?? null,
+          pointsPossible: assignment.points_possible ?? null,
+          submissionTypes: Array.isArray(assignment.submission_types) ? assignment.submission_types : [],
+        },
+      }
+    } catch (error) {
+      return buildStoredCanvasResolutionPlaceholder({
+        resource: input.resource,
+        target,
+        extractionStatus: 'failed',
+        fallbackState: 'canvas_fetch_failed',
+        reason: error instanceof Error ? error.message : 'Canvas assignment reprocess failed.',
+      })
+    }
+  }
+
+  if (target.resolutionState === 'resolved' && target.resolvedTargetType === 'discussion') {
+    const discussionApiUrl = buildResolvedCanvasDiscussionApiUrl(target, input.canvasConfig)
+    if (!discussionApiUrl) {
+      return buildStoredCanvasResolutionPlaceholder({
+        resource: input.resource,
+        target,
+        extractionStatus: 'metadata_only',
+        fallbackState: 'canvas_resolution_required',
+        reason: 'Canvas resolved this item to a discussion, but reprocessing still needs Canvas API credentials to fetch the discussion prompt.',
+      })
+    }
+
+    try {
+      const discussion = await fetchStoredJson<CanvasDiscussionPayload>(discussionApiUrl, input.canvasConfig)
+      const title = discussion.title?.trim() || input.resource.title
+      const resolved = await resolveCanvasContentForWorkspaceItem({
+        title,
+        sourceType: 'discussion',
+        mimeType: 'text/html',
+        sections: [
+          {
+            label: 'Prompt',
+            html: discussion.message,
+          },
+        ],
+        postedAt: discussion.posted_at ?? null,
+        courseId: input.resource.courseId,
+        moduleId: input.resource.moduleId,
+      }, {
+        downloadAttachment: input.downloadAttachment,
+      })
+
+      return {
+        update: resolved.persisted,
+        metadataPatch: {
+          ...metadataPatch,
+          ...resolved.persisted.metadataPatch,
+          normalizedSourceType: 'discussion',
+          discussionPostedAt: discussion.posted_at ?? null,
+          discussionUpdatedAt: discussion.updated_at ?? null,
+        },
+      }
+    } catch (error) {
+      return buildStoredCanvasResolutionPlaceholder({
+        resource: input.resource,
+        target,
+        extractionStatus: 'failed',
+        fallbackState: 'canvas_fetch_failed',
+        reason: error instanceof Error ? error.message : 'Canvas discussion reprocess failed.',
+      })
+    }
+  }
+
+  if (target.resolutionState === 'resolved' && target.resolvedTargetType === 'file') {
+    try {
+      const resolved = await resolveCanvasContentForWorkspaceItem({
+        title: input.resource.title,
+        sourceType: 'file',
+        mimeType: input.resource.contentType,
+        extension: input.resource.extension,
+        file: {
+          url: target.resolvedUrl,
+          title: input.resource.title,
+          mimeType: input.resource.contentType,
+          extension: input.resource.extension ?? normalizeExtension(null, input.resource.title),
+        },
+        courseId: input.resource.courseId,
+        moduleId: input.resource.moduleId,
+      }, {
+        downloadAttachment: input.downloadAttachment,
+      })
+
+      return {
+        update: resolved.persisted,
+        metadataPatch: {
+          ...metadataPatch,
+          ...resolved.persisted.metadataPatch,
+          normalizedSourceType: 'file',
+        },
+      }
+    } catch (error) {
+      return buildStoredCanvasResolutionPlaceholder({
+        resource: input.resource,
+        target,
+        extractionStatus: 'failed',
+        fallbackState: 'canvas_fetch_failed',
+        reason: error instanceof Error ? error.message : 'Canvas file reprocess failed.',
+      })
+    }
+  }
+
+  if (target.resolutionState === 'external_link_only') {
+    const resolved = await resolveCanvasContentForWorkspaceItem({
+      title: input.resource.title,
+      sourceType: 'external_link',
+      mimeType: input.resource.contentType,
+      attachments: [
+        {
+          name: input.resource.title,
+          url: target.resolvedUrl ?? candidateUrl,
+          mimeType: input.resource.contentType,
+          sourceType: 'external_link',
+        },
+      ],
+      courseId: input.resource.courseId,
+      moduleId: input.resource.moduleId,
+    })
+
+    return {
+      update: {
+        ...resolved.persisted,
+        extractionError: resolved.persisted.extractionError
+          ?? 'This resource is link-only in Stay Focused right now. Reprocessing can keep the status honest, but it cannot turn the link into readable study text yet.',
+      },
+      metadataPatch: {
+        ...metadataPatch,
+        ...resolved.persisted.metadataPatch,
+      },
+    }
+  }
+
+  if (target.resolutionState === 'canvas_resolution_required' || target.resolutionState === 'canvas_fetch_failed') {
+    return buildStoredCanvasResolutionPlaceholder({
+      resource: input.resource,
+      target,
+      extractionStatus: target.resolutionState === 'canvas_fetch_failed' ? 'failed' : 'metadata_only',
+      fallbackState: target.resolutionState,
+      reason: target.reason ?? 'This internal Canvas link still needs deeper target resolution before readable content can be extracted.',
+    })
+  }
+
+  return buildStoredCanvasResolutionPlaceholder({
+    resource: input.resource,
+    target,
+    extractionStatus: 'metadata_only',
+    fallbackState: 'canvas_resolution_required',
+    reason: target.reason ?? 'This internal Canvas link did not resolve to a readable target yet.',
+  })
+}
+
+function buildStoredCanvasResolutionPlaceholder(input: {
+  resource: ModuleResource
+  target: Awaited<ReturnType<typeof resolveCanvasLinkedTarget>>
+  extractionStatus: ModuleResourceExtractionStatus
+  fallbackState: 'canvas_resolution_required' | 'canvas_fetch_failed'
+  reason: string
+}) {
+  const placeholder = buildCanvasContentPlaceholderResult({
+    title: input.resource.title,
+    sourceType: 'module_item',
+    mimeType: input.resource.contentType,
+    extractionStatus: input.extractionStatus === 'failed' ? 'failed' : 'partial',
+    fallbackState: input.fallbackState,
+    recommendationStrength: 'fallback',
+    courseId: input.resource.courseId,
+    moduleId: input.resource.moduleId,
+    warnings: [input.reason],
+  })
+
+  return {
+    update: {
+      ...placeholder.persisted,
+      extractionStatus: input.extractionStatus,
+      extractionError: input.reason,
+    },
+    metadataPatch: {
+      ...buildStoredCanvasTargetMetadataPatch(input.resource, input.target),
+      ...placeholder.persisted.metadataPatch,
+    },
+  }
+}
+
+function buildStoredCanvasTargetMetadataPatch(
+  resource: ModuleResource,
+  target: Awaited<ReturnType<typeof resolveCanvasLinkedTarget>>,
+) {
+  const metadataPatch: Record<string, unknown> = {
+    originalResourceKind: resource.resourceType,
+    resolutionState: target.resolutionState,
+    sourceUrlCategory: target.originalUrlCategory,
+    resolvedUrlCategory: target.resolvedUrlCategory,
+    resolvedUrl: target.resolvedUrl,
+    resolvedTargetType: target.resolvedTargetType,
+  }
+
+  if (target.resolvedTargetType !== 'unknown' && target.resolvedTargetType !== 'external_link') {
+    metadataPatch.normalizedSourceType = target.resolvedTargetType
+  } else if (target.resolutionState === 'canvas_resolution_required' || target.resolutionState === 'canvas_fetch_failed') {
+    metadataPatch.normalizedSourceType = 'module_item'
+  }
+
+  if (target.resolutionState !== 'resolved') {
+    metadataPatch.fallbackReason = target.resolutionState
+  }
+
+  return metadataPatch
+}
+
+function buildResolvedCanvasPageApiUrl(
+  target: Awaited<ReturnType<typeof resolveCanvasLinkedTarget>>,
+  canvasConfig: CanvasConfig | null,
+) {
+  if (!target.resolvedUrl) return null
+  if (target.resolvedUrl.includes('/api/v1/')) return target.resolvedUrl
+  if (!canvasConfig || !target.courseId || !target.pageUrl) return null
+  return `${canvasConfig.url}/api/v1/courses/${target.courseId}/pages/${encodeURIComponent(target.pageUrl)}`
+}
+
+function buildResolvedCanvasAssignmentApiUrl(
+  target: Awaited<ReturnType<typeof resolveCanvasLinkedTarget>>,
+  canvasConfig: CanvasConfig | null,
+) {
+  if (!target.resolvedUrl) return null
+  if (target.resolvedUrl.includes('/api/v1/')) return target.resolvedUrl
+  if (!canvasConfig || !target.courseId || !target.assignmentId) return null
+  return `${canvasConfig.url}/api/v1/courses/${target.courseId}/assignments/${target.assignmentId}`
+}
+
+function buildResolvedCanvasDiscussionApiUrl(
+  target: Awaited<ReturnType<typeof resolveCanvasLinkedTarget>>,
+  canvasConfig: CanvasConfig | null,
+) {
+  if (!target.resolvedUrl) return null
+  if (target.resolvedUrl.includes('/api/v1/')) return target.resolvedUrl
+  if (!canvasConfig || !target.courseId || !target.discussionId) return null
+  return `${canvasConfig.url}/api/v1/courses/${target.courseId}/discussion_topics/${target.discussionId}`
 }
 
 async function fetchStoredJson<T>(url: string, canvasConfig: CanvasConfig | null) {

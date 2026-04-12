@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache'
 import { requireAuthenticatedUserServer } from '@/lib/auth-server'
 import {
   compileCanvasContent,
+  getCanvasAssignment,
   downloadCanvasBinarySource,
   getCanvasDiscussionTopic,
   getCanvasFile,
@@ -14,6 +15,7 @@ import {
   getCourses,
   getModules,
   normalizeCanvasUrl,
+  resolveCanvasLinkedTarget,
   resolveCanvasConfig,
   type CanvasConfig,
   type CanvasAssignment,
@@ -22,6 +24,7 @@ import {
 } from '@/lib/canvas'
 import { normalizeExtension } from '@/lib/canvas-resource-extraction'
 import {
+  buildCanvasContentPlaceholderResult,
   resolveCanvasContentForWorkspaceItem,
   type ResolveCanvasAttachmentDownloadInput,
   type ResolveCanvasContentResult,
@@ -989,21 +992,17 @@ async function ingestModuleResources(
         continue
       }
 
-      if ((item.type?.toLowerCase() ?? '').includes('external')) {
-        const resolved = await resolveCanvasContentForWorkspaceItem({
-          title: item.title,
-          sourceType: 'external_link',
-          mimeType: item.content_details?.content_type ?? null,
-          attachments: [
-            buildModuleItemExternalLinkAttachment(item, baseRecord.sourceUrl),
-          ],
-          courseId,
-          moduleId: moduleItem.id,
-        })
-
-        records.push(createResolvedResourceRecord(baseRecord, resolved, {
-          extractionError: resolved.persisted.extractionError ?? buildModuleItemCapabilityNote(item),
-        }))
+      const resolvedTargetRecord = await tryResolveModuleItemTargetForSync({
+        item,
+        moduleItemId: moduleItem.id,
+        courseId,
+        config,
+        assignmentsById,
+        baseRecord,
+        downloadAttachment,
+      })
+      if (resolvedTargetRecord) {
+        records.push(resolvedTargetRecord)
         continue
       }
 
@@ -1117,13 +1116,342 @@ function createResolvedResourceRecord(
   }
 }
 
-function buildModuleItemExternalLinkAttachment(item: CanvasModuleItem, fallbackUrl: string | null) {
-  return {
-    name: item.title,
-    url: fallbackUrl ?? resolveCanvasUrl(null, item.content_details?.url ?? item.url ?? null),
-    mimeType: item.content_details?.content_type ?? null,
-    sourceType: 'external_link' as const,
+async function tryResolveModuleItemTargetForSync(input: {
+  item: CanvasModuleItem
+  moduleItemId: number
+  courseId: number
+  config: Partial<CanvasConfig>
+  assignmentsById: Map<number, CanvasAssignment>
+  baseRecord: ResourceIngestionRecord
+  downloadAttachment: ReturnType<typeof createCanvasAttachmentDownloader>
+}): Promise<ResourceIngestionRecord | null> {
+  const candidateUrl = input.baseRecord.sourceUrl
+    ?? resolveCanvasUrl(input.config.url ?? null, input.item.html_url ?? null)
+    ?? resolveCanvasUrl(input.config.url ?? null, input.item.url ?? null)
+    ?? resolveCanvasUrl(input.config.url ?? null, input.item.content_details?.url ?? null)
+
+  if (!candidateUrl) {
+    return null
   }
+
+  const target = await resolveCanvasLinkedTarget(candidateUrl, input.config)
+  const resolutionMetadataPatch = buildCanvasTargetMetadataPatch(input.item, target)
+
+  if (target.resolutionState === 'resolved' && target.resolvedTargetType === 'page' && target.courseId) {
+    try {
+      const page = await getCanvasPage(target.courseId, {
+        pageUrl: target.pageUrl,
+        apiUrl: target.resolvedUrl,
+      }, input.config)
+      const title = page.title?.trim() || input.item.title
+      const resolved = await resolveCanvasContentForWorkspaceItem({
+        title,
+        sourceType: 'page',
+        mimeType: 'text/html',
+        sections: [
+          {
+            label: 'Page content',
+            html: page.body ?? '',
+          },
+        ],
+        courseId: input.courseId,
+        moduleId: input.moduleItemId,
+      }, {
+        downloadAttachment: input.downloadAttachment,
+      })
+
+      return createResolvedResourceRecord(input.baseRecord, resolved, {
+        title,
+        contentType: 'text/html',
+        extension: null,
+        sourceUrl: buildCanvasPageApiUrl(input.config.url ?? null, target.courseId, page.url ?? target.pageUrl, target.resolvedUrl),
+        htmlUrl: buildCanvasPageHtmlUrl(input.config.url ?? null, target.courseId, page.url ?? target.pageUrl, page.html_url ?? target.resolvedUrl),
+        metadataPatch: {
+          ...resolutionMetadataPatch,
+          normalizedSourceType: 'page',
+          canvasPageUrl: page.url ?? target.pageUrl ?? null,
+          pageUpdatedAt: page.updated_at ?? null,
+          pagePublished: page.published ?? null,
+        },
+      })
+    } catch (error) {
+      return createResolvedResourceRecord(
+        input.baseRecord,
+        buildCanvasContentPlaceholderResult({
+          title: input.item.title,
+          sourceType: 'module_item',
+          mimeType: 'text/html',
+          extractionStatus: 'failed',
+          fallbackState: 'canvas_fetch_failed',
+          recommendationStrength: 'fallback',
+          courseId: input.courseId,
+          moduleId: input.moduleItemId,
+          warnings: [error instanceof Error ? error.message : 'Canvas page resolution failed.'],
+        }),
+        {
+          contentType: 'text/html',
+          extractionError: error instanceof Error ? error.message : 'Canvas page resolution failed.',
+          metadataPatch: resolutionMetadataPatch,
+        },
+      )
+    }
+  }
+
+  if (target.resolutionState === 'resolved' && target.resolvedTargetType === 'assignment' && target.courseId) {
+    try {
+      const assignment = typeof target.assignmentId === 'number'
+        ? input.assignmentsById.get(target.assignmentId)
+          ?? await getCanvasAssignment(target.courseId, {
+            assignmentId: target.assignmentId,
+            apiUrl: target.resolvedUrl,
+          }, input.config)
+        : await getCanvasAssignment(target.courseId, {
+          apiUrl: target.resolvedUrl,
+        }, input.config)
+
+      const resolved = await resolveCanvasContentForWorkspaceItem({
+        title: assignment.name,
+        sourceType: 'assignment',
+        mimeType: 'text/html',
+        sections: [
+          {
+            label: 'Instructions',
+            html: assignment.description,
+          },
+        ],
+        dueAt: assignment.due_at ?? null,
+        courseId: input.courseId,
+        moduleId: input.moduleItemId,
+      }, {
+        downloadAttachment: input.downloadAttachment,
+      })
+
+      return createResolvedResourceRecord(input.baseRecord, resolved, {
+        title: assignment.name,
+        contentType: 'text/html',
+        extension: null,
+        sourceUrl: buildCanvasAssignmentApiUrl(input.config.url ?? null, target.courseId, assignment.id ?? target.assignmentId ?? null, assignment.url ?? target.resolvedUrl),
+        htmlUrl: assignment.html_url ?? target.resolvedUrl ?? input.baseRecord.htmlUrl,
+        metadataPatch: {
+          ...resolutionMetadataPatch,
+          normalizedSourceType: 'assignment',
+          assignmentDueAt: assignment.due_at ?? null,
+          pointsPossible: assignment.points_possible ?? null,
+          submissionTypes: assignment.submission_types,
+        },
+      })
+    } catch (error) {
+      return createResolvedResourceRecord(
+        input.baseRecord,
+        buildCanvasContentPlaceholderResult({
+          title: input.item.title,
+          sourceType: 'module_item',
+          mimeType: 'text/html',
+          extractionStatus: 'failed',
+          fallbackState: 'canvas_fetch_failed',
+          recommendationStrength: 'fallback',
+          courseId: input.courseId,
+          moduleId: input.moduleItemId,
+          warnings: [error instanceof Error ? error.message : 'Canvas assignment resolution failed.'],
+        }),
+        {
+          contentType: 'text/html',
+          extractionError: error instanceof Error ? error.message : 'Canvas assignment resolution failed.',
+          metadataPatch: resolutionMetadataPatch,
+        },
+      )
+    }
+  }
+
+  if (target.resolutionState === 'resolved' && target.resolvedTargetType === 'discussion' && target.courseId) {
+    try {
+      const discussion = await getCanvasDiscussionTopic(target.courseId, {
+        topicId: target.discussionId,
+        apiUrl: target.resolvedUrl,
+      }, input.config)
+      const resolved = await resolveCanvasContentForWorkspaceItem({
+        title: discussion.title || input.item.title,
+        sourceType: 'discussion',
+        mimeType: 'text/html',
+        sections: [
+          {
+            label: 'Prompt',
+            html: discussion.message,
+          },
+        ],
+        postedAt: discussion.posted_at ?? null,
+        courseId: input.courseId,
+        moduleId: input.moduleItemId,
+      }, {
+        downloadAttachment: input.downloadAttachment,
+      })
+
+      return createResolvedResourceRecord(input.baseRecord, resolved, {
+        title: discussion.title?.trim() || input.item.title,
+        contentType: 'text/html',
+        extension: null,
+        sourceUrl: buildCanvasDiscussionApiUrl(input.config.url ?? null, target.courseId, discussion.id ?? target.discussionId ?? null, discussion.url ?? target.resolvedUrl),
+        htmlUrl: discussion.html_url ?? target.resolvedUrl ?? input.baseRecord.htmlUrl,
+        metadataPatch: {
+          ...resolutionMetadataPatch,
+          normalizedSourceType: 'discussion',
+          discussionUpdatedAt: discussion.updated_at ?? null,
+          discussionPostedAt: discussion.posted_at ?? null,
+        },
+      })
+    } catch (error) {
+      return createResolvedResourceRecord(
+        input.baseRecord,
+        buildCanvasContentPlaceholderResult({
+          title: input.item.title,
+          sourceType: 'module_item',
+          mimeType: 'text/html',
+          extractionStatus: 'failed',
+          fallbackState: 'canvas_fetch_failed',
+          recommendationStrength: 'fallback',
+          courseId: input.courseId,
+          moduleId: input.moduleItemId,
+          warnings: [error instanceof Error ? error.message : 'Canvas discussion resolution failed.'],
+        }),
+        {
+          contentType: 'text/html',
+          extractionError: error instanceof Error ? error.message : 'Canvas discussion resolution failed.',
+          metadataPatch: resolutionMetadataPatch,
+        },
+      )
+    }
+  }
+
+  if (target.resolutionState === 'resolved' && target.resolvedTargetType === 'file') {
+    try {
+      const sourceUrl = target.resolvedUrl ?? candidateUrl
+      const file = target.courseId && target.fileId
+        ? await getCanvasFile(target.courseId, target.fileId, input.config)
+        : null
+      const title = file?.display_name?.trim() || file?.filename?.trim() || input.item.title
+      const contentType = file?.content_type ?? file?.['content-type'] ?? input.baseRecord.contentType
+      const extension = normalizeExtension(null, title)
+      const resolved = await resolveCanvasContentForWorkspaceItem({
+        title,
+        sourceType: 'file',
+        mimeType: contentType,
+        extension,
+        file: {
+          url: file?.url ?? sourceUrl,
+          title,
+          mimeType: contentType,
+          extension,
+        },
+        courseId: input.courseId,
+        moduleId: input.moduleItemId,
+      }, {
+        downloadAttachment: input.downloadAttachment,
+      })
+
+      return createResolvedResourceRecord(input.baseRecord, resolved, {
+        canvasFileId: file?.id ?? target.fileId ?? input.baseRecord.canvasFileId,
+        title,
+        contentType,
+        extension,
+        sourceUrl: file?.url ?? sourceUrl,
+        htmlUrl: file?.preview_url ?? target.resolvedUrl ?? input.baseRecord.htmlUrl,
+        metadataPatch: {
+          ...resolutionMetadataPatch,
+          normalizedSourceType: 'file',
+          fileSize: file?.size ?? input.item.content_details?.size ?? null,
+          mimeClass: file?.mime_class ?? input.item.content_details?.mime_class ?? null,
+          fileUpdatedAt: file?.updated_at ?? null,
+        },
+      })
+    } catch (error) {
+      return createResolvedResourceRecord(
+        input.baseRecord,
+        buildCanvasContentPlaceholderResult({
+          title: input.item.title,
+          sourceType: 'module_item',
+          mimeType: input.item.content_details?.content_type ?? null,
+          extractionStatus: 'failed',
+          fallbackState: 'canvas_fetch_failed',
+          recommendationStrength: 'fallback',
+          courseId: input.courseId,
+          moduleId: input.moduleItemId,
+          warnings: [error instanceof Error ? error.message : 'Canvas file resolution failed.'],
+        }),
+        {
+          extractionError: error instanceof Error ? error.message : 'Canvas file resolution failed.',
+          metadataPatch: resolutionMetadataPatch,
+        },
+      )
+    }
+  }
+
+  if (target.resolutionState === 'external_link_only') {
+    const resolved = await resolveCanvasContentForWorkspaceItem({
+      title: input.item.title,
+      sourceType: 'external_link',
+      mimeType: input.item.content_details?.content_type ?? null,
+      attachments: [
+        {
+          name: input.item.title,
+          url: target.resolvedUrl ?? candidateUrl,
+          mimeType: input.item.content_details?.content_type ?? null,
+          sourceType: 'external_link',
+        },
+      ],
+      courseId: input.courseId,
+      moduleId: input.moduleItemId,
+    })
+
+    return createResolvedResourceRecord(input.baseRecord, resolved, {
+      extractionError: resolved.persisted.extractionError ?? buildModuleItemCapabilityNote(input.item),
+      metadataPatch: resolutionMetadataPatch,
+    })
+  }
+
+  if (target.resolutionState === 'canvas_resolution_required' || target.resolutionState === 'canvas_fetch_failed') {
+    const fallbackState = target.resolutionState
+    const placeholder = buildCanvasContentPlaceholderResult({
+      title: input.item.title,
+      sourceType: 'module_item',
+      mimeType: input.item.content_details?.content_type ?? null,
+      extractionStatus: fallbackState === 'canvas_fetch_failed' ? 'failed' : 'partial',
+      fallbackState,
+      recommendationStrength: 'fallback',
+      courseId: input.courseId,
+      moduleId: input.moduleItemId,
+      warnings: [target.reason ?? buildModuleItemCapabilityNote(input.item)],
+    })
+
+    return createResolvedResourceRecord(input.baseRecord, placeholder, {
+      extractionError: target.reason ?? buildModuleItemCapabilityNote(input.item),
+      metadataPatch: resolutionMetadataPatch,
+    })
+  }
+
+  return null
+}
+
+function buildCanvasTargetMetadataPatch(item: CanvasModuleItem, target: Awaited<ReturnType<typeof resolveCanvasLinkedTarget>>) {
+  const metadataPatch: Record<string, unknown> = {
+    originalResourceKind: item.type,
+    resolutionState: target.resolutionState,
+    sourceUrlCategory: target.originalUrlCategory,
+    resolvedUrlCategory: target.resolvedUrlCategory,
+    resolvedUrl: target.resolvedUrl,
+    resolvedTargetType: target.resolvedTargetType,
+  }
+
+  if (target.resolvedTargetType !== 'unknown' && target.resolvedTargetType !== 'external_link') {
+    metadataPatch.normalizedSourceType = target.resolvedTargetType
+  } else if (target.resolutionState === 'canvas_resolution_required' || target.resolutionState === 'canvas_fetch_failed') {
+    metadataPatch.normalizedSourceType = 'module_item'
+  }
+
+  if (target.resolutionState !== 'resolved') {
+    metadataPatch.fallbackReason = target.resolutionState
+  }
+
+  return metadataPatch
 }
 
 function createCanvasAttachmentDownloader(courseId: number, config: Partial<CanvasConfig>) {
@@ -1265,6 +1593,32 @@ function buildCanvasPageApiUrl(
   if (pageUrl && baseUrl) {
     return `${normalizeCanvasUrl(baseUrl)}/api/v1/courses/${courseId}/pages/${encodeURIComponent(pageUrl)}`
   }
+  return resolveCanvasUrl(baseUrl, fallback)
+}
+
+function buildCanvasAssignmentApiUrl(
+  baseUrl: string | null | undefined,
+  courseId: number,
+  assignmentId: number | null | undefined,
+  fallback: string | null | undefined,
+) {
+  if (assignmentId && baseUrl) {
+    return `${normalizeCanvasUrl(baseUrl)}/api/v1/courses/${courseId}/assignments/${assignmentId}`
+  }
+
+  return resolveCanvasUrl(baseUrl, fallback)
+}
+
+function buildCanvasDiscussionApiUrl(
+  baseUrl: string | null | undefined,
+  courseId: number,
+  discussionId: number | null | undefined,
+  fallback: string | null | undefined,
+) {
+  if (discussionId && baseUrl) {
+    return `${normalizeCanvasUrl(baseUrl)}/api/v1/courses/${courseId}/discussion_topics/${discussionId}`
+  }
+
   return resolveCanvasUrl(baseUrl, fallback)
 }
 
