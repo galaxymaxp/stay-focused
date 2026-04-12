@@ -1620,6 +1620,41 @@ details[open] > .ui-interactive-summary,
   transform-origin: center;
 }
 
+/* Sync dashboard — indeterminate progress bar for the saving phase */
+.sync-progress-indeterminate {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--blue) 30%, transparent) 0%,
+    color-mix(in srgb, var(--blue) 88%, #ffffff 12%) 38%,
+    color-mix(in srgb, var(--accent) 55%, var(--blue) 45%) 55%,
+    color-mix(in srgb, var(--blue) 30%, transparent) 100%
+  );
+  background-size: 250% 100%;
+  animation: sync-indeterminate-slide 1.9s ease-in-out infinite;
+}
+
+@keyframes sync-indeterminate-slide {
+  0%   { background-position: 110% 0; }
+  100% { background-position: -110% 0; }
+}
+
+/* Sync dashboard — pulsing dot for the active stage row */
+.sync-stage-active-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--blue);
+  animation: sync-stage-dot-pulse 1.35s ease-in-out infinite;
+}
+
+@keyframes sync-stage-dot-pulse {
+  0%, 100% { opacity: 1;    transform: scale(1); }
+  50%       { opacity: 0.5; transform: scale(0.78); }
+}
+
 @keyframes prompt-build-icon-breathe {
   0%,
   100% {
@@ -1811,6 +1846,8 @@ details[open] > .ui-interactive-summary,
 
 .home-row-main {
   gap: 0.32rem;
+  margin: -0.12rem -0.18rem;
+  padding: 0.58rem 0.62rem;
 }
 
 .task-card-link {
@@ -1919,7 +1956,7 @@ details[open] > .ui-interactive-summary,
 }
 
 .home-sheet-list > * + * {
-  border-top: 1px solid color-mix(in srgb, var(--border-subtle) 82%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--border-subtle) 68%, transparent);
 }
 
 .home-sheet-row {
@@ -1927,12 +1964,12 @@ details[open] > .ui-interactive-summary,
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 0.9rem;
   align-items: start;
-  padding: 0.72rem 0;
+  padding: 0.64rem 0;
 }
 
 .home-row-meta {
   display: flex;
-  gap: 0.45rem;
+  gap: 0.4rem;
   flex-wrap: wrap;
   align-items: center;
   font-size: 12px;
@@ -1940,17 +1977,17 @@ details[open] > .ui-interactive-summary,
 }
 
 .home-row-title {
-  margin: 0.42rem 0 0;
+  margin: 0.34rem 0 0;
   font-size: 15px;
-  line-height: 1.4;
+  line-height: 1.36;
   font-weight: 650;
   color: var(--text-primary);
 }
 
 .home-row-copy {
-  margin: 0.28rem 0 0;
+  margin: 0.18rem 0 0;
   font-size: 13px;
-  line-height: 1.58;
+  line-height: 1.52;
   color: var(--text-secondary);
 }
 
@@ -1966,7 +2003,7 @@ details[open] > .ui-interactive-summary,
 }
 
 .home-compact-list > * + * {
-  border-top: 1px solid color-mix(in srgb, var(--border-subtle) 82%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--border-subtle) 70%, transparent);
 }
 
 .home-list-row {
@@ -2145,10 +2182,10 @@ details[open] > .ui-interactive-summary,
   .workspace-panel-link:hover,
   .workspace-row:hover,
   .task-card-shell:hover {
-    background: color-mix(in srgb, var(--surface-base) 72%, var(--surface-focus) 28%);
+    background: color-mix(in srgb, var(--surface-base) 74%, var(--surface-focus) 26%);
     border-color: color-mix(in srgb, var(--amber) 16%, var(--border-subtle) 84%);
     box-shadow:
-      0 1px 0 rgba(255, 248, 235, 0.06) inset,
+      0 1px 0 rgba(255, 248, 235, 0.05) inset,
       0 10px 18px rgba(12, 9, 6, 0.11);
   }
 
@@ -2161,9 +2198,9 @@ details[open] > .ui-interactive-summary,
   .workspace-panel-link:hover .ui-chip,
   .workspace-row:hover .ui-chip,
   .task-card-shell:hover .ui-chip {
-    background: color-mix(in srgb, var(--surface-soft) 82%, var(--amber-light) 18%);
-    border-color: color-mix(in srgb, var(--amber) 20%, var(--border-subtle) 80%);
-    box-shadow: 0 1px 0 rgba(255, 248, 235, 0.04) inset;
+    background: color-mix(in srgb, var(--surface-soft) 88%, var(--amber-light) 12%);
+    border-color: color-mix(in srgb, var(--amber) 16%, var(--border-subtle) 84%);
+    box-shadow: 0 1px 0 rgba(255, 248, 235, 0.03) inset;
   }
 
   .home-focus-target:hover .ui-status-warning,
@@ -2177,6 +2214,35 @@ details[open] > .ui-interactive-summary,
   .task-card-shell:hover .ui-status-warning {
     background: color-mix(in srgb, var(--amber-light) 42%, var(--surface-soft) 58%);
     border-color: color-mix(in srgb, var(--amber) 28%, var(--border-subtle) 72%);
+  }
+
+  .home-focus-target:hover .home-row-copy,
+  .home-row-main:hover .home-row-copy,
+  .home-activity-link:hover .home-row-copy,
+  .home-course-link:hover .home-row-copy,
+  .workspace-row:hover .workspace-row-copy,
+  .workspace-panel-link:hover .workspace-quiet-panel-copy,
+  .task-card-shell:hover .ui-meta-list,
+  .task-card-shell:hover .ui-meta-list strong {
+    color: color-mix(in srgb, var(--text-secondary) 92%, var(--text-primary) 8%);
+  }
+
+  .home-focus-target:hover .home-row-meta,
+  .home-row-main:hover .home-row-meta,
+  .home-activity-link:hover .home-row-meta,
+  .home-course-link:hover .home-row-meta,
+  .workspace-row:hover .workspace-row-meta {
+    color: color-mix(in srgb, var(--text-muted) 86%, var(--text-secondary) 14%);
+  }
+
+  .home-focus-target:hover .home-row-title,
+  .home-row-main:hover .home-row-title,
+  .home-activity-link:hover .home-row-title,
+  .home-course-link:hover .home-row-title,
+  .workspace-row:hover .workspace-row-title,
+  .workspace-panel-link:hover .workspace-quiet-panel-title,
+  .task-card-shell:hover .task-card-title {
+    color: color-mix(in srgb, var(--text-primary) 94%, #fff 6%);
   }
 
   .task-card-shell:hover .task-card-title {
@@ -2394,6 +2460,8 @@ details[open] > .ui-interactive-summary,
   .prompt-build-icon-line-3,
   .prompt-build-cursor,
   .sync-status-icon-spinning,
+  .sync-progress-indeterminate,
+  .sync-stage-active-dot,
   .glass-hover,
   .ui-control,
   .ui-button,

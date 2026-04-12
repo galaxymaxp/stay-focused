@@ -139,6 +139,7 @@ export function useCanvasSyncStatus(initialLastSync: SyncActivitySnapshot | null
     phase,
     progressValue,
     resetSyncFeedback,
+    selectedCourseCount,
     title: getSyncPhaseTitle(phase),
     beginSync,
     failSync,
