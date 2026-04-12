@@ -30,7 +30,11 @@ export type NormalizedCanvasContentExtractionStatus =
 
 export type CanvasContentFallbackState =
   | 'loading'
+  | 'preview_only'
+  | 'canvas_resolution_required'
+  | 'canvas_fetch_failed'
   | 'unsupported_file_type'
+  | 'no_text_in_file'
   | 'no_readable_text_found'
   | 'extraction_failed'
   | 'attachment_only'
@@ -38,6 +42,11 @@ export type CanvasContentFallbackState =
   | null
 
 export type CanvasContentRecommendationStrength = 'strong' | 'weak' | 'fallback'
+
+export type CanvasContentPreviewState =
+  | 'full_text_available'
+  | 'preview_only'
+  | 'no_text_available'
 
 export interface NormalizedCanvasContentAttachment {
   name: string | null
@@ -263,6 +272,48 @@ export async function resolveCanvasContentForWorkspaceItem(
   }
 }
 
+export function buildCanvasContentPlaceholderResult(input: {
+  title?: string | null
+  sourceType: NormalizedCanvasContentSourceType
+  mimeType?: string | null
+  attachments?: NormalizedCanvasContentAttachment[]
+  dueAt?: string | null
+  postedAt?: string | null
+  moduleId?: string | number | null
+  courseId?: string | number | null
+  warnings?: string[]
+  extractionStatus: NormalizedCanvasContentExtractionStatus
+  fallbackState: CanvasContentFallbackState
+  recommendationStrength?: CanvasContentRecommendationStrength
+}): ResolveCanvasContentResult {
+  const content: NormalizedCanvasContent = {
+    title: trimToNull(input.title),
+    sourceType: input.sourceType,
+    mimeType: trimToNull(input.mimeType),
+    textContent: '',
+    attachments: input.attachments ?? [],
+    dueAt: trimToNull(input.dueAt),
+    postedAt: trimToNull(input.postedAt),
+    moduleId: normalizeOptionalIdentifier(input.moduleId),
+    courseId: normalizeOptionalIdentifier(input.courseId),
+    warnings: uniqueWarnings(input.warnings ?? []),
+    extractionStatus: input.extractionStatus,
+    fallbackState: input.fallbackState,
+    recommendationStrength: input.recommendationStrength
+      ?? deriveRecommendationStrength({
+        extractionStatus: input.extractionStatus,
+        hasReadableText: false,
+      }),
+  }
+
+  return {
+    content,
+    persisted: buildPersistedCanvasContentResult(content, {
+      attachmentDiagnostics: [],
+    }),
+  }
+}
+
 function normalizeOptionalIdentifier(value: string | number | null | undefined) {
   if (value === null || value === undefined) return null
   const normalized = String(value).trim()
@@ -329,7 +380,7 @@ async function resolveFileContent(
     textContent: extracted.extractedText?.trim() ?? '',
     warnings: uniqueWarnings([extracted.extractionError]),
     extractionStatus: mapLowLevelExtractionStatus(extracted.extractionStatus),
-    fallbackState: resolveLowLevelFallbackState(extracted.extractionStatus),
+    fallbackState: resolveLowLevelFallbackState(extracted.extractionStatus, 'file'),
   }
 }
 
@@ -441,7 +492,7 @@ async function resolveAttachmentReadableContent(
       extractionStatus: mapLowLevelExtractionStatus(extracted.extractionStatus),
       extractedText: extracted.extractedText?.trim() ?? '',
       warnings: uniqueWarnings([extracted.extractionError]),
-      fallbackState: resolveLowLevelFallbackState(extracted.extractionStatus),
+      fallbackState: resolveLowLevelFallbackState(extracted.extractionStatus, 'attachment'),
     }
   } catch (error) {
     return {
@@ -465,14 +516,22 @@ function buildPersistedCanvasContentResult(
   },
 ): PersistedCanvasContentResult {
   const extractedText = trimToNull(content.textContent)
+  const extractedTextPreview = extractedText ? extractedText.slice(0, 420) : null
+  const previewState = inferCanvasContentPreviewState(extractedText, extractedTextPreview)
   const metadataPatch = {
     normalizedContentStatus: content.extractionStatus,
     fallbackState: content.fallbackState,
+    fallbackReason: content.fallbackState,
     recommendationStrength: content.recommendationStrength,
     attachmentCount: content.attachments.length,
     attachmentReadableCount: context.attachmentDiagnostics.filter((attachment) => Boolean(attachment.extractedText)).length,
     attachmentCanvasFileCount: content.attachments.filter((attachment) => attachment.sourceType === 'canvas_file').length,
     attachmentExternalLinkCount: content.attachments.filter((attachment) => attachment.sourceType === 'external_link').length,
+    storedTextLength: extractedText?.length ?? 0,
+    storedPreviewLength: extractedTextPreview?.length ?? 0,
+    storedWordCount: countCanvasContentWords(extractedText),
+    previewState,
+    fullTextAvailable: previewState === 'full_text_available',
     attachments: context.attachmentDiagnostics.map((attachment) => ({
       name: attachment.name,
       url: attachment.url,
@@ -488,7 +547,7 @@ function buildPersistedCanvasContentResult(
   return {
     extractionStatus: mapNormalizedToModuleResourceStatus(content),
     extractedText,
-    extractedTextPreview: extractedText ? extractedText.slice(0, 420) : null,
+    extractedTextPreview,
     extractedCharCount: extractedText?.length ?? 0,
     extractionError: buildWarningSummary(content.warnings),
     metadataPatch,
@@ -527,11 +586,14 @@ function mapLowLevelExtractionStatus(
 
 function resolveLowLevelFallbackState(
   extractionStatus: 'pending' | 'extracted' | 'metadata_only' | 'unsupported' | 'empty' | 'failed',
+  context: 'file' | 'attachment',
 ): CanvasContentFallbackState {
   if (extractionStatus === 'pending') return 'loading'
   if (extractionStatus === 'unsupported') return 'unsupported_file_type'
   if (extractionStatus === 'failed') return 'extraction_failed'
-  if (extractionStatus === 'empty') return 'no_readable_text_found'
+  if (extractionStatus === 'empty') return context === 'file' || context === 'attachment'
+    ? 'no_text_in_file'
+    : 'no_readable_text_found'
   return null
 }
 
@@ -581,6 +643,7 @@ function resolveFallbackState(input: {
   const hasFailedAttachment = input.attachmentDiagnostics.some((attachment) => attachment.extractionStatus === 'failed')
   const hasUnsupportedAttachment = input.attachmentDiagnostics.some((attachment) => attachment.extractionStatus === 'unsupported')
   const hasNoTextAttachment = input.attachmentDiagnostics.some((attachment) => attachment.extractionStatus === 'no_text')
+  const hasNoTextFileAttachment = input.attachmentDiagnostics.some((attachment) => attachment.fallbackState === 'no_text_in_file')
 
   if (input.hasReadableText && !input.direct.textContent && hasReadableAttachmentText) {
     return 'attachment_only'
@@ -596,6 +659,10 @@ function resolveFallbackState(input: {
 
   if (!input.hasReadableText && (input.direct.extractionStatus === 'failed' || hasFailedAttachment)) {
     return 'extraction_failed'
+  }
+
+  if (!input.hasReadableText && hasNoTextFileAttachment) {
+    return 'no_text_in_file'
   }
 
   if (!input.hasReadableText && (input.direct.extractionStatus === 'no_text' || hasNoTextAttachment || hasCanvasFileAttachment)) {
@@ -793,6 +860,23 @@ function buildWarningSummary(warnings: string[]) {
   const unique = uniqueWarnings(warnings)
   if (unique.length === 0) return null
   return unique.slice(0, 3).join(' ')
+}
+
+function inferCanvasContentPreviewState(extractedText: string | null, extractedTextPreview: string | null): CanvasContentPreviewState {
+  if (!extractedTextPreview) {
+    return 'no_text_available'
+  }
+
+  if (!extractedText) {
+    return 'preview_only'
+  }
+
+  return 'full_text_available'
+}
+
+function countCanvasContentWords(text: string | null) {
+  if (!text) return 0
+  return text.split(/\s+/).filter(Boolean).length
 }
 
 function uniqueWarnings(warnings: Array<string | null | undefined>) {

@@ -122,6 +122,50 @@ export interface CanvasPage {
   updated_at?: string | null
 }
 
+export type CanvasResolvedTargetType =
+  | 'page'
+  | 'file'
+  | 'assignment'
+  | 'discussion'
+  | 'external_link'
+  | 'unknown'
+
+export type CanvasResolvedUrlCategory =
+  | 'canvas_page'
+  | 'canvas_file'
+  | 'canvas_assignment'
+  | 'canvas_discussion'
+  | 'canvas_module_redirect'
+  | 'canvas_module_item'
+  | 'canvas_external_tool'
+  | 'canvas_api'
+  | 'canvas_html'
+  | 'external'
+  | 'relative'
+  | 'unknown'
+
+export type CanvasTargetResolutionState =
+  | 'resolved'
+  | 'external_link_only'
+  | 'canvas_resolution_required'
+  | 'canvas_fetch_failed'
+  | 'unknown'
+
+export interface CanvasResolvedLinkTarget {
+  originalUrl: string | null
+  originalUrlCategory: CanvasResolvedUrlCategory
+  resolvedUrl: string | null
+  resolvedUrlCategory: CanvasResolvedUrlCategory
+  resolvedTargetType: CanvasResolvedTargetType
+  resolutionState: CanvasTargetResolutionState
+  reason: string | null
+  courseId: number | null
+  pageUrl: string | null
+  fileId: number | null
+  assignmentId: number | null
+  discussionId: number | null
+}
+
 export function resolveCanvasConfig(override?: Partial<CanvasConfig>): CanvasConfig {
   const url = override?.url?.trim() || DEFAULT_CANVAS_URL?.trim()
   const token = override?.token?.trim() || DEFAULT_CANVAS_TOKEN?.trim()
@@ -278,6 +322,24 @@ export async function getAssignments(courseId: number, configOverride?: Partial<
   return canvasFetch<CanvasAssignment[]>(`/courses/${courseId}/assignments?order_by=due_at&include[]=submission`, configOverride)
 }
 
+export async function getCanvasAssignment(
+  courseId: number,
+  input: { assignmentId?: number | null; apiUrl?: string | null },
+  configOverride?: Partial<CanvasConfig>,
+): Promise<CanvasAssignment> {
+  if (typeof input.assignmentId === 'number') {
+    return canvasFetch<CanvasAssignment>(`/courses/${courseId}/assignments/${input.assignmentId}`, configOverride)
+  }
+
+  if (input.apiUrl) {
+    const config = resolveCanvasConfig(configOverride)
+    const absoluteUrl = new URL(input.apiUrl, `${config.url}/`).toString()
+    return canvasFetchAbsolute<CanvasAssignment>(absoluteUrl, configOverride)
+  }
+
+  throw new Error('Canvas assignment resource is missing both assignment ID and API URL.')
+}
+
 export async function getAnnouncements(courseId: number, configOverride?: Partial<CanvasConfig>): Promise<CanvasAnnouncement[]> {
   return canvasFetch<CanvasAnnouncement[]>(
     `/courses/${courseId}/discussion_topics?only_announcements=true&order_by=recent_activity`,
@@ -327,6 +389,533 @@ export async function getCanvasPage(
   }
 
   throw new Error('Canvas page resource is missing both page_url and API URL.')
+}
+
+export async function resolveCanvasLinkedTarget(
+  url: string | null | undefined,
+  configOverride?: Partial<CanvasConfig> | null,
+): Promise<CanvasResolvedLinkTarget> {
+  const baseUrl = getOptionalCanvasBaseUrl(configOverride)
+  const initial = classifyCanvasTargetUrl(url ?? null, baseUrl)
+
+  if (!initial.absoluteUrl) {
+    return finalizeCanvasResolvedTarget(initial, {
+      resolutionState: 'unknown',
+      reason: 'This module resource does not have a resolvable Canvas URL yet.',
+    })
+  }
+
+  if (initial.targetType === 'external_link') {
+    return finalizeCanvasResolvedTarget(initial, {
+      resolutionState: 'external_link_only',
+      reason: 'This resource resolves to an external link, so Stay Focused keeps it link-only instead of pretending it parsed the destination body.',
+    })
+  }
+
+  if (initial.targetType !== 'unknown') {
+    return finalizeCanvasResolvedTarget(initial, {
+      resolutionState: 'resolved',
+    })
+  }
+
+  if (!requiresCanvasFetch(initial.category)) {
+    return finalizeCanvasResolvedTarget(initial, {
+      resolutionState: 'unknown',
+      reason: 'This Canvas URL could not be classified into a readable target yet.',
+    })
+  }
+
+  const config = getOptionalCanvasResolutionConfig(configOverride)
+  if (!config) {
+    return finalizeCanvasResolvedTarget(initial, {
+      resolutionState: 'canvas_resolution_required',
+      reason: 'Canvas auth is required before Stay Focused can resolve this internal Canvas link to its real target.',
+    })
+  }
+
+  const resolvedFetch = await followCanvasResolutionTarget(initial.absoluteUrl, config)
+  if (resolvedFetch.failureState) {
+    return finalizeCanvasResolvedTarget(initial, {
+      resolvedUrl: resolvedFetch.lastUrl ?? initial.absoluteUrl,
+      resolvedUrlCategory: classifyCanvasTargetUrl(resolvedFetch.lastUrl ?? initial.absoluteUrl, config.url).category,
+      resolutionState: resolvedFetch.failureState,
+      reason: resolvedFetch.reason,
+    })
+  }
+
+  const resolved = classifyCanvasTargetUrl(resolvedFetch.lastUrl ?? initial.absoluteUrl, config.url)
+  if (resolved.targetType === 'external_link') {
+    return finalizeCanvasResolvedTarget(initial, {
+      resolvedUrl: resolved.absoluteUrl,
+      resolvedUrlCategory: resolved.category,
+      resolvedTargetType: resolved.targetType,
+      courseId: resolved.courseId,
+      pageUrl: resolved.pageUrl,
+      fileId: resolved.fileId,
+      assignmentId: resolved.assignmentId,
+      discussionId: resolved.discussionId,
+      resolutionState: 'external_link_only',
+      reason: 'This resource resolves outside Canvas, so Stay Focused keeps it as a link-only target.',
+    })
+  }
+
+  if (resolved.targetType === 'unknown') {
+    return finalizeCanvasResolvedTarget(initial, {
+      resolvedUrl: resolved.absoluteUrl,
+      resolvedUrlCategory: resolved.category,
+      courseId: resolved.courseId,
+      pageUrl: resolved.pageUrl,
+      fileId: resolved.fileId,
+      assignmentId: resolved.assignmentId,
+      discussionId: resolved.discussionId,
+      resolutionState: 'canvas_resolution_required',
+      reason: 'Canvas resolved this module link, but the final route still needs manual Canvas opening because it is not a readable target in the current pipeline.',
+    })
+  }
+
+  return finalizeCanvasResolvedTarget(initial, {
+    resolvedUrl: resolved.absoluteUrl,
+    resolvedUrlCategory: resolved.category,
+    resolvedTargetType: resolved.targetType,
+    courseId: resolved.courseId,
+    pageUrl: resolved.pageUrl,
+    fileId: resolved.fileId,
+    assignmentId: resolved.assignmentId,
+    discussionId: resolved.discussionId,
+    resolutionState: 'resolved',
+  })
+}
+
+export function classifyCanvasTargetUrl(
+  value: string | null | undefined,
+  canvasBaseUrl?: string | null,
+): {
+  absoluteUrl: string | null
+  category: CanvasResolvedUrlCategory
+  targetType: CanvasResolvedTargetType
+  courseId: number | null
+  pageUrl: string | null
+  fileId: number | null
+  assignmentId: number | null
+  discussionId: number | null
+} {
+  if (!value?.trim()) {
+    return {
+      absoluteUrl: null,
+      category: 'unknown',
+      targetType: 'unknown',
+      courseId: null,
+      pageUrl: null,
+      fileId: null,
+      assignmentId: null,
+      discussionId: null,
+    }
+  }
+
+  const absoluteUrl = resolveCanvasAbsoluteUrl(value, canvasBaseUrl)
+  if (!absoluteUrl) {
+    return {
+      absoluteUrl: null,
+      category: 'unknown',
+      targetType: 'unknown',
+      courseId: null,
+      pageUrl: null,
+      fileId: null,
+      assignmentId: null,
+      discussionId: null,
+    }
+  }
+
+  const parsed = new URL(absoluteUrl)
+  const normalizedPath = parsed.pathname.replace(/\/$/, '')
+  const canvasHost = canvasBaseUrl ? new URL(`${normalizeCanvasUrl(canvasBaseUrl)}/`).host : null
+  const isCanvasLikePath = normalizedPath.includes('/courses/') || normalizedPath.includes('/api/v1/')
+  const isCanvasHost = canvasHost ? parsed.host === canvasHost : isCanvasLikePath
+
+  if (!isCanvasHost) {
+    return {
+      absoluteUrl,
+      category: absoluteUrl.startsWith('http://') || absoluteUrl.startsWith('https://') ? 'external' : 'relative',
+      targetType: 'external_link',
+      courseId: null,
+      pageUrl: null,
+      fileId: null,
+      assignmentId: null,
+      discussionId: null,
+    }
+  }
+
+  const moduleRedirectMatch = normalizedPath.match(/\/api\/v1\/courses\/(\d+)\/module_item_redirect\/(\d+)$/i)
+  if (moduleRedirectMatch) {
+    return {
+      absoluteUrl,
+      category: 'canvas_module_redirect',
+      targetType: 'unknown',
+      courseId: normalizeCanvasNumericId(moduleRedirectMatch[1]),
+      pageUrl: null,
+      fileId: null,
+      assignmentId: null,
+      discussionId: null,
+    }
+  }
+
+  const moduleItemMatch = normalizedPath.match(/\/courses\/(\d+)\/modules\/items\/(\d+)$/i)
+  if (moduleItemMatch) {
+    return {
+      absoluteUrl,
+      category: 'canvas_module_item',
+      targetType: 'unknown',
+      courseId: normalizeCanvasNumericId(moduleItemMatch[1]),
+      pageUrl: null,
+      fileId: null,
+      assignmentId: null,
+      discussionId: null,
+    }
+  }
+
+  const externalToolMatch = normalizedPath.match(/\/courses\/(\d+)\/external_tools\/sessionless_launch$/i)
+  if (externalToolMatch) {
+    return {
+      absoluteUrl,
+      category: 'canvas_external_tool',
+      targetType: 'unknown',
+      courseId: normalizeCanvasNumericId(externalToolMatch[1]),
+      pageUrl: null,
+      fileId: null,
+      assignmentId: null,
+      discussionId: null,
+    }
+  }
+
+  const pageApiMatch = normalizedPath.match(/\/api\/v1\/courses\/(\d+)\/pages\/(.+)$/i)
+  if (pageApiMatch) {
+    return {
+      absoluteUrl,
+      category: 'canvas_page',
+      targetType: 'page',
+      courseId: normalizeCanvasNumericId(pageApiMatch[1]),
+      pageUrl: decodeURIComponent(pageApiMatch[2] ?? ''),
+      fileId: null,
+      assignmentId: null,
+      discussionId: null,
+    }
+  }
+
+  const pageHtmlMatch = normalizedPath.match(/\/courses\/(\d+)\/pages\/(.+)$/i)
+  if (pageHtmlMatch) {
+    return {
+      absoluteUrl,
+      category: 'canvas_page',
+      targetType: 'page',
+      courseId: normalizeCanvasNumericId(pageHtmlMatch[1]),
+      pageUrl: decodeURIComponent(pageHtmlMatch[2] ?? ''),
+      fileId: null,
+      assignmentId: null,
+      discussionId: null,
+    }
+  }
+
+  const fileApiMatch = normalizedPath.match(/\/api\/v1\/(?:courses\/(\d+)\/)?files\/(\d+)$/i)
+  if (fileApiMatch) {
+    return {
+      absoluteUrl,
+      category: 'canvas_file',
+      targetType: 'file',
+      courseId: normalizeCanvasNumericId(fileApiMatch[1]),
+      pageUrl: null,
+      fileId: normalizeCanvasNumericId(fileApiMatch[2]),
+      assignmentId: null,
+      discussionId: null,
+    }
+  }
+
+  const fileHtmlMatch = normalizedPath.match(/\/courses\/(\d+)\/files\/(\d+)(?:\/(?:download|file_preview))?$/i)
+  if (fileHtmlMatch) {
+    return {
+      absoluteUrl,
+      category: 'canvas_file',
+      targetType: 'file',
+      courseId: normalizeCanvasNumericId(fileHtmlMatch[1]),
+      pageUrl: null,
+      fileId: normalizeCanvasNumericId(fileHtmlMatch[2]),
+      assignmentId: null,
+      discussionId: null,
+    }
+  }
+
+  const assignmentApiMatch = normalizedPath.match(/\/api\/v1\/courses\/(\d+)\/assignments\/(\d+)$/i)
+  if (assignmentApiMatch) {
+    return {
+      absoluteUrl,
+      category: 'canvas_assignment',
+      targetType: 'assignment',
+      courseId: normalizeCanvasNumericId(assignmentApiMatch[1]),
+      pageUrl: null,
+      fileId: null,
+      assignmentId: normalizeCanvasNumericId(assignmentApiMatch[2]),
+      discussionId: null,
+    }
+  }
+
+  const assignmentHtmlMatch = normalizedPath.match(/\/courses\/(\d+)\/assignments\/(\d+)$/i)
+  if (assignmentHtmlMatch) {
+    return {
+      absoluteUrl,
+      category: 'canvas_assignment',
+      targetType: 'assignment',
+      courseId: normalizeCanvasNumericId(assignmentHtmlMatch[1]),
+      pageUrl: null,
+      fileId: null,
+      assignmentId: normalizeCanvasNumericId(assignmentHtmlMatch[2]),
+      discussionId: null,
+    }
+  }
+
+  const discussionApiMatch = normalizedPath.match(/\/api\/v1\/courses\/(\d+)\/discussion_topics\/(\d+)$/i)
+  if (discussionApiMatch) {
+    return {
+      absoluteUrl,
+      category: 'canvas_discussion',
+      targetType: 'discussion',
+      courseId: normalizeCanvasNumericId(discussionApiMatch[1]),
+      pageUrl: null,
+      fileId: null,
+      assignmentId: null,
+      discussionId: normalizeCanvasNumericId(discussionApiMatch[2]),
+    }
+  }
+
+  const discussionHtmlMatch = normalizedPath.match(/\/courses\/(\d+)\/discussion_topics\/(\d+)$/i)
+  if (discussionHtmlMatch) {
+    return {
+      absoluteUrl,
+      category: 'canvas_discussion',
+      targetType: 'discussion',
+      courseId: normalizeCanvasNumericId(discussionHtmlMatch[1]),
+      pageUrl: null,
+      fileId: null,
+      assignmentId: null,
+      discussionId: normalizeCanvasNumericId(discussionHtmlMatch[2]),
+    }
+  }
+
+  if (normalizedPath.includes('/api/v1/')) {
+    return {
+      absoluteUrl,
+      category: 'canvas_api',
+      targetType: 'unknown',
+      courseId: extractCanvasCourseIdFromPath(normalizedPath),
+      pageUrl: null,
+      fileId: null,
+      assignmentId: null,
+      discussionId: null,
+    }
+  }
+
+  return {
+    absoluteUrl,
+    category: 'canvas_html',
+    targetType: 'unknown',
+    courseId: extractCanvasCourseIdFromPath(normalizedPath),
+    pageUrl: null,
+    fileId: null,
+    assignmentId: null,
+    discussionId: null,
+  }
+}
+
+async function followCanvasResolutionTarget(url: string, config: CanvasConfig) {
+  let currentUrl = url
+
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const response = await fetch(currentUrl, {
+      headers: {
+        Authorization: `Bearer ${config.token}`,
+      },
+      next: { revalidate: 0 },
+      redirect: 'manual',
+    })
+
+    if (isRedirectStatus(response.status)) {
+      const location = response.headers.get('location')
+      if (!location) {
+        return {
+          lastUrl: currentUrl,
+          failureState: 'canvas_fetch_failed' as const,
+          reason: 'Canvas returned a redirect response without a destination URL while resolving this module link.',
+        }
+      }
+
+      currentUrl = new URL(location, currentUrl).toString()
+      continue
+    }
+
+    if (response.status === 401 || response.status === 403) {
+      return {
+        lastUrl: currentUrl,
+        failureState: 'canvas_resolution_required' as const,
+        reason: 'Canvas auth is still required to resolve this internal module link cleanly.',
+      }
+    }
+
+    if (!response.ok) {
+      return {
+        lastUrl: currentUrl,
+        failureState: 'canvas_fetch_failed' as const,
+        reason: `Canvas returned HTTP ${response.status} while resolving this internal module link.`,
+      }
+    }
+
+    const contentType = response.headers.get('content-type')?.toLowerCase() ?? ''
+    if (contentType.includes('json')) {
+      const payload = await response.json() as Record<string, unknown>
+      const nextUrl = findCanvasRedirectCandidate(payload)
+      if (nextUrl) {
+        currentUrl = new URL(nextUrl, currentUrl).toString()
+        continue
+      }
+    } else if (contentType.includes('text/html')) {
+      const html = await response.text()
+      const nextUrl = readHtmlRedirectCandidate(html)
+      if (nextUrl) {
+        currentUrl = new URL(nextUrl, currentUrl).toString()
+        continue
+      }
+    }
+
+    return {
+      lastUrl: currentUrl,
+      failureState: null,
+      reason: null,
+    }
+  }
+
+  return {
+    lastUrl: currentUrl,
+    failureState: 'canvas_fetch_failed' as const,
+    reason: 'Canvas kept redirecting this module link without landing on a stable target.',
+  }
+}
+
+function findCanvasRedirectCandidate(payload: Record<string, unknown>) {
+  const directUrl = firstTrimmedString(payload.url, payload.html_url, payload.launch_url)
+  if (directUrl) {
+    return directUrl
+  }
+
+  if (typeof payload.authorized_redirect_url === 'string' && payload.authorized_redirect_url.trim()) {
+    return payload.authorized_redirect_url.trim()
+  }
+
+  if (typeof payload.session_url === 'string' && payload.session_url.trim()) {
+    return payload.session_url.trim()
+  }
+
+  return null
+}
+
+function readHtmlRedirectCandidate(html: string) {
+  const refreshMatch = html.match(/http-equiv=["']refresh["'][^>]*content=["'][^"']*url=([^"'>\s]+)/i)
+  if (refreshMatch?.[1]) {
+    return refreshMatch[1]
+  }
+
+  const locationMatch = html.match(/window\.location(?:\.href)?\s*=\s*["']([^"']+)["']/i)
+  if (locationMatch?.[1]) {
+    return locationMatch[1]
+  }
+
+  return null
+}
+
+function firstTrimmedString(...values: Array<unknown>) {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim()
+    }
+  }
+
+  return null
+}
+
+function finalizeCanvasResolvedTarget(
+  base: ReturnType<typeof classifyCanvasTargetUrl>,
+  overrides: Partial<Omit<CanvasResolvedLinkTarget, 'originalUrl' | 'originalUrlCategory'>> & {
+    resolutionState: CanvasTargetResolutionState
+  },
+): CanvasResolvedLinkTarget {
+  return {
+    originalUrl: base.absoluteUrl,
+    originalUrlCategory: base.category,
+    resolvedUrl: overrides.resolvedUrl ?? base.absoluteUrl,
+    resolvedUrlCategory: overrides.resolvedUrlCategory ?? base.category,
+    resolvedTargetType: overrides.resolvedTargetType ?? base.targetType,
+    resolutionState: overrides.resolutionState,
+    reason: overrides.reason ?? null,
+    courseId: overrides.courseId ?? base.courseId,
+    pageUrl: overrides.pageUrl ?? base.pageUrl,
+    fileId: overrides.fileId ?? base.fileId,
+    assignmentId: overrides.assignmentId ?? base.assignmentId,
+    discussionId: overrides.discussionId ?? base.discussionId,
+  }
+}
+
+function requiresCanvasFetch(category: CanvasResolvedUrlCategory) {
+  return category === 'canvas_module_redirect'
+    || category === 'canvas_module_item'
+    || category === 'canvas_external_tool'
+    || category === 'canvas_api'
+    || category === 'canvas_html'
+}
+
+function getOptionalCanvasBaseUrl(configOverride?: Partial<CanvasConfig> | null) {
+  const rawUrl = configOverride?.url?.trim() || DEFAULT_CANVAS_URL?.trim() || null
+  if (!rawUrl) return null
+
+  try {
+    return normalizeCanvasUrl(rawUrl)
+  } catch {
+    return null
+  }
+}
+
+function getOptionalCanvasResolutionConfig(configOverride?: Partial<CanvasConfig> | null) {
+  const url = getOptionalCanvasBaseUrl(configOverride)
+  const token = configOverride?.token?.trim() || DEFAULT_CANVAS_TOKEN?.trim() || null
+  if (!url || !token) {
+    return null
+  }
+
+  return {
+    url,
+    token,
+  } satisfies CanvasConfig
+}
+
+function resolveCanvasAbsoluteUrl(value: string, canvasBaseUrl?: string | null) {
+  try {
+    return new URL(value, canvasBaseUrl ? `${normalizeCanvasUrl(canvasBaseUrl)}/` : undefined).toString()
+  } catch {
+    return null
+  }
+}
+
+function extractCanvasCourseIdFromPath(pathname: string) {
+  const match = pathname.match(/\/courses\/(\d+)(?:\/|$)/i)
+  return normalizeCanvasNumericId(match?.[1] ?? null)
+}
+
+function normalizeCanvasNumericId(value: string | number | null | undefined) {
+  if (value === null || value === undefined || value === '') {
+    return null
+  }
+
+  const parsed = typeof value === 'number' ? value : Number.parseInt(String(value), 10)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function isRedirectStatus(status: number) {
+  return status === 301 || status === 302 || status === 303 || status === 307 || status === 308
 }
 
 function stripHtml(html: string): string {
