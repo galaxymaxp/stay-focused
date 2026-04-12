@@ -82,12 +82,12 @@ export function StudyFileReader({
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.9rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
           <div style={{ minWidth: 0, flex: '1 1 420px' }}>
-            <p className="ui-kicker">Study reader</p>
+            <p className="ui-kicker">Reader fallback</p>
             <h2 className="ui-section-title" style={{ marginTop: '0.45rem' }}>{resource.title}</h2>
             <p className="ui-section-copy" style={{ marginTop: '0.5rem' }}>
               {!isReadyReader
-                ? uiState.detail
-                : 'A calm reading surface over the original Canvas source, with grounded guidance only when the app has real text to stand on.'}
+                ? `Deep Learn should be the main study pass. This reader stays here as a fallback when you need the extracted source surface or direct evidence. ${uiState.detail}`
+                : 'Deep Learn should be the main study asset. This reader stays available as the extracted source surface when you want to validate wording, inspect the fallback extract, or reopen the original material.'}
             </p>
           </div>
           <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
@@ -163,7 +163,7 @@ export function StudyFileReader({
 
       {!isReadyReader ? (
         <>
-          <ReaderSection title={showSourceAsPrimary ? 'Open the original source first' : 'Reader guidance'} kicker={uiState.statusLabel}>
+          <ReaderSection title={showSourceAsPrimary ? 'Open the original source first' : 'Reader fallback guidance'} kicker={uiState.statusLabel}>
             <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.95rem 1rem', display: 'grid', gap: '0.7rem' }}>
               <p style={{ margin: 0, fontSize: '15px', lineHeight: 1.76, color: 'var(--text-secondary)' }}>
                 {uiState.detail}
@@ -209,10 +209,10 @@ export function StudyFileReader({
       ) : (
         <>
           <ReaderSection
-            title="What this material is about"
+            title="Extracted overview"
             kicker={reader.quality === 'strong'
-              ? 'Grounded overview'
-              : 'Usable overview'}
+              ? 'Grounded reader surface'
+              : 'Usable reader surface'}
           >
             <p className="ui-reading-copy" style={{ margin: 0, fontSize: '15px', lineHeight: 1.76, color: 'var(--text-secondary)' }}>
               {reader.overviewBody}
@@ -227,7 +227,7 @@ export function StudyFileReader({
             )}
           </ReaderSection>
 
-          <ReaderSection title="Key points" kicker="Quick study frame">
+          <ReaderSection title="Reader key points" kicker="Fallback study frame">
             {reader.keyPoints.length > 0 ? (
               <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: '0.7rem' }}>
                 {reader.keyPoints.map((point, index) => (
@@ -244,7 +244,7 @@ export function StudyFileReader({
             )}
           </ReaderSection>
 
-          <ReaderSection title="Study preview" kicker="Readable source preview">
+          <ReaderSection title="Reader preview" kicker="Readable source preview">
             {reader.previewBlocks.length > 0 ? (
               <StudyFilePreviewExplorer previewBlocks={reader.previewBlocks} />
             ) : (

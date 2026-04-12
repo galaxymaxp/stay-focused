@@ -36,11 +36,17 @@ export function computeDeepLearnQuizReady(input: {
 }) {
   const highOrMediumTerms = input.coreTerms.filter((term) =>
     term.importance === 'high' || term.importance === 'medium')
+  const estimatedQuizItemCount = Math.min(highOrMediumTerms.length, 6)
+    + Math.min(input.keyFacts.length, 3)
+    + Math.min(input.distinctions.length, 2)
+    + Math.min(input.likelyQuizPoints.length, 2)
 
-  return highOrMediumTerms.length >= 3
-    || (highOrMediumTerms.length >= 2 && input.distinctions.length >= 1)
-    || input.keyFacts.length >= 4
-    || input.likelyQuizPoints.length >= 4
+  return estimatedQuizItemCount >= 5
+    && (
+      highOrMediumTerms.length >= 2
+      || input.keyFacts.length >= 3
+      || input.distinctions.length >= 2
+    )
 }
 
 export function createEmptyDeepLearnSourceGrounding(

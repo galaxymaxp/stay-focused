@@ -170,6 +170,7 @@ function revalidateDeepLearnPaths(moduleId: string, courseId: string | null, res
   revalidatePath(`/modules/${moduleId}`)
   revalidatePath(`/modules/${moduleId}/learn`)
   revalidatePath(`/modules/${moduleId}/quiz`)
+  revalidatePath(`/modules/${moduleId}/learn/notes/${encodeURIComponent(resourceId)}`)
   revalidatePath(`/modules/${moduleId}/learn/resources/${encodeURIComponent(resourceId)}`)
 }
 
