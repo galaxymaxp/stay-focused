@@ -38,6 +38,18 @@ test('failed notes shift the action to retry', () => {
   assert.match(state.summary, /too weak/i)
 })
 
+test('unavailable note loading is distinct from having no note yet', () => {
+  const state = getDeepLearnResourceUiState('module-1', 'resource-1', null, {
+    notesAvailability: 'unavailable',
+    unavailableMessage: 'Saved Deep Learn notes are unavailable because the deep_learn_notes table is missing in this environment.',
+  })
+
+  assert.equal(state.status, 'unavailable')
+  assert.equal(state.statusLabel, 'Unavailable')
+  assert.equal(state.primaryLabel, 'View reader fallback')
+  assert.match(state.summary, /deep_learn_notes table/i)
+})
+
 function createNote(overrides: Partial<DeepLearnNote> = {}): DeepLearnNote {
   return {
     id: 'note-1',
