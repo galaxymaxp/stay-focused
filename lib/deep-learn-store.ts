@@ -91,6 +91,16 @@ export async function listDeepLearnNotesForModule(
 
     if (error) {
       const failure = classifyDeepLearnStoreFailure(error)
+      if (failure.reason === 'missing') {
+        return {
+          notes: [],
+          availability: 'available',
+          reason: 'ok',
+          message: null,
+          userId: auth.user.id,
+        }
+      }
+
       logDeepLearnStoreFailure('list_failed', {
         moduleId,
         userId: auth.user.id,
@@ -111,6 +121,16 @@ export async function listDeepLearnNotesForModule(
     }
   } catch (error) {
     const failure = classifyDeepLearnStoreFailure(error)
+    if (failure.reason === 'missing') {
+      return {
+        notes: [],
+        availability: 'available',
+        reason: 'ok',
+        message: null,
+        userId: auth.user.id,
+      }
+    }
+
     logDeepLearnStoreFailure('list_failed', {
       moduleId,
       userId: auth.user.id,
@@ -145,6 +165,10 @@ export async function getDeepLearnNoteForResource(
 
     if (error) {
       const failure = classifyDeepLearnStoreFailure(error)
+      if (failure.reason === 'missing') {
+        return buildMissingDeepLearnNoteResult(auth.user.id)
+      }
+
       logDeepLearnStoreFailure('load_failed', {
         moduleId,
         resourceId,
@@ -157,8 +181,12 @@ export async function getDeepLearnNoteForResource(
       return buildUnavailableDeepLearnNoteResult(failure.reason, auth.user.id)
     }
 
+    if (!data) {
+      return buildMissingDeepLearnNoteResult(auth.user.id)
+    }
+
     return {
-      note: data ? adaptDeepLearnNoteRow(data as DeepLearnNoteRow) : null,
+      note: adaptDeepLearnNoteRow(data as DeepLearnNoteRow),
       availability: 'available',
       reason: 'ok',
       message: null,
@@ -166,6 +194,10 @@ export async function getDeepLearnNoteForResource(
     }
   } catch (error) {
     const failure = classifyDeepLearnStoreFailure(error)
+    if (failure.reason === 'missing') {
+      return buildMissingDeepLearnNoteResult(auth.user.id)
+    }
+
     logDeepLearnStoreFailure('load_failed', {
       moduleId,
       resourceId,
@@ -308,7 +340,7 @@ async function defaultExecuteResourceNoteQuery(auth: AuthenticatedSupabaseServer
     .maybeSingle()
 }
 
-function buildUnavailableDeepLearnNoteListResult(reason: Exclude<DeepLearnNoteLoadReason, 'ok'>, userId: string | null): DeepLearnNoteListResult {
+function buildUnavailableDeepLearnNoteListResult(reason: Exclude<DeepLearnNoteLoadReason, 'ok' | 'missing'>, userId: string | null): DeepLearnNoteListResult {
   return {
     notes: [],
     availability: 'unavailable',
@@ -318,7 +350,17 @@ function buildUnavailableDeepLearnNoteListResult(reason: Exclude<DeepLearnNoteLo
   }
 }
 
-function buildUnavailableDeepLearnNoteResult(reason: Exclude<DeepLearnNoteLoadReason, 'ok'>, userId: string | null): DeepLearnNoteResult {
+function buildMissingDeepLearnNoteResult(userId: string | null): DeepLearnNoteResult {
+  return {
+    note: null,
+    availability: 'available',
+    reason: 'missing',
+    message: null,
+    userId,
+  }
+}
+
+function buildUnavailableDeepLearnNoteResult(reason: Exclude<DeepLearnNoteLoadReason, 'ok' | 'missing'>, userId: string | null): DeepLearnNoteResult {
   return {
     note: null,
     availability: 'unavailable',
@@ -335,6 +377,10 @@ function classifyDeepLearnStoreFailure(error: unknown): { reason: Exclude<DeepLe
     ? serialized.message.toLowerCase()
     : ''
 
+  if (code === 'PGRST116' || message.includes('multiple (or no) rows returned')) {
+    return { reason: 'missing' }
+  }
+
   if (code === 'PGRST205' || code === '42P01' || message.includes('could not find the table') || message.includes('relation') && message.includes('does not exist')) {
     return { reason: 'table_missing' }
   }
@@ -350,7 +396,7 @@ function classifyDeepLearnStoreFailure(error: unknown): { reason: Exclude<DeepLe
   return { reason: 'query_failed' }
 }
 
-function messageForDeepLearnLoadReason(reason: Exclude<DeepLearnNoteLoadReason, 'ok'>) {
+function messageForDeepLearnLoadReason(reason: Exclude<DeepLearnNoteLoadReason, 'ok' | 'missing'>) {
   if (reason === 'not_configured') {
     return 'Saved Deep Learn notes are unavailable because Supabase auth is not configured in this environment.'
   }
