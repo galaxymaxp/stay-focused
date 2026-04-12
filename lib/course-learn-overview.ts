@@ -12,6 +12,7 @@ import { buildModuleDoHref } from '@/lib/stay-focused-links'
 import { getStudyFileProgressLabel } from '@/lib/study-file-manual-state'
 import { getLearnResourceKindLabel } from '@/lib/study-resource'
 import type { StudyFileOutlineSection, StudyFileReaderState } from '@/lib/study-file-reader'
+import type { LearnResourceActionPriority, LearnResourceStatusKey } from '@/lib/learn-resource-ui'
 import type {
   Course,
   Module,
@@ -22,7 +23,7 @@ import type {
   TaskStatus,
 } from '@/lib/types'
 
-export type LearnReadinessLabel = 'Ready to study' | 'Limited' | 'Needs Canvas' | 'No study material'
+export type LearnReadinessLabel = 'Ready' | 'Partial' | 'Source first' | 'No study material'
 export type LearnReadinessTone = 'ready' | 'limited' | 'muted'
 
 export interface CourseLearnResumeCue {
@@ -41,9 +42,14 @@ export interface CourseLearnStudyMaterialRow {
   id: string
   title: string
   fileTypeLabel: string
-  readinessLabel: Exclude<LearnReadinessLabel, 'No study material'>
+  readinessLabel: 'Ready' | 'Partial' | 'Source first' | 'Link only' | 'Unsupported' | 'No extract' | 'Loading'
+  readinessTone: 'accent' | 'warning' | 'muted'
+  statusKey: LearnResourceStatusKey
   readerState: StudyFileReaderState
   note: string
+  detailNote: string
+  primaryAction: LearnResourceActionPriority
+  sourceActionLabel: string
   progressStatus: StudyFileProgressStatus
   progressLabel: string
   workflowOverride: ModuleResourceWorkflowOverride
@@ -236,8 +242,13 @@ async function buildCourseLearnModuleCard(
       title: material.resource.title,
       fileTypeLabel: material.fileTypeLabel,
       readinessLabel: mapStudyMaterialReadiness(material.readinessLabel),
+      readinessTone: material.readinessTone,
+      statusKey: material.statusKey,
       readerState: material.reader.state,
       note: material.note,
+      detailNote: material.detailNote,
+      primaryAction: material.primaryAction,
+      sourceActionLabel: material.sourceActionLabel,
       progressStatus: material.resource.studyProgressStatus ?? 'not_started',
       progressLabel: getStudyFileProgressLabel(material.resource.studyProgressStatus ?? 'not_started'),
       workflowOverride: material.resource.workflowOverride ?? 'study',
@@ -253,8 +264,13 @@ async function buildCourseLearnModuleCard(
       title: material.resource.title,
       fileTypeLabel: material.fileTypeLabel,
       readinessLabel: mapStudyMaterialReadiness(material.readinessLabel),
+      readinessTone: material.readinessTone,
+      statusKey: material.statusKey,
       readerState: material.reader.state,
       note: material.note,
+      detailNote: material.detailNote,
+      primaryAction: material.primaryAction,
+      sourceActionLabel: material.sourceActionLabel,
       progressStatus: material.resource.studyProgressStatus ?? 'not_started',
       progressLabel: getStudyFileProgressLabel(material.resource.studyProgressStatus ?? 'not_started'),
       workflowOverride: material.resource.workflowOverride ?? 'activity',
@@ -303,21 +319,21 @@ function resolveModuleReadiness(overview: {
 }) {
   if (overview.readyStudyFileCount > 0) {
     return {
-      label: 'Ready to study' as const,
+      label: 'Ready' as const,
       tone: 'ready' as const,
     }
   }
 
   if (overview.limitedStudyFileCount > 0) {
     return {
-      label: 'Limited' as const,
+      label: 'Partial' as const,
       tone: 'limited' as const,
     }
   }
 
   if (overview.totalStudyFileCount > 0) {
     return {
-      label: 'Needs Canvas' as const,
+      label: 'Source first' as const,
       tone: 'muted' as const,
     }
   }
@@ -343,12 +359,12 @@ function buildModuleCoverageHint(overview: {
   }
 
   if (overview.readyStudyFileCount > 0) {
-    const fragments = [`${overview.readyStudyFileCount} ready to study`]
+    const fragments = [`${overview.readyStudyFileCount} ready in the reader`]
     if (overview.limitedStudyFileCount > 0) {
-      fragments.push(`${overview.limitedStudyFileCount} limited`)
+      fragments.push(`${overview.limitedStudyFileCount} partial`)
     }
     if (overview.unavailableStudyFileCount > 0) {
-      fragments.push(`${overview.unavailableStudyFileCount} need Canvas`)
+      fragments.push(`${overview.unavailableStudyFileCount} source-first`)
     }
     if (overview.activityOverrideCount > 0) {
       fragments.push(`${overview.activityOverrideCount} moved to Do`)
@@ -358,11 +374,11 @@ function buildModuleCoverageHint(overview: {
 
   if (overview.limitedStudyFileCount > 0) {
     return overview.unavailableStudyFileCount > 0
-      ? `${overview.limitedStudyFileCount} readable in Learn, but ${overview.unavailableStudyFileCount} still need Canvas.`
-      : `${overview.limitedStudyFileCount} readable in Learn, but coverage is still limited.`
+      ? `${overview.limitedStudyFileCount} partial in Learn, and ${overview.unavailableStudyFileCount} still read better from the original source.`
+      : `${overview.limitedStudyFileCount} partial in Learn, but the originals are still the cleanest full read.`
   }
 
-  return `${overview.totalStudyFileCount} study material${overview.totalStudyFileCount === 1 ? '' : 's'} mapped, but Canvas is still the more reliable read.`
+  return `${overview.totalStudyFileCount} study material${overview.totalStudyFileCount === 1 ? '' : 's'} mapped, but the original sources are still the main path.`
 }
 
 function buildModuleSummaryFallback(overview: {
@@ -374,15 +390,15 @@ function buildModuleSummaryFallback(overview: {
   actionItems: unknown[]
 }) {
   if (overview.readyStudyFileCount > 0) {
-    return 'Readable study material is available here, so Learn can help you get oriented before you switch into action.'
+    return 'Readable study material is available here, so Learn can help you study before you switch into action.'
   }
 
   if (overview.limitedStudyFileCount > 0) {
-    return 'Learn can surface part of the reading here, but some of the fuller source still lives back in Canvas.'
+    return 'Learn can show part of the reading here, but some materials still read better from the original source.'
   }
 
   if (overview.totalStudyFileCount > 0) {
-    return 'This module still reads more cleanly through the original Canvas sources, so Learn keeps the lane honest and lightweight.'
+    return 'This module still reads more cleanly through the original sources, so Learn keeps the in-app reader light and honest.'
   }
 
   if (overview.actionItems.length > 0 || overview.activityOverrideCount > 0) {
@@ -435,8 +451,8 @@ function buildCourseResumeCue(modules: CourseLearnModuleCard[]): CourseLearnResu
   return modules.find((module) => module.resumeCue)?.resumeCue ?? null
 }
 
-function mapStudyMaterialReadiness(label: 'Ready to study' | 'Limited' | 'Needs Canvas' | 'Unavailable') {
-  return label === 'Unavailable' ? 'Needs Canvas' : label
+function mapStudyMaterialReadiness(label: 'Ready' | 'Partial' | 'Source first' | 'Link only' | 'Unsupported' | 'No extract' | 'Loading' | 'Unavailable') {
+  return label === 'Unavailable' ? 'Source first' : label
 }
 
 function formatDueLabel(value: string | null | undefined) {

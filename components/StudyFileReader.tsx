@@ -4,6 +4,7 @@ import { CopyTaskBundleActions } from '@/components/CopyTaskBundleActions'
 import { StudyFileManualStateControls } from '@/components/StudyFileManualStateControls'
 import { StudyFileOpenTracker } from '@/components/StudyFileOpenTracker'
 import { StudyFilePreviewExplorer } from '@/components/StudyFilePreviewExplorer'
+import { getLearnResourceUiState } from '@/lib/learn-resource-ui'
 import { buildManualCopyBundle } from '@/lib/manual-copy-bundle'
 import { formatNormalizedModuleResourceSourceType, getModuleResourceCapabilityInfo } from '@/lib/module-resource-capability'
 import { getStudyFileProgressLabel } from '@/lib/study-file-manual-state'
@@ -53,23 +54,18 @@ export function StudyFileReader({
     resource,
   })
   const originalFileHref = getResourceOriginalFileHref(resource)
+  const uiState = getLearnResourceUiState(resource, {
+    readerState: reader.state,
+    hasOriginalFile: Boolean(originalFileHref),
+    hasCanvasLink: Boolean(canvasHref),
+  })
   const contextBits = [
     resource.courseName ?? courseName,
     resource.moduleName ?? moduleTitle,
     resource.linkedContext,
   ].filter(Boolean)
-  const isWeakReader = reader.state === 'weak'
-  const isSourceFirstReader = reader.state === 'metadata_only' || reader.state === 'empty' || reader.state === 'failed'
-  const sourceLabel = originalFileHref ? 'original file' : 'original source'
-  const sourceFirstCopy = isWeakReader
-    ? resource.previewState === 'full_text_available'
-      ? 'Full extracted text is stored here, but the signal is still noisy enough that Learn treats it as limited evidence instead of confident study notes.'
-      : `Extraction is weak here. Use the ${sourceLabel} for the full read and treat the in-app reader as secondary only.`
-    : resource.fallbackReason === 'canvas_resolution_required'
-      ? `This item still needs authenticated Canvas resolution before Learn can fetch the real target content. Open the ${sourceLabel} or reprocess with Canvas credentials.`
-      : resource.fallbackReason === 'canvas_fetch_failed'
-        ? `Canvas target resolution failed before readable content could be fetched here. Open the ${sourceLabel} and inspect the stored resolution note.`
-        : `Learn did not recover enough usable text to build a trustworthy reading view here. Open the ${sourceLabel} instead.`
+  const isReadyReader = uiState.statusKey === 'ready'
+  const showSourceAsPrimary = !isReadyReader && uiState.primaryAction === 'source'
 
   return (
     <section className="motion-card motion-delay-1 section-shell section-shell-elevated" style={{ padding: '1.35rem 1.45rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -89,8 +85,8 @@ export function StudyFileReader({
             <p className="ui-kicker">Study reader</p>
             <h2 className="ui-section-title" style={{ marginTop: '0.45rem' }}>{resource.title}</h2>
             <p className="ui-section-copy" style={{ marginTop: '0.5rem' }}>
-              {isWeakReader || isSourceFirstReader
-                ? sourceFirstCopy
+              {!isReadyReader
+                ? uiState.detail
                 : 'A calm reading surface over the original Canvas source, with grounded guidance only when the app has real text to stand on.'}
             </p>
           </div>
@@ -99,13 +95,18 @@ export function StudyFileReader({
               bundleText={manualCopy.bundleText}
               promptText={manualCopy.promptText}
             />
-            {(isWeakReader || isSourceFirstReader) && originalFileHref && (
-              <a href={originalFileHref} target="_blank" rel="noreferrer" className="ui-button ui-button-secondary">
-                Open original file
+            {!isReadyReader && originalFileHref && (
+              <a href={originalFileHref} target="_blank" rel="noreferrer" className={`ui-button ${showSourceAsPrimary ? 'ui-button-secondary' : 'ui-button-ghost'}`}>
+                {uiState.sourceActionLabel}
               </a>
             )}
-            {(isWeakReader || isSourceFirstReader) && canvasHref && (
-              <a href={canvasHref} target="_blank" rel="noreferrer" className={`ui-button ${originalFileHref ? 'ui-button-ghost' : 'ui-button-secondary'}`}>
+            {!isReadyReader && canvasHref && !originalFileHref && (
+              <a href={canvasHref} target="_blank" rel="noreferrer" className={`ui-button ${showSourceAsPrimary ? 'ui-button-secondary' : 'ui-button-ghost'}`}>
+                {uiState.sourceActionLabel}
+              </a>
+            )}
+            {!isReadyReader && canvasHref && originalFileHref && (
+              <a href={canvasHref} target="_blank" rel="noreferrer" className="ui-button ui-button-ghost">
                 Open in Canvas
               </a>
             )}
@@ -118,7 +119,7 @@ export function StudyFileReader({
                 Open related task
               </Link>
             )}
-            {canvasHref && !(isWeakReader || isSourceFirstReader) && (
+            {canvasHref && isReadyReader && (
               <a href={canvasHref} target="_blank" rel="noreferrer" className="ui-button ui-button-ghost">
                 Open in Canvas
               </a>
@@ -128,7 +129,7 @@ export function StudyFileReader({
 
         <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
           <ReaderBadge tone="muted" label={reader.fileTypeLabel} />
-          <ReaderBadge tone={reader.statusTone} label={reader.statusLabel} />
+          <ReaderBadge tone={uiState.tone === 'accent' ? 'accent' : uiState.tone === 'warning' ? 'warning' : 'muted'} label={uiState.statusLabel} />
           <ReaderBadge tone={capability.capabilityTone} label={capability.capabilityLabel} />
           <ReaderBadge tone={reader.qualityTone} label={reader.qualityLabel} />
           <ReaderBadge tone={reader.groundingLabel === 'Strong grounding' ? 'accent' : reader.groundingLabel === 'Weak grounding' ? 'warning' : 'muted'} label={reader.groundingLabel} />
@@ -160,21 +161,26 @@ export function StudyFileReader({
         />
       </div>
 
-      {(isWeakReader || isSourceFirstReader) ? (
+      {!isReadyReader ? (
         <>
-          <ReaderSection title="Use the original source" kicker={isWeakReader ? 'Weak extraction' : 'Needs Canvas'}>
+          <ReaderSection title={showSourceAsPrimary ? 'Use the original source' : 'Reader guidance'} kicker={uiState.statusLabel}>
             <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.95rem 1rem', display: 'grid', gap: '0.7rem' }}>
               <p style={{ margin: 0, fontSize: '15px', lineHeight: 1.76, color: 'var(--text-secondary)' }}>
-                {sourceFirstCopy}
+                {uiState.detail}
               </p>
               <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
                 {originalFileHref && (
-                  <a href={originalFileHref} target="_blank" rel="noreferrer" className="ui-button ui-button-secondary">
-                    Open original file
+                  <a href={originalFileHref} target="_blank" rel="noreferrer" className={`ui-button ${showSourceAsPrimary ? 'ui-button-secondary' : 'ui-button-ghost'}`}>
+                    {uiState.sourceActionLabel}
                   </a>
                 )}
-                {canvasHref && (
-                  <a href={canvasHref} target="_blank" rel="noreferrer" className={`ui-button ${originalFileHref ? 'ui-button-ghost' : 'ui-button-secondary'}`}>
+                {canvasHref && !originalFileHref && (
+                  <a href={canvasHref} target="_blank" rel="noreferrer" className={`ui-button ${showSourceAsPrimary ? 'ui-button-secondary' : 'ui-button-ghost'}`}>
+                    {uiState.sourceActionLabel}
+                  </a>
+                )}
+                {canvasHref && originalFileHref && (
+                  <a href={canvasHref} target="_blank" rel="noreferrer" className="ui-button ui-button-ghost">
                     Open in Canvas
                   </a>
                 )}
@@ -190,8 +196,8 @@ export function StudyFileReader({
             )}
           </ReaderSection>
 
-          {isWeakReader && (
-            <ReaderSection title="Weak extract preview" kicker="Secondary only">
+          {uiState.statusKey === 'partial' && (
+            <ReaderSection title="Reader preview" kicker="Partial">
               {reader.previewBlocks.length > 0 ? (
                 <StudyFilePreviewExplorer previewBlocks={reader.previewBlocks} />
               ) : (
@@ -258,10 +264,10 @@ export function StudyFileReader({
           <ReaderMetaCard label="Capability" value={capability.capabilityLabel} />
           <ReaderMetaCard label="Quality" value={reader.qualityLabel} />
           <ReaderMetaCard label="Grounding" value={reader.groundingLabel} />
-          <ReaderMetaCard label="Extraction status" value={reader.statusLabel} />
+          <ReaderMetaCard label="Reader status" value={uiState.statusLabel} />
           <ReaderMetaCard label="Readable characters" value={reader.charCount > 0 ? reader.charCount.toLocaleString() : 'Not available'} />
           <ReaderMetaCard label="Word count" value={reader.wordCount > 0 ? reader.wordCount.toLocaleString() : 'Not available'} />
-          <ReaderMetaCard label="Preview state" value={formatPreviewState(resource.previewState)} />
+          <ReaderMetaCard label="Text in reader" value={uiState.textAvailabilityLabel} />
           <ReaderMetaCard label="Recommendation" value={formatRecommendationStrength(resource.recommendationStrength)} />
           <ReaderMetaCard label="Canvas source" value={canvasHref ? `Direct ${sourceNoun} link available` : 'No direct Canvas link stored'} />
         </div>
@@ -272,37 +278,19 @@ export function StudyFileReader({
           </p>
         </div>
 
-        {(resource.extractionError || resource.fallbackReason || linkedTask) && (
-          <div style={{ display: 'grid', gridTemplateColumns: linkedTask ? 'minmax(0, 1fr) minmax(240px, 0.8fr)' : 'minmax(0, 1fr)', gap: '0.8rem', marginTop: '0.85rem' }}>
-            {resource.extractionError && (
-              <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.9rem 1rem' }}>
-                <p className="ui-kicker">Stored extraction note</p>
-                <p style={{ margin: '0.45rem 0 0', fontSize: '13px', lineHeight: 1.68, color: 'var(--text-secondary)' }}>
-                  {resource.extractionError}
+        {linkedTask && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(240px, 0.8fr)', gap: '0.8rem', marginTop: '0.85rem' }}>
+            <div className="ui-card" style={{ borderRadius: 'var(--radius-tight)', padding: '0.9rem 1rem' }}>
+              <p className="ui-kicker">Related task</p>
+              <p style={{ margin: '0.45rem 0 0', fontSize: '15px', lineHeight: 1.5, color: 'var(--text-primary)', fontWeight: 650 }}>
+                {linkedTask.title}
+              </p>
+              {linkedTask.deadline && (
+                <p style={{ margin: '0.35rem 0 0', fontSize: '13px', lineHeight: 1.6, color: 'var(--text-muted)' }}>
+                  Due {formatDate(linkedTask.deadline)}
                 </p>
-              </div>
-            )}
-            {resource.fallbackReason && (
-              <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.9rem 1rem' }}>
-                <p className="ui-kicker">Fallback reason</p>
-                <p style={{ margin: '0.45rem 0 0', fontSize: '13px', lineHeight: 1.68, color: 'var(--text-secondary)' }}>
-                  {resource.fallbackReason}
-                </p>
-              </div>
-            )}
-            {linkedTask && (
-              <div className="ui-card" style={{ borderRadius: 'var(--radius-tight)', padding: '0.9rem 1rem' }}>
-                <p className="ui-kicker">Related task</p>
-                <p style={{ margin: '0.45rem 0 0', fontSize: '15px', lineHeight: 1.5, color: 'var(--text-primary)', fontWeight: 650 }}>
-                  {linkedTask.title}
-                </p>
-                {linkedTask.deadline && (
-                  <p style={{ margin: '0.35rem 0 0', fontSize: '13px', lineHeight: 1.6, color: 'var(--text-muted)' }}>
-                    Due {formatDate(linkedTask.deadline)}
-                  </p>
-                )}
-              </div>
-            )}
+              )}
+            </div>
           </div>
         )}
       </ReaderSection>
@@ -385,12 +373,6 @@ function formatDate(value: string) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
   return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' }).format(date)
-}
-
-function formatPreviewState(value: ModuleSourceResource['previewState']) {
-  if (value === 'full_text_available') return 'Full text stored'
-  if (value === 'preview_only') return 'Preview only'
-  return 'No text stored'
 }
 
 function formatRecommendationStrength(value: ModuleSourceResource['recommendationStrength']) {

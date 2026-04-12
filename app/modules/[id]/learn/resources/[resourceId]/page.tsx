@@ -4,6 +4,7 @@ import { CopyTaskBundleActions } from '@/components/CopyTaskBundleActions'
 import { ModuleLensShell } from '@/components/ModuleLensShell'
 import { StudyFileReader } from '@/components/StudyFileReader'
 import { StudyModeSwitcher } from '@/components/StudyModeSwitcher'
+import { getLearnResourceUiState } from '@/lib/learn-resource-ui'
 import { buildManualCopyBundle } from '@/lib/manual-copy-bundle'
 import { formatNormalizedModuleResourceSourceType, getModuleResourceCapabilityInfo } from '@/lib/module-resource-capability'
 import { getModuleResourceQualityInfo } from '@/lib/module-resource-quality'
@@ -18,7 +19,6 @@ import {
   getResourceGrounding,
   getResourceCanvasHref,
 } from '@/lib/module-workspace'
-import { labelForExtractionStatus } from '@/lib/study-file-reader'
 
 interface Props {
   params: Promise<{ id: string; resourceId: string }>
@@ -43,6 +43,9 @@ export default async function ResourceDetailPage({ params }: Props) {
   if (!resource) notFound()
 
   const canvasHref = getResourceCanvasHref(resource)
+  const uiState = getLearnResourceUiState(resource, {
+    hasCanvasLink: Boolean(canvasHref),
+  })
   const grounding = unit?.grounding ?? getResourceGrounding(resource)
   const capability = getModuleResourceCapabilityInfo(resource)
   const quality = getModuleResourceQualityInfo(resource)
@@ -132,7 +135,7 @@ export default async function ResourceDetailPage({ params }: Props) {
               <span className="ui-chip ui-chip-soft">Capability: {capability.capabilityLabel}</span>
               <span className="ui-chip ui-chip-soft">Quality: {quality.qualityLabel}</span>
               <span className="ui-chip ui-chip-soft">{quality.groundingLabel}</span>
-              <span className="ui-chip ui-chip-soft">Status: {labelForExtractionStatus(resource.extractionStatus, resource.extractionError, resource)}</span>
+              <span className="ui-chip ui-chip-soft">Status: {uiState.statusLabel}</span>
             </div>
           </div>
           <p style={{ margin: '0.65rem 0 0', fontSize: '14px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
@@ -179,16 +182,16 @@ export default async function ResourceDetailPage({ params }: Props) {
             {unit && unit.modes.length > 0 ? (
               <>
                 <div className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem' }}>
-                  <p className="ui-kicker">Grounded read</p>
+                  <p className="ui-kicker">Reader preview</p>
                   <p style={{ margin: '0.55rem 0 0', fontSize: '15px', lineHeight: 1.72, color: 'var(--text-secondary)' }}>{unit.preview}</p>
                 </div>
                 <StudyModeSwitcher modes={unit.modes} summaryLabel="Learning modes are collapsed by default here too" />
               </>
             ) : (
               <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem' }}>
-                <p className="ui-kicker">Fallback view</p>
+                <p className="ui-kicker">{uiState.statusLabel}</p>
                 <p style={{ margin: '0.55rem 0 0', fontSize: '15px', lineHeight: 1.7, color: 'var(--text-secondary)' }}>
-                  {quality.reason}
+                  {uiState.detail}
                 </p>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.8rem' }}>
                   {resource.whyItMatters && (
@@ -202,7 +205,7 @@ export default async function ResourceDetailPage({ params }: Props) {
                     </p>
                   )}
                   <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
-                    <strong style={{ color: 'var(--text-primary)' }}>What you can do:</strong> Open the original Canvas item, inspect the stored capability state, and reprocess the resource if you want the current extractor to try again.
+                    <strong style={{ color: 'var(--text-primary)' }}>What you can do:</strong> {uiState.sourceActionLabel}. The reader is acting as a fallback view for this item right now.
                   </p>
                 </div>
               </div>
@@ -234,12 +237,11 @@ export default async function ResourceDetailPage({ params }: Props) {
                 <MetaLine label="Capability note" value={capability.reason} />
                 <MetaLine label="Quality" value={quality.qualityLabel} />
                 <MetaLine label="Quality note" value={quality.reason} />
-                <MetaLine label="Extraction status" value={labelForExtractionStatus(resource.extractionStatus, resource.extractionError, resource)} />
-                <MetaLine label="Fallback reason" value={resource.fallbackReason ?? 'None recorded'} />
+                <MetaLine label="Reader status" value={uiState.statusLabel} />
                 <MetaLine label="Source URL category" value={resource.sourceUrlCategory ?? 'Not recorded'} />
                 <MetaLine label="Resolved URL category" value={resource.resolvedUrlCategory ?? 'Not recorded'} />
                 <MetaLine label="Resolved URL" value={resource.resolvedUrl ?? 'Not recorded'} />
-                <MetaLine label="Preview state" value={resource.previewState ?? 'Not recorded'} />
+                <MetaLine label="Text in reader" value={uiState.textAvailabilityLabel} />
                 <MetaLine label="Full text stored" value={resource.fullTextAvailable ? 'Yes' : 'No'} />
                 <MetaLine label="Character count" value={typeof resource.extractedCharCount === 'number' && resource.extractedCharCount > 0 ? `${resource.extractedCharCount}` : 'Not available'} />
                 <MetaLine label="Stored text length" value={typeof resource.storedTextLength === 'number' ? `${resource.storedTextLength}` : 'Not recorded'} />

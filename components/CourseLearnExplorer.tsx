@@ -272,14 +272,14 @@ export function CourseLearnExplorer({
                       id: material.id,
                       title: material.title,
                       note: material.note,
+                      detailNote: material.detailNote,
                       fileTypeLabel: material.fileTypeLabel,
                       readinessLabel: material.readinessLabel,
-                      readinessTone: material.readinessLabel === 'Ready to study'
-                        ? 'accent'
-                        : material.readinessLabel === 'Limited'
-                          ? 'warning'
-                          : 'muted',
+                      readinessTone: material.readinessTone,
+                      statusKey: material.statusKey,
                       readerState: material.readerState,
+                      primaryAction: material.primaryAction,
+                      sourceActionLabel: material.sourceActionLabel,
                       required: material.required,
                       outlineSections: material.outlineSections,
                       outlineHint: material.outlineHint,
