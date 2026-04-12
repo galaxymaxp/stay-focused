@@ -11,6 +11,9 @@ export type StudyFileProgressStatus = 'not_started' | 'skimmed' | 'reviewed'
 export type ModuleResourceWorkflowOverride = 'study' | 'activity'
 export type ModuleTermStatus = 'approved' | 'rejected'
 export type ModuleTermOrigin = 'ai' | 'user'
+export type DeepLearnNoteStatus = 'pending' | 'ready' | 'failed'
+export type DeepLearnTermImportance = 'high' | 'medium' | 'low'
+export type DeepLearnGroundingStrategy = 'stored_extract' | 'source_refetch' | 'context_only' | 'insufficient'
 
 export interface Course {
   id: string
@@ -87,6 +90,59 @@ export interface ModuleTerm {
   origin: ModuleTermOrigin
   createdAt: string
   updatedAt: string
+}
+
+export interface DeepLearnNoteSection {
+  heading: string
+  body: string
+}
+
+export interface DeepLearnCoreTerm {
+  term: string
+  explanation: string
+  importance: DeepLearnTermImportance
+  preserveExactTerm: boolean
+}
+
+export interface DeepLearnDistinction {
+  conceptA: string
+  conceptB: string
+  difference: string
+}
+
+export interface DeepLearnSourceGrounding {
+  sourceType: string | null
+  extractionQuality: string | null
+  groundingStrategy: DeepLearnGroundingStrategy
+  usedAiFallback: boolean
+  qualityReason: string | null
+  warning: string | null
+  charCount: number
+}
+
+export interface DeepLearnNote {
+  id: string
+  userId: string
+  moduleId: string
+  courseId: string | null
+  resourceId: string
+  status: DeepLearnNoteStatus
+  title: string
+  overview: string
+  sections: DeepLearnNoteSection[]
+  noteBody: string
+  coreTerms: DeepLearnCoreTerm[]
+  keyFacts: string[]
+  distinctions: DeepLearnDistinction[]
+  likelyQuizPoints: string[]
+  cautionNotes: string[]
+  sourceGrounding: DeepLearnSourceGrounding
+  quizReady: boolean
+  promptVersion: string
+  errorMessage: string | null
+  createdAt: string
+  updatedAt: string
+  generatedAt: string | null
 }
 
 export interface Task {

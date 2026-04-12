@@ -7,6 +7,10 @@ interface ModuleLearnHrefOptions {
   panel?: 'study-notes' | 'action-status' | 'source-support' | 'terms'
 }
 
+interface ModuleQuizHrefOptions {
+  resourceId?: string | null
+}
+
 interface ModuleDoHrefOptions {
   /** Use for links built from the tasks table (module workspace). Matches by ID on the Do page. */
   taskId?: string | null
@@ -80,6 +84,22 @@ export function buildModuleDoHref(moduleId: string, options: ModuleDoHrefOptions
     `/modules/${moduleId}/do`,
     params,
     options.taskId ? getTaskElementId(options.taskId) : null,
+  )
+}
+
+export function buildDeepLearnNoteHref(moduleId: string, resourceId: string) {
+  return `/modules/${moduleId}/learn/notes/${encodeURIComponent(resourceId)}`
+}
+
+export function buildModuleQuizHref(moduleId: string, options: ModuleQuizHrefOptions = {}) {
+  const params = new URLSearchParams()
+
+  if (options.resourceId) params.set('resource', options.resourceId)
+
+  return appendHref(
+    `/modules/${moduleId}/quiz`,
+    params,
+    options.resourceId ? `quiz-note-${encodeURIComponent(options.resourceId)}` : null,
   )
 }
 
