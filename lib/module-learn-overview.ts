@@ -471,7 +471,9 @@ function buildStudyStep(moduleId: string, material: ModuleStudyMaterial): Omit<M
         : 'Start in the reader here. The recovered text should be good enough for a first pass.'
       : material.readiness === 'limited'
         ? 'Start in the reader for a quick pass, then open the original source when you want the clearest full version.'
-        : 'Start with the original source. The reader is only a fallback view for this item right now.',
+        : material.primaryAction === 'source'
+          ? 'Start with the original source. The reader is only a fallback view for this item right now.'
+          : 'The original source is not linked here right now, so use the reader for the limited context available in Learn.',
     href: destination.href,
     destinationLabel: destination.destinationLabel,
     external: destination.external,
@@ -550,7 +552,9 @@ function buildResumeNote(
   }
 
   if (material.readiness === 'unavailable') {
-    return 'No reader-ready study item is pinned yet, so Learn is sending you back to the original source for the cleanest reopen.'
+    return material.primaryAction === 'source'
+      ? 'No reader-ready study item is pinned yet, so Learn is sending you back to the original source for the cleanest reopen.'
+      : 'No reader-ready study item is pinned yet, so Learn is reopening the limited reader view because the original source is not linked here right now.'
   }
 
   return 'No recent study item is pinned yet, so Learn is keeping the clearest available source close.'

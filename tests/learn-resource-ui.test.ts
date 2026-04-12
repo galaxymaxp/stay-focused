@@ -29,6 +29,25 @@ test('preview-only extracts map to partial with reader-first guidance', () => {
   assert.equal(state.statusLabel, 'Partial')
   assert.equal(state.primaryAction, 'reader')
   assert.equal(state.textAvailabilityLabel, 'Short preview only')
+  assert.equal(state.summary, 'A short reader preview is available here, but it does not replace the full item.')
+  assert.equal(state.detail, 'Use the reader to get oriented, then open the original source for the full material.')
+})
+
+test('full-text partial extracts use study-guidance copy instead of extraction jargon', () => {
+  const state = getLearnResourceUiState(createResource({
+    extractionStatus: 'extracted',
+    extractedText: null,
+    extractedTextPreview: 'Recovered text is present, but it still needs a source check.',
+    previewState: 'full_text_available',
+  }), {
+    readerState: 'weak',
+    hasCanvasLink: true,
+  })
+
+  assert.equal(state.statusLabel, 'Partial')
+  assert.equal(state.primaryAction, 'reader')
+  assert.equal(state.summary, 'This item is readable here, but some parts may still be messy or incomplete.')
+  assert.equal(state.detail, 'Use the reader for a quick pass, then open the original source when the exact wording or layout matters.')
 })
 
 test('canvas-resolution blockers map to source-first guidance', () => {
@@ -48,6 +67,26 @@ test('canvas-resolution blockers map to source-first guidance', () => {
   assert.equal(state.statusLabel, 'Source first')
   assert.equal(state.primaryAction, 'source')
   assert.equal(state.sourceActionLabel, 'Open in Canvas')
+  assert.equal(state.summary, 'Start with the original source for this item.')
+  assert.equal(state.detail, 'The reader has the module context, but it still needs the direct Canvas page or file before it can stand in as the main reading path.')
+})
+
+test('source-first items without a usable source action fall back to reader-first guidance', () => {
+  const state = getLearnResourceUiState(createResource({
+    extractionStatus: 'metadata_only',
+    extractedText: null,
+    extractedTextPreview: null,
+    fallbackReason: 'canvas_resolution_required',
+    previewState: 'no_text_available',
+    metadata: {
+      fallbackReason: 'canvas_resolution_required',
+    },
+  }))
+
+  assert.equal(state.statusLabel, 'Source first')
+  assert.equal(state.primaryAction, 'reader')
+  assert.equal(state.summary, 'The reader only has limited context for this item right now.')
+  assert.equal(state.detail, 'The original source is not available from this view right now, so use the reader as a limited fallback instead of a full reading path.')
 })
 
 test('external link resources stay link-only with source-first action priority', () => {

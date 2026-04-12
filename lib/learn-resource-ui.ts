@@ -51,6 +51,7 @@ export function getLearnResourceUiState(
     : isExternalLinkResource(resource)
       ? 'link'
       : 'source'
+  const hasSourceAction = Boolean(options?.hasOriginalFile || options?.hasCanvasLink)
   const sourceActionLabel = options?.hasOriginalFile
     ? 'Open original file'
     : isExternalLinkResource(resource)
@@ -142,8 +143,8 @@ export function getLearnResourceUiState(
         statusLabel: 'Partial',
         tone: 'warning',
         primaryAction: 'reader',
-        summary: 'Readable text was recovered here, but parts of this file still look noisy or repetitive.',
-        detail: `Use the reader for a first pass, then open the original ${sourceLabel} when you need the cleanest read.`,
+        summary: 'This item is readable here, but some parts may still be messy or incomplete.',
+        detail: `Use the reader for a quick pass, then open the original ${sourceLabel} when the exact wording or layout matters.`,
         sourceActionLabel,
         textAvailabilityLabel,
       }
@@ -155,8 +156,8 @@ export function getLearnResourceUiState(
         statusLabel: 'Partial',
         tone: 'warning',
         primaryAction: 'reader',
-        summary: 'A short in-app preview is available here, but it does not replace the full source.',
-        detail: `Use the reader for a quick preview, then open the original ${sourceLabel} for the full material.`,
+        summary: 'A short reader preview is available here, but it does not replace the full item.',
+        detail: `Use the reader to get oriented, then open the original ${sourceLabel} for the full material.`,
         sourceActionLabel,
         textAvailabilityLabel,
       }
@@ -167,62 +168,54 @@ export function getLearnResourceUiState(
       statusLabel: 'Partial',
       tone: 'warning',
       primaryAction: 'reader',
-      summary: 'Readable text was recovered here, but parts of it may still be incomplete or low-clarity.',
-      detail: `Use the reader for a first pass, then open the original ${sourceLabel} when you need the cleanest read.`,
+      summary: 'This item is readable here, but parts may still be incomplete or uneven.',
+      detail: `Use the reader for a quick pass, then open the original ${sourceLabel} when accuracy matters.`,
       sourceActionLabel,
       textAvailabilityLabel,
     }
   }
 
   if (fallbackReason === 'canvas_resolution_required') {
-    return {
-      statusKey: 'source_first',
-      statusLabel: 'Source first',
-      tone: 'muted',
-      primaryAction: 'source',
-      summary: 'Use the original source first. The reader still needs the direct Canvas target for this item.',
-      detail: 'The app has the item context, but it has not reached the full page or file behind it yet.',
+    return buildSourceFirstState({
+      hasSourceAction,
+      sourceLabel,
       sourceActionLabel,
       textAvailabilityLabel,
-    }
+      summary: 'Start with the original source for this item.',
+      detail: 'The reader has the module context, but it still needs the direct Canvas page or file before it can stand in as the main reading path.',
+    })
   }
 
   if (fallbackReason === 'canvas_fetch_failed') {
-    return {
-      statusKey: 'source_first',
-      statusLabel: 'Source first',
-      tone: 'muted',
-      primaryAction: 'source',
-      summary: 'Use the original source first. The reader could not load the full content for this item.',
-      detail: 'The app reached a Canvas-dependent source path, but the readable content did not finish loading into the reader.',
+    return buildSourceFirstState({
+      hasSourceAction,
+      sourceLabel,
       sourceActionLabel,
       textAvailabilityLabel,
-    }
+      summary: 'Start with the original source for this item.',
+      detail: 'The reader did not load enough content to replace the original source for this pass.',
+    })
   }
 
   if (fallbackReason === 'attachment_only') {
-    return {
-      statusKey: 'source_first',
-      statusLabel: 'Source first',
-      tone: 'muted',
-      primaryAction: 'source',
-      summary: 'This item mostly surfaced through attachments, so the original source is still the clearest path.',
-      detail: 'The reader keeps the context visible here, but the original file or Canvas item is still the better place to read it in full.',
+    return buildSourceFirstState({
+      hasSourceAction,
+      sourceLabel,
       sourceActionLabel,
       textAvailabilityLabel,
-    }
+      summary: 'Start with the original source for this item.',
+      detail: 'The reader keeps the module context visible here, but the original file or Canvas item is still the clearer place to read it in full.',
+    })
   }
 
-  return {
-    statusKey: 'source_first',
-    statusLabel: 'Source first',
-    tone: 'muted',
-    primaryAction: 'source',
-    summary: 'The reader only has limited context for this item right now.',
-    detail: `Use the original ${sourceLabel} first. The reader is acting as a fallback view rather than the main reading path.`,
+  return buildSourceFirstState({
+    hasSourceAction,
+    sourceLabel,
     sourceActionLabel,
     textAvailabilityLabel,
-  }
+    summary: 'Start with the original source for this item.',
+    detail: `Open the original ${sourceLabel} first. The reader only keeps limited context here, so treat it as a fallback view.`,
+  })
 }
 
 function isExternalLinkResource(
@@ -238,4 +231,35 @@ function formatTextAvailability(previewState: ModuleSourceResource['previewState
   if (previewState === 'full_text_available') return 'Full text available'
   if (previewState === 'preview_only') return 'Short preview only'
   return 'No text available'
+}
+
+function buildSourceFirstState({
+  hasSourceAction,
+  sourceLabel,
+  sourceActionLabel,
+  textAvailabilityLabel,
+  summary,
+  detail,
+}: {
+  hasSourceAction: boolean
+  sourceLabel: string
+  sourceActionLabel: string
+  textAvailabilityLabel: LearnResourceUiState['textAvailabilityLabel']
+  summary: string
+  detail: string
+}): LearnResourceUiState {
+  return {
+    statusKey: 'source_first',
+    statusLabel: 'Source first',
+    tone: 'muted',
+    primaryAction: hasSourceAction ? 'source' : 'reader',
+    summary: hasSourceAction
+      ? summary
+      : 'The reader only has limited context for this item right now.',
+    detail: hasSourceAction
+      ? detail
+      : `The original ${sourceLabel} is not available from this view right now, so use the reader as a limited fallback instead of a full reading path.`,
+    sourceActionLabel,
+    textAvailabilityLabel,
+  }
 }
