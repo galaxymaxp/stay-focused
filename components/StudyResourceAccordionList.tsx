@@ -6,6 +6,7 @@ import { DeepLearnGenerateButton } from '@/components/DeepLearnGenerateButton'
 import { getResourceElementId } from '@/lib/stay-focused-links'
 import type { StudyFileOutlineSection, StudyFileReaderState } from '@/lib/study-file-reader'
 import type { LearnResourceActionPriority, LearnResourceStatusKey } from '@/lib/learn-resource-ui'
+import type { DeepLearnNoteLoadAvailability } from '@/lib/types'
 
 export interface StudyResourceAccordionItem {
   id: string
@@ -31,18 +32,19 @@ export interface StudyResourceAccordionItem {
   extraActionLabel?: string | null
   moduleId: string
   courseId?: string | null
-  deepLearnStatus: 'not_started' | 'pending' | 'ready' | 'failed'
-  deepLearnStatusLabel: 'No note yet' | 'Generating' | 'Ready' | 'Failed'
+  deepLearnStatus: 'not_started' | 'pending' | 'ready' | 'failed' | 'unavailable'
+  deepLearnStatusLabel: 'No note yet' | 'Generating' | 'Ready' | 'Failed' | 'Unavailable'
   deepLearnTone: 'accent' | 'warning' | 'muted'
   deepLearnSummary: string
   deepLearnDetail: string
-  deepLearnPrimaryLabel: 'Deep Learn this' | 'Open Deep Learn note' | 'Retry Deep Learn'
+  deepLearnPrimaryLabel: 'Deep Learn this' | 'Open Deep Learn note' | 'Retry Deep Learn' | 'View reader fallback'
   deepLearnNoteHref: string
   deepLearnQuizHref: string
   deepLearnQuizReady: boolean
   deepLearnTermCount: number
   deepLearnFactCount: number
   deepLearnNoteFailure?: string | null
+  deepLearnAvailability: DeepLearnNoteLoadAvailability
 }
 
 export function StudyResourceAccordionList({
@@ -205,6 +207,10 @@ export function StudyResourceAccordionList({
                 <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
                   {item.deepLearnStatus === 'ready' || item.deepLearnStatus === 'pending' ? (
                     <Link href={item.deepLearnNoteHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
+                      {item.deepLearnPrimaryLabel}
+                    </Link>
+                  ) : item.deepLearnStatus === 'unavailable' ? (
+                    <Link href={item.readerHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
                       {item.deepLearnPrimaryLabel}
                     </Link>
                   ) : (

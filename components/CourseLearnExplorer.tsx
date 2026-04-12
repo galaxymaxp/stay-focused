@@ -124,6 +124,7 @@ export function CourseLearnExplorer({
         const focused = focusedModuleId === module.id
         const deepLearnReadyCount = module.studyMaterials.filter((material) => material.deepLearnStatus === 'ready').length
         const quizReadyNoteCount = module.studyMaterials.filter((material) => material.deepLearnQuizReady).length
+        const deepLearnUnavailable = module.deepLearnNotesAvailability === 'unavailable'
 
         return (
           <article
@@ -164,6 +165,7 @@ export function CourseLearnExplorer({
                   <ReadinessPill tone={module.readinessTone} label={module.readinessLabel} />
                   <CountPill label={`${deepLearnReadyCount} Deep Learn`} />
                   <CountPill label={`${module.termCount} term${module.termCount === 1 ? '' : 's'}`} />
+                  {deepLearnUnavailable && <CountPill label="Deep Learn unavailable" />}
                   <CountPill label={`${module.pendingTasks.length} active`} />
                   {module.completedTasks.length > 0 && <CountPill label={`${module.completedTasks.length} done`} />}
                 </div>
@@ -265,6 +267,15 @@ export function CourseLearnExplorer({
                     </p>
                   </div>
 
+                  {deepLearnUnavailable && module.deepLearnNotesMessage && (
+                    <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.85rem 0.9rem', border: '1px solid color-mix(in srgb, var(--amber) 24%, var(--border-subtle) 76%)' }}>
+                      <p className="ui-kicker">Deep Learn note status unavailable</p>
+                      <p style={{ margin: '0.38rem 0 0', fontSize: '13px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
+                        {module.deepLearnNotesMessage} This module still renders from the study resources and fallback reader/source views.
+                      </p>
+                    </div>
+                  )}
+
                   <StudyResourceAccordionList
                     items={module.studyMaterials.map((material) => ({
                       moduleId: module.id,
@@ -302,6 +313,7 @@ export function CourseLearnExplorer({
                       deepLearnTermCount: material.deepLearnTermCount,
                       deepLearnFactCount: material.deepLearnFactCount,
                       deepLearnNoteFailure: material.deepLearnNoteFailure,
+                      deepLearnAvailability: material.deepLearnAvailability,
                     }))}
                     initialOpenResourceId={validInitialOpenModuleId === module.id ? initialOpenResourceId : null}
                     emptyMessage="No active study materials are ready in this module yet."

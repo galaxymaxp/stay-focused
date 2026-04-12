@@ -14,6 +14,15 @@ export type ModuleTermOrigin = 'ai' | 'user'
 export type DeepLearnNoteStatus = 'pending' | 'ready' | 'failed'
 export type DeepLearnTermImportance = 'high' | 'medium' | 'low'
 export type DeepLearnGroundingStrategy = 'stored_extract' | 'source_refetch' | 'context_only' | 'insufficient'
+export type DeepLearnNoteLoadAvailability = 'available' | 'unavailable'
+export type DeepLearnNoteLoadReason =
+  | 'ok'
+  | 'not_configured'
+  | 'unauthenticated'
+  | 'table_missing'
+  | 'column_missing'
+  | 'permission_denied'
+  | 'query_failed'
 
 export interface Course {
   id: string

@@ -30,7 +30,7 @@ export default async function DeepLearnNotePage({ params }: Props) {
   const resource = experience.resources.find((entry) => entry.id === resourceId)
   if (!resource) notFound()
 
-  const note = await getDeepLearnNoteForResource(id, resourceId)
+  const noteResult = await getDeepLearnNoteForResource(id, resourceId)
   const sourceHref = getResourceOriginalFileHref(resource) ?? getResourceCanvasHref(resource)
 
   return (
@@ -40,13 +40,15 @@ export default async function DeepLearnNotePage({ params }: Props) {
       courseId={workspace.module.courseId}
       courseName={courseName}
       title={workspace.module.title}
-      summary={note?.overview ?? workspace.module.summary}
+      summary={noteResult.note?.overview ?? workspace.module.summary}
     >
       <DeepLearnNoteView
         moduleId={workspace.module.id}
         courseId={workspace.module.courseId ?? null}
         resource={resource}
-        note={note}
+        note={noteResult.note}
+        noteAvailability={noteResult.availability}
+        noteAvailabilityMessage={noteResult.message}
         readerHref={getLearnResourceHref(workspace.module.id, resource.id)}
         sourceHref={sourceHref}
       />

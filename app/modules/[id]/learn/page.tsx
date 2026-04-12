@@ -54,7 +54,8 @@ export default async function LearnPage({ params, searchParams }: Props) {
     overview,
     storedTerms: terms,
   })
-  const deepLearnNotes = await listDeepLearnNotesForModule(module.id)
+  const deepLearnNotesResult = await listDeepLearnNotesForModule(module.id)
+  const deepLearnNotes = deepLearnNotesResult.notes
   const deepLearnNoteByResourceId = new Map(deepLearnNotes.map((note) => [note.resourceId, note]))
   const sortedTasks = sortModuleTasks(tasks)
   const pendingTasks = sortedTasks.filter((task) => task.status !== 'completed')
@@ -74,6 +75,10 @@ export default async function LearnPage({ params, searchParams }: Props) {
       module.id,
       overview.resumeTarget.resource.id,
       deepLearnNoteByResourceId.get(overview.resumeTarget.resource.id) ?? null,
+      {
+        notesAvailability: deepLearnNotesResult.availability,
+        unavailableMessage: deepLearnNotesResult.message,
+      },
     )
     : null
 
@@ -111,10 +116,22 @@ export default async function LearnPage({ params, searchParams }: Props) {
               <span className="ui-chip ui-chip-soft">{readyDeepLearnNoteCount} Deep Learn note{readyDeepLearnNoteCount === 1 ? '' : 's'}</span>
               <span className="ui-chip ui-chip-soft">{termBank.finalTerms.length} key term{termBank.finalTerms.length === 1 ? '' : 's'}</span>
               <span className="ui-chip ui-chip-soft">{quizReadyDeepLearnNoteCount} quiz-ready note{quizReadyDeepLearnNoteCount === 1 ? '' : 's'}</span>
+              {deepLearnNotesResult.availability === 'unavailable' && (
+                <span className="ui-chip ui-chip-soft">Deep Learn status unavailable</span>
+              )}
               <span className="ui-chip ui-chip-soft">{pendingTasks.length} active task{pendingTasks.length === 1 ? '' : 's'}</span>
               {completedTasks.length > 0 && <span className="ui-chip ui-chip-soft">{completedTasks.length} done</span>}
             </div>
           </div>
+
+          {deepLearnNotesResult.availability === 'unavailable' && deepLearnNotesResult.message && (
+            <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.9rem 0.95rem', border: '1px solid color-mix(in srgb, var(--amber) 24%, var(--border-subtle) 76%)' }}>
+              <p className="ui-kicker">Deep Learn note status unavailable</p>
+              <p style={{ margin: '0.42rem 0 0', fontSize: '14px', lineHeight: 1.68, color: 'var(--text-secondary)' }}>
+                {deepLearnNotesResult.message} Learn is still rendering the module from resources, source support, and fallback reader state.
+              </p>
+            </div>
+          )}
 
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.15fr) minmax(300px, 0.95fr)', gap: '0.9rem', alignItems: 'start' }}>
             <div className="glass-panel glass-accent" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem 1.05rem', display: 'grid', gap: '0.85rem' }}>
@@ -199,6 +216,8 @@ export default async function LearnPage({ params, searchParams }: Props) {
                         courseId={module.courseId ?? null}
                         label={resumeTargetDeepLearnUi.primaryLabel}
                       />
+                    ) : resumeTargetDeepLearnUi?.status === 'unavailable' ? (
+                      <ActionButton href={overview.resumeTarget.href} label={resumeTargetDeepLearnUi.primaryLabel} external={overview.resumeTarget.external} tone="secondary" />
                     ) : resumeTargetDeepLearnUi ? (
                       <Link href={resumeTargetDeepLearnUi.noteHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
                         {resumeTargetDeepLearnUi.primaryLabel}
@@ -246,7 +265,14 @@ export default async function LearnPage({ params, searchParams }: Props) {
 
             <StudyResourceAccordionList
               items={overview.studyMaterials.map((material) => ({
-                ...buildDeepLearnAccordionState(module.id, module.courseId ?? null, material.resource.id, deepLearnNoteByResourceId.get(material.resource.id) ?? null),
+                ...buildDeepLearnAccordionState(
+                  module.id,
+                  module.courseId ?? null,
+                  material.resource.id,
+                  deepLearnNoteByResourceId.get(material.resource.id) ?? null,
+                  deepLearnNotesResult.availability,
+                  deepLearnNotesResult.message,
+                ),
                 moduleId: module.id,
                 courseId: module.courseId ?? null,
                 id: material.resource.id,
@@ -821,8 +847,13 @@ function buildDeepLearnAccordionState(
   courseId: string | null,
   resourceId: string,
   note: Parameters<typeof getDeepLearnResourceUiState>[2],
+  notesAvailability: 'available' | 'unavailable',
+  unavailableMessage: string | null,
 ) {
-  const deepLearnUi = getDeepLearnResourceUiState(moduleId, resourceId, note)
+  const deepLearnUi = getDeepLearnResourceUiState(moduleId, resourceId, note, {
+    notesAvailability,
+    unavailableMessage,
+  })
 
   return {
     moduleId,
@@ -839,5 +870,6 @@ function buildDeepLearnAccordionState(
     deepLearnTermCount: note?.coreTerms.length ?? 0,
     deepLearnFactCount: note?.keyFacts.length ?? 0,
     deepLearnNoteFailure: note?.errorMessage ?? null,
+    deepLearnAvailability: notesAvailability,
   }
 }

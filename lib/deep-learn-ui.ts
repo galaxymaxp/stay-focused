@@ -1,15 +1,15 @@
-import type { DeepLearnNote } from '@/lib/types'
+import type { DeepLearnNote, DeepLearnNoteLoadAvailability } from '@/lib/types'
 import { buildDeepLearnNoteHref, buildModuleQuizHref } from '@/lib/stay-focused-links'
 
-export type DeepLearnUiStatus = 'not_started' | 'pending' | 'ready' | 'failed'
+export type DeepLearnUiStatus = 'not_started' | 'pending' | 'ready' | 'failed' | 'unavailable'
 
 export interface DeepLearnResourceUiState {
   status: DeepLearnUiStatus
-  statusLabel: 'No note yet' | 'Generating' | 'Ready' | 'Failed'
+  statusLabel: 'No note yet' | 'Generating' | 'Ready' | 'Failed' | 'Unavailable'
   tone: 'accent' | 'warning' | 'muted'
   noteHref: string
   quizHref: string
-  primaryLabel: 'Deep Learn this' | 'Open Deep Learn note' | 'Retry Deep Learn'
+  primaryLabel: 'Deep Learn this' | 'Open Deep Learn note' | 'Retry Deep Learn' | 'View reader fallback'
   summary: string
   detail: string
   quizReady: boolean
@@ -19,9 +19,27 @@ export function getDeepLearnResourceUiState(
   moduleId: string,
   resourceId: string,
   note: DeepLearnNote | null,
+  options: {
+    notesAvailability?: DeepLearnNoteLoadAvailability
+    unavailableMessage?: string | null
+  } = {},
 ): DeepLearnResourceUiState {
   const noteHref = buildDeepLearnNoteHref(moduleId, resourceId)
   const quizHref = buildModuleQuizHref(moduleId, { resourceId })
+
+  if (!note && options.notesAvailability === 'unavailable') {
+    return {
+      status: 'unavailable',
+      statusLabel: 'Unavailable',
+      tone: 'warning',
+      noteHref,
+      quizHref,
+      primaryLabel: 'View reader fallback',
+      summary: options.unavailableMessage || 'Saved Deep Learn note status is unavailable right now.',
+      detail: 'Learn is still rendering the resource, but note availability could not be loaded. Use the reader or source fallback until Deep Learn note access is healthy again.',
+      quizReady: false,
+    }
+  }
 
   if (!note) {
     return {
