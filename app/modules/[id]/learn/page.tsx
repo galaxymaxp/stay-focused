@@ -228,6 +228,8 @@ export default async function LearnPage({ params, searchParams }: Props) {
                 required: material.resource.required,
                 outlineSections: material.reader.outlineSections,
                 outlineHint: material.reader.outlineHint,
+                previewState: material.resource.previewState,
+                fallbackReason: material.resource.fallbackReason,
                 readerHref: getLearnResourceHref(module.id, material.resource.id),
                 canvasHref: getResourceCanvasHref(material.resource),
                 originalFileHref: getResourceOriginalFileHref(material.resource),

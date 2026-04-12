@@ -132,7 +132,7 @@ export default async function ResourceDetailPage({ params }: Props) {
               <span className="ui-chip ui-chip-soft">Capability: {capability.capabilityLabel}</span>
               <span className="ui-chip ui-chip-soft">Quality: {quality.qualityLabel}</span>
               <span className="ui-chip ui-chip-soft">{quality.groundingLabel}</span>
-              <span className="ui-chip ui-chip-soft">Status: {labelForExtractionStatus(resource.extractionStatus, resource.extractionError)}</span>
+              <span className="ui-chip ui-chip-soft">Status: {labelForExtractionStatus(resource.extractionStatus, resource.extractionError, resource)}</span>
             </div>
           </div>
           <p style={{ margin: '0.65rem 0 0', fontSize: '14px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
@@ -152,9 +152,14 @@ export default async function ResourceDetailPage({ params }: Props) {
           <MetaCard label="Course" value={resource.courseName ?? courseName} />
           <MetaCard label="Module / week" value={resource.moduleName ?? module.title} />
           <MetaCard label="Resource type" value={labelForResourceKind(resource)} />
+          <MetaCard label="Original resource kind" value={resource.originalResourceKind ?? resource.type} />
           <MetaCard label="Normalized source type" value={formatNormalizedModuleResourceSourceType(capability.normalizedSourceType)} />
+          <MetaCard label="Resolved target type" value={resource.resolvedTargetType ?? 'Not resolved'} />
+          <MetaCard label="Resolution state" value={resource.resolutionState ?? 'Not recorded'} />
           <MetaCard label="Quality" value={quality.qualityLabel} />
           <MetaCard label="Grounding treatment" value={quality.groundingLabel} />
+          <MetaCard label="Preview state" value={resource.previewState ?? 'Not recorded'} />
+          <MetaCard label="Recommendation" value={resource.recommendationStrength ?? 'Not recorded'} />
           <MetaCard label="Original Canvas title" value={resource.originalTitle ?? resource.title} />
           <MetaCard label="Due date" value={resource.dueDate && resource.dueDate !== 'No due date' ? formatDate(resource.dueDate) : 'None surfaced'} />
           <MetaCard label="Linked context" value={resource.linkedContext ?? 'No linked task or assignment context surfaced yet'} />
@@ -229,8 +234,18 @@ export default async function ResourceDetailPage({ params }: Props) {
                 <MetaLine label="Capability note" value={capability.reason} />
                 <MetaLine label="Quality" value={quality.qualityLabel} />
                 <MetaLine label="Quality note" value={quality.reason} />
-                <MetaLine label="Extraction status" value={labelForExtractionStatus(resource.extractionStatus, resource.extractionError)} />
+                <MetaLine label="Extraction status" value={labelForExtractionStatus(resource.extractionStatus, resource.extractionError, resource)} />
+                <MetaLine label="Fallback reason" value={resource.fallbackReason ?? 'None recorded'} />
+                <MetaLine label="Source URL category" value={resource.sourceUrlCategory ?? 'Not recorded'} />
+                <MetaLine label="Resolved URL category" value={resource.resolvedUrlCategory ?? 'Not recorded'} />
+                <MetaLine label="Resolved URL" value={resource.resolvedUrl ?? 'Not recorded'} />
+                <MetaLine label="Preview state" value={resource.previewState ?? 'Not recorded'} />
+                <MetaLine label="Full text stored" value={resource.fullTextAvailable ? 'Yes' : 'No'} />
                 <MetaLine label="Character count" value={typeof resource.extractedCharCount === 'number' && resource.extractedCharCount > 0 ? `${resource.extractedCharCount}` : 'Not available'} />
+                <MetaLine label="Stored text length" value={typeof resource.storedTextLength === 'number' ? `${resource.storedTextLength}` : 'Not recorded'} />
+                <MetaLine label="Stored preview length" value={typeof resource.storedPreviewLength === 'number' ? `${resource.storedPreviewLength}` : 'Not recorded'} />
+                <MetaLine label="Word count" value={typeof resource.storedWordCount === 'number' ? `${resource.storedWordCount}` : 'Not recorded'} />
+                <MetaLine label="Recommendation" value={resource.recommendationStrength ?? 'Not recorded'} />
                 <MetaLine label="Grounding confidence" value={grounding.confidence} />
                 <MetaLine label="Required" value={resource.required ? 'Yes' : 'No'} />
               </div>

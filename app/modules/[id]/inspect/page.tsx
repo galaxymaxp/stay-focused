@@ -32,6 +32,7 @@ export default async function ModuleInspectPage({ params, searchParams }: Props)
       resource,
       capability: getModuleResourceCapabilityInfo(resource),
       quality: getModuleResourceQualityInfo(resource),
+      debug: getInspectDebugInfo(resource.metadata),
     }))
     .sort(compareInspectRows)
 
@@ -136,7 +137,7 @@ export default async function ModuleInspectPage({ params, searchParams }: Props)
             </div>
           ) : (
             <div style={{ display: 'grid', gap: '0.75rem' }}>
-              {rows.map(({ resource, capability, quality }) => {
+              {rows.map(({ resource, capability, quality, debug }) => {
                 const rowReturnPath = `${baseReturnPath}?resource=${encodeURIComponent(resource.id)}#${getResourceElementId(resource.id)}`
                 const preview = quality.meaningfulText || resource.extractedTextPreview?.trim() || resource.extractedText?.trim() || quality.reason
                 const lastReprocessedAt = typeof resource.metadata.lastReprocessedAt === 'string' ? resource.metadata.lastReprocessedAt : null
@@ -165,7 +166,7 @@ export default async function ModuleInspectPage({ params, searchParams }: Props)
                           <StateBadge label={capability.capabilityLabel} tone={capability.capabilityTone} />
                           <StateBadge label={quality.qualityLabel} tone={quality.qualityTone} />
                           <StateBadge label={quality.groundingLabel} tone={quality.groundingLevel === 'strong' ? 'accent' : quality.groundingLevel === 'weak' ? 'warning' : 'muted'} />
-                          <StateBadge label={labelForExtractionStatus(resource.extractionStatus, resource.extractionError)} tone={capability.capabilityTone === 'danger' ? 'danger' : 'muted'} />
+                          <StateBadge label={labelForExtractionStatus(resource.extractionStatus, resource.extractionError, { fallbackReason: debug.fallbackReason, previewState: debug.previewState })} tone={capability.capabilityTone === 'danger' ? 'danger' : 'muted'} />
                           <StateBadge label={getStudySourceTypeLabel({ type: resource.resourceType, extension: resource.extension, contentType: resource.contentType })} tone="muted" />
                           <StateBadge label={formatNormalizedModuleResourceSourceType(capability.normalizedSourceType)} tone="muted" />
                         </div>
@@ -202,12 +203,18 @@ export default async function ModuleInspectPage({ params, searchParams }: Props)
 
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.7rem' }}>
                       <MetaCard label="Source type" value={resource.resourceType} />
+                      <MetaCard label="Original kind" value={debug.originalResourceKind ?? resource.resourceType} />
                       <MetaCard label="Normalized type" value={formatNormalizedModuleResourceSourceType(capability.normalizedSourceType)} />
+                      <MetaCard label="Resolved target" value={debug.resolvedTargetType ?? 'Not resolved'} />
+                      <MetaCard label="Resolution state" value={debug.resolutionState ?? 'Not recorded'} />
                       <MetaCard label="Capability" value={capability.capabilityLabel} />
                       <MetaCard label="Quality" value={quality.qualityLabel} />
                       <MetaCard label="Grounding" value={quality.groundingLabel} />
-                      <MetaCard label="Extraction status" value={labelForExtractionStatus(resource.extractionStatus, resource.extractionError)} />
+                      <MetaCard label="Extraction status" value={labelForExtractionStatus(resource.extractionStatus, resource.extractionError, { fallbackReason: debug.fallbackReason, previewState: debug.previewState })} />
                       <MetaCard label="Readable chars" value={resource.extractedCharCount > 0 ? resource.extractedCharCount.toLocaleString() : '0'} />
+                      <MetaCard label="Word count" value={typeof debug.storedWordCount === 'number' ? debug.storedWordCount.toLocaleString() : '0'} />
+                      <MetaCard label="Preview state" value={debug.previewState ?? 'Not recorded'} />
+                      <MetaCard label="Recommendation" value={debug.recommendationStrength ?? 'Not recorded'} />
                       <MetaCard label="Signal ratio" value={quality.totalCharCount > 0 ? `${Math.round(quality.signalRatio * 100)}%` : '0%'} />
                       <MetaCard label="Last reprocess" value={lastReprocessedAt ? formatDateTime(lastReprocessedAt) : 'Not yet'} />
                     </div>
@@ -227,6 +234,16 @@ export default async function ModuleInspectPage({ params, searchParams }: Props)
                         {quality.reason !== capability.reason && (
                           <p style={{ margin: '0.55rem 0 0', fontSize: '12px', lineHeight: 1.62, color: 'var(--text-muted)' }}>
                             Capability note: {capability.reason}
+                          </p>
+                        )}
+                        {debug.fallbackReason && (
+                          <p style={{ margin: '0.55rem 0 0', fontSize: '12px', lineHeight: 1.62, color: 'var(--text-muted)' }}>
+                            Fallback reason: {debug.fallbackReason}
+                          </p>
+                        )}
+                        {(debug.sourceUrlCategory || debug.resolvedUrlCategory) && (
+                          <p style={{ margin: '0.55rem 0 0', fontSize: '12px', lineHeight: 1.62, color: 'var(--text-muted)' }}>
+                            URL categories: {debug.sourceUrlCategory ?? 'unknown'} {'->'} {debug.resolvedUrlCategory ?? 'unknown'}
                           </p>
                         )}
                         {resource.extractionError && (
@@ -391,4 +408,42 @@ function formatDateTime(value: string) {
     hour: 'numeric',
     minute: '2-digit',
   }).format(date)
+}
+
+function getInspectDebugInfo(metadata: unknown): {
+  originalResourceKind: string | null
+  resolvedTargetType: string | null
+  resolutionState: string | null
+  fallbackReason: string | null
+  sourceUrlCategory: string | null
+  resolvedUrlCategory: string | null
+  previewState: 'full_text_available' | 'preview_only' | 'no_text_available' | null
+  recommendationStrength: string | null
+  storedWordCount: number | null
+} {
+  const record = typeof metadata === 'object' && metadata !== null && !Array.isArray(metadata)
+    ? metadata as Record<string, unknown>
+    : {}
+
+  return {
+    originalResourceKind: readString(record.originalResourceKind),
+    resolvedTargetType: readString(record.resolvedTargetType),
+    resolutionState: readString(record.resolutionState),
+    fallbackReason: readString(record.fallbackReason ?? record.fallbackState),
+    sourceUrlCategory: readString(record.sourceUrlCategory),
+    resolvedUrlCategory: readString(record.resolvedUrlCategory),
+    previewState: normalizePreviewState(record.previewState),
+    recommendationStrength: readString(record.recommendationStrength),
+    storedWordCount: typeof record.storedWordCount === 'number' ? record.storedWordCount : null,
+  }
+}
+
+function readString(value: unknown) {
+  return typeof value === 'string' && value.trim() ? value.trim() : null
+}
+
+function normalizePreviewState(value: unknown) {
+  return value === 'full_text_available' || value === 'preview_only' || value === 'no_text_available'
+    ? value
+    : null
 }
