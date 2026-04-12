@@ -17,6 +17,7 @@ export type DeepLearnGroundingStrategy = 'stored_extract' | 'source_refetch' | '
 export type DeepLearnNoteLoadAvailability = 'available' | 'unavailable'
 export type DeepLearnNoteLoadReason =
   | 'ok'
+  | 'missing'
   | 'not_configured'
   | 'unauthenticated'
   | 'table_missing'
