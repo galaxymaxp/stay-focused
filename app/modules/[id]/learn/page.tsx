@@ -129,18 +129,18 @@ export default async function LearnPage({ params, searchParams }: Props) {
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.9rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
             <div style={{ minWidth: 0, flex: '1 1 460px' }}>
               <p className="ui-kicker">Unified Learn workspace</p>
-              <h2 className="ui-section-title" style={{ marginTop: '0.45rem' }}>Deep Learn notes come first, with source and reader fallback behind them</h2>
+              <h2 className="ui-section-title" style={{ marginTop: '0.45rem' }}>Exam prep packs come first, with source and reader fallback behind them</h2>
               <p className="ui-section-copy" style={{ marginTop: '0.45rem', maxWidth: '46rem' }}>
-                The main study path now starts at the resource, turns it into a saved Deep Learn note, then carries that note into quiz. The old reader still stays nearby for source transparency and fallback, but it no longer leads the workflow.
+                The main study path now starts at the resource, turns it into a saved answer-first exam prep pack, then carries that pack into quiz. The old reader still stays nearby for source transparency and fallback, but it no longer leads the workflow.
               </p>
             </div>
             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
               <span className="ui-chip ui-chip-soft">{overview.studyMaterials.length} study source{overview.studyMaterials.length === 1 ? '' : 's'}</span>
-              <span className="ui-chip ui-chip-soft">{readyDeepLearnNoteCount} Deep Learn note{readyDeepLearnNoteCount === 1 ? '' : 's'}</span>
+              <span className="ui-chip ui-chip-soft">{readyDeepLearnNoteCount} prep pack{readyDeepLearnNoteCount === 1 ? '' : 's'}</span>
               <span className="ui-chip ui-chip-soft">{termBank.finalTerms.length} key term{termBank.finalTerms.length === 1 ? '' : 's'}</span>
-              <span className="ui-chip ui-chip-soft">{quizReadyDeepLearnNoteCount} quiz-ready note{quizReadyDeepLearnNoteCount === 1 ? '' : 's'}</span>
+              <span className="ui-chip ui-chip-soft">{quizReadyDeepLearnNoteCount} quiz-ready pack{quizReadyDeepLearnNoteCount === 1 ? '' : 's'}</span>
               {deepLearnNotesResult.availability === 'unavailable' && (
-                <span className="ui-chip ui-chip-soft">Deep Learn status unavailable</span>
+                <span className="ui-chip ui-chip-soft">Pack status unavailable</span>
               )}
               <span className="ui-chip ui-chip-soft">{pendingTasks.length} active task{pendingTasks.length === 1 ? '' : 's'}</span>
               {completedTasks.length > 0 && <span className="ui-chip ui-chip-soft">{completedTasks.length} done</span>}
@@ -149,7 +149,7 @@ export default async function LearnPage({ params, searchParams }: Props) {
 
           {deepLearnNotesResult.availability === 'unavailable' && deepLearnNotesResult.message && (
             <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.9rem 0.95rem', border: '1px solid color-mix(in srgb, var(--amber) 24%, var(--border-subtle) 76%)' }}>
-              <p className="ui-kicker">Deep Learn note status unavailable</p>
+              <p className="ui-kicker">Exam prep pack status unavailable</p>
               <p style={{ margin: '0.42rem 0 0', fontSize: '14px', lineHeight: 1.68, color: 'var(--text-secondary)' }}>
                 {deepLearnNotesResult.message} Learn is still rendering the module from resources, source support, and fallback reader state.
               </p>
@@ -216,8 +216,8 @@ export default async function LearnPage({ params, searchParams }: Props) {
 
             <div className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem 1.05rem', display: 'grid', gap: '0.8rem' }}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '0.7rem' }}>
-                <StatCard label="Deep Learn ready" value={String(readyDeepLearnNoteCount)} />
-                <StatCard label="Quiz-ready notes" value={String(quizReadyDeepLearnNoteCount)} />
+                <StatCard label="Prep packs ready" value={String(readyDeepLearnNoteCount)} />
+                <StatCard label="Quiz-ready packs" value={String(quizReadyDeepLearnNoteCount)} />
                 <StatCard label="Usable sources" value={String(termBank.groundedSourceCount)} />
                 <StatCard label="Readable chars" value={termBank.groundedCharCount.toLocaleString()} />
               </div>
@@ -279,10 +279,10 @@ export default async function LearnPage({ params, searchParams }: Props) {
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.18fr) minmax(320px, 0.92fr)', gap: '1rem', alignItems: 'start' }}>
           <section id="study-notes" className="motion-card motion-delay-2 section-shell section-shell-elevated" style={{ padding: '1.2rem 1.3rem', display: 'grid', gap: '0.9rem' }}>
             <div>
-              <p className="ui-kicker">Deep Learn notes</p>
-              <h3 style={{ margin: '0.42rem 0 0', fontSize: '1.08rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>Generate a saved note first, then use the reader only when you need the source surface</h3>
+              <p className="ui-kicker">Exam prep packs</p>
+              <h3 style={{ margin: '0.42rem 0 0', fontSize: '1.08rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>Build the saved review pack first, then use the reader only when you need the source surface</h3>
               <p className="ui-section-copy" style={{ marginTop: '0.45rem', maxWidth: '44rem' }}>
-                Each resource now leads with Deep Learn. Generate or open the saved note here, see whether it is quiz-ready, and keep the source or reader behind it as validation instead of the main destination.
+                Each resource now leads with Deep Learn. Generate or open the saved answer bank, identification list, MCQ drill, and timeline pack here, then keep the source or reader behind it as validation instead of the main destination.
               </p>
             </div>
 
@@ -331,7 +331,7 @@ export default async function LearnPage({ params, searchParams }: Props) {
                 }
               })}
               initialOpenResourceId={targetResourceId}
-              emptyMessage="No mapped study resources are available for Deep Learn in this module yet."
+              emptyMessage="No mapped study resources are available for exam prep in this module yet."
             />
           </section>
 
@@ -904,8 +904,8 @@ function buildDeepLearnAccordionState(
     deepLearnNoteHref: deepLearnUi.noteHref,
     deepLearnQuizHref: deepLearnUi.quizHref,
     deepLearnQuizReady: deepLearnUi.quizReady,
-    deepLearnTermCount: note?.coreTerms.length ?? 0,
-    deepLearnFactCount: note?.keyFacts.length ?? 0,
+    deepLearnTermCount: note?.identificationItems.length ?? 0,
+    deepLearnFactCount: note?.answerBank.length ?? 0,
     deepLearnNoteFailure: note?.errorMessage ?? null,
     deepLearnAvailability: notesAvailability,
   }

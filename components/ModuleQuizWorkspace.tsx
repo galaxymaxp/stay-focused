@@ -17,7 +17,7 @@ export interface QuizSection {
 /**
  * Client-side quiz workspace for a module.
  * Receives pre-computed quiz sections (serialised from the server page)
- * and handles note selection + quiz rendering.
+ * and handles exam prep pack selection + quiz rendering.
  */
 export function ModuleQuizWorkspace({
   quizSections,
@@ -49,13 +49,13 @@ export function ModuleQuizWorkspace({
     return (
       <section className="motion-card motion-delay-1 section-shell section-shell-elevated" style={{ padding: '1.35rem 1.45rem', display: 'grid', gap: '0.8rem' }}>
         <p className="ui-kicker">Quiz</p>
-        <h2 className="ui-section-title">No quiz-ready notes yet</h2>
+        <h2 className="ui-section-title">No quiz-ready packs yet</h2>
         <div className="ui-empty" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem 1.1rem', fontSize: '14px', lineHeight: 1.68 }}>
           {withheldMaterialCount > 0
             ? notReadyDeepLearnCount > 0
-              ? 'Quiz only opens from saved Deep Learn notes that keep enough exact terms, key facts, and distinctions. This module has notes, but they are not structured strongly enough for quiz yet.'
-              : 'Quiz only opens after a Deep Learn note exists. Generate a saved note from Learn first, then come back once the note is ready.'
-            : 'No saved Deep Learn notes are ready for quiz yet. Open Learn to generate a note, or inspect the resource state if the source grounding is still too weak.'}
+              ? 'Quiz only opens from saved exam prep packs that keep enough answer-bank coverage, identification prompts, MCQ contrast, or timeline structure. This module has packs, but they are still too thin for quiz.'
+              : 'Quiz only opens after an exam prep pack exists. Build a pack from Learn first, then come back once the pack is ready.'
+            : 'No saved exam prep packs are ready for quiz yet. Open Learn to build one, or inspect the resource state if the source grounding is still too weak.'}
         </div>
         {noteAvailabilityMessage && (
           <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
@@ -85,18 +85,18 @@ export function ModuleQuizWorkspace({
       <section className="motion-card motion-delay-1 section-shell section-shell-elevated" style={{ padding: '1.35rem 1.45rem', display: 'grid', gap: '0.85rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.9rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
           <div>
-            <p className="ui-kicker">Select a Deep Learn note to quiz</p>
+            <p className="ui-kicker">Select an exam prep pack to quiz</p>
             <h2 className="ui-section-title" style={{ marginTop: '0.42rem' }}>
-              {quizSections.length} quiz-ready note{quizSections.length === 1 ? '' : 's'}
+              {quizSections.length} quiz-ready pack{quizSections.length === 1 ? '' : 's'}
             </h2>
             <p className="ui-section-copy" style={{ marginTop: '0.42rem' }}>
-              Questions come from each saved note&apos;s preserved terms, key facts, and distinctions. Pick a note, choose how many questions to run, then start.
+              Questions come from each saved pack&apos;s answer bank, identification items, MCQ drill, timeline cues, and confusable distinctions. Pick a pack, choose how many questions to run, then start.
             </p>
             {withheldMaterialCount > 0 && (
               <p style={{ margin: '0.55rem 0 0', fontSize: '13px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
                 {notReadyDeepLearnCount > 0
-                  ? `${notReadyDeepLearnCount} saved note${notReadyDeepLearnCount === 1 ? ' is' : 's are'} still below the quiz-ready threshold because the current term, fact, or distinction structure is too thin.`
-                  : `${withheldMaterialCount} study source${withheldMaterialCount === 1 ? ' is' : 's are'} still outside the quiz lane because no saved Deep Learn note is ready yet.`}
+                  ? `${notReadyDeepLearnCount} saved pack${notReadyDeepLearnCount === 1 ? ' is' : 's are'} still below the quiz-ready threshold because the current answer-bank, identification, MCQ, or distinction structure is too thin.`
+                  : `${withheldMaterialCount} study source${withheldMaterialCount === 1 ? ' is' : 's are'} still outside the quiz lane because no saved exam prep pack is ready yet.`}
               </p>
             )}
           </div>
@@ -148,15 +148,15 @@ export function ModuleQuizWorkspace({
           quizItems={selected.quizItems}
           questionCountOptions={selected.questionCountOptions}
           title={`Quiz: ${selected.title}`}
-          description={`Questions drawn from the saved Deep Learn note for "${selected.resourceTitle}". Pick a count and start.`}
-          emptyMessage="This Deep Learn note does not have enough quiz-ready structure yet."
+          description={`Questions drawn from the saved exam prep pack for "${selected.resourceTitle}". Pick a count and start.`}
+          emptyMessage="This exam prep pack does not have enough quiz-ready structure yet."
         />
       )}
 
       {selected && (
         <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
           <Link href={selected.noteHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-            Open note
+            Open pack
           </Link>
           {learnHref && (
             <Link href={learnHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>

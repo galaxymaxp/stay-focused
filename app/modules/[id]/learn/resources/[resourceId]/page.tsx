@@ -82,11 +82,11 @@ export default async function ResourceDetailPage({ params }: Props) {
     storedResource: resourceSelection?.storedResource ?? null,
     canonicalResourceId: deepLearnResourceId,
   })
-  const deepLearnAvailabilityMessage = deepLearnReadiness.state === 'blocked'
+  const deepLearnAvailabilityMessage = deepLearnReadiness.state === 'unreadable'
     ? deepLearnReadiness.detail
     : deepLearnResourceId
       ? deepLearnNoteResult.message
-      : 'Deep Learn needs a synced resource record for this item before it can save notes or generate a quiz-ready note.'
+      : 'Deep Learn needs a synced resource record for this item before it can save exam prep packs or generate a quiz-ready pack.'
 
   if (resource.kind === 'study_file') {
     return (

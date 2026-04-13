@@ -241,7 +241,7 @@ export function SettingsPage() {
           <div style={noteCardStyle}>
             <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>Google sign-in</div>
             <div style={{ marginTop: '0.22rem', fontSize: '13px', lineHeight: 1.6, color: 'var(--text-secondary)' }}>
-              Google OAuth is wired into the same session flow as email/password. Enable the Google provider in Supabase Auth and set the callback URL before using it in production.
+              Google OAuth is wired into the same session flow as email/password. Enable the provider in the hosted Supabase Auth dashboard, set the Site URL plus additional redirect URLs for each allowed origin, and make sure those flows return to `/auth/callback`.
             </div>
           </div>
 

@@ -13,6 +13,9 @@ export interface DeepLearnResourceReadiness {
   canonicalResourceId: string | null
   blockedReason: DeepLearnBlockedReason | null
   canGenerate: boolean
+  shouldAttemptSourceFetch: boolean
+  label: 'Text ready' | 'Partial text' | 'Scan fallback' | 'Unreadable'
+  tone: 'accent' | 'warning' | 'muted'
   summary: string
   detail: string
 }
@@ -26,7 +29,7 @@ export function classifyDeepLearnResourceReadiness(input: {
   const sourceRecord = storedResource ?? resource
 
   if (!storedResource || !canonicalResourceId) {
-    return buildBlockedReadiness({
+    return buildUnreadableReadiness({
       canonicalResourceId,
       blockedReason: 'no_stored_resource',
       sourceNote: null,
@@ -36,46 +39,72 @@ export function classifyDeepLearnResourceReadiness(input: {
 
   const quality = getModuleResourceQualityInfo(sourceRecord)
   const hasGroundingText = Boolean(selectDeepLearnGroundingText(sourceRecord))
+  const canFetchSource = canAttemptDeepLearnSourceFetch(storedResource)
+  const explicitBlockedReason = detectExplicitDeepLearnBlockedReason(sourceRecord)
 
   if ((quality.quality === 'strong' || quality.quality === 'usable') && hasGroundingText) {
     return {
-      state: 'ready',
+      state: 'text_ready',
       canonicalResourceId,
       blockedReason: null,
       canGenerate: true,
-      summary: 'Deep Learn can generate now from the stored source evidence.',
+      shouldAttemptSourceFetch: false,
+      label: 'Text ready',
+      tone: 'accent',
+      summary: 'Text is ready for an answer-first exam prep pass.',
       detail: quality.reason,
     }
   }
 
-  const blockedReason = detectExplicitDeepLearnBlockedReason(sourceRecord)
-  if (blockedReason) {
-    return buildBlockedReadiness({
+  if (explicitBlockedReason === 'external_link_only' || explicitBlockedReason === 'unsupported_source_type' || explicitBlockedReason === 'auth_required') {
+    return buildUnreadableReadiness({
       canonicalResourceId,
-      blockedReason,
+      blockedReason: explicitBlockedReason,
       sourceNote: getDeepLearnSourceNote(sourceRecord),
       sourceType: getNormalizedModuleResourceSourceType(sourceRecord),
     })
   }
 
-  if (canAttemptDeepLearnSourceFetch(storedResource)) {
+  if (isDeepLearnScanFallbackCapable(sourceRecord)) {
     return {
-      state: 'via_source_fetch',
+      state: 'scan_fallback',
       canonicalResourceId,
       blockedReason: null,
       canGenerate: true,
-      summary: 'Deep Learn needs a stronger source fetch before it can write a trustworthy note.',
+      shouldAttemptSourceFetch: canFetchSource,
+      label: 'Scan fallback',
+      tone: 'warning',
+      summary: 'Parsed text is missing or thin, but scan fallback can still build an exam prep pack.',
       detail: hasGroundingText
-        ? 'The stored extract is still weak, so Deep Learn will retry the original source before generating the note.'
-        : 'The stored record has too little readable text right now, so Deep Learn will try the original source before giving up.',
+        ? 'The stored extract is weak, so Deep Learn can keep the partial text and fall back to the original file if exact answers need scan-based recovery.'
+        : 'No dependable parsed text is stored yet, so Deep Learn will try the original file with scan-aware fallback instead of hard-blocking.',
     }
   }
 
-  return buildBlockedReadiness({
+  if (hasGroundingText || canFetchSource) {
+    return {
+      state: 'partial_text',
+      canonicalResourceId,
+      blockedReason: null,
+      canGenerate: true,
+      shouldAttemptSourceFetch: canFetchSource,
+      label: 'Partial text',
+      tone: 'warning',
+      summary: hasGroundingText
+        ? 'Partial text is available, so Deep Learn can still extract answer-ready review items.'
+        : 'Stored text is missing, but the original source can still be retried before generation.',
+      detail: hasGroundingText
+        ? 'The system will prefer compact, source-grounded answer units and may refetch the original source first if it can strengthen the extract.'
+        : 'Deep Learn will retry the original source first, then fall back to whatever stable text it can recover.',
+    }
+  }
+
+  return buildUnreadableReadiness({
     canonicalResourceId,
-    blockedReason: getModuleResourceCapabilityInfo(sourceRecord).capability === 'unsupported'
-      ? 'unsupported_source_type'
-      : 'no_source_path',
+    blockedReason: explicitBlockedReason
+      ?? (getModuleResourceCapabilityInfo(sourceRecord).capability === 'unsupported'
+        ? 'unsupported_source_type'
+        : 'no_source_path'),
     sourceNote: getDeepLearnSourceNote(sourceRecord),
     sourceType: getNormalizedModuleResourceSourceType(sourceRecord),
   })
@@ -86,14 +115,12 @@ export function buildDeepLearnBlockedReadiness(input: {
   blockedReason: DeepLearnBlockedReason
   sourceNote?: string | null
   sourceType?: NormalizedModuleResourceSourceType | null
-  sourceFetchAttempted?: boolean
 }): DeepLearnResourceReadiness {
-  return buildBlockedReadiness({
+  return buildUnreadableReadiness({
     canonicalResourceId: input.canonicalResourceId ?? null,
     blockedReason: input.blockedReason,
     sourceNote: input.sourceNote ?? null,
     sourceType: input.sourceType ?? null,
-    sourceFetchAttempted: input.sourceFetchAttempted ?? false,
   })
 }
 
@@ -109,6 +136,25 @@ export function canAttemptDeepLearnSourceFetch(resource: ModuleResource) {
   }
 
   return Boolean(resource.sourceUrl)
+}
+
+export function isDeepLearnScanFallbackCapable(resource: ModuleResourceCapabilityLike & {
+  contentType?: string | null
+  extension?: string | null
+  sourceUrl?: string | null
+}) {
+  const sourceType = getNormalizedModuleResourceSourceType(resource)
+  const contentType = resource.contentType?.toLowerCase() ?? ''
+  const extension = resource.extension?.toLowerCase() ?? ''
+  const hasSourcePath = Boolean(resource.sourceUrl?.trim())
+  const isPdf = sourceType === 'pdf' || extension === 'pdf' || contentType.includes('pdf')
+  const isImage = contentType.startsWith('image/')
+    || extension === 'png'
+    || extension === 'jpg'
+    || extension === 'jpeg'
+    || extension === 'webp'
+
+  return hasSourcePath && (isPdf || isImage)
 }
 
 export function selectDeepLearnGroundingText(
@@ -134,25 +180,26 @@ export function detectDeepLearnBlockedReasonAfterSourceFetch(resource: ModuleRes
   return 'source_retrieval_failed'
 }
 
-function buildBlockedReadiness(input: {
+function buildUnreadableReadiness(input: {
   canonicalResourceId: string | null
   blockedReason: DeepLearnBlockedReason
   sourceNote: string | null
   sourceType: NormalizedModuleResourceSourceType | null
-  sourceFetchAttempted?: boolean
 }): DeepLearnResourceReadiness {
   const message = describeDeepLearnBlockedReason({
     blockedReason: input.blockedReason,
     sourceNote: input.sourceNote,
     sourceType: input.sourceType,
-    sourceFetchAttempted: input.sourceFetchAttempted ?? false,
   })
 
   return {
-    state: 'blocked',
+    state: 'unreadable',
     canonicalResourceId: input.canonicalResourceId,
     blockedReason: input.blockedReason,
     canGenerate: false,
+    shouldAttemptSourceFetch: false,
+    label: 'Unreadable',
+    tone: 'muted',
     summary: message.summary,
     detail: message.detail,
   }
@@ -190,37 +237,36 @@ function describeDeepLearnBlockedReason(input: {
   blockedReason: DeepLearnBlockedReason
   sourceNote: string | null
   sourceType: NormalizedModuleResourceSourceType | null
-  sourceFetchAttempted: boolean
 }) {
   const sourceNote = input.sourceNote
   const sourceTypeLabel = formatDeepLearnSourceType(input.sourceType)
 
   if (input.blockedReason === 'no_stored_resource') {
     return {
-      summary: 'Deep Learn is blocked until this Learn item has a synced resource row.',
-      detail: 'This resource is visible in Learn, but it still does not map to a stored module resource record, so Deep Learn cannot save or reopen a stable note for it yet.',
+      summary: 'This item still needs a synced resource row before Deep Learn can save an exam prep pack.',
+      detail: 'The Learn card exists, but it still does not map to a stored module resource record, so Deep Learn cannot save a stable review pack for it yet.',
     }
   }
 
   if (input.blockedReason === 'no_source_path') {
     return {
-      summary: 'Deep Learn is blocked because no fetchable source path is stored for this item.',
+      summary: 'No fetchable source path is stored for this item.',
       detail: sourceNote
-        ?? 'The synced resource record does not currently include a Canvas API URL, file URL, or resolvable module-item target that Deep Learn can retrieve.',
+        ?? 'The synced resource record does not currently include a Canvas API URL, file URL, or resolvable module-item target that Deep Learn can read.',
     }
   }
 
   if (input.blockedReason === 'unsupported_source_type') {
     return {
-      summary: `Deep Learn is blocked because this ${sourceTypeLabel} source type is not readable here yet.`,
+      summary: `This ${sourceTypeLabel} source type is outside the current readable Deep Learn path.`,
       detail: sourceNote
-        ?? 'Stay Focused keeps the source visible, but this type of item still sits outside the readable Deep Learn extraction path.',
+        ?? 'Stay Focused keeps the source visible, but this type of item still sits outside the current extraction and scan-fallback path.',
     }
   }
 
   if (input.blockedReason === 'auth_required') {
     return {
-      summary: 'Deep Learn needs Canvas or authenticated source access before it can fetch this item.',
+      summary: 'Canvas or authenticated source access is still required.',
       detail: sourceNote
         ?? 'The current source still requires authenticated Canvas access or a working token before the original material can be recovered.',
     }
@@ -228,28 +274,24 @@ function describeDeepLearnBlockedReason(input: {
 
   if (input.blockedReason === 'external_link_only') {
     return {
-      summary: 'Deep Learn is blocked because this item only resolves to an external link.',
+      summary: 'This item only resolves to an external link.',
       detail: sourceNote
-        ?? 'Stay Focused can keep the original link available, but it cannot fetch and ground the destination content yet.',
+        ?? 'Stay Focused can keep the original link available, but it cannot ground the destination content as a trustworthy exam prep pack yet.',
     }
   }
 
   if (input.blockedReason === 'source_retrieval_failed') {
     return {
-      summary: input.sourceFetchAttempted
-        ? 'Deep Learn tried the original source, but retrieval failed.'
-        : 'Deep Learn is blocked because the original source retrieval already failed.',
+      summary: 'The original source could not be recovered cleanly.',
       detail: sourceNote
-        ?? 'The app could not fetch the original source strongly enough to ground a trustworthy note.',
+        ?? 'The app could not fetch the original source strongly enough to ground a trustworthy exam prep pack.',
     }
   }
 
   return {
-    summary: input.sourceFetchAttempted
-      ? 'Deep Learn fetched the original source, but the recovered text is still unusable.'
-      : 'Deep Learn is blocked because the source still has no usable extracted text.',
+    summary: 'No usable text or scan path is available after source recovery.',
     detail: sourceNote
-      ?? 'The original source was available, but the retrieval still did not surface enough readable text to support a trustworthy note.',
+      ?? 'The original source was available, but the recovery pass still did not surface enough readable material to build a trustworthy exam prep pack.',
   }
 }
 

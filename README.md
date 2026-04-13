@@ -65,15 +65,15 @@ supabase/migrations/    Canonical schema migrations
 1. Clone the repo.
 2. Copy `.env.example` to `.env.local`.
 3. Fill in:
-   - `NEXT_PUBLIC_SUPABASE_URL`
-   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - `NEXT_PUBLIC_SUPABASE_URL` with your hosted Supabase project URL from Project Settings > API. Do not use a local CLI URL such as `http://127.0.0.1:54321`.
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY` with your hosted Supabase anon key from Project Settings > API. This repo standardizes on this name and does not read `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`.
    - `OPENAI_API_KEY`
    - `OPENAI_DO_NOW_MODEL` optional, defaults to `gpt-5-mini` for Auto Prompt draft generation
    - `OPENAI_MODEL` optional legacy fallback for Auto Prompt if `OPENAI_DO_NOW_MODEL` is unset
    - `CANVAS_API_URL` optional but useful for sync and reprocess
    - `CANVAS_API_TOKEN` optional but useful for sync and reprocess
-   - Supabase Auth providers you want to use, including Google if enabled
-4. Apply Supabase migrations.
+   - Supabase Auth providers you want to use, including Google if enabled. Configure Auth > URL Configuration in the hosted project dashboard so every allowed origin can return to `/auth/callback`.
+4. Apply Supabase migrations to your hosted project.
 5. Run:
 
 ```bash

@@ -220,10 +220,10 @@ export async function saveDeepLearnNote(input: {
   overview?: string | null
   sections?: DeepLearnNote['sections']
   noteBody?: string | null
-  coreTerms?: DeepLearnNote['coreTerms']
-  keyFacts?: DeepLearnNote['keyFacts']
+  answerBank?: DeepLearnNote['answerBank']
+  identificationItems?: DeepLearnNote['identificationItems']
   distinctions?: DeepLearnNote['distinctions']
-  likelyQuizPoints?: DeepLearnNote['likelyQuizPoints']
+  likelyQuizTargets?: DeepLearnNote['likelyQuizTargets']
   cautionNotes?: DeepLearnNote['cautionNotes']
   sourceGrounding?: DeepLearnNote['sourceGrounding']
   quizReady?: boolean
@@ -233,14 +233,14 @@ export async function saveDeepLearnNote(input: {
 }) {
   const auth = await getAuthenticatedSupabaseServerContext()
   if (!auth) {
-    throw new Error('You need to sign in before saving Deep Learn notes.')
+    throw new Error('You need to sign in before saving Deep Learn exam prep packs.')
   }
 
   const sections = input.sections ?? []
-  const coreTerms = input.coreTerms ?? []
-  const keyFacts = input.keyFacts ?? []
+  const answerBank = input.answerBank ?? []
+  const identificationItems = input.identificationItems ?? []
   const distinctions = input.distinctions ?? []
-  const likelyQuizPoints = input.likelyQuizPoints ?? []
+  const likelyQuizTargets = input.likelyQuizTargets ?? []
   const cautionNotes = input.cautionNotes ?? []
   const sourceGrounding = normalizeDeepLearnSourceGrounding(input.sourceGrounding ?? createEmptyDeepLearnSourceGrounding())
 
@@ -250,21 +250,21 @@ export async function saveDeepLearnNote(input: {
     course_id: input.courseId,
     resource_id: input.resourceId,
     status: input.status,
-    title: input.title ?? 'Deep Learn note',
+    title: input.title ?? 'Exam Prep Pack',
     overview: input.overview ?? '',
     sections,
     note_body: input.noteBody ?? buildDeepLearnNoteBody(sections),
-    core_terms: coreTerms,
-    key_facts: keyFacts,
+    core_terms: identificationItems,
+    key_facts: answerBank,
     distinctions,
-    likely_quiz_points: likelyQuizPoints,
+    likely_quiz_points: likelyQuizTargets,
     caution_notes: cautionNotes,
     source_grounding: sourceGrounding,
     quiz_ready: input.quizReady ?? computeDeepLearnQuizReady({
-      coreTerms,
-      keyFacts,
+      answerBank,
+      identificationItems,
       distinctions,
-      likelyQuizPoints,
+      likelyQuizTargets,
     }),
     prompt_version: input.promptVersion ?? DEEP_LEARN_PROMPT_VERSION,
     error_message: input.errorMessage ?? null,
@@ -290,7 +290,7 @@ export async function saveDeepLearnNote(input: {
       failureReason: failure.reason,
       error: serializeErrorForLogging(error),
     })
-    throw new Error('Could not save the Deep Learn note.')
+    throw new Error('Could not save the exam prep pack.')
   }
 
   return adaptDeepLearnNoteRow(data as DeepLearnNoteRow)
@@ -304,14 +304,14 @@ function adaptDeepLearnNoteRow(row: DeepLearnNoteRow): DeepLearnNote {
     courseId: row.course_id,
     resourceId: row.resource_id,
     status: normalizeDeepLearnStatus(row.status),
-    title: row.title ?? 'Deep Learn note',
+    title: row.title ?? 'Exam Prep Pack',
     overview: row.overview ?? '',
     sections: Array.isArray(row.sections) ? row.sections as DeepLearnNote['sections'] : [],
     noteBody: row.note_body ?? '',
-    coreTerms: Array.isArray(row.core_terms) ? row.core_terms as DeepLearnNote['coreTerms'] : [],
-    keyFacts: Array.isArray(row.key_facts) ? row.key_facts as DeepLearnNote['keyFacts'] : [],
+    answerBank: Array.isArray(row.key_facts) ? row.key_facts as DeepLearnNote['answerBank'] : [],
+    identificationItems: Array.isArray(row.core_terms) ? row.core_terms as DeepLearnNote['identificationItems'] : [],
     distinctions: Array.isArray(row.distinctions) ? row.distinctions as DeepLearnNote['distinctions'] : [],
-    likelyQuizPoints: Array.isArray(row.likely_quiz_points) ? row.likely_quiz_points as DeepLearnNote['likelyQuizPoints'] : [],
+    likelyQuizTargets: Array.isArray(row.likely_quiz_points) ? row.likely_quiz_points as DeepLearnNote['likelyQuizTargets'] : [],
     cautionNotes: Array.isArray(row.caution_notes) ? row.caution_notes as DeepLearnNote['cautionNotes'] : [],
     sourceGrounding: normalizeDeepLearnSourceGrounding(row.source_grounding),
     quizReady: Boolean(row.quiz_ready),
@@ -398,26 +398,26 @@ function classifyDeepLearnStoreFailure(error: unknown): { reason: Exclude<DeepLe
 
 function messageForDeepLearnLoadReason(reason: Exclude<DeepLearnNoteLoadReason, 'ok' | 'missing'>) {
   if (reason === 'not_configured') {
-    return 'Saved Deep Learn notes are unavailable because Supabase auth is not configured in this environment.'
+    return 'Saved Deep Learn exam prep packs are unavailable because Supabase auth is not configured in this environment.'
   }
 
   if (reason === 'unauthenticated') {
-    return 'Saved Deep Learn notes are unavailable until you are signed in.'
+    return 'Saved Deep Learn exam prep packs are unavailable until you are signed in.'
   }
 
   if (reason === 'table_missing') {
-    return 'Saved Deep Learn notes are unavailable because the deep_learn_notes table is missing in this environment.'
+    return 'Saved Deep Learn exam prep packs are unavailable because the deep_learn_notes table is missing in this environment.'
   }
 
   if (reason === 'column_missing') {
-    return 'Saved Deep Learn notes are unavailable because the database schema is behind the current code.'
+    return 'Saved Deep Learn exam prep packs are unavailable because the database schema is behind the current code.'
   }
 
   if (reason === 'permission_denied') {
-    return 'Saved Deep Learn notes are unavailable because this session cannot read them right now.'
+    return 'Saved Deep Learn exam prep packs are unavailable because this session cannot read them right now.'
   }
 
-  return 'Saved Deep Learn notes are temporarily unavailable right now.'
+  return 'Saved Deep Learn exam prep packs are temporarily unavailable right now.'
 }
 
 function logDeepLearnStoreFailure(

@@ -97,6 +97,55 @@ test('buildDeepLearnGroundingWithDependencies recovers weak resources through so
   assert.ok(grounding.sourceGrounding.charCount > 0)
 })
 
+test('buildDeepLearnGroundingWithDependencies switches to scan fallback for scan-capable PDFs', async () => {
+  const resource = createLearnResource({
+    type: 'File',
+    contentType: 'application/pdf',
+    extension: 'pdf',
+    normalizedSourceType: 'pdf',
+    sourceUrl: 'https://canvas.example/files/acceptance.pdf',
+    extractionStatus: 'metadata_only',
+    extractedText: null,
+    extractedTextPreview: null,
+    previewState: 'no_text_available',
+    fullTextAvailable: false,
+    storedTextLength: 0,
+    storedPreviewLength: 0,
+    storedWordCount: 0,
+  })
+  const storedResource = createStoredResource({
+    resourceType: 'File',
+    contentType: 'application/pdf',
+    extension: 'pdf',
+    sourceUrl: 'https://canvas.example/files/acceptance.pdf',
+    extractionStatus: 'metadata_only',
+    extractedText: null,
+    extractedTextPreview: null,
+    metadata: {
+      normalizedSourceType: 'pdf',
+      previewState: 'no_text_available',
+      fullTextAvailable: false,
+      storedTextLength: 0,
+      storedPreviewLength: 0,
+      storedWordCount: 0,
+    },
+  })
+
+  const grounding = await buildDeepLearnGroundingWithDependencies(createContext(resource, storedResource), {
+    downloadScanFallbackSource: async () => ({
+      inputType: 'file',
+      contentType: 'application/pdf',
+      filename: 'acceptance.pdf',
+      fileData: 'ZmFrZS1wZGY=',
+    }),
+  })
+
+  assert.equal(grounding.generationMode, 'scan_fallback')
+  assert.equal(grounding.sourceGrounding.groundingStrategy, 'scan_fallback')
+  assert.equal(grounding.scanFallbackInput?.filename, 'acceptance.pdf')
+  assert.match(grounding.promptGrounding, /Scan fallback is active/i)
+})
+
 test('buildDeepLearnGroundingWithDependencies blocks when source fetch still yields unusable text', async () => {
   const resource = createLearnResource({
     extractionStatus: 'metadata_only',
@@ -192,7 +241,7 @@ test('buildDeepLearnGroundingWithDependencies blocks when source fetch still yie
 })
 
 function createContext(resource: ModuleSourceResource, storedResource: ModuleResource) {
-  const module: Module = {
+  const moduleRecord: Module = {
     id: 'module-1',
     courseId: 'course-1',
     title: 'Week 1',
@@ -206,7 +255,7 @@ function createContext(resource: ModuleSourceResource, storedResource: ModuleRes
   }
 
   return {
-    module,
+    module: moduleRecord,
     courseName: 'Contracts',
     resource,
     storedResource,

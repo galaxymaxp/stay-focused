@@ -9,8 +9,8 @@ export function DeepLearnGenerateButton({
   moduleId,
   resourceId,
   courseId = null,
-  label = 'Deep Learn this',
-  pendingLabel = 'Generating...',
+  label = 'Build Exam Prep Pack',
+  pendingLabel = 'Preparing...',
   className = 'ui-button ui-button-secondary ui-button-xs',
 }: {
   moduleId: string
@@ -43,7 +43,7 @@ export function DeepLearnGenerateButton({
               router.push(buildDeepLearnNoteHref(result.moduleId, result.resourceId))
               router.refresh()
             } catch (error) {
-              setErrorMessage(error instanceof Error ? error.message : 'Deep Learn failed to start.')
+              setErrorMessage(error instanceof Error ? error.message : 'Deep Learn failed to start the exam prep pack.')
             }
           })
         }}

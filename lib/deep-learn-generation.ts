@@ -1,35 +1,37 @@
 import OpenAI from 'openai'
-import type { Module, ModuleResource, Task } from '@/lib/types'
-import { getModuleResourceQualityInfo, normalizeModuleResourceStudyText } from '@/lib/module-resource-quality'
-import { reprocessStoredModuleResource } from '@/lib/module-resource-reprocess'
+import { downloadCanvasBinarySource, normalizeCanvasUrl } from '@/lib/canvas'
 import {
   DEEP_LEARN_PROMPT_VERSION,
   normalizeDeepLearnGeneratedContent,
   type DeepLearnGeneratedContent,
 } from '@/lib/deep-learn'
-import type { ModuleSourceResource } from '@/lib/module-workspace'
-import type { DeepLearnBlockedReason, DeepLearnSourceGrounding } from '@/lib/types'
-import { getStudySourceTypeLabel } from '@/lib/study-resource'
 import {
   buildDeepLearnBlockedReadiness,
   canAttemptDeepLearnSourceFetch,
   classifyDeepLearnResourceReadiness,
   detectDeepLearnBlockedReasonAfterSourceFetch,
+  isDeepLearnScanFallbackCapable,
   selectDeepLearnGroundingText,
 } from '@/lib/deep-learn-readiness'
+import { reprocessStoredModuleResource } from '@/lib/module-resource-reprocess'
+import { getModuleResourceQualityInfo, normalizeModuleResourceStudyText } from '@/lib/module-resource-quality'
+import type { ModuleSourceResource } from '@/lib/module-workspace'
+import { getStudySourceTypeLabel } from '@/lib/study-resource'
+import type { Module, ModuleResource, Task } from '@/lib/types'
+import type { DeepLearnBlockedReason, DeepLearnSourceGrounding } from '@/lib/types'
 
 const DEFAULT_DEEP_LEARN_MODEL = 'gpt-5-mini'
 const MAX_GROUNDING_CHARS = 12000
 
 const DEEP_LEARN_SYSTEM_PROMPT = [
-  'You create saved Deep Learn study notes from academic source material.',
-  'Preserve exact source terminology when it matters.',
-  'Keep official names, labels, legal terms, technical vocabulary, and academically testable wording intact.',
-  'Explain exact terms clearly instead of replacing them with vague paraphrases.',
+  'You create saved Deep Learn exam prep packs from academic source material.',
+  'Optimize for answer-ready recall instead of narrative notes.',
+  'Prioritize identification, multiple choice, timeline, law recognition, term-definition recall, and confusable exam targets.',
+  'Preserve exact source terminology when it is legally, historically, technically, or academically testable.',
+  'Keep every answer compact, source-grounded, and ready to reuse in quizzes.',
   'Do not invent facts, examples, certainty, or missing source details.',
-  'If the grounding is weak or partial, surface that explicitly in cautionNotes and in the note sections.',
-  'Avoid filler, motivation, generic AI summary language, and broad textbook fluff.',
-  'Make the note readable for a normal student and useful for later quiz generation.',
+  'If grounding is partial or scan-based, say that clearly in cautionNotes.',
+  'Support sections are secondary and should stay short.',
   'Return only JSON that matches the requested schema.',
 ].join(' ')
 
@@ -40,10 +42,10 @@ const DEEP_LEARN_RESPONSE_SCHEMA = {
     'title',
     'overview',
     'sections',
-    'coreTerms',
-    'keyFacts',
+    'answerBank',
+    'identificationItems',
     'distinctions',
-    'likelyQuizPoints',
+    'likelyQuizTargets',
     'cautionNotes',
   ],
   properties: {
@@ -61,43 +63,76 @@ const DEEP_LEARN_RESPONSE_SCHEMA = {
         },
       },
     },
-    coreTerms: {
+    answerBank: {
       type: 'array',
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['term', 'explanation', 'importance', 'preserveExactTerm'],
+        required: ['cue', 'kind', 'answer', 'compactAnswer', 'importance', 'sortKey', 'distractors'],
         properties: {
-          term: { type: 'string' },
-          explanation: { type: 'string' },
-          importance: {
+          cue: { type: 'string' },
+          kind: {
             type: 'string',
-            enum: ['high', 'medium', 'low'],
+            enum: ['date_event', 'law_effect', 'term_definition', 'place_meaning', 'province_capital', 'person_role', 'count', 'timeline', 'compare', 'fact'],
           },
-          preserveExactTerm: { type: 'boolean' },
+          answer: wordingSchema(),
+          compactAnswer: wordingSchema(),
+          importance: importanceSchema(),
+          sortKey: { type: ['string', 'null'] },
+          distractors: {
+            type: 'array',
+            items: { type: 'string' },
+          },
         },
       },
     },
-    keyFacts: {
+    identificationItems: {
       type: 'array',
-      items: { type: 'string' },
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['prompt', 'kind', 'answer', 'importance', 'distractors'],
+        properties: {
+          prompt: { type: 'string' },
+          kind: {
+            type: 'string',
+            enum: ['date_event', 'law_effect', 'term_definition', 'place_meaning', 'province_capital', 'person_role', 'count', 'timeline', 'compare', 'fact'],
+          },
+          answer: wordingSchema(),
+          importance: importanceSchema(),
+          distractors: {
+            type: 'array',
+            items: { type: 'string' },
+          },
+        },
+      },
     },
     distinctions: {
       type: 'array',
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['conceptA', 'conceptB', 'difference'],
+        required: ['conceptA', 'conceptB', 'difference', 'confusionNote'],
         properties: {
           conceptA: { type: 'string' },
           conceptB: { type: 'string' },
           difference: { type: 'string' },
+          confusionNote: { type: ['string', 'null'] },
         },
       },
     },
-    likelyQuizPoints: {
+    likelyQuizTargets: {
       type: 'array',
-      items: { type: 'string' },
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['target', 'reason', 'importance'],
+        properties: {
+          target: { type: 'string' },
+          reason: { type: 'string' },
+          importance: importanceSchema(),
+        },
+      },
     },
     cautionNotes: {
       type: 'array',
@@ -118,6 +153,21 @@ export interface DeepLearnGenerationResult {
   content: DeepLearnGeneratedContent
   sourceGrounding: DeepLearnSourceGrounding
   refreshedResource: ModuleResource | null
+}
+
+interface DeepLearnPreparedBinaryInput {
+  inputType: 'file' | 'image'
+  contentType: string | null
+  filename: string
+  fileData: string
+}
+
+interface DeepLearnPreparedGrounding {
+  generationMode: 'text' | 'scan_fallback'
+  promptGrounding: string
+  sourceGrounding: DeepLearnSourceGrounding
+  refreshedResource: ModuleResource | null
+  scanFallbackInput: DeepLearnPreparedBinaryInput | null
 }
 
 export class DeepLearnGenerationBlockedError extends Error {
@@ -141,42 +191,57 @@ export class DeepLearnGenerationBlockedError extends Error {
 
 interface DeepLearnGroundingDependencies {
   reprocessStoredModuleResource?: typeof reprocessStoredModuleResource
+  downloadScanFallbackSource?: (resource: ModuleResource) => Promise<DeepLearnPreparedBinaryInput>
 }
 
 export async function generateDeepLearnNoteForResource(
   input: DeepLearnGenerationContext,
 ): Promise<DeepLearnGenerationResult> {
   const grounding = await buildDeepLearnGrounding(input)
-  if (!grounding.promptGrounding.trim()) {
-    throw new Error('Source grounding is still too weak to produce a trustworthy Deep Learn note for this resource.')
-  }
-
   const promptText = buildDeepLearnPrompt({
     ...input,
     sourceGrounding: grounding.sourceGrounding,
     promptGrounding: grounding.promptGrounding,
+    generationMode: grounding.generationMode,
   })
 
   const client = new OpenAI({
     apiKey: getRequiredDeepLearnApiKey(),
   })
 
-  const response = await client.responses.create({
-    model: getDeepLearnModel(),
-    store: false,
-    instructions: DEEP_LEARN_SYSTEM_PROMPT,
-    input: promptText,
-    text: {
-      format: {
-        type: 'json_schema',
-        name: 'deep_learn_note',
-        strict: true,
-        schema: DEEP_LEARN_RESPONSE_SCHEMA,
-      },
-      verbosity: 'medium',
-    },
-    max_output_tokens: 5000,
-  })
+  const response = grounding.generationMode === 'scan_fallback' && grounding.scanFallbackInput
+    ? await client.responses.create({
+        model: getDeepLearnModel(),
+        store: false,
+        instructions: DEEP_LEARN_SYSTEM_PROMPT,
+        input: [{
+          role: 'user',
+          content: [
+            { type: 'input_text', text: promptText },
+            grounding.scanFallbackInput.inputType === 'image'
+              ? {
+                  type: 'input_image',
+                  detail: 'high',
+                  image_url: `data:${grounding.scanFallbackInput.contentType ?? 'image/png'};base64,${grounding.scanFallbackInput.fileData}`,
+                }
+              : {
+                  type: 'input_file',
+                  filename: grounding.scanFallbackInput.filename,
+                  file_data: grounding.scanFallbackInput.fileData,
+                },
+          ],
+        }],
+        text: responseTextConfig(),
+        max_output_tokens: 6000,
+      })
+    : await client.responses.create({
+        model: getDeepLearnModel(),
+        store: false,
+        instructions: DEEP_LEARN_SYSTEM_PROMPT,
+        input: promptText,
+        text: responseTextConfig(),
+        max_output_tokens: 6000,
+      })
 
   if (response.status && response.status !== 'completed') {
     const reason = response.incomplete_details?.reason ?? response.status
@@ -209,8 +274,9 @@ export async function buildDeepLearnGrounding(input: DeepLearnGenerationContext)
 export async function buildDeepLearnGroundingWithDependencies(
   input: DeepLearnGenerationContext,
   dependencies: DeepLearnGroundingDependencies = {},
-) {
+): Promise<DeepLearnPreparedGrounding> {
   const reprocessStoredModuleResourceImpl = dependencies.reprocessStoredModuleResource ?? reprocessStoredModuleResource
+  const downloadScanFallbackSourceImpl = dependencies.downloadScanFallbackSource ?? downloadDeepLearnScanFallbackSource
   const readiness = classifyDeepLearnResourceReadiness({
     resource: input.resource,
     storedResource: input.storedResource,
@@ -220,20 +286,23 @@ export async function buildDeepLearnGroundingWithDependencies(
   let surfaceResource = input.resource
   let refreshedResource: ModuleResource | null = null
   let finalQuality = currentQuality
-  let groundingStrategy: DeepLearnSourceGrounding['groundingStrategy'] = readiness.state === 'ready'
+  let groundingStrategy: DeepLearnSourceGrounding['groundingStrategy'] = readiness.state === 'text_ready'
     ? 'stored_extract'
-    : 'insufficient'
+    : readiness.state === 'scan_fallback'
+      ? 'scan_fallback'
+      : 'insufficient'
+  let recoveryWarning: string | null = null
 
-  if (readiness.state === 'blocked') {
+  if (readiness.state === 'unreadable') {
     throw new DeepLearnGenerationBlockedError({
       message: readiness.detail,
       blockedReason: readiness.blockedReason ?? 'no_source_path',
       refreshedResource: null,
-      sourceGrounding: buildDeepLearnSourceGrounding(surfaceResource, finalQuality, 'insufficient'),
+      sourceGrounding: buildDeepLearnSourceGrounding(surfaceResource, finalQuality, 'insufficient', readiness.detail),
     })
   }
 
-  if (readiness.state === 'via_source_fetch' && canAttemptDeepLearnSourceFetch(input.storedResource)) {
+  if (readiness.shouldAttemptSourceFetch && canAttemptDeepLearnSourceFetch(input.storedResource)) {
     try {
       const reprocessed = await reprocessStoredModuleResourceImpl(input.storedResource, {
         triggeredBy: 'learn',
@@ -275,73 +344,121 @@ export async function buildDeepLearnGroundingWithDependencies(
           : surfaceResource.storedWordCount,
       }
       finalQuality = getModuleResourceQualityInfo(surfaceResource)
-      groundingStrategy = 'source_refetch'
+      groundingStrategy = selectDeepLearnGroundingText(surfaceResource)
+        ? 'source_refetch'
+        : isDeepLearnScanFallbackCapable(refreshedResource)
+          ? 'scan_fallback'
+          : groundingStrategy
     } catch (error) {
-      const message = error instanceof Error
+      recoveryWarning = error instanceof Error
         ? error.message
-        : 'Source retrieval failed before Deep Learn could recover readable text.'
-      throw new DeepLearnGenerationBlockedError({
-        message,
-        blockedReason: buildDeepLearnBlockedReadiness({
-          blockedReason: 'source_retrieval_failed',
-          sourceNote: message,
-          sourceType: input.storedResource.resourceType.toLowerCase().includes('page') ? 'page' : null,
-          sourceFetchAttempted: true,
-        }).blockedReason ?? 'source_retrieval_failed',
-        refreshedResource,
-        sourceGrounding: buildDeepLearnSourceGrounding(surfaceResource, finalQuality, 'source_refetch', message),
-      })
+        : 'Source retrieval failed before Deep Learn could recover stronger evidence.'
     }
   }
 
   const bestText = selectBestGroundingText(surfaceResource)
-  if (!bestText) {
-    const blockedReason = detectDeepLearnBlockedReasonAfterSourceFetch(refreshedResource ?? input.storedResource)
-    const blocked = buildDeepLearnBlockedReadiness({
-      canonicalResourceId: input.storedResource.id,
-      blockedReason,
-      sourceNote: getDeepLearnSourceNote(surfaceResource, refreshedResource ?? input.storedResource, finalQuality),
-      sourceType: input.storedResource.resourceType.toLowerCase().includes('page')
-        ? 'page'
-        : null,
-      sourceFetchAttempted: groundingStrategy === 'source_refetch',
+  if (bestText) {
+    const promptGrounding = buildPromptGrounding({
+      module: input.module,
+      courseName: input.courseName,
+      resource: surfaceResource,
+      linkedTask: input.linkedTask,
+      quality: finalQuality,
+      bestText,
+      scanFallback: false,
     })
 
-    throw new DeepLearnGenerationBlockedError({
-      message: blocked.detail,
-      blockedReason,
+    const sourceGrounding = buildDeepLearnSourceGrounding(surfaceResource, finalQuality, groundingStrategy === 'insufficient' ? 'stored_extract' : groundingStrategy, recoveryWarning)
+    sourceGrounding.charCount = bestText.length
+
+    return {
+      generationMode: 'text',
+      promptGrounding,
+      sourceGrounding,
       refreshedResource,
-      sourceGrounding: buildDeepLearnSourceGrounding(
-        surfaceResource,
-        finalQuality,
-        groundingStrategy === 'source_refetch' ? 'source_refetch' : 'insufficient',
-        blocked.detail,
-      ),
-    })
+      scanFallbackInput: null,
+    }
   }
 
-  const promptGrounding = buildPromptGrounding({
-    module: input.module,
-    courseName: input.courseName,
-    resource: surfaceResource,
-    linkedTask: input.linkedTask,
-    quality: finalQuality,
-    bestText,
+  const scanFallbackResource = refreshedResource ?? input.storedResource
+  if (isDeepLearnScanFallbackCapable(scanFallbackResource)) {
+    try {
+      const scanFallbackInput = await downloadScanFallbackSourceImpl(scanFallbackResource)
+      const promptGrounding = buildPromptGrounding({
+        module: input.module,
+        courseName: input.courseName,
+        resource: surfaceResource,
+        linkedTask: input.linkedTask,
+        quality: finalQuality,
+        bestText: '',
+        scanFallback: true,
+      })
+      const sourceGrounding = buildDeepLearnSourceGrounding(surfaceResource, finalQuality, 'scan_fallback', recoveryWarning)
+
+      return {
+        generationMode: 'scan_fallback',
+        promptGrounding,
+        sourceGrounding,
+        refreshedResource,
+        scanFallbackInput,
+      }
+    } catch (error) {
+      recoveryWarning = error instanceof Error
+        ? error.message
+        : 'Scan fallback could not download the original file.'
+    }
+  }
+
+  if (recoveryWarning && selectDeepLearnGroundingText(input.resource)) {
+    const fallbackText = selectBestGroundingText(input.resource)
+    const promptGrounding = buildPromptGrounding({
+      module: input.module,
+      courseName: input.courseName,
+      resource: input.resource,
+      linkedTask: input.linkedTask,
+      quality: currentQuality,
+      bestText: fallbackText,
+      scanFallback: false,
+    })
+    const sourceGrounding = buildDeepLearnSourceGrounding(input.resource, currentQuality, 'stored_extract', recoveryWarning)
+    sourceGrounding.charCount = fallbackText.length
+
+    return {
+      generationMode: 'text',
+      promptGrounding,
+      sourceGrounding,
+      refreshedResource,
+      scanFallbackInput: null,
+    }
+  }
+
+  const blockedReason = detectDeepLearnBlockedReasonAfterSourceFetch(refreshedResource ?? input.storedResource)
+  const blocked = buildDeepLearnBlockedReadiness({
+    canonicalResourceId: input.storedResource.id,
+    blockedReason,
+    sourceNote: recoveryWarning ?? getDeepLearnSourceNote(surfaceResource, refreshedResource ?? input.storedResource, finalQuality),
+    sourceType: input.storedResource.resourceType.toLowerCase().includes('page')
+      ? 'page'
+      : null,
   })
 
-  const sourceGrounding = buildDeepLearnSourceGrounding(surfaceResource, finalQuality, groundingStrategy)
-  sourceGrounding.charCount = bestText.length
-
-  return {
-    promptGrounding,
-    sourceGrounding,
+  throw new DeepLearnGenerationBlockedError({
+    message: blocked.detail,
+    blockedReason,
     refreshedResource,
-  }
+    sourceGrounding: buildDeepLearnSourceGrounding(
+      surfaceResource,
+      finalQuality,
+      groundingStrategy === 'scan_fallback' ? 'scan_fallback' : 'insufficient',
+      blocked.detail,
+    ),
+  })
 }
 
 function buildDeepLearnPrompt(input: DeepLearnGenerationContext & {
   promptGrounding: string
   sourceGrounding: DeepLearnSourceGrounding
+  generationMode: 'text' | 'scan_fallback'
 }) {
   const moduleSummary = input.module.summary?.trim() || 'No module summary was stored.'
   const linkedTaskSummary = input.linkedTask
@@ -350,7 +467,7 @@ function buildDeepLearnPrompt(input: DeepLearnGenerationContext & {
 
   return [
     `Prompt version: ${DEEP_LEARN_PROMPT_VERSION}`,
-    'Build a saved Deep Learn note for a single study resource.',
+    'Build a saved Deep Learn exam prep pack for a single study resource.',
     '',
     'Resource context:',
     `- Title: ${input.resource.title}`,
@@ -364,6 +481,7 @@ function buildDeepLearnPrompt(input: DeepLearnGenerationContext & {
     'Grounding status:',
     `- Extraction quality: ${input.sourceGrounding.extractionQuality ?? 'unknown'}`,
     `- Grounding strategy: ${input.sourceGrounding.groundingStrategy}`,
+    `- Generation mode: ${input.generationMode}`,
     `- Used AI fallback path: ${input.sourceGrounding.usedAiFallback ? 'yes' : 'no'}`,
     `- Source note: ${input.sourceGrounding.qualityReason ?? 'No quality note.'}`,
     `- Source warning: ${input.sourceGrounding.warning ?? 'None.'}`,
@@ -375,12 +493,14 @@ function buildDeepLearnPrompt(input: DeepLearnGenerationContext & {
     input.promptGrounding,
     '',
     'Output requirements:',
-    '- Preserve exact terms when they are academically, legally, or technically important.',
-    '- Explain exact terms clearly instead of replacing them with vague simpler wording.',
-    '- Keep the note quizable.',
-    '- Use cautionNotes to mark weak grounding, partial evidence, or missing certainty.',
-    '- Keep sections readable and direct. No motivational fluff.',
-    '- If the source is weak, say that clearly instead of pretending it is complete.',
+    '- Make answerBank the primary output. Each item should be a compact answerable unit, not a paragraph.',
+    '- Favor one-line exam answers such as date -> event, law -> effect, term -> definition, place -> meaning, province -> capital, person -> role, and count recall.',
+    '- identificationItems should read like direct quiz prompts with compact answers.',
+    '- likelyQuizTargets must rank high-yield items first instead of flattening everything.',
+    '- Keep support sections short and secondary. Do not turn the output into a mini textbook.',
+    '- If the evidence is partial, still extract what is clearly askable instead of refusing to help.',
+    '- Keep distractors plausible but wrong according to the source.',
+    '- Use sortKey only when a date or chronology is explicit enough to support timeline review.',
   ].join('\n')
 }
 
@@ -391,6 +511,7 @@ function buildPromptGrounding(input: {
   linkedTask: Task | null
   quality: ReturnType<typeof getModuleResourceQualityInfo>
   bestText: string
+  scanFallback: boolean
 }) {
   const contextBlock = [
     `Resource title: ${input.resource.title}`,
@@ -400,11 +521,12 @@ function buildPromptGrounding(input: {
     input.resource.linkedContext ? `Linked context: ${input.resource.linkedContext}` : null,
     input.linkedTask?.title ? `Matched task: ${input.linkedTask.title}` : null,
     `Quality note: ${input.quality.reason}`,
+    input.scanFallback ? 'Scan fallback is active because dependable parsed text was not available.' : null,
   ].filter(Boolean).join('\n')
 
   const sourceBlock = input.bestText
     ? truncateForModel(input.bestText, MAX_GROUNDING_CHARS)
-    : ''
+    : 'The original file will be provided directly because dependable parsed text was not stored.'
 
   return [contextBlock, sourceBlock].filter(Boolean).join('\n\n')
 }
@@ -458,7 +580,7 @@ function buildDeepLearnSourceGrounding(
     }),
     extractionQuality: quality.quality,
     groundingStrategy,
-    usedAiFallback: quality.quality !== 'strong' && quality.quality !== 'usable',
+    usedAiFallback: groundingStrategy === 'scan_fallback' || (quality.quality !== 'strong' && quality.quality !== 'usable'),
     qualityReason: quality.reason,
     warning: warning ?? resource.extractionError ?? resource.qualityReason ?? null,
     charCount: 0,
@@ -475,4 +597,112 @@ function getDeepLearnSourceNote(
     ?? resource.qualityReason
     ?? quality.reason
     ?? null
+}
+
+function responseTextConfig() {
+  return {
+    format: {
+      type: 'json_schema' as const,
+      name: 'deep_learn_exam_prep_pack',
+      strict: true,
+      schema: DEEP_LEARN_RESPONSE_SCHEMA,
+    },
+    verbosity: 'low' as const,
+  }
+}
+
+function wordingSchema() {
+  return {
+    type: 'object',
+    additionalProperties: false,
+    required: ['exact', 'examSafe', 'simplified'],
+    properties: {
+      exact: { type: ['string', 'null'] },
+      examSafe: { type: 'string' },
+      simplified: { type: ['string', 'null'] },
+    },
+  }
+}
+
+function importanceSchema() {
+  return {
+    type: 'string',
+    enum: ['high', 'medium', 'low'],
+  }
+}
+
+async function downloadDeepLearnScanFallbackSource(resource: ModuleResource): Promise<DeepLearnPreparedBinaryInput> {
+  const sourceUrl = resource.sourceUrl?.trim()
+  if (!sourceUrl) {
+    throw new Error('No stored source URL is available for scan fallback.')
+  }
+
+  const downloaded = shouldUseCanvasBinaryDownload(sourceUrl)
+    ? await downloadCanvasBinarySource(sourceUrl)
+    : await downloadGenericBinarySource(sourceUrl)
+
+  const contentType = downloaded.contentType?.toLowerCase() ?? null
+  const extension = resource.extension?.toLowerCase() ?? inferExtensionFromContentType(contentType)
+  const filename = ensureFileExtension(resource.title, extension)
+
+  if (contentType?.startsWith('image/')) {
+    return {
+      inputType: 'image',
+      contentType,
+      filename,
+      fileData: downloaded.buffer.toString('base64'),
+    }
+  }
+
+  return {
+    inputType: 'file',
+    contentType,
+    filename,
+    fileData: downloaded.buffer.toString('base64'),
+  }
+}
+
+function shouldUseCanvasBinaryDownload(sourceUrl: string) {
+  const canvasBaseUrl = process.env.CANVAS_API_URL?.trim() || process.env.CANVAS_API_BASE_URL?.trim()
+  if (!canvasBaseUrl) return false
+
+  try {
+    const targetHost = new URL(sourceUrl, `${normalizeCanvasUrl(canvasBaseUrl)}/`).host
+    const canvasHost = new URL(`${normalizeCanvasUrl(canvasBaseUrl)}/`).host
+    return targetHost === canvasHost
+  } catch {
+    return false
+  }
+}
+
+async function downloadGenericBinarySource(url: string) {
+  const response = await fetch(url, {
+    next: { revalidate: 0 },
+  })
+
+  if (!response.ok) {
+    throw new Error(`Source download failed with HTTP ${response.status}.`)
+  }
+
+  return {
+    buffer: Buffer.from(await response.arrayBuffer()),
+    contentType: response.headers.get('content-type'),
+    url,
+  }
+}
+
+function inferExtensionFromContentType(contentType: string | null) {
+  if (!contentType) return 'pdf'
+  if (contentType.includes('pdf')) return 'pdf'
+  if (contentType.includes('png')) return 'png'
+  if (contentType.includes('jpeg') || contentType.includes('jpg')) return 'jpg'
+  if (contentType.includes('webp')) return 'webp'
+  return 'pdf'
+}
+
+function ensureFileExtension(title: string, extension: string | null | undefined) {
+  const trimmedTitle = title.trim() || 'deep-learn-source'
+  if (!extension) return trimmedTitle
+  if (trimmedTitle.toLowerCase().endsWith(`.${extension}`)) return trimmedTitle
+  return `${trimmedTitle}.${extension}`
 }

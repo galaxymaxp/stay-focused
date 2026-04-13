@@ -163,9 +163,9 @@ export function CourseLearnExplorer({
                     <span className="ui-kicker" style={{ color: 'var(--text-muted)' }}>{module.orderLabel}</span>
                   )}
                   <ReadinessPill tone={module.readinessTone} label={module.readinessLabel} />
-                  <CountPill label={`${deepLearnReadyCount} Deep Learn`} />
+                  <CountPill label={`${deepLearnReadyCount} prep pack${deepLearnReadyCount === 1 ? '' : 's'}`} />
                   <CountPill label={`${module.termCount} term${module.termCount === 1 ? '' : 's'}`} />
-                  {deepLearnUnavailable && <CountPill label="Deep Learn unavailable" />}
+                  {deepLearnUnavailable && <CountPill label="Pack storage unavailable" />}
                   <CountPill label={`${module.pendingTasks.length} active`} />
                   {module.completedTasks.length > 0 && <CountPill label={`${module.completedTasks.length} done`} />}
                 </div>
@@ -235,8 +235,8 @@ export function CourseLearnExplorer({
                       <p className="ui-kicker">Module status</p>
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '0.7rem', marginTop: '0.7rem' }}>
                         <MiniStat label="Study sources" value={String(module.studyCount)} />
-                        <MiniStat label="Deep Learn ready" value={String(deepLearnReadyCount)} />
-                        <MiniStat label="Quiz-ready notes" value={String(quizReadyNoteCount)} />
+                        <MiniStat label="Prep packs ready" value={String(deepLearnReadyCount)} />
+                        <MiniStat label="Quiz-ready packs" value={String(quizReadyNoteCount)} />
                         <MiniStat label="Active work" value={String(module.pendingTasks.length)} />
                         <MiniStat label="Completed" value={String(module.completedTasks.length)} />
                       </div>
@@ -258,18 +258,18 @@ export function CourseLearnExplorer({
 
                 <section style={{ display: 'grid', gap: '0.8rem' }}>
                   <div>
-                    <p className="ui-kicker">Deep Learn notes</p>
+                    <p className="ui-kicker">Exam prep packs</p>
                     <h3 style={{ margin: '0.38rem 0 0', fontSize: '1rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>
-                      Generate or open the saved note before dropping into reader fallback
+                      Build or reopen the answer-first pack before dropping into reader fallback
                     </h3>
                     <p style={{ margin: '0.4rem 0 0', fontSize: '14px', lineHeight: 1.68, color: 'var(--text-secondary)' }}>
-                      The course view now keeps Deep Learn front and center. Each resource can generate a saved note, keep exact terminology visible, and carry that note forward to quiz while the old reader stays secondary.
+                      The course view now keeps Deep Learn front and center as an exam-prep workflow. Each resource can generate a saved pack with answer banks, identification cues, and quiz targets while the old reader stays secondary.
                     </p>
                   </div>
 
                   {deepLearnUnavailable && module.deepLearnNotesMessage && (
                     <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.85rem 0.9rem', border: '1px solid color-mix(in srgb, var(--amber) 24%, var(--border-subtle) 76%)' }}>
-                      <p className="ui-kicker">Deep Learn note status unavailable</p>
+                      <p className="ui-kicker">Exam prep pack status unavailable</p>
                       <p style={{ margin: '0.38rem 0 0', fontSize: '13px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
                         {module.deepLearnNotesMessage} This module still renders from the study resources and fallback reader/source views.
                       </p>

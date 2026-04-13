@@ -66,11 +66,11 @@ export interface CourseLearnStudyMaterialRow {
   outlineSections: StudyFileOutlineSection[]
   outlineHint: string | null
   deepLearnStatus: 'not_started' | 'pending' | 'ready' | 'failed' | 'blocked' | 'unavailable'
-  deepLearnStatusLabel: 'No note yet' | 'Generating' | 'Ready' | 'Failed' | 'Blocked' | 'Unavailable'
+  deepLearnStatusLabel: 'No pack yet' | 'Preparing' | 'Ready' | 'Failed' | 'Source issue' | 'Unavailable'
   deepLearnTone: 'accent' | 'warning' | 'muted'
   deepLearnSummary: string
   deepLearnDetail: string
-  deepLearnPrimaryLabel: 'Deep Learn this' | 'Open Deep Learn note' | 'Retry Deep Learn' | 'View reader fallback'
+  deepLearnPrimaryLabel: 'Build Exam Prep Pack' | 'Open Exam Prep Pack' | 'Rebuild Exam Prep Pack' | 'Open reader fallback'
   deepLearnNoteHref: string
   deepLearnQuizHref: string
   deepLearnQuizReady: boolean
@@ -467,7 +467,7 @@ function buildModuleSummaryFallback(overview: {
   actionItems: unknown[]
 }) {
   if (overview.readyStudyFileCount > 0) {
-    return 'Grounded study material is available here, so Deep Learn can turn it into saved notes before you switch into action.'
+    return 'Grounded study material is available here, so Deep Learn can turn it into answer-first exam prep packs before you switch into action.'
   }
 
   if (overview.limitedStudyFileCount > 0) {
@@ -475,7 +475,7 @@ function buildModuleSummaryFallback(overview: {
   }
 
   if (overview.totalStudyFileCount > 0) {
-    return 'This module still depends heavily on the original sources, so Deep Learn treats the saved note as the main destination and keeps the reader light and honest.'
+    return 'This module still depends heavily on the original sources, so Deep Learn treats the saved exam prep pack as the main destination and keeps the reader light and honest.'
   }
 
   if (overview.actionItems.length > 0 || overview.activityOverrideCount > 0) {
@@ -552,8 +552,8 @@ function buildDeepLearnRowState(
     deepLearnNoteHref: deepLearnUi.noteHref,
     deepLearnQuizHref: deepLearnUi.quizHref,
     deepLearnQuizReady: deepLearnUi.quizReady,
-    deepLearnTermCount: note?.coreTerms.length ?? 0,
-    deepLearnFactCount: note?.keyFacts.length ?? 0,
+    deepLearnTermCount: note?.identificationItems.length ?? 0,
+    deepLearnFactCount: note?.answerBank.length ?? 0,
     deepLearnNoteFailure: note?.errorMessage ?? null,
     deepLearnAvailability: notesAvailability,
   } satisfies Pick<

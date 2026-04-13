@@ -69,7 +69,7 @@ export async function generateDeepLearnNoteAction(input: {
     canonicalResourceId,
   })
 
-  if (!storedResource || !canonicalResourceId || readiness.state === 'blocked') {
+  if (!storedResource || !canonicalResourceId || readiness.state === 'unreadable') {
     console.error('[deep-learn-action] resource_lookup_failed', {
       moduleId: input.moduleId,
       resourceId: input.resourceId,
@@ -99,15 +99,17 @@ export async function generateDeepLearnNoteAction(input: {
     resourceId: canonicalResourceId,
     status: 'pending',
     title: resource.title,
-    overview: readiness.state === 'via_source_fetch'
-      ? 'Deep Learn is recovering stronger source evidence before it writes the note.'
-      : 'Deep Learn is preparing the study note.',
+    overview: readiness.state === 'scan_fallback'
+      ? 'Deep Learn is preparing an exam prep pack from scan fallback.'
+      : readiness.state === 'partial_text'
+        ? 'Deep Learn is tightening the source before it builds the exam prep pack.'
+        : 'Deep Learn is preparing the exam prep pack.',
     sections: [],
     noteBody: '',
-    coreTerms: [],
-    keyFacts: [],
+    answerBank: [],
+    identificationItems: [],
     distinctions: [],
-    likelyQuizPoints: [],
+    likelyQuizTargets: [],
     cautionNotes: [],
     sourceGrounding: {
       sourceType: resource.type,
@@ -144,10 +146,10 @@ export async function generateDeepLearnNoteAction(input: {
       overview: generated.content.overview,
       sections: generated.content.sections,
       noteBody: buildDeepLearnNoteBody(generated.content.sections),
-      coreTerms: generated.content.coreTerms,
-      keyFacts: generated.content.keyFacts,
+      answerBank: generated.content.answerBank,
+      identificationItems: generated.content.identificationItems,
       distinctions: generated.content.distinctions,
-      likelyQuizPoints: generated.content.likelyQuizPoints,
+      likelyQuizTargets: generated.content.likelyQuizTargets,
       cautionNotes: generated.content.cautionNotes,
       sourceGrounding: generated.sourceGrounding,
       quizReady: computeDeepLearnQuizReady(generated.content),
@@ -183,14 +185,14 @@ export async function generateDeepLearnNoteAction(input: {
       status: 'failed',
       title: resource.title,
       overview: error instanceof DeepLearnGenerationBlockedError
-        ? 'Deep Learn could not recover enough trustworthy source evidence for this item.'
-        : 'Deep Learn could not build a trustworthy note from the current source evidence.',
+        ? 'Deep Learn could not recover enough trustworthy source evidence for this exam prep pack.'
+        : 'Deep Learn could not build a trustworthy exam prep pack from the current source evidence.',
       sections: [],
       noteBody: '',
-      coreTerms: [],
-      keyFacts: [],
+      answerBank: [],
+      identificationItems: [],
       distinctions: [],
-      likelyQuizPoints: [],
+      likelyQuizTargets: [],
       cautionNotes: [message],
       sourceGrounding: error instanceof DeepLearnGenerationBlockedError
         ? error.sourceGrounding

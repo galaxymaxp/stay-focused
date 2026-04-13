@@ -95,12 +95,15 @@ Current app features that depend on `20260419_add_user_profile_avatars.sql`:
 
 If you want a clean Supabase project instead of repairing a drifted one:
 
-1. Create a new project with the Supabase CLI.
+1. Create a new hosted Supabase project in the Supabase dashboard.
 2. Link this repo to the new project.
 3. Run `npx supabase db push` from the repo root.
 4. Pull the new project's API keys with `npx supabase projects api-keys --project-ref <ref>`.
-5. Update `.env.local` so `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` point to the fresh project.
+5. Update `.env.local` so `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` point to the hosted project.
+6. If you use Google OAuth, update Auth > URL Configuration in that hosted project so the allowed origins can return to `/auth/callback`.
 
 With the baseline migration in place, a brand-new project can now be recreated from the repo migrations alone.
+
+Do not copy `site_url`, `additional_redirect_urls`, or any localhost ports from `supabase/config.toml` into the hosted app setup. That file is only for local Supabase CLI services.
 
 The module delete flow is defensive if `module_resources` is missing, but the proper fix is still to apply the migration to the active Supabase environment.
