@@ -74,7 +74,19 @@ const NAV_ITEMS = [
   },
 ] as const
 
-const MOBILE_NAV_ITEMS = NAV_ITEMS.filter((item) => item.href !== '/settings')
+const MOBILE_NAV_ITEMS = NAV_ITEMS
+
+function resolveTopbarSubLabel(pathname: string): string | null {
+  if (/\/modules\/[^/]+\/learn/.test(pathname)) return 'Learn'
+  if (/\/modules\/[^/]+\/quiz/.test(pathname)) return 'Quiz'
+  if (/\/modules\/[^/]+\/do/.test(pathname)) return 'Do'
+  if (/\/modules\/[^/]+\/review/.test(pathname)) return 'Review'
+  if (/\/modules\/[^/]+\/inspect/.test(pathname)) return 'Inspect'
+  if (/\/modules\/[^/]+\/source/.test(pathname)) return 'Source'
+  if (/\/modules\/[^/]+/.test(pathname)) return 'Module'
+  if (/\/courses\/[^/]+/.test(pathname)) return 'Course'
+  return null
+}
 
 export function AppShell({
   children,
@@ -85,6 +97,7 @@ export function AppShell({
 }) {
   const pathname = usePathname()
   const activeSection = NAV_ITEMS.find((item) => item.matches(pathname)) ?? NAV_ITEMS[0]
+  const subLabel = resolveTopbarSubLabel(pathname)
 
   return (
     <div className="app-frame">
@@ -123,6 +136,12 @@ export function AppShell({
               <StayFocusedIcon size={20} color="var(--accent)" />
             </span>
             <strong className="app-topbar-current">{activeSection.label}</strong>
+            {subLabel ? (
+              <>
+                <span className="app-topbar-sep" aria-hidden="true">›</span>
+                <span className="app-topbar-sub">{subLabel}</span>
+              </>
+            ) : null}
           </div>
 
           <div className="app-topbar-actions">

@@ -26,8 +26,8 @@ export function AuthForm({
 
   const title = mode === 'sign-in' ? 'Sign in' : 'Create account'
   const subtitle = mode === 'sign-in'
-    ? 'Use email/password or Google. The app remains usable without auth, but signing in establishes a real identity for saved work.'
-    : 'Create a generic account now so persistence can start moving from anonymous cookies to a real user.'
+    ? 'Welcome back. Sign in to pick up where you left off and keep your progress saved across devices.'
+    : 'Create a free account to save your progress and access Stay Focused from any device.'
 
   return (
     <main className="page-shell page-shell-narrow page-stack" style={{ gap: '1rem' }}>

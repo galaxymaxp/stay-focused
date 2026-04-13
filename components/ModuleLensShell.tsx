@@ -35,9 +35,7 @@ export function ModuleLensShell({
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
           <div style={{ minWidth: 0, flex: '1 1 520px' }}>
             <p className="ui-kicker">{lensLabel}</p>
-            <h1 className="ui-page-title" style={{ fontSize: currentLens === 'do' ? '32px' : '34px' }}>
-              {title}
-            </h1>
+            <h1 className="ui-page-title">{title}</h1>
             <p className="ui-page-copy" style={{ maxWidth: '56rem' }}>
               {lensCopy}
             </p>
@@ -58,11 +56,11 @@ export function ModuleLensShell({
           </p>
         )}
 
-        <div className="ui-tab-group" style={{ marginTop: '1.05rem' }}>
+        <nav className="module-lens-tabs" aria-label="Module sections" style={{ marginTop: '1.05rem' }}>
           <LensTab href={`/modules/${moduleId}/learn`} label="Learn" active={currentLens === 'learn'} />
           <LensTab href={`/modules/${moduleId}/do`} label="Do" active={currentLens === 'do'} />
           <LensTab href={`/modules/${moduleId}/quiz`} label="Quiz" active={currentLens === 'quiz'} />
-        </div>
+        </nav>
       </section>
 
       {children}
@@ -74,13 +72,8 @@ function LensTab({ href, label, active }: { href: string; label: string; active:
   return (
     <Link
       href={href}
-      className={active ? 'ui-button ui-button-primary' : 'ui-button ui-button-ghost'}
-      style={{
-        minHeight: '2.3rem',
-        padding: '0.58rem 0.9rem',
-        fontSize: '13px',
-        boxShadow: active ? undefined : 'none',
-      }}
+      className={`module-lens-tab${active ? ' module-lens-tab-active' : ''}`}
+      aria-current={active ? 'page' : undefined}
     >
       {label}
     </Link>

@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { EmptyState } from '@/components/EmptyState'
 import { TaskDraftButton } from '@/components/DoNowButton'
 import { TaskStatusToggle } from '@/components/TaskStatusToggle'
 import { buildManualCopyBundle } from '@/lib/manual-copy-bundle'
@@ -161,17 +162,14 @@ export function TodayDashboard({
                 ) : null}
               </>
             ) : (
-              <div className="ui-empty" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem 1.05rem', fontSize: '14px', lineHeight: 1.65 }}>
-                Nothing urgent is competing for attention right now.
-              </div>
+              <EmptyState message="Nothing urgent is competing for attention right now." />
             )}
           </section>
 
           <section className="home-sheet">
             <SectionHeading
               eyebrow="Due soon"
-              title="Due soon"
-              description="A short list of work with dates close enough to affect today."
+              description="Work with dates close enough to affect today."
               actionHref="/tasks"
               actionLabel="Open Tasks"
             />
@@ -183,9 +181,7 @@ export function TodayDashboard({
                 ))}
               </div>
             ) : (
-              <div className="ui-empty" style={{ borderRadius: 'var(--radius-panel)', padding: '0.95rem 1rem', fontSize: '14px', lineHeight: 1.6 }}>
-                Nothing with a due date is crowding the next few days.
-              </div>
+              <EmptyState message="Nothing with a due date is crowding the next few days." />
             )}
           </section>
         </div>
@@ -205,9 +201,7 @@ export function TodayDashboard({
                 ))}
               </div>
             ) : (
-              <div className="ui-empty" style={{ borderRadius: 'var(--radius-panel)', padding: '0.95rem 1rem', fontSize: '14px', lineHeight: 1.6 }}>
-                No recent changes have been captured yet.
-              </div>
+              <EmptyState message="No recent changes have been captured yet." />
             )}
           </section>
 
@@ -240,7 +234,7 @@ function SectionHeading({
   actionLabel,
 }: {
   eyebrow: string
-  title: string
+  title?: string
   description: string
   actionHref?: string
   actionLabel?: string
@@ -249,8 +243,10 @@ function SectionHeading({
     <div className="home-section-heading">
       <div style={{ minWidth: 0 }}>
         <p className="ui-kicker">{eyebrow}</p>
-        <h2 className="ui-section-title" style={{ marginTop: '0.36rem' }}>{title}</h2>
-        <p className="ui-section-copy" style={{ marginTop: '0.32rem', maxWidth: '30rem' }}>{description}</p>
+        {title ? (
+          <h2 className="ui-section-title" style={{ marginTop: '0.36rem' }}>{title}</h2>
+        ) : null}
+        <p className="ui-section-copy" style={{ marginTop: title ? '0.32rem' : '0.4rem', maxWidth: '30rem' }}>{description}</p>
       </div>
 
       {actionHref && actionLabel ? (

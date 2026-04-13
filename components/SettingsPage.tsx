@@ -112,11 +112,11 @@ export function SettingsPage() {
   }
 
   return (
-    <main className="page-shell page-shell-narrow page-stack" style={{ gap: '1rem' }}>
-      <header className="motion-card" style={{ display: 'grid', gap: '0.5rem' }}>
+    <main className="page-shell page-shell-narrow page-stack settings-page">
+      <header className="motion-card settings-page-header">
         <p className="ui-kicker">Settings</p>
-        <h1 className="ui-page-title" style={{ fontSize: '2rem' }}>Preferences</h1>
-        <p className="ui-page-copy" style={{ maxWidth: '46rem', marginTop: 0 }}>
+        <h1 className="ui-page-title">Preferences</h1>
+        <p className="ui-page-copy settings-page-intro">
           Adjust the appearance of the app. These settings apply across Today, Learn, Do, Calendar, and module workspaces.
         </p>
       </header>
@@ -124,142 +124,108 @@ export function SettingsPage() {
       <SettingsSection
         eyebrow="Account"
         title="Authentication"
-        description="Email/password and Google sign-in are now available. The app still works without login, but authenticated sessions establish a stable user identity for future ownership hardening."
+        description="Sign in to save your progress and access Stay Focused from any device. Email/password and Google sign-in are both supported."
       >
-        <div style={{ display: 'grid', gap: '0.8rem' }}>
-          {!authSummary.user ? (
-            <div style={accountCardStyle}>
-              <div>
-                <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>Not signed in</div>
-                <div style={{ marginTop: '0.22rem', fontSize: '13px', lineHeight: 1.55, color: 'var(--text-secondary)' }}>
-                  Anonymous cookie identity still works, but sign-in is the path forward for durable user-owned persistence.
-                </div>
-              </div>
-              <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
-                <Link href="/sign-in?next=%2Fsettings" className="ui-button ui-button-primary" style={{ textDecoration: 'none' }}>
-                  Sign in
-                </Link>
-                <Link href="/sign-up?next=%2Fsettings" className="ui-button ui-button-secondary" style={{ textDecoration: 'none' }}>
-                  Create account
-                </Link>
-              </div>
+        {!authSummary.user ? (
+          <div className="settings-account-card">
+            <div>
+              <p className="settings-card-title">Not signed in</p>
+              <p className="settings-card-desc">Sign in to keep your work saved across devices and sessions.</p>
             </div>
-          ) : null}
-
-          {authSummary.user ? (
-            <div style={profileControlCardStyle}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
-                <UserAvatar
-                  value={{
-                    url: resolvedAvatar.resolvedAvatar.url,
-                    initials: resolvedAvatar.resolvedAvatar.initials,
-                  }}
-                  size={64}
-                  active
-                />
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>
-                    Profile photo
-                  </div>
-                  <div style={{ marginTop: '0.22rem', fontSize: '13px', lineHeight: 1.55, color: 'var(--text-secondary)' }}>
-                    Current source: {getAvatarSourceLabel(resolvedAvatar.resolvedAvatar.source)}
-                  </div>
-                  <div style={{ marginTop: '0.12rem', fontSize: '13px', lineHeight: 1.55, color: 'var(--text-secondary)' }}>
-                    {resolvedAvatar.loading
-                      ? 'Loading your avatar settings...'
-                      : resolvedAvatar.error
-                        ? 'Could not load your avatar settings right now.'
-                      : resolvedAvatar.hasGoogleAvatar
-                        ? 'Google photo is available for this account.'
-                        : 'No Google photo detected for this account. Placeholder initials will be used until you upload one.'}
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.6rem', marginTop: '0.9rem' }}>
-                <button
-                  type="button"
-                  className="ui-button ui-button-secondary"
-                  onClick={() => setAvatarSource('google')}
-                  disabled={!resolvedAvatar.hasGoogleAvatar || Boolean(avatarActionPending)}
-                >
-                  Use Google photo
-                </button>
-                <button
-                  type="button"
-                  className="ui-button ui-button-primary"
-                  onClick={() => uploadInputRef.current?.click()}
-                  disabled={Boolean(avatarActionPending)}
-                >
-                  {avatarActionPending === 'upload' ? 'Uploading...' : 'Upload custom photo'}
-                </button>
-                <button
-                  type="button"
-                  className="ui-button ui-button-ghost"
-                  onClick={removeCustomPhoto}
-                  disabled={!resolvedAvatar.profile.avatarUrl || Boolean(avatarActionPending)}
-                >
-                  Remove custom photo
-                </button>
-              </div>
-
-              <input
-                ref={uploadInputRef}
-                type="file"
-                accept="image/jpeg,image/png,image/webp,image/gif"
-                style={{ display: 'none' }}
-                onChange={(event) => {
-                  const file = event.currentTarget.files?.[0] ?? null
-                  if (file) {
-                    void uploadCustomPhoto(file)
-                  }
-                  event.currentTarget.value = ''
+            <div className="settings-card-actions">
+              <Link href="/sign-in?next=%2Fsettings" className="ui-button ui-button-primary">
+                Sign in
+              </Link>
+              <Link href="/sign-up?next=%2Fsettings" className="ui-button ui-button-secondary">
+                Create account
+              </Link>
+            </div>
+          </div>
+        ) : (
+          <div className="settings-profile-card">
+            <div className="settings-profile-row">
+              <UserAvatar
+                value={{
+                  url: resolvedAvatar.resolvedAvatar.url,
+                  initials: resolvedAvatar.resolvedAvatar.initials,
                 }}
+                size={64}
+                active
               />
-
-              <div style={{ marginTop: '0.9rem', fontSize: '13px', lineHeight: 1.55, color: 'var(--text-secondary)' }}>
-                Allowed types: JPG, PNG, WEBP, GIF. Max size: 5 MB. Avatar priority stays custom upload, then Google photo, then initials placeholder.
+              <div style={{ minWidth: 0 }}>
+                <p className="settings-card-title">Profile photo</p>
+                <p className="settings-card-desc">
+                  Current source: {getAvatarSourceLabel(resolvedAvatar.resolvedAvatar.source)}
+                </p>
+                <p className="settings-card-desc">
+                  {resolvedAvatar.loading
+                    ? 'Loading your avatar settings...'
+                    : resolvedAvatar.error
+                      ? 'Could not load your avatar settings right now.'
+                    : resolvedAvatar.hasGoogleAvatar
+                      ? 'Google photo is available for this account.'
+                      : 'No Google photo detected for this account. Placeholder initials will be used until you upload one.'}
+                </p>
               </div>
-              {resolvedAvatar.error ? (
-                <div style={{ marginTop: '0.32rem', fontSize: '13px', lineHeight: 1.55, color: 'var(--red)' }}>
-                  {resolvedAvatar.error}
-                </div>
-              ) : null}
-              {avatarActionError ? (
-                <div style={{ marginTop: '0.32rem', fontSize: '13px', lineHeight: 1.55, color: 'var(--red)' }}>
-                  {avatarActionError}
-                </div>
-              ) : null}
-              {avatarActionMessage ? (
-                <div style={{ marginTop: '0.32rem', fontSize: '13px', lineHeight: 1.55, color: 'var(--blue)' }}>
-                  {avatarActionMessage}
-                </div>
-              ) : null}
             </div>
-          ) : null}
 
-          <div style={noteCardStyle}>
-            <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>Google sign-in</div>
-            <div style={{ marginTop: '0.22rem', fontSize: '13px', lineHeight: 1.6, color: 'var(--text-secondary)' }}>
-              Google OAuth is wired into the same session flow as email/password. Enable the provider in the hosted Supabase Auth dashboard, set the Site URL plus additional redirect URLs for each allowed origin, and make sure those flows return to `/auth/callback`.
+            <div className="settings-card-actions">
+              <button
+                type="button"
+                className="ui-button ui-button-secondary"
+                onClick={() => setAvatarSource('google')}
+                disabled={!resolvedAvatar.hasGoogleAvatar || Boolean(avatarActionPending)}
+              >
+                Use Google photo
+              </button>
+              <button
+                type="button"
+                className="ui-button ui-button-primary"
+                onClick={() => uploadInputRef.current?.click()}
+                disabled={Boolean(avatarActionPending)}
+              >
+                {avatarActionPending === 'upload' ? 'Uploading...' : 'Upload custom photo'}
+              </button>
+              <button
+                type="button"
+                className="ui-button ui-button-ghost"
+                onClick={removeCustomPhoto}
+                disabled={!resolvedAvatar.profile.avatarUrl || Boolean(avatarActionPending)}
+              >
+                Remove custom photo
+              </button>
             </div>
-          </div>
 
-          <div style={noteCardStyle}>
-            <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>Canvas connect plan</div>
-            <div style={{ marginTop: '0.22rem', fontSize: '13px', lineHeight: 1.6, color: 'var(--text-secondary)' }}>
-              Canvas sync still uses the manual URL plus access-token flow. The intended next step is a user-owned Canvas connection record keyed to the authenticated Supabase user so the raw token entry UI can be replaced with a real connect/reconnect flow.
-            </div>
+            <input
+              ref={uploadInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              style={{ display: 'none' }}
+              onChange={(event) => {
+                const file = event.currentTarget.files?.[0] ?? null
+                if (file) {
+                  void uploadCustomPhoto(file)
+                }
+                event.currentTarget.value = ''
+              }}
+            />
+
+            <p className="settings-card-note">
+              Accepted: JPG, PNG, WEBP, GIF — max 5 MB. Priority: custom upload, then Google photo, then initials.
+            </p>
+            {resolvedAvatar.error ? <p className="settings-card-error">{resolvedAvatar.error}</p> : null}
+            {avatarActionError ? <p className="settings-card-error">{avatarActionError}</p> : null}
+            {avatarActionMessage ? <p className="settings-card-message">{avatarActionMessage}</p> : null}
           </div>
-        </div>
+        )}
       </SettingsSection>
 
       <SettingsSection
         eyebrow="Appearance"
         title="Theme mode"
-        description={`Choose how the app handles light and dark mode. Current resolved theme: ${resolvedTheme}.`}
+        description={`Choose how the app handles light and dark mode. Current: ${resolvedTheme}.`}
       >
-        <div style={{ display: 'grid', gap: '0.6rem' }}>
+        <div className="settings-option-list">
           {MODE_OPTIONS.map((option) => {
             const selected = option.value === mode
 
@@ -269,17 +235,16 @@ export function SettingsPage() {
                 type="button"
                 onClick={() => setMode(option.value)}
                 aria-pressed={selected}
-                className="ui-interactive-card"
-                data-open={selected ? 'true' : 'false'}
-                style={optionRowStyle(selected)}
+                className="settings-option-row ui-interactive-card"
               >
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>{option.label}</div>
-                  <div style={{ marginTop: '0.22rem', fontSize: '13px', lineHeight: 1.55, color: 'var(--text-secondary)' }}>
-                    {option.description}
-                  </div>
+                  <p className="settings-card-title">{option.label}</p>
+                  <p className="settings-card-desc">{option.description}</p>
                 </div>
-                <span style={selectionLabelStyle(selected)}>
+                <span
+                  className="settings-option-label"
+                  data-selected={selected ? 'true' : 'false'}
+                >
                   {selected ? 'Current' : 'Select'}
                 </span>
               </button>
@@ -293,7 +258,7 @@ export function SettingsPage() {
         title="Highlight color"
         description="Choose the accent used for key actions, highlights, and supporting emphasis."
       >
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '0.6rem' }}>
+        <div className="settings-swatch-grid">
           {Object.entries(ACCENT_OPTIONS).map(([name, palette]) => {
             const selected = name === accent
 
@@ -303,19 +268,15 @@ export function SettingsPage() {
                 type="button"
                 onClick={() => setAccent(name as AccentName)}
                 aria-pressed={selected}
-                className="ui-interactive-card"
-                data-open={selected ? 'true' : 'false'}
-                style={swatchCardStyle(selected)}
+                className="settings-swatch-card ui-interactive-card"
               >
-                <div style={{ display: 'flex', gap: '0.45rem' }}>
-                  <span style={{ width: '18px', height: '18px', borderRadius: '999px', background: palette.accent, border: `1px solid ${palette.accentBorder}` }} />
-                  <span style={{ width: '18px', height: '18px', borderRadius: '999px', background: palette.accentLight, border: `1px solid ${palette.accentBorder}` }} />
+                <div className="settings-swatch-dots">
+                  <span className="settings-swatch-dot" style={{ background: palette.accent, borderColor: palette.accentBorder }} />
+                  <span className="settings-swatch-dot" style={{ background: palette.accentLight, borderColor: palette.accentBorder }} />
                 </div>
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>{palette.label}</div>
-                  <div style={{ marginTop: '0.22rem', fontSize: '12px', color: 'var(--text-secondary)' }}>
-                    {selected ? 'Current accent' : 'Apply accent'}
-                  </div>
+                  <p className="settings-card-title">{palette.label}</p>
+                  <p className="settings-card-desc">{selected ? 'Current accent' : 'Apply accent'}</p>
                 </div>
               </button>
             )
@@ -338,100 +299,17 @@ function SettingsSection({
   children: React.ReactNode
 }) {
   return (
-    <section style={sectionStyle}>
-      <div style={{ padding: '1rem 1.1rem', borderBottom: '1px solid color-mix(in srgb, var(--border-subtle) 88%, transparent)' }}>
+    <section className="settings-section">
+      <div className="settings-section-header">
         <p className="ui-kicker">{eyebrow}</p>
-        <h2 style={{ margin: '0.4rem 0 0', fontSize: '1.05rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>{title}</h2>
-        <p style={{ margin: '0.38rem 0 0', fontSize: '13px', lineHeight: 1.6, color: 'var(--text-secondary)' }}>
-          {description}
-        </p>
+        <h2 className="settings-section-title">{title}</h2>
+        <p className="settings-section-desc">{description}</p>
       </div>
-      <div style={{ padding: '1rem 1.1rem' }}>
+      <div className="settings-section-body">
         {children}
       </div>
     </section>
   )
-}
-
-function optionRowStyle(selected: boolean): React.CSSProperties {
-  return {
-    width: '100%',
-    borderRadius: '12px',
-    border: `1px solid ${selected
-      ? 'color-mix(in srgb, var(--accent-border) 48%, var(--border-subtle) 52%)'
-      : 'color-mix(in srgb, var(--border-subtle) 88%, transparent)'}`,
-    background: selected
-      ? 'color-mix(in srgb, var(--surface-selected) 60%, var(--surface-elevated) 40%)'
-      : 'var(--surface-elevated)',
-    padding: '0.85rem 0.95rem',
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    gap: '0.8rem',
-    textAlign: 'left',
-    cursor: 'pointer',
-  }
-}
-
-function swatchCardStyle(selected: boolean): React.CSSProperties {
-  return {
-    borderRadius: '12px',
-    border: `1px solid ${selected
-      ? 'color-mix(in srgb, var(--accent-border) 48%, var(--border-subtle) 52%)'
-      : 'color-mix(in srgb, var(--border-subtle) 88%, transparent)'}`,
-    background: selected
-      ? 'color-mix(in srgb, var(--surface-selected) 60%, var(--surface-elevated) 40%)'
-      : 'var(--surface-elevated)',
-    padding: '0.85rem 0.95rem',
-    display: 'grid',
-    gap: '0.65rem',
-    textAlign: 'left',
-    cursor: 'pointer',
-  }
-}
-
-function selectionLabelStyle(selected: boolean): React.CSSProperties {
-  return {
-    flexShrink: 0,
-    fontSize: '12px',
-    fontWeight: 600,
-    color: selected ? 'var(--text-primary)' : 'var(--text-muted)',
-  }
-}
-
-const sectionStyle: React.CSSProperties = {
-  borderRadius: '16px',
-  border: '1px solid color-mix(in srgb, var(--border-subtle) 88%, transparent)',
-  background: 'color-mix(in srgb, var(--surface-elevated) 98%, transparent)',
-  boxShadow: 'var(--highlight-sheen)',
-  overflow: 'hidden',
-}
-
-const accountCardStyle: React.CSSProperties = {
-  borderRadius: '12px',
-  border: '1px solid color-mix(in srgb, var(--border-subtle) 88%, transparent)',
-  background: 'var(--surface-elevated)',
-  padding: '0.95rem',
-  display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  gap: '0.9rem',
-  flexWrap: 'wrap',
-}
-
-const noteCardStyle: React.CSSProperties = {
-  borderRadius: '12px',
-  border: '1px solid color-mix(in srgb, var(--border-subtle) 88%, transparent)',
-  background: 'color-mix(in srgb, var(--surface-elevated) 92%, var(--surface-base) 8%)',
-  padding: '0.95rem',
-}
-
-const profileControlCardStyle: React.CSSProperties = {
-  borderRadius: '12px',
-  border: '1px solid color-mix(in srgb, var(--border-subtle) 88%, transparent)',
-  background: 'var(--surface-elevated)',
-  padding: '0.95rem',
-  display: 'grid',
 }
 
 function getAvatarSourceLabel(source: AvatarSource) {
