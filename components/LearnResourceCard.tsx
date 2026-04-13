@@ -24,12 +24,12 @@ export function LearnResourceCard({
   const uiState = getLearnResourceUiState(unit.resource, {
     hasCanvasLink: Boolean(canvasHref),
   })
-  const deepViewLabel = unit.resource.kind === 'study_file' ? 'Open study reader' : 'Open deep view'
+  const deepViewLabel = unit.resource.kind === 'study_file' ? 'Open source detail' : 'Open deep view'
   const shouldPreferSource = uiState.primaryAction === 'source' && Boolean(canvasHref)
   const previewLabel = unit.resource.kind === 'study_file'
-    ? quality.shouldUseForGrounding
-      ? 'Study snapshot'
-      : 'Reader status'
+      ? quality.shouldUseForGrounding
+        ? 'Study snapshot'
+        : 'Source status'
     : quality.shouldUseForGrounding
       ? 'Resource Preview'
       : 'Grounding Note'

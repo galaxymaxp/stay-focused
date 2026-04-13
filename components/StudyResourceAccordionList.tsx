@@ -37,7 +37,7 @@ export interface StudyResourceAccordionItem {
   deepLearnTone: 'accent' | 'warning' | 'muted'
   deepLearnSummary: string
   deepLearnDetail: string
-  deepLearnPrimaryLabel: 'Build Exam Prep Pack' | 'Open Exam Prep Pack' | 'Rebuild Exam Prep Pack' | 'Open reader fallback'
+  deepLearnPrimaryLabel: 'Build Exam Prep Pack' | 'Open Exam Prep Pack' | 'Rebuild Exam Prep Pack' | 'Open source fallback'
   deepLearnNoteHref: string
   deepLearnQuizHref: string
   deepLearnQuizReady: boolean
@@ -51,10 +51,14 @@ export function StudyResourceAccordionList({
   items,
   emptyMessage,
   initialOpenResourceId = null,
+  scrollable = false,
+  scrollDensity = 'comfort',
 }: {
   items: StudyResourceAccordionItem[]
   emptyMessage: string
   initialOpenResourceId?: string | null
+  scrollable?: boolean
+  scrollDensity?: 'comfort' | 'dense'
 }) {
   const lastScrolledResourceId = useRef<string | null>(null)
   const itemIdKey = items.map((item) => item.id).join('|')
@@ -96,161 +100,156 @@ export function StudyResourceAccordionList({
   }
 
   return (
-    <div style={{ display: 'grid', gap: '0.75rem' }}>
-      {items.map((item, index) => {
-        const expanded = resolvedOpenResourceId === item.id
-        const sourceHref = item.originalFileHref ?? item.canvasHref
-        const showSourceAsPrimary = item.primaryAction === 'source' && Boolean(sourceHref)
-        const presentationMode: StudyResourcePresentationMode = item.deepLearnStatus === 'ready'
-          ? 'deep_learn_first'
-          : showSourceAsPrimary
-            ? 'source_first'
-            : 'reader_fallback'
+    <div className={scrollable ? 'contained-scroll-frame' : undefined} data-density={scrollDensity === 'dense' ? 'dense' : undefined}>
+      <div style={{ display: 'grid', gap: '0.75rem' }}>
+        {items.map((item, index) => {
+          const expanded = resolvedOpenResourceId === item.id
+          const sourceHref = item.originalFileHref ?? item.canvasHref
+          const showSourceAsPrimary = item.primaryAction === 'source' && Boolean(sourceHref)
+          const presentationMode: StudyResourcePresentationMode = item.deepLearnStatus === 'ready'
+            ? 'deep_learn_first'
+            : showSourceAsPrimary
+              ? 'source_first'
+              : 'reader_fallback'
 
-        return (
-          <article
-            key={item.id}
-            id={getResourceElementId(item.id)}
-            className="glass-panel glass-soft ui-interactive-card"
-            data-open={expanded ? 'true' : 'false'}
-            style={{
-              ['--glass-panel-border' as string]: initialOpenResourceId === item.id
-                ? 'color-mix(in srgb, var(--accent-border) 36%, var(--border-subtle) 64%)'
-                : undefined,
-              borderRadius: 'var(--radius-panel)',
-              padding: '0.82rem 0.88rem',
-              display: 'grid',
-              gap: expanded ? '0.72rem' : '0.48rem',
-            }}
-          >
-            <button
-              type="button"
-              onClick={() => setState((current) => {
-                const nextOpenResourceId = openResourceId === item.id ? null : item.id
-                if (current.routeKey === routeKey && current.openResourceId === nextOpenResourceId) {
-                  return current
-                }
-
-                return {
-                  routeKey,
-                  openResourceId: nextOpenResourceId,
-                }
-              })}
-              aria-expanded={expanded}
-              className="ui-interactive-row"
+          return (
+            <article
+              key={item.id}
+              id={getResourceElementId(item.id)}
+              className="glass-panel glass-soft ui-interactive-card"
+              data-open={expanded ? 'true' : 'false'}
               style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                gap: '0.75rem',
-                alignItems: 'flex-start',
-                textAlign: 'left',
+                ['--glass-panel-border' as string]: initialOpenResourceId === item.id
+                  ? 'color-mix(in srgb, var(--accent-border) 36%, var(--border-subtle) 64%)'
+                  : undefined,
+                borderRadius: 'var(--radius-panel)',
+                padding: '0.82rem 0.88rem',
+                display: 'grid',
+                gap: expanded ? '0.72rem' : '0.48rem',
               }}
             >
-              <div style={{ minWidth: 0, flex: '1 1 320px', display: 'grid', gap: '0.38rem' }}>
-                <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                  <ResourcePill label={`Resource ${index + 1}`} />
-                  <ResourcePill label={item.fileTypeLabel} />
-                  <ResourcePill label={`Exam pack: ${item.deepLearnStatusLabel}`} tone={item.deepLearnTone} />
-                  <ResourcePill label={item.readinessLabel} tone={item.readinessTone} />
-                  {item.deepLearnStatus === 'ready' ? (
-                    <>
-                      <ResourcePill label={`${item.deepLearnTermCount} ID item${item.deepLearnTermCount === 1 ? '' : 's'}`} />
-                      <ResourcePill label={`${item.deepLearnFactCount} key answer${item.deepLearnFactCount === 1 ? '' : 's'}`} />
-                      {item.deepLearnQuizReady && <ResourcePill label="Quiz ready" tone="accent" />}
-                    </>
-                  ) : (
-                    <ResourcePill label={`${item.outlineSections.length} reader note${item.outlineSections.length === 1 ? '' : 's'}`} />
-                  )}
-                  {item.required && <ResourcePill label="Required" tone="warning" />}
+              <button
+                type="button"
+                onClick={() => setState((current) => {
+                  const nextOpenResourceId = openResourceId === item.id ? null : item.id
+                  if (current.routeKey === routeKey && current.openResourceId === nextOpenResourceId) {
+                    return current
+                  }
+
+                  return {
+                    routeKey,
+                    openResourceId: nextOpenResourceId,
+                  }
+                })}
+                aria-expanded={expanded}
+                className="ui-interactive-row"
+                data-hover="flat"
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  gap: '0.75rem',
+                  alignItems: 'flex-start',
+                  textAlign: 'left',
+                }}
+              >
+                <div style={{ minWidth: 0, flex: '1 1 320px', display: 'grid', gap: '0.38rem' }}>
+                  <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <ResourcePill label={`Resource ${index + 1}`} />
+                    <ResourcePill label={item.fileTypeLabel} />
+                    <ResourcePill label={`Exam pack: ${item.deepLearnStatusLabel}`} tone={item.deepLearnTone} />
+                    <ResourcePill label={item.readinessLabel} tone={item.readinessTone} />
+                    {item.deepLearnStatus === 'ready' ? (
+                      <>
+                        <ResourcePill label={`${item.deepLearnTermCount} ID item${item.deepLearnTermCount === 1 ? '' : 's'}`} />
+                        <ResourcePill label={`${item.deepLearnFactCount} key answer${item.deepLearnFactCount === 1 ? '' : 's'}`} />
+                        {item.deepLearnQuizReady && <ResourcePill label="Quiz ready" tone="accent" />}
+                      </>
+                    ) : (
+                      <ResourcePill label={`${item.outlineSections.length} source note${item.outlineSections.length === 1 ? '' : 's'}`} />
+                    )}
+                    {item.required && <ResourcePill label="Required" tone="warning" />}
+                  </div>
+                  <h4 style={{ margin: 0, fontSize: '0.98rem', lineHeight: 1.38, color: 'var(--text-primary)' }}>
+                    {item.title}
+                  </h4>
+                  <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.62, color: 'var(--text-secondary)' }}>
+                    {truncateText(item.deepLearnSummary || item.note, expanded ? 260 : 180)}
+                  </p>
                 </div>
-                <h4 style={{ margin: 0, fontSize: '0.98rem', lineHeight: 1.38, color: 'var(--text-primary)' }}>
-                  {item.title}
-                </h4>
-                <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.62, color: 'var(--text-secondary)' }}>
-                  {truncateText(item.deepLearnSummary || item.note, expanded ? 260 : 180)}
-                </p>
-              </div>
 
-              <span className={expanded ? 'ui-button ui-button-secondary ui-button-xs' : 'ui-button ui-button-ghost ui-button-xs'}>
-                {expanded ? 'Collapse' : 'Expand'}
-              </span>
-            </button>
+                <ResourcePill label={expanded ? 'Open' : 'Preview'} tone={expanded ? 'accent' : 'muted'} />
+              </button>
 
-            {expanded && (
-              <div style={{ display: 'grid', gap: '0.75rem' }}>
-                {presentationMode === 'deep_learn_first' ? (
-                  <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.9rem 0.95rem', display: 'grid', gap: '0.45rem' }}>
-                    <p className="ui-kicker" style={{ margin: 0 }}>Saved exam prep pack</p>
-                    <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.72, color: 'var(--text-secondary)' }}>
-                      {item.deepLearnDetail}
-                    </p>
-                    {item.deepLearnNoteFailure && (
-                      <p style={{ margin: 0, fontSize: '12px', lineHeight: 1.6, color: 'var(--red)' }}>
-                        {item.deepLearnNoteFailure}
+              {expanded && (
+                <div style={{ display: 'grid', gap: '0.75rem' }}>
+                  {presentationMode === 'deep_learn_first' ? (
+                    <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.9rem 0.95rem', display: 'grid', gap: '0.45rem' }}>
+                      <p className="ui-kicker" style={{ margin: 0 }}>Saved exam prep pack</p>
+                      <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.72, color: 'var(--text-secondary)' }}>
+                        {item.deepLearnDetail}
                       </p>
+                      {item.deepLearnNoteFailure && (
+                        <p style={{ margin: 0, fontSize: '12px', lineHeight: 1.6, color: 'var(--red)' }}>
+                          {item.deepLearnNoteFailure}
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.9rem 0.95rem', display: 'grid', gap: '0.4rem' }}>
+                      <p className="ui-kicker" style={{ margin: 0 }}>{item.deepLearnStatusLabel}</p>
+                      <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.72, color: 'var(--text-secondary)' }}>
+                        {item.deepLearnDetail}
+                      </p>
+                      <p style={{ margin: 0, fontSize: '12px', lineHeight: 1.6, color: 'var(--text-muted)' }}>
+                        {presentationMode === 'source_first'
+                          ? 'The original source still matters most here. The source fallback stays nearby, but the exam prep pack becomes the main study surface once you build it.'
+                          : 'The source fallback stays nearby for validation, but the exam prep pack is the primary study path for this resource.'}
+                      </p>
+                    </div>
+                  )}
+
+                  <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+                    {item.deepLearnStatus === 'ready' || item.deepLearnStatus === 'pending' ? (
+                      <Link href={item.deepLearnNoteHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
+                        {item.deepLearnPrimaryLabel}
+                      </Link>
+                    ) : item.deepLearnStatus === 'unavailable' || item.deepLearnStatus === 'blocked' ? (
+                      <Link href={item.readerHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
+                        {item.deepLearnPrimaryLabel}
+                      </Link>
+                    ) : (
+                      <DeepLearnGenerateButton
+                        moduleId={item.moduleId}
+                        resourceId={item.id}
+                        courseId={item.courseId ?? null}
+                        label={item.deepLearnPrimaryLabel}
+                      />
+                    )}
+                    {item.deepLearnStatus === 'ready' && item.deepLearnQuizReady && (
+                      <Link href={item.deepLearnQuizHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+                        Quiz this
+                      </Link>
+                    )}
+                    {sourceHref && (
+                      <a href={sourceHref} target="_blank" rel="noreferrer" className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+                        {showSourceAsPrimary ? item.sourceActionLabel : 'Open source fallback'}
+                      </a>
+                    )}
+                    <Link href={item.readerHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+                      Source details
+                    </Link>
+                    {item.extraActionHref && item.extraActionLabel && (
+                      <Link href={item.extraActionHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+                        {item.extraActionLabel}
+                      </Link>
                     )}
                   </div>
-                ) : (
-                  <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.9rem 0.95rem', display: 'grid', gap: '0.4rem' }}>
-                    <p className="ui-kicker" style={{ margin: 0 }}>{item.deepLearnStatusLabel}</p>
-                    <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.72, color: 'var(--text-secondary)' }}>
-                      {item.deepLearnDetail}
-                    </p>
-                    <p style={{ margin: 0, fontSize: '12px', lineHeight: 1.6, color: 'var(--text-muted)' }}>
-                      {presentationMode === 'source_first'
-                        ? 'The original source still matters most here. The reader stays available as fallback, but the exam prep pack becomes the main study surface once you build it.'
-                        : 'The reader stays available as a fallback/debug surface, but the exam prep pack is the primary study path for this resource.'}
-                    </p>
-                  </div>
-                )}
-
-                <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-                  {item.deepLearnStatus === 'ready' || item.deepLearnStatus === 'pending' ? (
-                    <Link href={item.deepLearnNoteHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
-                      {item.deepLearnPrimaryLabel}
-                    </Link>
-                  ) : item.deepLearnStatus === 'unavailable' || item.deepLearnStatus === 'blocked' ? (
-                    <Link href={item.readerHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
-                      {item.deepLearnPrimaryLabel}
-                    </Link>
-                  ) : (
-                    <DeepLearnGenerateButton
-                      moduleId={item.moduleId}
-                      resourceId={item.id}
-                      courseId={item.courseId ?? null}
-                      label={item.deepLearnPrimaryLabel}
-                    />
-                  )}
-                  {item.deepLearnStatus === 'ready' && item.deepLearnQuizReady && (
-                    <Link href={item.deepLearnQuizHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-                      Quiz this
-                    </Link>
-                  )}
-                  {showSourceAsPrimary && sourceHref ? (
-                    <a href={sourceHref} target="_blank" rel="noreferrer" className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-                      {item.sourceActionLabel}
-                    </a>
-                  ) : (
-                    !showSourceAsPrimary && sourceHref ? (
-                      <a href={sourceHref} target="_blank" rel="noreferrer" className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-                        {item.sourceActionLabel}
-                      </a>
-                    ) : null
-                  )}
-                  <Link href={item.readerHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-                    Open reader
-                  </Link>
-                  {item.extraActionHref && item.extraActionLabel && (
-                    <Link href={item.extraActionHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-                      {item.extraActionLabel}
-                    </Link>
-                  )}
                 </div>
-              </div>
-            )}
-          </article>
-        )
-      })}
+              )}
+            </article>
+          )
+        })}
+      </div>
     </div>
   )
 }

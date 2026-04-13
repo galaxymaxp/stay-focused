@@ -346,27 +346,52 @@ select:focus-visible {
 }
 
 .app-main {
+  position: relative;
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
-  padding: 0.55rem 1.15rem 1.5rem;
+  padding: 0.7rem 1.15rem 1.5rem;
+  overflow: visible;
+}
+
+.app-main::before {
+  content: '';
+  position: absolute;
+  top: -1.4rem;
+  left: 0;
+  right: 0;
+  height: min(14rem, 28vh);
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 12% 18%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 42%),
+    radial-gradient(circle at 88% 0%, color-mix(in srgb, #ffffff 38%, transparent), transparent 36%),
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-elevated) 22%, transparent) 0%, transparent 100%);
+  opacity: 0.9;
+  z-index: 0;
+}
+
+.app-main > * {
+  position: relative;
+  z-index: 1;
 }
 
 .app-topbar {
   position: sticky;
-  top: 0;
-  z-index: 20;
+  top: 0.55rem;
+  z-index: 24;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.9rem;
-  min-height: 3.35rem;
-  padding: 0.55rem 0 0.7rem;
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--app-bg) 90%, transparent) 0%, color-mix(in srgb, var(--app-bg) 82%, transparent) 72%, transparent 100%);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  min-height: 3.1rem;
+  padding: 0.72rem 0.9rem;
+  border-radius: 24px;
+  background: color-mix(in srgb, var(--surface-elevated) 92%, rgba(255, 255, 255, 0.28));
+  border: 1px solid color-mix(in srgb, var(--border-strong) 88%, transparent);
+  box-shadow: 0 14px 30px rgba(32, 23, 12, 0.08);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
 }
 
 .app-topbar-actions {
@@ -383,6 +408,15 @@ select:focus-visible {
   align-items: center;
   gap: 0.55rem;
   min-width: 0;
+}
+
+.app-topbar-breadcrumb {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.18rem 0.22rem;
+  border-radius: 999px;
 }
 
 .app-topbar-mobile-mark {
@@ -419,7 +453,7 @@ select:focus-visible {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 14rem;
+  max-width: 16rem;
 }
 
 .app-content {
@@ -807,6 +841,12 @@ select:focus-visible {
   padding: 0.45rem 0.5rem;
 }
 
+.ui-interactive-row[data-hover='flat'] {
+  margin: 0;
+  padding: 0;
+  border-color: transparent;
+}
+
 .ui-interactive-row:focus-visible,
 .ui-interactive-summary:focus-visible {
   outline: none;
@@ -820,6 +860,13 @@ details[open] > .ui-interactive-summary,
   background: color-mix(in srgb, var(--surface-selected) 84%, var(--surface-soft) 16%);
   border-color: color-mix(in srgb, var(--accent-border) 30%, var(--border-subtle) 70%);
   box-shadow: var(--shadow-low), var(--highlight-sheen);
+}
+
+.ui-interactive-row[data-hover='flat'][aria-expanded='true'],
+.ui-interactive-row[data-hover='flat'][aria-pressed='true'] {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
 }
 
 .ui-interactive-row:active,
@@ -868,6 +915,13 @@ details[open] > .ui-interactive-summary,
     box-shadow:
       0 1px 0 rgba(255, 248, 235, 0.05) inset,
       var(--shadow-low);
+  }
+
+  .ui-interactive-row[data-hover='flat']:hover {
+    transform: none;
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
   }
 
   .home-focus-target:hover .home-focus-title,
@@ -1144,6 +1198,75 @@ details[open] > .ui-interactive-summary,
 
 .workspace-list-scroll {
   padding-right: 0.1rem;
+}
+
+.contained-scroll-frame {
+  min-height: 0;
+  max-height: min(34rem, calc(100vh - 15rem));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  padding-right: 0.18rem;
+}
+
+.contained-scroll-frame::-webkit-scrollbar {
+  width: 0.55rem;
+}
+
+.contained-scroll-frame::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--border-strong) 72%, transparent);
+}
+
+.contained-scroll-frame[data-density='dense'] {
+  max-height: min(28rem, calc(100vh - 17rem));
+}
+
+.draft-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1.16fr) minmax(280px, 0.84fr);
+  gap: 0.9rem;
+  align-items: start;
+}
+
+.draft-main-column,
+.draft-source-column {
+  min-width: 0;
+  display: grid;
+  gap: 0.85rem;
+}
+
+.draft-source-card {
+  min-height: 0;
+  display: grid;
+  gap: 0.8rem;
+}
+
+.draft-source-frame {
+  width: 100%;
+  min-height: 23rem;
+  height: min(30rem, calc(100vh - 19rem));
+  border: 0;
+  border-radius: inherit;
+  background: color-mix(in srgb, var(--surface-base) 96%, transparent);
+}
+
+.draft-source-scroll {
+  min-height: 0;
+  max-height: min(30rem, calc(100vh - 19rem));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  padding-right: 0.1rem;
+}
+
+.draft-source-scroll::-webkit-scrollbar {
+  width: 0.55rem;
+}
+
+.draft-source-scroll::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--border-strong) 72%, transparent);
 }
 
 .workspace-row:focus-visible {
@@ -1876,6 +1999,43 @@ details[open] > .ui-interactive-summary,
   box-shadow: none;
 }
 
+.home-course-carousel {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(17.5rem, 20.5rem);
+  gap: 0.8rem;
+  overflow-x: auto;
+  padding-bottom: 0.25rem;
+  scroll-snap-type: x proximity;
+  scrollbar-width: thin;
+  overscroll-behavior-x: contain;
+}
+
+.home-course-carousel::-webkit-scrollbar {
+  height: 0.55rem;
+}
+
+.home-course-carousel::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--border-strong) 74%, transparent);
+}
+
+.home-course-card {
+  min-height: 100%;
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.92rem;
+  border-radius: var(--radius-panel);
+  scroll-snap-align: start;
+}
+
+.home-course-actions {
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
 .home-section-heading {
   display: flex;
   justify-content: space-between;
@@ -2368,12 +2528,12 @@ details[open] > .ui-interactive-summary,
   }
 
   .app-main {
-    padding: 0.55rem 0.9rem 6rem;
+    padding: 0.6rem 0.9rem 6rem;
   }
 
   .app-topbar {
-    top: 0;
-    padding-bottom: 0.65rem;
+    top: 0.4rem;
+    padding: 0.64rem 0.72rem;
   }
 
   .app-topbar-mobile-mark {
@@ -2424,6 +2584,23 @@ details[open] > .ui-interactive-summary,
     grid-template-columns: 1fr;
   }
 
+  .contained-scroll-frame,
+  .contained-scroll-frame[data-density='dense'],
+  .draft-source-scroll {
+    max-height: none;
+    overflow: visible;
+    padding-right: 0;
+  }
+
+  .draft-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .draft-source-frame {
+    min-height: 18rem;
+    height: 20rem;
+  }
+
   .home-focus-aside {
     padding-left: 0;
     border-left: 0;
@@ -2455,7 +2632,8 @@ details[open] > .ui-interactive-summary,
   }
 
   .app-topbar {
-    min-height: 3rem;
+    min-height: 2.9rem;
+    padding: 0.6rem 0.68rem;
   }
 
   .home-page-header {
@@ -2477,6 +2655,10 @@ details[open] > .ui-interactive-summary,
   .home-sheet-row {
     grid-template-columns: 1fr;
     gap: 0.5rem;
+  }
+
+  .home-course-carousel {
+    grid-auto-columns: minmax(15.5rem, 18.2rem);
   }
 
   .home-list-row,

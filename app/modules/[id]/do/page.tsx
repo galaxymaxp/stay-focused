@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { ModuleLensShell } from '@/components/ModuleLensShell'
 import { TaskStatusToggle } from '@/components/TaskStatusToggle'
-import { buildLearnExperience, extractCourseName, findRecommendedStepTargets, getModuleWorkspace, getResourceCanvasHref, matchTaskToResource } from '@/lib/module-workspace'
+import { buildLearnExperience, extractCourseName, findRecommendedStepTargets, getModuleWorkspace, getResourceCanvasHref, getResourceOriginalFileHref, matchTaskToResource } from '@/lib/module-workspace'
 import { buildModuleLearnHref, getSearchParamValue, getTaskElementId } from '@/lib/stay-focused-links'
 import { sortTasksByRecommendation } from '@/lib/task-ranking'
 import { TaskDraftButton } from '@/components/DoNowButton'
@@ -108,6 +108,14 @@ export default async function DoPage({ params, searchParams }: Props) {
                       panel: 'action-status',
                     })
                 const canvasHref = task.canvasUrl ?? (matchedResource ? getResourceCanvasHref(matchedResource) : null)
+                const sourceHref = matchedResource
+                  ? getResourceOriginalFileHref(matchedResource) ?? canvasHref
+                  : canvasHref
+                const sourceText = matchedResource?.extractedText
+                  ?? matchedResource?.extractedTextPreview
+                  ?? task.details
+                  ?? module.summary
+                  ?? null
                 const resourceSnippet = buildTaskDraftContextText(
                   matchedResource?.extractedText
                     ?? matchedResource?.extractedTextPreview
@@ -190,7 +198,12 @@ export default async function DoPage({ params, searchParams }: Props) {
                           moduleSummary: module.summary,
                           resourceSnippet,
                           canvasUrl: task.canvasUrl,
-                          learnHref,
+                            learnHref,
+                            sourceTitle: matchedResource?.title ?? task.title,
+                            sourceType: matchedResource?.type ?? 'Task',
+                            sourceHref,
+                            sourceText,
+                            sourceNote: matchedResource?.linkedContext ?? matchedResource?.whyItMatters ?? task.details,
                         }}
                       />
                       <Link href={learnHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
@@ -250,6 +263,14 @@ export default async function DoPage({ params, searchParams }: Props) {
                       taskDetails: task.details,
                       resource: matchedResource,
                     })
+                    const sourceHref = matchedResource
+                      ? getResourceOriginalFileHref(matchedResource) ?? getResourceCanvasHref(matchedResource) ?? task.canvasUrl ?? null
+                      : task.canvasUrl ?? null
+                    const sourceText = matchedResource?.extractedText
+                      ?? matchedResource?.extractedTextPreview
+                      ?? task.details
+                      ?? module.summary
+                      ?? null
 
                     return (
                       <div
@@ -291,6 +312,11 @@ export default async function DoPage({ params, searchParams }: Props) {
                               resourceSnippet,
                               canvasUrl: task.canvasUrl,
                               learnHref,
+                              sourceTitle: matchedResource?.title ?? task.title,
+                              sourceType: matchedResource?.type ?? 'Task',
+                              sourceHref,
+                              sourceText,
+                              sourceNote: matchedResource?.linkedContext ?? matchedResource?.whyItMatters ?? task.details,
                             }}
                           />
                         </div>

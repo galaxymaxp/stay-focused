@@ -38,6 +38,7 @@ export function TaskDraftButton({
   const [, setCacheVersion] = useState(0)
   const sessionKey = getTaskDraftSessionKey(context)
   const initialSnapshot = draftSessionCache.get(sessionKey) ?? null
+  const buttonLabel = initialSnapshot ? 'Open saved draft' : 'Generate draft help'
 
   const openFromDefault = useEffectEvent(() => {
     setOpen(true)
@@ -67,7 +68,7 @@ export function TaskDraftButton({
         className="ui-button ui-button-secondary ui-button-xs"
         style={{ textDecoration: 'none', ...buttonStyle }}
       >
-        Start with help
+        {buttonLabel}
       </button>
 
       {initialSnapshot && (

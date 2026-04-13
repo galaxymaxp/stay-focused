@@ -70,7 +70,7 @@ export interface CourseLearnStudyMaterialRow {
   deepLearnTone: 'accent' | 'warning' | 'muted'
   deepLearnSummary: string
   deepLearnDetail: string
-  deepLearnPrimaryLabel: 'Build Exam Prep Pack' | 'Open Exam Prep Pack' | 'Rebuild Exam Prep Pack' | 'Open reader fallback'
+  deepLearnPrimaryLabel: 'Build Exam Prep Pack' | 'Open Exam Prep Pack' | 'Rebuild Exam Prep Pack' | 'Open source fallback'
   deepLearnNoteHref: string
   deepLearnQuizHref: string
   deepLearnQuizReady: boolean

@@ -79,7 +79,7 @@ export function DeepLearnNoteView({
             </Link>
           )}
           <Link href={readerHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-            Open reader fallback
+            Source fallback
           </Link>
           {sourceHref && (
             <a href={sourceHref} target="_blank" rel="noreferrer" className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
@@ -101,7 +101,7 @@ export function DeepLearnNoteView({
 
       {note?.status === 'ready' ? (
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.14fr) minmax(280px, 0.86fr)', gap: '1rem', alignItems: 'start' }}>
-          <div style={{ display: 'grid', gap: '0.9rem' }}>
+          <div style={{ display: 'grid', gap: '0.9rem', minHeight: 0 }}>
             <section className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem' }}>
               <p className="ui-kicker">Pack overview</p>
               <p style={{ margin: '0.5rem 0 0', fontSize: '15px', lineHeight: 1.76, color: 'var(--text-secondary)' }}>
@@ -109,7 +109,9 @@ export function DeepLearnNoteView({
               </p>
             </section>
 
-            <DeepLearnReviewPackSurface note={note} />
+            <div className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.9rem', minHeight: 0 }}>
+              <DeepLearnReviewPackSurface note={note} />
+            </div>
           </div>
 
           <aside style={{ display: 'grid', gap: '0.9rem' }}>

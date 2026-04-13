@@ -2,8 +2,8 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { CourseLearnExplorer } from '@/components/CourseLearnExplorer'
 import { getClarityWorkspace } from '@/lib/clarity-workspace'
-import { buildCourseLearnOverview } from '@/lib/course-learn-overview'
-import { getSearchParamValue } from '@/lib/stay-focused-links'
+import { buildCourseLearnOverview, type CourseLearnModuleCard, type CourseLearnTaskRow } from '@/lib/course-learn-overview'
+import { buildCourseLearnHref, buildModuleDoHref, getSearchParamValue } from '@/lib/stay-focused-links'
 
 interface Props {
   params: Promise<{ id: string }>
@@ -27,6 +27,9 @@ export default async function CourseLearnPage({ params, searchParams }: Props) {
     (total, module) => total + module.studyMaterials.filter((material) => material.deepLearnQuizReady).length,
     0,
   )
+  const nextTask = getNextCourseTask(modules)
+  const packReadyModule = modules.find((module) => module.studyMaterials.some((material) => material.deepLearnStatus === 'ready')) ?? modules[0] ?? null
+  const actionModule = modules.find((module) => module.pendingTasks.length > 0) ?? packReadyModule
   const initialOpenModuleId = getSearchParamValue(resolvedSearchParams?.module)
   const initialOpenResourceId = getSearchParamValue(resolvedSearchParams?.resource)
   const initialTaskId = getSearchParamValue(resolvedSearchParams?.task)
@@ -70,39 +73,47 @@ export default async function CourseLearnPage({ params, searchParams }: Props) {
           </div>
         )}
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '0.85rem' }}>
-          <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.95rem 1rem' }}>
-            <p className="ui-kicker">Course view</p>
-            <p style={{ margin: '0.48rem 0 0', fontSize: '14px', lineHeight: 1.7, color: 'var(--text-secondary)' }}>
-              {courseOverview.note}
-            </p>
-          </div>
+        <div className="workspace-summary-grid">
+          <CommandCard
+            eyebrow="Start now"
+            title={nextTask ? nextTask.title : 'Open course workspace'}
+            body={nextTask
+              ? `${formatUrgency(nextTask.deadline)} in ${nextTask.moduleTitle}. Open the task first, then use draft/help from the task view if you need it.`
+              : courseOverview.note}
+            href={nextTask ? buildModuleDoHref(nextTask.moduleId, { taskTitle: nextTask.title }) : buildCourseLearnHref(course.id)}
+            actionLabel={nextTask ? 'Open task' : 'Open course'}
+          />
 
-          {resumeCue && (
-            <div className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.95rem 1rem' }}>
-              <p className="ui-kicker">{resumeCue.promptLabel}</p>
-              <p style={{ margin: '0.45rem 0 0', fontSize: '16px', lineHeight: 1.45, fontWeight: 650, color: 'var(--text-primary)' }}>
-                {resumeCue.title}
-              </p>
-              <p style={{ margin: '0.28rem 0 0', fontSize: '13px', lineHeight: 1.55, color: 'var(--text-muted)' }}>
-                {resumeCue.moduleTitle}
-              </p>
-              <p style={{ margin: '0.45rem 0 0', fontSize: '13px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
-                {resumeCue.note}
-              </p>
-              <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', marginTop: '0.75rem' }}>
-                {resumeCue.external ? (
-                  <a href={resumeCue.href} target="_blank" rel="noreferrer" className="ui-button ui-button-secondary ui-button-xs">
-                    {resumeCue.actionLabel}
-                  </a>
-                ) : (
-                  <Link href={resumeCue.href} className="ui-button ui-button-secondary ui-button-xs">
-                    {resumeCue.actionLabel}
-                  </Link>
-                )}
-              </div>
-            </div>
+          {resumeCue ? (
+            <CommandCard
+              eyebrow={resumeCue.promptLabel}
+              title={resumeCue.title}
+              body={resumeCue.note}
+              href={resumeCue.href}
+              actionLabel={resumeCue.actionLabel}
+              external={resumeCue.external}
+            />
+          ) : (
+            <CommandCard
+              eyebrow="Resume course"
+              title={actionModule?.title ?? course.name}
+              body={actionModule
+                ? `${actionModule.pendingTasks.length} active task${actionModule.pendingTasks.length === 1 ? '' : 's'} still point into this module.`
+                : 'No focused module is surfaced yet, so the course list stays collapsed until you choose one.'}
+              href={actionModule ? buildCourseLearnHref(course.id, { moduleId: actionModule.id }) : buildCourseLearnHref(course.id)}
+              actionLabel={actionModule ? 'Open module' : 'Open course'}
+            />
           )}
+
+          <CommandCard
+            eyebrow="Exam prep lane"
+            title={packReadyModule ? packReadyModule.title : 'No prep pack ready yet'}
+            body={packReadyModule
+              ? `${countReadyPacks(packReadyModule)} pack${countReadyPacks(packReadyModule) === 1 ? '' : 's'} ready in this module. Source support stays secondary once you open it.`
+              : 'This course does not have a ready pack yet, so the module list is the place to build one.'}
+            href={packReadyModule ? buildCourseLearnHref(course.id, { moduleId: packReadyModule.id }) : buildCourseLearnHref(course.id)}
+            actionLabel={packReadyModule ? 'Open module packs' : 'Open course'}
+          />
         </div>
       </section>
 
@@ -111,7 +122,7 @@ export default async function CourseLearnPage({ params, searchParams }: Props) {
           <p className="ui-kicker">Modules</p>
           <h2 className="ui-section-title" style={{ marginTop: '0.45rem' }}>Open only what you need, and keep Deep Learn first</h2>
           <p className="ui-section-copy" style={{ marginTop: '0.45rem', maxWidth: '46rem' }}>
-            Every module stays collapsed by default. Expand one to generate or reopen saved exam prep packs, see quiz readiness, and keep source support nearby without turning the old reader into the main destination.
+            Every module stays collapsed by default. Open one to generate or reopen saved exam prep packs, see quiz readiness, and keep source support nearby without turning the old reader into the main destination.
           </p>
         </div>
 
@@ -146,4 +157,81 @@ function StatTile({ label, value }: { label: string; value: string }) {
       </p>
     </div>
   )
+}
+
+function CommandCard({
+  eyebrow,
+  title,
+  body,
+  href,
+  actionLabel,
+  external = false,
+}: {
+  eyebrow: string
+  title: string
+  body: string
+  href: string
+  actionLabel: string
+  external?: boolean
+}) {
+  const content = (
+    <div className="workspace-quiet-panel" style={{ height: '100%' }}>
+      <p className="ui-kicker" style={{ margin: 0 }}>{eyebrow}</p>
+      <p className="workspace-quiet-panel-title">{title}</p>
+      <p className="workspace-quiet-panel-copy">{body}</p>
+      <span className="workspace-row-link">{actionLabel}</span>
+    </div>
+  )
+
+  if (external) {
+    return (
+      <a href={href} target="_blank" rel="noreferrer" className="workspace-panel-link ui-interactive-card" style={{ textDecoration: 'none' }}>
+        {content}
+      </a>
+    )
+  }
+
+  return (
+    <Link href={href} className="workspace-panel-link ui-interactive-card" style={{ textDecoration: 'none' }}>
+      {content}
+    </Link>
+  )
+}
+
+function getNextCourseTask(modules: CourseLearnModuleCard[]) {
+  return modules
+    .flatMap((module) => module.pendingTasks.map((task) => ({
+      ...task,
+      moduleId: module.id,
+      moduleTitle: module.title,
+    })))
+    .sort((left, right) => sortableDateValue(left.deadline) - sortableDateValue(right.deadline) || priorityWeight(right.priority) - priorityWeight(left.priority))
+    [0] ?? null
+}
+
+function countReadyPacks(module: CourseLearnModuleCard) {
+  return module.studyMaterials.filter((material) => material.deepLearnStatus === 'ready').length
+}
+
+function priorityWeight(priority: CourseLearnTaskRow['priority']) {
+  if (priority === 'high') return 3
+  if (priority === 'medium') return 2
+  return 1
+}
+
+function sortableDateValue(value: string | null) {
+  if (!value) return Number.POSITIVE_INFINITY
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return Number.POSITIVE_INFINITY
+  return date.getTime()
+}
+
+function formatUrgency(value: string | null) {
+  if (!value) return 'No due date'
+  const daysUntil = Math.ceil((new Date(value).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+  if (daysUntil < 0) return 'Overdue'
+  if (daysUntil === 0) return 'Due today'
+  if (daysUntil === 1) return 'Due tomorrow'
+  if (daysUntil <= 7) return `Due in ${daysUntil} days`
+  return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(new Date(value))
 }

@@ -47,7 +47,7 @@ test('unavailable pack loading is distinct from having no pack yet', () => {
 
   assert.equal(state.status, 'unavailable')
   assert.equal(state.statusLabel, 'Unavailable')
-  assert.equal(state.primaryLabel, 'Open reader fallback')
+  assert.equal(state.primaryLabel, 'Open source fallback')
   assert.match(state.summary, /deep_learn_notes table/i)
 })
 
@@ -68,7 +68,7 @@ test('unreadable resources suppress the generate affordance and show the source 
 
   assert.equal(state.status, 'blocked')
   assert.equal(state.statusLabel, 'Source issue')
-  assert.equal(state.primaryLabel, 'Open reader fallback')
+  assert.equal(state.primaryLabel, 'Open source fallback')
   assert.match(state.detail, /resolvable module-item target/i)
 })
 

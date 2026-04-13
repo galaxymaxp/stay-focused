@@ -255,7 +255,7 @@ export default async function LearnPage({ params, searchParams }: Props) {
                     )}
                     <ActionButton href={overview.resumeTarget.href} label={overview.resumeTarget.actionLabel} external={overview.resumeTarget.external} tone="ghost" />
                     <Link href={`/modules/${module.id}/learn#source-support`} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-                      View extracted source
+                      Source support
                     </Link>
                     <Link href={buildModuleInspectHref(module.id)} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
                       Inspect resources
@@ -332,6 +332,7 @@ export default async function LearnPage({ params, searchParams }: Props) {
               })}
               initialOpenResourceId={targetResourceId}
               emptyMessage="No mapped study resources are available for exam prep in this module yet."
+              scrollable
             />
           </section>
 
@@ -353,53 +354,55 @@ export default async function LearnPage({ params, searchParams }: Props) {
                   No unfinished module work is demanding attention right now.
                 </div>
               ) : (
-                <div style={{ display: 'grid', gap: '0.7rem' }}>
-                  {pendingTasks.map((task) => (
-                    <article
-                      key={task.id}
-                      id={getTaskElementId(task.id)}
-                      className="glass-panel glass-soft"
-                      style={{
-                        ['--glass-panel-border' as string]: targetTaskId === task.id
-                          ? 'color-mix(in srgb, var(--accent-border) 38%, var(--border-subtle) 62%)'
-                          : 'var(--glass-border)',
-                        borderRadius: 'var(--radius-panel)',
-                        padding: '0.82rem 0.88rem',
-                        display: 'grid',
-                        gap: '0.6rem',
-                        background: targetTaskId === task.id
-                          ? 'color-mix(in srgb, var(--surface-selected) 78%, var(--surface-elevated) 22%)'
-                          : undefined,
-                      }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.65rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-                        <div style={{ minWidth: 0, flex: '1 1 220px' }}>
-                          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.3rem' }}>
-                            <PriorityBadge priority={task.priority} />
-                            {task.deadline && <StateBadge label={formatDeadlineLabel(task.deadline)} tone={deadlineTone(task.deadline)} />}
+                <div className="contained-scroll-frame">
+                  <div style={{ display: 'grid', gap: '0.7rem' }}>
+                    {pendingTasks.map((task) => (
+                      <article
+                        key={task.id}
+                        id={getTaskElementId(task.id)}
+                        className="glass-panel glass-soft"
+                        style={{
+                          ['--glass-panel-border' as string]: targetTaskId === task.id
+                            ? 'color-mix(in srgb, var(--accent-border) 38%, var(--border-subtle) 62%)'
+                            : 'var(--glass-border)',
+                          borderRadius: 'var(--radius-panel)',
+                          padding: '0.82rem 0.88rem',
+                          display: 'grid',
+                          gap: '0.6rem',
+                          background: targetTaskId === task.id
+                            ? 'color-mix(in srgb, var(--surface-selected) 78%, var(--surface-elevated) 22%)'
+                            : undefined,
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.65rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                          <div style={{ minWidth: 0, flex: '1 1 220px' }}>
+                            <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.3rem' }}>
+                              <PriorityBadge priority={task.priority} />
+                              {task.deadline && <StateBadge label={formatDeadlineLabel(task.deadline)} tone={deadlineTone(task.deadline)} />}
+                            </div>
+                            <p style={{ margin: 0, fontSize: '15px', lineHeight: 1.5, color: 'var(--text-primary)', fontWeight: 650, overflowWrap: 'anywhere' }}>{task.title}</p>
+                            {task.details && (
+                              <p style={{ margin: '0.35rem 0 0', fontSize: '13px', lineHeight: 1.65, color: 'var(--text-secondary)', overflowWrap: 'anywhere' }}>
+                                {task.details}
+                              </p>
+                            )}
                           </div>
-                          <p style={{ margin: 0, fontSize: '15px', lineHeight: 1.5, color: 'var(--text-primary)', fontWeight: 650, overflowWrap: 'anywhere' }}>{task.title}</p>
-                          {task.details && (
-                            <p style={{ margin: '0.35rem 0 0', fontSize: '13px', lineHeight: 1.65, color: 'var(--text-secondary)', overflowWrap: 'anywhere' }}>
-                              {task.details}
-                            </p>
+                          <TaskStatusToggle status={task.status} moduleId={module.id} title={task.title} legacyTaskId={task.id} align="end" />
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+                          <Link href={buildModuleDoHref(module.id, { taskId: task.id })} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
+                            Open task
+                          </Link>
+                          {task.canvasUrl && (
+                            <a href={task.canvasUrl} target="_blank" rel="noreferrer" className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+                              Open in Canvas
+                            </a>
                           )}
                         </div>
-                        <TaskStatusToggle status={task.status} moduleId={module.id} title={task.title} legacyTaskId={task.id} align="end" />
-                      </div>
-
-                      <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-                        <Link href={buildModuleDoHref(module.id, { taskId: task.id })} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-                          Open in Do
-                        </Link>
-                        {task.canvasUrl && (
-                          <a href={task.canvasUrl} target="_blank" rel="noreferrer" className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
-                            Open in Canvas
-                          </a>
-                        )}
-                      </div>
-                    </article>
-                  ))}
+                      </article>
+                    ))}
+                  </div>
                 </div>
               )}
 
@@ -408,33 +411,35 @@ export default async function LearnPage({ params, searchParams }: Props) {
                   <summary className="ui-interactive-summary" style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
                     Already done
                   </summary>
-                  <div style={{ display: 'grid', gap: '0.6rem', marginTop: '0.8rem' }}>
-                    {completedTasks.map((task) => (
-                      <article
-                        key={task.id}
-                        id={getTaskElementId(task.id)}
-                        style={{
-                          display: 'grid',
-                          gap: '0.5rem',
-                          padding: '0.8rem 0.85rem',
-                          borderRadius: 'var(--radius-tight)',
-                          border: targetTaskId === task.id
-                            ? '1px solid color-mix(in srgb, var(--accent-border) 38%, var(--border-subtle) 62%)'
-                            : '1px solid color-mix(in srgb, var(--border-subtle) 84%, transparent)',
-                        }}
-                      >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.65rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-                          <div style={{ minWidth: 0, flex: '1 1 220px' }}>
-                            <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.3rem' }}>
-                              <CompletionBadge origin={task.completionOrigin ?? null} />
-                              {task.deadline && <StateBadge label={formatDate(task.deadline)} tone="muted" />}
+                  <div className="contained-scroll-frame" style={{ marginTop: '0.8rem' }}>
+                    <div style={{ display: 'grid', gap: '0.6rem' }}>
+                      {completedTasks.map((task) => (
+                        <article
+                          key={task.id}
+                          id={getTaskElementId(task.id)}
+                          style={{
+                            display: 'grid',
+                            gap: '0.5rem',
+                            padding: '0.8rem 0.85rem',
+                            borderRadius: 'var(--radius-tight)',
+                            border: targetTaskId === task.id
+                              ? '1px solid color-mix(in srgb, var(--accent-border) 38%, var(--border-subtle) 62%)'
+                              : '1px solid color-mix(in srgb, var(--border-subtle) 84%, transparent)',
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.65rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                            <div style={{ minWidth: 0, flex: '1 1 220px' }}>
+                              <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.3rem' }}>
+                                <CompletionBadge origin={task.completionOrigin ?? null} />
+                                {task.deadline && <StateBadge label={formatDate(task.deadline)} tone="muted" />}
+                              </div>
+                              <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.5, color: 'var(--text-muted)', textDecoration: 'line-through', overflowWrap: 'anywhere' }}>{task.title}</p>
                             </div>
-                            <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.5, color: 'var(--text-muted)', textDecoration: 'line-through', overflowWrap: 'anywhere' }}>{task.title}</p>
+                            <TaskStatusToggle status={task.status} moduleId={module.id} title={task.title} legacyTaskId={task.id} align="end" />
                           </div>
-                          <TaskStatusToggle status={task.status} moduleId={module.id} title={task.title} legacyTaskId={task.id} align="end" />
-                        </div>
-                      </article>
-                    ))}
+                        </article>
+                      ))}
+                    </div>
                   </div>
                 </details>
               )}
@@ -454,7 +459,7 @@ export default async function LearnPage({ params, searchParams }: Props) {
 
               {overview.studyMaterials.length === 0 ? (
                 <div className="ui-empty" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', fontSize: '14px', lineHeight: 1.68 }}>
-                  No study readers are mapped into this module yet, so Learn is leaning on tasks and any grounded terms it can find.
+                  No study sources are mapped into this module yet, so Learn is leaning on tasks and any grounded terms it can find.
                 </div>
               ) : (
                 <>
@@ -472,7 +477,7 @@ export default async function LearnPage({ params, searchParams }: Props) {
 
               <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
                 <Link href={`/modules/${module.id}/learn#source-support`} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-                  View extracted source
+                  Source support
                 </Link>
                 <Link href={buildModuleInspectHref(module.id)} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
                   Inspect resources
@@ -495,13 +500,13 @@ export default async function LearnPage({ params, searchParams }: Props) {
         <div id="source-support">
           <details open={shouldOpenSourceSupport} className="motion-card motion-delay-3 section-shell" style={{ padding: '1.1rem 1.15rem' }}>
             <summary className="ui-interactive-summary" style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
-              View extracted source
-            </summary>
+                  Source support
+                </summary>
             <div style={{ display: 'grid', gap: '0.85rem', marginTop: '0.8rem' }}>
               <div>
                 <p className="ui-kicker">Source support</p>
                 <h3 style={{ margin: '0.42rem 0 0', fontSize: '1.02rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>
-                  Extracted readers and support context stay inside Learn as secondary validation
+                  Extracted source views and support context stay inside Learn as secondary validation
                 </h3>
                 <p style={{ margin: '0.42rem 0 0', fontSize: '14px', lineHeight: 1.68, color: 'var(--text-secondary)' }}>
                   {overview.coverageNote}
@@ -521,7 +526,7 @@ export default async function LearnPage({ params, searchParams }: Props) {
                 </div>
               ) : (
                 <div className="ui-empty" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', fontSize: '14px', lineHeight: 1.68 }}>
-                  No extracted study readers are mapped into this module yet.
+                  No extracted study sources are mapped into this module yet.
                 </div>
               )}
 
@@ -602,7 +607,7 @@ function SourceSupportRow({
           </a>
         ) : (
           <Link href={getLearnResourceHref(moduleId, material.resource.id)} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
-            Open reader
+            Source details
           </Link>
         )}
         {material.primaryAction !== 'source' && sourceHref && (
@@ -612,7 +617,7 @@ function SourceSupportRow({
         )}
         {material.primaryAction === 'source' && (
           <Link href={getLearnResourceHref(moduleId, material.resource.id)} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-            Open reader
+            Source details
           </Link>
         )}
         <Link href={buildModuleInspectHref(moduleId, { resourceId: material.resource.id })} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>

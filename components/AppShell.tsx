@@ -130,18 +130,20 @@ export function AppShell({
       </aside>
 
       <div className="app-main">
-        <header className="app-topbar">
+        <header className="app-topbar glass-panel glass-soft">
           <div className="app-topbar-leading">
             <span className="app-topbar-mobile-mark" aria-hidden="true">
               <StayFocusedIcon size={20} color="var(--accent)" />
             </span>
-            <strong className="app-topbar-current">{activeSection.label}</strong>
-            {subLabel ? (
-              <>
-                <span className="app-topbar-sep" aria-hidden="true">›</span>
-                <span className="app-topbar-sub">{subLabel}</span>
-              </>
-            ) : null}
+            <div className="app-topbar-breadcrumb">
+              <strong className="app-topbar-current">{activeSection.label}</strong>
+              {subLabel ? (
+                <>
+                  <span className="app-topbar-sep" aria-hidden="true">/</span>
+                  <span className="app-topbar-sub">{subLabel}</span>
+                </>
+              ) : null}
+            </div>
           </div>
 
           <div className="app-topbar-actions">

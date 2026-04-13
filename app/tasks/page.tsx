@@ -3,8 +3,6 @@ import { SyncFirstEmptyState } from '@/components/SyncFirstEmptyState'
 import { getClarityWorkspace, getTaskUrgencyLabel } from '@/lib/clarity-workspace'
 import { buildModuleDoHref, getSearchParamValue } from '@/lib/stay-focused-links'
 import { TaskStatusToggle } from '@/components/TaskStatusToggle'
-import { TaskDraftButton } from '@/components/DoNowButton'
-import { buildManualCopyBundle } from '@/lib/manual-copy-bundle'
 import type { TaskItem } from '@/lib/types'
 
 const GROUPS: Array<{ key: string; eyebrow: string; title: string; description: string; filter: (task: TaskItem) => boolean }> = [
@@ -48,7 +46,6 @@ export default async function TasksPage({ searchParams }: Props) {
 
   const targetTaskId = getSearchParamValue(resolvedSearchParams?.task)
   const targetTaskTitle = getSearchParamValue(resolvedSearchParams?.taskTitle)
-  const draftAutoOpen = getSearchParamValue(resolvedSearchParams?.donow) === '1'
   const highlightedTaskId = (() => {
     if (targetTaskId) {
       return workspace.taskItems.find((task) => task.id === targetTaskId)?.id ?? null
@@ -102,7 +99,6 @@ export default async function TasksPage({ searchParams }: Props) {
                       key={task.id}
                       task={task}
                       highlighted={highlightedTaskId === task.id}
-                      autoOpenDraft={draftAutoOpen && highlightedTaskId === task.id}
                     />
                   ))}
                 </div>
@@ -187,21 +183,11 @@ export default async function TasksPage({ searchParams }: Props) {
 function TaskCard({
   task,
   highlighted = false,
-  autoOpenDraft = false,
 }: {
   task: TaskItem
   highlighted?: boolean
-  autoOpenDraft?: boolean
 }) {
   const taskHref = buildModuleDoHref(task.moduleId, { taskTitle: task.title })
-  const manualCopy = buildManualCopyBundle({
-    taskTitle: task.title,
-    courseName: task.courseName,
-    moduleName: task.moduleTitle,
-    dueDate: task.deadline,
-    taskType: task.taskType,
-    taskDetails: task.details,
-  })
 
   return (
     <article id={task.id} className="ui-card ui-interactive-card task-card-shell" style={{
@@ -244,22 +230,11 @@ function TaskCard({
       </div>
 
       <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-        <TaskDraftButton
-          defaultOpen={autoOpenDraft}
-          copyBundle={manualCopy}
-          context={{
-            taskTitle: task.title,
-            taskDetails: task.details,
-            deadline: task.deadline,
-            priority: task.priority,
-            courseName: task.courseName,
-            moduleTitle: task.moduleTitle,
-            canvasUrl: task.canvasUrl,
-          }}
-          buttonStyle={actionButtonStyle}
-        />
+        <Link href={taskHref} className="ui-button ui-button-secondary ui-button-xs" style={actionButtonStyle}>
+          Open task
+        </Link>
         {task.canvasUrl && (
-          <a href={task.canvasUrl} target="_blank" rel="noreferrer" className="ui-button ui-button-secondary ui-button-xs" style={actionButtonStyle}>
+          <a href={task.canvasUrl} target="_blank" rel="noreferrer" className="ui-button ui-button-ghost ui-button-xs" style={actionButtonStyle}>
             Open in Canvas
           </a>
         )}

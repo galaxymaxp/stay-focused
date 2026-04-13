@@ -249,7 +249,7 @@ export default async function ResourceDetailPage({ params }: Props) {
             {unit && unit.modes.length > 0 ? (
               <>
                 <div className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem' }}>
-                  <p className="ui-kicker">Fallback reader preview</p>
+                  <p className="ui-kicker">Fallback source preview</p>
                   <p style={{ margin: '0.55rem 0 0', fontSize: '15px', lineHeight: 1.72, color: 'var(--text-secondary)' }}>{unit.preview}</p>
                 </div>
                 <StudyModeSwitcher modes={unit.modes} summaryLabel="Learning modes are collapsed by default here too" />
@@ -273,7 +273,7 @@ export default async function ResourceDetailPage({ params }: Props) {
                   )}
                   <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
                     <strong style={{ color: 'var(--text-primary)' }}>Best next step:</strong> {showSourceAsPrimary
-                      ? `${uiState.sourceActionLabel}. The reader view here is only a fallback for this item right now.`
+                      ? `${uiState.sourceActionLabel}. The source-detail view here is only a fallback for this item right now.`
                       : uiState.statusKey === 'source_first'
                         ? 'Stay in this detail view for the limited context available here. The original source is not linked from this page right now.'
                         : 'Use this detail view to review the context that is available here.'}
@@ -308,11 +308,11 @@ export default async function ResourceDetailPage({ params }: Props) {
                 <MetaLine label="Capability note" value={capability.reason} />
                 <MetaLine label="Quality" value={quality.qualityLabel} />
                 <MetaLine label="Quality note" value={quality.reason} />
-                <MetaLine label="Reader status" value={uiState.statusLabel} />
+                <MetaLine label="Source status" value={uiState.statusLabel} />
                 <MetaLine label="Source URL category" value={resource.sourceUrlCategory ?? 'Not recorded'} />
                 <MetaLine label="Resolved URL category" value={resource.resolvedUrlCategory ?? 'Not recorded'} />
                 <MetaLine label="Resolved URL" value={resource.resolvedUrl ?? 'Not recorded'} />
-                <MetaLine label="Text in reader" value={uiState.textAvailabilityLabel} />
+                <MetaLine label="Text in source view" value={uiState.textAvailabilityLabel} />
                 <MetaLine label="Full text stored" value={resource.fullTextAvailable ? 'Yes' : 'No'} />
                 <MetaLine label="Character count" value={typeof resource.extractedCharCount === 'number' && resource.extractedCharCount > 0 ? `${resource.extractedCharCount}` : 'Not available'} />
                 <MetaLine label="Stored text length" value={typeof resource.storedTextLength === 'number' ? `${resource.storedTextLength}` : 'Not recorded'} />
