@@ -5,6 +5,7 @@ import { DeepLearnNoteView } from '@/components/DeepLearnNoteView'
 import { ModuleLensShell } from '@/components/ModuleLensShell'
 import { StudyFileReader } from '@/components/StudyFileReader'
 import { StudyModeSwitcher } from '@/components/StudyModeSwitcher'
+import { classifyDeepLearnResourceReadiness } from '@/lib/deep-learn-readiness'
 import { getDeepLearnNoteForResource } from '@/lib/deep-learn-store'
 import { getLearnResourceUiState } from '@/lib/learn-resource-ui'
 import { buildManualCopyBundle } from '@/lib/manual-copy-bundle'
@@ -76,9 +77,16 @@ export default async function ResourceDetailPage({ params }: Props) {
         message: null,
         userId: null,
       }
-  const deepLearnAvailabilityMessage = deepLearnResourceId
-    ? deepLearnNoteResult.message
-    : 'Deep Learn needs a synced resource record for this item before it can save notes or generate a quiz-ready note.'
+  const deepLearnReadiness = classifyDeepLearnResourceReadiness({
+    resource,
+    storedResource: resourceSelection?.storedResource ?? null,
+    canonicalResourceId: deepLearnResourceId,
+  })
+  const deepLearnAvailabilityMessage = deepLearnReadiness.state === 'blocked'
+    ? deepLearnReadiness.detail
+    : deepLearnResourceId
+      ? deepLearnNoteResult.message
+      : 'Deep Learn needs a synced resource record for this item before it can save notes or generate a quiz-ready note.'
 
   if (resource.kind === 'study_file') {
     return (
@@ -99,6 +107,7 @@ export default async function ResourceDetailPage({ params }: Props) {
             note={deepLearnNoteResult.note}
             noteAvailability={deepLearnNoteResult.availability}
             noteAvailabilityMessage={deepLearnAvailabilityMessage}
+            readiness={deepLearnReadiness}
             readerHref={`/modules/${module.id}/learn/resources/${encodeURIComponent(resource.id)}`}
             sourceHref={sourceHref}
           />
@@ -134,6 +143,7 @@ export default async function ResourceDetailPage({ params }: Props) {
           note={deepLearnNoteResult.note}
           noteAvailability={deepLearnNoteResult.availability}
           noteAvailabilityMessage={deepLearnAvailabilityMessage}
+          readiness={deepLearnReadiness}
           readerHref={`/modules/${module.id}/learn/resources/${encodeURIComponent(resource.id)}`}
           sourceHref={sourceHref}
         />

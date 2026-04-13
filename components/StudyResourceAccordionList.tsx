@@ -32,8 +32,8 @@ export interface StudyResourceAccordionItem {
   extraActionLabel?: string | null
   moduleId: string
   courseId?: string | null
-  deepLearnStatus: 'not_started' | 'pending' | 'ready' | 'failed' | 'unavailable'
-  deepLearnStatusLabel: 'No note yet' | 'Generating' | 'Ready' | 'Failed' | 'Unavailable'
+  deepLearnStatus: 'not_started' | 'pending' | 'ready' | 'failed' | 'blocked' | 'unavailable'
+  deepLearnStatusLabel: 'No note yet' | 'Generating' | 'Ready' | 'Failed' | 'Blocked' | 'Unavailable'
   deepLearnTone: 'accent' | 'warning' | 'muted'
   deepLearnSummary: string
   deepLearnDetail: string
@@ -209,7 +209,7 @@ export function StudyResourceAccordionList({
                     <Link href={item.deepLearnNoteHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
                       {item.deepLearnPrimaryLabel}
                     </Link>
-                  ) : item.deepLearnStatus === 'unavailable' ? (
+                  ) : item.deepLearnStatus === 'unavailable' || item.deepLearnStatus === 'blocked' ? (
                     <Link href={item.readerHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
                       {item.deepLearnPrimaryLabel}
                     </Link>
