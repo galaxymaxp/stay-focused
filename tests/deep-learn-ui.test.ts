@@ -50,6 +50,24 @@ test('unavailable note loading is distinct from having no note yet', () => {
   assert.match(state.summary, /deep_learn_notes table/i)
 })
 
+test('blocked resources suppress the generate affordance and show the blocked reason', () => {
+  const state = getDeepLearnResourceUiState('module-1', 'resource-1', null, {
+    readiness: {
+      state: 'blocked',
+      canonicalResourceId: null,
+      blockedReason: 'no_source_path',
+      canGenerate: false,
+      summary: 'Deep Learn is blocked because no fetchable source path is stored for this item.',
+      detail: 'The synced resource record does not currently include a Canvas API URL, file URL, or resolvable target.',
+    },
+  })
+
+  assert.equal(state.status, 'blocked')
+  assert.equal(state.statusLabel, 'Blocked')
+  assert.equal(state.primaryLabel, 'View reader fallback')
+  assert.match(state.detail, /resolvable target/i)
+})
+
 function createNote(overrides: Partial<DeepLearnNote> = {}): DeepLearnNote {
   return {
     id: 'note-1',
