@@ -45,7 +45,7 @@ export default async function CourseLearnPage({ params, searchParams }: Props) {
             </div>
             <h1 className="ui-page-title" style={{ marginTop: '0.5rem' }}>{course.name}</h1>
             <p className="ui-page-copy" style={{ maxWidth: '48rem' }}>
-              A tighter Deep Learn workspace. Scan compact module cards, generate or reopen saved notes inline, and drop to reader/source fallback only when you need direct evidence.
+              A tighter Deep Learn workspace. Scan compact module cards, generate or reopen saved exam prep packs inline, and drop to reader/source fallback only when you need direct evidence.
             </p>
           </div>
           <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
@@ -55,17 +55,17 @@ export default async function CourseLearnPage({ params, searchParams }: Props) {
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.8rem' }}>
           <StatTile label="Modules in Learn" value={String(courseOverview.visibleModuleCount)} />
-          <StatTile label="Deep Learn notes" value={String(deepLearnReadyCount)} />
-          <StatTile label="Quiz-ready notes" value={String(quizReadyDeepLearnCount)} />
+          <StatTile label="Prep packs" value={String(deepLearnReadyCount)} />
+          <StatTile label="Quiz-ready packs" value={String(quizReadyDeepLearnCount)} />
           <StatTile label="Action items" value={String(courseOverview.actionCount)} />
           <StatTile label="Hidden modules" value={String(courseOverview.hiddenModuleCount)} />
         </div>
 
         {courseOverview.deepLearnUnavailableModuleCount > 0 && (
           <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.95rem 1rem', border: '1px solid color-mix(in srgb, var(--amber) 24%, var(--border-subtle) 76%)' }}>
-            <p className="ui-kicker">Deep Learn note status unavailable</p>
+            <p className="ui-kicker">Exam prep pack status unavailable</p>
             <p style={{ margin: '0.45rem 0 0', fontSize: '14px', lineHeight: 1.68, color: 'var(--text-secondary)' }}>
-              {courseOverview.deepLearnUnavailableModuleCount} module{courseOverview.deepLearnUnavailableModuleCount === 1 ? '' : 's'} could not load saved Deep Learn notes right now. Course Learn still renders from the module resources and fallback reader/source surfaces.
+              {courseOverview.deepLearnUnavailableModuleCount} module{courseOverview.deepLearnUnavailableModuleCount === 1 ? '' : 's'} could not load saved exam prep packs right now. Course Learn still renders from the module resources and fallback reader/source surfaces.
             </p>
           </div>
         )}
@@ -111,7 +111,7 @@ export default async function CourseLearnPage({ params, searchParams }: Props) {
           <p className="ui-kicker">Modules</p>
           <h2 className="ui-section-title" style={{ marginTop: '0.45rem' }}>Open only what you need, and keep Deep Learn first</h2>
           <p className="ui-section-copy" style={{ marginTop: '0.45rem', maxWidth: '46rem' }}>
-            Every module stays collapsed by default. Expand one to generate or reopen saved Deep Learn notes, see quiz readiness, and keep source support nearby without turning the old reader into the main destination.
+            Every module stays collapsed by default. Expand one to generate or reopen saved exam prep packs, see quiz readiness, and keep source support nearby without turning the old reader into the main destination.
           </p>
         </div>
 

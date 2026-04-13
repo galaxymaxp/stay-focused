@@ -4,7 +4,7 @@ import { classifyDeepLearnResourceReadiness } from '../lib/deep-learn-readiness'
 import type { ModuleResource } from '../lib/types'
 import type { ModuleSourceResource } from '../lib/module-workspace'
 
-test('classifyDeepLearnResourceReadiness marks grounded stored resources as ready', () => {
+test('classifyDeepLearnResourceReadiness marks grounded stored resources as text ready', () => {
   const resource = createLearnResource({
     extractedText: buildLongText('The doctrine of consideration requires a bargained-for exchange.'),
     extractedTextPreview: buildLongText('The doctrine of consideration requires a bargained-for exchange.'),
@@ -22,16 +22,17 @@ test('classifyDeepLearnResourceReadiness marks grounded stored resources as read
     canonicalResourceId: storedResource.id,
   })
 
-  assert.equal(readiness.state, 'ready')
+  assert.equal(readiness.state, 'text_ready')
   assert.equal(readiness.canGenerate, true)
+  assert.equal(readiness.shouldAttemptSourceFetch, false)
 })
 
-test('classifyDeepLearnResourceReadiness marks weak but recoverable resources as source-fetch eligible', () => {
+test('classifyDeepLearnResourceReadiness marks weak but recoverable resources as partial text', () => {
   const resource = createLearnResource({
     extractedText: null,
     extractedTextPreview: 'Short preview only.',
     extractionStatus: 'metadata_only',
-    qualityReason: 'The stored extract is still too thin for a trustworthy note.',
+    qualityReason: 'The stored extract is still too thin for a trustworthy exam prep pack.',
   })
   const storedResource = createStoredResource({
     extractionStatus: 'metadata_only',
@@ -46,19 +47,64 @@ test('classifyDeepLearnResourceReadiness marks weak but recoverable resources as
     canonicalResourceId: storedResource.id,
   })
 
-  assert.equal(readiness.state, 'via_source_fetch')
+  assert.equal(readiness.state, 'partial_text')
   assert.equal(readiness.canGenerate, true)
-  assert.match(readiness.detail, /original source/i)
+  assert.equal(readiness.shouldAttemptSourceFetch, true)
+  assert.match(readiness.detail, /original source|partial text/i)
 })
 
-test('classifyDeepLearnResourceReadiness blocks resources with no viable stored backing row', () => {
+test('classifyDeepLearnResourceReadiness uses scan fallback for scan-capable PDFs without dependable text', () => {
+  const resource = createLearnResource({
+    type: 'File',
+    contentType: 'application/pdf',
+    extension: 'pdf',
+    normalizedSourceType: 'pdf',
+    extractedText: null,
+    extractedTextPreview: null,
+    extractionStatus: 'metadata_only',
+    previewState: 'no_text_available',
+    fullTextAvailable: false,
+    storedTextLength: 0,
+    storedPreviewLength: 0,
+    storedWordCount: 0,
+  })
+  const storedResource = createStoredResource({
+    resourceType: 'File',
+    contentType: 'application/pdf',
+    extension: 'pdf',
+    sourceUrl: 'https://canvas.example/files/consideration.pdf',
+    extractionStatus: 'metadata_only',
+    extractedText: null,
+    extractedTextPreview: null,
+    metadata: {
+      normalizedSourceType: 'pdf',
+      previewState: 'no_text_available',
+      fullTextAvailable: false,
+      storedTextLength: 0,
+      storedPreviewLength: 0,
+      storedWordCount: 0,
+    },
+  })
+
+  const readiness = classifyDeepLearnResourceReadiness({
+    resource,
+    storedResource,
+    canonicalResourceId: storedResource.id,
+  })
+
+  assert.equal(readiness.state, 'scan_fallback')
+  assert.equal(readiness.canGenerate, true)
+  assert.match(readiness.summary, /scan fallback/i)
+})
+
+test('classifyDeepLearnResourceReadiness marks resources with no viable stored backing row as unreadable', () => {
   const readiness = classifyDeepLearnResourceReadiness({
     resource: createLearnResource(),
     storedResource: null,
     canonicalResourceId: null,
   })
 
-  assert.equal(readiness.state, 'blocked')
+  assert.equal(readiness.state, 'unreadable')
   assert.equal(readiness.blockedReason, 'no_stored_resource')
   assert.equal(readiness.canGenerate, false)
 })

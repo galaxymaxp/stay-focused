@@ -13,8 +13,8 @@ export type ModuleTermStatus = 'approved' | 'rejected'
 export type ModuleTermOrigin = 'ai' | 'user'
 export type DeepLearnNoteStatus = 'pending' | 'ready' | 'failed'
 export type DeepLearnTermImportance = 'high' | 'medium' | 'low'
-export type DeepLearnGroundingStrategy = 'stored_extract' | 'source_refetch' | 'context_only' | 'insufficient'
-export type DeepLearnReadiness = 'ready' | 'via_source_fetch' | 'blocked'
+export type DeepLearnGroundingStrategy = 'stored_extract' | 'source_refetch' | 'scan_fallback' | 'context_only' | 'insufficient'
+export type DeepLearnReadiness = 'text_ready' | 'partial_text' | 'scan_fallback' | 'unreadable'
 export type DeepLearnBlockedReason =
   | 'no_stored_resource'
   | 'no_source_path'
@@ -116,17 +116,68 @@ export interface DeepLearnNoteSection {
   body: string
 }
 
-export interface DeepLearnCoreTerm {
-  term: string
-  explanation: string
-  importance: DeepLearnTermImportance
-  preserveExactTerm: boolean
-}
+export type DeepLearnAnswerKind =
+  | 'date_event'
+  | 'law_effect'
+  | 'term_definition'
+  | 'place_meaning'
+  | 'province_capital'
+  | 'person_role'
+  | 'count'
+  | 'timeline'
+  | 'compare'
+  | 'fact'
 
 export interface DeepLearnDistinction {
   conceptA: string
   conceptB: string
   difference: string
+  confusionNote: string | null
+}
+
+export interface DeepLearnWordingSet {
+  exact: string | null
+  examSafe: string
+  simplified: string | null
+}
+
+export interface DeepLearnAnswerBankItem {
+  cue: string
+  kind: DeepLearnAnswerKind
+  answer: DeepLearnWordingSet
+  compactAnswer: DeepLearnWordingSet
+  importance: DeepLearnTermImportance
+  sortKey: string | null
+  distractors: string[]
+}
+
+export interface DeepLearnIdentificationItem {
+  prompt: string
+  kind: DeepLearnAnswerKind
+  answer: DeepLearnWordingSet
+  importance: DeepLearnTermImportance
+  distractors: string[]
+}
+
+export interface DeepLearnLikelyQuizTarget {
+  target: string
+  reason: string
+  importance: DeepLearnTermImportance
+}
+
+export interface DeepLearnTimelineItem {
+  label: string
+  detail: string
+  sortKey: string | null
+  importance: DeepLearnTermImportance
+}
+
+export interface DeepLearnMultipleChoiceItem {
+  question: string
+  choices: string[]
+  correctAnswer: string
+  explanation: string | null
+  importance: DeepLearnTermImportance
 }
 
 export interface DeepLearnSourceGrounding {
@@ -150,10 +201,12 @@ export interface DeepLearnNote {
   overview: string
   sections: DeepLearnNoteSection[]
   noteBody: string
-  coreTerms: DeepLearnCoreTerm[]
-  keyFacts: string[]
+  answerBank: DeepLearnAnswerBankItem[]
+  identificationItems: DeepLearnIdentificationItem[]
+  mcqDrill: DeepLearnMultipleChoiceItem[]
+  timeline: DeepLearnTimelineItem[]
   distinctions: DeepLearnDistinction[]
-  likelyQuizPoints: string[]
+  likelyQuizTargets: DeepLearnLikelyQuizTarget[]
   cautionNotes: string[]
   sourceGrounding: DeepLearnSourceGrounding
   quizReady: boolean

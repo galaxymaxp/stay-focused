@@ -6,11 +6,11 @@ export type DeepLearnUiStatus = 'not_started' | 'pending' | 'ready' | 'failed' |
 
 export interface DeepLearnResourceUiState {
   status: DeepLearnUiStatus
-  statusLabel: 'No note yet' | 'Generating' | 'Ready' | 'Failed' | 'Blocked' | 'Unavailable'
+  statusLabel: 'No pack yet' | 'Preparing' | 'Ready' | 'Failed' | 'Source issue' | 'Unavailable'
   tone: 'accent' | 'warning' | 'muted'
   noteHref: string
   quizHref: string
-  primaryLabel: 'Deep Learn this' | 'Open Deep Learn note' | 'Retry Deep Learn' | 'View reader fallback'
+  primaryLabel: 'Build Exam Prep Pack' | 'Open Exam Prep Pack' | 'Rebuild Exam Prep Pack' | 'Open reader fallback'
   summary: string
   detail: string
   quizReady: boolean
@@ -37,21 +37,21 @@ export function getDeepLearnResourceUiState(
       tone: 'warning',
       noteHref,
       quizHref,
-      primaryLabel: 'View reader fallback',
-      summary: options.unavailableMessage || 'Saved Deep Learn note status is unavailable right now.',
-      detail: 'Learn is still rendering the resource, but note availability could not be loaded. Use the reader or source fallback until Deep Learn note access is healthy again.',
+      primaryLabel: 'Open reader fallback',
+      summary: options.unavailableMessage || 'Saved Deep Learn exam prep packs are unavailable right now.',
+      detail: 'Learn is still rendering the resource, but pack availability could not be loaded. Use the reader or source fallback until Deep Learn storage is healthy again.',
       quizReady: false,
     }
   }
 
-  if ((note?.status === 'failed' || !note) && readiness?.state === 'blocked') {
+  if ((note?.status === 'failed' || !note) && readiness?.state === 'unreadable') {
     return {
       status: 'blocked',
-      statusLabel: 'Blocked',
+      statusLabel: 'Source issue',
       tone: 'warning',
       noteHref,
       quizHref,
-      primaryLabel: 'View reader fallback',
+      primaryLabel: 'Open reader fallback',
       summary: readiness.summary,
       detail: readiness.detail,
       quizReady: false,
@@ -61,17 +61,18 @@ export function getDeepLearnResourceUiState(
   if (!note) {
     return {
       status: 'not_started',
-      statusLabel: 'No note yet',
+      statusLabel: 'No pack yet',
       tone: 'muted',
       noteHref,
       quizHref,
-      primaryLabel: 'Deep Learn this',
-      summary: readiness?.state === 'via_source_fetch'
-        ? readiness.summary
-        : 'Turn this resource into a saved study note that keeps exact terms, explains them clearly, and stays quiz-ready.',
-      detail: readiness?.state === 'via_source_fetch'
+      primaryLabel: 'Build Exam Prep Pack',
+      summary: readiness?.summary
+        ?? 'Turn this resource into an answer-first exam prep pack with key answers, identification prompts, timeline cues, and confusable items.',
+      detail: readiness?.state === 'scan_fallback'
         ? readiness.detail
-        : 'Deep Learn becomes the main study pass here. The reader stays available as a fallback source view when you need it.',
+        : readiness?.state === 'partial_text'
+          ? readiness.detail
+          : 'Deep Learn now aims for answer-ready review material first. The reader stays nearby only as a source surface and fallback.',
       quizReady: false,
     }
   }
@@ -79,13 +80,13 @@ export function getDeepLearnResourceUiState(
   if (note.status === 'pending') {
     return {
       status: 'pending',
-      statusLabel: 'Generating',
+      statusLabel: 'Preparing',
       tone: 'warning',
       noteHref,
       quizHref,
-      primaryLabel: 'Open Deep Learn note',
-      summary: note.overview || 'Deep Learn is building the saved study note.',
-      detail: 'Generation is in progress. Open the note to refresh status, or keep the reader/source nearby while it finishes.',
+      primaryLabel: 'Open Exam Prep Pack',
+      summary: note.overview || 'Deep Learn is building the saved exam prep pack.',
+      detail: 'Generation is in progress. Open the pack to refresh status, or keep the reader and original source nearby while it finishes.',
       quizReady: false,
     }
   }
@@ -97,9 +98,9 @@ export function getDeepLearnResourceUiState(
       tone: 'warning',
       noteHref,
       quizHref,
-      primaryLabel: 'Retry Deep Learn',
-      summary: note.errorMessage || 'Deep Learn could not produce a trustworthy note from the current source evidence.',
-      detail: 'Retry after checking the source, or use the reader/source fallback while the note is unavailable.',
+      primaryLabel: 'Rebuild Exam Prep Pack',
+      summary: note.errorMessage || 'Deep Learn could not produce a trustworthy exam prep pack from the current source evidence.',
+      detail: 'Retry after checking the source, or use the reader and original source while the pack is unavailable.',
       quizReady: false,
     }
   }
@@ -110,11 +111,11 @@ export function getDeepLearnResourceUiState(
     tone: 'accent',
     noteHref,
     quizHref,
-    primaryLabel: 'Open Deep Learn note',
+    primaryLabel: 'Open Exam Prep Pack',
     summary: note.overview,
     detail: note.quizReady
-      ? 'This saved note is ready for review and already structured for quiz generation.'
-      : 'This saved note is ready for review. Quiz generation will stay limited until the note has enough reliable study structure.',
+      ? 'This saved exam prep pack is ready for answer-bank review, identification drills, MCQ recall, and timeline review.'
+      : 'This saved exam prep pack is ready for review, but the current answer coverage is still thin for the full quiz lane.',
     quizReady: note.quizReady,
   }
 }

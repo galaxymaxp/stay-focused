@@ -1,20 +1,23 @@
 import { createClient } from '@supabase/supabase-js'
+import {
+  getRequiredSupabaseAuthEnv,
+  isSupabaseAuthConfigured,
+  supabaseAuthConfigError,
+  supabaseAuthUrl,
+} from '@/lib/supabase-auth-config'
 
-const supabaseUrl = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL
-const supabaseKey = process.env.SUPABASE_ANON_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+const supabaseUrl = supabaseAuthUrl
 
 const SUPABASE_FETCH_RETRIES = 3
 
 const supabaseEnvPresence = {
-  hasSupabaseUrl: Boolean(process.env.SUPABASE_URL),
   hasNextPublicSupabaseUrl: Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL),
-  hasSupabaseAnonKey: Boolean(process.env.SUPABASE_ANON_KEY),
   hasNextPublicSupabaseAnonKey: Boolean(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY),
 }
 
 const supabaseHost = getSupabaseHost(supabaseUrl)
 
-export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseKey)
+export const isSupabaseConfigured = isSupabaseAuthConfigured
 
 let supabaseClientCreationError: Record<string, unknown> | null = null
 export const supabase = (() => {
@@ -23,12 +26,14 @@ export const supabase = (() => {
       supabaseHost,
       envPresence: supabaseEnvPresence,
       isSupabaseConfigured,
+      configError: supabaseAuthConfigError,
     })
     return null
   }
 
   try {
-    const client = createClient(supabaseUrl!, supabaseKey!, {
+    const { supabaseUrl: requiredSupabaseUrl, supabaseAnonKey: requiredSupabaseAnonKey } = getRequiredSupabaseAuthEnv()
+    const client = createClient(requiredSupabaseUrl, requiredSupabaseAnonKey, {
       auth: {
         autoRefreshToken: false,
         persistSession: false,
@@ -42,6 +47,7 @@ export const supabase = (() => {
       supabaseHost,
       envPresence: supabaseEnvPresence,
       isSupabaseConfigured,
+      configError: supabaseAuthConfigError,
       fetchRetries: SUPABASE_FETCH_RETRIES,
     })
 
@@ -52,6 +58,7 @@ export const supabase = (() => {
       supabaseHost,
       envPresence: supabaseEnvPresence,
       isSupabaseConfigured,
+      configError: supabaseAuthConfigError,
       fetchRetries: SUPABASE_FETCH_RETRIES,
       error: supabaseClientCreationError,
     })
@@ -64,6 +71,7 @@ export function getSupabaseLoggingContext() {
     supabaseHost,
     envPresence: supabaseEnvPresence,
     isSupabaseConfigured,
+    configError: supabaseAuthConfigError,
     clientCreated: Boolean(supabase),
     fetchRetries: SUPABASE_FETCH_RETRIES,
     clientCreationError: supabaseClientCreationError,

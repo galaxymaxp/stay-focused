@@ -33,11 +33,11 @@ export interface StudyResourceAccordionItem {
   moduleId: string
   courseId?: string | null
   deepLearnStatus: 'not_started' | 'pending' | 'ready' | 'failed' | 'blocked' | 'unavailable'
-  deepLearnStatusLabel: 'No note yet' | 'Generating' | 'Ready' | 'Failed' | 'Blocked' | 'Unavailable'
+  deepLearnStatusLabel: 'No pack yet' | 'Preparing' | 'Ready' | 'Failed' | 'Source issue' | 'Unavailable'
   deepLearnTone: 'accent' | 'warning' | 'muted'
   deepLearnSummary: string
   deepLearnDetail: string
-  deepLearnPrimaryLabel: 'Deep Learn this' | 'Open Deep Learn note' | 'Retry Deep Learn' | 'View reader fallback'
+  deepLearnPrimaryLabel: 'Build Exam Prep Pack' | 'Open Exam Prep Pack' | 'Rebuild Exam Prep Pack' | 'Open reader fallback'
   deepLearnNoteHref: string
   deepLearnQuizHref: string
   deepLearnQuizReady: boolean
@@ -150,12 +150,12 @@ export function StudyResourceAccordionList({
                 <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
                   <ResourcePill label={`Resource ${index + 1}`} />
                   <ResourcePill label={item.fileTypeLabel} />
-                  <ResourcePill label={`Deep Learn: ${item.deepLearnStatusLabel}`} tone={item.deepLearnTone} />
+                  <ResourcePill label={`Exam pack: ${item.deepLearnStatusLabel}`} tone={item.deepLearnTone} />
                   <ResourcePill label={item.readinessLabel} tone={item.readinessTone} />
                   {item.deepLearnStatus === 'ready' ? (
                     <>
-                      <ResourcePill label={`${item.deepLearnTermCount} term${item.deepLearnTermCount === 1 ? '' : 's'}`} />
-                      <ResourcePill label={`${item.deepLearnFactCount} key fact${item.deepLearnFactCount === 1 ? '' : 's'}`} />
+                      <ResourcePill label={`${item.deepLearnTermCount} ID item${item.deepLearnTermCount === 1 ? '' : 's'}`} />
+                      <ResourcePill label={`${item.deepLearnFactCount} key answer${item.deepLearnFactCount === 1 ? '' : 's'}`} />
                       {item.deepLearnQuizReady && <ResourcePill label="Quiz ready" tone="accent" />}
                     </>
                   ) : (
@@ -180,7 +180,7 @@ export function StudyResourceAccordionList({
               <div style={{ display: 'grid', gap: '0.75rem' }}>
                 {presentationMode === 'deep_learn_first' ? (
                   <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.9rem 0.95rem', display: 'grid', gap: '0.45rem' }}>
-                    <p className="ui-kicker" style={{ margin: 0 }}>Saved Deep Learn note</p>
+                    <p className="ui-kicker" style={{ margin: 0 }}>Saved exam prep pack</p>
                     <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.72, color: 'var(--text-secondary)' }}>
                       {item.deepLearnDetail}
                     </p>
@@ -198,8 +198,8 @@ export function StudyResourceAccordionList({
                     </p>
                     <p style={{ margin: 0, fontSize: '12px', lineHeight: 1.6, color: 'var(--text-muted)' }}>
                       {presentationMode === 'source_first'
-                        ? 'The original source still matters most here. The reader stays available as fallback, but Deep Learn is the main study destination once you generate a note.'
-                        : 'The reader stays available as a fallback/debug surface, but Deep Learn is the primary study path for this resource.'}
+                        ? 'The original source still matters most here. The reader stays available as fallback, but the exam prep pack becomes the main study surface once you build it.'
+                        : 'The reader stays available as a fallback/debug surface, but the exam prep pack is the primary study path for this resource.'}
                     </p>
                   </div>
                 )}

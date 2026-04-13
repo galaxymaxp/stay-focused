@@ -6,7 +6,7 @@ import type { ClarityWorkspace } from '../lib/clarity-workspace'
 import type { ModuleWorkspaceData } from '../lib/module-workspace'
 import type { Course, Module } from '../lib/types'
 
-test('listDeepLearnNotesForModule returns mapped notes when the query succeeds', async () => {
+test('listDeepLearnNotesForModule returns mapped packs when the query succeeds', async () => {
   const result = await listDeepLearnNotesForModule('module-1', {
     isAuthConfigured: true,
     getAuthContext: async () => createAuthContext(),
@@ -20,9 +20,10 @@ test('listDeepLearnNotesForModule returns mapped notes when the query succeeds',
   assert.equal(result.reason, 'ok')
   assert.equal(result.notes.length, 1)
   assert.equal(result.notes[0]?.resourceId, 'resource-1')
+  assert.equal(result.notes[0]?.title, 'Exam Prep Pack')
 })
 
-test('listDeepLearnNotesForModule treats an empty result as available with no notes', async () => {
+test('listDeepLearnNotesForModule treats an empty result as available with no packs', async () => {
   const result = await listDeepLearnNotesForModule('module-1', {
     isAuthConfigured: true,
     getAuthContext: async () => createAuthContext(),
@@ -55,10 +56,10 @@ test('listDeepLearnNotesForModule degrades gracefully when the deep_learn_notes 
   assert.equal(result.availability, 'unavailable')
   assert.equal(result.reason, 'table_missing')
   assert.equal(result.notes.length, 0)
-  assert.match(result.message ?? '', /deep_learn_notes table is missing/i)
+  assert.match(result.message ?? '', /exam prep packs/i)
 })
 
-test('getDeepLearnNoteForResource returns missing without logging when no note exists yet', async () => {
+test('getDeepLearnNoteForResource returns missing without logging when no pack exists yet', async () => {
   const originalError = console.error
   const logCalls: unknown[][] = []
   console.error = (...args: unknown[]) => {
@@ -116,7 +117,7 @@ test('getDeepLearnNoteForResource treats no-row query errors as missing instead 
   }
 })
 
-test('course learn overview still builds when deep learn note listing is unavailable', async () => {
+test('course learn overview still builds when exam prep pack listing is unavailable', async () => {
   const course = createCourse()
   const moduleRecord = createModule(course.id)
   const workspace = createClarityWorkspace(course, moduleRecord)
@@ -128,7 +129,7 @@ test('course learn overview still builds when deep learn note listing is unavail
       notes: [],
       availability: 'unavailable',
       reason: 'table_missing',
-      message: 'Saved Deep Learn notes are unavailable because the deep_learn_notes table is missing in this environment.',
+      message: 'Saved Deep Learn exam prep packs are unavailable because the deep_learn_notes table is missing in this environment.',
       userId: 'user-1',
     }),
   })
@@ -154,7 +155,7 @@ function createDeepLearnNoteRow() {
     course_id: 'course-1',
     resource_id: 'resource-1',
     status: 'ready',
-    title: 'Deep Learn note',
+    title: 'Exam Prep Pack',
     overview: 'Overview',
     sections: [],
     note_body: '',
@@ -173,7 +174,7 @@ function createDeepLearnNoteRow() {
       charCount: 1000,
     },
     quiz_ready: false,
-    prompt_version: 'v1',
+    prompt_version: 'v2-exam-prep',
     error_message: null,
     created_at: '2026-04-13T00:00:00.000Z',
     updated_at: '2026-04-13T00:00:00.000Z',

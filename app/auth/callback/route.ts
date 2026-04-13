@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSafeRedirectPath } from '@/lib/auth'
 import { getOrCreateUserProfileForUser } from '@/lib/user-profiles'
-import { isSupabaseAuthConfigured } from '@/lib/supabase-auth-config'
+import { isSupabaseAuthConfigured, supabaseAuthConfigError } from '@/lib/supabase-auth-config'
 import { createSupabaseRouteClient } from '@/lib/supabase-auth-server'
 
 export async function GET(request: NextRequest) {
@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
   const errorDescription = requestUrl.searchParams.get('error_description')
 
   if (!isSupabaseAuthConfigured) {
-    return redirectToSignIn(requestUrl, nextPath, 'Supabase auth is not configured.')
+    return redirectToSignIn(requestUrl, nextPath, supabaseAuthConfigError ?? 'Supabase auth is not configured.')
   }
 
   if (error || errorDescription) {

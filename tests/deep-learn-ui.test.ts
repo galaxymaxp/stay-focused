@@ -1,89 +1,93 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { getDeepLearnResourceUiState } from '../lib/deep-learn-ui'
+import { buildDeepLearnNoteRecord } from '../lib/deep-learn'
 import type { DeepLearnNote } from '../lib/types'
 
-test('resources without a note default to Deep Learn as the primary action', () => {
+test('resources without a pack default to answer-first generation', () => {
   const state = getDeepLearnResourceUiState('module-1', 'resource-1', null)
 
   assert.equal(state.status, 'not_started')
-  assert.equal(state.statusLabel, 'No note yet')
-  assert.equal(state.primaryLabel, 'Deep Learn this')
+  assert.equal(state.statusLabel, 'No pack yet')
+  assert.equal(state.primaryLabel, 'Build Exam Prep Pack')
   assert.equal(state.quizReady, false)
-  assert.match(state.summary, /exact terms/i)
+  assert.match(state.summary, /answer-first exam prep pack/i)
 })
 
-test('ready notes surface quiz-ready state and note-first actions', () => {
+test('ready packs surface quiz-ready state and pack-first actions', () => {
   const state = getDeepLearnResourceUiState('module-1', 'resource-1', createNote({
     status: 'ready',
     quizReady: true,
-    overview: 'Preserves the official terms and keeps the distinctions ready for quiz.',
+    overview: 'Keeps the answer bank, identification cues, and distinctions ready for quiz.',
   }))
 
   assert.equal(state.status, 'ready')
   assert.equal(state.statusLabel, 'Ready')
-  assert.equal(state.primaryLabel, 'Open Deep Learn note')
+  assert.equal(state.primaryLabel, 'Open Exam Prep Pack')
   assert.equal(state.quizReady, true)
-  assert.match(state.detail, /quiz generation/i)
+  assert.match(state.detail, /answer-bank review/i)
 })
 
-test('failed notes shift the action to retry', () => {
+test('failed packs shift the action to rebuild', () => {
   const state = getDeepLearnResourceUiState('module-1', 'resource-1', createNote({
     status: 'failed',
-    errorMessage: 'Source grounding stayed too weak to trust a generated note.',
+    errorMessage: 'Source grounding stayed too weak to trust a generated exam prep pack.',
   }))
 
   assert.equal(state.status, 'failed')
-  assert.equal(state.primaryLabel, 'Retry Deep Learn')
+  assert.equal(state.primaryLabel, 'Rebuild Exam Prep Pack')
   assert.match(state.summary, /too weak/i)
 })
 
-test('unavailable note loading is distinct from having no note yet', () => {
+test('unavailable pack loading is distinct from having no pack yet', () => {
   const state = getDeepLearnResourceUiState('module-1', 'resource-1', null, {
     notesAvailability: 'unavailable',
-    unavailableMessage: 'Saved Deep Learn notes are unavailable because the deep_learn_notes table is missing in this environment.',
+    unavailableMessage: 'Saved Deep Learn exam prep packs are unavailable because the deep_learn_notes table is missing in this environment.',
   })
 
   assert.equal(state.status, 'unavailable')
   assert.equal(state.statusLabel, 'Unavailable')
-  assert.equal(state.primaryLabel, 'View reader fallback')
+  assert.equal(state.primaryLabel, 'Open reader fallback')
   assert.match(state.summary, /deep_learn_notes table/i)
 })
 
-test('blocked resources suppress the generate affordance and show the blocked reason', () => {
+test('unreadable resources suppress the generate affordance and show the source issue', () => {
   const state = getDeepLearnResourceUiState('module-1', 'resource-1', null, {
     readiness: {
-      state: 'blocked',
+      state: 'unreadable',
       canonicalResourceId: null,
       blockedReason: 'no_source_path',
       canGenerate: false,
-      summary: 'Deep Learn is blocked because no fetchable source path is stored for this item.',
-      detail: 'The synced resource record does not currently include a Canvas API URL, file URL, or resolvable target.',
+      shouldAttemptSourceFetch: false,
+      label: 'Unreadable',
+      tone: 'muted',
+      summary: 'No fetchable source path is stored for this item.',
+      detail: 'The synced resource record does not currently include a Canvas API URL, file URL, or resolvable module-item target that Deep Learn can read.',
     },
   })
 
   assert.equal(state.status, 'blocked')
-  assert.equal(state.statusLabel, 'Blocked')
-  assert.equal(state.primaryLabel, 'View reader fallback')
-  assert.match(state.detail, /resolvable target/i)
+  assert.equal(state.statusLabel, 'Source issue')
+  assert.equal(state.primaryLabel, 'Open reader fallback')
+  assert.match(state.detail, /resolvable module-item target/i)
 })
 
 function createNote(overrides: Partial<DeepLearnNote> = {}): DeepLearnNote {
-  return {
+  return buildDeepLearnNoteRecord({
     id: 'note-1',
     userId: 'user-1',
     moduleId: 'module-1',
     courseId: 'course-1',
     resourceId: 'resource-1',
     status: 'pending',
-    title: 'Deep Learn note',
-    overview: 'Deep Learn is preparing the note.',
+    title: 'Exam Prep Pack',
+    overview: 'Deep Learn is preparing the exam prep pack.',
     sections: [],
     noteBody: '',
-    coreTerms: [],
-    keyFacts: [],
+    answerBank: [],
+    identificationItems: [],
     distinctions: [],
-    likelyQuizPoints: [],
+    likelyQuizTargets: [],
     cautionNotes: [],
     sourceGrounding: {
       sourceType: 'PDF',
@@ -95,11 +99,11 @@ function createNote(overrides: Partial<DeepLearnNote> = {}): DeepLearnNote {
       charCount: 1200,
     },
     quizReady: false,
-    promptVersion: 'v1',
+    promptVersion: 'v2-exam-prep',
     errorMessage: null,
     createdAt: '2026-04-12T00:00:00.000Z',
     updatedAt: '2026-04-12T00:00:00.000Z',
     generatedAt: '2026-04-12T00:00:00.000Z',
     ...overrides,
-  }
+  })
 }
