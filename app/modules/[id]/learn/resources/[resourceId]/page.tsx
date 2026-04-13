@@ -98,7 +98,7 @@ export default async function ResourceDetailPage({ params }: Props) {
         title={module.title}
         summary={module.summary}
       >
-        <div style={{ display: 'grid', gap: '1rem' }}>
+        <div className="command-page command-page-tight">
           <DeepLearnNoteView
             moduleId={module.id}
             courseId={module.courseId ?? null}
@@ -134,7 +134,7 @@ export default async function ResourceDetailPage({ params }: Props) {
       title={module.title}
       summary={module.summary}
     >
-      <div style={{ display: 'grid', gap: '1rem' }}>
+      <div className="command-page command-page-tight">
         <DeepLearnNoteView
           moduleId={module.id}
           courseId={module.courseId ?? null}
@@ -147,47 +147,49 @@ export default async function ResourceDetailPage({ params }: Props) {
           readerHref={`/modules/${module.id}/learn/resources/${encodeURIComponent(resource.id)}`}
           sourceHref={sourceHref}
         />
-        <section className="motion-card motion-delay-1 section-shell section-shell-elevated" style={{ padding: '1.35rem 1.45rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-          <div style={{ minWidth: 0, flex: '1 1 480px' }}>
+        <section className="motion-card motion-delay-1 section-shell section-shell-elevated" style={{ padding: '1rem 1.05rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <div className="command-header">
+          <div className="command-header-main">
             <p className="ui-kicker">Fallback source detail</p>
             <h2 className="ui-section-title" style={{ marginTop: '0.45rem' }}>{resource.title}</h2>
             <p className="ui-section-copy" style={{ marginTop: '0.5rem' }}>
               Deep Learn is the main study path. This page stays focused on source evidence, fallback context, and direct source actions for this individual Canvas item.
             </p>
           </div>
-          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-            <CopyTaskBundleActions
-              bundleText={manualCopy.bundleText}
-              promptText={manualCopy.promptText}
-            />
-            <Link href={`/modules/${module.id}/learn#source-support`} className="ui-button ui-button-secondary">Back to module Learn</Link>
-            <Link href={buildModuleInspectHref(module.id, { resourceId: resource.id })} className="ui-button ui-button-ghost">
-              Inspect resource
-            </Link>
-            {linkedTask && (
-              <Link href={`/modules/${module.id}/do#${linkedTask.id}`} className="ui-button ui-button-ghost">
-                Open related task
+          <div className="command-header-side">
+            <div className="command-header-actions">
+              <CopyTaskBundleActions
+                bundleText={manualCopy.bundleText}
+                promptText={manualCopy.promptText}
+              />
+              <Link href={`/modules/${module.id}/learn#source-support`} className="ui-button ui-button-secondary">Back to module Learn</Link>
+              <Link href={buildModuleInspectHref(module.id, { resourceId: resource.id })} className="ui-button ui-button-ghost">
+                Inspect resource
               </Link>
-            )}
-            {originalFileHref && (
-              <a href={originalFileHref} target="_blank" rel="noreferrer" className={`ui-button ${showSourceAsPrimary ? 'ui-button-secondary' : 'ui-button-ghost'}`}>
-                {uiState.sourceActionLabel}
-              </a>
-            )}
-            {canvasHref && !originalFileHref && (
-              <a href={canvasHref} target="_blank" rel="noreferrer" className={`ui-button ${showSourceAsPrimary ? 'ui-button-secondary' : 'ui-button-ghost'}`}>
-                {uiState.sourceActionLabel}
-              </a>
-            )}
-            {canvasHref && originalFileHref && (
-              <a href={canvasHref} target="_blank" rel="noreferrer" className="ui-button ui-button-ghost">
-                Open in Canvas
-              </a>
-            )}
-            <Link href="/canvas" className="ui-button ui-button-ghost">
-              Reconnect / resync
-            </Link>
+              {linkedTask && (
+                <Link href={`/modules/${module.id}/do#${linkedTask.id}`} className="ui-button ui-button-ghost">
+                  Open related task
+                </Link>
+              )}
+              {originalFileHref && (
+                <a href={originalFileHref} target="_blank" rel="noreferrer" className={`ui-button ${showSourceAsPrimary ? 'ui-button-secondary' : 'ui-button-ghost'}`}>
+                  {uiState.sourceActionLabel}
+                </a>
+              )}
+              {canvasHref && !originalFileHref && (
+                <a href={canvasHref} target="_blank" rel="noreferrer" className={`ui-button ${showSourceAsPrimary ? 'ui-button-secondary' : 'ui-button-ghost'}`}>
+                  {uiState.sourceActionLabel}
+                </a>
+              )}
+              {canvasHref && originalFileHref && (
+                <a href={canvasHref} target="_blank" rel="noreferrer" className="ui-button ui-button-ghost">
+                  Open in Canvas
+                </a>
+              )}
+              <Link href="/canvas" className="ui-button ui-button-ghost">
+                Reconnect / resync
+              </Link>
+            </div>
           </div>
         </div>
 
@@ -244,7 +246,7 @@ export default async function ResourceDetailPage({ params }: Props) {
           </div>
         )}
 
-        <div style={{ display: 'grid', gridTemplateColumns: unit ? 'minmax(0, 1.45fr) minmax(280px, 0.9fr)' : 'minmax(0, 1fr)', gap: '1rem', alignItems: 'start' }}>
+        <div className={unit ? 'command-workspace' : 'command-main'}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             {unit && unit.modes.length > 0 ? (
               <>
@@ -299,7 +301,7 @@ export default async function ResourceDetailPage({ params }: Props) {
             )}
           </div>
 
-          <aside style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <aside className="command-rail command-stick-top" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem' }}>
               <p className="ui-kicker">Metadata and status</p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem', marginTop: '0.75rem' }}>

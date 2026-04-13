@@ -34,156 +34,174 @@ export default async function DoNowPage({ searchParams }: Props) {
     .slice(0, 3)
 
   return (
-    <main className="page-shell page-stack">
-      <header className="page-intro">
-        <p className="ui-kicker">Do Now</p>
-        <h1 className="ui-page-title">Start with one thing</h1>
-        <p className="ui-page-copy page-intro-copy">
-          This page is for momentum, not sorting. Pick one useful next move, get enough context to begin, and leave the full task list in the background until you need it.
-        </p>
-      </header>
-
-      {primaryAction ? (
-        <section className="section-shell section-shell-elevated" style={{ display: 'grid', gap: '0.95rem', padding: '1.12rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.9rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-            <div style={{ minWidth: 0 }}>
-              {primaryHref ? (
-                <Link href={primaryHref} className="ui-interactive-row workspace-primary-link">
-                  <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                    <ToneBadge item={primaryAction} />
-                    {primaryAction.dateTime ? <MetaBadge>{formatDateTime(primaryAction.dateTime)}</MetaBadge> : null}
-                    {primaryAction.effortLabel ? <MetaBadge>{primaryAction.effortLabel}</MetaBadge> : null}
-                  </div>
-                  <h2 className="workspace-primary-link-title" style={{ margin: 0, fontSize: 'clamp(1.7rem, 3vw, 2.25rem)', lineHeight: 1.06, letterSpacing: '-0.05em', fontWeight: 650, color: 'var(--text-primary)' }}>
-                    {primaryAction.title}
-                  </h2>
-                  <p style={{ margin: 0, maxWidth: '40rem', fontSize: '15px', lineHeight: 1.62, color: 'var(--text-secondary)' }}>
-                    {primaryAction.whyNow}
-                  </p>
-                </Link>
-              ) : (
-                <>
-                  <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                    <ToneBadge item={primaryAction} />
-                    {primaryAction.dateTime ? <MetaBadge>{formatDateTime(primaryAction.dateTime)}</MetaBadge> : null}
-                    {primaryAction.effortLabel ? <MetaBadge>{primaryAction.effortLabel}</MetaBadge> : null}
-                  </div>
-                  <h2 style={{ margin: '0.5rem 0 0', fontSize: 'clamp(1.7rem, 3vw, 2.25rem)', lineHeight: 1.06, letterSpacing: '-0.05em', fontWeight: 650, color: 'var(--text-primary)' }}>
-                    {primaryAction.title}
-                  </h2>
-                  <p style={{ margin: '0.65rem 0 0', maxWidth: '40rem', fontSize: '15px', lineHeight: 1.62, color: 'var(--text-secondary)' }}>
-                    {primaryAction.whyNow}
-                  </p>
-                </>
-              )}
-            </div>
-
-            {primaryAction.kind === 'task' && primaryAction.taskItemId ? (
-              <TaskStatusToggle
-                status={primaryAction.completionStatus ?? 'pending'}
-                moduleId={primaryAction.moduleId}
-                title={primaryAction.title}
-                taskItemId={primaryAction.taskItemId}
-                align="end"
-              />
-            ) : null}
-          </div>
-
-          <div className="workspace-fact-grid">
-            <FactItem label="Course" value={primaryAction.courseName} />
-            <FactItem label="Where" value={primaryAction.moduleTitle || fallbackAreaLabel(primaryAction)} />
-            <FactItem label="Smallest next step" value={smallestNextStepLabel(primaryAction)} />
-          </div>
-
-          {primaryAction.supportingText ? (
-            <div className="workspace-quiet-panel" style={{ gap: '0.32rem' }}>
-              <p className="ui-kicker" style={{ margin: 0 }}>Why it matters</p>
-              <p className="workspace-quiet-panel-copy">
-                {primaryAction.supportingText}
-              </p>
-            </div>
-          ) : null}
-
-          <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
-            {primaryHref ? (
-              <Link href={primaryHref} className="ui-button ui-button-primary">
-                {primaryButtonLabel(primaryAction)}
-              </Link>
-            ) : null}
-            {primaryAction.kind === 'task' && primaryAction.canvasUrl ? (
-              <a href={primaryAction.canvasUrl} target="_blank" rel="noreferrer" className="ui-button ui-button-secondary">
-                Open in Canvas
-              </a>
-            ) : null}
-            <Link href="/tasks" className="ui-button ui-button-ghost">
-              Open full task list
-            </Link>
-          </div>
-        </section>
-      ) : (
-        <section className="section-shell section-shell-elevated" style={{ padding: '1.2rem' }}>
-          <p className="ui-kicker">Do Now</p>
-          <h2 className="ui-section-title" style={{ marginTop: '0.38rem' }}>You are clear for now</h2>
-          <p className="ui-section-copy" style={{ marginTop: '0.35rem', maxWidth: '34rem' }}>
-            Nothing urgent is asking for you right now. Use the quiet time to review a course or check the calendar.
-          </p>
-        </section>
-      )}
-
-      <section className="section-shell" style={{ display: 'grid', gap: '0.8rem', padding: '1.05rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.8rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-          <div>
-            <p className="ui-kicker">If not that</p>
-            <h2 className="ui-section-title" style={{ marginTop: '0.36rem' }}>Next options</h2>
-            <p className="ui-section-copy" style={{ marginTop: '0.32rem', maxWidth: '32rem' }}>
-              Keep backups short. These are the next few items worth touching if the main recommendation is blocked.
+    <main className="page-shell command-page">
+      <section className="section-shell section-shell-elevated" style={{ padding: '1.05rem 1.15rem' }}>
+        <div className="command-header">
+          <div className="command-header-main">
+            <p className="ui-kicker">Do Now</p>
+            <h1 className="ui-page-title">Start with one thing</h1>
+            <p className="ui-page-copy page-intro-copy">
+              This page is for momentum, not sorting. Pick one useful next move, get enough context to begin, and keep the backup list short.
             </p>
           </div>
-          <Link href="/tasks" className="ui-button ui-button-ghost ui-button-xs">
-            Open Tasks
-          </Link>
+          <div className="command-header-side">
+            <div className="workspace-quiet-panel">
+              <p className="ui-kicker" style={{ margin: 0 }}>Working rule</p>
+              <p className="workspace-quiet-panel-copy">
+                Start the first recommendation unless it is blocked. If it is blocked, move immediately to one backup instead of browsing.
+              </p>
+            </div>
+          </div>
         </div>
+      </section>
 
-        {backupItems.length > 0 ? (
-          <div className="home-compact-list">
-            {backupItems.map((item) => {
-              const href = resolveItemHref(item)
-              const content = (
-                <>
-                  <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                    <ToneBadge item={item} subtle />
-                    <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{item.courseName}</span>
-                  </div>
-                  <p className="home-row-title" style={{ marginTop: '0.42rem' }}>
-                    {item.title}
-                  </p>
-                  <p style={{ margin: '0.3rem 0 0', fontSize: '13px', lineHeight: 1.55, color: 'var(--text-secondary)' }}>
-                    {item.whyNow}
-                  </p>
-                </>
-              )
-
-              return (
-                <article key={item.id} className="home-list-row">
-                  {href ? (
-                    <Link href={href} className="ui-interactive-row home-row-main">
-                      {content}
+      <div className="command-grid command-grid-wide">
+        <div className="command-main">
+          {primaryAction ? (
+            <section className="section-shell section-shell-elevated" style={{ display: 'grid', gap: '0.95rem', padding: '1.12rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.9rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                <div style={{ minWidth: 0 }}>
+                  {primaryHref ? (
+                    <Link href={primaryHref} className="ui-interactive-row workspace-primary-link">
+                      <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                        <ToneBadge item={primaryAction} />
+                        {primaryAction.dateTime ? <MetaBadge>{formatDateTime(primaryAction.dateTime)}</MetaBadge> : null}
+                        {primaryAction.effortLabel ? <MetaBadge>{primaryAction.effortLabel}</MetaBadge> : null}
+                      </div>
+                      <h2 className="workspace-primary-link-title" style={{ margin: 0, fontSize: 'clamp(1.7rem, 3vw, 2.25rem)', lineHeight: 1.06, letterSpacing: '-0.05em', fontWeight: 650, color: 'var(--text-primary)' }}>
+                        {primaryAction.title}
+                      </h2>
+                      <p style={{ margin: 0, maxWidth: '40rem', fontSize: '15px', lineHeight: 1.62, color: 'var(--text-secondary)' }}>
+                        {primaryAction.whyNow}
+                      </p>
                     </Link>
                   ) : (
-                    <div className="home-row-main">
-                      {content}
-                    </div>
+                    <>
+                      <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                        <ToneBadge item={primaryAction} />
+                        {primaryAction.dateTime ? <MetaBadge>{formatDateTime(primaryAction.dateTime)}</MetaBadge> : null}
+                        {primaryAction.effortLabel ? <MetaBadge>{primaryAction.effortLabel}</MetaBadge> : null}
+                      </div>
+                      <h2 style={{ margin: '0.5rem 0 0', fontSize: 'clamp(1.7rem, 3vw, 2.25rem)', lineHeight: 1.06, letterSpacing: '-0.05em', fontWeight: 650, color: 'var(--text-primary)' }}>
+                        {primaryAction.title}
+                      </h2>
+                      <p style={{ margin: '0.65rem 0 0', maxWidth: '40rem', fontSize: '15px', lineHeight: 1.62, color: 'var(--text-secondary)' }}>
+                        {primaryAction.whyNow}
+                      </p>
+                    </>
                   )}
-                </article>
-              )
-            })}
-          </div>
-        ) : (
-          <div className="ui-empty" style={{ borderRadius: 'var(--radius-panel)', padding: '0.95rem 1rem', fontSize: '14px', lineHeight: 1.6 }}>
-            No backup items need attention right now.
-          </div>
-        )}
-      </section>
+                </div>
+
+                {primaryAction.kind === 'task' && primaryAction.taskItemId ? (
+                  <TaskStatusToggle
+                    status={primaryAction.completionStatus ?? 'pending'}
+                    moduleId={primaryAction.moduleId}
+                    title={primaryAction.title}
+                    taskItemId={primaryAction.taskItemId}
+                    align="end"
+                  />
+                ) : null}
+              </div>
+
+              <div className="workspace-fact-grid">
+                <FactItem label="Course" value={primaryAction.courseName} />
+                <FactItem label="Where" value={primaryAction.moduleTitle || fallbackAreaLabel(primaryAction)} />
+                <FactItem label="Smallest next step" value={smallestNextStepLabel(primaryAction)} />
+              </div>
+
+              {primaryAction.supportingText ? (
+                <div className="workspace-quiet-panel" style={{ gap: '0.32rem' }}>
+                  <p className="ui-kicker" style={{ margin: 0 }}>Why it matters</p>
+                  <p className="workspace-quiet-panel-copy">
+                    {primaryAction.supportingText}
+                  </p>
+                </div>
+              ) : null}
+
+              <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+                {primaryHref ? (
+                  <Link href={primaryHref} className="ui-button ui-button-primary">
+                    {primaryButtonLabel(primaryAction)}
+                  </Link>
+                ) : null}
+                {primaryAction.kind === 'task' && primaryAction.canvasUrl ? (
+                  <a href={primaryAction.canvasUrl} target="_blank" rel="noreferrer" className="ui-button ui-button-secondary">
+                    Open in Canvas
+                  </a>
+                ) : null}
+                <Link href="/tasks" className="ui-button ui-button-ghost">
+                  Open full task list
+                </Link>
+              </div>
+            </section>
+          ) : (
+            <section className="section-shell section-shell-elevated" style={{ padding: '1.2rem' }}>
+              <p className="ui-kicker">Do Now</p>
+              <h2 className="ui-section-title" style={{ marginTop: '0.38rem' }}>You are clear for now</h2>
+              <p className="ui-section-copy" style={{ marginTop: '0.35rem', maxWidth: '34rem' }}>
+                Nothing urgent is asking for you right now. Use the quiet time to review a course or check the calendar.
+              </p>
+            </section>
+          )}
+        </div>
+
+        <aside className="command-rail">
+          <section className="section-shell" style={{ display: 'grid', gap: '0.8rem', padding: '1rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.8rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+              <div>
+                <p className="ui-kicker">If not that</p>
+                <h2 className="ui-section-title" style={{ marginTop: '0.36rem' }}>Next options</h2>
+                <p className="ui-section-copy" style={{ marginTop: '0.32rem', maxWidth: '32rem' }}>
+                  Keep backups short. These are the next few items worth touching if the main recommendation is blocked.
+                </p>
+              </div>
+              <Link href="/tasks" className="ui-button ui-button-ghost ui-button-xs">
+                Open Tasks
+              </Link>
+            </div>
+
+            {backupItems.length > 0 ? (
+              <div className="home-compact-list">
+                {backupItems.map((item) => {
+                  const href = resolveItemHref(item)
+                  const content = (
+                    <>
+                      <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                        <ToneBadge item={item} subtle />
+                        <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{item.courseName}</span>
+                      </div>
+                      <p className="home-row-title" style={{ marginTop: '0.42rem' }}>
+                        {item.title}
+                      </p>
+                      <p style={{ margin: '0.3rem 0 0', fontSize: '13px', lineHeight: 1.55, color: 'var(--text-secondary)' }}>
+                        {item.whyNow}
+                      </p>
+                    </>
+                  )
+
+                  return (
+                    <article key={item.id} className="home-list-row">
+                      {href ? (
+                        <Link href={href} className="ui-interactive-row home-row-main">
+                          {content}
+                        </Link>
+                      ) : (
+                        <div className="home-row-main">
+                          {content}
+                        </div>
+                      )}
+                    </article>
+                  )
+                })}
+              </div>
+            ) : (
+              <div className="ui-empty" style={{ borderRadius: 'var(--radius-panel)', padding: '0.95rem 1rem', fontSize: '14px', lineHeight: 1.6 }}>
+                No backup items need attention right now.
+              </div>
+            )}
+          </section>
+        </aside>
+      </div>
     </main>
   )
 }

@@ -38,10 +38,10 @@ export default async function CourseLearnPage({ params, searchParams }: Props) {
     : null
 
   return (
-    <main className="page-shell page-shell-narrow page-stack">
-      <section className="motion-card section-shell section-shell-elevated" style={{ padding: '1.35rem 1.4rem', display: 'grid', gap: '1rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-          <div style={{ minWidth: 0, flex: '1 1 520px' }}>
+    <main className="page-shell command-page">
+      <section className="motion-card section-shell section-shell-elevated" style={{ padding: '1.05rem 1.15rem', display: 'grid', gap: '1rem' }}>
+        <div className="command-header">
+          <div className="command-header-main">
             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
               <p className="ui-kicker">Learn</p>
               <span className="ui-chip ui-chip-soft">{course.code}</span>
@@ -51,12 +51,22 @@ export default async function CourseLearnPage({ params, searchParams }: Props) {
               A tighter Deep Learn workspace. Scan compact module cards, generate or reopen saved exam prep packs inline, and drop to reader/source fallback only when you need direct evidence.
             </p>
           </div>
-          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-            <Link href="/learn" className="ui-button ui-button-ghost">Back to Learn</Link>
+
+          <div className="command-header-side">
+            <div className="command-header-actions">
+              <Link href="/learn" className="ui-button ui-button-ghost">Back to Learn</Link>
+            </div>
+
+            <div className="workspace-quiet-panel">
+              <p className="ui-kicker" style={{ margin: 0 }}>Course rule</p>
+              <p className="workspace-quiet-panel-copy">
+                Keep one module open at a time. Use this page to choose the module, then do the deeper work inside that module workspace.
+              </p>
+            </div>
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.8rem' }}>
+        <div className="command-stat-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))' }}>
           <StatTile label="Modules in Learn" value={String(courseOverview.visibleModuleCount)} />
           <StatTile label="Prep packs" value={String(deepLearnReadyCount)} />
           <StatTile label="Quiz-ready packs" value={String(quizReadyDeepLearnCount)} />
@@ -117,7 +127,7 @@ export default async function CourseLearnPage({ params, searchParams }: Props) {
         </div>
       </section>
 
-      <section className="motion-card motion-delay-1 section-shell" style={{ padding: '1.2rem 1.25rem', display: 'grid', gap: '0.9rem' }}>
+      <section className="motion-card motion-delay-1 section-shell" style={{ padding: '1rem 1.05rem', display: 'grid', gap: '0.9rem' }}>
         <div>
           <p className="ui-kicker">Modules</p>
           <h2 className="ui-section-title" style={{ marginTop: '0.45rem' }}>Open only what you need, and keep Deep Learn first</h2>
@@ -133,13 +143,15 @@ export default async function CourseLearnPage({ params, searchParams }: Props) {
               : 'No modules are available in Learn for this course yet.'}
           </div>
         ) : (
-          <CourseLearnExplorer
-            modules={modules}
-            initialOpenModuleId={initialOpenModuleId}
-            initialFocusedModuleId={initialFocusedModuleId}
-            initialOpenResourceId={initialOpenResourceId}
-            initialTaskId={initialTaskId}
-          />
+          <div className="command-scroll-body" data-density="tall">
+            <CourseLearnExplorer
+              modules={modules}
+              initialOpenModuleId={initialOpenModuleId}
+              initialFocusedModuleId={initialFocusedModuleId}
+              initialOpenResourceId={initialOpenResourceId}
+              initialTaskId={initialTaskId}
+            />
+          </div>
         )}
       </section>
     </main>

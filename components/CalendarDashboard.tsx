@@ -61,23 +61,35 @@ export function CalendarDashboard({ items, undatedTaskCount }: { items: Calendar
 
   const days = buildMonthGrid(visibleMonth)
   const selectedItems = itemsByDate.get(selectedDateKey) ?? []
+  const urgentCount = items.filter((item) => item.status === 'urgent').length
+  const dueSoonCount = items.filter((item) => item.status === 'dueSoon').length
+  const completedCount = items.filter((item) => item.status === 'completed').length
 
   return (
     <section className="page-stack" style={{ gap: '1rem' }}>
-      <header className="motion-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem', flexWrap: 'wrap' }}>
-        <div>
-          <p style={{ margin: 0, fontSize: '11px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
-            Calendar
-          </p>
-          <h1 style={{ margin: '0.45rem 0 0', fontSize: '32px', lineHeight: 1.08, fontWeight: 650, letterSpacing: '-0.04em', color: 'var(--text-primary)' }}>Your workload, made quieter</h1>
-          <p style={{ margin: '0.7rem 0 0', fontSize: '15px', color: 'var(--text-secondary)', lineHeight: 1.6, maxWidth: '46rem' }}>
-            A calm calendar view of synced tasks and deadlines. Pick a day to see what needs your attention without opening the full Canvas clutter.
-          </p>
+      <header className="motion-card section-shell section-shell-elevated" style={{ display: 'grid', gap: '0.95rem', padding: '1.05rem 1.1rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem', flexWrap: 'wrap' }}>
+          <div>
+            <p style={{ margin: 0, fontSize: '11px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
+              Calendar
+            </p>
+            <h1 style={{ margin: '0.45rem 0 0', fontSize: '32px', lineHeight: 1.08, fontWeight: 650, letterSpacing: '-0.04em', color: 'var(--text-primary)' }}>Your workload, made quieter</h1>
+            <p style={{ margin: '0.7rem 0 0', fontSize: '15px', color: 'var(--text-secondary)', lineHeight: 1.6, maxWidth: '46rem' }}>
+              A calm calendar view of synced tasks and deadlines. Pick a day to see what needs your attention without opening the full Canvas clutter.
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            {STATUS_ORDER.map((status) => (
+              <LegendChip key={status} status={status} />
+            ))}
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-          {STATUS_ORDER.map((status) => (
-            <LegendChip key={status} status={status} />
-          ))}
+
+        <div className="workspace-summary-grid">
+          <CalendarSummaryCard label="Scheduled" value={String(items.length)} />
+          <CalendarSummaryCard label="Urgent" value={String(urgentCount)} tone="warning" />
+          <CalendarSummaryCard label="Due soon" value={String(dueSoonCount)} tone="warning" />
+          <CalendarSummaryCard label="Completed" value={String(completedCount)} tone="success" />
         </div>
       </header>
 
@@ -92,8 +104,8 @@ export function CalendarDashboard({ items, undatedTaskCount }: { items: Calendar
         </div>
       )}
 
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'flex-start' }}>
-        <section className="motion-card motion-delay-1 glass-panel glass-strong ui-data-panel" style={{ borderRadius: 'var(--radius-page)', overflow: 'hidden', flex: '2 1 640px', minWidth: '0' }}>
+      <div className="command-grid command-grid-wide">
+        <section className="motion-card motion-delay-1 glass-panel glass-strong ui-data-panel" style={{ borderRadius: 'var(--radius-page)', overflow: 'hidden', minWidth: '0' }}>
           <div className="ui-data-header" style={{
             display: 'flex',
             justifyContent: 'space-between',
@@ -201,7 +213,7 @@ export function CalendarDashboard({ items, undatedTaskCount }: { items: Calendar
           </div>
         </section>
 
-        <aside className="motion-card motion-delay-2 glass-panel glass-strong ui-data-panel" style={{ borderRadius: 'var(--radius-page)', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.9rem', flex: '1 1 320px', minWidth: '280px' }}>
+        <aside className="motion-card motion-delay-2 glass-panel glass-strong ui-data-panel" style={{ borderRadius: 'var(--radius-page)', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.9rem', minWidth: '280px' }}>
           <div style={{ paddingBottom: '0.85rem', borderBottom: '1px solid color-mix(in srgb, var(--border-subtle) 88%, transparent)' }}>
             <h2 style={{ margin: 0, fontSize: '20px', lineHeight: 1.2, fontWeight: 650, letterSpacing: '-0.02em', color: 'var(--text-primary)' }}>
               {formatSelectedDayLabel(selectedDateKey)}
@@ -251,6 +263,33 @@ function LegendChip({ status }: { status: CalendarItem['status'] }) {
       <span style={{ width: '7px', height: '7px', borderRadius: '999px', background: style.dot }} />
       {style.label}
     </span>
+  )
+}
+
+function CalendarSummaryCard({
+  label,
+  value,
+  tone = 'default',
+}: {
+  label: string
+  value: string
+  tone?: 'default' | 'warning' | 'success'
+}) {
+  const color = tone === 'warning'
+    ? 'var(--amber)'
+    : tone === 'success'
+      ? 'var(--green)'
+      : 'var(--text-primary)'
+
+  return (
+    <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.72rem 0.78rem' }}>
+      <p style={{ margin: 0, fontSize: '11px', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
+        {label}
+      </p>
+      <p style={{ margin: '0.34rem 0 0', fontSize: '20px', lineHeight: 1.1, fontWeight: 650, color }}>
+        {value}
+      </p>
+    </div>
   )
 }
 
