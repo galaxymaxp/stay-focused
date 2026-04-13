@@ -17,26 +17,44 @@ export default async function LearnPage() {
   const courseOverviews = (await Promise.all(
     workspace.courses.map((course) => buildCourseLearnOverview(workspace, course.id)),
   )).filter((course): course is CourseLearnOverview => Boolean(course))
+  const readyPacks = courseOverviews.reduce((sum, course) => sum + course.modules.reduce((total, module) => total + module.studyMaterials.filter((material) => material.deepLearnStatus === 'ready').length, 0), 0)
 
   return (
-    <main className="page-shell page-stack">
-      <header className="motion-card section-shell section-shell-elevated" style={{ padding: '1.35rem 1.4rem', display: 'grid', gap: '0.85rem' }}>
-        <div>
-          <p className="ui-kicker">Learn</p>
-          <h1 className="ui-page-title">A calmer way into your course material</h1>
-          <p className="ui-page-copy" style={{ maxWidth: '46rem' }}>
-            Start at the course level. Choose the class you want, then open one module workspace at a time instead of seeing every resource and status all at once.
-          </p>
-        </div>
-      </header>
+    <main className="page-shell command-page">
+      <section className="motion-card section-shell section-shell-elevated" style={{ padding: '1.05rem 1.15rem' }}>
+        <div className="command-header">
+          <div className="command-header-main">
+            <p className="ui-kicker">Learn</p>
+            <h1 className="ui-page-title">A calmer way into your course material</h1>
+            <p className="ui-page-copy" style={{ maxWidth: '46rem' }}>
+              Start at the course level. Choose the class you want, then open one module workspace at a time instead of seeing every resource and status all at once.
+            </p>
+          </div>
 
-      <section className="motion-card motion-delay-1" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1rem' }}>
+          <div className="command-header-side">
+            <div className="command-stat-grid">
+              <StatTile label="Courses" value={String(courseOverviews.length)} />
+              <StatTile label="Study items" value={String(courseOverviews.reduce((sum, course) => sum + course.studyCount, 0))} />
+              <StatTile label="Action items" value={String(courseOverviews.reduce((sum, course) => sum + course.actionCount, 0))} tone="warning" />
+              <StatTile label="Ready packs" value={String(readyPacks)} tone="accent" />
+            </div>
+            <div className="workspace-quiet-panel">
+              <p className="ui-kicker" style={{ margin: 0 }}>Learn flow</p>
+              <p className="workspace-quiet-panel-copy">
+                Pick one course, then one module. Keep the study lane compact and only open the deeper source view when needed.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="motion-card motion-delay-1 command-panel-grid">
         {courseOverviews.map((course, index) => (
           <article
             key={course.course.id}
             className={`section-shell section-shell-elevated motion-card motion-delay-${Math.min(index + 1, 4)}`}
             style={{
-              padding: '1.15rem 1.2rem',
+              padding: '1rem 1.05rem',
               display: 'grid',
               gap: '0.9rem',
               alignContent: 'start',
@@ -100,5 +118,26 @@ function CountChip({ label }: { label: string }) {
     <span className="ui-chip ui-chip-soft" style={{ fontWeight: 600 }}>
       {label}
     </span>
+  )
+}
+
+function StatTile({
+  label,
+  value,
+  tone = 'muted',
+}: {
+  label: string
+  value: string
+  tone?: 'accent' | 'warning' | 'muted'
+}) {
+  return (
+    <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.72rem 0.78rem' }}>
+      <p style={{ margin: 0, fontSize: '11px', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
+        {label}
+      </p>
+      <p style={{ margin: '0.34rem 0 0', fontSize: '20px', lineHeight: 1.1, fontWeight: 650, color: tone === 'warning' ? 'var(--amber)' : 'var(--text-primary)' }}>
+        {value}
+      </p>
+    </div>
   )
 }

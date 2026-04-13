@@ -42,16 +42,18 @@ export default async function DeepLearnNotePage({ params }: Props) {
       title={workspace.module.title}
       summary={noteResult.note?.overview ?? workspace.module.summary}
     >
-      <DeepLearnNoteView
-        moduleId={workspace.module.id}
-        courseId={workspace.module.courseId ?? null}
-        resource={resource}
-        note={noteResult.note}
-        noteAvailability={noteResult.availability}
-        noteAvailabilityMessage={noteResult.message}
-        readerHref={getLearnResourceHref(workspace.module.id, resource.id)}
-        sourceHref={sourceHref}
-      />
+      <div className="command-page command-page-tight">
+        <DeepLearnNoteView
+          moduleId={workspace.module.id}
+          courseId={workspace.module.courseId ?? null}
+          resource={resource}
+          note={noteResult.note}
+          noteAvailability={noteResult.availability}
+          noteAvailabilityMessage={noteResult.message}
+          readerHref={getLearnResourceHref(workspace.module.id, resource.id)}
+          sourceHref={sourceHref}
+        />
+      </div>
     </ModuleLensShell>
   )
 }

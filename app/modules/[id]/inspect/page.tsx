@@ -58,40 +58,42 @@ export default async function ModuleInspectPage({ params, searchParams }: Props)
       title={module.title}
       summary="Internal compatibility view for the persisted module resource pipeline. This page shows what each resource actually became after sync or reprocess."
     >
-      <div style={{ display: 'grid', gap: '1rem' }}>
-        <section className="motion-card motion-delay-1 section-shell section-shell-elevated" style={{ padding: '1.2rem 1.3rem', display: 'grid', gap: '0.9rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.9rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-            <div style={{ minWidth: 0, flex: '1 1 520px' }}>
+      <div className="command-page command-page-tight">
+        <section className="motion-card motion-delay-1 section-shell section-shell-elevated" style={{ padding: '1rem 1.05rem', display: 'grid', gap: '0.9rem' }}>
+          <div className="command-header">
+            <div className="command-header-main">
               <p className="ui-kicker">Resource inspection</p>
               <h2 className="ui-section-title" style={{ marginTop: '0.45rem' }}>Compatibility, extraction, and reprocess status</h2>
               <p className="ui-section-copy" style={{ marginTop: '0.45rem', maxWidth: '50rem' }}>
                 Capability shows whether Stay Focused can read the source at all. Quality shows whether the persisted text is actually strong enough to trust for Learn and Quiz. Supported does not automatically mean useful.
               </p>
             </div>
-            <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-              <Link href={`/modules/${module.id}/learn#source-support`} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-                Back to Learn
-              </Link>
-              <form action={reprocessModuleResourcesAction}>
-                <input type="hidden" name="moduleId" value={module.id} />
-                {module.courseId && <input type="hidden" name="courseId" value={module.courseId} />}
-                <input type="hidden" name="scope" value="weak" />
-                <input type="hidden" name="returnPath" value={baseReturnPath} />
-                <input type="hidden" name="triggeredBy" value="inspect" />
-                <button type="submit" className="ui-button ui-button-secondary ui-button-xs">
-                  Reprocess weak resources
-                </button>
-              </form>
-              <form action={reprocessModuleResourcesAction}>
-                <input type="hidden" name="moduleId" value={module.id} />
-                {module.courseId && <input type="hidden" name="courseId" value={module.courseId} />}
-                <input type="hidden" name="scope" value="all" />
-                <input type="hidden" name="returnPath" value={baseReturnPath} />
-                <input type="hidden" name="triggeredBy" value="inspect" />
-                <button type="submit" className="ui-button ui-button-ghost ui-button-xs">
-                  Reprocess all
-                </button>
-              </form>
+            <div className="command-header-side">
+              <div className="command-header-actions">
+                <Link href={`/modules/${module.id}/learn#source-support`} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+                  Back to Learn
+                </Link>
+                <form action={reprocessModuleResourcesAction}>
+                  <input type="hidden" name="moduleId" value={module.id} />
+                  {module.courseId && <input type="hidden" name="courseId" value={module.courseId} />}
+                  <input type="hidden" name="scope" value="weak" />
+                  <input type="hidden" name="returnPath" value={baseReturnPath} />
+                  <input type="hidden" name="triggeredBy" value="inspect" />
+                  <button type="submit" className="ui-button ui-button-secondary ui-button-xs">
+                    Reprocess weak resources
+                  </button>
+                </form>
+                <form action={reprocessModuleResourcesAction}>
+                  <input type="hidden" name="moduleId" value={module.id} />
+                  {module.courseId && <input type="hidden" name="courseId" value={module.courseId} />}
+                  <input type="hidden" name="scope" value="all" />
+                  <input type="hidden" name="returnPath" value={baseReturnPath} />
+                  <input type="hidden" name="triggeredBy" value="inspect" />
+                  <button type="submit" className="ui-button ui-button-ghost ui-button-xs">
+                    Reprocess all
+                  </button>
+                </form>
+              </div>
             </div>
           </div>
 
@@ -123,7 +125,7 @@ export default async function ModuleInspectPage({ params, searchParams }: Props)
           </div>
         </section>
 
-        <section className="motion-card motion-delay-2 section-shell" style={{ padding: '1.1rem 1.15rem', display: 'grid', gap: '0.8rem' }}>
+        <section className="motion-card motion-delay-2 section-shell" style={{ padding: '1rem 1.05rem', display: 'grid', gap: '0.8rem' }}>
               <div>
                 <p className="ui-kicker">Persisted resource rows</p>
                 <h3 style={{ margin: '0.42rem 0 0', fontSize: '1.04rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>
@@ -136,30 +138,31 @@ export default async function ModuleInspectPage({ params, searchParams }: Props)
               No module resources are stored for this module yet.
             </div>
           ) : (
-            <div style={{ display: 'grid', gap: '0.75rem' }}>
-              {rows.map(({ resource, capability, quality, debug }) => {
-                const rowReturnPath = `${baseReturnPath}?resource=${encodeURIComponent(resource.id)}#${getResourceElementId(resource.id)}`
-                const preview = quality.meaningfulText || resource.extractedTextPreview?.trim() || resource.extractedText?.trim() || quality.reason
-                const lastReprocessedAt = typeof resource.metadata.lastReprocessedAt === 'string' ? resource.metadata.lastReprocessedAt : null
+            <div className="command-scroll-body" data-density="tall">
+              <div style={{ display: 'grid', gap: '0.75rem' }}>
+                {rows.map(({ resource, capability, quality, debug }) => {
+                  const rowReturnPath = `${baseReturnPath}?resource=${encodeURIComponent(resource.id)}#${getResourceElementId(resource.id)}`
+                  const preview = quality.meaningfulText || resource.extractedTextPreview?.trim() || resource.extractedText?.trim() || quality.reason
+                  const lastReprocessedAt = typeof resource.metadata.lastReprocessedAt === 'string' ? resource.metadata.lastReprocessedAt : null
 
-                return (
-                  <article
-                    key={resource.id}
-                    id={getResourceElementId(resource.id)}
-                    className="glass-panel glass-soft"
-                    style={{
-                      ['--glass-panel-border' as string]: focusedResourceId === resource.id
-                        ? 'color-mix(in srgb, var(--accent-border) 38%, var(--border-subtle) 62%)'
-                        : 'var(--glass-border)',
-                      borderRadius: 'var(--radius-panel)',
-                      padding: '0.9rem 0.95rem',
-                      display: 'grid',
-                      gap: '0.75rem',
-                      background: focusedResourceId === resource.id
-                        ? 'color-mix(in srgb, var(--surface-selected) 76%, var(--surface-elevated) 24%)'
-                        : undefined,
-                    }}
-                  >
+                  return (
+                    <article
+                      key={resource.id}
+                      id={getResourceElementId(resource.id)}
+                      className="glass-panel glass-soft"
+                      style={{
+                        ['--glass-panel-border' as string]: focusedResourceId === resource.id
+                          ? 'color-mix(in srgb, var(--accent-border) 38%, var(--border-subtle) 62%)'
+                          : 'var(--glass-border)',
+                        borderRadius: 'var(--radius-panel)',
+                        padding: '0.9rem 0.95rem',
+                        display: 'grid',
+                        gap: '0.75rem',
+                        background: focusedResourceId === resource.id
+                          ? 'color-mix(in srgb, var(--surface-selected) 76%, var(--surface-elevated) 24%)'
+                          : undefined,
+                      }}
+                    >
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
                       <div style={{ minWidth: 0, flex: '1 1 520px' }}>
                         <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.42rem' }}>
@@ -253,9 +256,10 @@ export default async function ModuleInspectPage({ params, searchParams }: Props)
                         )}
                       </div>
                     </div>
-                  </article>
-                )
-              })}
+                    </article>
+                  )
+                })}
+              </div>
             </div>
           )}
         </section>

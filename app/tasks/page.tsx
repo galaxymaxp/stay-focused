@@ -62,121 +62,173 @@ export default async function TasksPage({ searchParams }: Props) {
   const completedItems = workspace.taskItems
     .filter((task) => task.status === 'completed')
     .sort((a, b) => a.title.localeCompare(b.title))
+  const urgentItems = workspace.taskItems.filter(GROUPS[0].filter)
+  const soonItems = workspace.taskItems.filter(GROUPS[1].filter)
+  const laterItems = workspace.taskItems.filter(GROUPS[2].filter)
 
   return (
-    <main className="page-shell page-stack">
-      <header className="motion-card page-intro">
-        <p className="ui-kicker">Tasks</p>
-        <h1 className="ui-page-title">Tasks, grouped by what matters first</h1>
-        <p className="ui-page-copy page-intro-copy">
-          Keep the active list compact: urgent work first, lower-pressure work later, and completed items hidden until you need them.
-        </p>
-      </header>
+    <main className="page-shell command-page">
+      <section className="motion-card section-shell section-shell-elevated" style={{ padding: '1.05rem 1.15rem' }}>
+        <div className="command-header">
+          <div className="command-header-main">
+            <p className="ui-kicker">Tasks</p>
+            <h1 className="ui-page-title">Tasks, grouped by what matters first</h1>
+            <p className="ui-page-copy page-intro-copy">
+              This is a triage board, not a long backlog. The urgent queue stays in front, lower-pressure work stays contained, and completed items stay collapsed until you need them.
+            </p>
+          </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
-        {GROUPS.map((group) => {
-          const items = workspace.taskItems.filter(group.filter)
-
-          return (
-            <section key={group.key} className="motion-card motion-delay-1 section-shell" style={{ padding: '1.05rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '0.9rem' }}>
-                <div>
-                  <p className="ui-kicker">{group.eyebrow}</p>
-                  <h2 className="ui-section-title" style={{ marginTop: '0.36rem' }}>{group.title}</h2>
-                  <p className="ui-section-copy" style={{ marginTop: '0.32rem' }}>{group.description}</p>
-                </div>
-                <span className="ui-chip ui-chip-soft">{items.length} task{items.length === 1 ? '' : 's'}</span>
-              </div>
-
-              {items.length === 0 ? (
-                <div className="ui-empty" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', fontSize: '14px' }}>
-                  Nothing falls into this group right now.
-                </div>
-              ) : (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '0.85rem' }}>
-                  {items.map((task) => (
-                    <TaskCard
-                      key={task.id}
-                      task={task}
-                      highlighted={highlightedTaskId === task.id}
-                    />
-                  ))}
-                </div>
-              )}
-            </section>
-          )
-        })}
-      </div>
-
-      <section className="motion-card motion-delay-2 section-shell" style={{ padding: '1.05rem' }}>
-        <details>
-          <summary style={{
-            cursor: 'pointer',
-            listStyle: 'none',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            gap: '0.75rem',
-          }}>
-            <div>
-              <p className="ui-kicker">Done</p>
-              <h2 className="ui-section-title" style={{ marginTop: '0.36rem' }}>Completed items</h2>
-              <p className="ui-section-copy" style={{ marginTop: '0.32rem' }}>
-                Hidden by default so active work stays easier to scan.
+          <div className="command-header-side">
+            <div className="command-stat-grid">
+              <StatTile label="Urgent" value={String(urgentItems.length)} tone="warning" />
+              <StatTile label="Coming up" value={String(soonItems.length)} tone="accent" />
+              <StatTile label="Later" value={String(laterItems.length)} />
+              <StatTile label="Done" value={String(completedItems.length)} />
+            </div>
+            <div className="workspace-quiet-panel">
+              <p className="ui-kicker" style={{ margin: 0 }}>Board rule</p>
+              <p className="workspace-quiet-panel-copy">
+                Open one task from the first non-empty lane. Everything else should stay visible but bounded.
               </p>
             </div>
-            <span className="ui-chip ui-chip-soft">{completedItems.length} completed</span>
-          </summary>
-
-          <div style={{ marginTop: '1rem' }}>
-            {completedItems.length === 0 ? (
-              <div className="ui-empty" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', fontSize: '14px' }}>
-                Nothing has been marked complete yet.
-              </div>
-            ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '0.85rem' }}>
-                {completedItems.map((task) => {
-                  const taskHref = buildModuleDoHref(task.moduleId, { taskTitle: task.title })
-
-                  return (
-                    <article key={task.id} className="ui-card-soft ui-interactive-card task-card-shell task-card-shell-complete" style={{
-                      borderRadius: 'var(--radius-panel)',
-                      padding: '1rem',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '0.75rem',
-                    }}>
-                      <div className="task-card-frame">
-                        <Link href={taskHref} className="ui-interactive-row task-card-link">
-                          <p className="task-card-title" style={{ margin: 0, fontSize: '16px', lineHeight: 1.35, fontWeight: 650, color: 'var(--text-muted)', textDecoration: 'line-through' }}>
-                            {task.title}
-                          </p>
-                          <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-secondary)' }}>
-                            {task.courseName} | {task.moduleTitle}
-                          </p>
-                        </Link>
-                        <div className="task-card-side task-card-side-compact">
-                          <span className="ui-chip ui-status-success task-card-side-chip" style={{ padding: '0.28rem 0.6rem', fontSize: '11px', fontWeight: 700 }}>
-                            Done
-                          </span>
-                          <TaskStatusToggle
-                            status={task.status}
-                            moduleId={task.moduleId}
-                            title={task.title}
-                            taskItemId={task.id}
-                            style={{ justifyContent: 'center' }}
-                          />
-                        </div>
-                      </div>
-                    </article>
-                  )
-                })}
-              </div>
-            )}
           </div>
-        </details>
+        </div>
       </section>
+
+      <div className="page-stack" style={{ gap: '1rem' }}>
+        <div className="command-grid command-grid-wide">
+          <TaskGroupPanel
+            group={GROUPS[0]}
+            items={urgentItems}
+            highlightedTaskId={highlightedTaskId}
+            elevated
+          />
+          <TaskGroupPanel
+            group={GROUPS[1]}
+            items={soonItems}
+            highlightedTaskId={highlightedTaskId}
+          />
+        </div>
+
+        <div className="command-grid command-grid-wide">
+          <TaskGroupPanel
+            group={GROUPS[2]}
+            items={laterItems}
+            highlightedTaskId={highlightedTaskId}
+          />
+
+          <section className="motion-card motion-delay-2 section-shell" style={{ padding: '1rem' }}>
+            <details>
+              <summary style={{
+                cursor: 'pointer',
+                listStyle: 'none',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: '0.75rem',
+              }}>
+                <div>
+                  <p className="ui-kicker">Done</p>
+                  <h2 className="ui-section-title" style={{ marginTop: '0.36rem' }}>Completed items</h2>
+                  <p className="ui-section-copy" style={{ marginTop: '0.32rem' }}>
+                    Hidden by default so active work stays easier to scan.
+                  </p>
+                </div>
+                <span className="ui-chip ui-chip-soft">{completedItems.length} completed</span>
+              </summary>
+
+              <div style={{ marginTop: '0.9rem' }}>
+                {completedItems.length === 0 ? (
+                  <div className="ui-empty" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', fontSize: '14px' }}>
+                    Nothing has been marked complete yet.
+                  </div>
+                ) : (
+                  <div className="command-scroll-stack" data-density="tight">
+                    {completedItems.map((task) => {
+                      const taskHref = buildModuleDoHref(task.moduleId, { taskTitle: task.title })
+
+                      return (
+                        <article key={task.id} className="ui-card-soft ui-interactive-card task-card-shell task-card-shell-complete" style={{
+                          borderRadius: 'var(--radius-panel)',
+                          padding: '0.9rem',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '0.75rem',
+                        }}>
+                          <div className="task-card-frame">
+                            <Link href={taskHref} className="ui-interactive-row task-card-link">
+                              <p className="task-card-title" style={{ margin: 0, fontSize: '16px', lineHeight: 1.35, fontWeight: 650, color: 'var(--text-muted)', textDecoration: 'line-through' }}>
+                                {task.title}
+                              </p>
+                              <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-secondary)' }}>
+                                {task.courseName} | {task.moduleTitle}
+                              </p>
+                            </Link>
+                            <div className="task-card-side task-card-side-compact">
+                              <span className="ui-chip ui-status-success task-card-side-chip" style={{ padding: '0.28rem 0.6rem', fontSize: '11px', fontWeight: 700 }}>
+                                Done
+                              </span>
+                              <TaskStatusToggle
+                                status={task.status}
+                                moduleId={task.moduleId}
+                                title={task.title}
+                                taskItemId={task.id}
+                                style={{ justifyContent: 'center' }}
+                              />
+                            </div>
+                          </div>
+                        </article>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            </details>
+          </section>
+        </div>
+      </div>
     </main>
+  )
+}
+
+function TaskGroupPanel({
+  group,
+  items,
+  highlightedTaskId,
+  elevated = false,
+}: {
+  group: typeof GROUPS[number]
+  items: TaskItem[]
+  highlightedTaskId: string | null
+  elevated?: boolean
+}) {
+  return (
+    <section className={`motion-card motion-delay-1 section-shell${elevated ? ' section-shell-elevated' : ''}`} style={{ padding: '1rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '0.85rem' }}>
+        <div>
+          <p className="ui-kicker">{group.eyebrow}</p>
+          <h2 className="ui-section-title" style={{ marginTop: '0.36rem' }}>{group.title}</h2>
+          <p className="ui-section-copy" style={{ marginTop: '0.32rem' }}>{group.description}</p>
+        </div>
+        <span className="ui-chip ui-chip-soft">{items.length} task{items.length === 1 ? '' : 's'}</span>
+      </div>
+
+      {items.length === 0 ? (
+        <div className="ui-empty" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', fontSize: '14px' }}>
+          Nothing falls into this group right now.
+        </div>
+      ) : (
+        <div className="command-scroll-stack">
+          {items.map((task) => (
+            <TaskCard
+              key={task.id}
+              task={task}
+              highlighted={highlightedTaskId === task.id}
+            />
+          ))}
+        </div>
+      )}
+    </section>
   )
 }
 
@@ -283,4 +335,25 @@ const actionButtonStyle = {
   fontWeight: 700,
   borderRadius: 'var(--radius-control)',
   textDecoration: 'none',
+}
+
+function StatTile({
+  label,
+  value,
+  tone = 'muted',
+}: {
+  label: string
+  value: string
+  tone?: 'accent' | 'warning' | 'muted'
+}) {
+  return (
+    <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.72rem 0.78rem' }}>
+      <p style={{ margin: 0, fontSize: '11px', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
+        {label}
+      </p>
+      <p style={{ margin: '0.34rem 0 0', fontSize: '20px', lineHeight: 1.1, fontWeight: 650, color: tone === 'warning' ? 'var(--amber)' : 'var(--text-primary)' }}>
+        {value}
+      </p>
+    </div>
+  )
 }

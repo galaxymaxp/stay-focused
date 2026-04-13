@@ -30,37 +30,43 @@ export function ModuleLensShell({
       : 'A clearer action lens for seeing exactly what still needs to get done.'
 
   return (
-    <main className="page-shell page-stack" style={{ gap: '1.4rem' }}>
-      <section className={`motion-card section-shell ${currentLens === 'do' ? 'section-shell-elevated' : ''}`} style={{ padding: currentLens === 'do' ? '1.35rem 1.4rem' : '1.3rem 1.35rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-          <div style={{ minWidth: 0, flex: '1 1 520px' }}>
+    <main className="page-shell command-page command-page-tight">
+      <section
+        className={`motion-card section-shell ${currentLens === 'do' ? 'section-shell-elevated' : ''}`}
+        style={{ padding: currentLens === 'do' ? '1.1rem 1.2rem' : '1.05rem 1.15rem' }}
+      >
+        <div className="command-header">
+          <div className="command-header-main">
             <p className="ui-kicker">{lensLabel}</p>
             <h1 className="ui-page-title">{title}</h1>
             <p className="ui-page-copy" style={{ maxWidth: '56rem' }}>
               {lensCopy}
             </p>
+            <nav className="module-lens-tabs" aria-label="Module sections">
+              <LensTab href={`/modules/${moduleId}/learn`} label="Learn" active={currentLens === 'learn'} />
+              <LensTab href={`/modules/${moduleId}/do`} label="Do" active={currentLens === 'do'} />
+              <LensTab href={`/modules/${moduleId}/quiz`} label="Quiz" active={currentLens === 'quiz'} />
+            </nav>
           </div>
-          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-            <span className="ui-chip ui-chip-soft">{courseName}</span>
-            {courseId && (
-              <Link href={`/courses/${courseId}/learn`} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-                Course Learn
-              </Link>
-            )}
+
+          <div className="command-header-side">
+            <div className="command-header-actions">
+              <span className="ui-chip ui-chip-soft">{courseName}</span>
+              {courseId && (
+                <Link href={`/courses/${courseId}/learn`} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+                  Course Learn
+                </Link>
+              )}
+            </div>
+
+            {summary ? (
+              <div className="workspace-quiet-panel" style={{ gap: '0.32rem' }}>
+                <p className="ui-kicker" style={{ margin: 0 }}>Working context</p>
+                <p className="workspace-quiet-panel-copy">{summary}</p>
+              </div>
+            ) : null}
           </div>
         </div>
-
-        {summary && (
-          <p className="ui-page-copy" style={{ marginTop: '1rem', maxWidth: '60rem' }}>
-            {summary}
-          </p>
-        )}
-
-        <nav className="module-lens-tabs" aria-label="Module sections" style={{ marginTop: '1.05rem' }}>
-          <LensTab href={`/modules/${moduleId}/learn`} label="Learn" active={currentLens === 'learn'} />
-          <LensTab href={`/modules/${moduleId}/do`} label="Do" active={currentLens === 'do'} />
-          <LensTab href={`/modules/${moduleId}/quiz`} label="Quiz" active={currentLens === 'quiz'} />
-        </nav>
       </section>
 
       {children}

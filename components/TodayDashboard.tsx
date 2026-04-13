@@ -34,7 +34,7 @@ export function TodayDashboard({
 
         {undatedTaskCount > 0 ? (
           <p className="home-page-note">
-            {undatedTaskCount} task{undatedTaskCount === 1 ? '' : 's'} still need a due date, so they stay out of today&apos;s first recommendation.
+            {undatedTaskCount} task{undatedTaskCount === 1 ? '' : 's'}{' '}still need a due date, so they stay out of today&apos;s first recommendation.
           </p>
         ) : null}
       </header>
@@ -152,7 +152,7 @@ export function TodayDashboard({
             )}
           </section>
 
-          <section className="home-sheet">
+          <section className="home-sheet home-sheet-bounded home-sheet-bounded-tall">
             <SectionHeading
               eyebrow="Due soon"
               description="Work with dates close enough to affect today."
@@ -160,55 +160,76 @@ export function TodayDashboard({
               actionLabel="Open Tasks"
             />
 
-            {dueSoon.length > 0 ? (
-              <div className="home-sheet-list">
-                {dueSoon.map((item) => (
-                  <DueSoonRow key={item.id} item={item} />
-                ))}
-              </div>
-            ) : (
-              <EmptyState message="Nothing with a due date is crowding the next few days." />
-            )}
+            <div className="home-panel-scroll home-panel-scroll-tall">
+              {dueSoon.length > 0 ? (
+                <div className="home-sheet-list">
+                  {dueSoon.map((item) => (
+                    <DueSoonRow key={item.id} item={item} />
+                  ))}
+                </div>
+              ) : (
+                <EmptyState message="Nothing with a due date is crowding the next few days." />
+              )}
+            </div>
           </section>
         </div>
 
         <aside className="home-rail">
           <section className="home-sheet">
             <SectionHeading
+              eyebrow="Quick scan"
+              title="How today is shaped"
+              description="Keep the key counts nearby while the main surface stays open."
+            />
+
+            <div className="workspace-summary-grid">
+              <CompactSummaryCard label="Up next" value={String(upNext.length)} note="Backup moves ready after the first recommendation." />
+              <CompactSummaryCard label="Due soon" value={String(dueSoon.length)} note="Dated tasks near enough to change today." />
+              <CompactSummaryCard label="Recent changes" value={String(recentActivity.length)} note="New items or updates worth a quick scan." />
+              <CompactSummaryCard label="Courses" value={String(courseSnapshots.length)} note="Course lanes with enough context to reopen fast." />
+            </div>
+          </section>
+
+          <section className="home-sheet home-sheet-bounded home-sheet-bounded-rail">
+            <SectionHeading
               eyebrow="What changed"
               title="What's new"
               description="Recent updates without the full course feed."
             />
 
-            {recentActivity.length > 0 ? (
-              <div className="home-sheet-list">
-                {recentActivity.map((item) => (
-                  <ActivityRow key={item.id} item={item} />
-                ))}
-              </div>
-            ) : (
-              <EmptyState message="No recent changes have been captured yet." />
-            )}
+            <div className="home-panel-scroll home-panel-scroll-rail">
+              {recentActivity.length > 0 ? (
+                <div className="home-sheet-list">
+                  {recentActivity.map((item) => (
+                    <ActivityRow key={item.id} item={item} />
+                  ))}
+                </div>
+              ) : (
+                <EmptyState message="No recent changes have been captured yet." />
+              )}
+            </div>
           </section>
 
-          <section className="home-sheet">
+          <section className="home-sheet home-sheet-bounded home-sheet-bounded-rail">
             <SectionHeading
               eyebrow="Courses"
               title="Course snapshot"
-              description="Swipe or scroll across compact course cards to jump straight into the next useful lane."
+              description="Keep course context nearby without turning the page into a boxed dashboard."
               actionHref="/courses"
               actionLabel="Open Courses"
             />
 
-            {courseSnapshots.length > 0 ? (
-              <div className="home-course-carousel" aria-label="Course snapshot">
-                {courseSnapshots.map((course) => (
-                  <CourseSnapshotCard key={course.id} course={course} />
-                ))}
-              </div>
-            ) : (
-              <EmptyState message="No course snapshot is available yet." />
-            )}
+            <div className="home-panel-scroll home-panel-scroll-rail">
+              {courseSnapshots.length > 0 ? (
+                <div className="home-sheet-list" aria-label="Course snapshot">
+                  {courseSnapshots.map((course) => (
+                    <CourseSnapshotRow key={course.id} course={course} />
+                  ))}
+                </div>
+              ) : (
+                <EmptyState message="No course snapshot is available yet." />
+              )}
+            </div>
           </section>
         </aside>
       </div>
@@ -329,45 +350,39 @@ function ActivityRow({ item }: { item: HomeActivityItem }) {
   )
 }
 
-function CourseSnapshotCard({ course }: { course: HomeCourseSnapshot }) {
+function CourseSnapshotRow({ course }: { course: HomeCourseSnapshot }) {
   return (
-    <article className="home-course-card ui-card-soft ui-interactive-card">
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.7rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-        <div>
+    <article className="home-sheet-row home-course-row">
+      <Link href={course.href} className="home-course-link ui-interactive-row home-row-main">
+        <div className="home-row-meta">
           <span className="ui-chip ui-chip-soft" style={{ fontWeight: 700 }}>
             {course.code}
           </span>
-          <p className="home-row-title" style={{ marginTop: '0.45rem' }}>{course.name}</p>
+          {course.urgentCount > 0 ? (
+            <span className="ui-chip ui-status-warning" style={{ padding: '0.24rem 0.55rem', fontSize: '11px', fontWeight: 700 }}>
+              {course.urgentCount} urgent
+            </span>
+          ) : (
+            <span className="ui-chip ui-chip-soft" style={{ padding: '0.24rem 0.55rem', fontSize: '11px', fontWeight: 700 }}>
+              {course.pendingCount} open
+            </span>
+          )}
         </div>
-        {course.urgentCount > 0 ? (
-          <span className="ui-chip ui-status-warning" style={{ padding: '0.24rem 0.55rem', fontSize: '11px', fontWeight: 700 }}>
-            {course.urgentCount} urgent
-          </span>
+
+        <p className="home-row-title">{course.name}</p>
+        <p className="home-row-copy">{course.nextActionSummary}</p>
+
+        <div className="home-row-meta">
+          <span>{course.moduleCount} module{course.moduleCount === 1 ? '' : 's'}</span>
+          <span>{course.pendingCount} active task{course.pendingCount === 1 ? '' : 's'}</span>
+        </div>
+
+        {course.latestChange ? (
+          <p className="home-row-note">Latest: {course.latestChange}</p>
         ) : (
-          <span className="ui-chip ui-chip-soft" style={{ padding: '0.24rem 0.55rem', fontSize: '11px', fontWeight: 700 }}>
-            {course.pendingCount} open
-          </span>
+          <p className="home-row-note">{course.statusSummary}</p>
         )}
-      </div>
-
-      <p className="home-row-copy">{course.statusSummary}</p>
-
-      <div className="home-row-meta">
-        <span>{course.moduleCount} module{course.moduleCount === 1 ? '' : 's'}</span>
-        <span>{course.pendingCount} active task{course.pendingCount === 1 ? '' : 's'}</span>
-      </div>
-
-      {course.latestChange ? (
-        <div className="ui-card" style={{ borderRadius: 'var(--radius-tight)', padding: '0.72rem 0.78rem' }}>
-          <p className="ui-kicker" style={{ margin: 0 }}>Latest change</p>
-          <p className="home-row-note" style={{ marginTop: '0.32rem' }}>{course.latestChange}</p>
-        </div>
-      ) : null}
-
-      <div className="ui-card" style={{ borderRadius: 'var(--radius-tight)', padding: '0.72rem 0.78rem' }}>
-        <p className="ui-kicker" style={{ margin: 0 }}>Next move</p>
-        <p className="home-row-copy" style={{ marginTop: '0.32rem' }}>{course.nextActionSummary}</p>
-      </div>
+      </Link>
 
       <div className="home-course-actions">
         <Link href={course.nextActionHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
@@ -420,6 +435,24 @@ function MetaBadge({ children }: { children: string }) {
     <span className="ui-chip ui-chip-soft" style={{ fontWeight: 600 }}>
       {children}
     </span>
+  )
+}
+
+function CompactSummaryCard({
+  label,
+  value,
+  note,
+}: {
+  label: string
+  value: string
+  note: string
+}) {
+  return (
+    <div className="workspace-quiet-panel">
+      <p className="ui-kicker" style={{ margin: 0 }}>{label}</p>
+      <p className="workspace-quiet-panel-title" style={{ fontSize: '1.3rem', lineHeight: 1.05 }}>{value}</p>
+      <p className="workspace-quiet-panel-copy">{note}</p>
+    </div>
   )
 }
 

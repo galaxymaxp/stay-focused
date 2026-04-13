@@ -1,6 +1,6 @@
 'use client'
 
-import type { ReactNode } from 'react'
+import { type ReactNode, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { AnnouncementsMenu } from '@/components/AnnouncementsMenu'
@@ -98,6 +98,13 @@ export function AppShell({
   const pathname = usePathname()
   const activeSection = NAV_ITEMS.find((item) => item.matches(pathname)) ?? NAV_ITEMS[0]
   const subLabel = resolveTopbarSubLabel(pathname)
+  const [scrolled, setScrolled] = useState(false)
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 48)
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
 
   return (
     <div className="app-frame">
@@ -130,12 +137,12 @@ export function AppShell({
       </aside>
 
       <div className="app-main">
-        <header className="app-topbar glass-panel glass-soft">
+        <header className="app-topbar">
           <div className="app-topbar-leading">
             <span className="app-topbar-mobile-mark" aria-hidden="true">
               <StayFocusedIcon size={20} color="var(--accent)" />
             </span>
-            <div className="app-topbar-breadcrumb">
+            <div className="app-topbar-breadcrumb" data-scrolled={scrolled}>
               <strong className="app-topbar-current">{activeSection.label}</strong>
               {subLabel ? (
                 <>

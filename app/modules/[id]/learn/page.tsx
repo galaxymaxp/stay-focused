@@ -124,26 +124,36 @@ export default async function LearnPage({ params, searchParams }: Props) {
       title={module.title}
       summary={overview.summaryStateMessage}
     >
-      <div style={{ display: 'grid', gap: '1rem' }}>
-        <section className="motion-card motion-delay-1 section-shell section-shell-elevated" style={{ padding: '1.35rem 1.45rem', display: 'grid', gap: '1rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.9rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-            <div style={{ minWidth: 0, flex: '1 1 460px' }}>
+      <div className="command-page command-page-tight">
+        <section className="motion-card motion-delay-1 section-shell section-shell-elevated" style={{ padding: '1rem 1.05rem', display: 'grid', gap: '1rem' }}>
+          <div className="command-header">
+            <div className="command-header-main">
               <p className="ui-kicker">Unified Learn workspace</p>
               <h2 className="ui-section-title" style={{ marginTop: '0.45rem' }}>Exam prep packs come first, with source and reader fallback behind them</h2>
               <p className="ui-section-copy" style={{ marginTop: '0.45rem', maxWidth: '46rem' }}>
                 The main study path now starts at the resource, turns it into a saved answer-first exam prep pack, then carries that pack into quiz. The old reader still stays nearby for source transparency and fallback, but it no longer leads the workflow.
               </p>
             </div>
-            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-              <span className="ui-chip ui-chip-soft">{overview.studyMaterials.length} study source{overview.studyMaterials.length === 1 ? '' : 's'}</span>
-              <span className="ui-chip ui-chip-soft">{readyDeepLearnNoteCount} prep pack{readyDeepLearnNoteCount === 1 ? '' : 's'}</span>
-              <span className="ui-chip ui-chip-soft">{termBank.finalTerms.length} key term{termBank.finalTerms.length === 1 ? '' : 's'}</span>
-              <span className="ui-chip ui-chip-soft">{quizReadyDeepLearnNoteCount} quiz-ready pack{quizReadyDeepLearnNoteCount === 1 ? '' : 's'}</span>
-              {deepLearnNotesResult.availability === 'unavailable' && (
-                <span className="ui-chip ui-chip-soft">Pack status unavailable</span>
-              )}
-              <span className="ui-chip ui-chip-soft">{pendingTasks.length} active task{pendingTasks.length === 1 ? '' : 's'}</span>
-              {completedTasks.length > 0 && <span className="ui-chip ui-chip-soft">{completedTasks.length} done</span>}
+
+            <div className="command-header-side">
+              <div className="command-header-actions">
+                <span className="ui-chip ui-chip-soft">{overview.studyMaterials.length} study source{overview.studyMaterials.length === 1 ? '' : 's'}</span>
+                <span className="ui-chip ui-chip-soft">{readyDeepLearnNoteCount} prep pack{readyDeepLearnNoteCount === 1 ? '' : 's'}</span>
+                <span className="ui-chip ui-chip-soft">{termBank.finalTerms.length} key term{termBank.finalTerms.length === 1 ? '' : 's'}</span>
+                <span className="ui-chip ui-chip-soft">{quizReadyDeepLearnNoteCount} quiz-ready pack{quizReadyDeepLearnNoteCount === 1 ? '' : 's'}</span>
+                {deepLearnNotesResult.availability === 'unavailable' && (
+                  <span className="ui-chip ui-chip-soft">Pack status unavailable</span>
+                )}
+                <span className="ui-chip ui-chip-soft">{pendingTasks.length} active task{pendingTasks.length === 1 ? '' : 's'}</span>
+                {completedTasks.length > 0 && <span className="ui-chip ui-chip-soft">{completedTasks.length} done</span>}
+              </div>
+
+              <div className="workspace-quiet-panel">
+                <p className="ui-kicker" style={{ margin: 0 }}>Workspace rule</p>
+                <p className="workspace-quiet-panel-copy">
+                  Keep the prep pack lane and the action/status lane visible together. Drop into source support only when you need evidence.
+                </p>
+              </div>
             </div>
           </div>
 
@@ -156,7 +166,7 @@ export default async function LearnPage({ params, searchParams }: Props) {
             </div>
           )}
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.15fr) minmax(300px, 0.95fr)', gap: '0.9rem', alignItems: 'start' }}>
+          <div className="command-workspace">
             <div className="glass-panel glass-accent" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem 1.05rem', display: 'grid', gap: '0.85rem' }}>
               <div>
                 <p className="ui-kicker">Module focus</p>
@@ -276,8 +286,8 @@ export default async function LearnPage({ params, searchParams }: Props) {
           </div>
         </section>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.18fr) minmax(320px, 0.92fr)', gap: '1rem', alignItems: 'start' }}>
-          <section id="study-notes" className="motion-card motion-delay-2 section-shell section-shell-elevated" style={{ padding: '1.2rem 1.3rem', display: 'grid', gap: '0.9rem' }}>
+        <div className="command-workspace">
+          <section id="study-notes" className="motion-card motion-delay-2 section-shell section-shell-elevated" style={{ padding: '1rem 1.05rem', display: 'grid', gap: '0.9rem' }}>
             <div>
               <p className="ui-kicker">Exam prep packs</p>
               <h3 style={{ margin: '0.42rem 0 0', fontSize: '1.08rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>Build the saved review pack first, then use the reader only when you need the source surface</h3>
@@ -286,58 +296,60 @@ export default async function LearnPage({ params, searchParams }: Props) {
               </p>
             </div>
 
-            <StudyResourceAccordionList
-              items={overview.studyMaterials.map((material) => {
-                const selection = deepLearnSelectionByDisplayId.get(material.resource.id)
-                  ?? resolveLearnResourceSelection(experience, storedResources, material.resource.id)
-                const deepLearnResourceId = selection?.canonicalResourceId ?? material.resource.id
-                const readiness = classifyDeepLearnResourceReadiness({
-                  resource: material.resource,
-                  storedResource: selection?.storedResource ?? null,
-                  canonicalResourceId: selection?.canonicalResourceId ?? null,
-                })
+            <div className="command-scroll-body" data-density="tall">
+              <StudyResourceAccordionList
+                items={overview.studyMaterials.map((material) => {
+                  const selection = deepLearnSelectionByDisplayId.get(material.resource.id)
+                    ?? resolveLearnResourceSelection(experience, storedResources, material.resource.id)
+                  const deepLearnResourceId = selection?.canonicalResourceId ?? material.resource.id
+                  const readiness = classifyDeepLearnResourceReadiness({
+                    resource: material.resource,
+                    storedResource: selection?.storedResource ?? null,
+                    canonicalResourceId: selection?.canonicalResourceId ?? null,
+                  })
 
-                return {
-                  ...buildDeepLearnAccordionState(
-                    module.id,
-                    module.courseId ?? null,
-                    deepLearnResourceId,
-                    deepLearnNoteByResourceId.get(selection?.canonicalResourceId ?? material.resource.id) ?? null,
-                    deepLearnNotesResult.availability,
-                    deepLearnNotesResult.message,
-                    readiness,
-                  ),
-                  moduleId: module.id,
-                  courseId: module.courseId ?? null,
-                  id: material.resource.id,
-                  title: material.resource.title,
-                  note: material.note,
-                  detailNote: material.detailNote,
-                  fileTypeLabel: material.fileTypeLabel,
-                  readinessLabel: material.readinessLabel,
-                  readinessTone: material.readinessTone,
-                  statusKey: material.statusKey,
-                  readerState: material.reader.state,
-                  primaryAction: material.primaryAction,
-                  sourceActionLabel: material.sourceActionLabel,
-                  required: material.resource.required,
-                  outlineSections: material.reader.outlineSections,
-                  outlineHint: material.reader.outlineHint,
-                  previewState: material.resource.previewState,
-                  fallbackReason: material.resource.fallbackReason,
-                  readerHref: getLearnResourceHref(module.id, material.resource.id),
-                  canvasHref: getResourceCanvasHref(material.resource),
-                  originalFileHref: getResourceOriginalFileHref(material.resource),
-                }
-              })}
-              initialOpenResourceId={targetResourceId}
-              emptyMessage="No mapped study resources are available for exam prep in this module yet."
-              scrollable
-            />
+                  return {
+                    ...buildDeepLearnAccordionState(
+                      module.id,
+                      module.courseId ?? null,
+                      deepLearnResourceId,
+                      deepLearnNoteByResourceId.get(selection?.canonicalResourceId ?? material.resource.id) ?? null,
+                      deepLearnNotesResult.availability,
+                      deepLearnNotesResult.message,
+                      readiness,
+                    ),
+                    moduleId: module.id,
+                    courseId: module.courseId ?? null,
+                    id: material.resource.id,
+                    title: material.resource.title,
+                    note: material.note,
+                    detailNote: material.detailNote,
+                    fileTypeLabel: material.fileTypeLabel,
+                    readinessLabel: material.readinessLabel,
+                    readinessTone: material.readinessTone,
+                    statusKey: material.statusKey,
+                    readerState: material.reader.state,
+                    primaryAction: material.primaryAction,
+                    sourceActionLabel: material.sourceActionLabel,
+                    required: material.resource.required,
+                    outlineSections: material.reader.outlineSections,
+                    outlineHint: material.reader.outlineHint,
+                    previewState: material.resource.previewState,
+                    fallbackReason: material.resource.fallbackReason,
+                    readerHref: getLearnResourceHref(module.id, material.resource.id),
+                    canvasHref: getResourceCanvasHref(material.resource),
+                    originalFileHref: getResourceOriginalFileHref(material.resource),
+                  }
+                })}
+                initialOpenResourceId={targetResourceId}
+                emptyMessage="No mapped study resources are available for exam prep in this module yet."
+                scrollable
+              />
+            </div>
           </section>
 
-          <aside style={{ display: 'grid', gap: '1rem' }}>
-            <section id="action-status" className="motion-card motion-delay-2 section-shell" style={{ padding: '1.1rem 1.15rem', display: 'grid', gap: '0.8rem' }}>
+          <aside className="command-rail">
+            <section id="action-status" className="motion-card motion-delay-2 section-shell command-stick-top" style={{ padding: '1rem 1.05rem', display: 'grid', gap: '0.8rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
                 <div>
                   <p className="ui-kicker">Action status</p>
@@ -445,7 +457,7 @@ export default async function LearnPage({ params, searchParams }: Props) {
               )}
             </section>
 
-            <section className="motion-card motion-delay-3 section-shell" style={{ padding: '1.1rem 1.15rem', display: 'grid', gap: '0.8rem' }}>
+            <section className="motion-card motion-delay-3 section-shell" style={{ padding: '1rem 1.05rem', display: 'grid', gap: '0.8rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
                 <div>
                   <p className="ui-kicker">Study coverage</p>
@@ -498,7 +510,7 @@ export default async function LearnPage({ params, searchParams }: Props) {
         </div>
 
         <div id="source-support">
-          <details open={shouldOpenSourceSupport} className="motion-card motion-delay-3 section-shell" style={{ padding: '1.1rem 1.15rem' }}>
+          <details open={shouldOpenSourceSupport} className="motion-card motion-delay-3 section-shell" style={{ padding: '1rem 1.05rem' }}>
             <summary className="ui-interactive-summary" style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
                   Source support
                 </summary>
@@ -514,15 +526,17 @@ export default async function LearnPage({ params, searchParams }: Props) {
               </div>
 
               {overview.studyMaterials.length > 0 ? (
-                <div style={{ display: 'grid', gap: '0.7rem' }}>
-                  {overview.studyMaterials.map((material) => (
-                    <SourceSupportRow
-                      key={`${material.resource.id}-source-support`}
-                      moduleId={module.id}
-                      material={material}
-                      highlighted={targetSupportId === material.resource.id}
-                    />
-                  ))}
+                <div className="command-scroll-body" data-density="compact">
+                  <div style={{ display: 'grid', gap: '0.7rem' }}>
+                    {overview.studyMaterials.map((material) => (
+                      <SourceSupportRow
+                        key={`${material.resource.id}-source-support`}
+                        moduleId={module.id}
+                        material={material}
+                        highlighted={targetSupportId === material.resource.id}
+                      />
+                    ))}
+                  </div>
                 </div>
               ) : (
                 <div className="ui-empty" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', fontSize: '14px', lineHeight: 1.68 }}>
@@ -531,16 +545,18 @@ export default async function LearnPage({ params, searchParams }: Props) {
               )}
 
               {overview.otherContextResources.length > 0 && (
-                <div style={{ display: 'grid', gap: '0.7rem' }}>
-                  {overview.otherContextResources.map((item) => (
-                    <SupportContextRow
-                      key={item.id}
-                      moduleId={module.id}
-                      courseId={module.courseId ?? null}
-                      item={item}
-                      highlighted={targetSupportId === item.id}
-                    />
-                  ))}
+                <div className="command-scroll-body" data-density="compact">
+                  <div style={{ display: 'grid', gap: '0.7rem' }}>
+                    {overview.otherContextResources.map((item) => (
+                      <SupportContextRow
+                        key={item.id}
+                        moduleId={module.id}
+                        courseId={module.courseId ?? null}
+                        item={item}
+                        highlighted={targetSupportId === item.id}
+                      />
+                    ))}
+                  </div>
                 </div>
               )}
             </div>

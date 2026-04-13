@@ -74,8 +74,8 @@ export default async function DoPage({ params, searchParams }: Props) {
       title={module.title}
       summary={module.summary}
     >
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1rem', alignItems: 'start' }}>
-        <section className="motion-card motion-delay-1 section-shell section-shell-elevated" style={{ padding: '1.25rem' }}>
+      <div className="command-workspace command-workspace-compact">
+        <section className="motion-card motion-delay-1 section-shell section-shell-elevated" style={{ padding: '1rem 1.05rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap', marginBottom: '1rem' }}>
             <div>
               <p className="ui-kicker">
@@ -95,129 +95,131 @@ export default async function DoPage({ params, searchParams }: Props) {
               Nothing active is left in this module right now.
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-              {pendingTasks.map((task, index) => {
-                const matchedResource = matchTaskToResource(task.title, learnExperience.resources)
-                const learnHref = buildModuleLearnHref(module.id, matchedResource
-                  ? {
-                      resourceId: matchedResource.id,
-                      panel: 'study-notes',
-                    }
-                  : {
-                      taskId: task.id,
-                      panel: 'action-status',
-                    })
-                const canvasHref = task.canvasUrl ?? (matchedResource ? getResourceCanvasHref(matchedResource) : null)
-                const sourceHref = matchedResource
-                  ? getResourceOriginalFileHref(matchedResource) ?? canvasHref
-                  : canvasHref
-                const sourceText = matchedResource?.extractedText
-                  ?? matchedResource?.extractedTextPreview
-                  ?? task.details
-                  ?? module.summary
-                  ?? null
-                const resourceSnippet = buildTaskDraftContextText(
-                  matchedResource?.extractedText
+            <div className="command-scroll-body" data-density="tall">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                {pendingTasks.map((task, index) => {
+                  const matchedResource = matchTaskToResource(task.title, learnExperience.resources)
+                  const learnHref = buildModuleLearnHref(module.id, matchedResource
+                    ? {
+                        resourceId: matchedResource.id,
+                        panel: 'study-notes',
+                      }
+                    : {
+                        taskId: task.id,
+                        panel: 'action-status',
+                      })
+                  const canvasHref = task.canvasUrl ?? (matchedResource ? getResourceCanvasHref(matchedResource) : null)
+                  const sourceHref = matchedResource
+                    ? getResourceOriginalFileHref(matchedResource) ?? canvasHref
+                    : canvasHref
+                  const sourceText = matchedResource?.extractedText
                     ?? matchedResource?.extractedTextPreview
-                    ?? matchedResource?.linkedContext
-                    ?? matchedResource?.whyItMatters
-                    ?? null,
-                  1800,
-                )
-                const manualCopy = buildManualCopyBundle({
-                  taskTitle: task.title,
-                  courseName,
-                  moduleName: module.title,
-                  dueDate: task.deadline,
-                  taskDetails: task.details,
-                  resource: matchedResource,
-                })
+                    ?? task.details
+                    ?? module.summary
+                    ?? null
+                  const resourceSnippet = buildTaskDraftContextText(
+                    matchedResource?.extractedText
+                      ?? matchedResource?.extractedTextPreview
+                      ?? matchedResource?.linkedContext
+                      ?? matchedResource?.whyItMatters
+                      ?? null,
+                    1800,
+                  )
+                  const manualCopy = buildManualCopyBundle({
+                    taskTitle: task.title,
+                    courseName,
+                    moduleName: module.title,
+                    dueDate: task.deadline,
+                    taskDetails: task.details,
+                    resource: matchedResource,
+                  })
 
-                return (
-                  <article key={task.id} id={getTaskElementId(task.id)} className="glass-panel" style={{
-                    ['--glass-panel-bg' as string]: index === 0 ? 'color-mix(in srgb, var(--glass-surface-accent) 34%, var(--glass-surface-strong) 66%)' : 'var(--glass-surface-strong)',
-                    ['--glass-panel-border' as string]: highlightedTaskId === task.id
-                      ? 'color-mix(in srgb, var(--accent-border) 42%, var(--border-subtle) 58%)'
-                      : index === 0
-                        ? 'var(--accent-border)'
-                        : 'var(--glass-border)',
-                    ['--glass-panel-shadow' as string]: 'var(--glass-shadow)',
-                    borderRadius: 'var(--radius-panel)',
-                    padding: '0.9rem 0.95rem',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '0.72rem',
-                  }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', marginBottom: '0.35rem' }}>
-                          <span className="ui-chip" style={priorityChipStyle(task.priority)}>
-                            {task.priority} priority
-                          </span>
-                          {task.deadline && (
-                            <span className="ui-chip" style={deadlineChipStyle(task.deadline)}>
-                              {formatDeadlineLabel(task.deadline)}
+                  return (
+                    <article key={task.id} id={getTaskElementId(task.id)} className="glass-panel" style={{
+                      ['--glass-panel-bg' as string]: index === 0 ? 'color-mix(in srgb, var(--glass-surface-accent) 34%, var(--glass-surface-strong) 66%)' : 'var(--glass-surface-strong)',
+                      ['--glass-panel-border' as string]: highlightedTaskId === task.id
+                        ? 'color-mix(in srgb, var(--accent-border) 42%, var(--border-subtle) 58%)'
+                        : index === 0
+                          ? 'var(--accent-border)'
+                          : 'var(--glass-border)',
+                      ['--glass-panel-shadow' as string]: 'var(--glass-shadow)',
+                      borderRadius: 'var(--radius-panel)',
+                      padding: '0.9rem 0.95rem',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.72rem',
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', marginBottom: '0.35rem' }}>
+                            <span className="ui-chip" style={priorityChipStyle(task.priority)}>
+                              {task.priority} priority
                             </span>
-                          )}
+                            {task.deadline && (
+                              <span className="ui-chip" style={deadlineChipStyle(task.deadline)}>
+                                {formatDeadlineLabel(task.deadline)}
+                              </span>
+                            )}
+                          </div>
+                          <h3 style={{ margin: 0, fontSize: '17px', lineHeight: 1.3, fontWeight: 650, color: 'var(--text-primary)', overflowWrap: 'anywhere' }}>{task.title}</h3>
                         </div>
-                        <h3 style={{ margin: 0, fontSize: '17px', lineHeight: 1.3, fontWeight: 650, color: 'var(--text-primary)', overflowWrap: 'anywhere' }}>{task.title}</h3>
+                        <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 600 }}>Step {index + 1}</span>
                       </div>
-                      <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 600 }}>Step {index + 1}</span>
-                    </div>
 
-                    {task.details && (
-                      <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.62, color: 'var(--text-secondary)', overflowWrap: 'anywhere' }}>{task.details}</p>
-                    )}
+                      {task.details && (
+                        <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.62, color: 'var(--text-secondary)', overflowWrap: 'anywhere' }}>{task.details}</p>
+                      )}
 
-                    <TaskStatusToggle
-                      status={task.status}
-                      moduleId={module.id}
-                      title={task.title}
-                      legacyTaskId={task.id}
-                    />
-
-                    <div className="ui-meta-list">
-                      <span><strong>Course:</strong> {courseName}</span>
-                      <span><strong>Source:</strong> {module.title}</span>
-                      <span><strong>Timing:</strong> {task.deadline ? `Due ${formatDate(task.deadline)}` : 'No due date found'}</span>
-                    </div>
-
-                    <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-                      <TaskDraftButton
-                        defaultOpen={draftAutoOpen && highlightedTaskId === task.id}
-                        copyBundle={manualCopy}
-                        context={{
-                          taskTitle: task.title,
-                          taskDetails: task.details,
-                          deadline: task.deadline,
-                          priority: task.priority,
-                          courseName,
-                          moduleTitle: module.title,
-                          studyPrompts: module.study_prompts,
-                          concepts: module.concepts,
-                          moduleSummary: module.summary,
-                          resourceSnippet,
-                          canvasUrl: task.canvasUrl,
-                            learnHref,
-                            sourceTitle: matchedResource?.title ?? task.title,
-                            sourceType: matchedResource?.type ?? 'Task',
-                            sourceHref,
-                            sourceText,
-                            sourceNote: matchedResource?.linkedContext ?? matchedResource?.whyItMatters ?? task.details,
-                        }}
+                      <TaskStatusToggle
+                        status={task.status}
+                        moduleId={module.id}
+                        title={task.title}
+                        legacyTaskId={task.id}
                       />
-                      <Link href={learnHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-                        Open Learn
-                      </Link>
-                      {canvasHref ? (
-                        <a href={canvasHref} target="_blank" rel="noreferrer" className={`ui-button ${task.canvasUrl ? 'ui-button-secondary' : 'ui-button-ghost'} ui-button-xs`} style={{ textDecoration: 'none' }}>
-                          Open in Canvas
-                        </a>
-                      ) : null}
-                    </div>
-                  </article>
-                )
-              })}
+
+                      <div className="ui-meta-list">
+                        <span><strong>Course:</strong> {courseName}</span>
+                        <span><strong>Source:</strong> {module.title}</span>
+                        <span><strong>Timing:</strong> {task.deadline ? `Due ${formatDate(task.deadline)}` : 'No due date found'}</span>
+                      </div>
+
+                      <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+                        <TaskDraftButton
+                          defaultOpen={draftAutoOpen && highlightedTaskId === task.id}
+                          copyBundle={manualCopy}
+                          context={{
+                            taskTitle: task.title,
+                            taskDetails: task.details,
+                            deadline: task.deadline,
+                            priority: task.priority,
+                            courseName,
+                            moduleTitle: module.title,
+                            studyPrompts: module.study_prompts,
+                            concepts: module.concepts,
+                            moduleSummary: module.summary,
+                            resourceSnippet,
+                            canvasUrl: task.canvasUrl,
+                              learnHref,
+                              sourceTitle: matchedResource?.title ?? task.title,
+                              sourceType: matchedResource?.type ?? 'Task',
+                              sourceHref,
+                              sourceText,
+                              sourceNote: matchedResource?.linkedContext ?? matchedResource?.whyItMatters ?? task.details,
+                          }}
+                        />
+                        <Link href={learnHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+                          Open Learn
+                        </Link>
+                        {canvasHref ? (
+                          <a href={canvasHref} target="_blank" rel="noreferrer" className={`ui-button ${task.canvasUrl ? 'ui-button-secondary' : 'ui-button-ghost'} ui-button-xs`} style={{ textDecoration: 'none' }}>
+                            Open in Canvas
+                          </a>
+                        ) : null}
+                      </div>
+                    </article>
+                  )
+                })}
+              </div>
             </div>
           )}
 
@@ -329,9 +331,9 @@ export default async function DoPage({ params, searchParams }: Props) {
           )}
         </section>
 
-        <aside style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <aside className="command-rail command-stick-top" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           {module.recommended_order && module.recommended_order.length > 0 && (
-            <section className="motion-card motion-delay-2 section-shell" style={{ padding: '1.15rem' }}>
+            <section className="motion-card motion-delay-2 section-shell" style={{ padding: '1rem 1.05rem' }}>
               <p className="ui-kicker">
                 Suggested order
               </p>
@@ -363,7 +365,7 @@ export default async function DoPage({ params, searchParams }: Props) {
             </section>
           )}
 
-          <section className="motion-card motion-delay-2 section-shell" style={{ padding: '1.15rem' }}>
+            <section className="motion-card motion-delay-2 section-shell" style={{ padding: '1rem 1.05rem' }}>
             <p className="ui-kicker">
               Deadlines
             </p>
