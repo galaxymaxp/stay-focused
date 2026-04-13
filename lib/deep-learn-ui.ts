@@ -1,11 +1,12 @@
 import type { DeepLearnNote, DeepLearnNoteLoadAvailability } from '@/lib/types'
+import type { DeepLearnResourceReadiness } from '@/lib/deep-learn-readiness'
 import { buildDeepLearnNoteHref, buildModuleQuizHref } from '@/lib/stay-focused-links'
 
-export type DeepLearnUiStatus = 'not_started' | 'pending' | 'ready' | 'failed' | 'unavailable'
+export type DeepLearnUiStatus = 'not_started' | 'pending' | 'ready' | 'failed' | 'blocked' | 'unavailable'
 
 export interface DeepLearnResourceUiState {
   status: DeepLearnUiStatus
-  statusLabel: 'No note yet' | 'Generating' | 'Ready' | 'Failed' | 'Unavailable'
+  statusLabel: 'No note yet' | 'Generating' | 'Ready' | 'Failed' | 'Blocked' | 'Unavailable'
   tone: 'accent' | 'warning' | 'muted'
   noteHref: string
   quizHref: string
@@ -22,10 +23,12 @@ export function getDeepLearnResourceUiState(
   options: {
     notesAvailability?: DeepLearnNoteLoadAvailability
     unavailableMessage?: string | null
+    readiness?: DeepLearnResourceReadiness | null
   } = {},
 ): DeepLearnResourceUiState {
   const noteHref = buildDeepLearnNoteHref(moduleId, resourceId)
   const quizHref = buildModuleQuizHref(moduleId, { resourceId })
+  const readiness = options.readiness ?? null
 
   if (!note && options.notesAvailability === 'unavailable') {
     return {
@@ -41,6 +44,20 @@ export function getDeepLearnResourceUiState(
     }
   }
 
+  if ((note?.status === 'failed' || !note) && readiness?.state === 'blocked') {
+    return {
+      status: 'blocked',
+      statusLabel: 'Blocked',
+      tone: 'warning',
+      noteHref,
+      quizHref,
+      primaryLabel: 'View reader fallback',
+      summary: readiness.summary,
+      detail: readiness.detail,
+      quizReady: false,
+    }
+  }
+
   if (!note) {
     return {
       status: 'not_started',
@@ -49,8 +66,12 @@ export function getDeepLearnResourceUiState(
       noteHref,
       quizHref,
       primaryLabel: 'Deep Learn this',
-      summary: 'Turn this resource into a saved study note that keeps exact terms, explains them clearly, and stays quiz-ready.',
-      detail: 'Deep Learn becomes the main study pass here. The reader stays available as a fallback source view when you need it.',
+      summary: readiness?.state === 'via_source_fetch'
+        ? readiness.summary
+        : 'Turn this resource into a saved study note that keeps exact terms, explains them clearly, and stays quiz-ready.',
+      detail: readiness?.state === 'via_source_fetch'
+        ? readiness.detail
+        : 'Deep Learn becomes the main study pass here. The reader stays available as a fallback source view when you need it.',
       quizReady: false,
     }
   }

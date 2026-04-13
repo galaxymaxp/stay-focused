@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { DeepLearnGenerateButton } from '@/components/DeepLearnGenerateButton'
+import type { DeepLearnResourceReadiness } from '@/lib/deep-learn-readiness'
 import { getDeepLearnResourceUiState } from '@/lib/deep-learn-ui'
 import { buildModuleQuizHref } from '@/lib/stay-focused-links'
 import type { DeepLearnNote, DeepLearnNoteLoadAvailability } from '@/lib/types'
@@ -13,6 +14,7 @@ export function DeepLearnNoteView({
   note,
   noteAvailability = 'available',
   noteAvailabilityMessage = null,
+  readiness = null,
   readerHref,
   sourceHref,
 }: {
@@ -23,6 +25,7 @@ export function DeepLearnNoteView({
   note: DeepLearnNote | null
   noteAvailability?: DeepLearnNoteLoadAvailability
   noteAvailabilityMessage?: string | null
+  readiness?: DeepLearnResourceReadiness | null
   readerHref: string
   sourceHref: string | null
 }) {
@@ -34,6 +37,7 @@ export function DeepLearnNoteView({
   const ui = getDeepLearnResourceUiState(moduleId, resolvedDeepLearnResourceId, note, {
     notesAvailability: effectiveAvailability,
     unavailableMessage: effectiveAvailabilityMessage,
+    readiness,
   })
   const quizHref = buildModuleQuizHref(moduleId, { resourceId: resolvedDeepLearnResourceId })
 
@@ -54,7 +58,7 @@ export function DeepLearnNoteView({
             <Link href={ui.noteHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
               Open Deep Learn note
             </Link>
-          ) : ui.status === 'unavailable' ? (
+          ) : ui.status === 'unavailable' || ui.status === 'blocked' ? (
             <Link href={readerHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
               {ui.primaryLabel}
             </Link>
@@ -191,7 +195,7 @@ export function DeepLearnNoteView({
           <p style={{ margin: 0, fontSize: '15px', lineHeight: 1.76, color: 'var(--text-secondary)' }}>
             {ui.summary}
           </p>
-          {ui.status === 'unavailable' && effectiveAvailabilityMessage && (
+          {(ui.status === 'unavailable' || ui.status === 'blocked') && effectiveAvailabilityMessage && (
             <p style={{ margin: '0.6rem 0 0', fontSize: '13px', lineHeight: 1.62, color: 'var(--text-secondary)' }}>
               {effectiveAvailabilityMessage}
             </p>

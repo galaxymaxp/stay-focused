@@ -1,4 +1,5 @@
 import { getCourseModules, getModuleTasks, type ClarityWorkspace } from '@/lib/clarity-workspace'
+import { classifyDeepLearnResourceReadiness } from '@/lib/deep-learn-readiness'
 import { buildModuleLearnOverview } from '@/lib/module-learn-overview'
 import { buildModuleTermBank, type FinalReviewerTerm, type ModuleTermQuizItem, type ModuleTermSuggestion } from '@/lib/module-term-bank'
 import { listDeepLearnNotesForModule } from '@/lib/deep-learn-store'
@@ -9,6 +10,7 @@ import {
   getModuleWorkspace,
   getResourceOriginalFileHref,
   getResourceCanvasHref,
+  resolveLearnResourceSelection,
 } from '@/lib/module-workspace'
 import { buildModuleDoHref } from '@/lib/stay-focused-links'
 import { getStudyFileProgressLabel } from '@/lib/study-file-manual-state'
@@ -63,8 +65,8 @@ export interface CourseLearnStudyMaterialRow {
   originalFileHref: string | null
   outlineSections: StudyFileOutlineSection[]
   outlineHint: string | null
-  deepLearnStatus: 'not_started' | 'pending' | 'ready' | 'failed' | 'unavailable'
-  deepLearnStatusLabel: 'No note yet' | 'Generating' | 'Ready' | 'Failed' | 'Unavailable'
+  deepLearnStatus: 'not_started' | 'pending' | 'ready' | 'failed' | 'blocked' | 'unavailable'
+  deepLearnStatusLabel: 'No note yet' | 'Generating' | 'Ready' | 'Failed' | 'Blocked' | 'Unavailable'
   deepLearnTone: 'accent' | 'warning' | 'muted'
   deepLearnSummary: string
   deepLearnDetail: string
@@ -239,6 +241,22 @@ async function buildCourseLearnModuleCard(
   const taskRows = sortTasks(moduleWorkspace?.tasks ?? [])
   const pendingTasks = taskRows.filter((task) => task.status !== 'completed')
   const completedTasks = taskRows.filter((task) => task.status === 'completed')
+  const resolveDeepLearnMaterialState = (material: typeof overview.studyMaterials[number] | typeof overview.activityOverrides[number]) => {
+    const selection = resolveLearnResourceSelection(experience, moduleWorkspace?.resources ?? [], material.resource.id)
+    const deepLearnResourceId = selection?.canonicalResourceId ?? material.resource.id
+    const deepLearnNote = deepLearnNoteByResourceId.get(selection?.canonicalResourceId ?? material.resource.id) ?? null
+    const deepLearnReadiness = classifyDeepLearnResourceReadiness({
+      resource: material.resource,
+      storedResource: selection?.storedResource ?? null,
+      canonicalResourceId: selection?.canonicalResourceId ?? null,
+    })
+
+    return {
+      deepLearnResourceId,
+      deepLearnNote,
+      deepLearnReadiness,
+    }
+  }
 
   return {
     id: module.id,
@@ -272,13 +290,17 @@ async function buildCourseLearnModuleCard(
         }
       : null,
     studyMaterials: overview.studyMaterials.map((material) => ({
-      ...(buildDeepLearnRowState(
-        module.id,
-        material.resource.id,
-        deepLearnNoteByResourceId.get(material.resource.id) ?? null,
-        deepLearnNotesResult.availability,
-        deepLearnNotesResult.message,
-      )),
+      ...(() => {
+        const deepLearn = resolveDeepLearnMaterialState(material)
+        return buildDeepLearnRowState(
+          module.id,
+          deepLearn.deepLearnResourceId,
+          deepLearn.deepLearnNote,
+          deepLearnNotesResult.availability,
+          deepLearnNotesResult.message,
+          deepLearn.deepLearnReadiness,
+        )
+      })(),
       id: material.resource.id,
       title: material.resource.title,
       fileTypeLabel: material.fileTypeLabel,
@@ -301,13 +323,17 @@ async function buildCourseLearnModuleCard(
       outlineHint: material.reader.outlineHint,
     })),
     activityOverrides: overview.activityOverrides.map((material) => ({
-      ...(buildDeepLearnRowState(
-        module.id,
-        material.resource.id,
-        deepLearnNoteByResourceId.get(material.resource.id) ?? null,
-        deepLearnNotesResult.availability,
-        deepLearnNotesResult.message,
-      )),
+      ...(() => {
+        const deepLearn = resolveDeepLearnMaterialState(material)
+        return buildDeepLearnRowState(
+          module.id,
+          deepLearn.deepLearnResourceId,
+          deepLearn.deepLearnNote,
+          deepLearnNotesResult.availability,
+          deepLearnNotesResult.message,
+          deepLearn.deepLearnReadiness,
+        )
+      })(),
       id: material.resource.id,
       title: material.resource.title,
       fileTypeLabel: material.fileTypeLabel,
@@ -508,10 +534,12 @@ function buildDeepLearnRowState(
   note: Parameters<typeof getDeepLearnResourceUiState>[2],
   notesAvailability: DeepLearnNoteLoadAvailability,
   unavailableMessage: string | null,
+  readiness: NonNullable<Parameters<typeof getDeepLearnResourceUiState>[3]>['readiness'],
 ) {
   const deepLearnUi = getDeepLearnResourceUiState(moduleId, resourceId, note, {
     notesAvailability,
     unavailableMessage,
+    readiness,
   })
 
   return {

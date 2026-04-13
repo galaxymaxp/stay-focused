@@ -6,6 +6,7 @@ import { DeepLearnGenerateButton } from '@/components/DeepLearnGenerateButton'
 import { ModuleLensShell } from '@/components/ModuleLensShell'
 import { ModuleTermBank } from '@/components/ModuleTermBank'
 import { StudyResourceAccordionList } from '@/components/StudyResourceAccordionList'
+import { classifyDeepLearnResourceReadiness } from '@/lib/deep-learn-readiness'
 import { listDeepLearnNotesForModule } from '@/lib/deep-learn-store'
 import { getDeepLearnResourceUiState } from '@/lib/deep-learn-ui'
 import { getModuleResourceCapabilityInfo } from '@/lib/module-resource-capability'
@@ -21,6 +22,7 @@ import {
   getModuleWorkspace,
   getResourceOriginalFileHref,
   getResourceCanvasHref,
+  resolveLearnResourceSelection,
   type ModuleSourceResource,
 } from '@/lib/module-workspace'
 import type { Task } from '@/lib/types'
@@ -57,6 +59,12 @@ export default async function LearnPage({ params, searchParams }: Props) {
   const deepLearnNotesResult = await listDeepLearnNotesForModule(module.id)
   const deepLearnNotes = deepLearnNotesResult.notes
   const deepLearnNoteByResourceId = new Map(deepLearnNotes.map((note) => [note.resourceId, note]))
+  const deepLearnSelectionByDisplayId = new Map(
+    overview.studyMaterials.map((material) => [
+      material.resource.id,
+      resolveLearnResourceSelection(experience, storedResources, material.resource.id),
+    ]),
+  )
   const sortedTasks = sortModuleTasks(tasks)
   const pendingTasks = sortedTasks.filter((task) => task.status !== 'completed')
   const completedTasks = sortedTasks.filter((task) => task.status === 'completed')
@@ -70,16 +78,31 @@ export default async function LearnPage({ params, searchParams }: Props) {
   const shouldOpenCompletedTasks = Boolean(targetTaskId && completedTasks.some((task) => task.id === targetTaskId))
   const readyDeepLearnNoteCount = deepLearnNotes.filter((note) => note.status === 'ready').length
   const quizReadyDeepLearnNoteCount = deepLearnNotes.filter((note) => note.status === 'ready' && note.quizReady).length
-  const resumeTargetDeepLearnUi = overview.resumeTarget
-    ? getDeepLearnResourceUiState(
-      module.id,
-      overview.resumeTarget.resource.id,
-      deepLearnNoteByResourceId.get(overview.resumeTarget.resource.id) ?? null,
-      {
-        notesAvailability: deepLearnNotesResult.availability,
-        unavailableMessage: deepLearnNotesResult.message,
-      },
-    )
+  const resumeTargetDeepLearn = overview.resumeTarget
+    ? (() => {
+      const selection = deepLearnSelectionByDisplayId.get(overview.resumeTarget.resource.id)
+        ?? resolveLearnResourceSelection(experience, storedResources, overview.resumeTarget.resource.id)
+      const deepLearnResourceId = selection?.canonicalResourceId ?? overview.resumeTarget.resource.id
+      const readiness = classifyDeepLearnResourceReadiness({
+        resource: overview.resumeTarget.resource,
+        storedResource: selection?.storedResource ?? null,
+        canonicalResourceId: selection?.canonicalResourceId ?? null,
+      })
+
+      return {
+        resourceId: deepLearnResourceId,
+        ui: getDeepLearnResourceUiState(
+          module.id,
+          deepLearnResourceId,
+          deepLearnNoteByResourceId.get(selection?.canonicalResourceId ?? overview.resumeTarget.resource.id) ?? null,
+          {
+            notesAvailability: deepLearnNotesResult.availability,
+            unavailableMessage: deepLearnNotesResult.message,
+            readiness,
+          },
+        ),
+      }
+    })()
     : null
 
   if (module.status === 'error') {
@@ -206,27 +229,27 @@ export default async function LearnPage({ params, searchParams }: Props) {
                     {overview.resumeTarget.resource.title}
                   </p>
                   <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
-                    {resumeTargetDeepLearnUi?.summary ?? overview.resumeTarget.note}
+                    {resumeTargetDeepLearn?.ui.summary ?? overview.resumeTarget.note}
                   </p>
                   <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-                    {resumeTargetDeepLearnUi && (resumeTargetDeepLearnUi.status === 'not_started' || resumeTargetDeepLearnUi.status === 'failed') ? (
+                    {resumeTargetDeepLearn && (resumeTargetDeepLearn.ui.status === 'not_started' || resumeTargetDeepLearn.ui.status === 'failed') ? (
                       <DeepLearnGenerateButton
                         moduleId={module.id}
-                        resourceId={overview.resumeTarget.resource.id}
+                        resourceId={resumeTargetDeepLearn.resourceId}
                         courseId={module.courseId ?? null}
-                        label={resumeTargetDeepLearnUi.primaryLabel}
+                        label={resumeTargetDeepLearn.ui.primaryLabel}
                       />
-                    ) : resumeTargetDeepLearnUi?.status === 'unavailable' ? (
-                      <ActionButton href={overview.resumeTarget.href} label={resumeTargetDeepLearnUi.primaryLabel} external={overview.resumeTarget.external} tone="secondary" />
-                    ) : resumeTargetDeepLearnUi ? (
-                      <Link href={resumeTargetDeepLearnUi.noteHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
-                        {resumeTargetDeepLearnUi.primaryLabel}
+                    ) : resumeTargetDeepLearn?.ui.status === 'unavailable' || resumeTargetDeepLearn?.ui.status === 'blocked' ? (
+                      <ActionButton href={overview.resumeTarget.href} label={resumeTargetDeepLearn.ui.primaryLabel} external={overview.resumeTarget.external} tone="secondary" />
+                    ) : resumeTargetDeepLearn ? (
+                      <Link href={resumeTargetDeepLearn.ui.noteHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
+                        {resumeTargetDeepLearn.ui.primaryLabel}
                       </Link>
                     ) : (
                       <ActionButton href={overview.resumeTarget.href} label={overview.resumeTarget.actionLabel} external={overview.resumeTarget.external} tone="secondary" />
                     )}
-                    {resumeTargetDeepLearnUi?.quizReady && (
-                      <Link href={resumeTargetDeepLearnUi.quizHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+                    {resumeTargetDeepLearn?.ui.quizReady && (
+                      <Link href={resumeTargetDeepLearn.ui.quizHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
                         Quiz this
                       </Link>
                     )}
@@ -264,37 +287,49 @@ export default async function LearnPage({ params, searchParams }: Props) {
             </div>
 
             <StudyResourceAccordionList
-              items={overview.studyMaterials.map((material) => ({
-                ...buildDeepLearnAccordionState(
-                  module.id,
-                  module.courseId ?? null,
-                  material.resource.id,
-                  deepLearnNoteByResourceId.get(material.resource.id) ?? null,
-                  deepLearnNotesResult.availability,
-                  deepLearnNotesResult.message,
-                ),
-                moduleId: module.id,
-                courseId: module.courseId ?? null,
-                id: material.resource.id,
-                title: material.resource.title,
-                note: material.note,
-                detailNote: material.detailNote,
-                fileTypeLabel: material.fileTypeLabel,
-                readinessLabel: material.readinessLabel,
-                readinessTone: material.readinessTone,
-                statusKey: material.statusKey,
-                readerState: material.reader.state,
-                primaryAction: material.primaryAction,
-                sourceActionLabel: material.sourceActionLabel,
-                required: material.resource.required,
-                outlineSections: material.reader.outlineSections,
-                outlineHint: material.reader.outlineHint,
-                previewState: material.resource.previewState,
-                fallbackReason: material.resource.fallbackReason,
-                readerHref: getLearnResourceHref(module.id, material.resource.id),
-                canvasHref: getResourceCanvasHref(material.resource),
-                originalFileHref: getResourceOriginalFileHref(material.resource),
-              }))}
+              items={overview.studyMaterials.map((material) => {
+                const selection = deepLearnSelectionByDisplayId.get(material.resource.id)
+                  ?? resolveLearnResourceSelection(experience, storedResources, material.resource.id)
+                const deepLearnResourceId = selection?.canonicalResourceId ?? material.resource.id
+                const readiness = classifyDeepLearnResourceReadiness({
+                  resource: material.resource,
+                  storedResource: selection?.storedResource ?? null,
+                  canonicalResourceId: selection?.canonicalResourceId ?? null,
+                })
+
+                return {
+                  ...buildDeepLearnAccordionState(
+                    module.id,
+                    module.courseId ?? null,
+                    deepLearnResourceId,
+                    deepLearnNoteByResourceId.get(selection?.canonicalResourceId ?? material.resource.id) ?? null,
+                    deepLearnNotesResult.availability,
+                    deepLearnNotesResult.message,
+                    readiness,
+                  ),
+                  moduleId: module.id,
+                  courseId: module.courseId ?? null,
+                  id: material.resource.id,
+                  title: material.resource.title,
+                  note: material.note,
+                  detailNote: material.detailNote,
+                  fileTypeLabel: material.fileTypeLabel,
+                  readinessLabel: material.readinessLabel,
+                  readinessTone: material.readinessTone,
+                  statusKey: material.statusKey,
+                  readerState: material.reader.state,
+                  primaryAction: material.primaryAction,
+                  sourceActionLabel: material.sourceActionLabel,
+                  required: material.resource.required,
+                  outlineSections: material.reader.outlineSections,
+                  outlineHint: material.reader.outlineHint,
+                  previewState: material.resource.previewState,
+                  fallbackReason: material.resource.fallbackReason,
+                  readerHref: getLearnResourceHref(module.id, material.resource.id),
+                  canvasHref: getResourceCanvasHref(material.resource),
+                  originalFileHref: getResourceOriginalFileHref(material.resource),
+                }
+              })}
               initialOpenResourceId={targetResourceId}
               emptyMessage="No mapped study resources are available for Deep Learn in this module yet."
             />
@@ -849,10 +884,12 @@ function buildDeepLearnAccordionState(
   note: Parameters<typeof getDeepLearnResourceUiState>[2],
   notesAvailability: 'available' | 'unavailable',
   unavailableMessage: string | null,
+  readiness: NonNullable<Parameters<typeof getDeepLearnResourceUiState>[3]>['readiness'],
 ) {
   const deepLearnUi = getDeepLearnResourceUiState(moduleId, resourceId, note, {
     notesAvailability,
     unavailableMessage,
+    readiness,
   })
 
   return {
