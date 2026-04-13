@@ -19,7 +19,7 @@ export function DeepLearnReviewPackSurface({ note }: { note: DeepLearnNote }) {
   const [wordingMode, setWordingMode] = useState<WordingMode>('exam_safe')
 
   return (
-    <div style={{ display: 'grid', gap: '0.9rem' }}>
+    <div style={{ display: 'grid', gap: '0.9rem', minHeight: 0 }}>
       <section className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.95rem 1rem', display: 'grid', gap: '0.8rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
           <div>
@@ -52,166 +52,170 @@ export function DeepLearnReviewPackSurface({ note }: { note: DeepLearnNote }) {
         </div>
       </section>
 
-      {preset === 'answer_bank' && (
-        <section className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem' }}>
-          <p className="ui-kicker">Key Answers / Answer Bank</p>
-          {note.answerBank.length > 0 ? (
-            <ul style={{ listStyle: 'none', padding: 0, margin: '0.7rem 0 0', display: 'grid', gap: '0.7rem' }}>
-              {note.answerBank.map((item) => (
-                <li key={`${item.cue}-${item.kind}`}>
-                  <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.65, color: 'var(--text-primary)', fontWeight: 650 }}>
-                    {item.cue}
-                  </p>
-                  <p style={{ margin: '0.2rem 0 0', fontSize: '13px', lineHeight: 1.62, color: 'var(--text-secondary)' }}>
-                    {resolveDeepLearnWording(item.compactAnswer, wordingMode)}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <EmptyBody body="No compact answer bank was recovered from this source." />
-          )}
-        </section>
-      )}
-
-      {preset === 'identification' && (
-        <section className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem' }}>
-          <p className="ui-kicker">Identification Mode</p>
-          {note.identificationItems.length > 0 ? (
-            <ul style={{ listStyle: 'none', padding: 0, margin: '0.7rem 0 0', display: 'grid', gap: '0.7rem' }}>
-              {note.identificationItems.map((item) => (
-                <li key={`${item.prompt}-${item.kind}`}>
-                  <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.55, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                    {item.prompt}
-                  </p>
-                  <p style={{ margin: '0.22rem 0 0', fontSize: '14px', lineHeight: 1.65, color: 'var(--text-primary)', fontWeight: 650 }}>
-                    {resolveDeepLearnWording(item.answer, wordingMode)}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <EmptyBody body="No direct identification list was produced from this source yet." />
-          )}
-        </section>
-      )}
-
-      {preset === 'mcq' && (
-        <section className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', display: 'grid', gap: '0.85rem' }}>
-          <p className="ui-kicker">Multiple Choice Mode</p>
-          {note.mcqDrill.length > 0 ? (
-            note.mcqDrill.map((item, index) => (
-              <article key={`${item.question}-${index}`} className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.9rem 0.95rem', display: 'grid', gap: '0.55rem' }}>
-                <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.65, color: 'var(--text-primary)', fontWeight: 650 }}>
-                  {item.question}
-                </p>
-                <ol style={{ margin: 0, paddingLeft: '1.1rem', display: 'grid', gap: '0.35rem' }}>
-                  {item.choices.map((choice) => (
-                    <li key={choice} style={{ fontSize: '13px', lineHeight: 1.58, color: 'var(--text-secondary)' }}>
-                      {choice}
+      <div className="contained-scroll-frame">
+        <div style={{ display: 'grid', gap: '0.9rem' }}>
+          {preset === 'answer_bank' && (
+            <section className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem' }}>
+              <p className="ui-kicker">Key Answers / Answer Bank</p>
+              {note.answerBank.length > 0 ? (
+                <ul style={{ listStyle: 'none', padding: 0, margin: '0.7rem 0 0', display: 'grid', gap: '0.7rem' }}>
+                  {note.answerBank.map((item) => (
+                    <li key={`${item.cue}-${item.kind}`}>
+                      <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.65, color: 'var(--text-primary)', fontWeight: 650 }}>
+                        {item.cue}
+                      </p>
+                      <p style={{ margin: '0.2rem 0 0', fontSize: '13px', lineHeight: 1.62, color: 'var(--text-secondary)' }}>
+                        {resolveDeepLearnWording(item.compactAnswer, wordingMode)}
+                      </p>
                     </li>
                   ))}
-                </ol>
-                <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.6, color: 'var(--text-primary)' }}>
-                  <strong>Correct:</strong> {item.correctAnswer}
-                </p>
-                {item.explanation && (
-                  <p style={{ margin: 0, fontSize: '12px', lineHeight: 1.58, color: 'var(--text-muted)' }}>
-                    {item.explanation}
-                  </p>
-                )}
-              </article>
-            ))
-          ) : (
-            <EmptyBody body="The current pack does not yet have enough contrastive answer units for MCQ drill mode." />
+                </ul>
+              ) : (
+                <EmptyBody body="No compact answer bank was recovered from this source." />
+              )}
+            </section>
           )}
-        </section>
-      )}
 
-      {preset === 'timeline' && (
-        <section className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem' }}>
-          <p className="ui-kicker">Timeline Mode</p>
-          {note.timeline.length > 0 ? (
-            <ul style={{ listStyle: 'none', padding: 0, margin: '0.7rem 0 0', display: 'grid', gap: '0.7rem' }}>
-              {note.timeline.map((item) => (
-                <li key={`${item.label}-${item.sortKey ?? 'none'}`}>
-                  <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.65, color: 'var(--text-primary)', fontWeight: 650 }}>
-                    {item.label}
-                  </p>
-                  <p style={{ margin: '0.2rem 0 0', fontSize: '13px', lineHeight: 1.62, color: 'var(--text-secondary)' }}>
-                    {item.detail}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <EmptyBody body="No explicit chronology was strong enough to surface as a timeline." />
+          {preset === 'identification' && (
+            <section className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem' }}>
+              <p className="ui-kicker">Identification Mode</p>
+              {note.identificationItems.length > 0 ? (
+                <ul style={{ listStyle: 'none', padding: 0, margin: '0.7rem 0 0', display: 'grid', gap: '0.7rem' }}>
+                  {note.identificationItems.map((item) => (
+                    <li key={`${item.prompt}-${item.kind}`}>
+                      <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.55, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        {item.prompt}
+                      </p>
+                      <p style={{ margin: '0.22rem 0 0', fontSize: '14px', lineHeight: 1.65, color: 'var(--text-primary)', fontWeight: 650 }}>
+                        {resolveDeepLearnWording(item.answer, wordingMode)}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <EmptyBody body="No direct identification list was produced from this source yet." />
+              )}
+            </section>
           )}
-        </section>
-      )}
 
-      {preset === 'distinctions' && (
-        <section className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', display: 'grid', gap: '0.75rem' }}>
-          <p className="ui-kicker">Distinctions / Confusable Items</p>
-          {note.distinctions.length > 0 ? (
-            note.distinctions.map((item) => (
-              <article key={`${item.conceptA}-${item.conceptB}`} className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.9rem 0.95rem', display: 'grid', gap: '0.35rem' }}>
-                <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.5, color: 'var(--text-primary)', fontWeight: 650 }}>
-                  {item.conceptA} vs {item.conceptB}
-                </p>
-                <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.62, color: 'var(--text-secondary)' }}>
-                  {item.difference}
-                </p>
-                {item.confusionNote && (
-                  <p style={{ margin: 0, fontSize: '12px', lineHeight: 1.58, color: 'var(--text-muted)' }}>
-                    {item.confusionNote}
-                  </p>
-                )}
-              </article>
-            ))
-          ) : (
-            <EmptyBody body="No stable confusion pairs were detected from this source." />
+          {preset === 'mcq' && (
+            <section className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', display: 'grid', gap: '0.85rem' }}>
+              <p className="ui-kicker">Multiple Choice Mode</p>
+              {note.mcqDrill.length > 0 ? (
+                note.mcqDrill.map((item, index) => (
+                  <article key={`${item.question}-${index}`} className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.9rem 0.95rem', display: 'grid', gap: '0.55rem' }}>
+                    <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.65, color: 'var(--text-primary)', fontWeight: 650 }}>
+                      {item.question}
+                    </p>
+                    <ol style={{ margin: 0, paddingLeft: '1.1rem', display: 'grid', gap: '0.35rem' }}>
+                      {item.choices.map((choice) => (
+                        <li key={choice} style={{ fontSize: '13px', lineHeight: 1.58, color: 'var(--text-secondary)' }}>
+                          {choice}
+                        </li>
+                      ))}
+                    </ol>
+                    <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.6, color: 'var(--text-primary)' }}>
+                      <strong>Correct:</strong> {item.correctAnswer}
+                    </p>
+                    {item.explanation && (
+                      <p style={{ margin: 0, fontSize: '12px', lineHeight: 1.58, color: 'var(--text-muted)' }}>
+                        {item.explanation}
+                      </p>
+                    )}
+                  </article>
+                ))
+              ) : (
+                <EmptyBody body="The current pack does not yet have enough contrastive answer units for MCQ drill mode." />
+              )}
+            </section>
           )}
-        </section>
-      )}
 
-      {preset === 'support' && (
-        <section className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', display: 'grid', gap: '0.75rem' }}>
-          <p className="ui-kicker">Support Note</p>
-          {note.sections.length > 0 ? (
-            note.sections.map((section) => (
-              <article key={section.heading} className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.9rem 0.95rem' }}>
-                <p className="ui-kicker">{section.heading}</p>
-                <p style={{ margin: '0.45rem 0 0', fontSize: '13px', lineHeight: 1.7, color: 'var(--text-secondary)', whiteSpace: 'pre-line' }}>
-                  {section.body}
-                </p>
-              </article>
-            ))
-          ) : (
-            <EmptyBody body="No secondary support note was needed for this pack." />
+          {preset === 'timeline' && (
+            <section className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem' }}>
+              <p className="ui-kicker">Timeline Mode</p>
+              {note.timeline.length > 0 ? (
+                <ul style={{ listStyle: 'none', padding: 0, margin: '0.7rem 0 0', display: 'grid', gap: '0.7rem' }}>
+                  {note.timeline.map((item) => (
+                    <li key={`${item.label}-${item.sortKey ?? 'none'}`}>
+                      <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.65, color: 'var(--text-primary)', fontWeight: 650 }}>
+                        {item.label}
+                      </p>
+                      <p style={{ margin: '0.2rem 0 0', fontSize: '13px', lineHeight: 1.62, color: 'var(--text-secondary)' }}>
+                        {item.detail}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <EmptyBody body="No explicit chronology was strong enough to surface as a timeline." />
+              )}
+            </section>
           )}
-        </section>
-      )}
 
-      <section className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.95rem 1rem' }}>
-        <p className="ui-kicker">Likely Quiz Targets</p>
-        {note.likelyQuizTargets.length > 0 ? (
-          <ul style={{ listStyle: 'none', padding: 0, margin: '0.7rem 0 0', display: 'grid', gap: '0.65rem' }}>
-            {note.likelyQuizTargets.map((item) => (
-              <li key={item.target}>
-                <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.55, color: 'var(--text-primary)', fontWeight: 650 }}>
-                  {item.target}
-                </p>
-                <p style={{ margin: '0.18rem 0 0', fontSize: '12px', lineHeight: 1.58, color: 'var(--text-secondary)' }}>
-                  {item.reason}
-                </p>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <EmptyBody body="The pack does not yet rank likely quiz targets." />
-        )}
-      </section>
+          {preset === 'distinctions' && (
+            <section className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', display: 'grid', gap: '0.75rem' }}>
+              <p className="ui-kicker">Distinctions / Confusable Items</p>
+              {note.distinctions.length > 0 ? (
+                note.distinctions.map((item) => (
+                  <article key={`${item.conceptA}-${item.conceptB}`} className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.9rem 0.95rem', display: 'grid', gap: '0.35rem' }}>
+                    <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.5, color: 'var(--text-primary)', fontWeight: 650 }}>
+                      {item.conceptA} vs {item.conceptB}
+                    </p>
+                    <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.62, color: 'var(--text-secondary)' }}>
+                      {item.difference}
+                    </p>
+                    {item.confusionNote && (
+                      <p style={{ margin: 0, fontSize: '12px', lineHeight: 1.58, color: 'var(--text-muted)' }}>
+                        {item.confusionNote}
+                      </p>
+                    )}
+                  </article>
+                ))
+              ) : (
+                <EmptyBody body="No stable confusion pairs were detected from this source." />
+              )}
+            </section>
+          )}
+
+          {preset === 'support' && (
+            <section className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', display: 'grid', gap: '0.75rem' }}>
+              <p className="ui-kicker">Support Note</p>
+              {note.sections.length > 0 ? (
+                note.sections.map((section) => (
+                  <article key={section.heading} className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.9rem 0.95rem' }}>
+                    <p className="ui-kicker">{section.heading}</p>
+                    <p style={{ margin: '0.45rem 0 0', fontSize: '13px', lineHeight: 1.7, color: 'var(--text-secondary)', whiteSpace: 'pre-line' }}>
+                      {section.body}
+                    </p>
+                  </article>
+                ))
+              ) : (
+                <EmptyBody body="No secondary support note was needed for this pack." />
+              )}
+            </section>
+          )}
+
+          <section className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.95rem 1rem' }}>
+            <p className="ui-kicker">Likely Quiz Targets</p>
+            {note.likelyQuizTargets.length > 0 ? (
+              <ul style={{ listStyle: 'none', padding: 0, margin: '0.7rem 0 0', display: 'grid', gap: '0.65rem' }}>
+                {note.likelyQuizTargets.map((item) => (
+                  <li key={item.target}>
+                    <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.55, color: 'var(--text-primary)', fontWeight: 650 }}>
+                      {item.target}
+                    </p>
+                    <p style={{ margin: '0.18rem 0 0', fontSize: '12px', lineHeight: 1.58, color: 'var(--text-secondary)' }}>
+                      {item.reason}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <EmptyBody body="The pack does not yet rank likely quiz targets." />
+            )}
+          </section>
+        </div>
+      </div>
     </div>
   )
 }

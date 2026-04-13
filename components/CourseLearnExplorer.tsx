@@ -140,34 +140,37 @@ export function CourseLearnExplorer({
               background: expanded
                 ? 'color-mix(in srgb, var(--surface-elevated) 96%, transparent)'
                 : 'color-mix(in srgb, var(--surface-soft) 94%, transparent)',
-              boxShadow: expanded ? 'var(--shadow-medium), var(--highlight-sheen)' : 'none',
+              boxShadow: expanded ? 'var(--shadow-medium), var(--highlight-sheen)' : 'var(--shadow-low)',
               overflow: 'hidden',
             }}
           >
-            <div style={{ display: 'flex', gap: '0.72rem', alignItems: 'stretch', flexWrap: 'wrap', padding: '0.82rem 0.88rem' }}>
+            <div style={{ display: 'grid', gap: '0.72rem', padding: '0.86rem 0.9rem' }}>
               <button
                 type="button"
                 onClick={() => toggleModule(module.id)}
                 aria-expanded={expanded}
                 className="ui-interactive-row"
+                data-hover="flat"
                 style={{
-                  flex: '1 1 520px',
                   minWidth: 0,
                   display: 'grid',
                   gap: '0.55rem',
                   textAlign: 'left',
                 }}
               >
-                <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                  {module.orderLabel && (
-                    <span className="ui-kicker" style={{ color: 'var(--text-muted)' }}>{module.orderLabel}</span>
-                  )}
-                  <ReadinessPill tone={module.readinessTone} label={module.readinessLabel} />
-                  <CountPill label={`${deepLearnReadyCount} prep pack${deepLearnReadyCount === 1 ? '' : 's'}`} />
-                  <CountPill label={`${module.termCount} term${module.termCount === 1 ? '' : 's'}`} />
-                  {deepLearnUnavailable && <CountPill label="Pack storage unavailable" />}
-                  <CountPill label={`${module.pendingTasks.length} active`} />
-                  {module.completedTasks.length > 0 && <CountPill label={`${module.completedTasks.length} done`} />}
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.7rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                    {module.orderLabel && (
+                      <span className="ui-kicker" style={{ color: 'var(--text-muted)' }}>{module.orderLabel}</span>
+                    )}
+                    <ReadinessPill tone={module.readinessTone} label={module.readinessLabel} />
+                    <CountPill label={`${deepLearnReadyCount} prep pack${deepLearnReadyCount === 1 ? '' : 's'}`} />
+                    <CountPill label={`${module.termCount} term${module.termCount === 1 ? '' : 's'}`} />
+                    {deepLearnUnavailable && <CountPill label="Pack storage unavailable" />}
+                    <CountPill label={`${module.pendingTasks.length} active`} />
+                    {module.completedTasks.length > 0 && <CountPill label={`${module.completedTasks.length} done`} />}
+                  </div>
+                  <CountPill label={expanded ? 'Command surface open' : 'Tap to open'} />
                 </div>
 
                 <div>
@@ -183,9 +186,9 @@ export function CourseLearnExplorer({
                 </div>
               </button>
 
-              <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', alignItems: 'flex-start', justifyContent: 'flex-end' }}>
-                {expanded && (
-                  focused ? (
+              {expanded && (
+                <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                  {focused ? (
                     <button type="button" onClick={clearFocus} className="ui-button ui-button-ghost ui-button-xs">
                       Show all modules
                     </button>
@@ -193,15 +196,12 @@ export function CourseLearnExplorer({
                     <button type="button" onClick={() => focusModule(module.id)} className="ui-button ui-button-ghost ui-button-xs">
                       Focus this module
                     </button>
-                  )
-                )}
-                <Link href={module.moduleHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-                  Open full page
-                </Link>
-                <button type="button" onClick={() => toggleModule(module.id)} className="ui-button ui-button-secondary ui-button-xs" aria-expanded={expanded}>
-                  {expanded ? '- Collapse' : '+ Expand'}
-                </button>
-              </div>
+                  )}
+                  <Link href={module.moduleHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+                    Module page
+                  </Link>
+                </div>
+              )}
             </div>
 
             {expanded && (
@@ -317,6 +317,8 @@ export function CourseLearnExplorer({
                     }))}
                     initialOpenResourceId={validInitialOpenModuleId === module.id ? initialOpenResourceId : null}
                     emptyMessage="No active study materials are ready in this module yet."
+                    scrollable
+                    scrollDensity="dense"
                   />
                 </section>
 
@@ -338,7 +340,7 @@ export function CourseLearnExplorer({
 
                 <details className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.95rem 1rem' }}>
                   <summary className="ui-interactive-summary" style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                    View extracted source
+                    Source support
                   </summary>
                   <p style={{ margin: '0.7rem 0 0', fontSize: '13px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
                     {module.sourceSupportNote}
@@ -398,7 +400,7 @@ function TaskStatusPanel({
         <div>
           <p className="ui-kicker">Task status</p>
           <h3 style={{ margin: '0.38rem 0 0', fontSize: '1rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>
-            Completed Canvas work stays marked while unfinished work stays visible
+            See the tasks that still decide what to open next
           </h3>
         </div>
         <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
@@ -410,62 +412,9 @@ function TaskStatusPanel({
       {pendingTasks.length === 0 ? (
         <SectionEmpty body="Nothing unfinished is pulling attention in this module right now." />
       ) : (
-        <div style={{ display: 'grid', gap: '0.65rem' }}>
-          {displayedPendingTasks.map((task) => (
-            <article
-              key={task.id}
-              id={getTaskElementId(task.id)}
-              style={{
-                borderRadius: 'var(--radius-tight)',
-                border: targetTaskId === task.id
-                  ? '1px solid color-mix(in srgb, var(--accent-border) 36%, var(--border-subtle) 64%)'
-                  : '1px solid color-mix(in srgb, var(--border-subtle) 84%, transparent)',
-                background: targetTaskId === task.id
-                  ? 'color-mix(in srgb, var(--surface-selected) 84%, transparent)'
-                  : 'color-mix(in srgb, var(--surface-elevated) 94%, transparent)',
-                padding: '0.8rem 0.85rem',
-                display: 'grid',
-                gap: '0.5rem',
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.65rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-                <div style={{ minWidth: 0, flex: '1 1 260px' }}>
-                  <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginBottom: '0.28rem' }}>
-                    <TaskTonePill priority={task.priority} />
-                    {task.deadline && <CountPill label={formatDeadlineLabel(task.deadline)} />}
-                  </div>
-                  <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.5, color: 'var(--text-primary)', fontWeight: 650, overflowWrap: 'anywhere' }}>
-                    {task.title}
-                  </p>
-                  {task.details && (
-                    <p style={{ margin: '0.32rem 0 0', fontSize: '13px', lineHeight: 1.62, color: 'var(--text-secondary)', overflowWrap: 'anywhere' }}>
-                      {task.details}
-                    </p>
-                  )}
-                </div>
-                <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-                  <Link href={buildModuleDoHref(moduleId, { taskId: task.id })} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-                    Open in Do
-                  </Link>
-                  {task.canvasUrl && (
-                    <a href={task.canvasUrl} target="_blank" rel="noreferrer" className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-                      Canvas
-                    </a>
-                  )}
-                </div>
-              </div>
-            </article>
-          ))}
-        </div>
-      )}
-
-      {completedTasks.length > 0 && (
-        <details open={shouldOpenCompleted}>
-          <summary className="ui-interactive-summary" style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)' }}>
-            Already done
-          </summary>
-          <div style={{ display: 'grid', gap: '0.55rem', marginTop: '0.7rem' }}>
-            {completedTasks.map((task) => (
+        <div className="contained-scroll-frame" data-density="dense">
+          <div style={{ display: 'grid', gap: '0.65rem' }}>
+            {displayedPendingTasks.map((task) => (
               <article
                 key={task.id}
                 id={getTaskElementId(task.id)}
@@ -474,20 +423,77 @@ function TaskStatusPanel({
                   border: targetTaskId === task.id
                     ? '1px solid color-mix(in srgb, var(--accent-border) 36%, var(--border-subtle) 64%)'
                     : '1px solid color-mix(in srgb, var(--border-subtle) 84%, transparent)',
-                  padding: '0.78rem 0.82rem',
+                  background: targetTaskId === task.id
+                    ? 'color-mix(in srgb, var(--surface-selected) 84%, transparent)'
+                    : 'color-mix(in srgb, var(--surface-elevated) 94%, transparent)',
+                  padding: '0.8rem 0.85rem',
                   display: 'grid',
-                  gap: '0.4rem',
+                  gap: '0.5rem',
                 }}
               >
-                <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
-                  <CountPill label={task.completionOrigin === 'canvas' ? 'Done in Canvas' : 'Completed'} />
-                  {task.deadline && <CountPill label={formatDate(task.deadline)} />}
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.65rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                  <div style={{ minWidth: 0, flex: '1 1 260px' }}>
+                    <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginBottom: '0.28rem' }}>
+                      <TaskTonePill priority={task.priority} />
+                      {task.deadline && <CountPill label={formatDeadlineLabel(task.deadline)} />}
+                    </div>
+                    <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.5, color: 'var(--text-primary)', fontWeight: 650, overflowWrap: 'anywhere' }}>
+                      {task.title}
+                    </p>
+                    {task.details && (
+                      <p style={{ margin: '0.32rem 0 0', fontSize: '13px', lineHeight: 1.62, color: 'var(--text-secondary)', overflowWrap: 'anywhere' }}>
+                        {task.details}
+                      </p>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+                    <Link href={buildModuleDoHref(moduleId, { taskId: task.id })} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
+                      Open task
+                    </Link>
+                    {task.canvasUrl && (
+                      <a href={task.canvasUrl} target="_blank" rel="noreferrer" className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+                        Canvas
+                      </a>
+                    )}
+                  </div>
                 </div>
-                <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.55, color: 'var(--text-muted)', textDecoration: 'line-through', overflowWrap: 'anywhere' }}>
-                  {task.title}
-                </p>
               </article>
             ))}
+          </div>
+        </div>
+      )}
+
+      {completedTasks.length > 0 && (
+        <details open={shouldOpenCompleted}>
+          <summary className="ui-interactive-summary" style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)' }}>
+            Already done
+          </summary>
+          <div className="contained-scroll-frame" data-density="dense" style={{ marginTop: '0.7rem' }}>
+            <div style={{ display: 'grid', gap: '0.55rem' }}>
+              {completedTasks.map((task) => (
+                <article
+                  key={task.id}
+                  id={getTaskElementId(task.id)}
+                  style={{
+                    borderRadius: 'var(--radius-tight)',
+                    border: targetTaskId === task.id
+                      ? '1px solid color-mix(in srgb, var(--accent-border) 36%, var(--border-subtle) 64%)'
+                      : '1px solid color-mix(in srgb, var(--border-subtle) 84%, transparent)',
+                    padding: '0.78rem 0.82rem',
+                    display: 'grid',
+                    gap: '0.4rem',
+                  }}
+                >
+                  <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+                    <CountPill label={task.completionOrigin === 'canvas' ? 'Done in Canvas' : 'Completed'} />
+                    {task.deadline && <CountPill label={formatDate(task.deadline)} />}
+                  </div>
+                  <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.55, color: 'var(--text-muted)', textDecoration: 'line-through', overflowWrap: 'anywhere' }}>
+                    {task.title}
+                  </p>
+                </article>
+              ))}
+            </div>
           </div>
         </details>
       )}
@@ -546,12 +552,12 @@ function SourceItemRow({
               {sourceActionLabel}
             </a>
             <Link href={readerHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-              Open reader
+              Source details
             </Link>
           </>
         ) : (
           <Link href={readerHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
-            Open reader
+            Source details
           </Link>
         )}
         {!showSourceAsPrimary && sourceHref && (

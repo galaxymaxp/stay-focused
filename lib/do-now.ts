@@ -18,6 +18,11 @@ export interface TaskDraftContext {
   resourceSnippet?: string | null
   canvasUrl?: string | null
   learnHref?: string | null
+  sourceTitle?: string | null
+  sourceType?: string | null
+  sourceHref?: string | null
+  sourceText?: string | null
+  sourceNote?: string | null
 }
 
 export interface TaskDraftResponse {
@@ -281,7 +286,8 @@ export function isTaskDraftApiResponse(value: unknown): value is TaskDraftApiRes
 
 function buildTaskInstructions(ctx: TaskDraftContext) {
   const taskDetails = cleanBlockText(ctx.taskDetails)
-  const resourceText = cleanBlockText(ctx.resourceSnippet)
+  const sourceText = cleanBlockText(ctx.sourceText)
+  const resourceText = cleanBlockText(ctx.resourceSnippet ?? sourceText)
   const moduleSummary = cleanBlockText(ctx.moduleSummary)
 
   if (resourceText && taskDetails) {
@@ -310,6 +316,9 @@ function buildTaskInstructions(ctx: TaskDraftContext) {
 }
 
 export function buildTaskDraftSourceKey(ctx: TaskDraftContext) {
+  const sourceHref = compactInlineText(ctx.sourceHref, 400)
+  if (sourceHref) return `source:${sourceHref}`
+
   const canvasUrl = compactInlineText(ctx.canvasUrl, 400)
   if (canvasUrl) return `canvas:${canvasUrl}`
 

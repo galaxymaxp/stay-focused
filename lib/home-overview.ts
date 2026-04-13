@@ -30,9 +30,12 @@ export interface HomeCourseSnapshot {
   statusSummary: string
   latestChange: string | null
   urgentCount: number
+  pendingCount: number
+  moduleCount: number
   href: string
   nextActionHref: string
   nextActionLabel: string
+  nextActionSummary: string
 }
 
 export interface HomeOverview {
@@ -45,8 +48,9 @@ export interface HomeOverview {
 }
 
 export function buildHomeOverview(workspace: ClarityWorkspace): HomeOverview {
-  const primaryAction = workspace.today.nextBestMove
+  const primaryAction = selectHomePrimaryAction(workspace.todayItems)
   const primaryTaskId = primaryAction?.taskItemId ?? null
+  const heroId = primaryAction?.id ?? null
 
   const dueSoon = workspace.taskItems
     .filter((task) => task.status !== 'completed' && task.deadline && task.id !== primaryTaskId)
@@ -130,29 +134,140 @@ export function buildHomeOverview(workspace: ClarityWorkspace): HomeOverview {
         statusSummary,
         latestChange,
         urgentCount,
+        pendingCount: pendingTasks.length,
+        moduleCount: modules.length,
         href: buildCourseLearnHref(course.id),
         nextActionHref: nextTask
           ? buildModuleDoHref(nextTask.moduleId, { taskTitle: nextTask.title })
           : buildCourseLearnHref(course.id),
         nextActionLabel: nextTask ? 'Open next task' : 'Open course',
-        pendingCount: pendingTasks.length,
+        nextActionSummary: nextTask
+          ? `${getTaskUrgencyLabel(nextTask)} in ${nextTask.moduleTitle}`
+          : newestModule
+            ? `Newest module: ${newestModule.title}`
+            : 'Open the course workspace.',
       }
     })
-    .sort((a, b) => b.urgentCount - a.urgentCount || b.pendingCount - a.pendingCount || a.name.localeCompare(b.name))
-    .map((snapshot) => {
-      const { pendingCount, ...courseSnapshot } = snapshot
-      void pendingCount
-      return courseSnapshot
+    .sort((a, b) => {
+      const urgentDiff = b.urgentCount - a.urgentCount
+      if (urgentDiff !== 0) return urgentDiff
+
+      const pendingDiff = b.pendingCount - a.pendingCount
+      if (pendingDiff !== 0) return pendingDiff
+
+      const moduleDiff = b.moduleCount - a.moduleCount
+      if (moduleDiff !== 0) return moduleDiff
+
+      return a.name.localeCompare(b.name)
     })
 
   return {
     primaryAction,
-    upNext: [...workspace.today.needsAction, ...workspace.today.needsUnderstanding].slice(0, 3),
+    upNext: buildHomeFollowUps(workspace.todayItems, heroId),
     dueSoon,
     recentActivity: recentActivity.slice(0, 4),
     courseSnapshots,
     undatedTaskCount: workspace.today.undatedTaskCount,
   }
+}
+
+function selectHomePrimaryAction(todayItems: TodayItem[]) {
+  const currentActionables = todayItems
+    .filter((item) => !isOverdueTask(item) && isCurrentActionable(item))
+    .sort(compareHomePrimaryItems)
+
+  if (currentActionables.length > 0) {
+    return currentActionables[0]
+  }
+
+  const currentStudyItems = todayItems
+    .filter((item) => !isOverdueTask(item))
+    .sort(compareHomePrimaryItems)
+
+  if (currentStudyItems.length > 0) {
+    return currentStudyItems[0]
+  }
+
+  return [...todayItems].sort(compareHomePrimaryItems)[0] ?? null
+}
+
+function buildHomeFollowUps(todayItems: TodayItem[], heroId: string | null) {
+  const candidates = todayItems.filter((item) => item.id !== heroId)
+  const overdue = candidates.filter(isOverdueTask).sort(compareHomeFollowUpItems)
+  const currentTasks = candidates
+    .filter((item) => !isOverdueTask(item) && item.kind === 'task')
+    .sort(compareHomeFollowUpItems)
+  const reviewItems = candidates
+    .filter((item) => !isOverdueTask(item) && item.kind !== 'task')
+    .sort(compareHomeFollowUpItems)
+
+  return [...overdue, ...currentTasks, ...reviewItems].slice(0, 4)
+}
+
+function isCurrentActionable(item: TodayItem) {
+  if (item.kind === 'task') return true
+  return item.planningAnnotation === 'best_next_step' || item.planningAnnotation === 'worth_reviewing'
+}
+
+function isOverdueTask(item: TodayItem) {
+  if (item.kind !== 'task' || !item.dateTime) return false
+  const time = new Date(item.dateTime).getTime()
+  return !Number.isNaN(time) && time < Date.now()
+}
+
+function compareHomePrimaryItems(a: TodayItem, b: TodayItem) {
+  const kindDiff = primaryKindRank(a.kind) - primaryKindRank(b.kind)
+  if (kindDiff !== 0) return kindDiff
+
+  const planningDiff = planningRank(a.planningAnnotation) - planningRank(b.planningAnnotation)
+  if (planningDiff !== 0) return planningDiff
+
+  const timingDiff = compareFutureDates(a.dateTime, b.dateTime)
+  if (timingDiff !== 0) return timingDiff
+
+  const scoreDiff = b.recommendationScore - a.recommendationScore
+  if (scoreDiff !== 0) return scoreDiff
+
+  return a.title.localeCompare(b.title)
+}
+
+function compareHomeFollowUpItems(a: TodayItem, b: TodayItem) {
+  const overdueDiff = Number(isOverdueTask(b)) - Number(isOverdueTask(a))
+  if (overdueDiff !== 0) return overdueDiff
+
+  const timingDiff = compareFutureDates(a.dateTime, b.dateTime)
+  if (timingDiff !== 0) return timingDiff
+
+  const scoreDiff = b.recommendationScore - a.recommendationScore
+  if (scoreDiff !== 0) return scoreDiff
+
+  return a.title.localeCompare(b.title)
+}
+
+function compareFutureDates(left: string | null, right: string | null) {
+  const leftValue = sortableFutureDate(left)
+  const rightValue = sortableFutureDate(right)
+  return leftValue - rightValue
+}
+
+function sortableFutureDate(value: string | null) {
+  if (!value) return Number.POSITIVE_INFINITY
+  const time = new Date(value).getTime()
+  if (Number.isNaN(time)) return Number.POSITIVE_INFINITY
+  return time >= Date.now() ? time : Number.POSITIVE_INFINITY
+}
+
+function primaryKindRank(kind: TodayItem['kind']) {
+  if (kind === 'task') return 0
+  if (kind === 'module') return 1
+  return 2
+}
+
+function planningRank(annotation: TodayItem['planningAnnotation']) {
+  if (annotation === 'best_next_step') return 0
+  if (annotation === 'needs_attention') return 1
+  if (annotation === 'worth_reviewing') return 2
+  return 3
 }
 
 function formatDate(value: string) {

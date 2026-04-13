@@ -82,12 +82,12 @@ export function StudyFileReader({
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.9rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
           <div style={{ minWidth: 0, flex: '1 1 420px' }}>
-            <p className="ui-kicker">Reader fallback</p>
+            <p className="ui-kicker">Source fallback</p>
             <h2 className="ui-section-title" style={{ marginTop: '0.45rem' }}>{resource.title}</h2>
             <p className="ui-section-copy" style={{ marginTop: '0.5rem' }}>
               {!isReadyReader
-                ? `Deep Learn should be the main study pass. This reader stays here as a fallback when you need the extracted source surface or direct evidence. ${uiState.detail}`
-                : 'Deep Learn should be the main study asset. This reader stays available as the extracted source surface when you want to validate wording, inspect the fallback extract, or reopen the original material.'}
+                ? `Deep Learn should be the main study pass. This source support view stays here as a fallback when you need the extracted surface or direct evidence. ${uiState.detail}`
+                : 'Deep Learn should be the main study asset. This source support view stays available as the extracted surface when you want to validate wording, inspect the fallback extract, or reopen the original material.'}
             </p>
           </div>
           <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
@@ -163,7 +163,7 @@ export function StudyFileReader({
 
       {!isReadyReader ? (
         <>
-          <ReaderSection title={showSourceAsPrimary ? 'Open the original source first' : 'Reader fallback guidance'} kicker={uiState.statusLabel}>
+          <ReaderSection title={showSourceAsPrimary ? 'Open the original source first' : 'Fallback guidance'} kicker={uiState.statusLabel}>
             <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.95rem 1rem', display: 'grid', gap: '0.7rem' }}>
               <p style={{ margin: 0, fontSize: '15px', lineHeight: 1.76, color: 'var(--text-secondary)' }}>
                 {uiState.detail}
@@ -197,7 +197,7 @@ export function StudyFileReader({
           </ReaderSection>
 
           {uiState.statusKey === 'partial' && (
-            <ReaderSection title="Reader preview" kicker="Partial">
+            <ReaderSection title="Source preview" kicker="Partial">
               {reader.previewBlocks.length > 0 ? (
                 <StudyFilePreviewExplorer previewBlocks={reader.previewBlocks} />
               ) : (
@@ -208,12 +208,12 @@ export function StudyFileReader({
         </>
       ) : (
         <>
-          <ReaderSection
-            title="Extracted overview"
-            kicker={reader.quality === 'strong'
-              ? 'Grounded reader surface'
-              : 'Usable reader surface'}
-          >
+            <ReaderSection
+              title="Extracted overview"
+              kicker={reader.quality === 'strong'
+                ? 'Grounded source surface'
+                : 'Usable source surface'}
+            >
             <p className="ui-reading-copy" style={{ margin: 0, fontSize: '15px', lineHeight: 1.76, color: 'var(--text-secondary)' }}>
               {reader.overviewBody}
             </p>
@@ -227,7 +227,7 @@ export function StudyFileReader({
             )}
           </ReaderSection>
 
-          <ReaderSection title="Reader key points" kicker="Fallback study frame">
+          <ReaderSection title="Extracted key points" kicker="Fallback study frame">
             {reader.keyPoints.length > 0 ? (
               <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: '0.7rem' }}>
                 {reader.keyPoints.map((point, index) => (
@@ -264,10 +264,10 @@ export function StudyFileReader({
           <ReaderMetaCard label="Capability" value={capability.capabilityLabel} />
           <ReaderMetaCard label="Quality" value={reader.qualityLabel} />
           <ReaderMetaCard label="Grounding" value={reader.groundingLabel} />
-          <ReaderMetaCard label="Reader status" value={uiState.statusLabel} />
+          <ReaderMetaCard label="Source status" value={uiState.statusLabel} />
           <ReaderMetaCard label="Readable characters" value={reader.charCount > 0 ? reader.charCount.toLocaleString() : 'Not available'} />
           <ReaderMetaCard label="Word count" value={reader.wordCount > 0 ? reader.wordCount.toLocaleString() : 'Not available'} />
-          <ReaderMetaCard label="Text in reader" value={uiState.textAvailabilityLabel} />
+          <ReaderMetaCard label="Text in source view" value={uiState.textAvailabilityLabel} />
           <ReaderMetaCard label="Recommendation" value={formatRecommendationStrength(resource.recommendationStrength)} />
           <ReaderMetaCard label="Canvas source" value={canvasHref ? `Direct ${sourceNoun} link available` : 'No direct Canvas link stored'} />
         </div>

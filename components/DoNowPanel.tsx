@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { CopyTaskBundleActions } from '@/components/CopyTaskBundleActions'
 import { PromptBuildViewer } from '@/components/PromptBuildViewer'
+import { TaskDraftSourcePane } from '@/components/TaskDraftSourcePane'
 import { usePromptBuild, type PromptBuildSnapshot } from '@/components/usePromptBuild'
 import {
   buildTaskDraftFallback,
@@ -118,46 +119,55 @@ export function TaskDraftPanel({
           </button>
         </div>
 
-        {promptBuild.isBuilding ? (
-          <PromptBuildViewer
-            phase={promptBuild.phase}
-            progressValue={promptBuild.progressValue}
-            promptText={promptBuild.promptText}
-            taskTitle={context.taskTitle}
-          />
-        ) : (
-          <>
-            <StatusBanner
-              phase={promptBuild.phase === 'error' ? 'error' : 'done'}
-              draftSource={promptBuild.draftSource}
-              reopenSource={promptBuild.reopenSource}
-              errorMessage={promptBuild.errorMessage}
-            />
+        <div className="draft-workspace">
+          <div className="draft-main-column">
+            {promptBuild.isBuilding ? (
+              <PromptBuildViewer
+                phase={promptBuild.phase}
+                progressValue={promptBuild.progressValue}
+                promptText={promptBuild.promptText}
+                taskTitle={context.taskTitle}
+              />
+            ) : (
+              <>
+                <StatusBanner
+                  phase={promptBuild.phase === 'error' ? 'error' : 'done'}
+                  draftSource={promptBuild.draftSource}
+                  reopenSource={promptBuild.reopenSource}
+                  errorMessage={promptBuild.errorMessage}
+                />
 
-            <div style={sectionsStyle}>
-              <TextSection
-                heading="0. Requirement summary"
-                body={draft.requirementSummary}
-              />
-              <TextSection
-                heading="1. Draft output"
-                body={draft.draftOutput}
-              />
-              <TextSection
-                heading="2. What is still missing or unclear?"
-                body={draft.missingDetails}
-              />
-              <TextSection
-                heading="3. What should I do on the paper right now?"
-                body={draft.paperAction}
-              />
-              <TextSection
-                heading="4. Smallest next step"
-                body={draft.smallestNextStep}
-              />
-            </div>
-          </>
-        )}
+                <div style={sectionsStyle}>
+                  <TextSection
+                    heading="0. Requirement summary"
+                    body={draft.requirementSummary}
+                  />
+                  <EditableDraftSection
+                    key={draft.draftOutput}
+                    heading="1. Draft output"
+                    initialValue={draft.draftOutput}
+                  />
+                  <TextSection
+                    heading="2. What is still missing or unclear?"
+                    body={draft.missingDetails}
+                  />
+                  <TextSection
+                    heading="3. What should I do on the paper right now?"
+                    body={draft.paperAction}
+                  />
+                  <TextSection
+                    heading="4. Smallest next step"
+                    body={draft.smallestNextStep}
+                  />
+                </div>
+              </>
+            )}
+          </div>
+
+          <div className="draft-source-column">
+            <TaskDraftSourcePane context={context} isBuilding={promptBuild.isBuilding} />
+          </div>
+        </div>
 
         <div style={footerStyle}>
           {context.canvasUrl && (
@@ -224,6 +234,32 @@ function TextSection({
     <section style={sectionStyle}>
       <p style={sectionHeadingStyle}>{heading}</p>
       <div style={draftBodyStyle}>{body}</div>
+    </section>
+  )
+}
+
+function EditableDraftSection({
+  heading,
+  initialValue,
+}: {
+  heading: string
+  initialValue: string
+}) {
+  const [value, setValue] = useState(initialValue)
+
+  return (
+    <section style={sectionStyle}>
+      <p style={sectionHeadingStyle}>{heading}</p>
+      <p style={{ margin: '0.38rem 0 0', fontSize: '12px', lineHeight: 1.55, color: 'var(--text-muted)' }}>
+        Edit the working draft while the source stays visible on the right.
+      </p>
+      <textarea
+        value={value}
+        onChange={(event) => setValue(event.target.value)}
+        className="ui-input"
+        style={draftEditorStyle}
+        spellCheck={false}
+      />
     </section>
   )
 }
@@ -329,7 +365,7 @@ const backdropStyle: CSSProperties = {
 
 const cardStyle: CSSProperties = {
   width: '100%',
-  maxWidth: '720px',
+  maxWidth: '1180px',
   maxHeight: 'calc(100dvh - 2rem)',
   overflowY: 'auto',
   borderRadius: 'var(--radius-page)',
@@ -422,6 +458,15 @@ const draftBodyStyle: CSSProperties = {
   lineHeight: 1.68,
   color: 'var(--text-primary)',
   whiteSpace: 'pre-wrap',
+}
+
+const draftEditorStyle: CSSProperties = {
+  marginTop: '0.7rem',
+  minHeight: '15rem',
+  padding: '0.9rem 0.95rem',
+  fontSize: '14px',
+  lineHeight: 1.68,
+  resize: 'vertical',
 }
 
 const footerStyle: CSSProperties = {

@@ -10,7 +10,7 @@ export interface DeepLearnResourceUiState {
   tone: 'accent' | 'warning' | 'muted'
   noteHref: string
   quizHref: string
-  primaryLabel: 'Build Exam Prep Pack' | 'Open Exam Prep Pack' | 'Rebuild Exam Prep Pack' | 'Open reader fallback'
+  primaryLabel: 'Build Exam Prep Pack' | 'Open Exam Prep Pack' | 'Rebuild Exam Prep Pack' | 'Open source fallback'
   summary: string
   detail: string
   quizReady: boolean
@@ -37,9 +37,9 @@ export function getDeepLearnResourceUiState(
       tone: 'warning',
       noteHref,
       quizHref,
-      primaryLabel: 'Open reader fallback',
+      primaryLabel: 'Open source fallback',
       summary: options.unavailableMessage || 'Saved Deep Learn exam prep packs are unavailable right now.',
-      detail: 'Learn is still rendering the resource, but pack availability could not be loaded. Use the reader or source fallback until Deep Learn storage is healthy again.',
+      detail: 'Learn is still rendering the resource, but pack availability could not be loaded. Use the source fallback until Deep Learn storage is healthy again.',
       quizReady: false,
     }
   }
@@ -51,7 +51,7 @@ export function getDeepLearnResourceUiState(
       tone: 'warning',
       noteHref,
       quizHref,
-      primaryLabel: 'Open reader fallback',
+      primaryLabel: 'Open source fallback',
       summary: readiness.summary,
       detail: readiness.detail,
       quizReady: false,
@@ -72,7 +72,7 @@ export function getDeepLearnResourceUiState(
         ? readiness.detail
         : readiness?.state === 'partial_text'
           ? readiness.detail
-          : 'Deep Learn now aims for answer-ready review material first. The reader stays nearby only as a source surface and fallback.',
+          : 'Deep Learn now aims for answer-ready review material first. Source support stays nearby only as validation and fallback.',
       quizReady: false,
     }
   }
@@ -86,7 +86,7 @@ export function getDeepLearnResourceUiState(
       quizHref,
       primaryLabel: 'Open Exam Prep Pack',
       summary: note.overview || 'Deep Learn is building the saved exam prep pack.',
-      detail: 'Generation is in progress. Open the pack to refresh status, or keep the reader and original source nearby while it finishes.',
+      detail: 'Generation is in progress. Open the pack to refresh status, or keep the source support nearby while it finishes.',
       quizReady: false,
     }
   }
@@ -100,7 +100,7 @@ export function getDeepLearnResourceUiState(
       quizHref,
       primaryLabel: 'Rebuild Exam Prep Pack',
       summary: note.errorMessage || 'Deep Learn could not produce a trustworthy exam prep pack from the current source evidence.',
-      detail: 'Retry after checking the source, or use the reader and original source while the pack is unavailable.',
+      detail: 'Retry after checking the source, or use the source fallback while the pack is unavailable.',
       quizReady: false,
     }
   }

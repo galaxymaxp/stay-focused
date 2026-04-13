@@ -1,8 +1,6 @@
 import Link from 'next/link'
 import { EmptyState } from '@/components/EmptyState'
-import { TaskDraftButton } from '@/components/DoNowButton'
 import { TaskStatusToggle } from '@/components/TaskStatusToggle'
-import { buildManualCopyBundle } from '@/lib/manual-copy-bundle'
 import type { HomeActivityItem, HomeCourseSnapshot, HomeDueSoonItem } from '@/lib/home-overview'
 import type { TodayItem } from '@/lib/types'
 
@@ -96,27 +94,15 @@ export function TodayDashboard({
                       ) : null}
 
                       {primaryAction.kind === 'task' ? (
-                        <TaskDraftButton
-                          copyBundle={buildManualCopyBundle({
-                            taskTitle: primaryAction.title,
-                            courseName: primaryAction.courseName,
-                            moduleName: primaryAction.moduleTitle,
-                            dueDate: primaryAction.dateTime,
-                            taskDetails: primaryAction.supportingText,
-                          })}
-                          entryOrigin="today"
-                          doPageHref={primaryAction.href ?? undefined}
-                          context={{
-                            taskTitle: primaryAction.title,
-                            taskDetails: primaryAction.supportingText,
-                            deadline: primaryAction.dateTime,
-                            priority: primaryAction.priority,
-                            courseName: primaryAction.courseName,
-                            moduleTitle: primaryAction.moduleTitle,
-                            canvasUrl: primaryAction.canvasUrl,
-                            learnHref: primaryAction.learnHref ?? primaryAction.href,
-                          }}
-                        />
+                        primaryAction.canvasUrl ? (
+                          <a href={primaryAction.canvasUrl} target="_blank" rel="noreferrer" className="ui-button ui-button-secondary">
+                            Open in Canvas
+                          </a>
+                        ) : (
+                          <Link href="/tasks" className="ui-button ui-button-secondary">
+                            Open task list
+                          </Link>
+                        )
                       ) : (
                         <Link href="/tasks" className="ui-button ui-button-secondary">
                           Open task list
@@ -209,16 +195,20 @@ export function TodayDashboard({
             <SectionHeading
               eyebrow="Courses"
               title="Course snapshot"
-              description="Each class reduced to what matters now."
+              description="Swipe or scroll across compact course cards to jump straight into the next useful lane."
               actionHref="/courses"
               actionLabel="Open Courses"
             />
 
-            <div className="home-sheet-list">
-              {courseSnapshots.map((course) => (
-                <CourseSnapshotRow key={course.id} course={course} />
-              ))}
-            </div>
+            {courseSnapshots.length > 0 ? (
+              <div className="home-course-carousel" aria-label="Course snapshot">
+                {courseSnapshots.map((course) => (
+                  <CourseSnapshotCard key={course.id} course={course} />
+                ))}
+              </div>
+            ) : (
+              <EmptyState message="No course snapshot is available yet." />
+            )}
           </section>
         </aside>
       </div>
@@ -265,6 +255,7 @@ function CompactActionRow({ item }: { item: TodayItem }) {
       <div className="home-row-meta">
         <ToneBadge item={item} subtle />
         <span>{item.courseName}</span>
+        {item.dateTime ? <span>{formatActionTiming(item)}</span> : null}
       </div>
       <p className="home-row-title">{item.title}</p>
       <p className="home-row-copy">{item.whyNow}</p>
@@ -338,30 +329,55 @@ function ActivityRow({ item }: { item: HomeActivityItem }) {
   )
 }
 
-function CourseSnapshotRow({ course }: { course: HomeCourseSnapshot }) {
+function CourseSnapshotCard({ course }: { course: HomeCourseSnapshot }) {
   return (
-    <Link href={course.href} className="home-course-link ui-interactive-row home-row-main">
-      <div className="home-row-meta">
-        <span className="ui-chip ui-chip-soft" style={{ fontWeight: 700 }}>
-          {course.code}
-        </span>
+    <article className="home-course-card ui-card-soft ui-interactive-card">
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.7rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+        <div>
+          <span className="ui-chip ui-chip-soft" style={{ fontWeight: 700 }}>
+            {course.code}
+          </span>
+          <p className="home-row-title" style={{ marginTop: '0.45rem' }}>{course.name}</p>
+        </div>
         {course.urgentCount > 0 ? (
           <span className="ui-chip ui-status-warning" style={{ padding: '0.24rem 0.55rem', fontSize: '11px', fontWeight: 700 }}>
             {course.urgentCount} urgent
           </span>
-        ) : null}
+        ) : (
+          <span className="ui-chip ui-chip-soft" style={{ padding: '0.24rem 0.55rem', fontSize: '11px', fontWeight: 700 }}>
+            {course.pendingCount} open
+          </span>
+        )}
       </div>
-      <p className="home-row-title">{course.name}</p>
+
       <p className="home-row-copy">{course.statusSummary}</p>
+
+      <div className="home-row-meta">
+        <span>{course.moduleCount} module{course.moduleCount === 1 ? '' : 's'}</span>
+        <span>{course.pendingCount} active task{course.pendingCount === 1 ? '' : 's'}</span>
+      </div>
+
       {course.latestChange ? (
-        <p className="home-row-note">{course.latestChange}</p>
+        <div className="ui-card" style={{ borderRadius: 'var(--radius-tight)', padding: '0.72rem 0.78rem' }}>
+          <p className="ui-kicker" style={{ margin: 0 }}>Latest change</p>
+          <p className="home-row-note" style={{ marginTop: '0.32rem' }}>{course.latestChange}</p>
+        </div>
       ) : null}
-      {course.nextActionLabel ? (
-        <p className="home-row-note">
-          {course.nextActionLabel === 'Open next task' ? 'Next task is ready inside this course.' : course.nextActionLabel}
-        </p>
-      ) : null}
-    </Link>
+
+      <div className="ui-card" style={{ borderRadius: 'var(--radius-tight)', padding: '0.72rem 0.78rem' }}>
+        <p className="ui-kicker" style={{ margin: 0 }}>Next move</p>
+        <p className="home-row-copy" style={{ marginTop: '0.32rem' }}>{course.nextActionSummary}</p>
+      </div>
+
+      <div className="home-course-actions">
+        <Link href={course.nextActionHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
+          {course.nextActionLabel}
+        </Link>
+        <Link href={course.href} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+          Course workspace
+        </Link>
+      </div>
+    </article>
   )
 }
 
@@ -442,4 +458,15 @@ function formatDateTime(value: string) {
     ? { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }
     : { weekday: 'short', month: 'short', day: 'numeric' }
   ).format(date)
+}
+
+function formatActionTiming(item: TodayItem) {
+  if (!item.dateTime) return ''
+
+  const daysUntil = Math.ceil((new Date(item.dateTime).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+  if (item.kind === 'task' && daysUntil < 0) return 'Overdue'
+  if (item.kind === 'task' && daysUntil === 0) return 'Due today'
+  if (item.kind === 'task' && daysUntil === 1) return 'Due tomorrow'
+  if (item.kind === 'task' && daysUntil <= 7) return `Due in ${daysUntil} days`
+  return formatDateTime(item.dateTime)
 }

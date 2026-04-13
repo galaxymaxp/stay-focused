@@ -1,10 +1,8 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { SyncFirstEmptyState } from '@/components/SyncFirstEmptyState'
-import { TaskDraftButton } from '@/components/DoNowButton'
 import { TaskStatusToggle } from '@/components/TaskStatusToggle'
 import { getClarityWorkspace } from '@/lib/clarity-workspace'
-import { buildManualCopyBundle } from '@/lib/manual-copy-bundle'
 import type { TodayItem } from '@/lib/types'
 
 interface Props {
@@ -112,26 +110,10 @@ export default async function DoNowPage({ searchParams }: Props) {
                 {primaryButtonLabel(primaryAction)}
               </Link>
             ) : null}
-            {primaryAction.kind === 'task' ? (
-              <TaskDraftButton
-                copyBundle={buildManualCopyBundle({
-                  taskTitle: primaryAction.title,
-                  courseName: primaryAction.courseName,
-                  moduleName: primaryAction.moduleTitle,
-                  dueDate: primaryAction.dateTime,
-                  taskDetails: primaryAction.supportingText,
-                })}
-                context={{
-                  taskTitle: primaryAction.title,
-                  taskDetails: primaryAction.supportingText,
-                  deadline: primaryAction.dateTime,
-                  priority: primaryAction.priority,
-                  courseName: primaryAction.courseName,
-                  moduleTitle: primaryAction.moduleTitle,
-                  canvasUrl: primaryAction.canvasUrl,
-                  learnHref: primaryAction.learnHref ?? primaryAction.href,
-                }}
-              />
+            {primaryAction.kind === 'task' && primaryAction.canvasUrl ? (
+              <a href={primaryAction.canvasUrl} target="_blank" rel="noreferrer" className="ui-button ui-button-secondary">
+                Open in Canvas
+              </a>
             ) : null}
             <Link href="/tasks" className="ui-button ui-button-ghost">
               Open full task list
