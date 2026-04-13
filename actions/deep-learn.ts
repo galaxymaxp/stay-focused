@@ -3,8 +3,9 @@
 import { revalidatePath } from 'next/cache'
 import { getAuthenticatedUserServer } from '@/lib/auth-server'
 import { buildLearnExperience, extractCourseName, getModuleWorkspace, resolveLearnResourceSelection } from '@/lib/module-workspace'
-import { generateDeepLearnNoteForResource } from '@/lib/deep-learn-generation'
+import { DeepLearnGenerationBlockedError, generateDeepLearnNoteForResource } from '@/lib/deep-learn-generation'
 import { DEEP_LEARN_PROMPT_VERSION, buildDeepLearnNoteBody, computeDeepLearnQuizReady } from '@/lib/deep-learn'
+import { classifyDeepLearnResourceReadiness } from '@/lib/deep-learn-readiness'
 import { saveDeepLearnNote } from '@/lib/deep-learn-store'
 import { supabase } from '@/lib/supabase'
 
@@ -62,17 +63,23 @@ export async function generateDeepLearnNoteAction(input: {
     matchedBy,
   } = selection
 
-  if (!storedResource || !canonicalResourceId) {
+  const readiness = classifyDeepLearnResourceReadiness({
+    resource,
+    storedResource,
+    canonicalResourceId,
+  })
+
+  if (!storedResource || !canonicalResourceId || readiness.state === 'blocked') {
     console.error('[deep-learn-action] resource_lookup_failed', {
       moduleId: input.moduleId,
       resourceId: input.resourceId,
       userId: user?.id ?? null,
-      resolvedResourceId: null,
+      resolvedResourceId: canonicalResourceId,
       queryIntent: 'generate_note_for_resource_detail_or_learn_card',
       lookupMode: matchedBy,
-      failureReason: 'stored_resource_missing',
+      failureReason: readiness.blockedReason ?? 'stored_resource_missing',
     })
-    throw new Error('This resource is visible in Learn, but its synced resource record is not ready for Deep Learn yet.')
+    throw new Error(readiness.detail)
   }
 
   console.info('[deep-learn-action] resource_resolved', {
@@ -92,7 +99,9 @@ export async function generateDeepLearnNoteAction(input: {
     resourceId: canonicalResourceId,
     status: 'pending',
     title: resource.title,
-    overview: 'Deep Learn is preparing the study note.',
+    overview: readiness.state === 'via_source_fetch'
+      ? 'Deep Learn is recovering stronger source evidence before it writes the note.'
+      : 'Deep Learn is preparing the study note.',
     sections: [],
     noteBody: '',
     coreTerms: [],
@@ -124,20 +133,7 @@ export async function generateDeepLearnNoteAction(input: {
       linkedTask,
     })
 
-    if (generated.refreshedResource && supabase) {
-      await supabase
-        .from('module_resources')
-        .update({
-          extraction_status: generated.refreshedResource.extractionStatus,
-          extracted_text: generated.refreshedResource.extractedText,
-          extracted_text_preview: generated.refreshedResource.extractedTextPreview,
-          extracted_char_count: generated.refreshedResource.extractedCharCount,
-          extraction_error: generated.refreshedResource.extractionError,
-          metadata: generated.refreshedResource.metadata,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', generated.refreshedResource.id)
-    }
+    await persistRefreshedResource(generated.refreshedResource)
 
     const note = await saveDeepLearnNote({
       moduleId: workspace.module.id,
@@ -174,6 +170,11 @@ export async function generateDeepLearnNoteAction(input: {
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Deep Learn generation failed.'
+    const refreshedResource = error instanceof DeepLearnGenerationBlockedError
+      ? error.refreshedResource
+      : null
+
+    await persistRefreshedResource(refreshedResource)
 
     await saveDeepLearnNote({
       moduleId: workspace.module.id,
@@ -181,7 +182,9 @@ export async function generateDeepLearnNoteAction(input: {
       resourceId: canonicalResourceId,
       status: 'failed',
       title: resource.title,
-      overview: 'Deep Learn could not build a trustworthy note from the current source evidence.',
+      overview: error instanceof DeepLearnGenerationBlockedError
+        ? 'Deep Learn could not recover enough trustworthy source evidence for this item.'
+        : 'Deep Learn could not build a trustworthy note from the current source evidence.',
       sections: [],
       noteBody: '',
       coreTerms: [],
@@ -189,15 +192,17 @@ export async function generateDeepLearnNoteAction(input: {
       distinctions: [],
       likelyQuizPoints: [],
       cautionNotes: [message],
-      sourceGrounding: {
-        sourceType: resource.type,
-        extractionQuality: resource.quality ?? null,
-        groundingStrategy: 'insufficient',
-        usedAiFallback: true,
-        qualityReason: resource.qualityReason ?? null,
-        warning: resource.extractionError ?? null,
-        charCount: 0,
-      },
+      sourceGrounding: error instanceof DeepLearnGenerationBlockedError
+        ? error.sourceGrounding
+        : {
+            sourceType: resource.type,
+            extractionQuality: resource.quality ?? null,
+            groundingStrategy: 'insufficient',
+            usedAiFallback: true,
+            qualityReason: resource.qualityReason ?? null,
+            warning: resource.extractionError ?? null,
+            charCount: 0,
+          },
       quizReady: false,
       promptVersion: DEEP_LEARN_PROMPT_VERSION,
       errorMessage: message,
@@ -246,4 +251,25 @@ function matchesByTitle(left: string, right: string) {
 
 function normalizeLookup(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+}
+
+async function persistRefreshedResource(
+  refreshedResource: Awaited<ReturnType<typeof generateDeepLearnNoteForResource>>['refreshedResource'] | null,
+) {
+  if (!refreshedResource || !supabase) {
+    return
+  }
+
+  await supabase
+    .from('module_resources')
+    .update({
+      extraction_status: refreshedResource.extractionStatus,
+      extracted_text: refreshedResource.extractedText,
+      extracted_text_preview: refreshedResource.extractedTextPreview,
+      extracted_char_count: refreshedResource.extractedCharCount,
+      extraction_error: refreshedResource.extractionError,
+      metadata: refreshedResource.metadata,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', refreshedResource.id)
 }

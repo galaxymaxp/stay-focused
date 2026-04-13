@@ -1,15 +1,22 @@
 import OpenAI from 'openai'
 import type { Module, ModuleResource, Task } from '@/lib/types'
 import { getModuleResourceQualityInfo, normalizeModuleResourceStudyText } from '@/lib/module-resource-quality'
-import { reprocessStoredModuleResource, shouldReprocessWeakModuleResource } from '@/lib/module-resource-reprocess'
+import { reprocessStoredModuleResource } from '@/lib/module-resource-reprocess'
 import {
   DEEP_LEARN_PROMPT_VERSION,
   normalizeDeepLearnGeneratedContent,
   type DeepLearnGeneratedContent,
 } from '@/lib/deep-learn'
 import type { ModuleSourceResource } from '@/lib/module-workspace'
-import type { DeepLearnSourceGrounding } from '@/lib/types'
+import type { DeepLearnBlockedReason, DeepLearnSourceGrounding } from '@/lib/types'
 import { getStudySourceTypeLabel } from '@/lib/study-resource'
+import {
+  buildDeepLearnBlockedReadiness,
+  canAttemptDeepLearnSourceFetch,
+  classifyDeepLearnResourceReadiness,
+  detectDeepLearnBlockedReasonAfterSourceFetch,
+  selectDeepLearnGroundingText,
+} from '@/lib/deep-learn-readiness'
 
 const DEFAULT_DEEP_LEARN_MODEL = 'gpt-5-mini'
 const MAX_GROUNDING_CHARS = 12000
@@ -113,6 +120,29 @@ export interface DeepLearnGenerationResult {
   refreshedResource: ModuleResource | null
 }
 
+export class DeepLearnGenerationBlockedError extends Error {
+  blockedReason: DeepLearnBlockedReason
+  refreshedResource: ModuleResource | null
+  sourceGrounding: DeepLearnSourceGrounding
+
+  constructor(input: {
+    message: string
+    blockedReason: DeepLearnBlockedReason
+    refreshedResource: ModuleResource | null
+    sourceGrounding: DeepLearnSourceGrounding
+  }) {
+    super(input.message)
+    this.name = 'DeepLearnGenerationBlockedError'
+    this.blockedReason = input.blockedReason
+    this.refreshedResource = input.refreshedResource
+    this.sourceGrounding = input.sourceGrounding
+  }
+}
+
+interface DeepLearnGroundingDependencies {
+  reprocessStoredModuleResource?: typeof reprocessStoredModuleResource
+}
+
 export async function generateDeepLearnNoteForResource(
   input: DeepLearnGenerationContext,
 ): Promise<DeepLearnGenerationResult> {
@@ -173,17 +203,39 @@ export async function generateDeepLearnNoteForResource(
 }
 
 export async function buildDeepLearnGrounding(input: DeepLearnGenerationContext) {
+  return buildDeepLearnGroundingWithDependencies(input)
+}
+
+export async function buildDeepLearnGroundingWithDependencies(
+  input: DeepLearnGenerationContext,
+  dependencies: DeepLearnGroundingDependencies = {},
+) {
+  const reprocessStoredModuleResourceImpl = dependencies.reprocessStoredModuleResource ?? reprocessStoredModuleResource
+  const readiness = classifyDeepLearnResourceReadiness({
+    resource: input.resource,
+    storedResource: input.storedResource,
+    canonicalResourceId: input.storedResource.id,
+  })
   const currentQuality = getModuleResourceQualityInfo(input.resource)
   let surfaceResource = input.resource
   let refreshedResource: ModuleResource | null = null
   let finalQuality = currentQuality
-  let groundingStrategy: DeepLearnSourceGrounding['groundingStrategy'] = currentQuality.quality === 'strong' || currentQuality.quality === 'usable'
+  let groundingStrategy: DeepLearnSourceGrounding['groundingStrategy'] = readiness.state === 'ready'
     ? 'stored_extract'
     : 'insufficient'
 
-  if (shouldReprocessWeakModuleResource(input.storedResource) && hasSourceRefetchCandidate(input.storedResource)) {
+  if (readiness.state === 'blocked') {
+    throw new DeepLearnGenerationBlockedError({
+      message: readiness.detail,
+      blockedReason: readiness.blockedReason ?? 'no_source_path',
+      refreshedResource: null,
+      sourceGrounding: buildDeepLearnSourceGrounding(surfaceResource, finalQuality, 'insufficient'),
+    })
+  }
+
+  if (readiness.state === 'via_source_fetch' && canAttemptDeepLearnSourceFetch(input.storedResource)) {
     try {
-      const reprocessed = await reprocessStoredModuleResource(input.storedResource, {
+      const reprocessed = await reprocessStoredModuleResourceImpl(input.storedResource, {
         triggeredBy: 'learn',
       })
 
@@ -224,14 +276,48 @@ export async function buildDeepLearnGrounding(input: DeepLearnGenerationContext)
       }
       finalQuality = getModuleResourceQualityInfo(surfaceResource)
       groundingStrategy = 'source_refetch'
-    } catch {
-      // Keep the existing resource state and let the note prompt stay explicit about the weakness.
+    } catch (error) {
+      const message = error instanceof Error
+        ? error.message
+        : 'Source retrieval failed before Deep Learn could recover readable text.'
+      throw new DeepLearnGenerationBlockedError({
+        message,
+        blockedReason: buildDeepLearnBlockedReadiness({
+          blockedReason: 'source_retrieval_failed',
+          sourceNote: message,
+          sourceType: input.storedResource.resourceType.toLowerCase().includes('page') ? 'page' : null,
+          sourceFetchAttempted: true,
+        }).blockedReason ?? 'source_retrieval_failed',
+        refreshedResource,
+        sourceGrounding: buildDeepLearnSourceGrounding(surfaceResource, finalQuality, 'source_refetch', message),
+      })
     }
   }
 
   const bestText = selectBestGroundingText(surfaceResource)
-  if (!bestText && groundingStrategy === 'insufficient') {
-    groundingStrategy = 'context_only'
+  if (!bestText) {
+    const blockedReason = detectDeepLearnBlockedReasonAfterSourceFetch(refreshedResource ?? input.storedResource)
+    const blocked = buildDeepLearnBlockedReadiness({
+      canonicalResourceId: input.storedResource.id,
+      blockedReason,
+      sourceNote: getDeepLearnSourceNote(surfaceResource, refreshedResource ?? input.storedResource, finalQuality),
+      sourceType: input.storedResource.resourceType.toLowerCase().includes('page')
+        ? 'page'
+        : null,
+      sourceFetchAttempted: groundingStrategy === 'source_refetch',
+    })
+
+    throw new DeepLearnGenerationBlockedError({
+      message: blocked.detail,
+      blockedReason,
+      refreshedResource,
+      sourceGrounding: buildDeepLearnSourceGrounding(
+        surfaceResource,
+        finalQuality,
+        groundingStrategy === 'source_refetch' ? 'source_refetch' : 'insufficient',
+        blocked.detail,
+      ),
+    })
   }
 
   const promptGrounding = buildPromptGrounding({
@@ -243,24 +329,8 @@ export async function buildDeepLearnGrounding(input: DeepLearnGenerationContext)
     bestText,
   })
 
-  const sourceGrounding: DeepLearnSourceGrounding = {
-    sourceType: getStudySourceTypeLabel({
-      type: surfaceResource.type,
-      kind: surfaceResource.kind,
-      extension: surfaceResource.extension,
-      contentType: surfaceResource.contentType,
-    }),
-    extractionQuality: finalQuality.quality,
-    groundingStrategy: promptGrounding.trim()
-      ? groundingStrategy === 'insufficient'
-        ? 'context_only'
-        : groundingStrategy
-      : 'insufficient',
-    usedAiFallback: finalQuality.quality !== 'strong' && finalQuality.quality !== 'usable',
-    qualityReason: finalQuality.reason,
-    warning: surfaceResource.extractionError ?? surfaceResource.qualityReason ?? null,
-    charCount: bestText.length,
-  }
+  const sourceGrounding = buildDeepLearnSourceGrounding(surfaceResource, finalQuality, groundingStrategy)
+  sourceGrounding.charCount = bestText.length
 
   return {
     promptGrounding,
@@ -340,7 +410,7 @@ function buildPromptGrounding(input: {
 }
 
 function selectBestGroundingText(resource: ModuleSourceResource) {
-  const normalizedText = normalizeModuleResourceStudyText(resource.extractedText ?? resource.extractedTextPreview ?? '')
+  const normalizedText = normalizeModuleResourceStudyText(selectDeepLearnGroundingText(resource))
   if (!normalizedText) return ''
 
   return normalizedText
@@ -358,10 +428,6 @@ function truncateForModel(value: string, maxChars: number) {
   return clipped.slice(0, breakIndex > 280 ? breakIndex + 1 : maxChars).trim()
 }
 
-function hasSourceRefetchCandidate(resource: ModuleResource) {
-  return Boolean(resource.sourceUrl || resource.htmlUrl || resource.extractedTextPreview)
-}
-
 function getRequiredDeepLearnApiKey() {
   const apiKey = process.env.OPENAI_API_KEY?.trim()
   if (!apiKey) {
@@ -375,4 +441,38 @@ function getDeepLearnModel() {
   return process.env.OPENAI_DEEP_LEARN_MODEL?.trim()
     || process.env.OPENAI_MODEL?.trim()
     || DEFAULT_DEEP_LEARN_MODEL
+}
+
+function buildDeepLearnSourceGrounding(
+  resource: ModuleSourceResource,
+  quality: ReturnType<typeof getModuleResourceQualityInfo>,
+  groundingStrategy: DeepLearnSourceGrounding['groundingStrategy'],
+  warning?: string | null,
+): DeepLearnSourceGrounding {
+  return {
+    sourceType: getStudySourceTypeLabel({
+      type: resource.type,
+      kind: resource.kind,
+      extension: resource.extension,
+      contentType: resource.contentType,
+    }),
+    extractionQuality: quality.quality,
+    groundingStrategy,
+    usedAiFallback: quality.quality !== 'strong' && quality.quality !== 'usable',
+    qualityReason: quality.reason,
+    warning: warning ?? resource.extractionError ?? resource.qualityReason ?? null,
+    charCount: 0,
+  }
+}
+
+function getDeepLearnSourceNote(
+  resource: ModuleSourceResource,
+  storedResource: ModuleResource,
+  quality: ReturnType<typeof getModuleResourceQualityInfo>,
+) {
+  return resource.extractionError
+    ?? storedResource.extractionError
+    ?? resource.qualityReason
+    ?? quality.reason
+    ?? null
 }
