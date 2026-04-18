@@ -67,11 +67,17 @@ export function DeepLearnReviewPackSurface({ note }: { note: DeepLearnNote }) {
         <div style={{ display: 'grid', gap: '0.9rem' }}>
           {preset === 'answer_bank' && (
             <section className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem' }}>
-              <p className="ui-kicker">Key concepts</p>
+              <SectionHeading
+                kicker="Key concepts"
+                detail="Use these as short-answer anchors you should be able to explain in your own words."
+              />
               {note.answerBank.length > 0 ? (
                 <ul style={{ listStyle: 'none', padding: 0, margin: '0.7rem 0 0', display: 'grid', gap: '0.7rem' }}>
-                  {note.answerBank.map((item) => (
+                  {note.answerBank.map((item, index) => (
                     <li key={`${item.cue}-${item.kind}`}>
+                      <p style={{ margin: 0, fontSize: '11px', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
+                        Concept {index + 1}
+                      </p>
                       <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.65, color: 'var(--text-primary)', fontWeight: 650 }}>
                         {item.cue}
                       </p>
@@ -89,12 +95,18 @@ export function DeepLearnReviewPackSurface({ note }: { note: DeepLearnNote }) {
 
           {preset === 'identification' && (
             <section className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem' }}>
-              <p className="ui-kicker">Important definitions</p>
+              <SectionHeading
+                kicker="Important definitions"
+                detail="Review these like flashcards: identify the term, then say the definition without looking."
+              />
               {note.identificationItems.length > 0 ? (
                 <ul style={{ listStyle: 'none', padding: 0, margin: '0.7rem 0 0', display: 'grid', gap: '0.7rem' }}>
-                  {note.identificationItems.map((item) => (
+                  {note.identificationItems.map((item, index) => (
                     <li key={`${item.prompt}-${item.kind}`}>
-                      <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.55, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      <p style={{ margin: 0, fontSize: '11px', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
+                        Definition {index + 1}
+                      </p>
+                      <p style={{ margin: '0.12rem 0 0', fontSize: '13px', lineHeight: 1.55, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                         {item.prompt}
                       </p>
                       <p style={{ margin: '0.22rem 0 0', fontSize: '14px', lineHeight: 1.65, color: 'var(--text-primary)', fontWeight: 650 }}>
@@ -111,10 +123,16 @@ export function DeepLearnReviewPackSurface({ note }: { note: DeepLearnNote }) {
 
           {preset === 'mcq' && (
             <section className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', display: 'grid', gap: '0.85rem' }}>
-              <p className="ui-kicker">Quizzable practice drill</p>
+              <SectionHeading
+                kicker="Quizzable practice drill"
+                detail="Attempt each question first, then verify with the keyed answer and explanation."
+              />
               {note.mcqDrill.length > 0 ? (
                 note.mcqDrill.map((item, index) => (
                   <article key={`${item.question}-${index}`} className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.9rem 0.95rem', display: 'grid', gap: '0.55rem' }}>
+                    <p style={{ margin: 0, fontSize: '11px', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
+                      Practice question {index + 1}
+                    </p>
                     <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.65, color: 'var(--text-primary)', fontWeight: 650 }}>
                       {item.question}
                     </p>
@@ -143,11 +161,17 @@ export function DeepLearnReviewPackSurface({ note }: { note: DeepLearnNote }) {
 
           {preset === 'timeline' && (
             <section className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem' }}>
-              <p className="ui-kicker">Likely chronology checkpoints</p>
+              <SectionHeading
+                kicker="Likely chronology checkpoints"
+                detail="Use this when exam prompts require sequence, progression, or cause-and-effect ordering."
+              />
               {note.timeline.length > 0 ? (
                 <ul style={{ listStyle: 'none', padding: 0, margin: '0.7rem 0 0', display: 'grid', gap: '0.7rem' }}>
-                  {note.timeline.map((item) => (
+                  {note.timeline.map((item, index) => (
                     <li key={`${item.label}-${item.sortKey ?? 'none'}`}>
+                      <p style={{ margin: 0, fontSize: '11px', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
+                        Timeline cue {index + 1}
+                      </p>
                       <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.65, color: 'var(--text-primary)', fontWeight: 650 }}>
                         {item.label}
                       </p>
@@ -165,10 +189,16 @@ export function DeepLearnReviewPackSurface({ note }: { note: DeepLearnNote }) {
 
           {preset === 'distinctions' && (
             <section className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', display: 'grid', gap: '0.75rem' }}>
-              <p className="ui-kicker">Likely exam confusion points</p>
+              <SectionHeading
+                kicker="Likely exam confusion points"
+                detail="Focus on contrasts that exam questions often use to test precision."
+              />
               {note.distinctions.length > 0 ? (
-                note.distinctions.map((item) => (
+                note.distinctions.map((item, index) => (
                   <article key={`${item.conceptA}-${item.conceptB}`} className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.9rem 0.95rem', display: 'grid', gap: '0.35rem' }}>
+                    <p style={{ margin: 0, fontSize: '11px', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
+                      Confusion check {index + 1}
+                    </p>
                     <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.5, color: 'var(--text-primary)', fontWeight: 650 }}>
                       {item.conceptA} vs {item.conceptB}
                     </p>
@@ -190,7 +220,10 @@ export function DeepLearnReviewPackSurface({ note }: { note: DeepLearnNote }) {
 
           {preset === 'support' && (
             <section className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', display: 'grid', gap: '0.75rem' }}>
-              <p className="ui-kicker">Simplified explanation</p>
+              <SectionHeading
+                kicker="Simplified explanation"
+                detail="Use this pass to clarify difficult ideas, then return to concept and quiz modes."
+              />
               {note.sections.length > 0 ? (
                 note.sections.map((section) => (
                   <article key={section.heading} className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.9rem 0.95rem' }}>
@@ -207,11 +240,17 @@ export function DeepLearnReviewPackSurface({ note }: { note: DeepLearnNote }) {
           )}
 
           <section className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.95rem 1rem' }}>
-            <p className="ui-kicker">Likely exam points</p>
+            <SectionHeading
+              kicker="Likely exam points"
+              detail="These are high-probability targets to prioritize before moving into the module quiz."
+            />
             {note.likelyQuizTargets.length > 0 ? (
               <ul style={{ listStyle: 'none', padding: 0, margin: '0.7rem 0 0', display: 'grid', gap: '0.65rem' }}>
-                {note.likelyQuizTargets.map((item) => (
+                {note.likelyQuizTargets.map((item, index) => (
                   <li key={item.target}>
+                    <p style={{ margin: 0, fontSize: '11px', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
+                      Exam point {index + 1}
+                    </p>
                     <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.55, color: 'var(--text-primary)', fontWeight: 650 }}>
                       {item.target}
                     </p>
@@ -266,6 +305,17 @@ function getPresetSummary(preset: ReviewPreset): { title: string; description: s
     title: 'Simplified explanation',
     description: 'Plain-language section bodies for first-pass understanding before drilling.',
   }
+}
+
+function SectionHeading({ kicker, detail }: { kicker: string; detail: string }) {
+  return (
+    <header style={{ display: 'grid', gap: '0.28rem' }}>
+      <p className="ui-kicker">{kicker}</p>
+      <p style={{ margin: 0, fontSize: '12px', lineHeight: 1.58, color: 'var(--text-secondary)' }}>
+        {detail}
+      </p>
+    </header>
+  )
 }
 
 function PresetButton({
