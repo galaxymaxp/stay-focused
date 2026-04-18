@@ -54,9 +54,53 @@ export function DeepLearnReviewPackSurface({ note }: { note: DeepLearnNote }) {
 
       <div className="contained-scroll-frame">
         <div style={{ display: 'grid', gap: '0.9rem' }}>
+          <section
+            className="ui-card-soft"
+            style={{
+              borderRadius: 'var(--radius-panel)',
+              padding: '0.95rem 1rem',
+              border: '1px solid color-mix(in srgb, var(--accent) 42%, transparent)',
+              boxShadow: '0 0 0 1px color-mix(in srgb, var(--accent) 12%, transparent)',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.6rem', alignItems: 'center', flexWrap: 'wrap' }}>
+              <p className="ui-kicker" style={{ margin: 0 }}>
+                Likely Exam Points
+              </p>
+              <StateChip label={`${note.likelyQuizTargets.length} target${note.likelyQuizTargets.length === 1 ? '' : 's'}`} />
+            </div>
+            {note.likelyQuizTargets.length > 0 ? (
+              <ul style={{ listStyle: 'none', padding: 0, margin: '0.7rem 0 0', display: 'grid', gap: '0.65rem' }}>
+                {note.likelyQuizTargets.map((item, index) => (
+                  <li
+                    key={item.target}
+                    style={{
+                      borderRadius: 'var(--radius-tight)',
+                      padding: '0.55rem 0.6rem',
+                      background: 'color-mix(in srgb, var(--surface-2) 82%, var(--accent) 18%)',
+                      borderLeft: '3px solid color-mix(in srgb, var(--accent) 66%, transparent)',
+                    }}
+                  >
+                    <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.55, color: 'var(--text-primary)', fontWeight: 700 }}>
+                      #{index + 1} {item.target}
+                    </p>
+                    <p style={{ margin: '0.18rem 0 0', fontSize: '12px', lineHeight: 1.58, color: 'var(--text-secondary)' }}>
+                      {item.reason}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <EmptyBody body="The pack does not yet rank likely quiz targets." />
+            )}
+          </section>
+
           {preset === 'answer_bank' && (
             <section className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem' }}>
               <p className="ui-kicker">Key Answers / Answer Bank</p>
+              <p style={{ margin: '0.4rem 0 0', fontSize: '12px', lineHeight: 1.58, color: 'var(--text-muted)' }}>
+                Study move: cover the answer and recall the compact response out loud before checking.
+              </p>
               {note.answerBank.length > 0 ? (
                 <ul style={{ listStyle: 'none', padding: 0, margin: '0.7rem 0 0', display: 'grid', gap: '0.7rem' }}>
                   {note.answerBank.map((item) => (
@@ -79,6 +123,9 @@ export function DeepLearnReviewPackSurface({ note }: { note: DeepLearnNote }) {
           {preset === 'identification' && (
             <section className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem' }}>
               <p className="ui-kicker">Identification Mode</p>
+              <p style={{ margin: '0.4rem 0 0', fontSize: '12px', lineHeight: 1.58, color: 'var(--text-muted)' }}>
+                Practice cue: treat each prompt like a short-answer ID check and answer before reading.
+              </p>
               {note.identificationItems.length > 0 ? (
                 <ul style={{ listStyle: 'none', padding: 0, margin: '0.7rem 0 0', display: 'grid', gap: '0.7rem' }}>
                   {note.identificationItems.map((item) => (
@@ -101,9 +148,15 @@ export function DeepLearnReviewPackSurface({ note }: { note: DeepLearnNote }) {
           {preset === 'mcq' && (
             <section className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', display: 'grid', gap: '0.85rem' }}>
               <p className="ui-kicker">Multiple Choice Mode</p>
+              <p style={{ margin: '-0.25rem 0 0', fontSize: '12px', lineHeight: 1.58, color: 'var(--text-muted)' }}>
+                Exam drill: pick an answer first, then verify with the key and explanation.
+              </p>
               {note.mcqDrill.length > 0 ? (
                 note.mcqDrill.map((item, index) => (
                   <article key={`${item.question}-${index}`} className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.9rem 0.95rem', display: 'grid', gap: '0.55rem' }}>
+                    <p style={{ margin: 0, fontSize: '11px', lineHeight: 1.4, color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      Practice question {index + 1}
+                    </p>
                     <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.65, color: 'var(--text-primary)', fontWeight: 650 }}>
                       {item.question}
                     </p>
@@ -194,26 +247,6 @@ export function DeepLearnReviewPackSurface({ note }: { note: DeepLearnNote }) {
               )}
             </section>
           )}
-
-          <section className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.95rem 1rem' }}>
-            <p className="ui-kicker">Likely Quiz Targets</p>
-            {note.likelyQuizTargets.length > 0 ? (
-              <ul style={{ listStyle: 'none', padding: 0, margin: '0.7rem 0 0', display: 'grid', gap: '0.65rem' }}>
-                {note.likelyQuizTargets.map((item) => (
-                  <li key={item.target}>
-                    <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.55, color: 'var(--text-primary)', fontWeight: 650 }}>
-                      {item.target}
-                    </p>
-                    <p style={{ margin: '0.18rem 0 0', fontSize: '12px', lineHeight: 1.58, color: 'var(--text-secondary)' }}>
-                      {item.reason}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <EmptyBody body="The pack does not yet rank likely quiz targets." />
-            )}
-          </section>
         </div>
       </div>
     </div>
