@@ -115,7 +115,7 @@ export function DeepLearnNoteView({
           </div>
 
           <aside style={{ display: 'grid', gap: '0.9rem' }}>
-            <DetailCard title="Pack profile">
+            <DetailCard title="Reviewer profile">
               <MetaLine label="Primary mode" value={note.quizReady ? 'Quiz-ready review pack' : 'Review pack with partial quiz coverage'} />
               <MetaLine label="Key answers" value={`${note.answerBank.length}`} />
               <MetaLine label="Identification items" value={`${note.identificationItems.length}`} />

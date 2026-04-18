@@ -17,15 +17,16 @@ type WordingMode = 'exam_safe' | 'exact_source' | 'simplified'
 export function DeepLearnReviewPackSurface({ note }: { note: DeepLearnNote }) {
   const [preset, setPreset] = useState<ReviewPreset>('answer_bank')
   const [wordingMode, setWordingMode] = useState<WordingMode>('exam_safe')
+  const activePresetSummary = getPresetSummary(preset)
 
   return (
     <div style={{ display: 'grid', gap: '0.9rem', minHeight: 0 }}>
       <section className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.95rem 1rem', display: 'grid', gap: '0.8rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
           <div>
-            <p className="ui-kicker">Review presets</p>
+            <p className="ui-kicker">Exam-ready reviewer</p>
             <p style={{ margin: '0.38rem 0 0', fontSize: '13px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
-              Switch between answer-ready views instead of reading one long note.
+              Use focused study modes to move from understanding to quizzing without leaving the source pair view.
             </p>
           </div>
           <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
@@ -36,13 +37,23 @@ export function DeepLearnReviewPackSurface({ note }: { note: DeepLearnNote }) {
           </div>
         </div>
 
+        <section className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.75rem 0.8rem', display: 'grid', gap: '0.35rem' }}>
+          <p className="ui-kicker">Selected study mode</p>
+          <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.5, color: 'var(--text-primary)', fontWeight: 650 }}>
+            {activePresetSummary.title}
+          </p>
+          <p style={{ margin: 0, fontSize: '12px', lineHeight: 1.58, color: 'var(--text-secondary)' }}>
+            {activePresetSummary.description}
+          </p>
+        </section>
+
         <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-          <PresetButton label="Answer Mode" active={preset === 'answer_bank'} onClick={() => setPreset('answer_bank')} />
-          <PresetButton label="Identification" active={preset === 'identification'} onClick={() => setPreset('identification')} />
-          <PresetButton label="MCQ Drill" active={preset === 'mcq'} onClick={() => setPreset('mcq')} />
-          <PresetButton label="Timeline" active={preset === 'timeline'} onClick={() => setPreset('timeline')} />
-          <PresetButton label="Compare" active={preset === 'distinctions'} onClick={() => setPreset('distinctions')} />
-          <PresetButton label="Support Note" active={preset === 'support'} onClick={() => setPreset('support')} />
+          <PresetButton label="Key concepts" active={preset === 'answer_bank'} onClick={() => setPreset('answer_bank')} />
+          <PresetButton label="Definitions" active={preset === 'identification'} onClick={() => setPreset('identification')} />
+          <PresetButton label="Exam-style MCQ" active={preset === 'mcq'} onClick={() => setPreset('mcq')} />
+          <PresetButton label="Timeline cues" active={preset === 'timeline'} onClick={() => setPreset('timeline')} />
+          <PresetButton label="Common mix-ups" active={preset === 'distinctions'} onClick={() => setPreset('distinctions')} />
+          <PresetButton label="Simplified review" active={preset === 'support'} onClick={() => setPreset('support')} />
         </div>
 
         <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
@@ -56,7 +67,7 @@ export function DeepLearnReviewPackSurface({ note }: { note: DeepLearnNote }) {
         <div style={{ display: 'grid', gap: '0.9rem' }}>
           {preset === 'answer_bank' && (
             <section className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem' }}>
-              <p className="ui-kicker">Key Answers / Answer Bank</p>
+              <p className="ui-kicker">Key concepts</p>
               {note.answerBank.length > 0 ? (
                 <ul style={{ listStyle: 'none', padding: 0, margin: '0.7rem 0 0', display: 'grid', gap: '0.7rem' }}>
                   {note.answerBank.map((item) => (
@@ -78,7 +89,7 @@ export function DeepLearnReviewPackSurface({ note }: { note: DeepLearnNote }) {
 
           {preset === 'identification' && (
             <section className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem' }}>
-              <p className="ui-kicker">Identification Mode</p>
+              <p className="ui-kicker">Important definitions</p>
               {note.identificationItems.length > 0 ? (
                 <ul style={{ listStyle: 'none', padding: 0, margin: '0.7rem 0 0', display: 'grid', gap: '0.7rem' }}>
                   {note.identificationItems.map((item) => (
@@ -100,7 +111,7 @@ export function DeepLearnReviewPackSurface({ note }: { note: DeepLearnNote }) {
 
           {preset === 'mcq' && (
             <section className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', display: 'grid', gap: '0.85rem' }}>
-              <p className="ui-kicker">Multiple Choice Mode</p>
+              <p className="ui-kicker">Quizzable practice drill</p>
               {note.mcqDrill.length > 0 ? (
                 note.mcqDrill.map((item, index) => (
                   <article key={`${item.question}-${index}`} className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.9rem 0.95rem', display: 'grid', gap: '0.55rem' }}>
@@ -132,7 +143,7 @@ export function DeepLearnReviewPackSurface({ note }: { note: DeepLearnNote }) {
 
           {preset === 'timeline' && (
             <section className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem' }}>
-              <p className="ui-kicker">Timeline Mode</p>
+              <p className="ui-kicker">Likely chronology checkpoints</p>
               {note.timeline.length > 0 ? (
                 <ul style={{ listStyle: 'none', padding: 0, margin: '0.7rem 0 0', display: 'grid', gap: '0.7rem' }}>
                   {note.timeline.map((item) => (
@@ -154,7 +165,7 @@ export function DeepLearnReviewPackSurface({ note }: { note: DeepLearnNote }) {
 
           {preset === 'distinctions' && (
             <section className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', display: 'grid', gap: '0.75rem' }}>
-              <p className="ui-kicker">Distinctions / Confusable Items</p>
+              <p className="ui-kicker">Likely exam confusion points</p>
               {note.distinctions.length > 0 ? (
                 note.distinctions.map((item) => (
                   <article key={`${item.conceptA}-${item.conceptB}`} className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.9rem 0.95rem', display: 'grid', gap: '0.35rem' }}>
@@ -179,7 +190,7 @@ export function DeepLearnReviewPackSurface({ note }: { note: DeepLearnNote }) {
 
           {preset === 'support' && (
             <section className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', display: 'grid', gap: '0.75rem' }}>
-              <p className="ui-kicker">Support Note</p>
+              <p className="ui-kicker">Simplified explanation</p>
               {note.sections.length > 0 ? (
                 note.sections.map((section) => (
                   <article key={section.heading} className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.9rem 0.95rem' }}>
@@ -196,7 +207,7 @@ export function DeepLearnReviewPackSurface({ note }: { note: DeepLearnNote }) {
           )}
 
           <section className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.95rem 1rem' }}>
-            <p className="ui-kicker">Likely Quiz Targets</p>
+            <p className="ui-kicker">Likely exam points</p>
             {note.likelyQuizTargets.length > 0 ? (
               <ul style={{ listStyle: 'none', padding: 0, margin: '0.7rem 0 0', display: 'grid', gap: '0.65rem' }}>
                 {note.likelyQuizTargets.map((item) => (
@@ -218,6 +229,43 @@ export function DeepLearnReviewPackSurface({ note }: { note: DeepLearnNote }) {
       </div>
     </div>
   )
+}
+
+function getPresetSummary(preset: ReviewPreset): { title: string; description: string } {
+  if (preset === 'answer_bank') {
+    return {
+      title: 'Key concepts',
+      description: 'Fast recall cues with compact answers for short-response exam prep.',
+    }
+  }
+  if (preset === 'identification') {
+    return {
+      title: 'Important definitions',
+      description: 'Prompt-and-answer format for term, figure, and concept identification.',
+    }
+  }
+  if (preset === 'mcq') {
+    return {
+      title: 'Quizzable practice',
+      description: 'MCQ sets with correct answers and explanations for self-testing.',
+    }
+  }
+  if (preset === 'timeline') {
+    return {
+      title: 'Chronology checkpoints',
+      description: 'Ordered cues to review progression, causality, and sequence questions.',
+    }
+  }
+  if (preset === 'distinctions') {
+    return {
+      title: 'Common exam mix-ups',
+      description: 'Side-by-side contrasts for confusable concepts and likely trick areas.',
+    }
+  }
+  return {
+    title: 'Simplified explanation',
+    description: 'Plain-language section bodies for first-pass understanding before drilling.',
+  }
 }
 
 function PresetButton({
