@@ -87,6 +87,23 @@ export default async function ResourceDetailPage({ params }: Props) {
     : deepLearnResourceId
       ? deepLearnNoteResult.message
       : 'Deep Learn needs a synced resource record for this item before it can save exam prep packs or generate a quiz-ready pack.'
+  const deepLearnPane = (
+    <div style={{ display: 'grid', gap: '0.9rem', alignContent: 'start' }}>
+      <p className="ui-kicker" style={{ margin: 0 }}>Reviewer output</p>
+      <DeepLearnNoteView
+        moduleId={module.id}
+        courseId={module.courseId ?? null}
+        resource={resource}
+        deepLearnResourceId={deepLearnResourceId}
+        note={deepLearnNoteResult.note}
+        noteAvailability={deepLearnNoteResult.availability}
+        noteAvailabilityMessage={deepLearnAvailabilityMessage}
+        readiness={deepLearnReadiness}
+        readerHref={`/modules/${module.id}/learn/resources/${encodeURIComponent(resource.id)}`}
+        sourceHref={sourceHref}
+      />
+    </div>
+  )
 
   if (resource.kind === 'study_file') {
     return (
@@ -99,27 +116,35 @@ export default async function ResourceDetailPage({ params }: Props) {
         summary={module.summary}
       >
         <div className="command-page command-page-tight">
-          <DeepLearnNoteView
-            moduleId={module.id}
-            courseId={module.courseId ?? null}
-            resource={resource}
-            deepLearnResourceId={deepLearnResourceId}
-            note={deepLearnNoteResult.note}
-            noteAvailability={deepLearnNoteResult.availability}
-            noteAvailabilityMessage={deepLearnAvailabilityMessage}
-            readiness={deepLearnReadiness}
-            readerHref={`/modules/${module.id}/learn/resources/${encodeURIComponent(resource.id)}`}
-            sourceHref={sourceHref}
-          />
-          <StudyFileReader
-            moduleId={module.id}
-            courseId={module.courseId}
-            courseName={courseName}
-            moduleTitle={module.title}
-            resource={resource}
-            canvasHref={canvasHref}
-            linkedTask={linkedTask}
-          />
+          <section className="motion-card motion-delay-1 section-shell section-shell-elevated" style={{ padding: '1rem 1.05rem', display: 'grid', gap: '1rem' }}>
+            <div className="command-header">
+              <div className="command-header-main">
+                <p className="ui-kicker">Paired study surface</p>
+                <h2 className="ui-section-title" style={{ marginTop: '0.45rem' }}>{resource.title}</h2>
+                <p className="ui-section-copy" style={{ marginTop: '0.5rem', maxWidth: '48rem' }}>
+                  Keep source evidence and reviewer output open together. The source panel stays on the left, and the exam-ready reviewer stays on the right.
+                </p>
+              </div>
+            </div>
+
+            <div className="command-workspace" style={{ alignItems: 'start' }}>
+              <div style={{ display: 'grid', gap: '0.9rem' }}>
+                <p className="ui-kicker" style={{ margin: 0 }}>Learning material source</p>
+                <StudyFileReader
+                  moduleId={module.id}
+                  courseId={module.courseId}
+                  courseName={courseName}
+                  moduleTitle={module.title}
+                  resource={resource}
+                  canvasHref={canvasHref}
+                  linkedTask={linkedTask}
+                />
+              </div>
+              <aside className="command-rail command-stick-top" style={{ display: 'grid', gap: '0.9rem' }}>
+                {deepLearnPane}
+              </aside>
+            </div>
+          </section>
         </div>
       </ModuleLensShell>
     )
@@ -135,25 +160,13 @@ export default async function ResourceDetailPage({ params }: Props) {
       summary={module.summary}
     >
       <div className="command-page command-page-tight">
-        <DeepLearnNoteView
-          moduleId={module.id}
-          courseId={module.courseId ?? null}
-          resource={resource}
-          deepLearnResourceId={deepLearnResourceId}
-          note={deepLearnNoteResult.note}
-          noteAvailability={deepLearnNoteResult.availability}
-          noteAvailabilityMessage={deepLearnAvailabilityMessage}
-          readiness={deepLearnReadiness}
-          readerHref={`/modules/${module.id}/learn/resources/${encodeURIComponent(resource.id)}`}
-          sourceHref={sourceHref}
-        />
-        <section className="motion-card motion-delay-1 section-shell section-shell-elevated" style={{ padding: '1rem 1.05rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <section className="motion-card motion-delay-1 section-shell section-shell-elevated" style={{ padding: '1rem 1.05rem', display: 'grid', gap: '1rem' }}>
         <div className="command-header">
           <div className="command-header-main">
-            <p className="ui-kicker">Fallback source detail</p>
+            <p className="ui-kicker">Paired study surface</p>
             <h2 className="ui-section-title" style={{ marginTop: '0.45rem' }}>{resource.title}</h2>
             <p className="ui-section-copy" style={{ marginTop: '0.5rem' }}>
-              Deep Learn is the main study path. This page stays focused on source evidence, fallback context, and direct source actions for this individual Canvas item.
+              Keep source evidence and reviewer output open together. The source panel stays on the left, and the exam-ready reviewer stays on the right.
             </p>
           </div>
           <div className="command-header-side">
@@ -193,61 +206,35 @@ export default async function ResourceDetailPage({ params }: Props) {
           </div>
         </div>
 
-        <div className={grounding.hasGroundedAnalysis ? 'ui-card' : 'ui-card-soft'} style={{ borderRadius: 'var(--radius-panel)', padding: '1rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-            <div>
-              <p className="ui-kicker">Source grounding</p>
-              <p style={{ margin: '0.45rem 0 0', fontSize: '16px', lineHeight: 1.45, color: 'var(--text-primary)', fontWeight: 650 }}>{grounding.label}</p>
-            </div>
-            <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-              <span className="ui-chip ui-chip-soft">Confidence: {grounding.confidence}</span>
-              <span className="ui-chip ui-chip-soft">Capability: {capability.capabilityLabel}</span>
-              <span className="ui-chip ui-chip-soft">Quality: {quality.qualityLabel}</span>
-              <span className="ui-chip ui-chip-soft">{quality.groundingLabel}</span>
-              <span className="ui-chip ui-chip-soft">Status: {uiState.statusLabel}</span>
-            </div>
-          </div>
-          <p style={{ margin: '0.65rem 0 0', fontSize: '14px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
-            {grounding.message}
-          </p>
-          {grounding.evidenceSnippet && (
-            <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.85rem 0.9rem', marginTop: '0.8rem' }}>
-              <p className="ui-kicker">Evidence snippet</p>
-              <p style={{ margin: '0.5rem 0 0', fontSize: '13px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
-                {grounding.evidenceSnippet}
+        <div className="command-workspace" style={{ alignItems: 'start' }}>
+          <div style={{ display: 'grid', gap: '1rem' }}>
+            <div className={grounding.hasGroundedAnalysis ? 'ui-card' : 'ui-card-soft'} style={{ borderRadius: 'var(--radius-panel)', padding: '1rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                <div>
+                  <p className="ui-kicker">Source grounding</p>
+                  <p style={{ margin: '0.45rem 0 0', fontSize: '16px', lineHeight: 1.45, color: 'var(--text-primary)', fontWeight: 650 }}>{grounding.label}</p>
+                </div>
+                <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+                  <span className="ui-chip ui-chip-soft">Confidence: {grounding.confidence}</span>
+                  <span className="ui-chip ui-chip-soft">Capability: {capability.capabilityLabel}</span>
+                  <span className="ui-chip ui-chip-soft">Quality: {quality.qualityLabel}</span>
+                  <span className="ui-chip ui-chip-soft">{quality.groundingLabel}</span>
+                  <span className="ui-chip ui-chip-soft">Status: {uiState.statusLabel}</span>
+                </div>
+              </div>
+              <p style={{ margin: '0.65rem 0 0', fontSize: '14px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
+                {grounding.message}
               </p>
+              {grounding.evidenceSnippet && (
+                <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.85rem 0.9rem', marginTop: '0.8rem' }}>
+                  <p className="ui-kicker">Evidence snippet</p>
+                  <p style={{ margin: '0.5rem 0 0', fontSize: '13px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
+                    {grounding.evidenceSnippet}
+                  </p>
+                </div>
+              )}
             </div>
-          )}
-        </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.75rem' }}>
-          <MetaCard label="Course" value={resource.courseName ?? courseName} />
-          <MetaCard label="Module / week" value={resource.moduleName ?? module.title} />
-          <MetaCard label="Resource type" value={labelForResourceKind(resource)} />
-          <MetaCard label="Original resource kind" value={resource.originalResourceKind ?? resource.type} />
-          <MetaCard label="Normalized source type" value={formatNormalizedModuleResourceSourceType(capability.normalizedSourceType)} />
-          <MetaCard label="Resolved target type" value={resource.resolvedTargetType ?? 'Not resolved'} />
-          <MetaCard label="Resolution state" value={resource.resolutionState ?? 'Not recorded'} />
-          <MetaCard label="Quality" value={quality.qualityLabel} />
-          <MetaCard label="Grounding treatment" value={quality.groundingLabel} />
-          <MetaCard label="Preview state" value={resource.previewState ?? 'Not recorded'} />
-          <MetaCard label="Recommendation" value={resource.recommendationStrength ?? 'Not recorded'} />
-          <MetaCard label="Original Canvas title" value={resource.originalTitle ?? resource.title} />
-          <MetaCard label="Due date" value={resource.dueDate && resource.dueDate !== 'No due date' ? formatDate(resource.dueDate) : 'None surfaced'} />
-          <MetaCard label="Linked context" value={resource.linkedContext ?? 'No linked task or assignment context surfaced yet'} />
-        </div>
-
-        {resource.whyItMatters && (
-          <div className="ui-card" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem' }}>
-            <p className="ui-kicker">Why this matters in the flow</p>
-            <p style={{ margin: '0.55rem 0 0', fontSize: '15px', lineHeight: 1.68, color: 'var(--text-secondary)' }}>
-              {resource.whyItMatters}
-            </p>
-          </div>
-        )}
-
-        <div className={unit ? 'command-workspace' : 'command-main'}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             {unit && unit.modes.length > 0 ? (
               <>
                 <div className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem' }}>
@@ -301,7 +288,8 @@ export default async function ResourceDetailPage({ params }: Props) {
             )}
           </div>
 
-          <aside className="command-rail command-stick-top" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <aside className="command-rail command-stick-top" style={{ display: 'grid', gap: '1rem' }}>
+            {deepLearnPane}
             <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem' }}>
               <p className="ui-kicker">Metadata and status</p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem', marginTop: '0.75rem' }}>
@@ -314,6 +302,12 @@ export default async function ResourceDetailPage({ params }: Props) {
                 <MetaLine label="Source URL category" value={resource.sourceUrlCategory ?? 'Not recorded'} />
                 <MetaLine label="Resolved URL category" value={resource.resolvedUrlCategory ?? 'Not recorded'} />
                 <MetaLine label="Resolved URL" value={resource.resolvedUrl ?? 'Not recorded'} />
+                <MetaLine label="Resource type" value={labelForResourceKind(resource)} />
+                <MetaLine label="Original resource kind" value={resource.originalResourceKind ?? resource.type} />
+                <MetaLine label="Normalized source type" value={formatNormalizedModuleResourceSourceType(capability.normalizedSourceType)} />
+                <MetaLine label="Resolved target type" value={resource.resolvedTargetType ?? 'Not resolved'} />
+                <MetaLine label="Resolution state" value={resource.resolutionState ?? 'Not recorded'} />
+                <MetaLine label="Preview state" value={resource.previewState ?? 'Not recorded'} />
                 <MetaLine label="Text in source view" value={uiState.textAvailabilityLabel} />
                 <MetaLine label="Full text stored" value={resource.fullTextAvailable ? 'Yes' : 'No'} />
                 <MetaLine label="Character count" value={typeof resource.extractedCharCount === 'number' && resource.extractedCharCount > 0 ? `${resource.extractedCharCount}` : 'Not available'} />
@@ -321,10 +315,24 @@ export default async function ResourceDetailPage({ params }: Props) {
                 <MetaLine label="Stored preview length" value={typeof resource.storedPreviewLength === 'number' ? `${resource.storedPreviewLength}` : 'Not recorded'} />
                 <MetaLine label="Word count" value={typeof resource.storedWordCount === 'number' ? `${resource.storedWordCount}` : 'Not recorded'} />
                 <MetaLine label="Recommendation" value={resource.recommendationStrength ?? 'Not recorded'} />
+                <MetaLine label="Module / week" value={resource.moduleName ?? module.title} />
+                <MetaLine label="Course" value={resource.courseName ?? courseName} />
+                <MetaLine label="Original Canvas title" value={resource.originalTitle ?? resource.title} />
+                <MetaLine label="Due date" value={resource.dueDate && resource.dueDate !== 'No due date' ? formatDate(resource.dueDate) : 'None surfaced'} />
+                <MetaLine label="Linked context" value={resource.linkedContext ?? 'No linked task or assignment context surfaced yet'} />
                 <MetaLine label="Grounding confidence" value={grounding.confidence} />
                 <MetaLine label="Required" value={resource.required ? 'Yes' : 'No'} />
               </div>
             </div>
+
+            {resource.whyItMatters && (
+              <div className="ui-card" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem' }}>
+                <p className="ui-kicker">Why this matters in the flow</p>
+                <p style={{ margin: '0.55rem 0 0', fontSize: '15px', lineHeight: 1.68, color: 'var(--text-secondary)' }}>
+                  {resource.whyItMatters}
+                </p>
+              </div>
+            )}
 
             {linkedTask && (
               <div className="ui-card" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem' }}>
@@ -344,15 +352,6 @@ export default async function ResourceDetailPage({ params }: Props) {
         </section>
       </div>
     </ModuleLensShell>
-  )
-}
-
-function MetaCard({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.9rem' }}>
-      <p style={{ margin: 0, fontSize: '11px', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{label}</p>
-      <p style={{ margin: '0.42rem 0 0', fontSize: '14px', lineHeight: 1.55, color: 'var(--text-primary)' }}>{value}</p>
-    </div>
   )
 }
 
