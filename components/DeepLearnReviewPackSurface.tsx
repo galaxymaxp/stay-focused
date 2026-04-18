@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { type Dispatch, type SetStateAction, useState } from 'react'
 import { resolveDeepLearnWording } from '@/lib/deep-learn'
 import type { DeepLearnNote } from '@/lib/types'
 
@@ -17,6 +17,16 @@ type WordingMode = 'exam_safe' | 'exact_source' | 'simplified'
 export function DeepLearnReviewPackSurface({ note }: { note: DeepLearnNote }) {
   const [preset, setPreset] = useState<ReviewPreset>('answer_bank')
   const [wordingMode, setWordingMode] = useState<WordingMode>('exam_safe')
+  const [revealedAnswerKeys, setRevealedAnswerKeys] = useState<Record<string, boolean>>({})
+  const [revealedIdentificationKeys, setRevealedIdentificationKeys] = useState<Record<string, boolean>>({})
+  const [revealedMcqKeys, setRevealedMcqKeys] = useState<Record<string, boolean>>({})
+
+  const toggleReveal = (
+    key: string,
+    setter: Dispatch<SetStateAction<Record<string, boolean>>>,
+  ) => {
+    setter((previous) => ({ ...previous, [key]: !previous[key] }))
+  }
 
   return (
     <div style={{ display: 'grid', gap: '0.9rem', minHeight: 0 }}>
@@ -50,6 +60,12 @@ export function DeepLearnReviewPackSurface({ note }: { note: DeepLearnNote }) {
           <PresetButton label="Exact source" active={wordingMode === 'exact_source'} onClick={() => setWordingMode('exact_source')} />
           <PresetButton label="Simplified" active={wordingMode === 'simplified'} onClick={() => setWordingMode('simplified')} />
         </div>
+
+        {(preset === 'answer_bank' || preset === 'identification' || preset === 'mcq') && (
+          <p style={{ margin: 0, fontSize: '12px', lineHeight: 1.55, color: 'var(--text-muted)' }}>
+            Test yourself first, then reveal the answer to self-check.
+          </p>
+        )}
       </section>
 
       <div className="contained-scroll-frame">
@@ -60,13 +76,21 @@ export function DeepLearnReviewPackSurface({ note }: { note: DeepLearnNote }) {
               {note.answerBank.length > 0 ? (
                 <ul style={{ listStyle: 'none', padding: 0, margin: '0.7rem 0 0', display: 'grid', gap: '0.7rem' }}>
                   {note.answerBank.map((item) => (
-                    <li key={`${item.cue}-${item.kind}`}>
+                    <li key={`${item.cue}-${item.kind}`} className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.72rem 0.82rem', display: 'grid', gap: '0.45rem' }}>
                       <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.65, color: 'var(--text-primary)', fontWeight: 650 }}>
                         {item.cue}
                       </p>
-                      <p style={{ margin: '0.2rem 0 0', fontSize: '13px', lineHeight: 1.62, color: 'var(--text-secondary)' }}>
-                        {resolveDeepLearnWording(item.compactAnswer, wordingMode)}
-                      </p>
+                      <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                        <RecallToggleButton
+                          revealed={Boolean(revealedAnswerKeys[`${item.cue}-${item.kind}`])}
+                          onClick={() => toggleReveal(`${item.cue}-${item.kind}`, setRevealedAnswerKeys)}
+                        />
+                      </div>
+                      {revealedAnswerKeys[`${item.cue}-${item.kind}`] && (
+                        <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.62, color: 'var(--text-secondary)' }}>
+                          {resolveDeepLearnWording(item.compactAnswer, wordingMode)}
+                        </p>
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -82,13 +106,21 @@ export function DeepLearnReviewPackSurface({ note }: { note: DeepLearnNote }) {
               {note.identificationItems.length > 0 ? (
                 <ul style={{ listStyle: 'none', padding: 0, margin: '0.7rem 0 0', display: 'grid', gap: '0.7rem' }}>
                   {note.identificationItems.map((item) => (
-                    <li key={`${item.prompt}-${item.kind}`}>
+                    <li key={`${item.prompt}-${item.kind}`} className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.72rem 0.82rem', display: 'grid', gap: '0.45rem' }}>
                       <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.55, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                         {item.prompt}
                       </p>
-                      <p style={{ margin: '0.22rem 0 0', fontSize: '14px', lineHeight: 1.65, color: 'var(--text-primary)', fontWeight: 650 }}>
-                        {resolveDeepLearnWording(item.answer, wordingMode)}
-                      </p>
+                      <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                        <RecallToggleButton
+                          revealed={Boolean(revealedIdentificationKeys[`${item.prompt}-${item.kind}`])}
+                          onClick={() => toggleReveal(`${item.prompt}-${item.kind}`, setRevealedIdentificationKeys)}
+                        />
+                      </div>
+                      {revealedIdentificationKeys[`${item.prompt}-${item.kind}`] && (
+                        <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.65, color: 'var(--text-primary)', fontWeight: 650 }}>
+                          {resolveDeepLearnWording(item.answer, wordingMode)}
+                        </p>
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -114,13 +146,26 @@ export function DeepLearnReviewPackSurface({ note }: { note: DeepLearnNote }) {
                         </li>
                       ))}
                     </ol>
-                    <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.6, color: 'var(--text-primary)' }}>
-                      <strong>Correct:</strong> {item.correctAnswer}
-                    </p>
-                    {item.explanation && (
-                      <p style={{ margin: 0, fontSize: '12px', lineHeight: 1.58, color: 'var(--text-muted)' }}>
-                        {item.explanation}
+                    <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                      <RecallToggleButton
+                        revealed={Boolean(revealedMcqKeys[`${item.question}-${index}`])}
+                        onClick={() => toggleReveal(`${item.question}-${index}`, setRevealedMcqKeys)}
+                      />
+                    </div>
+                    {revealedMcqKeys[`${item.question}-${index}`] && (
+                      <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.6, color: 'var(--text-primary)' }}>
+                        <strong>Correct:</strong> {item.correctAnswer}
                       </p>
+                    )}
+                    {item.explanation && revealedMcqKeys[`${item.question}-${index}`] && (
+                      <details>
+                        <summary style={{ cursor: 'pointer', fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                          Show explanation
+                        </summary>
+                        <p style={{ margin: '0.42rem 0 0', fontSize: '12px', lineHeight: 1.58, color: 'var(--text-muted)' }}>
+                          {item.explanation}
+                        </p>
+                      </details>
                     )}
                   </article>
                 ))
@@ -254,5 +299,24 @@ function EmptyBody({ body }: { body: string }) {
     <p style={{ margin: '0.7rem 0 0', fontSize: '13px', lineHeight: 1.62, color: 'var(--text-muted)' }}>
       {body}
     </p>
+  )
+}
+
+function RecallToggleButton({
+  revealed,
+  onClick,
+}: {
+  revealed: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={revealed ? 'ui-button ui-button-ghost ui-button-xs' : 'ui-button ui-button-secondary ui-button-xs'}
+      aria-pressed={revealed}
+    >
+      {revealed ? 'Hide answer' : 'Reveal answer'}
+    </button>
   )
 }
