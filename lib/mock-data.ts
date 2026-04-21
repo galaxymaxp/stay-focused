@@ -1,191 +1,359 @@
-import type { Course } from '@/lib/types'
-
-export interface SeedModule {
+export type Course = {
   id: string
-  courseId: string
-  title: string
-  order: number
-  releasedOffsetDays: number
-  estimatedMinutes: number
-  prioritySignal: 'high' | 'medium' | 'low'
-  rawContent: string
+  code: string
+  name: string
+  color: string
+  instructor: string
+  nextDue: string | null
+  nextDueDate: string | null
+  lastActivity: string
+  moduleCount: number
+  taskCount: number
 }
 
-export const seedCourses: Course[] = [
+export type Task = {
+  id: string
+  title: string
+  course: string
+  courseId: string
+  dueDate: string
+  status: 'not_started' | 'in_progress' | 'completed' | 'overdue'
+  priority: 'high' | 'medium' | 'low'
+  type: 'assignment' | 'quiz' | 'discussion' | 'lab' | 'reading'
+}
+
+export type Draft = {
+  id: string
+  title: string
+  source: string
+  courseId: string
+  type: 'essay' | 'study_guide' | 'notes' | 'flashcards' | 'template' | 'outline'
+  status: 'ready' | 'generating' | 'failed' | 'in_progress'
+  updatedAt: string
+  wordCount?: number
+  excerpt?: string
+}
+
+export type Announcement = {
+  id: string
+  course: string
+  courseId: string
+  title: string
+  body: string
+  time: string
+  unread: boolean
+}
+
+export type CalendarEvent = {
+  id: string
+  title: string
+  course: string
+  courseId: string
+  date: string
+  type: 'deadline' | 'task' | 'quiz' | 'event'
+  color: string
+}
+
+export type LearnModule = {
+  id: string
+  title: string
+  course: string
+  courseId: string
+  type: 'reading' | 'video' | 'module' | 'lesson'
+  duration: string
+  updatedAt: string
+}
+
+export const courses: Course[] = [
   {
-    id: 'course-bio-210',
-    code: 'BIO 210',
-    name: 'Foundations of Biology',
-    term: 'Spring 2026',
-    instructor: 'Dr. Imani Reyes',
-    focusLabel: 'Labs and interpretation-heavy work',
-    colorToken: 'green',
+    id: 'cs101',
+    code: 'CS 101',
+    name: 'Introduction to Computer Science',
+    color: '#4B57E8',
+    instructor: 'Dr. Chen',
+    nextDue: 'Lab 4 – Data Structures',
+    nextDueDate: '2026-04-25',
+    lastActivity: '2h ago',
+    moduleCount: 12,
+    taskCount: 3,
   },
   {
-    id: 'course-cs-225',
-    code: 'CS 225',
-    name: 'Data Structures',
-    term: 'Spring 2026',
-    instructor: 'Prof. Aaron Patel',
-    focusLabel: 'Builds, implementation, and debugging',
-    colorToken: 'blue',
+    id: 'hist200',
+    code: 'HIST 200',
+    name: 'Modern World History',
+    color: '#E8824B',
+    instructor: 'Prof. Williams',
+    nextDue: 'Essay Draft – Industrial Revolution',
+    nextDueDate: '2026-04-28',
+    lastActivity: '1d ago',
+    moduleCount: 9,
+    taskCount: 2,
   },
   {
-    id: 'course-hist-114',
-    code: 'HIST 114',
-    name: 'The Postwar World',
-    term: 'Spring 2026',
-    instructor: 'Dr. Lena Morrison',
-    focusLabel: 'Reading synthesis and discussion writing',
-    colorToken: 'orange',
+    id: 'biol150',
+    code: 'BIOL 150',
+    name: 'Biology Fundamentals',
+    color: '#22C55E',
+    instructor: 'Dr. Park',
+    nextDue: 'Lab Report – Cell Membrane',
+    nextDueDate: '2026-04-24',
+    lastActivity: '3h ago',
+    moduleCount: 11,
+    taskCount: 2,
+  },
+  {
+    id: 'math301',
+    code: 'MATH 301',
+    name: 'Calculus III',
+    color: '#E84B9E',
+    instructor: 'Prof. Davis',
+    nextDue: 'Problem Set 8',
+    nextDueDate: '2026-04-27',
+    lastActivity: '2d ago',
+    moduleCount: 14,
+    taskCount: 1,
+  },
+  {
+    id: 'eng220',
+    code: 'ENG 220',
+    name: 'Technical Writing',
+    color: '#0EA5E9',
+    instructor: 'Ms. Johnson',
+    nextDue: 'Draft Outline – Technical Manual',
+    nextDueDate: '2026-04-23',
+    lastActivity: '5h ago',
+    moduleCount: 8,
+    taskCount: 2,
   },
 ]
 
-export const seedModules: SeedModule[] = [
+export const tasks: Task[] = [
   {
-    id: 'module-bio-enzyme-lab',
-    courseId: 'course-bio-210',
-    title: 'Enzyme Kinetics Lab',
-    order: 4,
-    releasedOffsetDays: -1,
-    estimatedMinutes: 55,
-    prioritySignal: 'high',
-    rawContent: `Course: BIO 210 Foundations of Biology
-Module: Enzyme Kinetics Lab
-Overview:
-This lab explains how enzyme activity changes when substrate concentration shifts and why the Michaelis-Menten curve eventually levels off. You need to connect the graph shape to what is happening inside the reaction, not just memorize the labels.
-Key concepts:
-- Initial rate is measured before the reaction system starts running out of substrate.
-- Saturation means adding more substrate no longer speeds the reaction much.
-- Vmax and Km tell you different things about enzyme behavior.
-Study prompts:
-- Explain why the curve rises quickly at first and then flattens.
-- Compare a low Km enzyme to a high Km enzyme in plain language.
-Tasks:
-- Finish pre-lab quiz | due +0d 19:00 | high | pending | 20m | Review graph interpretation and variable definitions before opening Canvas.
-- Set up lab notebook table | due +1d 08:30 | medium | pending | 15m | Create the columns for substrate concentration, initial rate, and notes so class starts cleanly.
-- Submit lab reflection | due +3d 20:00 | medium | pending | 35m | Use complete sentences to explain what the curve says about saturation.
-`,
+    id: 't1',
+    title: 'Lab 4: Data Structures',
+    course: 'CS 101',
+    courseId: 'cs101',
+    dueDate: '2026-04-25',
+    status: 'in_progress',
+    priority: 'high',
+    type: 'lab',
   },
   {
-    id: 'module-bio-mitosis',
-    courseId: 'course-bio-210',
-    title: 'Mitosis and Cell Cycle Control',
-    order: 5,
-    releasedOffsetDays: -4,
-    estimatedMinutes: 42,
-    prioritySignal: 'medium',
-    rawContent: `Course: BIO 210 Foundations of Biology
-Module: Mitosis and Cell Cycle Control
-Overview:
-This module connects the visible stages of mitosis to the checkpoints that prevent damaged cells from dividing. The important move is understanding why each checkpoint exists, because that reasoning shows up in the next quiz.
-Key concepts:
-- G1, G2, and spindle checkpoints each guard a different risk.
-- Cyclins help time the cycle instead of acting as a permanent on switch.
-- Uncontrolled division is usually tied to failed regulation, not just fast growth.
-Study prompts:
-- Match each checkpoint to the mistake it prevents.
-- Describe how cyclin levels change across the cycle.
-Tasks:
-- Read checkpoint case notes | due +2d 18:00 | medium | pending | 25m | Skim the examples and highlight what went wrong in each one.
-- Draft quiz note sheet | due +4d 17:00 | low | pending | 20m | Build a one-page comparison of checkpoint roles and cycle stages.
-`,
+    id: 't2',
+    title: 'Essay Draft: Industrial Revolution',
+    course: 'HIST 200',
+    courseId: 'hist200',
+    dueDate: '2026-04-28',
+    status: 'not_started',
+    priority: 'high',
+    type: 'assignment',
   },
   {
-    id: 'module-cs-heaps',
-    courseId: 'course-cs-225',
-    title: 'Priority Queues and Heaps',
-    order: 6,
-    releasedOffsetDays: 0,
-    estimatedMinutes: 60,
-    prioritySignal: 'high',
-    rawContent: `Course: CS 225 Data Structures
-Module: Priority Queues and Heaps
-Overview:
-This week shifts from using simple arrays to maintaining order with heap structure rules. The main idea is not the syntax of insertion, but why the heap property lets removal stay efficient even while the array is rearranged.
-Key concepts:
-- A binary heap uses parent-child relationships stored inside an array.
-- Heapify restores structure after inserting or removing an element.
-- The root always holds the next highest-priority item.
-Study prompts:
-- Explain why a heap is only partially sorted.
-- Walk through one insert operation and one remove operation step by step.
-Tasks:
-- Implement heap push and pop methods | due +1d 23:00 | high | pending | 50m | Pass the starter tests before polishing edge cases.
-- Answer checkpoint quiz | due +2d 21:00 | medium | pending | 15m | Use the lecture examples to verify runtime reasoning.
-- Review debugging notes | due +4d 18:00 | low | completed | 10m | Confirm where your last implementation broke and why.
-`,
+    id: 't3',
+    title: 'Lab Report: Cell Membrane Structure',
+    course: 'BIOL 150',
+    courseId: 'biol150',
+    dueDate: '2026-04-24',
+    status: 'in_progress',
+    priority: 'medium',
+    type: 'lab',
   },
   {
-    id: 'module-cs-graphs',
-    courseId: 'course-cs-225',
-    title: 'Graphs and Traversal Strategy',
-    order: 7,
-    releasedOffsetDays: -3,
-    estimatedMinutes: 48,
-    prioritySignal: 'medium',
-    rawContent: `Course: CS 225 Data Structures
-Module: Graphs and Traversal Strategy
-Overview:
-This module introduces adjacency lists, breadth-first search, and depth-first search as different ways to represent and walk a graph. The real test is choosing the traversal that matches the question you are trying to answer.
-Key concepts:
-- Adjacency lists trade constant-time edge lookup for compact storage.
-- Breadth-first search is best when distance by number of edges matters.
-- Depth-first search is useful when exploring structure or connected regions.
-Study prompts:
-- Compare BFS and DFS using the same small graph.
-- Explain what information a visited set protects you from losing.
-Tasks:
-- Annotate lecture graph example | due +2d 20:00 | medium | pending | 20m | Label how the queue or stack changes after each step.
-- Start traversal practice set | due +5d 19:30 | medium | pending | 30m | Finish the first two questions while the lecture is still fresh.
-`,
+    id: 't4',
+    title: 'Problem Set 8',
+    course: 'MATH 301',
+    courseId: 'math301',
+    dueDate: '2026-04-27',
+    status: 'not_started',
+    priority: 'medium',
+    type: 'assignment',
   },
   {
-    id: 'module-hist-marshall',
-    courseId: 'course-hist-114',
-    title: 'Reconstruction and the Marshall Plan',
-    order: 8,
-    releasedOffsetDays: -2,
-    estimatedMinutes: 50,
-    prioritySignal: 'high',
-    rawContent: `Course: HIST 114 The Postwar World
-Module: Reconstruction and the Marshall Plan
-Overview:
-This module explains how postwar recovery mixed economic aid with political strategy. The reading matters most when you can show how rebuilding Europe was also a way to shape alliances and contain instability.
-Key concepts:
-- The Marshall Plan was economic support with strategic aims.
-- Recovery policy was tied to fears about political fragmentation.
-- Aid outcomes varied by local conditions and government capacity.
-Study prompts:
-- Explain why economic recovery and political influence were linked.
-- Identify one limit of describing the Marshall Plan as pure generosity.
-Tasks:
-- Post discussion response | due +1d 16:00 | high | pending | 25m | Use one reading example and one lecture idea in the post.
-- Mark source comparison notes | due +3d 18:30 | medium | pending | 20m | Pull one contrast between U.S. goals and European needs.
-`,
+    id: 't5',
+    title: 'Draft Outline: Technical Manual',
+    course: 'ENG 220',
+    courseId: 'eng220',
+    dueDate: '2026-04-23',
+    status: 'in_progress',
+    priority: 'medium',
+    type: 'assignment',
   },
   {
-    id: 'module-hist-decolonization',
-    courseId: 'course-hist-114',
-    title: 'Decolonization and New States',
-    order: 9,
-    releasedOffsetDays: -5,
-    estimatedMinutes: 45,
-    prioritySignal: 'medium',
-    rawContent: `Course: HIST 114 The Postwar World
-Module: Decolonization and New States
-Overview:
-This module follows how independence movements challenged European empires while still inheriting economic and political constraints. The through-line is that formal independence did not erase uneven power structures overnight.
-Key concepts:
-- National independence and state stability were not the same thing.
-- Anti-colonial movements often balanced broad coalitions with local tensions.
-- New states entered a world economy they did not design.
-Study prompts:
-- Describe one challenge that remained after independence was declared.
-- Compare political freedom to economic leverage in one short example.
-Tasks:
-- Read Ghana case study | due +2d 17:30 | low | pending | 18m | Focus on how the case complicates a simple liberation narrative.
-- Draft seminar question | due +4d 10:00 | medium | pending | 12m | Bring one question that connects decolonization to Cold War pressure.
-`,
+    id: 't6',
+    title: 'Midterm Review Quiz',
+    course: 'CS 101',
+    courseId: 'cs101',
+    dueDate: '2026-04-30',
+    status: 'not_started',
+    priority: 'low',
+    type: 'quiz',
+  },
+  {
+    id: 't7',
+    title: 'Discussion Post: WWI Causes',
+    course: 'HIST 200',
+    courseId: 'hist200',
+    dueDate: '2026-04-22',
+    status: 'completed',
+    priority: 'low',
+    type: 'discussion',
+  },
+  {
+    id: 't8',
+    title: 'Reading: Chapter 9 – Genetics',
+    course: 'BIOL 150',
+    courseId: 'biol150',
+    dueDate: '2026-04-26',
+    status: 'not_started',
+    priority: 'low',
+    type: 'reading',
   },
 ]
+
+export const drafts: Draft[] = [
+  {
+    id: 'd1',
+    title: 'Essay: Industrial Revolution Impact on Labor',
+    source: 'HIST 200 – Module 4: Industrialization',
+    courseId: 'hist200',
+    type: 'essay',
+    status: 'ready',
+    updatedAt: '2h ago',
+    wordCount: 1240,
+    excerpt:
+      'The Industrial Revolution fundamentally transformed the nature of labor across Europe and North America, shifting populations from agrarian communities to urban factory centers…',
+  },
+  {
+    id: 'd2',
+    title: 'Study Guide: Cell Biology & Membrane Transport',
+    source: 'BIOL 150 – Chapter 7',
+    courseId: 'biol150',
+    type: 'study_guide',
+    status: 'ready',
+    updatedAt: '1d ago',
+    wordCount: 680,
+    excerpt:
+      'Cell membranes are selectively permeable structures composed of a phospholipid bilayer embedded with proteins. Transport mechanisms include passive and active processes…',
+  },
+  {
+    id: 'd3',
+    title: 'Lab 3 Analysis Notes',
+    source: 'CS 101 – Lab 3: Sorting Algorithms',
+    courseId: 'cs101',
+    type: 'notes',
+    status: 'in_progress',
+    updatedAt: '30m ago',
+    wordCount: 320,
+    excerpt: 'Comparative analysis of bubble sort vs quicksort performance metrics across varying input sizes…',
+  },
+  {
+    id: 'd4',
+    title: 'Calculus Concept Flashcards',
+    source: 'MATH 301 – Week 6: Multivariable',
+    courseId: 'math301',
+    type: 'flashcards',
+    status: 'generating',
+    updatedAt: 'just now',
+  },
+  {
+    id: 'd5',
+    title: 'Technical Report Template',
+    source: 'ENG 220 – Assignment 2',
+    courseId: 'eng220',
+    type: 'template',
+    status: 'failed',
+    updatedAt: '3d ago',
+  },
+]
+
+export const announcements: Announcement[] = [
+  {
+    id: 'a1',
+    course: 'CS 101',
+    courseId: 'cs101',
+    title: 'Lab 4 instructions posted – please review before Friday',
+    body: 'Lab 4 has been posted to the course modules. Make sure you review the starter code before the session.',
+    time: '2h ago',
+    unread: true,
+  },
+  {
+    id: 'a2',
+    course: 'HIST 200',
+    courseId: 'hist200',
+    title: 'Essay draft deadline moved to April 28',
+    body: 'Due to the campus closure, your essay draft deadline has been extended to April 28 at 11:59 PM.',
+    time: '5h ago',
+    unread: true,
+  },
+  {
+    id: 'a3',
+    course: 'BIOL 150',
+    courseId: 'biol150',
+    title: 'Lab report rubric updated',
+    body: 'Minor updates to the grading rubric for the Cell Membrane lab report. Please re-download.',
+    time: '1d ago',
+    unread: false,
+  },
+  {
+    id: 'a4',
+    course: 'MATH 301',
+    courseId: 'math301',
+    title: 'Office hours rescheduled this week',
+    body: "Prof. Davis' office hours moved from Tuesday to Wednesday 2–4 PM this week only.",
+    time: '2d ago',
+    unread: false,
+  },
+]
+
+export const learnModules: LearnModule[] = [
+  {
+    id: 'lm1',
+    title: 'Introduction to Sorting Algorithms',
+    course: 'CS 101',
+    courseId: 'cs101',
+    type: 'video',
+    duration: '18 min',
+    updatedAt: '2h ago',
+  },
+  {
+    id: 'lm2',
+    title: 'Chapter 9: Genetics and Heredity',
+    course: 'BIOL 150',
+    courseId: 'biol150',
+    type: 'reading',
+    duration: '35 min read',
+    updatedAt: '1d ago',
+  },
+  {
+    id: 'lm3',
+    title: 'Week 6: Multivariable Integration',
+    course: 'MATH 301',
+    courseId: 'math301',
+    type: 'module',
+    duration: '45 min',
+    updatedAt: '2d ago',
+  },
+  {
+    id: 'lm4',
+    title: 'Technical Writing: Audience Analysis',
+    course: 'ENG 220',
+    courseId: 'eng220',
+    type: 'lesson',
+    duration: '20 min',
+    updatedAt: '3d ago',
+  },
+]
+
+export const calendarEvents: CalendarEvent[] = [
+  { id: 'e1', title: 'Lab 4 Due', course: 'CS 101', courseId: 'cs101', date: '2026-04-25', type: 'deadline', color: '#4B57E8' },
+  { id: 'e2', title: 'Essay Draft Due', course: 'HIST 200', courseId: 'hist200', date: '2026-04-28', type: 'deadline', color: '#E8824B' },
+  { id: 'e3', title: 'Lab Report Due', course: 'BIOL 150', courseId: 'biol150', date: '2026-04-24', type: 'deadline', color: '#22C55E' },
+  { id: 'e4', title: 'Problem Set 8', course: 'MATH 301', courseId: 'math301', date: '2026-04-27', type: 'deadline', color: '#E84B9E' },
+  { id: 'e5', title: 'Draft Outline Due', course: 'ENG 220', courseId: 'eng220', date: '2026-04-23', type: 'deadline', color: '#0EA5E9' },
+  { id: 'e6', title: 'Discussion Post', course: 'HIST 200', courseId: 'hist200', date: '2026-04-22', type: 'task', color: '#E8824B' },
+  { id: 'e7', title: 'Midterm Review Quiz', course: 'CS 101', courseId: 'cs101', date: '2026-04-30', type: 'quiz', color: '#4B57E8' },
+  { id: 'e8', title: 'Office Hours – Prof. Davis', course: 'MATH 301', courseId: 'math301', date: '2026-04-23', type: 'event', color: '#E84B9E' },
+  { id: 'e9', title: 'Reading: Genetics Ch.9', course: 'BIOL 150', courseId: 'biol150', date: '2026-04-26', type: 'task', color: '#22C55E' },
+]
+
+export const primaryTask = tasks[0]
