@@ -128,7 +128,7 @@ export type DeepLearnAnswerKind =
   | 'compare'
   | 'fact'
 
-export interface DeepLearnDistinction {
+export interface DeepLearnDistinction extends DeepLearnReviewLinkFields {
   conceptA: string
   conceptB: string
   difference: string
@@ -141,7 +141,28 @@ export interface DeepLearnWordingSet {
   simplified: string | null
 }
 
-export interface DeepLearnAnswerBankItem {
+export type DeepLearnReviewItemType =
+  | 'answer_bank'
+  | 'identification'
+  | 'mcq'
+  | 'timeline'
+  | 'distinction'
+  | 'quiz_target'
+
+export interface DeepLearnReviewLinkFields {
+  reviewText?: string
+  draftExplanation?: string | null
+  sourceSnippet?: string | null
+  linkedDraftSectionId?: string | null
+  itemType?: DeepLearnReviewItemType
+  supportingContext?: string | null
+  compareContext?: string | null
+  simplifiedWording?: string | null
+  confusionNotes?: string[]
+  relatedConcepts?: string[]
+}
+
+export interface DeepLearnAnswerBankItem extends DeepLearnReviewLinkFields {
   cue: string
   kind: DeepLearnAnswerKind
   answer: DeepLearnWordingSet
@@ -151,7 +172,7 @@ export interface DeepLearnAnswerBankItem {
   distractors: string[]
 }
 
-export interface DeepLearnIdentificationItem {
+export interface DeepLearnIdentificationItem extends DeepLearnReviewLinkFields {
   prompt: string
   kind: DeepLearnAnswerKind
   answer: DeepLearnWordingSet
@@ -159,20 +180,20 @@ export interface DeepLearnIdentificationItem {
   distractors: string[]
 }
 
-export interface DeepLearnLikelyQuizTarget {
+export interface DeepLearnLikelyQuizTarget extends DeepLearnReviewLinkFields {
   target: string
   reason: string
   importance: DeepLearnTermImportance
 }
 
-export interface DeepLearnTimelineItem {
+export interface DeepLearnTimelineItem extends DeepLearnReviewLinkFields {
   label: string
   detail: string
   sortKey: string | null
   importance: DeepLearnTermImportance
 }
 
-export interface DeepLearnMultipleChoiceItem {
+export interface DeepLearnMultipleChoiceItem extends DeepLearnReviewLinkFields {
   question: string
   choices: string[]
   correctAnswer: string
@@ -318,6 +339,69 @@ export interface CalendarItem {
   recommendationScore: number
   href: string | null
   canvasUrl?: string | null
+}
+
+export type DraftType = 'exam_reviewer' | 'study_notes' | 'summary' | 'flashcard_set'
+export type DraftStatus = 'generating' | 'ready' | 'refining' | 'failed'
+export type DraftSourceType = 'module' | 'upload' | 'paste'
+export type DraftLoadAvailability = 'available' | 'unavailable' | 'failed'
+
+export interface DraftRefinementEntry {
+  instruction: string
+  refinedAt: string
+}
+
+export interface Draft {
+  id: string
+  userId: string
+  sourceType: DraftSourceType
+  sourceModuleId: string | null
+  sourceResourceId: string | null
+  sourceFilePath: string | null
+  sourceRawContent: string
+  sourceTitle: string
+  draftType: DraftType
+  title: string
+  bodyMarkdown: string
+  status: DraftStatus
+  refinementHistory: DraftRefinementEntry[]
+  tokenCount: number | null
+  generationModel: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+// Partial type for list views — does not include heavy bodyMarkdown/sourceRawContent fields
+export interface DraftSummary {
+  id: string
+  userId: string
+  sourceType: DraftSourceType
+  sourceResourceId?: string | null
+  sourceTitle: string
+  draftType: DraftType
+  title: string
+  status: DraftStatus
+  tokenCount: number | null
+  createdAt: string
+  updatedAt: string
+}
+
+// Extended draft type used by the course-shelf view (includes module/course join data)
+export interface DraftShelfItem {
+  id: string
+  userId: string
+  title: string
+  draftType: DraftType
+  status: DraftStatus
+  sourceType: DraftSourceType
+  sourceTitle: string
+  tokenCount: number | null
+  updatedAt: string
+  createdAt: string
+  sourceModuleId: string | null
+  sourceResourceId?: string | null
+  moduleTitle: string | null
+  courseId: string | null
 }
 
 // What we ask OpenAI to return

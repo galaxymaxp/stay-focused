@@ -1,14 +1,18 @@
 import { notFound } from 'next/navigation'
 import { DeepLearnNoteView } from '@/components/DeepLearnNoteView'
 import { ModuleLensShell } from '@/components/ModuleLensShell'
+import { getDraftForDeepLearnResource } from '@/actions/drafts'
 import { getDeepLearnNoteForResource } from '@/lib/deep-learn-store'
 import {
   buildLearnExperience,
   extractCourseName,
+  findDoResourceById,
+  findLearnUnitByResourceId,
   getLearnResourceHref,
   getModuleWorkspace,
   getResourceCanvasHref,
   getResourceOriginalFileHref,
+  resolveLearnResourceSelection,
 } from '@/lib/module-workspace'
 
 interface Props {
@@ -27,10 +31,14 @@ export default async function DeepLearnNotePage({ params }: Props) {
     resources: workspace.resources,
     resourceStudyStates: workspace.resourceStudyStates,
   })
-  const resource = experience.resources.find((entry) => entry.id === resourceId)
+  const unit = findLearnUnitByResourceId(experience, resourceId)
+  const resourceSelection = resolveLearnResourceSelection(experience, workspace.resources, resourceId)
+  const resource = resourceSelection?.resource ?? unit?.resource ?? findDoResourceById(experience, resourceId)
   if (!resource) notFound()
 
-  const noteResult = await getDeepLearnNoteForResource(id, resourceId)
+  const deepLearnResourceId = resourceSelection?.canonicalResourceId ?? resourceId
+  const noteResult = await getDeepLearnNoteForResource(id, deepLearnResourceId)
+  const draftResult = await getDraftForDeepLearnResource(id, deepLearnResourceId)
   const sourceHref = getResourceOriginalFileHref(resource) ?? getResourceCanvasHref(resource)
 
   return (
@@ -47,9 +55,13 @@ export default async function DeepLearnNotePage({ params }: Props) {
           moduleId={workspace.module.id}
           courseId={workspace.module.courseId ?? null}
           resource={resource}
+          deepLearnResourceId={deepLearnResourceId}
           note={noteResult.note}
           noteAvailability={noteResult.availability}
           noteAvailabilityMessage={noteResult.message}
+          draft={draftResult.draft}
+          draftAvailability={draftResult.availability}
+          draftAvailabilityMessage={draftResult.message}
           readerHref={getLearnResourceHref(workspace.module.id, resource.id)}
           sourceHref={sourceHref}
         />

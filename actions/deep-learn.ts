@@ -1,13 +1,15 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import OpenAI from 'openai'
 import { getAuthenticatedUserServer } from '@/lib/auth-server'
 import { buildLearnExperience, extractCourseName, getModuleWorkspace, resolveLearnResourceSelection } from '@/lib/module-workspace'
 import { DeepLearnGenerationBlockedError, generateDeepLearnNoteForResource } from '@/lib/deep-learn-generation'
 import { DEEP_LEARN_PROMPT_VERSION, buildDeepLearnNoteBody, computeDeepLearnQuizReady } from '@/lib/deep-learn'
 import { classifyDeepLearnResourceReadiness } from '@/lib/deep-learn-readiness'
-import { saveDeepLearnNote } from '@/lib/deep-learn-store'
+import { getDeepLearnNoteForResource, saveDeepLearnNote } from '@/lib/deep-learn-store'
 import { supabase } from '@/lib/supabase'
+import type { DeepLearnNoteSection } from '@/lib/types'
 
 export async function generateDeepLearnNoteAction(input: {
   moduleId: string
@@ -227,10 +229,156 @@ export async function generateDeepLearnNoteAction(input: {
   }
 }
 
+export async function updateDeepLearnBuildBodyAction(input: {
+  moduleId: string
+  resourceId: string
+  bodyMarkdown: string
+}) {
+  const noteResult = await getDeepLearnNoteForResource(input.moduleId, input.resourceId)
+  const note = noteResult.note
+  if (!note) throw new Error('Draft needs a saved Deep Learn item before it can edit content.')
+
+  await saveDeepLearnNote({
+    moduleId: note.moduleId,
+    courseId: note.courseId,
+    resourceId: note.resourceId,
+    status: note.status,
+    title: note.title,
+    overview: note.overview,
+    sections: sectionsFromMarkdown(input.bodyMarkdown, note.sections),
+    noteBody: input.bodyMarkdown,
+    answerBank: note.answerBank,
+    identificationItems: note.identificationItems,
+    distinctions: note.distinctions,
+    likelyQuizTargets: note.likelyQuizTargets,
+    cautionNotes: note.cautionNotes,
+    sourceGrounding: note.sourceGrounding,
+    quizReady: note.quizReady,
+    promptVersion: note.promptVersion,
+    errorMessage: note.errorMessage,
+    generatedAt: note.generatedAt,
+  })
+
+  revalidateDeepLearnPaths(note.moduleId, note.courseId, note.resourceId)
+}
+
+export async function refineDeepLearnBuildBodyAction(input: {
+  moduleId: string
+  resourceId: string
+  instruction: string
+}) {
+  const instruction = input.instruction.trim()
+  if (!instruction) throw new Error('Refinement instruction is required.')
+
+  const noteResult = await getDeepLearnNoteForResource(input.moduleId, input.resourceId)
+  const note = noteResult.note
+  if (!note) throw new Error('Draft needs a saved Deep Learn item before it can refine content.')
+
+  const workspace = await getModuleWorkspace(input.moduleId)
+  const sourceContext = workspace
+    ? buildLearnExperience(workspace.module, {
+        taskCount: workspace.tasks.length,
+        deadlineCount: workspace.deadlines.length,
+        resources: workspace.resources,
+        resourceStudyStates: workspace.resourceStudyStates,
+      }).resources.find((resource) => resource.id === input.resourceId)
+    : null
+
+  const openai = getOpenAIClient()
+  const response = await openai.chat.completions.create({
+    model: 'gpt-4o',
+    response_format: { type: 'json_object' },
+    messages: [
+      {
+        role: 'system',
+        content: 'You refine a Deep Learn build draft for a student. Return only JSON with { "title": "string", "overview": "string", "body_markdown": "string" }. Keep review facts grounded in the source. Preserve useful existing structure unless the instruction asks for a change.',
+      },
+      {
+        role: 'user',
+        content: [
+          `Current Deep Learn build draft:\n\n${note.noteBody}`,
+          `Source context:\n\n${(sourceContext?.extractedText ?? sourceContext?.extractedTextPreview ?? '').slice(0, 20000)}`,
+          `Instruction:\n\n${instruction}`,
+        ].join('\n\n---\n\n'),
+      },
+    ],
+    max_tokens: 12000,
+    temperature: 0.25,
+  })
+
+  const raw = response.choices[0]?.message?.content
+  if (!raw) throw new Error('Refinement returned no content.')
+
+  let parsed: { title?: string; overview?: string; body_markdown?: string }
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    throw new Error('Refinement returned invalid content.')
+  }
+
+  const bodyMarkdown = parsed.body_markdown?.trim()
+  if (!bodyMarkdown) throw new Error('Refinement returned an empty build draft.')
+
+  await saveDeepLearnNote({
+    moduleId: note.moduleId,
+    courseId: note.courseId,
+    resourceId: note.resourceId,
+    status: 'ready',
+    title: parsed.title?.trim() || note.title,
+    overview: parsed.overview?.trim() || note.overview,
+    sections: sectionsFromMarkdown(bodyMarkdown, note.sections),
+    noteBody: bodyMarkdown,
+    answerBank: note.answerBank,
+    identificationItems: note.identificationItems,
+    distinctions: note.distinctions,
+    likelyQuizTargets: note.likelyQuizTargets,
+    cautionNotes: note.cautionNotes,
+    sourceGrounding: note.sourceGrounding,
+    quizReady: note.quizReady,
+    promptVersion: note.promptVersion,
+    errorMessage: null,
+    generatedAt: note.generatedAt,
+  })
+
+  revalidateDeepLearnPaths(note.moduleId, note.courseId, note.resourceId)
+}
+
+function getOpenAIClient() {
+  const apiKey = process.env.OPENAI_API_KEY
+  if (!apiKey) throw new Error('OPENAI_API_KEY is not configured.')
+  return new OpenAI({ apiKey })
+}
+
+function sectionsFromMarkdown(markdown: string, fallback: DeepLearnNoteSection[]) {
+  const blocks = markdown
+    .split(/\n(?=#{1,3}\s+)/)
+    .map((block) => block.trim())
+    .filter(Boolean)
+
+  const sections = blocks
+    .map((block, index) => {
+      const lines = block.split('\n')
+      const headingLine = lines[0]?.replace(/^#{1,3}\s*/, '').trim()
+      const body = lines.slice(1).join('\n').trim()
+      if (!headingLine || !body) return null
+      return {
+        heading: headingLine.slice(0, 180),
+        body,
+        order: index,
+      }
+    })
+    .filter((section): section is DeepLearnNoteSection & { order: number } => Boolean(section))
+    .slice(0, 6)
+    .map(({ heading, body }) => ({ heading, body }))
+
+  return sections.length > 0 ? sections : fallback
+}
+
 function revalidateDeepLearnPaths(moduleId: string, courseId: string | null, resourceId: string, detailResourceId = resourceId) {
   revalidatePath('/learn')
   revalidatePath('/courses')
   if (courseId) {
+    revalidatePath(`/courses/${courseId}`)
     revalidatePath(`/courses/${courseId}/learn`)
   }
   revalidatePath(`/modules/${moduleId}`)

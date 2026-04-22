@@ -32,7 +32,7 @@ export function DeepLearnGenerateButton({
   moduleId,
   resourceId,
   courseId = null,
-  label = 'Build Exam Prep Pack',
+  label = 'Create Draft',
   pendingLabel = 'Preparing...',
   className = 'ui-button ui-button-secondary ui-button-xs',
 }: {

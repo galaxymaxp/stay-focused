@@ -22,6 +22,7 @@ import type { DeepLearnBlockedReason, DeepLearnSourceGrounding } from '@/lib/typ
 
 const DEFAULT_DEEP_LEARN_MODEL = 'gpt-5-mini'
 const MAX_GROUNDING_CHARS = 12000
+const DEEP_LEARN_MAX_OUTPUT_TOKENS = 16384
 
 const DEEP_LEARN_SYSTEM_PROMPT = [
   'You create saved Deep Learn exam prep packs from academic source material.',
@@ -68,7 +69,7 @@ const DEEP_LEARN_RESPONSE_SCHEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['cue', 'kind', 'answer', 'compactAnswer', 'importance', 'sortKey', 'distractors'],
+        required: ['cue', 'kind', 'answer', 'compactAnswer', 'importance', 'sortKey', 'distractors', 'reviewText', 'draftExplanation', 'sourceSnippet', 'linkedDraftSectionId', 'supportingContext', 'compareContext', 'simplifiedWording', 'confusionNotes', 'relatedConcepts'],
         properties: {
           cue: { type: 'string' },
           kind: {
@@ -83,6 +84,7 @@ const DEEP_LEARN_RESPONSE_SCHEMA = {
             type: 'array',
             items: { type: 'string' },
           },
+          ...reviewLinkSchemaProperties(),
         },
       },
     },
@@ -91,7 +93,7 @@ const DEEP_LEARN_RESPONSE_SCHEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['prompt', 'kind', 'answer', 'importance', 'distractors'],
+        required: ['prompt', 'kind', 'answer', 'importance', 'distractors', 'reviewText', 'draftExplanation', 'sourceSnippet', 'linkedDraftSectionId', 'supportingContext', 'compareContext', 'simplifiedWording', 'confusionNotes', 'relatedConcepts'],
         properties: {
           prompt: { type: 'string' },
           kind: {
@@ -104,6 +106,7 @@ const DEEP_LEARN_RESPONSE_SCHEMA = {
             type: 'array',
             items: { type: 'string' },
           },
+          ...reviewLinkSchemaProperties(),
         },
       },
     },
@@ -112,12 +115,13 @@ const DEEP_LEARN_RESPONSE_SCHEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['conceptA', 'conceptB', 'difference', 'confusionNote'],
+        required: ['conceptA', 'conceptB', 'difference', 'confusionNote', 'reviewText', 'draftExplanation', 'sourceSnippet', 'linkedDraftSectionId', 'supportingContext', 'compareContext', 'simplifiedWording', 'confusionNotes', 'relatedConcepts'],
         properties: {
           conceptA: { type: 'string' },
           conceptB: { type: 'string' },
           difference: { type: 'string' },
           confusionNote: { type: ['string', 'null'] },
+          ...reviewLinkSchemaProperties(),
         },
       },
     },
@@ -126,11 +130,12 @@ const DEEP_LEARN_RESPONSE_SCHEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['target', 'reason', 'importance'],
+        required: ['target', 'reason', 'importance', 'reviewText', 'draftExplanation', 'sourceSnippet', 'linkedDraftSectionId', 'supportingContext', 'compareContext', 'simplifiedWording', 'confusionNotes', 'relatedConcepts'],
         properties: {
           target: { type: 'string' },
           reason: { type: 'string' },
           importance: importanceSchema(),
+          ...reviewLinkSchemaProperties(),
         },
       },
     },
@@ -232,7 +237,7 @@ export async function generateDeepLearnNoteForResource(
           ],
         }],
         text: responseTextConfig(),
-        max_output_tokens: 6000,
+        max_output_tokens: DEEP_LEARN_MAX_OUTPUT_TOKENS,
       })
     : await client.responses.create({
         model: getDeepLearnModel(),
@@ -240,7 +245,7 @@ export async function generateDeepLearnNoteForResource(
         instructions: DEEP_LEARN_SYSTEM_PROMPT,
         input: promptText,
         text: responseTextConfig(),
-        max_output_tokens: 6000,
+        max_output_tokens: DEEP_LEARN_MAX_OUTPUT_TOKENS,
       })
 
   if (response.status && response.status !== 'completed') {
@@ -501,6 +506,12 @@ function buildDeepLearnPrompt(input: DeepLearnGenerationContext & {
     '- If the evidence is partial, still extract what is clearly askable instead of refusing to help.',
     '- Keep distractors plausible but wrong according to the source.',
     '- Use sortKey only when a date or chronology is explicit enough to support timeline review.',
+    '- For every review item, include reviewText, draftExplanation, sourceSnippet, and linkedDraftSectionId so Review can preview the deeper Draft/Structure support.',
+    '- linkedDraftSectionId should be a short slug for the support section that best backs the item, or null when no section matches.',
+    '- For every review item, include supportingContext, compareContext, simplifiedWording, confusionNotes, and relatedConcepts.',
+    '- Use compareContext only when a contrast or neighboring concept helps prevent mistakes; otherwise return null.',
+    '- Use confusionNotes for common wrong answers, traps, or look-alike terms; use an empty array when none are justified.',
+    '- relatedConcepts should contain only source-grounded nearby concepts, not invented recommendations.',
   ].join('\n')
 }
 
@@ -620,6 +631,26 @@ function wordingSchema() {
       exact: { type: ['string', 'null'] },
       examSafe: { type: 'string' },
       simplified: { type: ['string', 'null'] },
+    },
+  }
+}
+
+function reviewLinkSchemaProperties() {
+  return {
+    reviewText: { type: 'string' },
+    draftExplanation: { type: ['string', 'null'] },
+    sourceSnippet: { type: ['string', 'null'] },
+    linkedDraftSectionId: { type: ['string', 'null'] },
+    supportingContext: { type: ['string', 'null'] },
+    compareContext: { type: ['string', 'null'] },
+    simplifiedWording: { type: ['string', 'null'] },
+    confusionNotes: {
+      type: 'array',
+      items: { type: 'string' },
+    },
+    relatedConcepts: {
+      type: 'array',
+      items: { type: 'string' },
     },
   }
 }

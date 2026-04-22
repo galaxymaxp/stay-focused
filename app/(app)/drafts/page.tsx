@@ -1,64 +1,80 @@
 import Link from 'next/link'
-import { Plus, FileText } from 'lucide-react'
-import { DraftCard } from '@/components/drafts/DraftCard'
-import { drafts } from '@/lib/mock-data'
+import { listDraftsForShelves } from '@/actions/drafts'
+import { CourseShelf } from '@/components/drafts/CourseShelf'
 
-export default function DraftsPage() {
-  const ready = drafts.filter((d) => d.status === 'ready')
-  const active = drafts.filter((d) => d.status === 'in_progress' || d.status === 'generating')
-  const failed = drafts.filter((d) => d.status === 'failed')
+export default async function DraftsPage() {
+  const { drafts, courses } = await listDraftsForShelves()
+  const courseNames = new Map(courses.map((course) => [course.id, course]))
+  const grouped = groupDraftsByCourse(drafts)
 
   return (
-    <div className="max-w-4xl mx-auto px-6 py-10 lg:px-10 lg:py-12">
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className="text-xl font-semibold text-sf-text">Drafts</h1>
-          <p className="text-sm text-sf-muted mt-1">{drafts.length} study outputs</p>
+    <main className="page-shell command-page">
+      <section
+        className="motion-card section-shell section-shell-elevated"
+        style={{ padding: '1.05rem 1.15rem', display: 'grid', gap: '1rem' }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+          <div>
+            <p className="ui-kicker">Learn</p>
+            <h1 className="ui-page-title" style={{ marginTop: '0.5rem' }}>Draft</h1>
+            <p className="ui-page-copy" style={{ marginTop: '0.35rem', maxWidth: '46rem' }}>
+              Saved study drafts from your course materials, kept beside the source they came from.
+            </p>
+          </div>
+          <Link href="/drafts/new" className="ui-button ui-button-secondary ui-button-xs">
+            New Draft
+          </Link>
         </div>
-        <button className="inline-flex items-center gap-2 rounded-xl bg-sf-accent px-4 py-2.5 text-sm font-semibold text-white hover:bg-sf-accent-hover transition-colors">
-          <Plus className="h-4 w-4" />
-          New Draft
-        </button>
-      </div>
+      </section>
 
-      <div className="space-y-8">
-        {active.length > 0 && (
-          <section>
-            <h2 className="text-xs font-semibold uppercase tracking-widest text-sf-subtle mb-3">In Progress</h2>
-            <div className="space-y-3">
-              {active.map((d) => <DraftCard key={d.id} draft={d} />)}
-            </div>
-          </section>
-        )}
+      <section className="motion-card motion-delay-1 section-shell" style={{ padding: '1rem 1.05rem' }}>
+        {drafts.length === 0 ? (
+          <div className="ui-empty" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', fontSize: '14px', lineHeight: 1.68 }}>
+            No drafts yet. Create one from a module source or open a resource in Learn and choose Draft.
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gap: '0.9rem' }}>
+            {grouped.map((group) => {
+              const course = group.courseId ? courseNames.get(group.courseId) : null
+              const latestDraft = group.drafts[0]
 
-        {ready.length > 0 && (
-          <section>
-            <h2 className="text-xs font-semibold uppercase tracking-widest text-sf-subtle mb-3">Ready</h2>
-            <div className="space-y-3">
-              {ready.map((d) => <DraftCard key={d.id} draft={d} />)}
-            </div>
-          </section>
-        )}
-
-        {failed.length > 0 && (
-          <section>
-            <h2 className="text-xs font-semibold uppercase tracking-widest text-sf-subtle mb-3">Failed</h2>
-            <div className="space-y-3">
-              {failed.map((d) => <DraftCard key={d.id} draft={d} />)}
-            </div>
-          </section>
-        )}
-
-        {drafts.length === 0 && (
-          <div className="flex flex-col items-center py-16 text-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-sf-surface border border-sf-border mb-4">
-              <FileText className="h-5 w-5 text-sf-subtle" />
-            </div>
-            <p className="text-sm font-medium text-sf-text">No drafts yet</p>
-            <p className="text-xs text-sf-muted mt-1">Open a course task and generate your first draft.</p>
+              return (
+                <CourseShelf
+                  key={group.courseId ?? 'uncategorized'}
+                  courseName={course?.name ?? 'Unassigned drafts'}
+                  courseCode={course?.code ?? ''}
+                  drafts={group.drafts}
+                  latestDraftId={latestDraft.id}
+                  totalCount={group.drafts.length}
+                  quizReadyCount={group.drafts.filter((draft) => draft.draftType === 'exam_reviewer' || draft.draftType === 'flashcard_set').length}
+                  statusBreakdown={{
+                    ready: group.drafts.filter((draft) => draft.status === 'ready').length,
+                    inProgress: group.drafts.filter((draft) => draft.status === 'generating' || draft.status === 'refining').length,
+                    needsAttention: group.drafts.filter((draft) => draft.status === 'failed').length,
+                  }}
+                  lastUpdated={new Date(latestDraft.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                />
+              )
+            })}
           </div>
         )}
-      </div>
-    </div>
+      </section>
+    </main>
   )
+}
+
+function groupDraftsByCourse<T extends { courseId: string | null; updatedAt: string }>(drafts: T[]) {
+  const groups = new Map<string, T[]>()
+
+  drafts.forEach((draft) => {
+    const key = draft.courseId ?? 'uncategorized'
+    groups.set(key, [...(groups.get(key) ?? []), draft])
+  })
+
+  return Array.from(groups.entries())
+    .map(([courseId, groupDrafts]) => ({
+      courseId: courseId === 'uncategorized' ? null : courseId,
+      drafts: groupDrafts.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()),
+    }))
+    .sort((a, b) => new Date(b.drafts[0]?.updatedAt ?? 0).getTime() - new Date(a.drafts[0]?.updatedAt ?? 0).getTime())
 }

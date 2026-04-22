@@ -1,37 +1,74 @@
-import Link from 'next/link'
-import { ArrowLeft } from 'lucide-react'
-import { drafts } from '@/lib/mock-data'
-import { DraftWorkspace } from '@/components/drafts/DraftWorkspace'
 import { notFound } from 'next/navigation'
+import { DeepLearnWorkspace } from '@/components/DeepLearnWorkspace'
+import { ModuleLensShell } from '@/components/ModuleLensShell'
+import { getDraft } from '@/actions/drafts'
+import { extractCourseName, getModuleWorkspace, type ModuleSourceResource } from '@/lib/module-workspace'
 
-type Props = {
+interface Props {
   params: Promise<{ id: string }>
 }
 
 export default async function DraftDetailPage({ params }: Props) {
   const { id } = await params
-  const draft = drafts.find((d) => d.id === id)
+  const draft = await getDraft(id)
   if (!draft) notFound()
 
-  return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center gap-4 px-6 py-4 border-b border-sf-border bg-sf-surface flex-shrink-0">
-        <Link
-          href="/drafts"
-          className="flex items-center gap-1.5 text-sm text-sf-muted hover:text-sf-text transition-colors flex-shrink-0"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Drafts
-        </Link>
-        <div className="w-px h-4 bg-sf-border" />
-        <h1 className="text-sm font-semibold text-sf-text truncate">{draft.title}</h1>
-      </div>
+  const workspace = draft.sourceModuleId ? await getModuleWorkspace(draft.sourceModuleId) : null
+  const moduleId = draft.sourceModuleId ?? draft.id
+  const courseId = workspace?.module.courseId ?? null
+  const courseName = extractCourseName(workspace?.module.raw_content)
+  const resource = buildDraftResource(draft, workspace?.module.title ?? null)
 
-      {/* Workspace fills remaining height */}
-      <div className="flex-1 overflow-hidden min-h-0">
-        <DraftWorkspace draft={draft} />
-      </div>
+  const workspaceContent = (
+    <div className="command-page command-page-tight">
+      <DeepLearnWorkspace
+        moduleId={moduleId}
+        courseId={courseId}
+        resource={resource}
+        deepLearnResourceId={draft.id}
+        note={null}
+        sourceHref={null}
+        readerHref={draft.sourceModuleId ? `/modules/${draft.sourceModuleId}/learn` : '/courses'}
+        statusSummary="This draft is mapped into Deep Learn as Draft, preserving edit, refine, and source-side work."
+        legacyDraft={draft}
+      />
     </div>
   )
+
+  if (!workspace) {
+    return <main className="page-shell">{workspaceContent}</main>
+  }
+
+  return (
+    <ModuleLensShell
+      currentLens="learn"
+      moduleId={workspace.module.id}
+      courseId={workspace.module.courseId}
+      courseName={courseName}
+      title={workspace.module.title}
+      summary={draft.title}
+    >
+      {workspaceContent}
+    </ModuleLensShell>
+  )
+}
+
+function buildDraftResource(draft: NonNullable<Awaited<ReturnType<typeof getDraft>>>, moduleName: string | null): ModuleSourceResource {
+  return {
+    id: draft.id,
+    title: draft.sourceTitle,
+    type: draft.sourceType === 'module' ? 'module draft source' : draft.sourceType,
+    required: false,
+    moduleName,
+    category: 'resource',
+    kind: 'reference',
+    lane: 'learn',
+    extractedText: draft.sourceRawContent,
+    extractedTextPreview: draft.sourceRawContent.slice(0, 12000),
+    extractedCharCount: draft.sourceRawContent.length,
+    fullTextAvailable: Boolean(draft.sourceRawContent),
+    previewState: draft.sourceRawContent ? 'full_text_available' : 'no_text_available',
+    sourceUrl: null,
+    htmlUrl: null,
+  }
 }

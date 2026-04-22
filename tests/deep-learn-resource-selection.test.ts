@@ -90,6 +90,51 @@ test('resolveLearnResourceSelection only leaves the lookup unresolved when the r
   assert.equal(selection?.matchedBy, 'no_stored_match')
 })
 
+test('resolveLearnResourceSelection keeps multiple resources isolated by stored id and title/type match', () => {
+  const moduleRow = createModule([
+    'Course: Test Course (TC101)',
+    '',
+    'MODULES:',
+    '- Week 4',
+    '  * Lecture Slides (File) [required]',
+    '  * Practice Prompt (Page)',
+  ].join('\n'))
+  const slides = createStoredResource({
+    id: 'slides-resource',
+    title: 'Lecture Slides',
+    resourceType: 'File',
+    required: true,
+    metadata: { canvasModuleName: 'Week 4' },
+  })
+  const prompt = createStoredResource({
+    id: 'prompt-resource',
+    title: 'Practice Prompt',
+    resourceType: 'Page',
+    required: false,
+    metadata: { canvasModuleName: 'Week 3' },
+  })
+
+  const experience = buildLearnExperience(moduleRow, {
+    resources: [slides, prompt],
+  })
+
+  assert.equal(
+    resolveLearnResourceSelection(experience, [slides, prompt], 'slides-resource')?.canonicalResourceId,
+    'slides-resource',
+  )
+  assert.equal(
+    resolveLearnResourceSelection(experience, [slides, prompt], 'prompt-resource')?.canonicalResourceId,
+    'prompt-resource',
+  )
+
+  const parsedPrompt = experience.resources.find((resource) => resource.id !== prompt.id && resource.title === 'Practice Prompt')
+  assert.ok(parsedPrompt)
+  assert.equal(
+    resolveLearnResourceSelection(experience, [slides, prompt], parsedPrompt.id)?.canonicalResourceId,
+    'prompt-resource',
+  )
+})
+
 function createModule(rawContent: string): Module {
   return {
     id: 'module-1',

@@ -11,7 +11,6 @@ import { listDeepLearnNotesForModule } from '@/lib/deep-learn-store'
 import { getDeepLearnResourceUiState } from '@/lib/deep-learn-ui'
 import { getModuleResourceCapabilityInfo } from '@/lib/module-resource-capability'
 import { getModuleResourceQualityInfo } from '@/lib/module-resource-quality'
-import { TaskStatusToggle } from '@/components/TaskStatusToggle'
 import { buildModuleLearnOverview, type ModuleStudyMaterial } from '@/lib/module-learn-overview'
 import { buildModuleDoHref, buildModuleInspectHref, getSearchParamValue, getSupportElementId, getTaskElementId } from '@/lib/stay-focused-links'
 import { buildModuleTermBank } from '@/lib/module-term-bank'
@@ -128,7 +127,7 @@ export default async function LearnPage({ params, searchParams }: Props) {
         <section className="motion-card motion-delay-1 section-shell section-shell-elevated" style={{ padding: '1rem 1.05rem', display: 'grid', gap: '1rem' }}>
           <div className="command-header">
             <div className="command-header-main">
-              <p className="ui-kicker">Unified Learn workspace</p>
+              <p className="ui-kicker">Deep Learn workspace</p>
               <h2 className="ui-section-title" style={{ marginTop: '0.45rem' }}>Exam prep packs come first, with source and reader fallback behind them</h2>
               <p className="ui-section-copy" style={{ marginTop: '0.45rem', maxWidth: '46rem' }}>
                 The main study path now starts at the resource, turns it into a saved answer-first exam prep pack, then carries that pack into quiz. The old reader still stays nearby for source transparency and fallback, but it no longer leads the workflow.
@@ -161,7 +160,7 @@ export default async function LearnPage({ params, searchParams }: Props) {
             <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.9rem 0.95rem', border: '1px solid color-mix(in srgb, var(--amber) 24%, var(--border-subtle) 76%)' }}>
               <p className="ui-kicker">Exam prep pack status unavailable</p>
               <p style={{ margin: '0.42rem 0 0', fontSize: '14px', lineHeight: 1.68, color: 'var(--text-secondary)' }}>
-                {deepLearnNotesResult.message} Learn is still rendering the module from resources, source support, and fallback reader state.
+                {deepLearnNotesResult.message} Deep Learn is still rendering the module from resources, source support, and fallback reader state.
               </p>
             </div>
           )}
@@ -349,7 +348,7 @@ export default async function LearnPage({ params, searchParams }: Props) {
           </section>
 
           <aside className="command-rail">
-            <section id="action-status" className="motion-card motion-delay-2 section-shell command-stick-top" style={{ padding: '1rem 1.05rem', display: 'grid', gap: '0.8rem' }}>
+            <section id="action-status" className="motion-card motion-delay-2 section-shell" style={{ padding: '1rem 1.05rem', display: 'grid', gap: '0.8rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
                 <div>
                   <p className="ui-kicker">Action status</p>
@@ -399,7 +398,6 @@ export default async function LearnPage({ params, searchParams }: Props) {
                               </p>
                             )}
                           </div>
-                          <TaskStatusToggle status={task.status} moduleId={module.id} title={task.title} legacyTaskId={task.id} align="end" />
                         </div>
 
                         <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
@@ -439,15 +437,12 @@ export default async function LearnPage({ params, searchParams }: Props) {
                               : '1px solid color-mix(in srgb, var(--border-subtle) 84%, transparent)',
                           }}
                         >
-                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.65rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-                            <div style={{ minWidth: 0, flex: '1 1 220px' }}>
-                              <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.3rem' }}>
-                                <CompletionBadge origin={task.completionOrigin ?? null} />
-                                {task.deadline && <StateBadge label={formatDate(task.deadline)} tone="muted" />}
-                              </div>
-                              <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.5, color: 'var(--text-muted)', textDecoration: 'line-through', overflowWrap: 'anywhere' }}>{task.title}</p>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.3rem' }}>
+                              <CompletionBadge origin={task.completionOrigin ?? null} />
+                              {task.deadline && <StateBadge label={formatDate(task.deadline)} tone="muted" />}
                             </div>
-                            <TaskStatusToggle status={task.status} moduleId={module.id} title={task.title} legacyTaskId={task.id} align="end" />
+                            <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.5, color: 'var(--text-muted)', textDecoration: 'line-through', overflowWrap: 'anywhere' }}>{task.title}</p>
                           </div>
                         </article>
                       ))}
@@ -461,7 +456,7 @@ export default async function LearnPage({ params, searchParams }: Props) {
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
                 <div>
                   <p className="ui-kicker">Study coverage</p>
-                  <h3 style={{ margin: '0.42rem 0 0', fontSize: '1.02rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>What Learn is grounding this module from</h3>
+                  <h3 style={{ margin: '0.42rem 0 0', fontSize: '1.02rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>What Deep Learn is grounding this module from</h3>
                 </div>
                 <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
                   <StateBadge label={`${overview.readyStudyFileCount} ready`} tone="accent" />
@@ -471,7 +466,7 @@ export default async function LearnPage({ params, searchParams }: Props) {
 
               {overview.studyMaterials.length === 0 ? (
                 <div className="ui-empty" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', fontSize: '14px', lineHeight: 1.68 }}>
-                  No study sources are mapped into this module yet, so Learn is leaning on tasks and any grounded terms it can find.
+                  No study sources are mapped into this module yet, so Deep Learn is leaning on tasks and any grounded terms it can find.
                 </div>
               ) : (
                 <>
@@ -518,7 +513,7 @@ export default async function LearnPage({ params, searchParams }: Props) {
               <div>
                 <p className="ui-kicker">Source support</p>
                 <h3 style={{ margin: '0.42rem 0 0', fontSize: '1.02rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>
-                  Extracted source views and support context stay inside Learn as secondary validation
+                  Extracted source views and support context stay inside Deep Learn as secondary validation
                 </h3>
                 <p style={{ margin: '0.42rem 0 0', fontSize: '14px', lineHeight: 1.68, color: 'var(--text-secondary)' }}>
                   {overview.coverageNote}

@@ -65,10 +65,10 @@ export function PrimaryTaskHero({ task }: Props) {
             <ArrowRight className="h-4 w-4" />
           </Link>
           <Link
-            href="/drafts"
+            href={`/courses/${task.courseId}`}
             className="inline-flex items-center gap-2 rounded-xl border border-[#3A3734] px-5 py-2.5 text-sm font-medium text-[#C5C3BD] hover:border-[#4A4744] hover:text-white transition-colors"
           >
-            Generate Draft
+            Open Deep Learn
           </Link>
         </div>
       </div>

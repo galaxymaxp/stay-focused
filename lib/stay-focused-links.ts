@@ -129,7 +129,7 @@ export function buildCourseLearnHref(courseId: string, options: CourseLearnHrefO
       ? getModuleElementId(options.moduleId)
       : null
 
-  return appendHref(`/courses/${courseId}/learn`, params, hash)
+  return appendHref(`/courses/${courseId}`, params, hash)
 }
 
 export function getModuleElementId(moduleId: string) {

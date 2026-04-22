@@ -204,6 +204,17 @@ select:focus-visible {
   color: var(--text-primary);
 }
 
+@media (prefers-reduced-motion: reduce) {
+  html,
+  .app-content,
+  .command-scroll-body,
+  .contained-scroll-frame,
+  .draft-source-scroll,
+  .home-panel-scroll {
+    scroll-behavior: auto;
+  }
+}
+
 .app-shell {
   min-height: 100vh;
   padding: 0;
@@ -329,6 +340,39 @@ select:focus-visible {
 .app-nav-label {
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.app-nav-sub-group {
+  display: grid;
+  gap: 0.1rem;
+  padding-left: 1.32rem;
+  margin-top: 0.1rem;
+}
+
+.app-nav-sub-link {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 1.9rem;
+  padding: 0.28rem 0.68rem 0.28rem 0.72rem;
+  border-radius: 8px;
+  text-decoration: none;
+  color: var(--text-muted);
+  border: 1px solid transparent;
+  font-size: 0.83rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.app-nav-sub-link:hover {
+  background: color-mix(in srgb, var(--surface-soft) 58%, transparent);
+  color: var(--text-secondary);
+  border-color: color-mix(in srgb, var(--border-subtle) 50%, transparent);
+}
+
+.app-nav-sub-link[data-active='true'] {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent-shadow) 80%, transparent);
 }
 
 @keyframes spotlight-breathe {
@@ -480,6 +524,7 @@ select:focus-visible {
   min-width: 0;
   width: min(100%, 1680px);
   padding-top: 0.8rem;
+  scroll-behavior: smooth;
 }
 
 .app-bottom-nav {
@@ -616,6 +661,7 @@ select:focus-visible {
   max-height: min(46rem, calc(100vh - 10.5rem));
   overflow-y: auto;
   overscroll-behavior: contain;
+  scroll-behavior: smooth;
   scrollbar-width: thin;
   padding-right: 0.18rem;
 }
@@ -651,6 +697,11 @@ select:focus-visible {
 .command-stick-top {
   position: sticky;
   top: 4.35rem;
+  z-index: 10;
+}
+
+.command-stick-top.section-shell {
+  background: var(--app-bg);
 }
 
 .command-surface-muted {
@@ -956,9 +1007,15 @@ select:focus-visible {
 }
 
 .ui-interactive-card[data-open='true'] {
+  scroll-margin-top: 5.25rem;
   background: color-mix(in srgb, var(--surface-selected) 84%, var(--surface-soft) 16%);
   border-color: color-mix(in srgb, var(--accent-border) 30%, var(--border-subtle) 70%);
   box-shadow: var(--shadow-medium), var(--highlight-sheen);
+}
+
+details[open],
+[data-expanded-scroll-target] {
+  scroll-margin-top: 5.25rem;
 }
 
 .ui-interactive-card:focus-within {
@@ -1429,6 +1486,7 @@ details[open] > .ui-interactive-summary,
   max-height: min(46rem, calc(100vh - 10rem));
   overflow-y: auto;
   overscroll-behavior: contain;
+  scroll-behavior: smooth;
   scrollbar-width: thin;
   padding-right: 0.18rem;
 }
@@ -1444,6 +1502,10 @@ details[open] > .ui-interactive-summary,
 
 .contained-scroll-frame[data-density='dense'] {
   max-height: min(40rem, calc(100vh - 11.5rem));
+}
+
+.review-support-scroll-frame {
+  scroll-behavior: auto;
 }
 
 .draft-workspace {
@@ -1480,6 +1542,7 @@ details[open] > .ui-interactive-summary,
   max-height: min(30rem, calc(100vh - 19rem));
   overflow-y: auto;
   overscroll-behavior: contain;
+  scroll-behavior: smooth;
   scrollbar-width: thin;
   padding-right: 0.1rem;
 }
@@ -1491,6 +1554,44 @@ details[open] > .ui-interactive-summary,
 .draft-source-scroll::-webkit-scrollbar-thumb {
   border-radius: 999px;
   background: color-mix(in srgb, var(--border-strong) 72%, transparent);
+}
+
+[id^="deep-learn-draft-section-"],
+[id^="deep-learn-structure-section-"] {
+  scroll-margin-top: 5rem;
+}
+
+.review-support-text {
+  display: inline;
+  border-radius: 5px;
+  cursor: pointer;
+  outline: none;
+  color: inherit;
+  text-decoration: none;
+  background: linear-gradient(
+    to top,
+    color-mix(in srgb, var(--accent-shadow) 34%, transparent) 0 38%,
+    transparent 38% 100%
+  );
+  box-shadow: 0 0 0 1px transparent, 0 0 0 transparent;
+  transition: background 140ms ease, box-shadow 140ms ease, color 140ms ease;
+}
+
+.review-support-text:hover,
+.review-support-text:focus-visible {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--accent-shadow) 42%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent-border) 22%, transparent),
+    0 0 16px color-mix(in srgb, var(--accent-shadow) 20%, transparent);
+}
+
+.review-support-text[data-active='true'] {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--accent-shadow) 54%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent-border) 34%, transparent),
+    0 0 20px color-mix(in srgb, var(--accent-shadow) 24%, transparent);
 }
 
 .workspace-row:focus-visible {
@@ -2241,6 +2342,7 @@ details[open] > .ui-interactive-summary,
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
+  scroll-behavior: smooth;
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--border-strong) 62%, transparent) transparent;
   scrollbar-gutter: stable;

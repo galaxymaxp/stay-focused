@@ -89,7 +89,7 @@ async function importProject() {
   const [{ fetchCourses, syncCourse }, { supabase }, dashboardModule, modulePageModule, canvasPageModule] = await Promise.all([
     import('../actions/canvas'),
     import('../lib/supabase'),
-    import('../app/page'),
+    import('../app/(app)/page'),
     import('../app/modules/[id]/page'),
     import('../app/canvas/page'),
   ])
