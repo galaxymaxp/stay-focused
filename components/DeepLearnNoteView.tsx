@@ -1,11 +1,11 @@
 import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { DeepLearnGenerateButton } from '@/components/DeepLearnGenerateButton'
-import { DeepLearnReviewPackSurface } from '@/components/DeepLearnReviewPackSurface'
+import { DeepLearnWorkspace } from '@/components/DeepLearnWorkspace'
 import type { DeepLearnResourceReadiness } from '@/lib/deep-learn-readiness'
 import { getDeepLearnResourceUiState } from '@/lib/deep-learn-ui'
 import { buildModuleQuizHref } from '@/lib/stay-focused-links'
-import type { DeepLearnNote, DeepLearnNoteLoadAvailability } from '@/lib/types'
+import type { DeepLearnNote, DeepLearnNoteLoadAvailability, Draft, DraftLoadAvailability } from '@/lib/types'
 import type { ModuleSourceResource } from '@/lib/module-workspace'
 
 export function DeepLearnNoteView({
@@ -16,6 +16,9 @@ export function DeepLearnNoteView({
   note,
   noteAvailability = 'available',
   noteAvailabilityMessage = null,
+  draft = null,
+  draftAvailability = 'available',
+  draftAvailabilityMessage = null,
   readiness = null,
   readerHref,
   sourceHref,
@@ -27,6 +30,9 @@ export function DeepLearnNoteView({
   note: DeepLearnNote | null
   noteAvailability?: DeepLearnNoteLoadAvailability
   noteAvailabilityMessage?: string | null
+  draft?: Draft | null
+  draftAvailability?: DraftLoadAvailability
+  draftAvailabilityMessage?: string | null
   readiness?: DeepLearnResourceReadiness | null
   readerHref: string
   sourceHref: string | null
@@ -44,21 +50,33 @@ export function DeepLearnNoteView({
   const quizHref = buildModuleQuizHref(moduleId, { resourceId: resolvedDeepLearnResourceId })
 
   return (
-    <section className="motion-card motion-delay-1 section-shell section-shell-elevated" style={{ padding: '1.35rem 1.45rem', display: 'grid', gap: '1rem' }}>
+    <div style={{ display: 'grid', gap: '0.9rem' }}>
+      <DeepLearnWorkspace
+        key={`${moduleId}:${resolvedDeepLearnResourceId}:${resource.id}:${draft?.id ?? 'no-draft'}:${draft?.updatedAt ?? 'not-loaded'}`}
+        moduleId={moduleId}
+        courseId={courseId}
+        resource={resource}
+        deepLearnResourceId={resolvedDeepLearnResourceId}
+        note={note}
+        sourceHref={sourceHref}
+        readerHref={readerHref}
+        statusSummary={ui.detail}
+        blockedMessage={(ui.status === 'unavailable' || ui.status === 'blocked') ? effectiveAvailabilityMessage : null}
+        resourceDraft={draft}
+        draftAvailability={draftAvailability}
+        draftAvailabilityMessage={draftAvailabilityMessage}
+      />
+
+      <section className="motion-card motion-delay-2 section-shell" style={{ padding: '0.95rem 1rem', display: 'grid', gap: '0.8rem' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.9rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
         <div style={{ minWidth: 0, flex: '1 1 460px' }}>
-          <p className="ui-kicker">Exam prep pack</p>
-          <h2 className="ui-section-title" style={{ marginTop: '0.42rem' }}>
-            {note?.status === 'ready' ? note.title : resource.title}
-          </h2>
-          <p className="ui-section-copy" style={{ marginTop: '0.45rem', maxWidth: '48rem' }}>
-            {ui.detail}
-          </p>
+          <p className="ui-kicker">Deep Learn status</p>
+          <p className="ui-section-copy" style={{ marginTop: '0.45rem', maxWidth: '48rem' }}>{ui.summary}</p>
         </div>
         <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', alignItems: 'flex-start' }}>
           {note?.status === 'ready' ? (
             <Link href={ui.noteHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
-              Open Exam Prep Pack
+              Stay on this page
             </Link>
           ) : ui.status === 'unavailable' || ui.status === 'blocked' ? (
             <Link href={readerHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
@@ -99,66 +117,25 @@ export function DeepLearnNoteView({
         {note?.status === 'ready' && note.quizReady && <StatePill label="Quiz ready" tone="accent" />}
       </div>
 
-      {note?.status === 'ready' ? (
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.14fr) minmax(280px, 0.86fr)', gap: '1rem', alignItems: 'start' }}>
-          <div style={{ display: 'grid', gap: '0.9rem', minHeight: 0 }}>
-            <section className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem' }}>
-              <p className="ui-kicker">Pack overview</p>
-              <p style={{ margin: '0.5rem 0 0', fontSize: '15px', lineHeight: 1.76, color: 'var(--text-secondary)' }}>
-                {note.overview}
-              </p>
-            </section>
+      {note?.status === 'ready' && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.75rem' }}>
+          <DetailCard title="Pack profile">
+            <MetaLine label="Primary mode" value={note.quizReady ? 'Quiz-ready review pack' : 'Review pack with partial quiz coverage'} />
+            <MetaLine label="Key answers" value={`${note.answerBank.length}`} />
+            <MetaLine label="Identification items" value={`${note.identificationItems.length}`} />
+            <MetaLine label="MCQ drill items" value={`${note.mcqDrill.length}`} />
+          </DetailCard>
 
-            <div className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.9rem', minHeight: 0 }}>
-              <DeepLearnReviewPackSurface note={note} />
-            </div>
-          </div>
-
-          <aside style={{ display: 'grid', gap: '0.9rem' }}>
-            <DetailCard title="Pack profile">
-              <MetaLine label="Primary mode" value={note.quizReady ? 'Quiz-ready review pack' : 'Review pack with partial quiz coverage'} />
-              <MetaLine label="Key answers" value={`${note.answerBank.length}`} />
-              <MetaLine label="Identification items" value={`${note.identificationItems.length}`} />
-              <MetaLine label="MCQ drill items" value={`${note.mcqDrill.length}`} />
-              <MetaLine label="Timeline cues" value={`${note.timeline.length}`} />
-              <MetaLine label="Distinction pairs" value={`${note.distinctions.length}`} />
-            </DetailCard>
-
-            <DetailCard title="Source grounding">
-              <MetaLine label="Source type" value={note.sourceGrounding.sourceType ?? resource.type} />
-              <MetaLine label="Extraction quality" value={note.sourceGrounding.extractionQuality ?? 'Unknown'} />
-              <MetaLine label="Grounding strategy" value={formatGroundingStrategy(note.sourceGrounding.groundingStrategy)} />
-              <MetaLine label="AI fallback used" value={note.sourceGrounding.usedAiFallback ? 'Yes' : 'No'} />
-              <MetaLine label="Grounded chars" value={`${note.sourceGrounding.charCount}`} />
-              {note.sourceGrounding.qualityReason && <MetaLine label="Quality note" value={note.sourceGrounding.qualityReason} />}
-              {note.sourceGrounding.warning && <MetaLine label="Warning" value={note.sourceGrounding.warning} />}
-            </DetailCard>
-
-            {note.cautionNotes.length > 0 && (
-              <DetailCard title="Caution notes">
-                <SimpleList items={note.cautionNotes} />
-              </DetailCard>
-            )}
-          </aside>
-        </div>
-      ) : (
-        <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem' }}>
-          <p style={{ margin: 0, fontSize: '15px', lineHeight: 1.76, color: 'var(--text-secondary)' }}>
-            {ui.summary}
-          </p>
-          {(ui.status === 'unavailable' || ui.status === 'blocked') && effectiveAvailabilityMessage && (
-            <p style={{ margin: '0.6rem 0 0', fontSize: '13px', lineHeight: 1.62, color: 'var(--text-secondary)' }}>
-              {effectiveAvailabilityMessage}
-            </p>
-          )}
-          {note?.errorMessage && (
-            <p style={{ margin: '0.6rem 0 0', fontSize: '13px', lineHeight: 1.62, color: 'var(--red)' }}>
-              {note.errorMessage}
-            </p>
-          )}
+          <DetailCard title="Source grounding">
+            <MetaLine label="Source type" value={note.sourceGrounding.sourceType ?? resource.type} />
+            <MetaLine label="Extraction quality" value={note.sourceGrounding.extractionQuality ?? 'Unknown'} />
+            <MetaLine label="Grounding strategy" value={formatGroundingStrategy(note.sourceGrounding.groundingStrategy)} />
+            <MetaLine label="Grounded chars" value={`${note.sourceGrounding.charCount}`} />
+          </DetailCard>
         </div>
       )}
-    </section>
+      </section>
+    </div>
   )
 }
 
@@ -178,18 +155,6 @@ function DetailCard({ title, children }: { title: string; children: ReactNode })
         {children}
       </div>
     </section>
-  )
-}
-
-function SimpleList({ items }: { items: string[] }) {
-  return (
-    <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: '0.6rem' }}>
-      {items.map((item) => (
-        <li key={item} style={{ fontSize: '13px', lineHeight: 1.62, color: 'var(--text-secondary)' }}>
-          {item}
-        </li>
-      ))}
-    </ul>
   )
 }
 

@@ -33,18 +33,18 @@ export interface StudyResourceAccordionItem {
   moduleId: string
   courseId?: string | null
   deepLearnStatus: 'not_started' | 'pending' | 'ready' | 'failed' | 'blocked' | 'unavailable'
-  deepLearnStatusLabel: 'No pack yet' | 'Preparing' | 'Ready' | 'Failed' | 'Source issue' | 'Unavailable'
-  deepLearnTone: 'accent' | 'warning' | 'muted'
   deepLearnSummary: string
-  deepLearnDetail: string
-  deepLearnPrimaryLabel: 'Build Exam Prep Pack' | 'Open Exam Prep Pack' | 'Rebuild Exam Prep Pack' | 'Open source fallback'
   deepLearnNoteHref: string
   deepLearnQuizHref: string
   deepLearnQuizReady: boolean
-  deepLearnTermCount: number
-  deepLearnFactCount: number
   deepLearnNoteFailure?: string | null
-  deepLearnAvailability: DeepLearnNoteLoadAvailability
+  deepLearnStatusLabel?: 'Draft' | 'Organize' | 'Review Ready' | 'Source issue' | 'Unavailable'
+  deepLearnTone?: 'accent' | 'warning' | 'muted'
+  deepLearnDetail?: string
+  deepLearnPrimaryLabel?: string
+  deepLearnTermCount?: number
+  deepLearnFactCount?: number
+  deepLearnAvailability?: DeepLearnNoteLoadAvailability
 }
 
 export function StudyResourceAccordionList({
@@ -102,15 +102,9 @@ export function StudyResourceAccordionList({
   return (
     <div className={scrollable ? 'contained-scroll-frame' : undefined} data-density={scrollDensity === 'dense' ? 'dense' : undefined}>
       <div style={{ display: 'grid', gap: '0.75rem' }}>
-        {items.map((item, index) => {
+        {items.map((item) => {
           const expanded = resolvedOpenResourceId === item.id
           const sourceHref = item.originalFileHref ?? item.canvasHref
-          const showSourceAsPrimary = item.primaryAction === 'source' && Boolean(sourceHref)
-          const presentationMode: StudyResourcePresentationMode = item.deepLearnStatus === 'ready'
-            ? 'deep_learn_first'
-            : showSourceAsPrimary
-              ? 'source_first'
-              : 'reader_fallback'
 
           return (
             <article
@@ -130,17 +124,20 @@ export function StudyResourceAccordionList({
             >
               <button
                 type="button"
-                onClick={() => setState((current) => {
+                onClick={() => {
                   const nextOpenResourceId = openResourceId === item.id ? null : item.id
-                  if (current.routeKey === routeKey && current.openResourceId === nextOpenResourceId) {
-                    return current
+                  setState((current) => {
+                    if (current.routeKey === routeKey && current.openResourceId === nextOpenResourceId) {
+                      return current
+                    }
+                    return { routeKey, openResourceId: nextOpenResourceId }
+                  })
+                  if (nextOpenResourceId !== null) {
+                    window.requestAnimationFrame(() => {
+                      document.getElementById(getResourceElementId(item.id))?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+                    })
                   }
-
-                  return {
-                    routeKey,
-                    openResourceId: nextOpenResourceId,
-                  }
-                })}
+                }}
                 aria-expanded={expanded}
                 className="ui-interactive-row"
                 data-hover="flat"
@@ -154,19 +151,11 @@ export function StudyResourceAccordionList({
               >
                 <div style={{ minWidth: 0, flex: '1 1 320px', display: 'grid', gap: '0.38rem' }}>
                   <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                    <ResourcePill label={`Resource ${index + 1}`} />
                     <ResourcePill label={item.fileTypeLabel} />
-                    <ResourcePill label={`Exam pack: ${item.deepLearnStatusLabel}`} tone={item.deepLearnTone} />
-                    <ResourcePill label={item.readinessLabel} tone={item.readinessTone} />
-                    {item.deepLearnStatus === 'ready' ? (
-                      <>
-                        <ResourcePill label={`${item.deepLearnTermCount} ID item${item.deepLearnTermCount === 1 ? '' : 's'}`} />
-                        <ResourcePill label={`${item.deepLearnFactCount} key answer${item.deepLearnFactCount === 1 ? '' : 's'}`} />
-                        {item.deepLearnQuizReady && <ResourcePill label="Quiz ready" tone="accent" />}
-                      </>
-                    ) : (
-                      <ResourcePill label={`${item.outlineSections.length} source note${item.outlineSections.length === 1 ? '' : 's'}`} />
-                    )}
+                    <ResourcePill
+                      label={item.deepLearnStatusLabel ?? fallbackStageLabel(item.deepLearnStatus, item.deepLearnQuizReady)}
+                      tone={item.deepLearnStatus === 'ready' ? 'accent' : item.deepLearnStatus === 'failed' || item.deepLearnStatus === 'blocked' ? 'warning' : 'muted'}
+                    />
                     {item.required && <ResourcePill label="Required" tone="warning" />}
                   </div>
                   <h4 style={{ margin: 0, fontSize: '0.98rem', lineHeight: 1.38, color: 'var(--text-primary)' }}>
@@ -182,28 +171,11 @@ export function StudyResourceAccordionList({
 
               {expanded && (
                 <div style={{ display: 'grid', gap: '0.75rem' }}>
-                  {presentationMode === 'deep_learn_first' ? (
-                    <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.9rem 0.95rem', display: 'grid', gap: '0.45rem' }}>
-                      <p className="ui-kicker" style={{ margin: 0 }}>Saved exam prep pack</p>
-                      <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.72, color: 'var(--text-secondary)' }}>
-                        {item.deepLearnDetail}
-                      </p>
-                      {item.deepLearnNoteFailure && (
-                        <p style={{ margin: 0, fontSize: '12px', lineHeight: 1.6, color: 'var(--red)' }}>
-                          {item.deepLearnNoteFailure}
-                        </p>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.9rem 0.95rem', display: 'grid', gap: '0.4rem' }}>
-                      <p className="ui-kicker" style={{ margin: 0 }}>{item.deepLearnStatusLabel}</p>
-                      <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.72, color: 'var(--text-secondary)' }}>
-                        {item.deepLearnDetail}
-                      </p>
-                      <p style={{ margin: 0, fontSize: '12px', lineHeight: 1.6, color: 'var(--text-muted)' }}>
-                        {presentationMode === 'source_first'
-                          ? 'The original source still matters most here. The source fallback stays nearby, but the exam prep pack becomes the main study surface once you build it.'
-                          : 'The source fallback stays nearby for validation, but the exam prep pack is the primary study path for this resource.'}
+                  {item.deepLearnNoteFailure && (
+                    <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.9rem 0.95rem' }}>
+                      <p className="ui-kicker" style={{ margin: 0 }}>Pack error</p>
+                      <p style={{ margin: '0.38rem 0 0', fontSize: '12px', lineHeight: 1.6, color: 'var(--red)' }}>
+                        {item.deepLearnNoteFailure}
                       </p>
                     </div>
                   )}
@@ -211,37 +183,29 @@ export function StudyResourceAccordionList({
                   <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
                     {item.deepLearnStatus === 'ready' || item.deepLearnStatus === 'pending' ? (
                       <Link href={item.deepLearnNoteHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
-                        {item.deepLearnPrimaryLabel}
+                        Open Draft
                       </Link>
                     ) : item.deepLearnStatus === 'unavailable' || item.deepLearnStatus === 'blocked' ? (
                       <Link href={item.readerHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
-                        {item.deepLearnPrimaryLabel}
+                        Open Source
                       </Link>
                     ) : (
                       <DeepLearnGenerateButton
                         moduleId={item.moduleId}
                         resourceId={item.id}
                         courseId={item.courseId ?? null}
-                        label={item.deepLearnPrimaryLabel}
+                        label="Create Draft"
                       />
                     )}
                     {item.deepLearnStatus === 'ready' && item.deepLearnQuizReady && (
                       <Link href={item.deepLearnQuizHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-                        Quiz this
+                        Quiz
                       </Link>
                     )}
                     {sourceHref && (
                       <a href={sourceHref} target="_blank" rel="noreferrer" className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-                        {showSourceAsPrimary ? item.sourceActionLabel : 'Open source fallback'}
+                        {item.sourceActionLabel}
                       </a>
-                    )}
-                    <Link href={item.readerHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-                      Source details
-                    </Link>
-                    {item.extraActionHref && item.extraActionLabel && (
-                      <Link href={item.extraActionHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-                        {item.extraActionLabel}
-                      </Link>
                     )}
                   </div>
                 </div>
@@ -254,7 +218,16 @@ export function StudyResourceAccordionList({
   )
 }
 
-type StudyResourcePresentationMode = 'deep_learn_first' | 'reader_fallback' | 'source_first'
+function fallbackStageLabel(
+  status: StudyResourceAccordionItem['deepLearnStatus'],
+  quizReady: boolean,
+) {
+  if (status === 'ready') return quizReady ? 'Review Ready' : 'Organize'
+  if (status === 'blocked') return 'Source issue'
+  if (status === 'unavailable') return 'Unavailable'
+  return 'Draft'
+}
+
 
 function ResourcePill({
   label,

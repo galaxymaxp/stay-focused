@@ -8,8 +8,8 @@ test('resources without a pack default to answer-first generation', () => {
   const state = getDeepLearnResourceUiState('module-1', 'resource-1', null)
 
   assert.equal(state.status, 'not_started')
-  assert.equal(state.statusLabel, 'No pack yet')
-  assert.equal(state.primaryLabel, 'Build Exam Prep Pack')
+  assert.equal(state.statusLabel, 'Draft')
+  assert.equal(state.primaryLabel, 'Create Draft')
   assert.equal(state.quizReady, false)
   assert.match(state.summary, /answer-first exam prep pack/i)
 })
@@ -22,8 +22,8 @@ test('ready packs surface quiz-ready state and pack-first actions', () => {
   }))
 
   assert.equal(state.status, 'ready')
-  assert.equal(state.statusLabel, 'Ready')
-  assert.equal(state.primaryLabel, 'Open Exam Prep Pack')
+  assert.equal(state.statusLabel, 'Review Ready')
+  assert.equal(state.primaryLabel, 'Open Draft')
   assert.equal(state.quizReady, true)
   assert.match(state.detail, /answer-bank review/i)
 })
@@ -35,7 +35,7 @@ test('failed packs shift the action to rebuild', () => {
   }))
 
   assert.equal(state.status, 'failed')
-  assert.equal(state.primaryLabel, 'Rebuild Exam Prep Pack')
+  assert.equal(state.primaryLabel, 'Create Draft')
   assert.match(state.summary, /too weak/i)
 })
 
@@ -47,7 +47,7 @@ test('unavailable pack loading is distinct from having no pack yet', () => {
 
   assert.equal(state.status, 'unavailable')
   assert.equal(state.statusLabel, 'Unavailable')
-  assert.equal(state.primaryLabel, 'Open source fallback')
+  assert.equal(state.primaryLabel, 'Open Source')
   assert.match(state.summary, /deep_learn_notes table/i)
 })
 
@@ -68,7 +68,7 @@ test('unreadable resources suppress the generate affordance and show the source 
 
   assert.equal(state.status, 'blocked')
   assert.equal(state.statusLabel, 'Source issue')
-  assert.equal(state.primaryLabel, 'Open source fallback')
+  assert.equal(state.primaryLabel, 'Open Source')
   assert.match(state.detail, /resolvable module-item target/i)
 })
 

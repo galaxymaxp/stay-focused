@@ -49,6 +49,7 @@ export function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { label: string; variant: BadgeVariant }> = {
     ready: { label: 'Ready', variant: 'success' },
     generating: { label: 'Generating', variant: 'info' },
+    refining: { label: 'Refining', variant: 'accent' },
     failed: { label: 'Failed', variant: 'error' },
     in_progress: { label: 'In Progress', variant: 'accent' },
     not_started: { label: 'Not Started', variant: 'muted' },
@@ -65,6 +66,16 @@ export function StatusBadge({ status }: { status: string }) {
 
 export function TypeBadge({ type }: { type: string }) {
   const labels: Record<string, string> = {
+    // Draft types
+    exam_reviewer: 'Exam Reviewer',
+    study_notes: 'Study Notes',
+    summary: 'Summary',
+    flashcard_set: 'Flashcard Set',
+    // Draft source types
+    module: 'Module',
+    upload: 'Upload',
+    paste: 'Pasted',
+    // Legacy / other types
     essay: 'Essay',
     study_guide: 'Study Guide',
     notes: 'Notes',
@@ -77,7 +88,6 @@ export function TypeBadge({ type }: { type: string }) {
     lab: 'Lab',
     reading: 'Reading',
     video: 'Video',
-    module: 'Module',
     lesson: 'Lesson',
   }
   return <Badge variant="muted">{labels[type] ?? type}</Badge>

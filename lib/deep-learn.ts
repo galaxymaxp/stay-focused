@@ -8,6 +8,7 @@ import type {
   DeepLearnMultipleChoiceItem,
   DeepLearnNote,
   DeepLearnNoteSection,
+  DeepLearnReviewItemType,
   DeepLearnNoteStatus,
   DeepLearnSourceGrounding,
   DeepLearnTermImportance,
@@ -210,6 +211,7 @@ export function buildDeepLearnTimeline(answerBank: DeepLearnAnswerBankItem[]) {
       detail: resolveDeepLearnWording(item.compactAnswer, 'exam_safe'),
       sortKey: normalizeSortKey(item.sortKey) ?? deriveSortKeyFromCue(item.cue),
       importance: item.importance,
+      ...buildReviewLinkFields(asRecord(item), 'timeline', item.cue, resolveDeepLearnWording(item.compactAnswer, 'exam_safe')),
     }) satisfies DeepLearnTimelineItem)
     .sort((left, right) => compareTimelineSortKeys(left.sortKey, right.sortKey) || left.label.localeCompare(right.label))
     .slice(0, 12)
@@ -252,6 +254,12 @@ function buildAnswerBankMcq(item: DeepLearnAnswerBankItem, answerPool: string[])
     correctAnswer,
     explanation: buildMcqExplanation(item.kind),
     importance: item.importance,
+    ...buildReviewLinkFields(
+      asRecord(item),
+      'mcq',
+      buildAnswerBankQuestion(item),
+      resolveDeepLearnWording(item.compactAnswer, 'exam_safe'),
+    ),
   } satisfies DeepLearnMultipleChoiceItem
 }
 
@@ -270,6 +278,12 @@ function buildIdentificationMcq(item: DeepLearnIdentificationItem, answerPool: s
     correctAnswer,
     explanation: 'This item stays phrased as a direct exam prompt instead of a long explanatory note.',
     importance: item.importance,
+    ...buildReviewLinkFields(
+      asRecord(item),
+      'mcq',
+      buildIdentificationQuestion(item),
+      resolveDeepLearnWording(item.answer, 'exam_safe'),
+    ),
   } satisfies DeepLearnMultipleChoiceItem
 }
 
@@ -289,6 +303,12 @@ function buildDistinctionMcq(item: DeepLearnDistinction, distinctionPool: string
     correctAnswer,
     explanation: 'This pair was flagged because it is easy to confuse in exams.',
     importance: 'high',
+    ...buildReviewLinkFields(
+      asRecord(item),
+      'mcq',
+      `Which distinction correctly separates ${item.conceptA} from ${item.conceptB}?`,
+      item.confusionNote ?? item.difference,
+    ),
   } satisfies DeepLearnMultipleChoiceItem
 }
 
@@ -340,11 +360,11 @@ function normalizeSections(value: unknown) {
     .slice(0, 6)
 }
 
-function normalizeAnswerBank(value: unknown) {
+function normalizeAnswerBank(value: unknown): DeepLearnAnswerBankItem[] {
   if (!Array.isArray(value)) return []
 
   return value
-    .map((entry, index) => {
+    .map((entry, index): DeepLearnAnswerBankItem | null => {
       if (typeof entry === 'string') {
         const answer = normalizeWordingSet(entry)
         if (!answer) return null
@@ -357,6 +377,7 @@ function normalizeAnswerBank(value: unknown) {
           importance: 'medium',
           sortKey: null,
           distractors: [],
+          ...buildReviewLinkFields({}, 'answer_bank', `Key answer ${index + 1}`, answer.examSafe),
         } satisfies DeepLearnAnswerBankItem
       }
 
@@ -374,17 +395,18 @@ function normalizeAnswerBank(value: unknown) {
         importance: normalizeImportance(record.importance),
         sortKey: normalizeSortKey(record.sortKey) ?? deriveSortKeyFromCue(cue),
         distractors: normalizeStringList(record.distractors, 4),
+        ...buildReviewLinkFields(record, 'answer_bank', cue, compactAnswer.examSafe),
       } satisfies DeepLearnAnswerBankItem
     })
     .filter((entry): entry is DeepLearnAnswerBankItem => Boolean(entry))
     .slice(0, 16)
 }
 
-function normalizeIdentificationItems(value: unknown) {
+function normalizeIdentificationItems(value: unknown): DeepLearnIdentificationItem[] {
   if (!Array.isArray(value)) return []
 
   return value
-    .map((entry) => {
+    .map((entry): DeepLearnIdentificationItem | null => {
       const record = asRecord(entry)
       const prompt = cleanShortText(record.prompt)
       const answer = normalizeWordingSet(record.answer)
@@ -396,17 +418,18 @@ function normalizeIdentificationItems(value: unknown) {
         answer,
         importance: normalizeImportance(record.importance),
         distractors: normalizeStringList(record.distractors, 4),
+        ...buildReviewLinkFields(record, 'identification', prompt, answer.examSafe),
       } satisfies DeepLearnIdentificationItem
     })
     .filter((entry): entry is DeepLearnIdentificationItem => Boolean(entry))
     .slice(0, 18)
 }
 
-function normalizeDistinctions(value: unknown) {
+function normalizeDistinctions(value: unknown): DeepLearnDistinction[] {
   if (!Array.isArray(value)) return []
 
   return value
-    .map((entry) => {
+    .map((entry): DeepLearnDistinction | null => {
       const record = asRecord(entry)
       const conceptA = cleanShortText(record.conceptA)
       const conceptB = cleanShortText(record.conceptB)
@@ -418,17 +441,18 @@ function normalizeDistinctions(value: unknown) {
         conceptB,
         difference,
         confusionNote: cleanParagraph(record.confusionNote),
+        ...buildReviewLinkFields(record, 'distinction', `${conceptA} vs ${conceptB}`, difference),
       } satisfies DeepLearnDistinction
     })
     .filter((entry): entry is DeepLearnDistinction => Boolean(entry))
     .slice(0, 8)
 }
 
-function normalizeLikelyQuizTargets(value: unknown) {
+function normalizeLikelyQuizTargets(value: unknown): DeepLearnLikelyQuizTarget[] {
   if (!Array.isArray(value)) return []
 
   return value
-    .map((entry, index) => {
+    .map((entry, index): DeepLearnLikelyQuizTarget | null => {
       if (typeof entry === 'string') {
         const target = cleanParagraph(entry)
         if (!target) return null
@@ -439,6 +463,7 @@ function normalizeLikelyQuizTargets(value: unknown) {
             ? 'Ranked high because it is explicit and answerable from the source.'
             : 'Ranked because it is likely to appear as a recall or recognition item.',
           importance: index === 0 ? 'high' : 'medium',
+          ...buildReviewLinkFields({}, 'quiz_target', target, target),
         } satisfies DeepLearnLikelyQuizTarget
       }
 
@@ -451,6 +476,7 @@ function normalizeLikelyQuizTargets(value: unknown) {
         target,
         reason,
         importance: normalizeImportance(record.importance),
+        ...buildReviewLinkFields(record, 'quiz_target', target, reason),
       } satisfies DeepLearnLikelyQuizTarget
     })
     .filter((entry): entry is DeepLearnLikelyQuizTarget => Boolean(entry))
@@ -477,6 +503,28 @@ function normalizeWordingSet(value: unknown): DeepLearnWordingSet | null {
     exact: cleanParagraph(record.exact),
     examSafe,
     simplified: cleanParagraph(record.simplified),
+  }
+}
+
+function buildReviewLinkFields(
+  record: Record<string, unknown>,
+  itemType: DeepLearnReviewItemType,
+  fallbackReviewText: string,
+  fallbackDraftExplanation: string,
+) {
+  const draftExplanation = cleanParagraph(record.draftExplanation) ?? cleanParagraph(fallbackDraftExplanation)
+
+  return {
+    reviewText: cleanParagraph(record.reviewText) ?? cleanParagraph(fallbackReviewText) ?? fallbackReviewText,
+    draftExplanation,
+    sourceSnippet: cleanParagraph(record.sourceSnippet),
+    linkedDraftSectionId: normalizeSectionId(record.linkedDraftSectionId),
+    itemType,
+    supportingContext: cleanParagraph(record.supportingContext) ?? draftExplanation,
+    compareContext: cleanParagraph(record.compareContext),
+    simplifiedWording: cleanParagraph(record.simplifiedWording),
+    confusionNotes: normalizeStringList(record.confusionNotes, 3),
+    relatedConcepts: normalizeStringList(record.relatedConcepts, 5),
   }
 }
 
@@ -523,6 +571,12 @@ function normalizeSortKey(value: unknown) {
   if (typeof value !== 'string') return null
   const cleaned = value.trim()
   return cleaned && cleaned.length <= 32 ? cleaned : null
+}
+
+function normalizeSectionId(value: unknown) {
+  if (typeof value !== 'string') return null
+  const cleaned = value.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '')
+  return cleaned && cleaned.length <= 96 ? cleaned : null
 }
 
 function deriveSortKeyFromCue(cue: string) {

@@ -1,69 +1,101 @@
 import Link from 'next/link'
-import { ArrowRight, Loader2, AlertCircle } from 'lucide-react'
-import { StatusBadge, TypeBadge } from '@/components/ui/Badge'
-import type { Draft } from '@/lib/mock-data'
-import { cn } from '@/lib/cn'
+import type { DraftSummary } from '@/lib/types'
 
-type Props = {
-  draft: Draft
+const typeLabels: Record<string, string> = {
+  exam_reviewer: 'Exam Reviewer',
+  study_notes: 'Study Notes',
+  summary: 'Summary',
+  flashcard_set: 'Flashcard Set',
 }
 
-export function DraftCard({ draft }: Props) {
-  const isGenerating = draft.status === 'generating'
-  const isFailed = draft.status === 'failed'
+const statusLabels: Record<string, string> = {
+  ready: 'Ready',
+  generating: 'Generating',
+  refining: 'Refining',
+  failed: 'Failed',
+  draft: 'Draft',
+}
+
+function statusTone(status: string): 'accent' | 'warning' | 'muted' {
+  if (status === 'ready') return 'accent'
+  if (status === 'failed') return 'warning'
+  return 'muted'
+}
+
+export function DraftCard({ draft }: { draft: DraftSummary }) {
+  const tone = statusTone(draft.status)
+  const pillBg = tone === 'accent'
+    ? 'color-mix(in srgb, var(--surface-selected) 84%, var(--accent) 16%)'
+    : tone === 'warning'
+      ? 'color-mix(in srgb, var(--amber-light) 40%, var(--surface-soft) 60%)'
+      : 'color-mix(in srgb, var(--surface-soft) 92%, transparent)'
+  const pillBorder = tone === 'accent'
+    ? 'color-mix(in srgb, var(--accent-border) 30%, var(--border-subtle) 70%)'
+    : tone === 'warning'
+      ? 'color-mix(in srgb, var(--amber) 24%, var(--border-subtle) 76%)'
+      : 'var(--border-subtle)'
 
   return (
     <Link
       href={`/drafts/${draft.id}`}
-      className={cn(
-        'group flex items-start gap-4 rounded-xl border bg-sf-surface p-5 hover:shadow-sm transition-all',
-        isFailed ? 'border-sf-error-bg hover:border-sf-error/30' : 'border-sf-border hover:border-sf-border',
-      )}
+      style={{
+        display: 'grid',
+        gap: '0.38rem',
+        borderRadius: 'var(--radius-tight)',
+        border: '1px solid color-mix(in srgb, var(--border-subtle) 84%, transparent)',
+        background: 'color-mix(in srgb, var(--surface-elevated) 94%, transparent)',
+        padding: '0.8rem 0.85rem',
+        textDecoration: 'none',
+        boxShadow: 'var(--shadow-low)',
+        transition: 'border-color 0.12s, box-shadow 0.12s',
+      }}
+      className="ui-interactive-card"
     >
-      {/* Type icon indicator */}
-      <div className={cn(
-        'h-10 w-10 flex-shrink-0 rounded-xl flex items-center justify-center text-xs font-bold text-white',
-        {
-          'bg-sf-accent': draft.type === 'essay',
-          'bg-sf-success': draft.type === 'study_guide',
-          'bg-[#E8824B]': draft.type === 'notes',
-          'bg-[#E84B9E]': draft.type === 'flashcards',
-          'bg-sf-info': draft.type === 'template',
-          'bg-sf-muted': draft.type === 'outline',
-        }
-      )}>
-        {isGenerating ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
-        ) : isFailed ? (
-          <AlertCircle className="h-4 w-4" />
-        ) : (
-          draft.type.charAt(0).toUpperCase()
-        )}
+      <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
+        <span style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          padding: '0.24rem 0.55rem',
+          borderRadius: '999px',
+          border: '1px solid var(--border-subtle)',
+          background: 'color-mix(in srgb, var(--surface-soft) 92%, transparent)',
+          fontSize: '11px',
+          fontWeight: 700,
+          lineHeight: 1.2,
+          color: 'var(--text-primary)',
+        }}>
+          {typeLabels[draft.draftType] ?? draft.draftType}
+        </span>
+        <span style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          padding: '0.24rem 0.55rem',
+          borderRadius: '999px',
+          border: `1px solid ${pillBorder}`,
+          background: pillBg,
+          fontSize: '11px',
+          fontWeight: 700,
+          lineHeight: 1.2,
+          color: 'var(--text-primary)',
+        }}>
+          {statusLabels[draft.status] ?? draft.status}
+        </span>
       </div>
 
-      <div className="flex-1 min-w-0">
-        <div className="flex items-start justify-between gap-3 mb-1.5">
-          <p className="text-sm font-semibold text-sf-text leading-5 group-hover:text-sf-accent transition-colors line-clamp-2">
-            {draft.title}
-          </p>
-          <ArrowRight className="h-4 w-4 text-sf-border flex-shrink-0 mt-0.5 group-hover:text-sf-accent transition-colors" />
-        </div>
+      <p style={{ margin: 0, fontSize: '0.93rem', lineHeight: 1.4, color: 'var(--text-primary)', fontWeight: 650 }}>
+        {draft.title}
+      </p>
 
-        <p className="text-xs text-sf-muted mb-3 line-clamp-1">{draft.source}</p>
+      {draft.sourceTitle && (
+        <p style={{ margin: 0, fontSize: '12px', lineHeight: 1.55, color: 'var(--text-muted)' }}>
+          {draft.sourceTitle}
+        </p>
+      )}
 
-        {draft.excerpt && (
-          <p className="text-xs text-sf-subtle leading-relaxed mb-3 line-clamp-2">{draft.excerpt}</p>
-        )}
-
-        <div className="flex items-center gap-2 flex-wrap">
-          <TypeBadge type={draft.type} />
-          <StatusBadge status={draft.status} />
-          {draft.wordCount && (
-            <span className="text-xs text-sf-subtle">{draft.wordCount.toLocaleString()} words</span>
-          )}
-          <span className="text-xs text-sf-subtle ml-auto">{draft.updatedAt}</span>
-        </div>
-      </div>
+      <p style={{ margin: '0.1rem 0 0', fontSize: '11px', lineHeight: 1.4, color: 'var(--text-muted)' }}>
+        {new Date(draft.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+        {draft.tokenCount ? ` · ${draft.tokenCount.toLocaleString()} tokens` : ''}
+      </p>
     </Link>
   )
 }

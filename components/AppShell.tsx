@@ -14,13 +14,21 @@ const NAV_ITEMS = [
     label: 'Home',
     matches: (pathname: string) => pathname === '/',
     icon: (
-      <path d="M5.75 10.75 12 5.75l6.25 5v7.5h-4.5V13h-3.5v5.25h-4.5z" />
+      <>
+        <path d="M4.75 11.25 12 5.5l7.25 5.75" />
+        <path d="M7.25 10.25v8h9.5v-8" />
+        <path d="M10.25 18.25v-4.5h3.5v4.5" />
+      </>
     ),
   },
   {
     href: '/courses',
     label: 'Courses',
-    matches: (pathname: string) => pathname.startsWith('/courses') || pathname === '/learn' || pathname.includes('/learn'),
+    matches: (pathname: string) =>
+      pathname.startsWith('/courses') ||
+      pathname.startsWith('/modules') ||
+      pathname === '/learn' ||
+      pathname.includes('/learn'),
     icon: (
       <>
         <path d="M6 6.75h11.5a1.75 1.75 0 0 1 1.75 1.75v8.75H8a2 2 0 0 0-2 2V6.75Z" />
@@ -29,24 +37,14 @@ const NAV_ITEMS = [
     ),
   },
   {
-    href: '/do',
-    label: 'Do Now',
-    matches: (pathname: string) => pathname === '/do',
+    href: '/drafts',
+    label: 'Draft',
+    matches: (pathname: string) => pathname.startsWith('/drafts'),
     icon: (
       <>
-        <circle cx="12" cy="12" r="8.25" />
-        <path d="m9.75 12.1 1.6 1.65 3.2-3.45" />
-      </>
-    ),
-  },
-  {
-    href: '/tasks',
-    label: 'Tasks',
-    matches: (pathname: string) => pathname === '/tasks' || /\/modules\/.+\/do/.test(pathname),
-    icon: (
-      <>
-        <rect x="5.75" y="6.5" width="12.5" height="11" rx="2" />
-        <path d="M9 10h6M9 13.25h6M9 16.5h3.75" />
+        <path d="M7.25 4.75h6.9l2.6 2.6v11.9H7.25z" />
+        <path d="M14 4.9v2.7h2.65" />
+        <path d="M9.6 11.15h4.8M9.6 14.1h4.8M9.6 17.05h3.1" />
       </>
     ),
   },
@@ -75,11 +73,14 @@ const NAV_ITEMS = [
 ] as const
 
 const MOBILE_NAV_ITEMS = NAV_ITEMS
+const EXPANSION_TRIGGER_SELECTOR = 'button[aria-expanded], [role="button"][aria-expanded], summary'
+const EXPANSION_TARGET_SELECTOR = '[data-expanded-scroll-target], .ui-interactive-card, details, article, section'
 
 function resolveTopbarSubLabel(pathname: string): string | null {
   if (/\/modules\/[^/]+\/learn/.test(pathname)) return 'Learn'
   if (/\/modules\/[^/]+\/quiz/.test(pathname)) return 'Quiz'
   if (/\/modules\/[^/]+\/do/.test(pathname)) return 'Do'
+  if (pathname.startsWith('/drafts')) return 'Draft'
   if (/\/modules\/[^/]+\/review/.test(pathname)) return 'Review'
   if (/\/modules\/[^/]+\/inspect/.test(pathname)) return 'Inspect'
   if (/\/modules\/[^/]+\/source/.test(pathname)) return 'Source'
@@ -99,11 +100,47 @@ export function AppShell({
   const activeSection = NAV_ITEMS.find((item) => item.matches(pathname)) ?? NAV_ITEMS[0]
   const subLabel = resolveTopbarSubLabel(pathname)
   const [scrolled, setScrolled] = useState(false)
+  const currentModuleId = pathname.match(/\/modules\/([^/]+)/)?.[1] ?? null
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 48)
     window.addEventListener('scroll', onScroll, { passive: true })
     return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+
+  useEffect(() => {
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)')
+
+    function onExpansionClick(event: MouseEvent) {
+      if (event.defaultPrevented || prefersReducedMotion.matches) return
+
+      const eventTarget = event.target
+      if (!(eventTarget instanceof Element)) return
+      if (eventTarget.closest('[data-review-support-trigger]')) return
+
+      const trigger = eventTarget.closest(EXPANSION_TRIGGER_SELECTOR)
+      if (!trigger || !trigger.closest('.app-content')) return
+
+      const isOpeningDetails = trigger.tagName.toLowerCase() === 'summary'
+        && trigger.parentElement instanceof HTMLDetailsElement
+        && !trigger.parentElement.open
+      const ariaExpanded = trigger.getAttribute('aria-expanded')
+      const isOpeningAriaControl = ariaExpanded === 'false'
+
+      if (!isOpeningDetails && !isOpeningAriaControl) return
+
+      const scrollTarget = trigger.closest(EXPANSION_TARGET_SELECTOR)
+      if (!(scrollTarget instanceof HTMLElement)) return
+
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          scrollTarget.scrollIntoView({ block: 'start', behavior: 'smooth' })
+        })
+      })
+    }
+
+    document.addEventListener('click', onExpansionClick, true)
+    return () => document.removeEventListener('click', onExpansionClick, true)
   }, [])
 
   return (
@@ -120,16 +157,38 @@ export function AppShell({
           <nav className="app-nav" aria-label="Primary">
             {NAV_ITEMS.map((item) => {
               const isActive = item.matches(pathname)
+              const showSubNav = item.href === '/courses' && currentModuleId !== null
 
               return (
-                <Link key={item.href} href={item.href} className="app-nav-link" data-active={isActive} aria-current={isActive ? 'page' : undefined}>
-                  <span className="app-nav-icon" aria-hidden="true">
-                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-                      {item.icon}
-                    </svg>
-                  </span>
-                  <span className="app-nav-label">{item.label}</span>
-                </Link>
+                <div key={item.href}>
+                  <Link href={item.href} className="app-nav-link" data-active={isActive} aria-current={isActive ? 'page' : undefined}>
+                    <span className="app-nav-icon" aria-hidden="true">
+                      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                        {item.icon}
+                      </svg>
+                    </span>
+                    <span className="app-nav-label">{item.label}</span>
+                  </Link>
+                  {showSubNav && (
+                    <div className="app-nav-sub-group">
+                      {[
+                        { label: 'Learn', href: `/modules/${currentModuleId}/learn` },
+                        { label: 'Do', href: `/modules/${currentModuleId}/do` },
+                        { label: 'Quiz', href: `/modules/${currentModuleId}/quiz` },
+                      ].map((sub) => (
+                        <Link
+                          key={sub.href}
+                          href={sub.href}
+                          className="app-nav-sub-link"
+                          data-active={pathname.startsWith(sub.href)}
+                          aria-current={pathname.startsWith(sub.href) ? 'page' : undefined}
+                        >
+                          {sub.label}
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                </div>
               )
             })}
           </nav>
@@ -143,7 +202,7 @@ export function AppShell({
               <StayFocusedIcon size={20} color="var(--accent)" />
             </span>
             <div className="app-topbar-breadcrumb" data-scrolled={scrolled}>
-              <strong className="app-topbar-current">{activeSection.label}</strong>
+              <strong className="app-topbar-current">{activeSection?.label ?? 'Stay Focused'}</strong>
               {subLabel ? (
                 <>
                   <span className="app-topbar-sep" aria-hidden="true">/</span>

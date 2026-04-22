@@ -43,7 +43,7 @@ export function ModuleLensShell({
               {lensCopy}
             </p>
             <nav className="module-lens-tabs" aria-label="Module sections">
-              <LensTab href={`/modules/${moduleId}/learn`} label="Learn" active={currentLens === 'learn'} />
+              <LensTab href={`/modules/${moduleId}/learn`} label="Deep Learn" active={currentLens === 'learn'} />
               <LensTab href={`/modules/${moduleId}/do`} label="Do" active={currentLens === 'do'} />
               <LensTab href={`/modules/${moduleId}/quiz`} label="Quiz" active={currentLens === 'quiz'} />
             </nav>
@@ -53,7 +53,7 @@ export function ModuleLensShell({
             <div className="command-header-actions">
               <span className="ui-chip ui-chip-soft">{courseName}</span>
               {courseId && (
-                <Link href={`/courses/${courseId}/learn`} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+                <Link href={`/courses/${courseId}`} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
                   Course Learn
                 </Link>
               )}

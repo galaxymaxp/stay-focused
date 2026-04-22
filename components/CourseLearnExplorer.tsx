@@ -2,12 +2,10 @@
 
 import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
-import { ModuleTermBank } from '@/components/ModuleTermBank'
 import { StudyResourceAccordionList } from '@/components/StudyResourceAccordionList'
 import { buildModuleDoHref, getModuleElementId, getTaskElementId } from '@/lib/stay-focused-links'
 import type {
   CourseLearnModuleCard,
-  CourseLearnMoreRow,
   CourseLearnTaskRow,
 } from '@/lib/course-learn-overview'
 import type { Task } from '@/lib/types'
@@ -225,9 +223,6 @@ export function CourseLearnExplorer({
                         {module.summary}
                       </p>
                     </div>
-                    <p style={{ margin: 0, fontSize: '12px', lineHeight: 1.62, color: 'var(--text-muted)' }}>
-                      {module.termsStateMessage}
-                    </p>
                   </div>
 
                   <div style={{ display: 'grid', gap: '0.75rem' }}>
@@ -257,15 +252,7 @@ export function CourseLearnExplorer({
                 </div>
 
                 <section style={{ display: 'grid', gap: '0.8rem' }}>
-                  <div>
-                    <p className="ui-kicker">Exam prep packs</p>
-                    <h3 style={{ margin: '0.38rem 0 0', fontSize: '1rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>
-                      Build or reopen the answer-first pack before dropping into reader fallback
-                    </h3>
-                    <p style={{ margin: '0.4rem 0 0', fontSize: '14px', lineHeight: 1.68, color: 'var(--text-secondary)' }}>
-                      The course view now keeps Deep Learn front and center as an exam-prep workflow. Each resource can generate a saved pack with answer banks, identification cues, and quiz targets while the old reader stays secondary.
-                    </p>
-                  </div>
+                  <p className="ui-kicker">Exam prep packs</p>
 
                   {deepLearnUnavailable && module.deepLearnNotesMessage && (
                     <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.85rem 0.9rem', border: '1px solid color-mix(in srgb, var(--amber) 24%, var(--border-subtle) 76%)' }}>
@@ -297,23 +284,12 @@ export function CourseLearnExplorer({
                       readerHref: material.readerHref,
                       canvasHref: material.canvasHref,
                       originalFileHref: material.originalFileHref,
-                      extraActionHref: buildModuleDoHref(module.id, {
-                        resourceId: material.id,
-                      }),
-                      extraActionLabel: 'Open module Do',
                       deepLearnStatus: material.deepLearnStatus,
-                      deepLearnStatusLabel: material.deepLearnStatusLabel,
-                      deepLearnTone: material.deepLearnTone,
                       deepLearnSummary: material.deepLearnSummary,
-                      deepLearnDetail: material.deepLearnDetail,
-                      deepLearnPrimaryLabel: material.deepLearnPrimaryLabel,
                       deepLearnNoteHref: material.deepLearnNoteHref,
                       deepLearnQuizHref: material.deepLearnQuizHref,
                       deepLearnQuizReady: material.deepLearnQuizReady,
-                      deepLearnTermCount: material.deepLearnTermCount,
-                      deepLearnFactCount: material.deepLearnFactCount,
                       deepLearnNoteFailure: material.deepLearnNoteFailure,
-                      deepLearnAvailability: material.deepLearnAvailability,
                     }))}
                     initialOpenResourceId={validInitialOpenModuleId === module.id ? initialOpenResourceId : null}
                     emptyMessage="No active study materials are ready in this module yet."
@@ -329,48 +305,6 @@ export function CourseLearnExplorer({
                   targetTaskId={validInitialOpenModuleId === module.id ? initialTaskId : null}
                 />
 
-                <ModuleTermBank
-                  moduleId={module.id}
-                  courseId={module.courseId}
-                  finalTerms={module.finalTerms}
-                  suggestedTerms={module.suggestedTerms}
-                  dismissedCount={module.dismissedTermCount}
-                  embedded
-                />
-
-                <details className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.95rem 1rem' }}>
-                  <summary className="ui-interactive-summary" style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                    Source support
-                  </summary>
-                  <p style={{ margin: '0.7rem 0 0', fontSize: '13px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
-                    {module.sourceSupportNote}
-                  </p>
-
-                  {module.studyMaterials.length > 0 && (
-                    <div style={{ display: 'grid', gap: '0.65rem', marginTop: '0.8rem' }}>
-                      {module.studyMaterials.map((material) => (
-                        <SourceItemRow
-                          key={`${material.id}-source`}
-                          title={material.title}
-                          meta={`${material.fileTypeLabel} / ${material.readinessLabel}`}
-                          note={material.note}
-                          readerHref={material.readerHref}
-                          sourceHref={material.originalFileHref ?? material.canvasHref}
-                          sourceActionLabel={material.sourceActionLabel}
-                          primaryAction={material.primaryAction}
-                        />
-                      ))}
-                    </div>
-                  )}
-
-                  {module.moreItems.length > 0 && (
-                    <div style={{ display: 'grid', gap: '0.65rem', marginTop: '0.8rem' }}>
-                      {module.moreItems.map((item) => (
-                        <SupportSourceItemRow key={item.id} item={item} />
-                      ))}
-                    </div>
-                  )}
-                </details>
               </div>
             )}
           </article>
@@ -515,74 +449,6 @@ function buildDisplayedPendingTasks(tasks: CourseLearnTaskRow[], targetTaskId: s
   return [targetTask, ...initial.slice(0, 2)]
 }
 
-function SourceItemRow({
-  title,
-  meta,
-  note,
-  readerHref,
-  sourceHref,
-  sourceActionLabel,
-  primaryAction,
-}: {
-  title: string
-  meta: string
-  note: string
-  readerHref: string
-  sourceHref: string | null
-  sourceActionLabel: string
-  primaryAction: 'reader' | 'source'
-}) {
-  const showSourceAsPrimary = primaryAction === 'source' && Boolean(sourceHref)
-
-  return (
-    <article style={{ borderRadius: 'var(--radius-tight)', border: '1px solid color-mix(in srgb, var(--border-subtle) 84%, transparent)', padding: '0.8rem 0.85rem', display: 'grid', gap: '0.45rem' }}>
-      <p style={{ margin: 0, fontSize: '12px', lineHeight: 1.55, color: 'var(--text-muted)' }}>
-        {meta}
-      </p>
-      <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.5, color: 'var(--text-primary)', fontWeight: 650 }}>
-        {title}
-      </p>
-      <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.62, color: 'var(--text-secondary)' }}>
-        {note}
-      </p>
-      <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-        {showSourceAsPrimary ? (
-          <>
-            <a href={sourceHref!} target="_blank" rel="noreferrer" className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
-              {sourceActionLabel}
-            </a>
-            <Link href={readerHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-              Source details
-            </Link>
-          </>
-        ) : (
-          <Link href={readerHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
-            Source details
-          </Link>
-        )}
-        {!showSourceAsPrimary && sourceHref && (
-          <a href={sourceHref} target="_blank" rel="noreferrer" className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-            {sourceActionLabel}
-          </a>
-        )}
-      </div>
-    </article>
-  )
-}
-
-function SupportSourceItemRow({ item }: { item: CourseLearnMoreRow }) {
-  return (
-    <SourceItemRow
-      title={item.title}
-      meta={item.kindLabel}
-      note={item.note}
-      readerHref={item.detailHref}
-      sourceHref={item.canvasHref}
-      sourceActionLabel="Canvas"
-      primaryAction="reader"
-    />
-  )
-}
 
 function ReadinessPill({
   tone,

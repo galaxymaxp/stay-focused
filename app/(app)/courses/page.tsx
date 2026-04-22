@@ -2,7 +2,6 @@ import Link from 'next/link'
 import { SyncFirstEmptyState } from '@/components/SyncFirstEmptyState'
 import { getClarityWorkspace } from '@/lib/clarity-workspace'
 import { buildCourseSummaries, type CourseSummary } from '@/lib/course-summary'
-import { buildCourseLearnHref } from '@/lib/stay-focused-links'
 
 export default async function CoursesPage() {
   const workspace = await getClarityWorkspace()
@@ -48,7 +47,7 @@ export default async function CoursesPage() {
 }
 
 function CourseCard({ summary, index }: { summary: CourseSummary; index: number }) {
-  const href = buildCourseLearnHref(summary.course.id)
+  const href = `/courses/${summary.course.id}`
 
   return (
     <Link

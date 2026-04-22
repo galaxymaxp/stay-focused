@@ -1,7 +1,6 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { ModuleLensShell } from '@/components/ModuleLensShell'
-import { TaskStatusToggle } from '@/components/TaskStatusToggle'
 import { buildLearnExperience, extractCourseName, findRecommendedStepTargets, getModuleWorkspace, getResourceCanvasHref, getResourceOriginalFileHref, matchTaskToResource } from '@/lib/module-workspace'
 import { buildModuleLearnHref, getSearchParamValue, getTaskElementId } from '@/lib/stay-focused-links'
 import { sortTasksByRecommendation } from '@/lib/task-ranking'
@@ -170,13 +169,6 @@ export default async function DoPage({ params, searchParams }: Props) {
                         <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.62, color: 'var(--text-secondary)', overflowWrap: 'anywhere' }}>{task.details}</p>
                       )}
 
-                      <TaskStatusToggle
-                        status={task.status}
-                        moduleId={module.id}
-                        title={task.title}
-                        legacyTaskId={task.id}
-                      />
-
                       <div className="ui-meta-list">
                         <span><strong>Course:</strong> {courseName}</span>
                         <span><strong>Source:</strong> {module.title}</span>
@@ -291,12 +283,6 @@ export default async function DoPage({ params, searchParams }: Props) {
                         }}
                       >
                         <p style={{ margin: 0, fontSize: '14px', color: 'var(--text-muted)', textDecoration: 'line-through' }}>{task.title}</p>
-                        <TaskStatusToggle
-                          status={task.status}
-                          moduleId={module.id}
-                          title={task.title}
-                          legacyTaskId={task.id}
-                        />
                         <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
                           <TaskDraftButton
                             defaultOpen={draftAutoOpen && highlightedTaskId === task.id}
