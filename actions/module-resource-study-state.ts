@@ -72,7 +72,7 @@ export async function markStudyFileOpened(input: {
   revalidatePath('/learn')
   revalidatePath('/courses')
   if (input.courseId) {
-    revalidatePath(`/courses/${input.courseId}/learn`)
+    revalidatePath(`/courses/${input.courseId}`)
   }
   revalidatePath(`/modules/${input.moduleId}/learn`)
   revalidatePath(`/modules/${input.moduleId}/review`)
@@ -90,7 +90,7 @@ function revalidateStudyPaths(moduleId: string, resourceId: string, courseId?: s
   revalidatePath('/learn')
   revalidatePath('/courses')
   if (courseId) {
-    revalidatePath(`/courses/${courseId}/learn`)
+    revalidatePath(`/courses/${courseId}`)
   }
   revalidatePath(`/modules/${moduleId}`)
   revalidatePath(`/modules/${moduleId}/learn`)

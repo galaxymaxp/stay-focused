@@ -379,7 +379,6 @@ function revalidateDeepLearnPaths(moduleId: string, courseId: string | null, res
   revalidatePath('/courses')
   if (courseId) {
     revalidatePath(`/courses/${courseId}`)
-    revalidatePath(`/courses/${courseId}/learn`)
   }
   revalidatePath(`/modules/${moduleId}`)
   revalidatePath(`/modules/${moduleId}/learn`)

@@ -37,18 +37,6 @@ const NAV_ITEMS = [
     ),
   },
   {
-    href: '/drafts',
-    label: 'Draft',
-    matches: (pathname: string) => pathname.startsWith('/drafts'),
-    icon: (
-      <>
-        <path d="M7.25 4.75h6.9l2.6 2.6v11.9H7.25z" />
-        <path d="M14 4.9v2.7h2.65" />
-        <path d="M9.6 11.15h4.8M9.6 14.1h4.8M9.6 17.05h3.1" />
-      </>
-    ),
-  },
-  {
     href: '/calendar',
     label: 'Calendar',
     matches: (pathname: string) => pathname.startsWith('/calendar'),
@@ -80,7 +68,6 @@ function resolveTopbarSubLabel(pathname: string): string | null {
   if (/\/modules\/[^/]+\/learn/.test(pathname)) return 'Learn'
   if (/\/modules\/[^/]+\/quiz/.test(pathname)) return 'Quiz'
   if (/\/modules\/[^/]+\/do/.test(pathname)) return 'Do'
-  if (pathname.startsWith('/drafts')) return 'Draft'
   if (/\/modules\/[^/]+\/review/.test(pathname)) return 'Review'
   if (/\/modules\/[^/]+\/inspect/.test(pathname)) return 'Inspect'
   if (/\/modules\/[^/]+\/source/.test(pathname)) return 'Source'

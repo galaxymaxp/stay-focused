@@ -191,7 +191,7 @@ function revalidateTermPaths(moduleId: string, courseId?: string) {
   revalidatePath('/learn')
   revalidatePath('/courses')
   if (courseId) {
-    revalidatePath(`/courses/${courseId}/learn`)
+    revalidatePath(`/courses/${courseId}`)
   }
   revalidatePath(`/modules/${moduleId}`)
   revalidatePath(`/modules/${moduleId}/learn`)

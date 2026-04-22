@@ -94,7 +94,7 @@ function revalidateModuleResourcePaths(moduleId: string, courseId: string | null
   revalidatePath('/learn')
   revalidatePath('/courses')
   if (courseId) {
-    revalidatePath(`/courses/${courseId}/learn`)
+    revalidatePath(`/courses/${courseId}`)
   }
   revalidatePath(`/modules/${moduleId}`)
   revalidatePath(`/modules/${moduleId}/learn`)
