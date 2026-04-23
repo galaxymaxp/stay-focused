@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache'
 import { createServerClient } from '@supabase/ssr'
 import OpenAI from 'openai'
 import { getRequiredSupabaseAuthEnv, isSupabaseAuthConfigured } from '@/lib/supabase-auth-config'
+import type { TaskDraftContext, TaskDraftResponse } from '@/lib/do-now'
 import { getDraftPrompt } from '@/lib/prompts/drafts/index'
 import {
   buildLearnExperience,
@@ -117,7 +118,9 @@ function mapDraftRow(row: Record<string, unknown>): Draft {
   return {
     id: row.id as string,
     userId: row.user_id as string,
+    courseId: (row.course_id as string | null) ?? null,
     sourceType: row.source_type as Draft['sourceType'],
+    canonicalSourceId: ((row.canonical_source_id as string | null) ?? `legacy:${row.id as string}`),
     sourceModuleId: (row.source_module_id as string | null) ?? null,
     sourceResourceId: (row.source_resource_id as string | null) ?? null,
     sourceFilePath: (row.source_file_path as string | null) ?? null,
@@ -139,7 +142,10 @@ function mapDraftSummaryRow(row: Record<string, unknown>): DraftSummary {
   return {
     id: row.id as string,
     userId: row.user_id as string,
+    courseId: (row.course_id as string | null) ?? null,
     sourceType: row.source_type as Draft['sourceType'],
+    canonicalSourceId: ((row.canonical_source_id as string | null) ?? `legacy:${row.id as string}`),
+    sourceModuleId: (row.source_module_id as string | null) ?? null,
     sourceResourceId: (row.source_resource_id as string | null) ?? null,
     sourceTitle: row.source_title as string,
     draftType: row.draft_type as DraftType,
@@ -151,12 +157,63 @@ function mapDraftSummaryRow(row: Record<string, unknown>): DraftSummary {
   }
 }
 
-function revalidateUnifiedDraftPaths(moduleId: string | null, resourceId: string | null) {
-  if (!moduleId || !resourceId) return
+function revalidateUnifiedDraftPaths(input: {
+  courseId: string | null
+  moduleId: string | null
+  resourceId: string | null
+  draftId?: string | null
+}) {
+  revalidatePath('/drafts')
 
-  revalidatePath(`/modules/${moduleId}/learn/resources/${encodeURIComponent(resourceId)}`)
-  revalidatePath(`/modules/${moduleId}/learn/notes/${encodeURIComponent(resourceId)}`)
-  revalidatePath(`/modules/${moduleId}/learn`)
+  if (input.draftId) {
+    revalidatePath(`/drafts/${input.draftId}`)
+  }
+
+  if (input.courseId) {
+    revalidatePath(`/courses/${input.courseId}`)
+  }
+
+  if (input.moduleId) {
+    revalidatePath(`/modules/${input.moduleId}/learn`)
+    revalidatePath(`/modules/${input.moduleId}/do`)
+  }
+
+  if (input.moduleId && input.resourceId) {
+    revalidatePath(`/modules/${input.moduleId}/learn/resources/${encodeURIComponent(input.resourceId)}`)
+    revalidatePath(`/modules/${input.moduleId}/learn/notes/${encodeURIComponent(input.resourceId)}`)
+  }
+}
+
+function buildModuleResourceCanonicalSourceId(resourceId: string) {
+  return `resource:${resourceId}`
+}
+
+function buildTaskCanonicalSourceId(taskId: string, fallbackSourceKey?: string | null) {
+  return taskId ? `task:${taskId}` : `task-fallback:${fallbackSourceKey ?? 'unknown'}`
+}
+
+function buildTaskDraftMarkdown(draft: TaskDraftResponse) {
+  return [
+    '# Working Draft',
+    '',
+    draft.draftOutput.trim(),
+    '',
+    '## Requirement Summary',
+    draft.requirementSummary.trim(),
+    '',
+    '## Missing Or Unclear',
+    draft.missingDetails.trim(),
+    '',
+    '## What To Do Right Now',
+    draft.paperAction.trim(),
+    '',
+    '## Smallest Next Step',
+    draft.smallestNextStep.trim(),
+  ].join('\n')
+}
+
+function buildTaskDraftTitle(context: TaskDraftContext) {
+  return context.taskTitle.trim() || context.sourceTitle?.trim() || 'Task draft'
 }
 
 // ─── Public actions ────────────────────────────────────────────────────────
@@ -172,7 +229,7 @@ export async function listDraftsForShelves(): Promise<{
   const { data: draftRows } = await client
     .from('drafts')
     .select(
-      'id, user_id, source_type, source_module_id, source_resource_id, source_title, draft_type, title, status, token_count, created_at, updated_at, modules!source_module_id ( course_id, title )'
+      'id, user_id, course_id, source_type, canonical_source_id, source_module_id, source_resource_id, source_title, draft_type, title, status, token_count, created_at, updated_at, modules!source_module_id ( course_id, title )'
     )
     .order('updated_at', { ascending: false })
 
@@ -182,6 +239,8 @@ export async function listDraftsForShelves(): Promise<{
     return {
       id: r.id as string,
       userId: r.user_id as string,
+      courseId: (r.course_id as string | null) ?? mod?.course_id ?? null,
+      canonicalSourceId: ((r.canonical_source_id as string | null) ?? `legacy:${r.id as string}`),
       title: r.title as string,
       draftType: r.draft_type as DraftType,
       status: r.status as DraftStatus,
@@ -193,7 +252,6 @@ export async function listDraftsForShelves(): Promise<{
       sourceModuleId: (r.source_module_id as string | null) ?? null,
       sourceResourceId: (r.source_resource_id as string | null) ?? null,
       moduleTitle: mod?.title ?? null,
-      courseId: mod?.course_id ?? null,
     }
   })
 
@@ -221,7 +279,7 @@ export async function listDrafts(): Promise<DraftSummary[]> {
   const client = await createDraftsClient()
   const { data } = await client
     .from('drafts')
-    .select('id, user_id, source_type, source_resource_id, source_title, draft_type, title, status, token_count, created_at, updated_at')
+    .select('id, user_id, course_id, source_type, canonical_source_id, source_module_id, source_resource_id, source_title, draft_type, title, status, token_count, created_at, updated_at')
     .order('updated_at', { ascending: false })
 
   return (data ?? []).map((row) => mapDraftSummaryRow(row as Record<string, unknown>))
@@ -258,11 +316,12 @@ export async function getDraftForDeepLearnResource(
   }
 
   const client = await createDraftsClient()
+  const canonicalSourceId = buildModuleResourceCanonicalSourceId(resourceId)
   const { data, error } = await client
     .from('drafts')
     .select('*')
     .eq('source_module_id', moduleId)
-    .eq('source_resource_id', resourceId)
+    .eq('canonical_source_id', canonicalSourceId)
     .order('updated_at', { ascending: false })
     .limit(1)
     .maybeSingle()
@@ -338,7 +397,9 @@ export async function createDraftForDeepLearnResource(input: {
     .from('drafts')
     .insert({
       user_id: user.id,
-      source_type: 'module',
+      course_id: workspace.module.courseId ?? null,
+      source_type: 'module_resource',
+      canonical_source_id: buildModuleResourceCanonicalSourceId(canonicalResourceId),
       source_module_id: workspace.module.id,
       source_resource_id: canonicalResourceId,
       source_file_path: `module_resource:${canonicalResourceId}`,
@@ -378,90 +439,107 @@ export async function createDraftForDeepLearnResource(input: {
     await client.from('drafts').update({ status: 'failed' }).eq('id', draftId)
   }
 
-  revalidatePath(`/modules/${workspace.module.id}/learn/resources/${encodeURIComponent(input.resourceId)}`)
-  revalidateUnifiedDraftPaths(workspace.module.id, canonicalResourceId)
+  revalidateUnifiedDraftPaths({
+    courseId: workspace.module.courseId ?? null,
+    moduleId: workspace.module.id,
+    resourceId: canonicalResourceId,
+    draftId,
+  })
 
   return { draftId, moduleId: workspace.module.id, resourceId: canonicalResourceId }
 }
 
-export async function createDraft(formData: FormData): Promise<void> {
+export async function saveDraftFromTaskOutput(input: {
+  context: TaskDraftContext
+  draft: TaskDraftResponse
+}): Promise<{ draftId: string }> {
   if (!isSupabaseAuthConfigured) throw new Error('Supabase is not configured.')
+  if (!input.context.moduleId) throw new Error('Task drafts need a module context.')
 
   const client = await createDraftsClient()
   const {
     data: { user },
   } = await client.auth.getUser()
-  if (!user) throw new Error('You must be signed in to create a draft.')
+  if (!user) throw new Error('You must be signed in to save a draft.')
 
-  const sourceType = formData.get('source_type') as string
-  const draftType = formData.get('draft_type') as DraftType
-  const moduleId = formData.get('module_id') as string | null
-  const pasteContent = formData.get('paste_content') as string | null
-  const pasteTitle = formData.get('paste_title') as string | null
+  const canonicalSourceId = buildTaskCanonicalSourceId(
+    input.context.taskId ?? '',
+    input.context.sourceHref ?? input.context.canvasUrl ?? input.context.learnHref ?? input.context.taskTitle,
+  )
+  const rawContent = (
+    input.context.sourceText
+    ?? input.context.resourceSnippet
+    ?? input.context.taskDetails
+    ?? input.context.moduleSummary
+    ?? input.context.taskTitle
+  ).trim()
+  const title = buildTaskDraftTitle(input.context)
+  const bodyMarkdown = buildTaskDraftMarkdown(input.draft)
 
-  if (!draftType) throw new Error('Draft type is required.')
+  const { data: existing } = await client
+    .from('drafts')
+    .select('id')
+    .eq('canonical_source_id', canonicalSourceId)
+    .maybeSingle()
 
-  let rawContent = ''
-  let sourceTitle = ''
-  let sourceModuleId: string | null = null
+  if (existing?.id) {
+    await client
+      .from('drafts')
+      .update({
+        course_id: input.context.courseId ?? null,
+        source_type: 'task',
+        source_module_id: input.context.moduleId,
+        source_resource_id: null,
+        source_file_path: input.context.sourceHref ?? input.context.canvasUrl ?? input.context.learnHref ?? null,
+        source_raw_content: rawContent,
+        source_title: input.context.sourceTitle?.trim() || input.context.taskTitle.trim(),
+        draft_type: 'study_notes',
+        title,
+        body_markdown: bodyMarkdown,
+        status: 'ready',
+      })
+      .eq('id', existing.id as string)
 
-  if (sourceType === 'module' && moduleId) {
-    const { data: mod } = await client
-      .from('modules')
-      .select('id, title, raw_content')
-      .eq('id', moduleId)
-      .maybeSingle()
-    if (!mod) throw new Error('Module not found.')
-    rawContent = (mod.raw_content as string) ?? ''
-    sourceTitle = (mod.title as string) ?? 'Untitled Module'
-    sourceModuleId = mod.id as string
-  } else if (sourceType === 'paste' && pasteContent?.trim()) {
-    rawContent = pasteContent.trim()
-    sourceTitle = pasteTitle?.trim() || 'Pasted Content'
-  } else {
-    throw new Error('Invalid source: provide a module or paste content.')
+    revalidateUnifiedDraftPaths({
+      courseId: input.context.courseId ?? null,
+      moduleId: input.context.moduleId,
+      resourceId: null,
+      draftId: existing.id as string,
+    })
+
+    return { draftId: existing.id as string }
   }
 
-  if (!rawContent.trim()) throw new Error('Source content is empty.')
-
-  const { data: draft, error: insertError } = await client
+  const { data: created, error } = await client
     .from('drafts')
     .insert({
       user_id: user.id,
-      source_type: sourceType,
-      source_module_id: sourceModuleId,
+      course_id: input.context.courseId ?? null,
+      source_type: 'task',
+      canonical_source_id: canonicalSourceId,
+      source_module_id: input.context.moduleId,
+      source_resource_id: null,
+      source_file_path: input.context.sourceHref ?? input.context.canvasUrl ?? input.context.learnHref ?? null,
       source_raw_content: rawContent,
-      source_title: sourceTitle,
-      draft_type: draftType,
-      title: `${draftType.replace(/_/g, ' ')} — ${sourceTitle}`,
-      body_markdown: '',
-      status: 'generating',
+      source_title: input.context.sourceTitle?.trim() || input.context.taskTitle.trim(),
+      draft_type: 'study_notes',
+      title,
+      body_markdown: bodyMarkdown,
+      status: 'ready',
     })
     .select('id')
     .single()
 
-  if (insertError || !draft) throw new Error('Failed to create draft record.')
+  if (error || !created) throw new Error('Failed to save task draft.')
 
-  const draftId = draft.id as string
+  revalidateUnifiedDraftPaths({
+    courseId: input.context.courseId ?? null,
+    moduleId: input.context.moduleId,
+    resourceId: null,
+    draftId: created.id as string,
+  })
 
-  try {
-    const result = await generateDraftContent(rawContent, draftType)
-    await client
-      .from('drafts')
-      .update({
-        title: result.title,
-        body_markdown: result.body_markdown,
-        status: 'ready',
-        token_count: result.tokenCount,
-        generation_model: result.model,
-      })
-      .eq('id', draftId)
-  } catch {
-    await client.from('drafts').update({ status: 'failed' }).eq('id', draftId)
-  }
-
-  revalidatePath('/drafts')
-  redirect(`/drafts/${draftId}`)
+  return { draftId: created.id as string }
 }
 
 export async function regenerateDraft(draftId: string): Promise<void> {
@@ -471,7 +549,7 @@ export async function regenerateDraft(draftId: string): Promise<void> {
 
   const { data: existing } = await client
     .from('drafts')
-    .select('source_raw_content, source_title, draft_type, source_module_id, source_resource_id')
+    .select('source_raw_content, source_title, draft_type, course_id, source_module_id, source_resource_id')
     .eq('id', draftId)
     .maybeSingle()
 
@@ -499,11 +577,12 @@ export async function regenerateDraft(draftId: string): Promise<void> {
   }
 
   revalidatePath(`/drafts/${draftId}`)
-  revalidatePath('/drafts')
-  revalidateUnifiedDraftPaths(
-    (existing.source_module_id as string | null) ?? null,
-    (existing.source_resource_id as string | null) ?? null,
-  )
+  revalidateUnifiedDraftPaths({
+    courseId: (existing as { course_id?: string | null }).course_id ?? null,
+    moduleId: (existing.source_module_id as string | null) ?? null,
+    resourceId: (existing.source_resource_id as string | null) ?? null,
+    draftId,
+  })
 }
 
 export async function refineDraft(draftId: string, instruction: string): Promise<void> {
@@ -514,7 +593,7 @@ export async function refineDraft(draftId: string, instruction: string): Promise
 
   const { data: existing } = await client
     .from('drafts')
-    .select('body_markdown, source_raw_content, draft_type, refinement_history, source_module_id, source_resource_id')
+    .select('body_markdown, source_raw_content, draft_type, refinement_history, course_id, source_module_id, source_resource_id')
     .eq('id', draftId)
     .maybeSingle()
 
@@ -568,10 +647,12 @@ export async function refineDraft(draftId: string, instruction: string): Promise
   }
 
   revalidatePath(`/drafts/${draftId}`)
-  revalidateUnifiedDraftPaths(
-    (existing.source_module_id as string | null) ?? null,
-    (existing.source_resource_id as string | null) ?? null,
-  )
+  revalidateUnifiedDraftPaths({
+    courseId: (existing as { course_id?: string | null }).course_id ?? null,
+    moduleId: (existing.source_module_id as string | null) ?? null,
+    resourceId: (existing.source_resource_id as string | null) ?? null,
+    draftId,
+  })
 }
 
 export async function continueDraft(draftId: string): Promise<void> {
@@ -581,7 +662,7 @@ export async function continueDraft(draftId: string): Promise<void> {
 
   const { data: existing } = await client
     .from('drafts')
-    .select('body_markdown, source_raw_content, draft_type, source_module_id, source_resource_id')
+    .select('body_markdown, source_raw_content, draft_type, course_id, source_module_id, source_resource_id')
     .eq('id', draftId)
     .maybeSingle()
 
@@ -630,10 +711,12 @@ export async function continueDraft(draftId: string): Promise<void> {
   }
 
   revalidatePath(`/drafts/${draftId}`)
-  revalidateUnifiedDraftPaths(
-    (existing.source_module_id as string | null) ?? null,
-    (existing.source_resource_id as string | null) ?? null,
-  )
+  revalidateUnifiedDraftPaths({
+    courseId: (existing as { course_id?: string | null }).course_id ?? null,
+    moduleId: (existing.source_module_id as string | null) ?? null,
+    resourceId: (existing.source_resource_id as string | null) ?? null,
+    draftId,
+  })
 }
 
 export async function updateDraftBody(draftId: string, newMarkdown: string): Promise<void> {
@@ -644,23 +727,34 @@ export async function updateDraftBody(draftId: string, newMarkdown: string): Pro
     .from('drafts')
     .update({ body_markdown: newMarkdown })
     .eq('id', draftId)
-    .select('source_module_id, source_resource_id')
+    .select('course_id, source_module_id, source_resource_id')
     .maybeSingle()
 
-  revalidatePath(`/drafts/${draftId}`)
-  revalidateUnifiedDraftPaths(
-    (data?.source_module_id as string | null) ?? null,
-    (data?.source_resource_id as string | null) ?? null,
-  )
+  revalidateUnifiedDraftPaths({
+    courseId: (data?.course_id as string | null) ?? null,
+    moduleId: (data?.source_module_id as string | null) ?? null,
+    resourceId: (data?.source_resource_id as string | null) ?? null,
+    draftId,
+  })
 }
 
 export async function deleteDraft(draftId: string): Promise<void> {
   if (!isSupabaseAuthConfigured) throw new Error('Supabase is not configured.')
 
   const client = await createDraftsClient()
+  const { data: existing } = await client
+    .from('drafts')
+    .select('course_id, source_module_id, source_resource_id')
+    .eq('id', draftId)
+    .maybeSingle()
   await client.from('drafts').delete().eq('id', draftId)
 
-  revalidatePath('/drafts')
+  revalidateUnifiedDraftPaths({
+    courseId: (existing?.course_id as string | null) ?? null,
+    moduleId: (existing?.source_module_id as string | null) ?? null,
+    resourceId: (existing?.source_resource_id as string | null) ?? null,
+    draftId,
+  })
   redirect('/drafts')
 }
 

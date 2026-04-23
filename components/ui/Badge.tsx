@@ -72,6 +72,8 @@ export function TypeBadge({ type }: { type: string }) {
     summary: 'Summary',
     flashcard_set: 'Flashcard Set',
     // Draft source types
+    module_resource: 'Learn Resource',
+    task: 'Task',
     module: 'Module',
     upload: 'Upload',
     paste: 'Pasted',

@@ -3,6 +3,8 @@
 import type { CSSProperties } from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { saveDraftFromTaskOutput } from '@/actions/drafts'
 import { CopyTaskBundleActions } from '@/components/CopyTaskBundleActions'
 import { PromptBuildViewer } from '@/components/PromptBuildViewer'
 import { TaskDraftSourcePane } from '@/components/TaskDraftSourcePane'
@@ -19,10 +21,6 @@ import {
 } from '@/lib/do-now'
 import type { ManualCopyBundleResult } from '@/lib/manual-copy-bundle'
 
-/**
- * Modal panel that opens immediately, shows output generation progress while
- * the request runs, then hands off to an editable first-pass answer.
- */
 export function TaskDraftPanel({
   context,
   copyBundle,
@@ -40,6 +38,7 @@ export function TaskDraftPanel({
   onSnapshotChange?: (snapshot: PromptBuildSnapshot) => void
   onClose: () => void
 }) {
+  const router = useRouter()
   const fallbackDraft = buildTaskDraftFallback(context)
   const requestPayload = useMemo(() => buildTaskDraftRequestPayload(context), [context])
   const requestBody = useMemo(() => JSON.stringify(requestPayload), [requestPayload])
@@ -56,11 +55,15 @@ export function TaskDraftPanel({
   const [workingDraft, setWorkingDraft] = useState(draft)
   const [refinementPending, setRefinementPending] = useState<string | null>(null)
   const [refinementError, setRefinementError] = useState<string | null>(null)
+  const [savePending, setSavePending] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   useEffect(() => {
     setWorkingDraft(draft)
     setRefinementPending(null)
     setRefinementError(null)
+    setSavePending(false)
+    setSaveError(null)
   }, [draft, requestBody])
 
   async function refineOutput(mode: 'shorter' | 'formal' | 'human' | 'expand' | 'improve' | 'retry') {
@@ -95,6 +98,26 @@ export function TaskDraftPanel({
       setRefinementError(error instanceof Error ? error.message : 'Could not refine the output.')
     } finally {
       setRefinementPending(null)
+    }
+  }
+
+  async function saveToDraft() {
+    if (!context.moduleId || savePending) return
+
+    setSavePending(true)
+    setSaveError(null)
+
+    try {
+      const result = await saveDraftFromTaskOutput({
+        context,
+        draft: workingDraft,
+      })
+      onClose()
+      router.push(`/drafts/${result.draftId}`)
+      router.refresh()
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : 'Could not save this draft.')
+      setSavePending(false)
     }
   }
 
@@ -193,7 +216,7 @@ export function TaskDraftPanel({
                     }}
                     onRefine={refineOutput}
                     pendingMode={refinementPending}
-                    errorMessage={refinementError}
+                    errorMessage={refinementError ?? saveError}
                   />
                   <details className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.9rem 0.95rem' }}>
                     <summary className="ui-interactive-summary" style={{ padding: 0 }}>
@@ -242,14 +265,15 @@ export function TaskDraftPanel({
             />
           )}
           {context.moduleId && (
-            <Link
-              href={`/drafts/new?module=${encodeURIComponent(context.moduleId)}`}
+            <button
+              type="button"
+              onClick={saveToDraft}
               className="ui-button ui-button-ghost"
               style={footerButtonStyle}
-              onClick={onClose}
+              disabled={savePending}
             >
-              Save to Drafts
-            </Link>
+              {savePending ? 'Saving draft...' : 'Save to Draft'}
+            </button>
           )}
           {entryOrigin === 'today' && doPageHref && (
             <Link
@@ -317,7 +341,7 @@ function PrimaryOutputSection({
     <section style={primaryOutputSectionStyle}>
       <p style={sectionHeadingStyle}>Primary output</p>
       <p style={{ margin: '0.38rem 0 0', fontSize: '12px', lineHeight: 1.55, color: 'var(--text-muted)' }}>
-        Start with the usable answer. Refine it quickly, then submit or copy.
+        Start with the usable answer. Refine it quickly, then save it into Draft when you want a persistent record.
       </p>
       <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginTop: '0.68rem' }}>
         {[
@@ -335,7 +359,7 @@ function PrimaryOutputSection({
             className="ui-button ui-button-ghost ui-button-xs"
             disabled={Boolean(pendingMode)}
           >
-            {pendingMode === action.key ? 'Working…' : action.label}
+            {pendingMode === action.key ? 'Working...' : action.label}
           </button>
         ))}
       </div>
@@ -376,11 +400,9 @@ function StatusBanner({
             ? draftSource === 'saved'
               ? 'This reopened the same saved output from this session because the task context has not changed.'
               : 'This reopened the same generated output from this session because the task context has not changed.'
-          : draftSource === 'saved'
-            ? 'This output was loaded from a saved server result because the task context has not changed.'
-            : phase === 'done'
-            ? 'This output was generated from the current task context.'
-            : `${errorMessage ?? 'OpenAI generation failed.'} Showing the local first output instead.`}
+            : draftSource === 'saved'
+              ? 'This output was loaded from a saved server result because the task context has not changed.'
+              : 'This output was generated from the current task context.'}
       </p>
     </div>
   )

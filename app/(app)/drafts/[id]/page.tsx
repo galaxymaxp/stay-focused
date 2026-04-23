@@ -29,7 +29,7 @@ export default async function DraftDetailPage({ params }: Props) {
     <div className="command-page command-page-tight">
       <section className="section-shell section-shell-elevated" style={{ padding: '0.9rem 1rem', display: 'grid', gap: '0.65rem' }}>
         <div>
-          <p className="ui-kicker">Draft notebook context</p>
+          <p className="ui-kicker">Draft context</p>
           <h1 className="ui-page-title" style={{ marginTop: '0.45rem' }}>{draft.title}</h1>
           <p className="ui-page-copy" style={{ marginTop: '0.38rem', maxWidth: '48rem' }}>
             This draft belongs to {workspace?.module.title ?? 'a saved source'} and stays connected to its course/module workflow.
@@ -37,7 +37,7 @@ export default async function DraftDetailPage({ params }: Props) {
         </div>
         <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
           <Link href={courseDraftsHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-            Notebook library
+            Draft library
           </Link>
           {moduleLearnHref && (
             <Link href={moduleLearnHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
@@ -87,7 +87,7 @@ function buildDraftResource(draft: NonNullable<Awaited<ReturnType<typeof getDraf
   return {
     id: draft.id,
     title: draft.sourceTitle,
-    type: draft.sourceType === 'module' ? 'module draft source' : draft.sourceType,
+    type: draft.sourceType === 'module_resource' ? 'learn resource' : draft.sourceType,
     required: false,
     moduleName,
     category: 'resource',

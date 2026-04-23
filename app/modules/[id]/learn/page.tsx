@@ -159,17 +159,14 @@ export default async function LearnPage({ params, searchParams }: Props) {
               </div>
 
               <div className="workspace-quiet-panel" style={{ gap: '0.55rem' }}>
-                <p className="ui-kicker" style={{ margin: 0 }}>Draft notebook</p>
+                <p className="ui-kicker" style={{ margin: 0 }}>Draft library</p>
                 <p className="workspace-quiet-panel-copy">
-                  Save study notes tied to this module so Learn, Do, and Review stay connected.
+                  Drafts created from Learn and Do appear here automatically and stay tied to this module context.
                 </p>
                 <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-                  <Link href={`/drafts/new?module=${encodeURIComponent(module.id)}`} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
-                    Create Draft
-                  </Link>
                   {latestModuleDraft && (
-                    <Link href={`/drafts/${latestModuleDraft.id}`} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-                      Continue Draft
+                    <Link href={`/drafts/${latestModuleDraft.id}`} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
+                      Continue latest draft
                     </Link>
                   )}
                   <Link href={`/drafts?module=${encodeURIComponent(module.id)}`} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>

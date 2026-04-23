@@ -482,9 +482,9 @@ function ReviewMode({
     return (
       <div className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', overflow: 'hidden' }}>
         <div className="ui-card-soft" style={{ borderRadius: 0, padding: '0.85rem 0.95rem' }}>
-          <p className="ui-kicker">Draft mapped into Deep Learn</p>
+          <p className="ui-kicker">Saved draft in Deep Learn</p>
           <p style={{ margin: '0.45rem 0 0', fontSize: '13px', lineHeight: 1.62, color: 'var(--text-secondary)' }}>
-            This legacy draft remains editable in Draft. Generate a native Deep Learn item from the course/module resource to unlock answer-bank presets and quiz-ready output.
+            This saved draft remains editable in Draft. Generate a native Deep Learn item from the course/module resource to unlock answer-bank presets and quiz-ready output.
           </p>
         </div>
         <MarkdownBody content={body} />
