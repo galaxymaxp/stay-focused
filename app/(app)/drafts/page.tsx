@@ -2,10 +2,27 @@ import Link from 'next/link'
 import { listDraftsForShelves } from '@/actions/drafts'
 import { CourseShelf } from '@/components/drafts/CourseShelf'
 
-export default async function DraftsPage() {
+interface Props {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>
+}
+
+export default async function DraftsPage({ searchParams }: Props) {
+  const resolvedSearchParams = await searchParams
   const { drafts, courses } = await listDraftsForShelves()
   const courseNames = new Map(courses.map((course) => [course.id, course]))
-  const grouped = groupDraftsByCourse(drafts)
+  const courseFilter = getFirstSearchParamValue(resolvedSearchParams?.course)
+  const moduleFilter = getFirstSearchParamValue(resolvedSearchParams?.module)
+  const scopedDrafts = drafts.filter((draft) => {
+    if (courseFilter && draft.courseId !== courseFilter) return false
+    if (moduleFilter && draft.sourceModuleId !== moduleFilter) return false
+    return true
+  })
+  const grouped = groupDraftsByCourse(scopedDrafts)
+  const scopedLabel = moduleFilter
+    ? 'Module notebook'
+    : courseFilter
+      ? 'Course notebook'
+      : 'Notebook library'
 
   return (
     <main className="page-shell command-page">
@@ -15,11 +32,18 @@ export default async function DraftsPage() {
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
           <div>
-            <p className="ui-kicker">Learn</p>
-            <h1 className="ui-page-title" style={{ marginTop: '0.5rem' }}>Draft</h1>
+            <p className="ui-kicker">{scopedLabel}</p>
+            <h1 className="ui-page-title" style={{ marginTop: '0.5rem' }}>Draft notebook</h1>
             <p className="ui-page-copy" style={{ marginTop: '0.35rem', maxWidth: '46rem' }}>
-              Saved study drafts from your course materials, kept beside the source they came from.
+              Saved notes and study workbenches created from Learn and Do. Open a draft to continue from its course, module, and source context.
             </p>
+            {(courseFilter || moduleFilter) && (
+              <div style={{ marginTop: '0.6rem' }}>
+                <Link href="/drafts" className="ui-button ui-button-ghost ui-button-xs">
+                  View all drafts
+                </Link>
+              </div>
+            )}
           </div>
           <Link href="/drafts/new" className="ui-button ui-button-secondary ui-button-xs">
             New Draft
@@ -28,9 +52,9 @@ export default async function DraftsPage() {
       </section>
 
       <section className="motion-card motion-delay-1 section-shell" style={{ padding: '1rem 1.05rem' }}>
-        {drafts.length === 0 ? (
+        {scopedDrafts.length === 0 ? (
           <div className="ui-empty" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', fontSize: '14px', lineHeight: 1.68 }}>
-            No drafts yet. Create one from a module source or open a resource in Learn and choose Draft.
+            No drafts in this notebook scope yet. Start from a Learn resource or a Do task and save notes into Draft.
           </div>
         ) : (
           <div style={{ display: 'grid', gap: '0.9rem' }}>
@@ -61,6 +85,11 @@ export default async function DraftsPage() {
       </section>
     </main>
   )
+}
+
+function getFirstSearchParamValue(value: string | string[] | undefined) {
+  if (Array.isArray(value)) return value[0] ?? null
+  return value ?? null
 }
 
 function groupDraftsByCourse<T extends { courseId: string | null; updatedAt: string }>(drafts: T[]) {

@@ -44,8 +44,8 @@ export function PromptBuildViewer({
             <span className="prompt-build-icon-line prompt-build-icon-line-3" />
           </div>
           <div style={{ minWidth: 0 }}>
-            <p className="ui-kicker" style={{ margin: 0 }}>Starter draft</p>
-            <h3 style={headerTitleStyle}>Building draft help</h3>
+            <p className="ui-kicker" style={{ margin: 0 }}>First output</p>
+            <h3 style={headerTitleStyle}>Building usable output</h3>
             <p aria-live="polite" style={phaseTextStyle}>{phaseCopy}</p>
           </div>
         </div>
@@ -83,9 +83,9 @@ function getPhaseCopy(phase: PromptBuildPhase) {
   if (phase === 'preparing') return 'Preparing task context...'
   if (phase === 'reading') return 'Reading assignment details...'
   if (phase === 'structuring') return 'Structuring prompt...'
-  if (phase === 'streaming') return 'Writing draft prompt...'
-  if (phase === 'done') return 'Draft ready'
-  if (phase === 'error') return 'Draft build failed'
+  if (phase === 'streaming') return 'Writing first output...'
+  if (phase === 'done') return 'Output ready'
+  if (phase === 'error') return 'Output build failed'
   return 'Waiting to begin...'
 }
 
@@ -94,7 +94,7 @@ function buildPromptScaffold(taskTitle: string, phase: PromptBuildPhase) {
 
   return [
     `// task: ${taskTitle}`,
-    '// mode: output-first draft generation',
+    '// mode: output-first activity output generation',
     '',
     `// ${phaseLine}`,
     'task_context {',
@@ -102,7 +102,7 @@ function buildPromptScaffold(taskTitle: string, phase: PromptBuildPhase) {
     '  instructions: [reading surfaced assignment details]',
     '}',
     '',
-    'draft_rules {',
+    'output_rules {',
     '  - ground the response in the assignment',
     '  - produce the deliverable before explanation',
     '  - keep the next step concrete',

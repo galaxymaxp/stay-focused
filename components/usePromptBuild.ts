@@ -176,7 +176,7 @@ export function usePromptBuild({
         }
 
         if (!isTaskDraftApiResponse(data)) {
-          throw new Error('Received an invalid starter draft response.')
+          throw new Error('Received an invalid output response.')
         }
 
         await preparationTimeline
@@ -229,7 +229,7 @@ export function usePromptBuild({
         if (controller.signal.aborted) return
 
         clearPendingTimers()
-        console.error('Task draft request failed:', error)
+        console.error('Task output request failed:', error)
         setState({
           generatedDraft: null,
           phase: 'error',
@@ -239,7 +239,7 @@ export function usePromptBuild({
           reopenSource: null,
           errorMessage: error instanceof Error
             ? error.message
-            : 'Could not generate draft help right now.',
+            : 'Could not generate output right now.',
         })
       }
     }
@@ -334,7 +334,7 @@ function extractErrorMessage(value: unknown) {
     return value.error
   }
 
-  return 'Could not generate draft help right now.'
+  return 'Could not generate output right now.'
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {

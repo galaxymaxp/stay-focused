@@ -16,6 +16,7 @@ type ModuleOption = {
 
 type Props = {
   modules: ModuleOption[]
+  initialModuleId?: string | null
 }
 
 const DRAFT_TYPES: DraftType[] = ['exam_reviewer', 'study_notes', 'summary', 'flashcard_set']
@@ -34,9 +35,12 @@ const typeColors = {
   flashcard_set: 'border-[#E84B9E] bg-pink-50 text-[#E84B9E]',
 }
 
-export function NewDraftFlow({ modules }: Props) {
+export function NewDraftFlow({ modules, initialModuleId = null }: Props) {
   const [sourceMode, setSourceMode] = useState<'module' | 'paste'>('module')
-  const [selectedModuleId, setSelectedModuleId] = useState<string>('')
+  const [selectedModuleId, setSelectedModuleId] = useState<string>(() => {
+    if (!initialModuleId) return ''
+    return modules.some((module) => module.id === initialModuleId) ? initialModuleId : ''
+  })
   const [pasteContent, setPasteContent] = useState('')
   const [pasteTitle, setPasteTitle] = useState('')
   const [selectedType, setSelectedType] = useState<DraftType>('exam_reviewer')
@@ -76,8 +80,8 @@ export function NewDraftFlow({ modules }: Props) {
   return (
     <form onSubmit={handleSubmit} className="max-w-2xl mx-auto px-6 py-10 lg:py-14 space-y-10">
       <div>
-        <h1 className="text-xl font-semibold text-sf-text mb-1">New Draft</h1>
-        <p className="text-sm text-sf-muted">Choose your source material and the kind of study document you want generated.</p>
+        <h1 className="text-xl font-semibold text-sf-text mb-1">New Draft Notebook Entry</h1>
+        <p className="text-sm text-sf-muted">Create a saved notebook draft tied to course/module material so you can continue it from Learn and Do.</p>
       </div>
 
       {/* Step 1: Source */}

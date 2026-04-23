@@ -1,7 +1,7 @@
 import Link from 'next/link'
-import type { ReactNode } from 'react'
 import { DeepLearnGenerateButton } from '@/components/DeepLearnGenerateButton'
 import { DeepLearnWorkspace } from '@/components/DeepLearnWorkspace'
+import { WorkspacePanel } from '@/components/ui/WorkspacePanel'
 import type { DeepLearnResourceReadiness } from '@/lib/deep-learn-readiness'
 import { getDeepLearnResourceUiState } from '@/lib/deep-learn-ui'
 import { buildModuleQuizHref } from '@/lib/stay-focused-links'
@@ -74,15 +74,11 @@ export function DeepLearnNoteView({
           <p className="ui-section-copy" style={{ marginTop: '0.45rem', maxWidth: '48rem' }}>{ui.summary}</p>
         </div>
         <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', alignItems: 'flex-start' }}>
-          {note?.status === 'ready' ? (
-            <Link href={ui.noteHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
-              Stay on this page
-            </Link>
-          ) : ui.status === 'unavailable' || ui.status === 'blocked' ? (
+          {ui.status === 'unavailable' || ui.status === 'blocked' ? (
             <Link href={readerHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
               {ui.primaryLabel}
             </Link>
-          ) : (
+          ) : note?.status !== 'ready' ? (
             <DeepLearnGenerateButton
               moduleId={moduleId}
               resourceId={resolvedDeepLearnResourceId}
@@ -90,7 +86,7 @@ export function DeepLearnNoteView({
               label={ui.primaryLabel}
               className="ui-button ui-button-secondary ui-button-xs"
             />
-          )}
+          ) : null}
           {note?.status === 'ready' && note.quizReady && (
             <Link href={quizHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
               Quiz this
@@ -119,19 +115,19 @@ export function DeepLearnNoteView({
 
       {note?.status === 'ready' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.75rem' }}>
-          <DetailCard title="Pack profile">
+          <WorkspacePanel title="Pack profile">
             <MetaLine label="Primary mode" value={note.quizReady ? 'Quiz-ready review pack' : 'Review pack with partial quiz coverage'} />
             <MetaLine label="Key answers" value={`${note.answerBank.length}`} />
             <MetaLine label="Identification items" value={`${note.identificationItems.length}`} />
             <MetaLine label="MCQ drill items" value={`${note.mcqDrill.length}`} />
-          </DetailCard>
+          </WorkspacePanel>
 
-          <DetailCard title="Source grounding">
+          <WorkspacePanel title="Source grounding">
             <MetaLine label="Source type" value={note.sourceGrounding.sourceType ?? resource.type} />
             <MetaLine label="Extraction quality" value={note.sourceGrounding.extractionQuality ?? 'Unknown'} />
             <MetaLine label="Grounding strategy" value={formatGroundingStrategy(note.sourceGrounding.groundingStrategy)} />
             <MetaLine label="Grounded chars" value={`${note.sourceGrounding.charCount}`} />
-          </DetailCard>
+          </WorkspacePanel>
         </div>
       )}
       </section>
@@ -145,17 +141,6 @@ function formatGroundingStrategy(value: DeepLearnNote['sourceGrounding']['ground
   if (value === 'scan_fallback') return 'Scan fallback'
   if (value === 'context_only') return 'Context only'
   return 'Insufficient'
-}
-
-function DetailCard({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.95rem 1rem' }}>
-      <p className="ui-kicker">{title}</p>
-      <div style={{ marginTop: '0.6rem' }}>
-        {children}
-      </div>
-    </section>
-  )
 }
 
 function MetaLine({ label, value }: { label: string; value: string }) {
