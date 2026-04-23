@@ -6,11 +6,11 @@ export type DeepLearnUiStatus = 'not_started' | 'pending' | 'ready' | 'failed' |
 
 export interface DeepLearnResourceUiState {
   status: DeepLearnUiStatus
-  statusLabel: 'Draft' | 'Review' | 'Review Ready' | 'Source issue' | 'Unavailable'
+  statusLabel: 'Pack' | 'Review' | 'Review Ready' | 'Source issue' | 'Unavailable'
   tone: 'accent' | 'warning' | 'muted'
   noteHref: string
   quizHref: string
-  primaryLabel: 'Create Draft' | 'Open workspace' | 'Open Source'
+  primaryLabel: 'Generate pack' | 'Open workspace' | 'Open Source'
   summary: string
   detail: string
   quizReady: boolean
@@ -61,11 +61,11 @@ export function getDeepLearnResourceUiState(
   if (!note) {
     return {
       status: 'not_started',
-      statusLabel: 'Draft',
+      statusLabel: 'Pack',
       tone: 'muted',
       noteHref,
       quizHref,
-      primaryLabel: 'Create Draft',
+      primaryLabel: 'Generate pack',
       summary: readiness?.summary
         ?? 'Turn this resource into an answer-first exam prep pack with key answers, identification prompts, timeline cues, and confusable items.',
       detail: readiness?.state === 'scan_fallback'
@@ -80,7 +80,7 @@ export function getDeepLearnResourceUiState(
   if (note.status === 'pending') {
     return {
       status: 'pending',
-      statusLabel: 'Draft',
+      statusLabel: 'Pack',
       tone: 'warning',
       noteHref,
       quizHref,
@@ -94,11 +94,11 @@ export function getDeepLearnResourceUiState(
   if (note.status === 'failed') {
     return {
       status: 'failed',
-      statusLabel: 'Draft',
+      statusLabel: 'Pack',
       tone: 'warning',
       noteHref,
       quizHref,
-      primaryLabel: 'Create Draft',
+      primaryLabel: 'Generate pack',
       summary: note.errorMessage || 'Deep Learn could not produce a trustworthy exam prep pack from the current source evidence.',
       detail: 'Retry after checking the source, or use the source fallback while the pack is unavailable.',
       quizReady: false,

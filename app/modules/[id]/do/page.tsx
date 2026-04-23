@@ -94,21 +94,18 @@ export default async function DoPage({ params, searchParams }: Props) {
           </div>
 
           <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.82rem 0.88rem', marginBottom: '0.9rem', display: 'grid', gap: '0.5rem' }}>
-            <p className="ui-kicker" style={{ margin: 0 }}>Draft notebook</p>
+            <p className="ui-kicker" style={{ margin: 0 }}>Draft library</p>
             <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.62, color: 'var(--text-secondary)' }}>
-              Capture working notes from tasks in this module, then continue them from the Draft notebook.
+              Save task outputs from the output panel, then continue the same records from Draft.
             </p>
             <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-              <Link href={`/drafts/new?module=${encodeURIComponent(module.id)}`} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
-                Create Draft
-              </Link>
               {latestModuleDraft && (
-                <Link href={`/drafts/${latestModuleDraft.id}`} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-                  Continue Draft
+                <Link href={`/drafts/${latestModuleDraft.id}`} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
+                  Resume latest output
                 </Link>
               )}
               <Link href={`/drafts?module=${encodeURIComponent(module.id)}`} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-                Module drafts
+                Module library
               </Link>
             </div>
           </div>
@@ -203,7 +200,8 @@ export default async function DoPage({ params, searchParams }: Props) {
                         <TaskDraftButton
                           defaultOpen={draftAutoOpen && highlightedTaskId === task.id}
                           copyBundle={manualCopy}
-                          context={{
+                            context={{
+                            taskId: task.id,
                             moduleId: module.id,
                             courseId: module.courseId,
                             taskTitle: task.title,
@@ -314,6 +312,7 @@ export default async function DoPage({ params, searchParams }: Props) {
                             defaultOpen={draftAutoOpen && highlightedTaskId === task.id}
                             copyBundle={manualCopy}
                             context={{
+                              taskId: task.id,
                               moduleId: module.id,
                               courseId: module.courseId,
                               taskTitle: task.title,

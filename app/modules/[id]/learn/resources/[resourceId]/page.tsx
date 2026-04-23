@@ -5,7 +5,6 @@ import { DeepLearnNoteView } from '@/components/DeepLearnNoteView'
 import { ModuleLensShell } from '@/components/ModuleLensShell'
 import { StudyFileReader } from '@/components/StudyFileReader'
 import { StudyModeSwitcher } from '@/components/StudyModeSwitcher'
-import { getDraftForDeepLearnResource } from '@/actions/drafts'
 import { classifyDeepLearnResourceReadiness } from '@/lib/deep-learn-readiness'
 import { getDeepLearnNoteForResource } from '@/lib/deep-learn-store'
 import { getLearnResourceUiState } from '@/lib/learn-resource-ui'
@@ -78,13 +77,6 @@ export default async function ResourceDetailPage({ params }: Props) {
         message: null,
         userId: null,
       }
-  const draftResult = deepLearnResourceId
-    ? await getDraftForDeepLearnResource(module.id, deepLearnResourceId)
-    : {
-        draft: null,
-        availability: 'unavailable' as const,
-        message: 'Draft needs a synced resource record before it can load or save a draft for this item.',
-      }
   const deepLearnReadiness = classifyDeepLearnResourceReadiness({
     resource,
     storedResource: resourceSelection?.storedResource ?? null,
@@ -115,9 +107,6 @@ export default async function ResourceDetailPage({ params }: Props) {
             note={deepLearnNoteResult.note}
             noteAvailability={deepLearnNoteResult.availability}
             noteAvailabilityMessage={deepLearnAvailabilityMessage}
-            draft={draftResult.draft}
-            draftAvailability={draftResult.availability}
-            draftAvailabilityMessage={draftResult.message}
             readiness={deepLearnReadiness}
             readerHref={`/modules/${module.id}/learn/resources/${encodeURIComponent(resource.id)}`}
             sourceHref={sourceHref}
@@ -154,9 +143,6 @@ export default async function ResourceDetailPage({ params }: Props) {
           note={deepLearnNoteResult.note}
           noteAvailability={deepLearnNoteResult.availability}
           noteAvailabilityMessage={deepLearnAvailabilityMessage}
-          draft={draftResult.draft}
-          draftAvailability={draftResult.availability}
-          draftAvailabilityMessage={draftResult.message}
           readiness={deepLearnReadiness}
           readerHref={`/modules/${module.id}/learn/resources/${encodeURIComponent(resource.id)}`}
           sourceHref={sourceHref}

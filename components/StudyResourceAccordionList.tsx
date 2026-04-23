@@ -38,7 +38,7 @@ export interface StudyResourceAccordionItem {
   deepLearnQuizHref: string
   deepLearnQuizReady: boolean
   deepLearnNoteFailure?: string | null
-  deepLearnStatusLabel?: 'Draft' | 'Review' | 'Review Ready' | 'Source issue' | 'Unavailable'
+  deepLearnStatusLabel?: 'Pack' | 'Review' | 'Review Ready' | 'Source issue' | 'Unavailable'
   deepLearnTone?: 'accent' | 'warning' | 'muted'
   deepLearnDetail?: string
   deepLearnPrimaryLabel?: string
@@ -194,7 +194,7 @@ export function StudyResourceAccordionList({
                         moduleId={item.moduleId}
                         resourceId={item.id}
                         courseId={item.courseId ?? null}
-                        label="Create Draft"
+                        label="Generate pack"
                       />
                     )}
                     {item.deepLearnStatus === 'ready' && item.deepLearnQuizReady && (
@@ -225,7 +225,7 @@ function fallbackStageLabel(
   if (status === 'ready') return quizReady ? 'Review Ready' : 'Review'
   if (status === 'blocked') return 'Source issue'
   if (status === 'unavailable') return 'Unavailable'
-  return 'Draft'
+  return 'Pack'
 }
 
 

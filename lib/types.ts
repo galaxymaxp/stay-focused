@@ -343,7 +343,7 @@ export interface CalendarItem {
 
 export type DraftType = 'exam_reviewer' | 'study_notes' | 'summary' | 'flashcard_set'
 export type DraftStatus = 'generating' | 'ready' | 'refining' | 'failed'
-export type DraftSourceType = 'module' | 'upload' | 'paste'
+export type DraftSourceType = 'module_resource' | 'task' | 'module' | 'upload' | 'paste'
 export type DraftLoadAvailability = 'available' | 'unavailable' | 'failed'
 
 export interface DraftRefinementEntry {
@@ -354,7 +354,9 @@ export interface DraftRefinementEntry {
 export interface Draft {
   id: string
   userId: string
+  courseId: string | null
   sourceType: DraftSourceType
+  canonicalSourceId: string
   sourceModuleId: string | null
   sourceResourceId: string | null
   sourceFilePath: string | null
@@ -375,7 +377,10 @@ export interface Draft {
 export interface DraftSummary {
   id: string
   userId: string
+  courseId: string | null
   sourceType: DraftSourceType
+  canonicalSourceId: string
+  sourceModuleId: string | null
   sourceResourceId?: string | null
   sourceTitle: string
   draftType: DraftType
@@ -389,7 +394,10 @@ export interface DraftSummary {
 // Extended draft type used by the course-shelf view (includes module/course join data)
 export interface DraftShelfItem {
   id: string
+  entryKind: 'deep_learn_note' | 'draft'
   userId: string
+  courseId: string | null
+  canonicalSourceId: string
   title: string
   draftType: DraftType
   status: DraftStatus
@@ -401,7 +409,8 @@ export interface DraftShelfItem {
   sourceModuleId: string | null
   sourceResourceId?: string | null
   moduleTitle: string | null
-  courseId: string | null
+  quizReady: boolean
+  summary: string | null
 }
 
 // What we ask OpenAI to return

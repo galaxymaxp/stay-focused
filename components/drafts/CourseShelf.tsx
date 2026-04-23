@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { ArrowRight } from 'lucide-react'
 import { DraftCard } from '@/components/drafts/DraftCard'
-import type { DraftShelfItem, DraftSummary } from '@/lib/types'
+import type { DraftShelfItem } from '@/lib/types'
 
 interface CourseShelfProps {
   courseName: string
@@ -42,7 +42,7 @@ export function CourseShelf({
           </div>
           <div className="flex items-center gap-3 flex-wrap">
             <span className="text-xs text-sf-muted">
-              {totalCount} draft{totalCount !== 1 ? 's' : ''}
+              {totalCount} saved output{totalCount !== 1 ? 's' : ''}
             </span>
             {quizReadyCount > 0 && (
               <span className="text-xs font-medium text-purple-500">{quizReadyCount} quiz-ready</span>
@@ -55,13 +55,13 @@ export function CourseShelf({
           href={`/drafts/${latestDraftId}`}
           className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-sf-border bg-sf-surface px-3 py-1.5 text-xs font-medium text-sf-text hover:bg-sf-surface-2 hover:border-sf-border transition-colors"
         >
-          Open latest
+          Resume latest
           <ArrowRight className="h-3.5 w-3.5" />
         </Link>
       </div>
       <div className="p-5 space-y-3">
         {drafts.map((d) => (
-          <DraftCard key={d.id} draft={d as DraftSummary} />
+          <DraftCard key={d.id} draft={d} />
         ))}
       </div>
     </div>

@@ -5,7 +5,7 @@ import { WorkspacePanel } from '@/components/ui/WorkspacePanel'
 import type { DeepLearnResourceReadiness } from '@/lib/deep-learn-readiness'
 import { getDeepLearnResourceUiState } from '@/lib/deep-learn-ui'
 import { buildModuleQuizHref } from '@/lib/stay-focused-links'
-import type { DeepLearnNote, DeepLearnNoteLoadAvailability, Draft, DraftLoadAvailability } from '@/lib/types'
+import type { DeepLearnNote, DeepLearnNoteLoadAvailability } from '@/lib/types'
 import type { ModuleSourceResource } from '@/lib/module-workspace'
 
 export function DeepLearnNoteView({
@@ -16,9 +16,6 @@ export function DeepLearnNoteView({
   note,
   noteAvailability = 'available',
   noteAvailabilityMessage = null,
-  draft = null,
-  draftAvailability = 'available',
-  draftAvailabilityMessage = null,
   readiness = null,
   readerHref,
   sourceHref,
@@ -30,9 +27,6 @@ export function DeepLearnNoteView({
   note: DeepLearnNote | null
   noteAvailability?: DeepLearnNoteLoadAvailability
   noteAvailabilityMessage?: string | null
-  draft?: Draft | null
-  draftAvailability?: DraftLoadAvailability
-  draftAvailabilityMessage?: string | null
   readiness?: DeepLearnResourceReadiness | null
   readerHref: string
   sourceHref: string | null
@@ -52,7 +46,7 @@ export function DeepLearnNoteView({
   return (
     <div style={{ display: 'grid', gap: '0.9rem' }}>
       <DeepLearnWorkspace
-        key={`${moduleId}:${resolvedDeepLearnResourceId}:${resource.id}:${draft?.id ?? 'no-draft'}:${draft?.updatedAt ?? 'not-loaded'}`}
+        key={`${moduleId}:${resolvedDeepLearnResourceId}:${resource.id}:${note?.id ?? 'no-note'}:${note?.updatedAt ?? 'not-loaded'}`}
         moduleId={moduleId}
         courseId={courseId}
         resource={resource}
@@ -62,9 +56,6 @@ export function DeepLearnNoteView({
         readerHref={readerHref}
         statusSummary={ui.detail}
         blockedMessage={(ui.status === 'unavailable' || ui.status === 'blocked') ? effectiveAvailabilityMessage : null}
-        resourceDraft={draft}
-        draftAvailability={draftAvailability}
-        draftAvailabilityMessage={draftAvailabilityMessage}
       />
 
       <section className="motion-card motion-delay-2 section-shell" style={{ padding: '0.95rem 1rem', display: 'grid', gap: '0.8rem' }}>

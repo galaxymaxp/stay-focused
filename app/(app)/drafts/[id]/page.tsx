@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { DeepLearnWorkspace } from '@/components/DeepLearnWorkspace'
 import { ModuleLensShell } from '@/components/ModuleLensShell'
-import { getDraft } from '@/actions/drafts'
+import { getDeepLearnNoteById, getDraft } from '@/actions/drafts'
 import { extractCourseName, getModuleWorkspace, type ModuleSourceResource } from '@/lib/module-workspace'
 
 interface Props {
@@ -11,6 +11,70 @@ interface Props {
 
 export default async function DraftDetailPage({ params }: Props) {
   const { id } = await params
+  const note = await getDeepLearnNoteById(id)
+
+  if (note) {
+    const workspace = await getModuleWorkspace(note.moduleId)
+    const resource = buildNoteResource(note, workspace?.module.title ?? null)
+    const courseId = workspace?.module.courseId ?? note.courseId ?? null
+    const courseName = extractCourseName(workspace?.module.raw_content)
+    const moduleLearnHref = `/modules/${note.moduleId}/learn`
+    const sourceResourceHref = `/modules/${note.moduleId}/learn/resources/${encodeURIComponent(note.resourceId)}`
+    const courseDraftsHref = courseId ? `/drafts?course=${encodeURIComponent(courseId)}` : '/drafts'
+
+    const workspaceContent = (
+      <div className="command-page command-page-tight">
+        <section className="section-shell section-shell-elevated" style={{ padding: '0.9rem 1rem', display: 'grid', gap: '0.65rem' }}>
+          <div>
+            <p className="ui-kicker">Draft library context</p>
+            <h1 className="ui-page-title" style={{ marginTop: '0.45rem' }}>{note.title}</h1>
+            <p className="ui-page-copy" style={{ marginTop: '0.38rem', maxWidth: '48rem' }}>
+              This saved exam prep pack stays tied to its course, module, canonical source, and review surface.
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+            <Link href={courseDraftsHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+              Draft library
+            </Link>
+            <Link href={moduleLearnHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+              Open Learn workspace
+            </Link>
+            <Link href={sourceResourceHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
+              Open source context
+            </Link>
+          </div>
+        </section>
+        <DeepLearnWorkspace
+          moduleId={note.moduleId}
+          courseId={courseId}
+          resource={resource}
+          deepLearnResourceId={note.resourceId}
+          note={note}
+          sourceHref={resource.sourceUrl ?? resource.htmlUrl ?? null}
+          readerHref={sourceResourceHref}
+          statusSummary="This saved exam prep pack reopens the same Deep Learn review surface with its pinned source beside it."
+        />
+      </div>
+    )
+
+    if (!workspace) {
+      return <main className="page-shell">{workspaceContent}</main>
+    }
+
+    return (
+      <ModuleLensShell
+        currentLens="learn"
+        moduleId={workspace.module.id}
+        courseId={workspace.module.courseId}
+        courseName={courseName}
+        title={workspace.module.title}
+        summary={note.title}
+      >
+        {workspaceContent}
+      </ModuleLensShell>
+    )
+  }
+
   const draft = await getDraft(id)
   if (!draft) notFound()
 
@@ -29,15 +93,15 @@ export default async function DraftDetailPage({ params }: Props) {
     <div className="command-page command-page-tight">
       <section className="section-shell section-shell-elevated" style={{ padding: '0.9rem 1rem', display: 'grid', gap: '0.65rem' }}>
         <div>
-          <p className="ui-kicker">Draft notebook context</p>
+          <p className="ui-kicker">Draft library context</p>
           <h1 className="ui-page-title" style={{ marginTop: '0.45rem' }}>{draft.title}</h1>
           <p className="ui-page-copy" style={{ marginTop: '0.38rem', maxWidth: '48rem' }}>
-            This draft belongs to {workspace?.module.title ?? 'a saved source'} and stays connected to its course/module workflow.
+            This saved study output belongs to {workspace?.module.title ?? 'a saved source'} and stays connected to its course/module workflow.
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
           <Link href={courseDraftsHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-            Notebook library
+            Draft library
           </Link>
           {moduleLearnHref && (
             <Link href={moduleLearnHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
@@ -59,7 +123,7 @@ export default async function DraftDetailPage({ params }: Props) {
         note={null}
         sourceHref={null}
         readerHref={moduleLearnHref ?? '/courses'}
-        statusSummary="This draft is mapped into Deep Learn as Draft, preserving edit, refine, and source-side work."
+        statusSummary="This saved study output predates the pack-first Learn flow, so it resumes as a standalone document with its source context."
         legacyDraft={draft}
       />
     </div>
@@ -83,11 +147,37 @@ export default async function DraftDetailPage({ params }: Props) {
   )
 }
 
-function buildDraftResource(draft: NonNullable<Awaited<ReturnType<typeof getDraft>>>, moduleName: string | null): ModuleSourceResource {
+function buildNoteResource(
+  note: NonNullable<Awaited<ReturnType<typeof getDeepLearnNoteById>>>,
+  moduleName: string | null,
+): ModuleSourceResource {
+  return {
+    id: note.resourceId,
+    title: note.title,
+    type: note.sourceGrounding.sourceType ?? 'learn resource',
+    required: false,
+    moduleName,
+    category: 'resource',
+    kind: 'reference',
+    lane: 'learn',
+    extractedText: note.noteBody,
+    extractedTextPreview: note.noteBody.slice(0, 12000),
+    extractedCharCount: note.noteBody.length,
+    fullTextAvailable: Boolean(note.noteBody),
+    previewState: note.noteBody ? 'full_text_available' : 'no_text_available',
+    sourceUrl: null,
+    htmlUrl: null,
+  }
+}
+
+function buildDraftResource(
+  draft: NonNullable<Awaited<ReturnType<typeof getDraft>>>,
+  moduleName: string | null,
+): ModuleSourceResource {
   return {
     id: draft.id,
     title: draft.sourceTitle,
-    type: draft.sourceType === 'module' ? 'module draft source' : draft.sourceType,
+    type: draft.sourceType === 'module_resource' ? 'learn resource' : draft.sourceType,
     required: false,
     moduleName,
     category: 'resource',

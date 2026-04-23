@@ -8,8 +8,8 @@ test('resources without a pack default to answer-first generation', () => {
   const state = getDeepLearnResourceUiState('module-1', 'resource-1', null)
 
   assert.equal(state.status, 'not_started')
-  assert.equal(state.statusLabel, 'Draft')
-  assert.equal(state.primaryLabel, 'Create Draft')
+  assert.equal(state.statusLabel, 'Pack')
+  assert.equal(state.primaryLabel, 'Generate pack')
   assert.equal(state.quizReady, false)
   assert.match(state.summary, /answer-first exam prep pack/i)
 })
@@ -35,7 +35,7 @@ test('failed packs shift the action to rebuild', () => {
   }))
 
   assert.equal(state.status, 'failed')
-  assert.equal(state.primaryLabel, 'Create Draft')
+  assert.equal(state.primaryLabel, 'Generate pack')
   assert.match(state.summary, /too weak/i)
 })
 

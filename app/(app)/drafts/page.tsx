@@ -8,7 +8,7 @@ interface Props {
 
 export default async function DraftsPage({ searchParams }: Props) {
   const resolvedSearchParams = await searchParams
-  const { drafts, courses } = await listDraftsForShelves()
+  const { drafts, courses, availability, message } = await listDraftsForShelves()
   const courseNames = new Map(courses.map((course) => [course.id, course]))
   const courseFilter = getFirstSearchParamValue(resolvedSearchParams?.course)
   const moduleFilter = getFirstSearchParamValue(resolvedSearchParams?.module)
@@ -19,10 +19,10 @@ export default async function DraftsPage({ searchParams }: Props) {
   })
   const grouped = groupDraftsByCourse(scopedDrafts)
   const scopedLabel = moduleFilter
-    ? 'Module notebook'
+    ? 'Module library'
     : courseFilter
-      ? 'Course notebook'
-      : 'Notebook library'
+      ? 'Course library'
+      : 'Draft library'
 
   return (
     <main className="page-shell command-page">
@@ -33,9 +33,9 @@ export default async function DraftsPage({ searchParams }: Props) {
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
           <div>
             <p className="ui-kicker">{scopedLabel}</p>
-            <h1 className="ui-page-title" style={{ marginTop: '0.5rem' }}>Draft notebook</h1>
+            <h1 className="ui-page-title" style={{ marginTop: '0.5rem' }}>Draft Library</h1>
             <p className="ui-page-copy" style={{ marginTop: '0.35rem', maxWidth: '46rem' }}>
-              Saved notes and study workbenches created from Learn and Do. Open a draft to continue from its course, module, and source context.
+              This page is the continuation hub for saved study outputs. Learn contributes persisted exam prep packs, while Do contributes saved notes and other output types.
             </p>
             {(courseFilter || moduleFilter) && (
               <div style={{ marginTop: '0.6rem' }}>
@@ -45,16 +45,17 @@ export default async function DraftsPage({ searchParams }: Props) {
               </div>
             )}
           </div>
-          <Link href="/drafts/new" className="ui-button ui-button-secondary ui-button-xs">
-            New Draft
-          </Link>
         </div>
       </section>
 
       <section className="motion-card motion-delay-1 section-shell" style={{ padding: '1rem 1.05rem' }}>
-        {scopedDrafts.length === 0 ? (
+        {availability !== 'available' ? (
           <div className="ui-empty" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', fontSize: '14px', lineHeight: 1.68 }}>
-            No drafts in this notebook scope yet. Start from a Learn resource or a Do task and save notes into Draft.
+            {message ?? 'Draft could not be loaded right now.'}
+          </div>
+        ) : scopedDrafts.length === 0 ? (
+          <div className="ui-empty" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', fontSize: '14px', lineHeight: 1.68 }}>
+            No saved study outputs in this scope yet. Generate one from Learn or save one from a Do task output, then come back here to continue it.
           </div>
         ) : (
           <div style={{ display: 'grid', gap: '0.9rem' }}>
@@ -70,7 +71,7 @@ export default async function DraftsPage({ searchParams }: Props) {
                   drafts={group.drafts}
                   latestDraftId={latestDraft.id}
                   totalCount={group.drafts.length}
-                  quizReadyCount={group.drafts.filter((draft) => draft.draftType === 'exam_reviewer' || draft.draftType === 'flashcard_set').length}
+                  quizReadyCount={group.drafts.filter((draft) => draft.quizReady || draft.draftType === 'flashcard_set').length}
                   statusBreakdown={{
                     ready: group.drafts.filter((draft) => draft.status === 'ready').length,
                     inProgress: group.drafts.filter((draft) => draft.status === 'generating' || draft.status === 'refining').length,
