@@ -80,6 +80,7 @@ export function ConnectCanvasFlow({
     resetSyncFeedback,
     selectedCourseCount: syncCourseCount,
     title: syncTitle,
+    savingSubStepIndex: syncSavingSubStepIndex,
   } = syncStatus
   const connectionSummary = savedConnection ?? (initialConnectionUrl ? {
     url: initialConnectionUrl,
@@ -458,6 +459,7 @@ export function ConnectCanvasFlow({
             onRetry={selectedCourseIds.length > 0 ? handleCourseSubmit : undefined}
             showWhenIdle={Boolean(latestSync || hasLoadedCourses)}
             selectedCourseCount={syncCourseCount}
+            savingSubStepIndex={syncSavingSubStepIndex}
           />
         </div>
       </PlainSection>

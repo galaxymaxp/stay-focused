@@ -1,8 +1,13 @@
+'use client'
+
+import { useState } from 'react'
 import Link from 'next/link'
 import { EmptyState } from '@/components/EmptyState'
 import { TaskStatusToggle } from '@/components/TaskStatusToggle'
 import type { HomeActivityItem, HomeCourseSnapshot, HomeDueSoonItem } from '@/lib/home-overview'
 import type { TodayItem } from '@/lib/types'
+
+const AFTER_THAT_DEFAULT_VISIBLE = 2
 
 export function TodayDashboard({
   primaryAction,
@@ -20,6 +25,12 @@ export function TodayDashboard({
   undatedTaskCount: number
 }) {
   const primaryHref = primaryAction ? resolveItemHref(primaryAction) : null
+  const [showAllUpNext, setShowAllUpNext] = useState(false)
+  const [dismissedActivity, setDismissedActivity] = useState<Set<string>>(new Set())
+
+  const visibleUpNext = showAllUpNext ? upNext : upNext.slice(0, AFTER_THAT_DEFAULT_VISIBLE)
+  const hiddenUpNextCount = upNext.length - AFTER_THAT_DEFAULT_VISIBLE
+  const visibleActivity = recentActivity.filter((item) => !dismissedActivity.has(item.id))
 
   return (
     <section className="home-page">
@@ -140,10 +151,49 @@ export function TodayDashboard({
                     </div>
 
                     <div className="home-sheet-list">
-                      {upNext.map((item) => (
+                      {visibleUpNext.map((item) => (
                         <CompactActionRow key={item.id} item={item} />
                       ))}
                     </div>
+
+                    {!showAllUpNext && hiddenUpNextCount > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setShowAllUpNext(true)}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          padding: '0.45rem 0.6rem',
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          color: 'var(--text-secondary)',
+                          cursor: 'pointer',
+                          textAlign: 'left',
+                          letterSpacing: '0.01em',
+                        }}
+                      >
+                        + Show {hiddenUpNextCount} more task{hiddenUpNextCount === 1 ? '' : 's'}
+                      </button>
+                    )}
+
+                    {showAllUpNext && upNext.length > AFTER_THAT_DEFAULT_VISIBLE && (
+                      <button
+                        type="button"
+                        onClick={() => setShowAllUpNext(false)}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          padding: '0.45rem 0.6rem',
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          color: 'var(--text-muted)',
+                          cursor: 'pointer',
+                          textAlign: 'left',
+                        }}
+                      >
+                        Show less
+                      </button>
+                    )}
                   </div>
                 ) : null}
               </>
@@ -175,33 +225,67 @@ export function TodayDashboard({
         </div>
 
         <aside className="home-rail">
+          {/* Quick Scan */}
           <section className="home-sheet">
-            <SectionHeading
-              eyebrow="Quick scan"
-              title="How today is shaped"
-              description="Keep the key counts nearby while the main surface stays open."
-            />
+            <div className="home-section-heading">
+              <div style={{ minWidth: 0 }}>
+                <p className="ui-kicker">Quick scan</p>
+                <h2 className="ui-section-title" style={{ marginTop: '0.36rem' }}>How today is shaped</h2>
+                <p className="ui-section-copy" style={{ marginTop: '0.32rem', maxWidth: '30rem' }}>
+                  A quick look at what&apos;s queued, due soon, and recently changed.
+                </p>
+              </div>
+            </div>
 
-            <div className="workspace-summary-grid">
-              <CompactSummaryCard label="Up next" value={String(upNext.length)} note="Backup moves ready after the first recommendation." />
-              <CompactSummaryCard label="Due soon" value={String(dueSoon.length)} note="Dated tasks near enough to change today." />
-              <CompactSummaryCard label="Recent changes" value={String(recentActivity.length)} note="New items or updates worth a quick scan." />
-              <CompactSummaryCard label="Courses" value={String(courseSnapshots.length)} note="Course lanes with enough context to reopen fast." />
+            <div style={{ display: 'grid', gap: 0, marginTop: '0.5rem' }}>
+              {upNext.length > 0 && (
+                <QuickScanGroup label="Up next">
+                  {upNext.slice(0, 4).map((item) => (
+                    <QuickScanRow key={item.id} title={item.title} href={resolveItemHref(item)} />
+                  ))}
+                </QuickScanGroup>
+              )}
+
+              {dueSoon.length > 0 && (
+                <QuickScanGroup label="Due soon">
+                  {dueSoon.slice(0, 4).map((item) => (
+                    <QuickScanRow key={item.id} title={item.title} href={item.href} urgencyLabel={item.urgencyLabel} />
+                  ))}
+                </QuickScanGroup>
+              )}
+
+              {visibleActivity.length > 0 && (
+                <QuickScanGroup label="Recent changes">
+                  {visibleActivity.slice(0, 4).map((item) => (
+                    <QuickScanRow key={item.id} title={item.title} href={item.href} external={item.external} />
+                  ))}
+                </QuickScanGroup>
+              )}
+
+              {upNext.length === 0 && dueSoon.length === 0 && visibleActivity.length === 0 && (
+                <p style={{ padding: '0.6rem 0', fontSize: '12px', color: 'var(--text-muted)' }}>
+                  Nothing to scan right now.
+                </p>
+              )}
             </div>
           </section>
 
           <section className="home-sheet home-sheet-bounded home-sheet-bounded-rail">
             <SectionHeading
               eyebrow="What changed"
-              title="What's new"
+              title="What&apos;s new"
               description="Recent updates without the full course feed."
             />
 
             <div className="home-panel-scroll home-panel-scroll-rail">
-              {recentActivity.length > 0 ? (
+              {visibleActivity.length > 0 ? (
                 <div className="home-sheet-list">
-                  {recentActivity.map((item) => (
-                    <ActivityRow key={item.id} item={item} />
+                  {visibleActivity.map((item) => (
+                    <ActivityRow
+                      key={item.id}
+                      item={item}
+                      onDismiss={() => setDismissedActivity((prev) => new Set([...prev, item.id]))}
+                    />
                   ))}
                 </div>
               ) : (
@@ -284,16 +368,29 @@ function CompactActionRow({ item }: { item: TodayItem }) {
   )
 
   return (
-    <article className="home-sheet-row">
-      {href ? (
-        <Link href={href} className="ui-interactive-row home-row-main">
-          {content}
-        </Link>
-      ) : (
-        <div className="home-row-main">
-          {content}
+    <article className="home-sheet-row" style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
+      <div style={{ flex: '1 1 0', minWidth: 0 }}>
+        {href ? (
+          <Link href={href} className="ui-interactive-row home-row-main">
+            {content}
+          </Link>
+        ) : (
+          <div className="home-row-main">
+            {content}
+          </div>
+        )}
+      </div>
+      {item.kind === 'task' && item.taskItemId ? (
+        <div style={{ flexShrink: 0, paddingTop: '0.25rem' }}>
+          <TaskStatusToggle
+            status={item.completionStatus ?? 'pending'}
+            moduleId={item.moduleId}
+            title={item.title}
+            taskItemId={item.taskItemId}
+            align="end"
+          />
         </div>
-      )}
+      ) : null}
     </article>
   )
 }
@@ -321,7 +418,7 @@ function DueSoonRow({ item }: { item: HomeDueSoonItem }) {
   )
 }
 
-function ActivityRow({ item }: { item: HomeActivityItem }) {
+function ActivityRow({ item, onDismiss }: { item: HomeActivityItem; onDismiss: () => void }) {
   const content = (
     <>
       <div className="home-row-meta">
@@ -335,19 +432,88 @@ function ActivityRow({ item }: { item: HomeActivityItem }) {
     </>
   )
 
-  if (item.external) {
-    return (
-      <a href={item.href} target="_blank" rel="noreferrer" className="home-activity-link ui-interactive-row home-row-main">
-        {content}
-      </a>
-    )
+  return (
+    <article className="home-sheet-row" style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
+      <div style={{ flex: '1 1 0', minWidth: 0 }}>
+        {item.external ? (
+          <a href={item.href} target="_blank" rel="noreferrer" className="home-activity-link ui-interactive-row home-row-main">
+            {content}
+          </a>
+        ) : (
+          <Link href={item.href} className="home-activity-link ui-interactive-row home-row-main">
+            {content}
+          </Link>
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={onDismiss}
+        title="Dismiss"
+        style={{
+          flexShrink: 0,
+          paddingTop: '0.5rem',
+          background: 'none',
+          border: 'none',
+          cursor: 'pointer',
+          fontSize: '12px',
+          color: 'var(--text-muted)',
+          lineHeight: 1,
+        }}
+        aria-label={`Dismiss: ${item.title}`}
+      >
+        ✕
+      </button>
+    </article>
+  )
+}
+
+function QuickScanGroup({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div style={{ borderTop: '1px solid color-mix(in srgb, var(--border-subtle) 60%, transparent)', paddingTop: '0.55rem', paddingBottom: '0.45rem' }}>
+      <p style={{ margin: '0 0 0.3rem', fontSize: '10px', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
+        {label}
+      </p>
+      <div style={{ display: 'grid', gap: '0.1rem' }}>
+        {children}
+      </div>
+    </div>
+  )
+}
+
+function QuickScanRow({ title, href, urgencyLabel, external }: { title: string; href: string | null; urgencyLabel?: string; external?: boolean }) {
+  const rowStyle = {
+    display: 'flex',
+    gap: '0.5rem',
+    alignItems: 'baseline',
+    padding: '0.18rem 0',
+    fontSize: '12.5px',
+    lineHeight: 1.45,
+    color: 'var(--text-secondary)',
+    textDecoration: 'none',
   }
 
-  return (
-    <Link href={item.href} className="home-activity-link ui-interactive-row home-row-main">
-      {content}
-    </Link>
+  const inner = (
+    <>
+      <span style={{ flex: '1 1 0', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {title}
+      </span>
+      {urgencyLabel && (
+        <span style={{ flexShrink: 0, fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)' }}>
+          {urgencyLabel}
+        </span>
+      )}
+    </>
   )
+
+  if (!href) {
+    return <div style={rowStyle}>{inner}</div>
+  }
+
+  if (external) {
+    return <a href={href} target="_blank" rel="noreferrer" style={rowStyle}>{inner}</a>
+  }
+
+  return <Link href={href} style={rowStyle}>{inner}</Link>
 }
 
 function CourseSnapshotRow({ course }: { course: HomeCourseSnapshot }) {
@@ -438,23 +604,6 @@ function MetaBadge({ children }: { children: string }) {
   )
 }
 
-function CompactSummaryCard({
-  label,
-  value,
-  note,
-}: {
-  label: string
-  value: string
-  note: string
-}) {
-  return (
-    <div className="workspace-quiet-panel">
-      <p className="ui-kicker" style={{ margin: 0 }}>{label}</p>
-      <p className="workspace-quiet-panel-title" style={{ fontSize: '1.3rem', lineHeight: 1.05 }}>{value}</p>
-      <p className="workspace-quiet-panel-copy">{note}</p>
-    </div>
-  )
-}
 
 function FactItem({ label, value }: { label: string; value: string }) {
   return (

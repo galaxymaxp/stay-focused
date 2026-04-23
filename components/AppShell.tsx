@@ -1,6 +1,6 @@
 'use client'
 
-import { type ReactNode, useEffect, useState } from 'react'
+import { type ReactNode, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { AnnouncementsMenu } from '@/components/AnnouncementsMenu'
@@ -112,6 +112,23 @@ export function AppShell({
     const onScroll = () => setScrolled(window.scrollY > 48)
     window.addEventListener('scroll', onScroll, { passive: true })
     return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+
+  const notificationRequested = useRef(false)
+  useEffect(() => {
+    if (notificationRequested.current) return
+    if (typeof window === 'undefined' || !('Notification' in window)) return
+    if (Notification.permission !== 'default') return
+
+    function handleFirstClick() {
+      if (notificationRequested.current) return
+      notificationRequested.current = true
+      void Notification.requestPermission()
+      document.removeEventListener('click', handleFirstClick)
+    }
+
+    document.addEventListener('click', handleFirstClick, { once: true })
+    return () => document.removeEventListener('click', handleFirstClick)
   }, [])
 
   useEffect(() => {

@@ -280,7 +280,7 @@ async function syncSingleCourse(course: CanvasCourse, config: Partial<CanvasConf
         extractedText: resource.extractedText!,
       }))
   ))
-  const courseRecord = await upsertCanvasCourseRecord(normalizedCourse, userId)
+  const courseRecord = await upsertCanvasCourseRecord(normalizedCourse, userId, resolveInstructorName(course))
   const existingModule = await findExistingSyncedModule(courseRecord.id, {
     courseName: databaseSafeCourse.name,
     courseCode: databaseSafeCourse.course_code,
@@ -475,7 +475,7 @@ async function findExistingSyncedModule(
   return (data as ExistingModuleMatch | null) ?? null
 }
 
-async function upsertCanvasCourseRecord(course: NormalizedCanvasCourseForSync, userId: string): Promise<ExistingCourseMatch> {
+async function upsertCanvasCourseRecord(course: NormalizedCanvasCourseForSync, userId: string, instructor = 'Canvas course staff'): Promise<ExistingCourseMatch> {
   if (!supabase) throw new Error('Supabase is not configured yet.')
   const courseIdentityPayload = buildCanvasCourseIdentityPayload(course)
 
@@ -500,7 +500,7 @@ async function upsertCanvasCourseRecord(course: NormalizedCanvasCourseForSync, u
           code: course.courseCode,
           name: course.name,
           term: course.termName,
-          instructor: 'Canvas course staff',
+          instructor,
           focus_label: 'Synced from Canvas',
           color_token: pickCourseColorToken(course.courseCode, course.name),
         }),
@@ -1783,4 +1783,10 @@ function logCanvasCourseUpsertEvent(step: string, context: Record<string, unknow
     step,
     ...context,
   })
+}
+
+function resolveInstructorName(course: CanvasCourse): string {
+  const teacher = course.teachers?.[0]
+  if (teacher?.display_name) return teacher.display_name
+  return 'Canvas course staff'
 }

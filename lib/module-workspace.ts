@@ -30,6 +30,7 @@ export interface ModuleWorkspaceData {
   resources: ModuleResource[]
   resourceStudyStates: ModuleResourceStudyState[]
   terms: ModuleTerm[]
+  courseInstructor: string | null
 }
 
 export interface LearnSection {
@@ -169,7 +170,7 @@ export async function getModuleWorkspace(id: string): Promise<ModuleWorkspaceDat
 
   const { data: courseRow, error: courseError } = await supabase
     .from('courses')
-    .select('id')
+    .select('id, instructor')
     .eq('id', courseId)
     .eq('user_id', user.id)
     .maybeSingle()
@@ -190,6 +191,7 @@ export async function getModuleWorkspace(id: string): Promise<ModuleWorkspaceDat
     ? []
     : (termResult.data ?? []).map(adaptModuleTermRow)
 
+  const rawInstructor = (courseRow as Record<string, unknown>).instructor
   return {
     module: adaptModuleWorkspaceRow(moduleRow),
     tasks: (tasksResult.data ?? []).map(adaptTaskRow),
@@ -197,6 +199,7 @@ export async function getModuleWorkspace(id: string): Promise<ModuleWorkspaceDat
     resources: (resourcesResult.data ?? []).map(adaptModuleResourceRow),
     resourceStudyStates,
     terms,
+    courseInstructor: typeof rawInstructor === 'string' && rawInstructor !== 'Course staff' ? rawInstructor : null,
   }
 }
 

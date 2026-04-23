@@ -1,6 +1,5 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { listDraftsForShelves } from '@/actions/drafts'
 import { CourseLearnExplorer } from '@/components/CourseLearnExplorer'
 import { getClarityWorkspace } from '@/lib/clarity-workspace'
 import { buildCourseLearnOverview, type CourseLearnModuleCard, type CourseLearnTaskRow } from '@/lib/course-learn-overview'
@@ -11,22 +10,18 @@ interface Props {
   searchParams?: Promise<Record<string, string | string[] | undefined>>
 }
 
-type WorkspaceTab = 'learn' | 'do' | 'quiz'
-
 export default async function CourseWorkspacePage({ params, searchParams }: Props) {
   const { id } = await params
   const resolvedSearchParams = await searchParams
   const rawTab = getSearchParamValue(resolvedSearchParams?.tab)
-  const tab: WorkspaceTab = rawTab === 'do' || rawTab === 'quiz' ? rawTab : 'learn'
+  const showDo   = rawTab === 'do'
+  const showQuiz = rawTab === 'quiz'
 
   const workspace = await getClarityWorkspace()
   const courseOverview = await buildCourseLearnOverview(workspace, id)
   if (!courseOverview) notFound()
 
   const { course, modules } = courseOverview
-  const { drafts } = await listDraftsForShelves()
-  const courseDrafts = drafts.filter((draft) => draft.courseId === id)
-  const latestCourseDraft = courseDrafts[0] ?? null
 
   const allPendingTasks = modules.flatMap((m) =>
     m.pendingTasks.map((t) => ({ ...t, moduleId: m.id, moduleTitle: m.title })),
@@ -34,7 +29,6 @@ export default async function CourseWorkspacePage({ params, searchParams }: Prop
   const allCompletedTasks = modules.flatMap((m) =>
     m.completedTasks.map((t) => ({ ...t, moduleId: m.id, moduleTitle: m.title })),
   )
-
   const quizModules = modules.filter(
     (m) => m.quizCount > 0 || m.studyMaterials.some((s) => s.deepLearnQuizReady),
   )
@@ -50,17 +44,21 @@ export default async function CourseWorkspacePage({ params, searchParams }: Prop
     0,
   )
 
+  const activeLabel = showDo ? 'Tasks' : showQuiz ? 'Quiz' : 'Modules'
+
   return (
     <main className="page-shell command-page">
+      {/* ── Course header ── */}
       <section
         className="motion-card section-shell section-shell-elevated"
-        style={{ padding: '1.05rem 1.15rem', display: 'grid', gap: '1rem' }}
+        style={{ padding: '1.05rem 1.15rem', display: 'grid', gap: '0.85rem' }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
           <div style={{ minWidth: 0, flex: '1 1 260px' }}>
             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
               <p className="ui-kicker">Course</p>
               <span className="ui-chip ui-chip-soft">{course.code}</span>
+              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{activeLabel}</span>
             </div>
             <h1 className="ui-page-title" style={{ marginTop: '0.5rem' }}>{course.name}</h1>
             {course.instructor && (
@@ -75,42 +73,38 @@ export default async function CourseWorkspacePage({ params, searchParams }: Prop
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-          <TabLink label="Deep Learn" href={`/courses/${id}`} active={tab === 'learn'} />
-          <TabLink label="Do" href={`/courses/${id}?tab=do`} active={tab === 'do'} />
-          <TabLink label="Quiz" href={`/courses/${id}?tab=quiz`} active={tab === 'quiz'} />
-        </div>
-
-        <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.85rem 0.9rem', display: 'grid', gap: '0.55rem' }}>
-          <p className="ui-kicker">Study Library</p>
-          <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.62, color: 'var(--text-secondary)' }}>
-            Saved exam prep packs from Learn and study outputs from Do stay attached to this course and reopen with their source context intact.
-          </p>
-          <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-            {latestCourseDraft && (
-              <Link href={`/library/${latestCourseDraft.id}`} className="ui-button ui-button-secondary ui-button-xs">
-                Resume latest pack
-              </Link>
-            )}
-            <Link href={`/library?course=${encodeURIComponent(id)}`} className="ui-button ui-button-ghost ui-button-xs">
-              View course library
-            </Link>
-          </div>
+        {/* Quick-access row — no big tab UI, just ghost buttons */}
+        <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+          <Link
+            href={`/courses/${id}`}
+            className={!showDo && !showQuiz ? 'ui-button ui-button-secondary ui-button-xs' : 'ui-button ui-button-ghost ui-button-xs'}
+          >
+            Modules
+          </Link>
+          <Link
+            href={`/courses/${id}?tab=do`}
+            className={showDo ? 'ui-button ui-button-secondary ui-button-xs' : 'ui-button ui-button-ghost ui-button-xs'}
+          >
+            Tasks
+          </Link>
+          <Link
+            href={`/courses/${id}?tab=quiz`}
+            className={showQuiz ? 'ui-button ui-button-secondary ui-button-xs' : 'ui-button ui-button-ghost ui-button-xs'}
+          >
+            Quiz
+          </Link>
+          <Link href={`/library?course=${encodeURIComponent(id)}`} className="ui-button ui-button-ghost ui-button-xs">
+            Study library
+          </Link>
         </div>
       </section>
 
-      {tab === 'learn' && (
+      {/* ── Modules (default view) ── */}
+      {!showDo && !showQuiz && (
         <section
           className="motion-card motion-delay-1 section-shell"
           style={{ padding: '1rem 1.05rem', display: 'grid', gap: '0.9rem' }}
         >
-          <div>
-            <p className="ui-kicker">Modules</p>
-            <h2 className="ui-section-title" style={{ marginTop: '0.45rem' }}>
-              Open only what you need, and keep Deep Learn first
-            </h2>
-          </div>
-
           {modules.length === 0 ? (
             <div className="ui-empty" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', fontSize: '14px', lineHeight: 1.68 }}>
               {courseOverview.hiddenModuleCount > 0
@@ -131,18 +125,17 @@ export default async function CourseWorkspacePage({ params, searchParams }: Prop
         </section>
       )}
 
-      {tab === 'do' && (
+      {/* ── Tasks view ── */}
+      {showDo && (
         <section
           className="motion-card motion-delay-1 section-shell"
           style={{ padding: '1rem 1.05rem', display: 'grid', gap: '0.9rem' }}
         >
           <div>
-            <p className="ui-kicker">Do</p>
-            <h2 className="ui-section-title" style={{ marginTop: '0.45rem' }}>
-              Course tasks
-            </h2>
+            <p className="ui-kicker">Tasks</p>
+            <h2 className="ui-section-title" style={{ marginTop: '0.45rem' }}>Course tasks</h2>
             <p className="ui-section-copy" style={{ marginTop: '0.45rem', maxWidth: '46rem' }}>
-              All active tasks across modules in this course. Open a task to start working on it.
+              All active tasks across modules in this course.
             </p>
           </div>
 
@@ -160,18 +153,16 @@ export default async function CourseWorkspacePage({ params, searchParams }: Prop
 
           {allCompletedTasks.length > 0 && (
             <details style={{ marginTop: '0.5rem' }}>
-              <summary
-                style={{
-                  cursor: 'pointer',
-                  fontSize: '12px',
-                  fontWeight: 600,
-                  color: 'var(--text-muted)',
-                  letterSpacing: '0.05em',
-                  textTransform: 'uppercase',
-                  padding: '0.5rem 0',
-                  userSelect: 'none',
-                }}
-              >
+              <summary style={{
+                cursor: 'pointer',
+                fontSize: '12px',
+                fontWeight: 600,
+                color: 'var(--text-muted)',
+                letterSpacing: '0.05em',
+                textTransform: 'uppercase',
+                padding: '0.5rem 0',
+                userSelect: 'none',
+              }}>
                 {allCompletedTasks.length} completed task{allCompletedTasks.length === 1 ? '' : 's'}
               </summary>
               <ul style={{ listStyle: 'none', padding: 0, margin: '0.55rem 0 0', display: 'grid', gap: '0.55rem' }}>
@@ -184,24 +175,23 @@ export default async function CourseWorkspacePage({ params, searchParams }: Prop
         </section>
       )}
 
-      {tab === 'quiz' && (
+      {/* ── Quiz view ── */}
+      {showQuiz && (
         <section
           className="motion-card motion-delay-1 section-shell"
           style={{ padding: '1rem 1.05rem', display: 'grid', gap: '0.9rem' }}
         >
           <div>
             <p className="ui-kicker">Quiz</p>
-            <h2 className="ui-section-title" style={{ marginTop: '0.45rem' }}>
-              Course quiz options
-            </h2>
+            <h2 className="ui-section-title" style={{ marginTop: '0.45rem' }}>Course quiz options</h2>
             <p className="ui-section-copy" style={{ marginTop: '0.45rem', maxWidth: '46rem' }}>
-              Modules with ready exam prep packs or term quizzes. Open a module to start drilling.
+              Modules with ready exam prep packs or term quizzes.
             </p>
           </div>
 
           {quizModules.length === 0 ? (
             <div className="ui-empty" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', fontSize: '14px', lineHeight: 1.68 }}>
-              No quiz-ready packs or term quizzes in this course yet. Build exam prep packs from the Learn tab first.
+              No quiz-ready packs in this course yet. Build exam prep packs from the Modules view first.
             </div>
           ) : (
             <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: '0.55rem' }}>
@@ -213,17 +203,6 @@ export default async function CourseWorkspacePage({ params, searchParams }: Prop
         </section>
       )}
     </main>
-  )
-}
-
-function TabLink({ label, href, active }: { label: string; href: string; active: boolean }) {
-  return (
-    <Link
-      href={href}
-      className={active ? 'ui-button ui-button-secondary ui-button-xs' : 'ui-button ui-button-ghost ui-button-xs'}
-    >
-      {label}
-    </Link>
   )
 }
 

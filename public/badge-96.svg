@@ -1,0 +1,15 @@
+<svg width="96" height="96" viewBox="0 0 96 96" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Simple monochrome book icon for mobile badges -->
+  <g transform="translate(20, 16)">
+    <!-- Book outline -->
+    <rect x="0" y="0" width="56" height="64" rx="4" fill="white"/>
+    
+    <!-- Spine -->
+    <rect x="0" y="0" width="6" height="64" rx="4" fill="white" opacity="0.7"/>
+    
+    <!-- Page lines -->
+    <line x1="10" y1="16" x2="46" y2="16" stroke="#1F2937" stroke-width="2" stroke-linecap="round"/>
+    <line x1="10" y1="26" x2="42" y2="26" stroke="#1F2937" stroke-width="2" stroke-linecap="round"/>
+    <line x1="10" y1="36" x2="44" y2="36" stroke="#1F2937" stroke-width="2" stroke-linecap="round"/>
+  </g>
+</svg>

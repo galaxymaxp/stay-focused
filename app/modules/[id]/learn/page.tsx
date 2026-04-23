@@ -1,7 +1,6 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import type { CSSProperties, ReactNode } from 'react'
-import { listDraftsForShelves } from '@/actions/drafts'
 import { AnnouncementSupportRow } from '@/components/AnnouncementSupportRow'
 import { DeepLearnGenerateButton } from '@/components/DeepLearnGenerateButton'
 import { ModuleLensShell } from '@/components/ModuleLensShell'
@@ -38,7 +37,7 @@ export default async function LearnPage({ params, searchParams }: Props) {
   const workspace = await getModuleWorkspace(id)
   if (!workspace) notFound()
 
-  const { module, tasks, resources: storedResources, resourceStudyStates, terms } = workspace
+  const { module, tasks, resources: storedResources, resourceStudyStates, terms, courseInstructor } = workspace
   const courseName = extractCourseName(module.raw_content)
   const experience = buildLearnExperience(module, {
     taskCount: tasks.length,
@@ -57,9 +56,6 @@ export default async function LearnPage({ params, searchParams }: Props) {
     storedTerms: terms,
   })
   const deepLearnNotesResult = await listDeepLearnNotesForModule(module.id)
-  const { drafts } = await listDraftsForShelves()
-  const moduleDrafts = drafts.filter((draft) => draft.sourceModuleId === module.id)
-  const latestModuleDraft = moduleDrafts[0] ?? null
   const deepLearnNotes = deepLearnNotesResult.notes
   const deepLearnNoteByResourceId = new Map(deepLearnNotes.map((note) => [note.resourceId, note]))
   const deepLearnSelectionByDisplayId = new Map(
@@ -71,7 +67,6 @@ export default async function LearnPage({ params, searchParams }: Props) {
   const sortedTasks = sortModuleTasks(tasks)
   const pendingTasks = sortedTasks.filter((task) => task.status !== 'completed')
   const completedTasks = sortedTasks.filter((task) => task.status === 'completed')
-  const outlineSectionCount = overview.studyMaterials.reduce((total, material) => total + material.reader.outlineSections.length, 0)
   const summaryText = overview.summary ?? module.summary ?? overview.coverageNote ?? termBank.termsStateMessage
   const targetResourceId = getSearchParamValue(resolvedSearchParams?.resource)
   const targetTaskId = getSearchParamValue(resolvedSearchParams?.task)
@@ -79,8 +74,6 @@ export default async function LearnPage({ params, searchParams }: Props) {
   const targetPanel = getSearchParamValue(resolvedSearchParams?.panel)
   const shouldOpenSourceSupport = targetPanel === 'source-support' || Boolean(targetSupportId)
   const shouldOpenCompletedTasks = Boolean(targetTaskId && completedTasks.some((task) => task.id === targetTaskId))
-  const readyDeepLearnNoteCount = deepLearnNotes.filter((note) => note.status === 'ready').length
-  const quizReadyDeepLearnNoteCount = deepLearnNotes.filter((note) => note.status === 'ready' && note.quizReady).length
   const resumeTargetDeepLearn = overview.resumeTarget
     ? (() => {
       const selection = deepLearnSelectionByDisplayId.get(overview.resumeTarget.resource.id)
@@ -129,52 +122,17 @@ export default async function LearnPage({ params, searchParams }: Props) {
     >
       <div className="command-page command-page-tight">
         <section className="motion-card motion-delay-1 section-shell section-shell-elevated" style={{ padding: '1rem 1.05rem', display: 'grid', gap: '1rem' }}>
-          <div className="command-header">
-            <div className="command-header-main">
-              <p className="ui-kicker">Deep Learn workspace</p>
-              <h2 className="ui-section-title" style={{ marginTop: '0.45rem' }}>Exam prep packs come first, with source and reader fallback behind them</h2>
-              <p className="ui-section-copy" style={{ marginTop: '0.45rem', maxWidth: '46rem' }}>
-                The main study path now starts at the resource, turns it into a saved answer-first exam prep pack, then carries that pack into quiz. The old reader still stays nearby for source transparency and fallback, but it no longer leads the workflow.
+          <div>
+            <p className="ui-kicker">{courseName}</p>
+            <h2 className="ui-section-title" style={{ marginTop: '0.45rem' }}>{module.title}</h2>
+            {courseInstructor && (
+              <p style={{ margin: '0.32rem 0 0', fontSize: '14px', lineHeight: 1.55, color: 'var(--text-muted)' }}>
+                {courseInstructor}
               </p>
-            </div>
-
-            <div className="command-header-side">
-              <div className="command-header-actions">
-                <span className="ui-chip ui-chip-soft">{overview.studyMaterials.length} study source{overview.studyMaterials.length === 1 ? '' : 's'}</span>
-                <span className="ui-chip ui-chip-soft">{readyDeepLearnNoteCount} prep pack{readyDeepLearnNoteCount === 1 ? '' : 's'}</span>
-                <span className="ui-chip ui-chip-soft">{termBank.finalTerms.length} key term{termBank.finalTerms.length === 1 ? '' : 's'}</span>
-                <span className="ui-chip ui-chip-soft">{quizReadyDeepLearnNoteCount} quiz-ready pack{quizReadyDeepLearnNoteCount === 1 ? '' : 's'}</span>
-                {deepLearnNotesResult.availability === 'unavailable' && (
-                  <span className="ui-chip ui-chip-soft">Pack status unavailable</span>
-                )}
-                <span className="ui-chip ui-chip-soft">{pendingTasks.length} active task{pendingTasks.length === 1 ? '' : 's'}</span>
-                {completedTasks.length > 0 && <span className="ui-chip ui-chip-soft">{completedTasks.length} done</span>}
-              </div>
-
-              <div className="workspace-quiet-panel">
-                <p className="ui-kicker" style={{ margin: 0 }}>Workspace rule</p>
-                <p className="workspace-quiet-panel-copy">
-                  Keep the prep pack lane and the action/status lane visible together. Drop into source support only when you need evidence.
-                </p>
-              </div>
-
-              <div className="workspace-quiet-panel" style={{ gap: '0.55rem' }}>
-                <p className="ui-kicker" style={{ margin: 0 }}>Study Library</p>
-                <p className="workspace-quiet-panel-copy">
-                  Saved exam prep packs from Learn and study outputs from Do appear here automatically and reopen with the same module, source, and pack context.
-                </p>
-                <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-                  {latestModuleDraft && (
-                    <Link href={`/library/${latestModuleDraft.id}`} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
-                      Resume latest pack
-                    </Link>
-                  )}
-                  <Link href={`/library?module=${encodeURIComponent(module.id)}`} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-                    Module library
-                  </Link>
-                </div>
-              </div>
-            </div>
+            )}
+            <p style={{ margin: '0.48rem 0 0', fontSize: '15px', lineHeight: 1.76, color: 'var(--text-secondary)', maxWidth: '52rem' }}>
+              {summaryText}
+            </p>
           </div>
 
           {deepLearnNotesResult.availability === 'unavailable' && deepLearnNotesResult.message && (
@@ -186,136 +144,93 @@ export default async function LearnPage({ params, searchParams }: Props) {
             </div>
           )}
 
-          <div className="command-workspace">
-            <div className="glass-panel glass-accent" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem 1.05rem', display: 'grid', gap: '0.85rem' }}>
-              <div>
-                <p className="ui-kicker">Module focus</p>
-                <p style={{ margin: '0.55rem 0 0', fontSize: '15px', lineHeight: 1.76, color: 'var(--text-secondary)' }}>
-                  {summaryText}
-                </p>
-              </div>
-
-              {overview.suggestedSteps.length > 0 && (
-                <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.85rem 0.9rem' }}>
-                  <p className="ui-kicker">Suggested flow</p>
-                  <ol style={{ listStyle: 'none', padding: 0, margin: '0.7rem 0 0', display: 'grid', gap: '0.55rem' }}>
-                    {overview.suggestedSteps.map((step, index) => (
-                      <li key={step.id}>
-                        <ActionLink
-                          href={step.href}
-                          external={step.external}
-                          className="ui-interactive-row"
-                          style={{
-                            display: 'flex',
-                            gap: '0.7rem',
-                            alignItems: 'flex-start',
-                            textDecoration: 'none',
-                            color: 'inherit',
-                          }}
-                        >
-                          <span style={{
-                            width: '1.45rem',
-                            height: '1.45rem',
-                            borderRadius: '999px',
-                            background: 'color-mix(in srgb, var(--surface-selected) 84%, var(--accent) 16%)',
-                            color: 'var(--text-primary)',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontSize: '11px',
-                            fontWeight: 700,
-                            flexShrink: 0,
-                          }}>
-                            {index + 1}
-                          </span>
-                          <span style={{ display: 'grid', gap: '0.18rem' }}>
-                            <span style={{ fontSize: '14px', lineHeight: 1.55, color: 'var(--text-primary)', fontWeight: 600 }}>
-                              {step.title}
-                            </span>
-                            <span style={{ fontSize: '12px', lineHeight: 1.55, color: 'var(--text-secondary)' }}>
-                              {step.note}
-                            </span>
-                          </span>
-                        </ActionLink>
-                      </li>
-                    ))}
-                  </ol>
-                </div>
-              )}
+          {overview.suggestedSteps.length > 0 && (
+            <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.85rem 0.9rem' }}>
+              <p className="ui-kicker">Suggested flow</p>
+              <ol style={{ listStyle: 'none', padding: 0, margin: '0.7rem 0 0', display: 'grid', gap: '0.55rem' }}>
+                {overview.suggestedSteps.map((step, index) => (
+                  <li key={step.id}>
+                    <ActionLink
+                      href={step.href}
+                      external={step.external}
+                      className="ui-interactive-row"
+                      style={{ display: 'flex', gap: '0.7rem', alignItems: 'flex-start', textDecoration: 'none', color: 'inherit' }}
+                    >
+                      <span style={{
+                        width: '1.45rem',
+                        height: '1.45rem',
+                        borderRadius: '999px',
+                        background: 'color-mix(in srgb, var(--surface-selected) 84%, var(--accent) 16%)',
+                        color: 'var(--text-primary)',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        flexShrink: 0,
+                      }}>
+                        {index + 1}
+                      </span>
+                      <span style={{ display: 'grid', gap: '0.18rem' }}>
+                        <span style={{ fontSize: '14px', lineHeight: 1.55, color: 'var(--text-primary)', fontWeight: 600 }}>
+                          {step.title}
+                        </span>
+                        <span style={{ fontSize: '12px', lineHeight: 1.55, color: 'var(--text-secondary)' }}>
+                          {step.note}
+                        </span>
+                      </span>
+                    </ActionLink>
+                  </li>
+                ))}
+              </ol>
             </div>
+          )}
 
-            <div className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem 1.05rem', display: 'grid', gap: '0.8rem' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '0.7rem' }}>
-                <StatCard label="Prep packs ready" value={String(readyDeepLearnNoteCount)} />
-                <StatCard label="Quiz-ready packs" value={String(quizReadyDeepLearnNoteCount)} />
-                <StatCard label="Usable sources" value={String(termBank.groundedSourceCount)} />
-                <StatCard label="Readable chars" value={termBank.groundedCharCount.toLocaleString()} />
+          {overview.resumeTarget && (
+            <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.85rem 0.9rem', display: 'grid', gap: '0.45rem' }}>
+              <p className="ui-kicker">{overview.resumeTarget.promptLabel}</p>
+              <p style={{ margin: 0, fontSize: '15px', lineHeight: 1.45, fontWeight: 650, color: 'var(--text-primary)' }}>
+                {overview.resumeTarget.resource.title}
+              </p>
+              <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
+                {resumeTargetDeepLearn?.ui.summary ?? overview.resumeTarget.note}
+              </p>
+              <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+                {resumeTargetDeepLearn && (resumeTargetDeepLearn.ui.status === 'not_started' || resumeTargetDeepLearn.ui.status === 'failed') ? (
+                  <DeepLearnGenerateButton
+                    moduleId={module.id}
+                    resourceId={resumeTargetDeepLearn.resourceId}
+                    courseId={module.courseId ?? null}
+                    label={resumeTargetDeepLearn.ui.primaryLabel}
+                  />
+                ) : resumeTargetDeepLearn?.ui.status === 'unavailable' || resumeTargetDeepLearn?.ui.status === 'blocked' ? (
+                  <ActionButton href={overview.resumeTarget.href} label={resumeTargetDeepLearn.ui.primaryLabel} external={overview.resumeTarget.external} tone="secondary" />
+                ) : resumeTargetDeepLearn ? (
+                  <Link href={resumeTargetDeepLearn.ui.noteHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
+                    {resumeTargetDeepLearn.ui.primaryLabel}
+                  </Link>
+                ) : (
+                  <ActionButton href={overview.resumeTarget.href} label={overview.resumeTarget.actionLabel} external={overview.resumeTarget.external} tone="secondary" />
+                )}
+                {resumeTargetDeepLearn?.ui.quizReady && (
+                  <Link href={resumeTargetDeepLearn.ui.quizHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+                    Quiz this
+                  </Link>
+                )}
+                <ActionButton href={overview.resumeTarget.href} label={overview.resumeTarget.actionLabel} external={overview.resumeTarget.external} tone="ghost" />
+                <Link href={`/modules/${module.id}/learn#source-support`} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+                  Source support
+                </Link>
+                <Link href={buildModuleInspectHref(module.id)} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+                  Inspect resources
+                </Link>
               </div>
-
-              {overview.resumeTarget && (
-                <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.85rem 0.9rem', display: 'grid', gap: '0.45rem' }}>
-                  <p className="ui-kicker">{overview.resumeTarget.promptLabel}</p>
-                  <p style={{ margin: 0, fontSize: '15px', lineHeight: 1.45, fontWeight: 650, color: 'var(--text-primary)' }}>
-                    {overview.resumeTarget.resource.title}
-                  </p>
-                  <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
-                    {resumeTargetDeepLearn?.ui.summary ?? overview.resumeTarget.note}
-                  </p>
-                  <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-                    {resumeTargetDeepLearn && (resumeTargetDeepLearn.ui.status === 'not_started' || resumeTargetDeepLearn.ui.status === 'failed') ? (
-                      <DeepLearnGenerateButton
-                        moduleId={module.id}
-                        resourceId={resumeTargetDeepLearn.resourceId}
-                        courseId={module.courseId ?? null}
-                        label={resumeTargetDeepLearn.ui.primaryLabel}
-                      />
-                    ) : resumeTargetDeepLearn?.ui.status === 'unavailable' || resumeTargetDeepLearn?.ui.status === 'blocked' ? (
-                      <ActionButton href={overview.resumeTarget.href} label={resumeTargetDeepLearn.ui.primaryLabel} external={overview.resumeTarget.external} tone="secondary" />
-                    ) : resumeTargetDeepLearn ? (
-                      <Link href={resumeTargetDeepLearn.ui.noteHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
-                        {resumeTargetDeepLearn.ui.primaryLabel}
-                      </Link>
-                    ) : (
-                      <ActionButton href={overview.resumeTarget.href} label={overview.resumeTarget.actionLabel} external={overview.resumeTarget.external} tone="secondary" />
-                    )}
-                    {resumeTargetDeepLearn?.ui.quizReady && (
-                      <Link href={resumeTargetDeepLearn.ui.quizHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-                        Quiz this
-                      </Link>
-                    )}
-                    <ActionButton href={overview.resumeTarget.href} label={overview.resumeTarget.actionLabel} external={overview.resumeTarget.external} tone="ghost" />
-                    <Link href={`/modules/${module.id}/learn#source-support`} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-                      Source support
-                    </Link>
-                    <Link href={buildModuleInspectHref(module.id)} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-                      Inspect resources
-                    </Link>
-                  </div>
-                </div>
-              )}
-
-              {experience.audit.note && (
-                <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.85rem 0.9rem' }}>
-                  <p className="ui-kicker">Coverage note</p>
-                  <p style={{ margin: '0.45rem 0 0', fontSize: '13px', lineHeight: 1.68, color: 'var(--text-secondary)' }}>
-                    {experience.audit.note}
-                  </p>
-                </div>
-              )}
             </div>
-          </div>
+          )}
         </section>
 
         <div className="command-workspace">
           <section id="study-notes" className="motion-card motion-delay-2 section-shell section-shell-elevated" style={{ padding: '1rem 1.05rem', display: 'grid', gap: '0.9rem' }}>
-            <div>
-              <p className="ui-kicker">Exam prep packs</p>
-              <h3 style={{ margin: '0.42rem 0 0', fontSize: '1.08rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>Build the saved review pack first, then use the reader only when you need the source surface</h3>
-              <p className="ui-section-copy" style={{ marginTop: '0.45rem', maxWidth: '44rem' }}>
-                Each resource now leads with Deep Learn. Generate or open the saved answer bank, identification list, MCQ drill, and timeline pack here, then keep the source or reader behind it as validation instead of the main destination.
-              </p>
-            </div>
-
             <div className="command-scroll-body" data-density="tall">
               <StudyResourceAccordionList
                 items={overview.studyMaterials.map((material) => {
@@ -473,45 +388,6 @@ export default async function LearnPage({ params, searchParams }: Props) {
               )}
             </section>
 
-            <section className="motion-card motion-delay-3 section-shell" style={{ padding: '1rem 1.05rem', display: 'grid', gap: '0.8rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-                <div>
-                  <p className="ui-kicker">Study coverage</p>
-                  <h3 style={{ margin: '0.42rem 0 0', fontSize: '1.02rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>What Deep Learn is grounding this module from</h3>
-                </div>
-                <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-                  <StateBadge label={`${overview.readyStudyFileCount} ready`} tone="accent" />
-                  {overview.limitedStudyFileCount > 0 && <StateBadge label={`${overview.limitedStudyFileCount} partial`} tone="warning" />}
-                </div>
-              </div>
-
-              {overview.studyMaterials.length === 0 ? (
-                <div className="ui-empty" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', fontSize: '14px', lineHeight: 1.68 }}>
-                  No study sources are mapped into this module yet, so Deep Learn is leaning on tasks and any grounded terms it can find.
-                </div>
-              ) : (
-                <>
-                  <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.68, color: 'var(--text-secondary)' }}>
-                    {overview.coverageNote}
-                  </p>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '0.7rem' }}>
-                    <StatCard label="Study sources" value={String(overview.studyMaterials.length)} />
-                    <StatCard label="Outline sections" value={String(outlineSectionCount)} />
-                    <StatCard label="Readable files" value={String(overview.extractedStudyFileCount)} />
-                    <StatCard label="Partial files" value={String(overview.limitedStudyFileCount)} />
-                  </div>
-                </>
-              )}
-
-              <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-                <Link href={`/modules/${module.id}/learn#source-support`} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-                  Source support
-                </Link>
-                <Link href={buildModuleInspectHref(module.id)} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-                  Inspect resources
-                </Link>
-              </div>
-            </section>
           </aside>
         </div>
 

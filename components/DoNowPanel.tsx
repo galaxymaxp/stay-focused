@@ -1,10 +1,11 @@
 'use client'
 
 import type { CSSProperties } from 'react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { saveDraftFromTaskOutput } from '@/actions/drafts'
+import { notifyCompletion } from '@/lib/notifications'
 import { CopyTaskBundleActions } from '@/components/CopyTaskBundleActions'
 import { PromptBuildViewer } from '@/components/PromptBuildViewer'
 import { TaskDraftSourcePane } from '@/components/TaskDraftSourcePane'
@@ -39,9 +40,9 @@ export function TaskDraftPanel({
   onClose: () => void
 }) {
   const router = useRouter()
-  const fallbackDraft = buildTaskDraftFallback(context)
   const requestPayload = useMemo(() => buildTaskDraftRequestPayload(context), [context])
   const requestBody = useMemo(() => JSON.stringify(requestPayload), [requestPayload])
+  const fallbackDraft = useMemo(() => buildTaskDraftFallback(context), [requestBody])
   const [reusableSnapshot] = useState<PromptBuildSnapshot | null>(() => (
     initialSnapshot?.requestBody === requestBody ? initialSnapshot : null
   ))
@@ -57,6 +58,7 @@ export function TaskDraftPanel({
   const [refinementError, setRefinementError] = useState<string | null>(null)
   const [savePending, setSavePending] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const prevBuildingRef = useRef(false)
 
   useEffect(() => {
     setWorkingDraft(draft)
@@ -65,6 +67,17 @@ export function TaskDraftPanel({
     setSavePending(false)
     setSaveError(null)
   }, [draft, requestBody])
+
+  useEffect(() => {
+    if (prevBuildingRef.current && !promptBuild.isBuilding && promptBuild.phase === 'done') {
+      notifyCompletion(
+        'Draft ready!',
+        `Your draft for "${context.taskTitle}" is ready.`,
+        { tag: 'draft-generated', soundType: 'success', showBrowser: true, playSound: true },
+      )
+    }
+    prevBuildingRef.current = promptBuild.isBuilding
+  }, [promptBuild.isBuilding, promptBuild.phase, context.taskTitle])
 
   async function refineOutput(mode: 'shorter' | 'formal' | 'human' | 'expand' | 'improve' | 'retry') {
     if (refinementPending || promptBuild.isBuilding) return
@@ -112,6 +125,11 @@ export function TaskDraftPanel({
         context,
         draft: workingDraft,
       })
+      notifyCompletion(
+        'Draft saved!',
+        `"${context.taskTitle}" saved to your drafts.`,
+        { tag: 'draft-saved', soundType: 'success', showBrowser: true, playSound: true },
+      )
       onClose()
       router.push(`/drafts/${result.draftId}`)
       router.refresh()

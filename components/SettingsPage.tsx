@@ -1,7 +1,8 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
+import { requestNotificationPermission, setNotificationVolume, setSoundEnabled, playNotificationSound } from '@/lib/notifications'
 import { useResolvedUserAvatar } from '@/components/useResolvedUserAvatar'
 import { UserAvatar } from '@/components/UserAvatar'
 import { useThemeSettings } from '@/components/ThemeProvider'
@@ -283,7 +284,122 @@ export function SettingsPage() {
           })}
         </div>
       </SettingsSection>
+      <BrowserNotificationsSection />
     </main>
+  )
+}
+
+function BrowserNotificationsSection() {
+  const [permission, setPermission] = useState<NotificationPermission | 'unsupported'>('default')
+  const [soundEnabled, setSoundEnabledState] = useState(true)
+  const [volume, setVolumeState] = useState(50)
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('Notification' in window)) {
+      setPermission('unsupported')
+      return
+    }
+    setPermission(Notification.permission)
+    const storedSound = localStorage.getItem('stay-focused.sound-enabled')
+    setSoundEnabledState(storedSound !== 'false')
+    const storedVol = localStorage.getItem('stay-focused.sound-volume')
+    const parsed = storedVol ? parseFloat(storedVol) : 0.5
+    setVolumeState(isNaN(parsed) ? 50 : Math.round(parsed * 100))
+  }, [])
+
+  async function handleRequestPermission() {
+    const granted = await requestNotificationPermission()
+    setPermission(granted ? 'granted' : Notification.permission)
+  }
+
+  function handleSoundToggle() {
+    const next = !soundEnabled
+    setSoundEnabledState(next)
+    setSoundEnabled(next)
+  }
+
+  function handleVolumeChange(value: number) {
+    setVolumeState(value)
+    setNotificationVolume(value / 100)
+  }
+
+  function handleTestSound() {
+    playNotificationSound('success')
+  }
+
+  return (
+    <SettingsSection
+      eyebrow="Notifications"
+      title="Browser notifications"
+      description="Get notified about Canvas syncs and important events even when the tab is in the background."
+    >
+      <div className="settings-option-list">
+        <div className="settings-option-row ui-interactive-card" style={{ cursor: 'default' }}>
+          <div style={{ minWidth: 0 }}>
+            <p className="settings-card-title">Permission</p>
+            <p className="settings-card-desc">
+              {permission === 'unsupported' && 'Your browser does not support notifications.'}
+              {permission === 'granted' && 'Notifications are allowed.'}
+              {permission === 'denied' && 'Notifications are blocked. Enable them in browser settings.'}
+              {permission === 'default' && 'Grant permission to receive background notifications.'}
+            </p>
+          </div>
+          {permission === 'default' && (
+            <button type="button" className="ui-button ui-button-primary" onClick={handleRequestPermission}>
+              Allow
+            </button>
+          )}
+          {permission === 'granted' && (
+            <span className="settings-option-label" data-selected="true">Allowed</span>
+          )}
+          {permission === 'denied' && (
+            <span className="settings-option-label" data-selected="false">Blocked</span>
+          )}
+        </div>
+
+        <button
+          type="button"
+          onClick={handleSoundToggle}
+          aria-pressed={soundEnabled}
+          className="settings-option-row ui-interactive-card"
+        >
+          <div style={{ minWidth: 0 }}>
+            <p className="settings-card-title">Notification sounds</p>
+            <p className="settings-card-desc">Play a sound when a sync completes or an alert fires.</p>
+          </div>
+          <span className="settings-option-label" data-selected={soundEnabled ? 'true' : 'false'}>
+            {soundEnabled ? 'On' : 'Off'}
+          </span>
+        </button>
+
+        {soundEnabled && (
+          <div className="settings-option-row ui-interactive-card" style={{ cursor: 'default', flexDirection: 'column', alignItems: 'stretch', gap: '12px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ minWidth: 0 }}>
+                <p className="settings-card-title">Volume</p>
+                <p className="settings-card-desc">Adjust how loud notification sounds play.</p>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span className="settings-option-label" data-selected="false" style={{ minWidth: '3ch', textAlign: 'right' }}>
+                  {volume}%
+                </span>
+                <button type="button" className="ui-button ui-button-ghost" onClick={handleTestSound} style={{ padding: '4px 10px', fontSize: '12px' }}>
+                  Test
+                </button>
+              </div>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={volume}
+              onChange={(e) => handleVolumeChange(Number(e.target.value))}
+              style={{ width: '100%', accentColor: 'var(--accent)' }}
+            />
+          </div>
+        )}
+      </div>
+    </SettingsSection>
   )
 }
 

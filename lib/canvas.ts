@@ -32,6 +32,7 @@ export interface CanvasCourse {
     name: string
     end_at: string | null
   }
+  teachers?: Array<{ display_name: string }>
 }
 
 export interface CanvasAssignment {
@@ -298,7 +299,7 @@ export async function downloadCanvasBinary(url: string, configOverride?: Partial
 
 export async function getCourses(configOverride?: Partial<CanvasConfig>): Promise<CanvasCourse[]> {
   const courses = await canvasFetch<CanvasCourse[]>(
-    '/courses?enrollment_state=active&enrollment_type=student&state[]=available&include[]=term',
+    '/courses?enrollment_state=active&enrollment_type=student&state[]=available&include[]=term&include[]=teachers',
     configOverride
   )
 

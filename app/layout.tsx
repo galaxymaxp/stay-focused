@@ -8,6 +8,13 @@ import './globals.css'
 
 export const metadata: Metadata = {
   title: 'Stay Focused',
+  icons: {
+    icon: [
+      { url: '/favicon.svg', type: 'image/svg+xml' },
+      { url: '/favicon.ico', type: 'image/x-icon' },
+    ],
+    apple: '/icon-256.svg',
+  },
 }
 
 const THEME_INIT_SCRIPT = `

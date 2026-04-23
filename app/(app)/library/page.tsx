@@ -12,9 +12,13 @@ export default async function StudyLibraryPage({ searchParams }: Props) {
   const courseNames = new Map(courses.map((course) => [course.id, course]))
   const courseFilter = getFirstSearchParamValue(resolvedSearchParams?.course)
   const moduleFilter = getFirstSearchParamValue(resolvedSearchParams?.module)
+  const kindFilter = getFirstSearchParamValue(resolvedSearchParams?.filter) // 'learning' | 'tasks' | null
+
   const scopedDrafts = drafts.filter((draft) => {
     if (courseFilter && draft.courseId !== courseFilter) return false
     if (moduleFilter && draft.sourceModuleId !== moduleFilter) return false
+    if (kindFilter === 'learning' && draft.entryKind !== 'deep_learn_note') return false
+    if (kindFilter === 'tasks' && draft.entryKind !== 'draft') return false
     return true
   })
   const grouped = groupDraftsByCourse(scopedDrafts)
@@ -23,6 +27,18 @@ export default async function StudyLibraryPage({ searchParams }: Props) {
     : courseFilter
       ? 'Course library'
       : 'All saved packs'
+
+  const learningCount = drafts.filter((d) => d.entryKind === 'deep_learn_note').length
+  const tasksCount = drafts.filter((d) => d.entryKind === 'draft').length
+
+  function filterHref(filter: string | null) {
+    const params = new URLSearchParams()
+    if (courseFilter) params.set('course', courseFilter)
+    if (moduleFilter) params.set('module', moduleFilter)
+    if (filter) params.set('filter', filter)
+    const qs = params.toString()
+    return `/library${qs ? `?${qs}` : ''}`
+  }
 
   return (
     <main className="page-shell command-page">
@@ -45,6 +61,28 @@ export default async function StudyLibraryPage({ searchParams }: Props) {
               </div>
             )}
           </div>
+        </div>
+
+        {/* Filter tabs */}
+        <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+          <Link
+            href={filterHref(null)}
+            className={!kindFilter ? 'ui-button ui-button-secondary ui-button-xs' : 'ui-button ui-button-ghost ui-button-xs'}
+          >
+            All ({drafts.length})
+          </Link>
+          <Link
+            href={filterHref('learning')}
+            className={kindFilter === 'learning' ? 'ui-button ui-button-secondary ui-button-xs' : 'ui-button ui-button-ghost ui-button-xs'}
+          >
+            Learning ({learningCount})
+          </Link>
+          <Link
+            href={filterHref('tasks')}
+            className={kindFilter === 'tasks' ? 'ui-button ui-button-secondary ui-button-xs' : 'ui-button ui-button-ghost ui-button-xs'}
+          >
+            Tasks ({tasksCount})
+          </Link>
         </div>
       </section>
 

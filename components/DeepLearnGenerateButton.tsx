@@ -4,27 +4,32 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useState, useTransition } from 'react'
 import { generateDeepLearnNoteAction } from '@/actions/deep-learn'
 import { buildDeepLearnNoteHref } from '@/lib/stay-focused-links'
+import { notifyCompletion } from '@/lib/notifications'
 
 const PACK_PROGRESS_STAGES = [
   {
-    label: 'Queue',
-    detail: 'Saving a pending pack record so this resource stops feeling idle.',
-    progressValue: 0.18,
+    label: 'Analyzing source',
+    detail: 'Reading the extracted text and source evidence to prepare a study pass.',
+    progressValue: 0.08,
+    durationHint: null,
   },
   {
-    label: 'Read source',
-    detail: 'Checking the extracted text or fallback source evidence for a usable study pass.',
-    progressValue: 0.38,
+    label: 'Generating with AI',
+    detail: 'Building answer banks, identification cues, quiz targets, and distinctions — this usually takes 30–45 seconds.',
+    progressValue: 0.20,
+    durationHint: '~40 sec',
   },
   {
-    label: 'Build pack',
-    detail: 'Turning the source into answer banks, identification cues, and quiz targets.',
-    progressValue: 0.7,
+    label: 'Structuring draft',
+    detail: 'Organizing the generated content into sections, MCQ sets, and timeline cues.',
+    progressValue: 0.85,
+    durationHint: null,
   },
   {
-    label: 'Save result',
-    detail: 'Writing the generated pack back into Stay Focused and preparing the next screen.',
-    progressValue: 0.88,
+    label: 'Saving to workspace',
+    detail: 'Writing the exam prep pack into Stay Focused and preparing the study surface.',
+    progressValue: 0.95,
+    durationHint: null,
   },
 ] as const
 
@@ -52,14 +57,18 @@ export function DeepLearnGenerateButton({
   useEffect(() => {
     if (!isPending) return
 
+    // Stage 1: "Generating with AI" after ~1.5s (server action starts, pending record saved)
+    // Stage 2: "Structuring draft" after ~35s (AI call usually completes around here)
+    // Stage 3: "Saving to workspace" after ~42s
+    const stageTimes = [1500, 35000, 42000]
     const timers = PACK_PROGRESS_STAGES.slice(1).map((stage, index) => window.setTimeout(() => {
       setStageIndex(index + 1)
       setProgressValue(stage.progressValue)
-    }, 520 + (index * 720)))
+    }, stageTimes[index] ?? 1500 + index * 10000))
 
     const intervalId = window.setInterval(() => {
-      setProgressValue((current) => (current >= 0.92 ? current : Math.min(current + 0.03, 0.92)))
-    }, 620)
+      setProgressValue((current) => (current >= 0.94 ? current : Math.min(current + 0.008, 0.94)))
+    }, 600)
 
     return () => {
       window.clearInterval(intervalId)
@@ -87,9 +96,28 @@ export function DeepLearnGenerateButton({
                 courseId,
               })
 
+              if (result.status === 'failed') {
+                notifyCompletion(
+                  'Pack generation failed',
+                  'Deep Learn could not build the exam prep pack. See the pack page for details.',
+                  { tag: 'exam-pack-generated', soundType: 'error', showBrowser: true, playSound: true },
+                )
+              } else {
+                notifyCompletion(
+                  'Pack ready!',
+                  'Your exam prep pack is ready to study.',
+                  { tag: 'exam-pack-generated', soundType: 'success', showBrowser: true, playSound: true },
+                )
+              }
+
               router.push(buildDeepLearnNoteHref(result.moduleId, result.resourceId))
               router.refresh()
             } catch (error) {
+              notifyCompletion(
+                'Pack generation failed',
+                'Deep Learn failed to start the exam prep pack.',
+                { tag: 'exam-pack-generated', soundType: 'error', showBrowser: true, playSound: true },
+              )
               setErrorMessage(error instanceof Error ? error.message : 'Deep Learn failed to start the exam prep pack.')
             }
           })
@@ -103,9 +131,16 @@ export function DeepLearnGenerateButton({
         <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.78rem 0.82rem', display: 'grid', gap: '0.6rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.6rem', alignItems: 'center', flexWrap: 'wrap' }}>
             <p className="ui-kicker" style={{ margin: 0 }}>Building exam prep pack</p>
-            <span className="ui-chip ui-chip-soft" style={{ fontWeight: 700 }}>
-              {Math.round(progressValue * 100)}%
-            </span>
+            <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
+              {PACK_PROGRESS_STAGES[stageIndex]?.durationHint && (
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                  {PACK_PROGRESS_STAGES[stageIndex].durationHint}
+                </span>
+              )}
+              <span className="ui-chip ui-chip-soft" style={{ fontWeight: 700 }}>
+                {Math.round(progressValue * 100)}%
+              </span>
+            </div>
           </div>
 
           <div style={{ position: 'relative', height: '0.42rem', borderRadius: '999px', overflow: 'hidden', background: 'color-mix(in srgb, var(--surface-soft) 90%, transparent)', border: '1px solid color-mix(in srgb, var(--border-subtle) 82%, transparent)' }}>
@@ -114,31 +149,48 @@ export function DeepLearnGenerateButton({
               height: '100%',
               borderRadius: 'inherit',
               background: 'linear-gradient(90deg, color-mix(in srgb, var(--accent) 72%, var(--blue) 28%), color-mix(in srgb, var(--blue) 68%, var(--accent) 32%))',
-              transition: 'width 220ms ease',
+              transition: 'width 500ms ease',
             }} />
           </div>
 
-          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-            {PACK_PROGRESS_STAGES.map((stage, index) => (
-              <span
-                key={stage.label}
-                className="ui-chip"
-                style={{
-                  padding: '0.22rem 0.52rem',
-                  fontSize: '11px',
-                  fontWeight: 700,
-                  background: index <= stageIndex
-                    ? 'color-mix(in srgb, var(--accent-light) 44%, var(--surface-soft) 56%)'
-                    : 'color-mix(in srgb, var(--surface-soft) 92%, transparent)',
-                  color: index <= stageIndex ? 'var(--text-primary)' : 'var(--text-muted)',
-                  border: `1px solid ${index <= stageIndex
-                    ? 'color-mix(in srgb, var(--accent-border) 28%, var(--border-subtle) 72%)'
-                    : 'var(--border-subtle)'}`,
-                }}
-              >
-                {stage.label}
-              </span>
-            ))}
+          <div style={{ display: 'grid', gap: '0.28rem' }}>
+            {PACK_PROGRESS_STAGES.map((stage, index) => {
+              const status = index < stageIndex ? 'done' : index === stageIndex ? 'active' : 'pending'
+              return (
+                <div key={stage.label} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <span style={{
+                    flexShrink: 0,
+                    width: '14px',
+                    height: '14px',
+                    borderRadius: '50%',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '9px',
+                    background: status === 'done'
+                      ? 'color-mix(in srgb, var(--green-light) 70%, var(--surface-base) 30%)'
+                      : status === 'active'
+                        ? 'color-mix(in srgb, var(--accent-light) 70%, var(--surface-base) 30%)'
+                        : 'color-mix(in srgb, var(--surface-soft) 80%, transparent)',
+                    border: `1px solid ${status === 'done'
+                      ? 'color-mix(in srgb, var(--green) 22%, var(--border-subtle) 78%)'
+                      : status === 'active'
+                        ? 'color-mix(in srgb, var(--accent-border) 22%, var(--border-subtle) 78%)'
+                        : 'color-mix(in srgb, var(--border-subtle) 80%, transparent)'}`,
+                    color: status === 'done' ? 'var(--green)' : status === 'active' ? 'var(--accent-foreground)' : 'var(--text-muted)',
+                  }}>
+                    {status === 'done' ? '✓' : status === 'active' ? '●' : ''}
+                  </span>
+                  <span style={{
+                    fontSize: '12px',
+                    fontWeight: status === 'active' ? 600 : status === 'done' ? 500 : 400,
+                    color: status === 'active' ? 'var(--text-primary)' : status === 'done' ? 'var(--text-secondary)' : 'var(--text-muted)',
+                  }}>
+                    {stage.label}
+                  </span>
+                </div>
+              )
+            })}
           </div>
 
           <p style={{ margin: 0, fontSize: '12px', lineHeight: 1.58, color: 'var(--text-secondary)' }}>

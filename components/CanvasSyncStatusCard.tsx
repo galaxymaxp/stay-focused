@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react'
 import type { CanvasSyncPhase, SyncActivitySnapshot } from '@/components/useCanvasSyncStatus'
+import { SAVING_SUB_STEPS } from '@/components/useCanvasSyncStatus'
 
 // Ordered list of user-visible stages shown in the checklist.
 // 'starting' is handled by the hook and resolves immediately, so we skip it here.
@@ -45,6 +46,7 @@ export function CanvasSyncStatusCard({
   onRetry,
   showWhenIdle = true,
   selectedCourseCount = 0,
+  savingSubStepIndex = 0,
 }: {
   detail: string
   lastSync: SyncActivitySnapshot | null
@@ -54,6 +56,7 @@ export function CanvasSyncStatusCard({
   showWhenIdle?: boolean
   title: string
   selectedCourseCount?: number
+  savingSubStepIndex?: number
 }) {
   if (!showWhenIdle && phase === 'idle' && !lastSync) {
     return null
@@ -64,6 +67,7 @@ export function CanvasSyncStatusCard({
   const isSavingPhase  = phase === 'saving'
   const courseLabel    = selectedCourseCount > 1 ? `${selectedCourseCount} courses` : '1 course'
   const syncingTitle   = selectedCourseCount > 0 ? `Syncing ${courseLabel}` : title
+  const progressPct    = Math.round(progressValue * 100)
 
   return (
     <div
@@ -91,7 +95,9 @@ export function CanvasSyncStatusCard({
             </p>
           </div>
         </div>
-        <span style={phaseChipStyle(phase)}>{getPhaseChipLabel(phase)}</span>
+        <span style={phaseChipStyle(phase)}>
+          {isSyncing ? `${progressPct}%` : getPhaseChipLabel(phase)}
+        </span>
       </div>
 
       {/* ── Stage checklist ── */}
@@ -110,19 +116,45 @@ export function CanvasSyncStatusCard({
                 </div>
                 <span style={stageLabelStyle(status)}>{stage.label}</span>
                 {status === 'active' && isSavingPhase && (
-                  <span style={savingHintStyle}>may take a few minutes</span>
+                  <span style={savingHintStyle}>{SAVING_SUB_STEPS[savingSubStepIndex]?.label ?? 'Processing'}</span>
                 )}
               </div>
             )
           })}
 
-          {/* Final "Finalized" row appears only when fully done */}
+          {/* Granular sub-steps shown during saving phase */}
+          {isSavingPhase && (
+            <div style={subStepListStyle}>
+              {SAVING_SUB_STEPS.map((subStep, index) => {
+                const subStatus: StageStatus = index < savingSubStepIndex ? 'done' : index === savingSubStepIndex ? 'active' : 'pending'
+                return (
+                  <div key={subStep.label} style={{ ...stageRowStyle, paddingLeft: '1.6rem' }}>
+                    <div style={stageDotWrapStyle(subStatus)} aria-hidden="true">
+                      {subStatus === 'done'
+                        ? <CheckMark color="var(--green)" />
+                        : subStatus === 'active'
+                          ? <div className="sync-stage-active-dot" />
+                          : <div style={pendingDotStyle} />}
+                    </div>
+                    <span style={stageLabelStyle(subStatus)}>{subStep.label}</span>
+                    {subStatus !== 'pending' && (
+                      <span style={{ ...savingHintStyle, marginLeft: 'auto' }}>
+                        {Math.round(subStep.progressValue * 100)}%
+                      </span>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Final "Sync complete" row appears only when fully done */}
           {phase === 'done' && (
             <div style={stageRowStyle}>
               <div style={stageDotWrapStyle('done')} aria-hidden="true">
                 <CheckMark color="var(--green)" />
               </div>
-              <span style={stageLabelStyle('done')}>Finalized</span>
+              <span style={stageLabelStyle('done')}>Sync complete</span>
             </div>
           )}
         </div>
@@ -131,9 +163,7 @@ export function CanvasSyncStatusCard({
       {/* ── Progress bar ── */}
       {phase !== 'idle' && (
         <div style={progressTrackStyle} aria-hidden="true">
-          {isSavingPhase
-            ? <div className="sync-progress-indeterminate" />
-            : <div style={progressFillStyle(phase, progressValue)} />}
+          <div style={progressFillStyle(phase, progressValue)} />
         </div>
       )}
 
@@ -142,8 +172,8 @@ export function CanvasSyncStatusCard({
         <span style={footerTextStyle}>
           {isSyncing
             ? selectedCourseCount > 1
-              ? `Syncing ${selectedCourseCount} courses — large courses with many modules may take a few minutes.`
-              : 'Large courses with many modules may take a few minutes.'
+              ? `Syncing ${selectedCourseCount} courses — AI extraction may take a few minutes.`
+              : 'AI extraction may take a few minutes for large courses.'
             : lastSync
               ? lastSync.label
               : 'No sync has completed yet.'}
@@ -410,6 +440,11 @@ const savingHintStyle: CSSProperties = {
   color: 'var(--text-muted)',
   fontStyle: 'italic',
   flexShrink: 0,
+}
+
+const subStepListStyle: CSSProperties = {
+  borderTop: '1px solid color-mix(in srgb, var(--border-subtle) 55%, transparent)',
+  background: 'color-mix(in srgb, var(--surface-soft) 30%, transparent)',
 }
 
 const progressTrackStyle: CSSProperties = {

@@ -1,0 +1,35 @@
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background circle with soft glow -->
+  <circle cx="128" cy="128" r="120" fill="#1F2937"/>
+  <circle cx="128" cy="128" r="120" fill="url(#glow)" opacity="0.3"/>
+  
+  <!-- Book shape -->
+  <g transform="translate(64, 56)">
+    <!-- Book cover -->
+    <rect x="0" y="0" width="128" height="144" rx="8" fill="#FBBF24"/>
+    
+    <!-- Book spine shadow -->
+    <rect x="0" y="0" width="12" height="144" rx="8" fill="#F59E0B" fill-opacity="0.5"/>
+    
+    <!-- Page edges (right side) -->
+    <rect x="116" y="8" width="8" height="128" fill="#FEF3C7" rx="2"/>
+    <rect x="113" y="10" width="8" height="124" fill="#FEF3C7" rx="2"/>
+    <rect x="110" y="12" width="8" height="120" fill="#FEF3C7" rx="2"/>
+    
+    <!-- Book lines/details -->
+    <line x1="20" y1="40" x2="100" y2="40" stroke="#F59E0B" stroke-width="2" stroke-linecap="round"/>
+    <line x1="20" y1="60" x2="90" y2="60" stroke="#F59E0B" stroke-width="2" stroke-linecap="round"/>
+    <line x1="20" y1="80" x2="95" y2="80" stroke="#F59E0B" stroke-width="2" stroke-linecap="round"/>
+    
+    <!-- Soft shadow under book -->
+    <ellipse cx="64" cy="150" rx="50" ry="8" fill="#000000" opacity="0.2"/>
+  </g>
+  
+  <!-- Gradient definitions -->
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#FBBF24" stop-opacity="1"/>
+      <stop offset="100%" stop-color="#FBBF24" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+</svg>

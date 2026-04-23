@@ -24,11 +24,18 @@ interface SyncRunHandle {
 }
 
 const PHASE_SEQUENCE: Array<{ delay: number; phase: Extract<CanvasSyncPhase, 'connecting' | 'fetchingCourses' | 'fetchingModules' | 'merging' | 'saving'>; progressValue: number }> = [
-  { delay: 150, phase: 'connecting', progressValue: 0.18 },
-  { delay: 380, phase: 'fetchingCourses', progressValue: 0.34 },
-  { delay: 680, phase: 'fetchingModules', progressValue: 0.56 },
-  { delay: 980, phase: 'merging', progressValue: 0.74 },
-  { delay: 1320, phase: 'saving', progressValue: 0.88 },
+  { delay: 150,  phase: 'connecting',      progressValue: 0.18 },
+  { delay: 380,  phase: 'fetchingCourses', progressValue: 0.34 },
+  { delay: 680,  phase: 'fetchingModules', progressValue: 0.52 },
+  { delay: 980,  phase: 'merging',         progressValue: 0.65 },
+  { delay: 1320, phase: 'saving',          progressValue: 0.70 },
+]
+
+export const SAVING_SUB_STEPS: Array<{ label: string; progressValue: number; delay: number }> = [
+  { label: 'Saving courses to database',  progressValue: 0.70, delay: 0    },
+  { label: 'Saving modules to database',  progressValue: 0.80, delay: 4000 },
+  { label: 'Extracting tasks with AI',    progressValue: 0.90, delay: 12000 },
+  { label: 'Finalizing sync',             progressValue: 0.97, delay: 40000 },
 ]
 
 const MINIMUM_SUCCESS_TIMELINE_MS = 1320
@@ -40,6 +47,7 @@ export function useCanvasSyncStatus(initialLastSync: SyncActivitySnapshot | null
   const [lastSyncOverride, setLastSyncOverride] = useState<SyncActivitySnapshot | null>(null)
   const [outcomeMessage, setOutcomeMessage] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [savingSubStepIndex, setSavingSubStepIndex] = useState(0)
   const runIdRef = useRef(0)
   const pendingTimeoutsRef = useRef<number[]>([])
   const pendingIntervalRef = useRef<number | null>(null)
@@ -72,13 +80,25 @@ export function useCanvasSyncStatus(initialLastSync: SyncActivitySnapshot | null
     setErrorMessage(null)
     setPhase('starting')
     setProgressValue(0.08)
+    setSavingSubStepIndex(0)
 
     for (const step of PHASE_SEQUENCE) {
       const timeoutId = window.setTimeout(() => {
         if (runIdRef.current !== runId) return
-
         setPhase(step.phase)
         setProgressValue((current) => Math.max(current, step.progressValue))
+        if (step.phase === 'saving') {
+          setSavingSubStepIndex(0)
+          for (let i = 1; i < SAVING_SUB_STEPS.length; i++) {
+            const subStep = SAVING_SUB_STEPS[i]
+            const subTimeoutId = window.setTimeout(() => {
+              if (runIdRef.current !== runId) return
+              setSavingSubStepIndex(i)
+              setProgressValue((current) => Math.max(current, subStep.progressValue))
+            }, subStep.delay)
+            pendingTimeoutsRef.current.push(subTimeoutId)
+          }
+        }
       }, step.delay)
 
       pendingTimeoutsRef.current.push(timeoutId)
@@ -86,8 +106,7 @@ export function useCanvasSyncStatus(initialLastSync: SyncActivitySnapshot | null
 
     pendingIntervalRef.current = window.setInterval(() => {
       if (runIdRef.current !== runId) return
-
-      setProgressValue((current) => current >= 0.92 ? current : Math.min(current + 0.018, 0.92))
+      setProgressValue((current) => current >= 0.97 ? current : Math.min(current + 0.008, 0.97))
     }, 420)
 
     return {
@@ -106,6 +125,7 @@ export function useCanvasSyncStatus(initialLastSync: SyncActivitySnapshot | null
     setProgressValue(1)
     setOutcomeMessage(message)
     setErrorMessage(null)
+    setSavingSubStepIndex(0)
     setLastSyncOverride({
       label: `Last sync finished on ${completedAt}`,
       tone: 'success',
@@ -128,7 +148,10 @@ export function useCanvasSyncStatus(initialLastSync: SyncActivitySnapshot | null
     setProgressValue(0)
     setOutcomeMessage(null)
     setErrorMessage(null)
+    setSavingSubStepIndex(0)
   }, [clearPhaseTimers])
+
+  const currentSavingSubStep = SAVING_SUB_STEPS[savingSubStepIndex] ?? SAVING_SUB_STEPS[0]
 
   return {
     detail: getSyncPhaseDetail(phase, selectedCourseCount, outcomeMessage, errorMessage),
@@ -141,6 +164,8 @@ export function useCanvasSyncStatus(initialLastSync: SyncActivitySnapshot | null
     resetSyncFeedback,
     selectedCourseCount,
     title: getSyncPhaseTitle(phase),
+    savingSubStepIndex,
+    savingSubStepLabel: currentSavingSubStep.label,
     beginSync,
     failSync,
   }
@@ -166,38 +191,14 @@ function getSyncPhaseDetail(
 ) {
   const courseLabel = selectedCourseCount === 1 ? '1 selected course' : `${selectedCourseCount} selected courses`
 
-  if (phase === 'starting') {
-    return `Preparing ${courseLabel} for a new Canvas refresh.`
-  }
-
-  if (phase === 'connecting') {
-    return 'Opening the current Canvas connection and starting the sync request.'
-  }
-
-  if (phase === 'fetchingCourses') {
-    return 'Pulling assignments, announcements, and course-level payloads for the selected courses.'
-  }
-
-  if (phase === 'fetchingModules') {
-    return 'Loading module items, attached resources, and module-linked study content.'
-  }
-
-  if (phase === 'merging') {
-    return 'Combining the incoming Canvas data with the Stay Focused workspace shape.'
-  }
-
-  if (phase === 'saving') {
-    return 'Writing synced modules, tasks, and study items into the app.'
-  }
-
-  if (phase === 'done') {
-    return outcomeMessage ?? 'The selected Canvas content finished syncing successfully.'
-  }
-
-  if (phase === 'error') {
-    return errorMessage ?? 'The sync could not be completed.'
-  }
-
+  if (phase === 'starting') return `Preparing ${courseLabel} for a new Canvas refresh.`
+  if (phase === 'connecting') return 'Opening the current Canvas connection and starting the sync request.'
+  if (phase === 'fetchingCourses') return 'Pulling assignments, announcements, and course-level payloads for the selected courses.'
+  if (phase === 'fetchingModules') return 'Loading module items, attached resources, and module-linked study content.'
+  if (phase === 'merging') return 'Combining the incoming Canvas data with the Stay Focused workspace shape.'
+  if (phase === 'saving') return 'Writing synced modules, tasks, and study items into the app — AI extraction may take a few minutes.'
+  if (phase === 'done') return outcomeMessage ?? 'The selected Canvas content finished syncing successfully.'
+  if (phase === 'error') return errorMessage ?? 'The sync could not be completed.'
   return 'Select courses, then run sync when you are ready.'
 }
 
