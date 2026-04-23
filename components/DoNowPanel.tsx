@@ -9,15 +9,19 @@ import { TaskDraftSourcePane } from '@/components/TaskDraftSourcePane'
 import { usePromptBuild, type PromptBuildSnapshot } from '@/components/usePromptBuild'
 import {
   buildTaskDraftFallback,
+  buildTaskDraftContextText,
   buildTaskDraftSourceKey,
   buildTaskDraftRequestPayload,
+  isTaskDraftApiResponse,
+  type TaskDraftApiRequest,
+  type TaskDraftResponse,
   type TaskDraftContext,
 } from '@/lib/do-now'
 import type { ManualCopyBundleResult } from '@/lib/manual-copy-bundle'
 
 /**
- * Modal panel that opens immediately, shows a draft-building experience while
- * the request runs, then hands off to the final usable starter draft view.
+ * Modal panel that opens immediately, shows output generation progress while
+ * the request runs, then hands off to an editable first-pass answer.
  */
 export function TaskDraftPanel({
   context,
@@ -49,6 +53,50 @@ export function TaskDraftPanel({
     requestPayload,
   })
   const draft = promptBuild.generatedDraft ?? fallbackDraft
+  const [workingDraft, setWorkingDraft] = useState(draft)
+  const [refinementPending, setRefinementPending] = useState<string | null>(null)
+  const [refinementError, setRefinementError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setWorkingDraft(draft)
+    setRefinementPending(null)
+    setRefinementError(null)
+  }, [draft, requestBody])
+
+  async function refineOutput(mode: 'shorter' | 'formal' | 'human' | 'expand' | 'improve' | 'retry') {
+    if (refinementPending || promptBuild.isBuilding) return
+
+    setRefinementPending(mode)
+    setRefinementError(null)
+
+    try {
+      const refinementPayload = buildRefinementPayload({
+        basePayload: requestPayload,
+        currentDraft: workingDraft,
+        mode,
+      })
+
+      const response = await fetch('/api/do-now', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(refinementPayload),
+      })
+      const data = (await response.json().catch(() => null)) as unknown
+
+      if (!response.ok) {
+        throw new Error(extractRefinementErrorMessage(data))
+      }
+      if (!isTaskDraftApiResponse(data)) {
+        throw new Error('Could not parse the refined output.')
+      }
+
+      setWorkingDraft(data.draft)
+    } catch (error) {
+      setRefinementError(error instanceof Error ? error.message : 'Could not refine the output.')
+    } finally {
+      setRefinementPending(null)
+    }
+  }
 
   useEffect(() => {
     function handleEscape(event: KeyboardEvent) {
@@ -90,11 +138,11 @@ export function TaskDraftPanel({
         onClick={(event) => event.stopPropagation()}
         role="dialog"
         aria-modal="true"
-        aria-label={`Starter draft - ${context.taskTitle}`}
+        aria-label={`First output - ${context.taskTitle}`}
       >
         <div style={headerStyle}>
           <div style={{ minWidth: 0 }}>
-            <p className="ui-kicker" style={{ margin: 0 }}>Starter draft</p>
+            <p className="ui-kicker" style={{ margin: 0 }}>Do output</p>
             <h2 style={titleStyle}>{context.taskTitle}</h2>
             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.5rem' }}>
               <span className="ui-chip" style={courseChipStyle}>{context.courseName}</span>
@@ -112,7 +160,7 @@ export function TaskDraftPanel({
             type="button"
             onClick={onClose}
             className="ui-button ui-button-ghost"
-            aria-label="Close starter draft panel"
+            aria-label="Close output panel"
             style={closeButtonStyle}
           >
             X
@@ -138,27 +186,31 @@ export function TaskDraftPanel({
                 />
 
                 <div style={sectionsStyle}>
-                  <TextSection
-                    heading="0. Requirement summary"
-                    body={draft.requirementSummary}
+                  <PrimaryOutputSection
+                    output={workingDraft.draftOutput}
+                    onOutputChange={(value) => {
+                      setWorkingDraft((current) => ({ ...current, draftOutput: value }))
+                    }}
+                    onRefine={refineOutput}
+                    pendingMode={refinementPending}
+                    errorMessage={refinementError}
                   />
-                  <EditableDraftSection
-                    key={draft.draftOutput}
-                    heading="1. Draft output"
-                    initialValue={draft.draftOutput}
-                  />
-                  <TextSection
-                    heading="2. What is still missing or unclear?"
-                    body={draft.missingDetails}
-                  />
-                  <TextSection
-                    heading="3. What should I do on the paper right now?"
-                    body={draft.paperAction}
-                  />
-                  <TextSection
-                    heading="4. Smallest next step"
-                    body={draft.smallestNextStep}
-                  />
+                  <details className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.9rem 0.95rem' }}>
+                    <summary className="ui-interactive-summary" style={{ padding: 0 }}>
+                      <div>
+                        <p className="ui-kicker">Support details</p>
+                        <p style={{ margin: '0.35rem 0 0', fontSize: '13px', lineHeight: 1.6, color: 'var(--text-secondary)' }}>
+                          Requirement checks and next steps stay here so the primary output remains front and center.
+                        </p>
+                      </div>
+                    </summary>
+                    <div style={{ marginTop: '0.8rem', display: 'grid', gap: '0.65rem' }}>
+                      <TextSection heading="Requirement summary" body={workingDraft.requirementSummary} />
+                      <TextSection heading="Missing or unclear details" body={workingDraft.missingDetails} />
+                      <TextSection heading="What to do on paper right now" body={workingDraft.paperAction} />
+                      <TextSection heading="Smallest next step" body={workingDraft.smallestNextStep} />
+                    </div>
+                  </details>
                 </div>
               </>
             )}
@@ -188,6 +240,16 @@ export function TaskDraftPanel({
               fullLabel="Copy for another AI tool"
               fullTone="secondary"
             />
+          )}
+          {context.moduleId && (
+            <Link
+              href={`/drafts/new?module=${encodeURIComponent(context.moduleId)}`}
+              className="ui-button ui-button-ghost"
+              style={footerButtonStyle}
+              onClick={onClose}
+            >
+              Save to Drafts
+            </Link>
           )}
           {entryOrigin === 'today' && doPageHref && (
             <Link
@@ -238,26 +300,55 @@ function TextSection({
   )
 }
 
-function EditableDraftSection({
-  heading,
-  initialValue,
+function PrimaryOutputSection({
+  output,
+  onOutputChange,
+  onRefine,
+  pendingMode,
+  errorMessage,
 }: {
-  heading: string
-  initialValue: string
+  output: string
+  onOutputChange: (value: string) => void
+  onRefine: (mode: 'shorter' | 'formal' | 'human' | 'expand' | 'improve' | 'retry') => void
+  pendingMode: string | null
+  errorMessage: string | null
 }) {
-  const [value, setValue] = useState(initialValue)
-
   return (
-    <section style={sectionStyle}>
-      <p style={sectionHeadingStyle}>{heading}</p>
+    <section style={primaryOutputSectionStyle}>
+      <p style={sectionHeadingStyle}>Primary output</p>
       <p style={{ margin: '0.38rem 0 0', fontSize: '12px', lineHeight: 1.55, color: 'var(--text-muted)' }}>
-        Edit the working draft while the source stays visible on the right.
+        Start with the usable answer. Refine it quickly, then submit or copy.
       </p>
+      <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginTop: '0.68rem' }}>
+        {[
+          { key: 'shorter', label: 'Shorter' },
+          { key: 'formal', label: 'More formal' },
+          { key: 'human', label: 'More human' },
+          { key: 'expand', label: 'Expand' },
+          { key: 'improve', label: 'Improve' },
+          { key: 'retry', label: 'Retry' },
+        ].map((action) => (
+          <button
+            key={action.key}
+            type="button"
+            onClick={() => onRefine(action.key as 'shorter' | 'formal' | 'human' | 'expand' | 'improve' | 'retry')}
+            className="ui-button ui-button-ghost ui-button-xs"
+            disabled={Boolean(pendingMode)}
+          >
+            {pendingMode === action.key ? 'Working…' : action.label}
+          </button>
+        ))}
+      </div>
+      {errorMessage && (
+        <p style={{ margin: '0.55rem 0 0', fontSize: '12px', lineHeight: 1.55, color: 'var(--red)' }}>
+          {errorMessage}
+        </p>
+      )}
       <textarea
-        value={value}
-        onChange={(event) => setValue(event.target.value)}
+        value={output}
+        onChange={(event) => onOutputChange(event.target.value)}
         className="ui-input"
-        style={draftEditorStyle}
+        style={primaryOutputEditorStyle}
         spellCheck={false}
       />
     </section>
@@ -277,22 +368,72 @@ function StatusBanner({
 }) {
   return (
     <div style={statusBannerStyle(phase)}>
-      <p style={statusTitleStyle}>{phase === 'error' ? 'Draft build failed' : 'Draft ready'}</p>
+      <p style={statusTitleStyle}>{phase === 'error' ? 'Output build failed' : 'Output ready'}</p>
       <p style={statusBodyStyle}>
         {phase === 'error'
-          ? `${errorMessage ?? 'OpenAI generation failed.'} Showing the local starter draft instead.`
+          ? `${errorMessage ?? 'OpenAI generation failed.'} Showing the local first output instead.`
           : reopenSource === 'session'
             ? draftSource === 'saved'
-              ? 'This reopened the same saved starter draft from the current session because the task content has not changed.'
-              : 'This reopened the same generated starter draft from the current session because the task content has not changed.'
+              ? 'This reopened the same saved output from this session because the task context has not changed.'
+              : 'This reopened the same generated output from this session because the task context has not changed.'
           : draftSource === 'saved'
-            ? 'This starter draft was loaded from the saved server result because the task content has not changed.'
+            ? 'This output was loaded from a saved server result because the task context has not changed.'
             : phase === 'done'
-            ? 'This starter draft was generated from the current task context.'
-            : `${errorMessage ?? 'OpenAI generation failed.'} Showing the local starter draft instead.`}
+            ? 'This output was generated from the current task context.'
+            : `${errorMessage ?? 'OpenAI generation failed.'} Showing the local first output instead.`}
       </p>
     </div>
   )
+}
+
+function buildRefinementPayload({
+  basePayload,
+  currentDraft,
+  mode,
+}: {
+  basePayload: TaskDraftApiRequest
+  currentDraft: TaskDraftResponse
+  mode: 'shorter' | 'formal' | 'human' | 'expand' | 'improve' | 'retry'
+}): TaskDraftApiRequest {
+  const clippedOutput = buildTaskDraftContextText(currentDraft.draftOutput, 1200) ?? currentDraft.draftOutput
+  const clippedRequirement = buildTaskDraftContextText(currentDraft.requirementSummary, 420) ?? currentDraft.requirementSummary
+  const modeInstruction = mode === 'shorter'
+    ? 'Make the output shorter while preserving the strongest points.'
+    : mode === 'formal'
+      ? 'Increase professionalism and formal tone without sounding robotic.'
+      : mode === 'human'
+        ? 'Make the writing more natural and human while keeping quality high.'
+        : mode === 'expand'
+          ? 'Expand with stronger supporting detail and clearer structure.'
+          : mode === 'improve'
+            ? 'Improve clarity, specificity, and overall quality.'
+            : 'Regenerate a better first-pass output from the same task context.'
+
+  const refinementContext = [
+    basePayload.instructions,
+    '',
+    'Current output to refine:',
+    clippedOutput,
+    '',
+    'Requirement summary:',
+    clippedRequirement,
+    '',
+    `Refinement target: ${modeInstruction}`,
+    'Return all sections in the same output format.',
+  ].join('\n')
+
+  return {
+    ...basePayload,
+    sourceKey: `${basePayload.sourceKey}:refine:${mode}:${Date.now()}`,
+    instructions: refinementContext,
+  }
+}
+
+function extractRefinementErrorMessage(value: unknown) {
+  if (value && typeof value === 'object' && 'error' in value && typeof (value as { error?: unknown }).error === 'string') {
+    return (value as { error: string }).error
+  }
+  return 'Could not refine the output right now.'
 }
 
 export function getTaskDraftSessionKey(context: TaskDraftContext) {
@@ -443,6 +584,12 @@ const sectionStyle: CSSProperties = {
   padding: '0.95rem',
 }
 
+const primaryOutputSectionStyle: CSSProperties = {
+  ...sectionStyle,
+  border: '1px solid color-mix(in srgb, var(--accent-border) 34%, var(--border-subtle) 66%)',
+  background: 'color-mix(in srgb, var(--surface-elevated) 96%, transparent)',
+}
+
 const sectionHeadingStyle: CSSProperties = {
   margin: 0,
   fontSize: '11px',
@@ -460,9 +607,9 @@ const draftBodyStyle: CSSProperties = {
   whiteSpace: 'pre-wrap',
 }
 
-const draftEditorStyle: CSSProperties = {
+const primaryOutputEditorStyle: CSSProperties = {
   marginTop: '0.7rem',
-  minHeight: '15rem',
+  minHeight: '19rem',
   padding: '0.9rem 0.95rem',
   fontSize: '14px',
   lineHeight: 1.68,

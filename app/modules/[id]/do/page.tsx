@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
+import { listDraftsForShelves } from '@/actions/drafts'
 import { ModuleLensShell } from '@/components/ModuleLensShell'
 import { buildLearnExperience, extractCourseName, findRecommendedStepTargets, getModuleWorkspace, getResourceCanvasHref, getResourceOriginalFileHref, matchTaskToResource } from '@/lib/module-workspace'
 import { buildModuleLearnHref, getSearchParamValue, getTaskElementId } from '@/lib/stay-focused-links'
@@ -18,8 +19,11 @@ export default async function DoPage({ params, searchParams }: Props) {
   const resolvedSearchParams = await searchParams
   const workspace = await getModuleWorkspace(id)
   if (!workspace) notFound()
+  const { drafts } = await listDraftsForShelves()
 
   const { module, tasks, deadlines, resources: storedResources } = workspace
+  const moduleDrafts = drafts.filter((draft) => draft.sourceModuleId === module.id)
+  const latestModuleDraft = moduleDrafts[0] ?? null
   const courseName = extractCourseName(module.raw_content)
   const pendingTasks = sortTasksByRecommendation(tasks.filter((task) => task.status !== 'completed'))
   const completedTasks = tasks.filter((task) => task.status === 'completed')
@@ -87,6 +91,26 @@ export default async function DoPage({ params, searchParams }: Props) {
             <span className="ui-chip ui-chip-soft">
               {pendingTasks.length} active task{pendingTasks.length === 1 ? '' : 's'}
             </span>
+          </div>
+
+          <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.82rem 0.88rem', marginBottom: '0.9rem', display: 'grid', gap: '0.5rem' }}>
+            <p className="ui-kicker" style={{ margin: 0 }}>Draft notebook</p>
+            <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.62, color: 'var(--text-secondary)' }}>
+              Capture working notes from tasks in this module, then continue them from the Draft notebook.
+            </p>
+            <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+              <Link href={`/drafts/new?module=${encodeURIComponent(module.id)}`} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
+                Create Draft
+              </Link>
+              {latestModuleDraft && (
+                <Link href={`/drafts/${latestModuleDraft.id}`} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+                  Continue Draft
+                </Link>
+              )}
+              <Link href={`/drafts?module=${encodeURIComponent(module.id)}`} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+                Module drafts
+              </Link>
+            </div>
           </div>
 
           {pendingTasks.length === 0 ? (
@@ -180,6 +204,8 @@ export default async function DoPage({ params, searchParams }: Props) {
                           defaultOpen={draftAutoOpen && highlightedTaskId === task.id}
                           copyBundle={manualCopy}
                           context={{
+                            moduleId: module.id,
+                            courseId: module.courseId,
                             taskTitle: task.title,
                             taskDetails: task.details,
                             deadline: task.deadline,
@@ -288,6 +314,8 @@ export default async function DoPage({ params, searchParams }: Props) {
                             defaultOpen={draftAutoOpen && highlightedTaskId === task.id}
                             copyBundle={manualCopy}
                             context={{
+                              moduleId: module.id,
+                              courseId: module.courseId,
                               taskTitle: task.title,
                               taskDetails: task.details,
                               deadline: task.deadline,

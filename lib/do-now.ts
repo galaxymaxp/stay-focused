@@ -5,6 +5,8 @@ import { buildTaskRequirementSummary, inferTaskTypeLabelFromText } from '@/lib/m
  */
 
 export interface TaskDraftContext {
+  moduleId?: string | null
+  courseId?: string | null
   taskTitle: string
   taskDetails: string | null
   /** ISO date string */

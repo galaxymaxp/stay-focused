@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
+import { listDraftsForShelves } from '@/actions/drafts'
 import { CourseLearnExplorer } from '@/components/CourseLearnExplorer'
 import { getClarityWorkspace } from '@/lib/clarity-workspace'
 import { buildCourseLearnOverview, type CourseLearnModuleCard, type CourseLearnTaskRow } from '@/lib/course-learn-overview'
@@ -23,6 +24,9 @@ export default async function CourseWorkspacePage({ params, searchParams }: Prop
   if (!courseOverview) notFound()
 
   const { course, modules } = courseOverview
+  const { drafts } = await listDraftsForShelves()
+  const courseDrafts = drafts.filter((draft) => draft.courseId === id)
+  const latestCourseDraft = courseDrafts[0] ?? null
 
   const allPendingTasks = modules.flatMap((m) =>
     m.pendingTasks.map((t) => ({ ...t, moduleId: m.id, moduleTitle: m.title })),
@@ -75,6 +79,26 @@ export default async function CourseWorkspacePage({ params, searchParams }: Prop
           <TabLink label="Deep Learn" href={`/courses/${id}`} active={tab === 'learn'} />
           <TabLink label="Do" href={`/courses/${id}?tab=do`} active={tab === 'do'} />
           <TabLink label="Quiz" href={`/courses/${id}?tab=quiz`} active={tab === 'quiz'} />
+        </div>
+
+        <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.85rem 0.9rem', display: 'grid', gap: '0.55rem' }}>
+          <p className="ui-kicker">Draft notebook</p>
+          <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.62, color: 'var(--text-secondary)' }}>
+            Save course notes from Learn or Do, then reopen them with source context intact.
+          </p>
+          <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+            <Link href={`/drafts/new?course=${encodeURIComponent(id)}`} className="ui-button ui-button-secondary ui-button-xs">
+              Create Draft
+            </Link>
+            {latestCourseDraft && (
+              <Link href={`/drafts/${latestCourseDraft.id}`} className="ui-button ui-button-ghost ui-button-xs">
+                Continue latest Draft
+              </Link>
+            )}
+            <Link href={`/drafts?course=${encodeURIComponent(id)}`} className="ui-button ui-button-ghost ui-button-xs">
+              View course drafts
+            </Link>
+          </div>
         </div>
       </section>
 

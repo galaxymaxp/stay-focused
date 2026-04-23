@@ -6,11 +6,11 @@ export type DeepLearnUiStatus = 'not_started' | 'pending' | 'ready' | 'failed' |
 
 export interface DeepLearnResourceUiState {
   status: DeepLearnUiStatus
-  statusLabel: 'Draft' | 'Organize' | 'Review Ready' | 'Source issue' | 'Unavailable'
+  statusLabel: 'Draft' | 'Review' | 'Review Ready' | 'Source issue' | 'Unavailable'
   tone: 'accent' | 'warning' | 'muted'
   noteHref: string
   quizHref: string
-  primaryLabel: 'Create Draft' | 'Open Draft' | 'Open Source'
+  primaryLabel: 'Create Draft' | 'Open workspace' | 'Open Source'
   summary: string
   detail: string
   quizReady: boolean
@@ -84,7 +84,7 @@ export function getDeepLearnResourceUiState(
       tone: 'warning',
       noteHref,
       quizHref,
-      primaryLabel: 'Open Draft',
+      primaryLabel: 'Open workspace',
       summary: note.overview || 'Deep Learn is building the saved exam prep pack.',
       detail: 'Generation is in progress. Open the pack to refresh status, or keep the source support nearby while it finishes.',
       quizReady: false,
@@ -107,11 +107,11 @@ export function getDeepLearnResourceUiState(
 
   return {
     status: 'ready',
-    statusLabel: note.quizReady ? 'Review Ready' : 'Organize',
+    statusLabel: note.quizReady ? 'Review Ready' : 'Review',
     tone: 'accent',
     noteHref,
     quizHref,
-    primaryLabel: 'Open Draft',
+    primaryLabel: 'Open workspace',
     summary: note.overview,
     detail: note.quizReady
       ? 'This saved exam prep pack is ready for answer-bank review, identification drills, MCQ recall, and timeline review.'
