@@ -94,17 +94,17 @@ export default async function DoPage({ params, searchParams }: Props) {
           </div>
 
           <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.82rem 0.88rem', marginBottom: '0.9rem', display: 'grid', gap: '0.5rem' }}>
-            <p className="ui-kicker" style={{ margin: 0 }}>Draft library</p>
+            <p className="ui-kicker" style={{ margin: 0 }}>Study Library</p>
             <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.62, color: 'var(--text-secondary)' }}>
-              Save task outputs from the output panel, then continue the same records from Draft.
+              Save task outputs from the output panel, then reopen them from the Study Library to continue right where you left off.
             </p>
             <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
               {latestModuleDraft && (
-                <Link href={`/drafts/${latestModuleDraft.id}`} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
-                  Resume latest output
+                <Link href={`/library/${latestModuleDraft.id}`} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
+                  Resume latest pack
                 </Link>
               )}
-              <Link href={`/drafts?module=${encodeURIComponent(module.id)}`} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+              <Link href={`/library?module=${encodeURIComponent(module.id)}`} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
                 Module library
               </Link>
             </div>

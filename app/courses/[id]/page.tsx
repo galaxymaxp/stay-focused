@@ -82,17 +82,17 @@ export default async function CourseWorkspacePage({ params, searchParams }: Prop
         </div>
 
         <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.85rem 0.9rem', display: 'grid', gap: '0.55rem' }}>
-          <p className="ui-kicker">Draft library</p>
+          <p className="ui-kicker">Study Library</p>
           <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.62, color: 'var(--text-secondary)' }}>
-            Saved study outputs from Learn or Do stay attached to this course and reopen with their source context intact.
+            Saved exam prep packs from Learn and study outputs from Do stay attached to this course and reopen with their source context intact.
           </p>
           <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
             {latestCourseDraft && (
-              <Link href={`/drafts/${latestCourseDraft.id}`} className="ui-button ui-button-secondary ui-button-xs">
-                Resume latest output
+              <Link href={`/library/${latestCourseDraft.id}`} className="ui-button ui-button-secondary ui-button-xs">
+                Resume latest pack
               </Link>
             )}
-            <Link href={`/drafts?course=${encodeURIComponent(id)}`} className="ui-button ui-button-ghost ui-button-xs">
+            <Link href={`/library?course=${encodeURIComponent(id)}`} className="ui-button ui-button-ghost ui-button-xs">
               View course library
             </Link>
           </div>

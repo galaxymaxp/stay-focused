@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation'
 
-export default async function NewDraftPage() {
-  redirect('/drafts')
+export default async function NewDraftRedirect() {
+  redirect('/library')
 }

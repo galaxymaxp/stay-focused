@@ -376,6 +376,7 @@ function sectionsFromMarkdown(markdown: string, fallback: DeepLearnNoteSection[]
 
 function revalidateDeepLearnPaths(moduleId: string, courseId: string | null, resourceId: string, detailResourceId = resourceId) {
   revalidatePath('/drafts')
+  revalidatePath('/library')
   revalidatePath('/learn')
   revalidatePath('/courses')
   if (courseId) {

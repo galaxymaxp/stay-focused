@@ -159,17 +159,17 @@ export default async function LearnPage({ params, searchParams }: Props) {
               </div>
 
               <div className="workspace-quiet-panel" style={{ gap: '0.55rem' }}>
-                <p className="ui-kicker" style={{ margin: 0 }}>Draft library</p>
+                <p className="ui-kicker" style={{ margin: 0 }}>Study Library</p>
                 <p className="workspace-quiet-panel-copy">
-                  Saved study outputs from Learn and Do appear here automatically and reopen with the same module, source, and output context.
+                  Saved exam prep packs from Learn and study outputs from Do appear here automatically and reopen with the same module, source, and pack context.
                 </p>
                 <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
                   {latestModuleDraft && (
-                    <Link href={`/drafts/${latestModuleDraft.id}`} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
-                      Resume latest output
+                    <Link href={`/library/${latestModuleDraft.id}`} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
+                      Resume latest pack
                     </Link>
                   )}
-                  <Link href={`/drafts?module=${encodeURIComponent(module.id)}`} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+                  <Link href={`/library?module=${encodeURIComponent(module.id)}`} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
                     Module library
                   </Link>
                 </div>

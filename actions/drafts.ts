@@ -273,9 +273,11 @@ function revalidateUnifiedDraftPaths(input: {
   draftId?: string | null
 }) {
   revalidatePath('/drafts')
+  revalidatePath('/library')
 
   if (input.draftId) {
     revalidatePath(`/drafts/${input.draftId}`)
+    revalidatePath(`/library/${input.draftId}`)
   }
 
   if (input.courseId) {
@@ -774,7 +776,7 @@ export async function deleteDraft(draftId: string): Promise<void> {
     resourceId: (existing?.source_resource_id as string | null) ?? null,
     draftId,
   })
-  redirect('/drafts')
+  redirect('/library')
 }
 
 export async function makeQuizzable(draftId: string): Promise<void> {

@@ -37,6 +37,19 @@ const NAV_ITEMS = [
     ),
   },
   {
+    href: '/library',
+    label: 'Study Library',
+    matches: (pathname: string) => pathname.startsWith('/library') || pathname.startsWith('/drafts'),
+    icon: (
+      <>
+        <rect x="4.75" y="6.75" width="3" height="10" rx="0.75" />
+        <rect x="10.25" y="4.75" width="3.5" height="12" rx="0.75" />
+        <rect x="16" y="8.75" width="3.25" height="8" rx="0.75" />
+        <path d="M3.75 17.25h16.5" />
+      </>
+    ),
+  },
+  {
     href: '/calendar',
     label: 'Calendar',
     matches: (pathname: string) => pathname.startsWith('/calendar'),

@@ -36,7 +36,7 @@ export function DraftCard({ draft }: { draft: DraftShelfItem }) {
 
   return (
     <Link
-      href={`/drafts/${draft.id}`}
+      href={`/library/${draft.id}`}
       style={{
         display: 'grid',
         gap: '0.38rem',
