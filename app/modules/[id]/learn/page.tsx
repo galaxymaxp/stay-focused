@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import type { CSSProperties, ReactNode } from 'react'
+import { listDraftsForShelves } from '@/actions/drafts'
 import { AnnouncementSupportRow } from '@/components/AnnouncementSupportRow'
 import { DeepLearnGenerateButton } from '@/components/DeepLearnGenerateButton'
 import { ModuleLensShell } from '@/components/ModuleLensShell'
@@ -56,6 +57,9 @@ export default async function LearnPage({ params, searchParams }: Props) {
     storedTerms: terms,
   })
   const deepLearnNotesResult = await listDeepLearnNotesForModule(module.id)
+  const { drafts } = await listDraftsForShelves()
+  const moduleDrafts = drafts.filter((draft) => draft.sourceModuleId === module.id)
+  const latestModuleDraft = moduleDrafts[0] ?? null
   const deepLearnNotes = deepLearnNotesResult.notes
   const deepLearnNoteByResourceId = new Map(deepLearnNotes.map((note) => [note.resourceId, note]))
   const deepLearnSelectionByDisplayId = new Map(
@@ -152,6 +156,26 @@ export default async function LearnPage({ params, searchParams }: Props) {
                 <p className="workspace-quiet-panel-copy">
                   Keep the prep pack lane and the action/status lane visible together. Drop into source support only when you need evidence.
                 </p>
+              </div>
+
+              <div className="workspace-quiet-panel" style={{ gap: '0.55rem' }}>
+                <p className="ui-kicker" style={{ margin: 0 }}>Draft notebook</p>
+                <p className="workspace-quiet-panel-copy">
+                  Save study notes tied to this module so Learn, Do, and Review stay connected.
+                </p>
+                <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+                  <Link href={`/drafts/new?module=${encodeURIComponent(module.id)}`} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
+                    Create Draft
+                  </Link>
+                  {latestModuleDraft && (
+                    <Link href={`/drafts/${latestModuleDraft.id}`} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+                      Continue Draft
+                    </Link>
+                  )}
+                  <Link href={`/drafts?module=${encodeURIComponent(module.id)}`} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+                    Module drafts
+                  </Link>
+                </div>
               </div>
             </div>
           </div>

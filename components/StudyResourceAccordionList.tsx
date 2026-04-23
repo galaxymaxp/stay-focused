@@ -38,7 +38,7 @@ export interface StudyResourceAccordionItem {
   deepLearnQuizHref: string
   deepLearnQuizReady: boolean
   deepLearnNoteFailure?: string | null
-  deepLearnStatusLabel?: 'Draft' | 'Organize' | 'Review Ready' | 'Source issue' | 'Unavailable'
+  deepLearnStatusLabel?: 'Draft' | 'Review' | 'Review Ready' | 'Source issue' | 'Unavailable'
   deepLearnTone?: 'accent' | 'warning' | 'muted'
   deepLearnDetail?: string
   deepLearnPrimaryLabel?: string
@@ -183,7 +183,7 @@ export function StudyResourceAccordionList({
                   <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
                     {item.deepLearnStatus === 'ready' || item.deepLearnStatus === 'pending' ? (
                       <Link href={item.deepLearnNoteHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
-                        Open Draft
+                        Open workspace
                       </Link>
                     ) : item.deepLearnStatus === 'unavailable' || item.deepLearnStatus === 'blocked' ? (
                       <Link href={item.readerHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
@@ -222,7 +222,7 @@ function fallbackStageLabel(
   status: StudyResourceAccordionItem['deepLearnStatus'],
   quizReady: boolean,
 ) {
-  if (status === 'ready') return quizReady ? 'Review Ready' : 'Organize'
+  if (status === 'ready') return quizReady ? 'Review Ready' : 'Review'
   if (status === 'blocked') return 'Source issue'
   if (status === 'unavailable') return 'Unavailable'
   return 'Draft'

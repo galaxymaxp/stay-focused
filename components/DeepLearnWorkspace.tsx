@@ -12,11 +12,10 @@ import { createDraftForDeepLearnResource, refineDraft, updateDraftBody } from '@
 import type { DeepLearnNote, Draft, DraftLoadAvailability } from '@/lib/types'
 import type { ModuleSourceResource } from '@/lib/module-workspace'
 
-type DeepLearnMode = 'draft' | 'structure' | 'review'
+type DeepLearnMode = 'draft' | 'review'
 
 const MODE_LABELS: Record<DeepLearnMode, string> = {
   draft: 'Draft',
-  structure: 'Organize',
   review: 'Review',
 }
 
@@ -196,8 +195,8 @@ export function DeepLearnWorkspace({
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', alignItems: 'center' }}>
-        {(['draft', 'structure', 'review'] as const).map((nextMode) => (
+      <div className="deep-learn-mode-row" style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', alignItems: 'center' }}>
+        {(['draft', 'review'] as const).map((nextMode) => (
           <button
             key={nextMode}
             type="button"
@@ -255,12 +254,16 @@ export function DeepLearnWorkspace({
         />
       )}
 
-      {mode === 'structure' && <StructureMode note={note} legacyDraft={activeDraft} resource={resource} body={body} />}
       {mode === 'review' && (
         <ReviewMode
           note={note}
           legacyDraft={activeDraft}
           body={body}
+          hasDraftSurface={hasDraftSurface}
+          isWorking={isWorking}
+          createDraft={createDraft}
+          readerHref={readerHref}
+          sourceHref={sourceHref}
         />
       )}
     </section>
@@ -357,11 +360,11 @@ function BuildMode({
         </form>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: '0.8rem', alignItems: 'stretch' }}>
-        <aside className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.9rem', minHeight: 0 }}>
+      <div className="deep-learn-build-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: '0.8rem', alignItems: 'stretch' }}>
+        <aside className="ui-card-soft deep-learn-source-pane" style={{ borderRadius: 'var(--radius-panel)', padding: '0.9rem', minHeight: 0 }}>
           <p className="ui-kicker">Pinned source</p>
           <p style={{ margin: '0.38rem 0 0', fontSize: '14px', lineHeight: 1.45, color: 'var(--text-primary)', fontWeight: 650 }}>{sourceTitle}</p>
-          <div className="contained-scroll-frame" data-density="dense" style={{ marginTop: '0.7rem' }}>
+          <div className="deep-learn-source-content" style={{ marginTop: '0.7rem' }}>
             {sourceText ? (
               <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: '12px', lineHeight: 1.62, color: 'var(--text-secondary)' }}>
                 {sourceText}
@@ -375,7 +378,7 @@ function BuildMode({
           </div>
         </aside>
 
-        <div className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', minHeight: 0, overflow: 'hidden' }}>
+        <div className="glass-panel glass-soft deep-learn-draft-pane" style={{ borderRadius: 'var(--radius-panel)', minHeight: 0, overflow: 'hidden' }}>
           {draftAvailability === 'failed' ? (
             <div className="ui-empty" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', fontSize: '14px', lineHeight: 1.68, display: 'grid', gap: '0.7rem' }}>
               <strong style={{ color: 'var(--text-primary)' }}>Failed to load Draft.</strong>
@@ -429,72 +432,52 @@ function BuildMode({
   )
 }
 
-function StructureMode({
-  note,
-  legacyDraft,
-  resource,
-  body,
-}: {
-  note: DeepLearnNote | null
-  legacyDraft: Draft | null
-  resource: ModuleSourceResource
-  body: string
-}) {
-  if (!note && !legacyDraft) {
-    return <EmptyMode body="Organize appears after the Draft exists." />
-  }
-
-  const draftHeadings = extractMarkdownHeadings(body)
-
-  return (
-    <div id="deep-learn-structure-surface" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: '0.8rem', alignItems: 'start' }}>
-      <section className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.95rem 1rem' }}>
-        <p className="ui-kicker">Outline</p>
-        {note?.sections.length ? (
-          <ol style={{ margin: '0.7rem 0 0', paddingLeft: '1.1rem', display: 'grid', gap: '0.55rem' }}>
-            {note.sections.map((section) => (
-              <li key={section.heading} id={`deep-learn-structure-section-${slugifySectionId(section.heading)}`} style={{ fontSize: '14px', lineHeight: 1.55, color: 'var(--text-primary)', scrollMarginTop: '5rem' }}>
-                {section.heading}
-              </li>
-            ))}
-          </ol>
-        ) : draftHeadings.length > 0 ? (
-          <ol style={{ margin: '0.7rem 0 0', paddingLeft: '1.1rem', display: 'grid', gap: '0.55rem' }}>
-            {draftHeadings.map((heading) => (
-              <li key={heading} id={`deep-learn-structure-section-${slugifySectionId(heading)}`} style={{ fontSize: '14px', lineHeight: 1.55, color: 'var(--text-primary)', scrollMarginTop: '5rem' }}>
-                {heading}
-              </li>
-            ))}
-          </ol>
-        ) : (
-          <EmptyMode body="No outline sections are saved yet." />
-        )}
-      </section>
-
-      <section className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.95rem 1rem', display: 'grid', gap: '0.8rem' }}>
-        <div>
-          <p className="ui-kicker">Content organization</p>
-          <p style={{ margin: '0.45rem 0 0', fontSize: '14px', lineHeight: 1.68, color: 'var(--text-secondary)' }}>
-            {note?.overview ?? legacyDraft?.title ?? 'This draft is mapped into Deep Learn as the working content layer.'}
-          </p>
-        </div>
-        <StructureList title="Likely quiz targets" items={note?.likelyQuizTargets.map((item) => `${item.target}: ${item.reason}`) ?? []} />
-        <StructureList title="Confusable pairs" items={note?.distinctions.map((item) => `${item.conceptA} vs ${item.conceptB}: ${item.difference}`) ?? []} />
-        <StructureList title="Source shape" items={[resource.type, resource.previewState ?? 'Preview state not recorded', note?.sourceGrounding.groundingStrategy ?? 'draft']} />
-      </section>
-    </div>
-  )
-}
-
 function ReviewMode({
   note,
   legacyDraft,
   body,
+  hasDraftSurface,
+  isWorking,
+  createDraft,
+  readerHref,
+  sourceHref,
 }: {
   note: DeepLearnNote | null
   legacyDraft: Draft | null
   body: string
+  hasDraftSurface: boolean
+  isWorking: boolean
+  createDraft: () => void
+  readerHref: string
+  sourceHref: string | null
 }) {
+  if (!note && !hasDraftSurface) {
+    return (
+      <div className="ui-empty" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', display: 'grid', gap: '0.7rem' }}>
+        <div style={{ display: 'grid', gap: '0.32rem' }}>
+          <strong style={{ color: 'var(--text-primary)' }}>Review unlocks after Draft exists.</strong>
+          <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
+            Start by creating a draft from this source. Once saved, this space shows answer-bank review and quiz-ready signals.
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+          <button type="button" onClick={createDraft} disabled={isWorking} className="ui-button ui-button-secondary ui-button-xs">
+            {isWorking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+            {isWorking ? 'Generating draft' : 'Create draft'}
+          </button>
+          <Link href={readerHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+            Source fallback
+          </Link>
+          {sourceHref && (
+            <a href={sourceHref} target="_blank" rel="noreferrer" className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+              Open original source
+            </a>
+          )}
+        </div>
+      </div>
+    )
+  }
+
   if (!note && legacyDraft) {
     return (
       <div className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', overflow: 'hidden' }}>
@@ -509,7 +492,26 @@ function ReviewMode({
     )
   }
   if (!note) return <EmptyMode body="Review appears after the Draft exists." />
-  if (note.status !== 'ready') return <EmptyMode body="Review is waiting for this Deep Learn item to finish building." />
+  if (note.status !== 'ready') {
+    return (
+      <div className="ui-empty" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', display: 'grid', gap: '0.62rem' }}>
+        <strong style={{ color: 'var(--text-primary)' }}>Review is still preparing.</strong>
+        <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
+          Deep Learn is finishing this pack. Stay in Draft for edits, or verify source details while review artifacts are generated.
+        </p>
+        <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+          <Link href={readerHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+            Source fallback
+          </Link>
+          {sourceHref && (
+            <a href={sourceHref} target="_blank" rel="noreferrer" className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+              Open original source
+            </a>
+          )}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.9rem' }}>
@@ -522,39 +524,12 @@ function getDeepLearnStageBadge(note: DeepLearnNote | null, legacyDraft: Draft |
   if (legacyDraft) {
     if (legacyDraft.status === 'generating' || legacyDraft.status === 'refining') return 'Draft'
     if (legacyDraft.draftType === 'exam_reviewer' || legacyDraft.draftType === 'flashcard_set') return 'Draft'
-    return 'Organize'
+    return 'Review'
   }
 
   if (!note || note.status === 'pending' || note.status === 'failed') return 'Draft'
   if (note.quizReady) return 'Review Ready'
-  return 'Organize'
-}
-
-function extractMarkdownHeadings(markdown: string) {
-  return markdown
-    .split('\n')
-    .map((line) => line.match(/^#{1,3}\s+(.+)$/)?.[1]?.trim())
-    .filter((heading): heading is string => Boolean(heading))
-    .slice(0, 12)
-}
-
-function StructureList({ title, items }: { title: string; items: string[] }) {
-  return (
-    <div>
-      <p className="ui-kicker">{title}</p>
-      {items.length > 0 ? (
-        <ul style={{ listStyle: 'none', padding: 0, margin: '0.55rem 0 0', display: 'grid', gap: '0.45rem' }}>
-          {items.map((item) => (
-            <li key={item} style={{ fontSize: '13px', lineHeight: 1.62, color: 'var(--text-secondary)' }}>
-              {item}
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p style={{ margin: '0.55rem 0 0', fontSize: '13px', lineHeight: 1.62, color: 'var(--text-muted)' }}>None saved yet.</p>
-      )}
-    </div>
-  )
+  return 'Review'
 }
 
 function EmptyMode({ body }: { body: string }) {
@@ -570,16 +545,7 @@ function MarkdownBody({ content, headingIds = false }: { content: string; headin
     <article
       className="prose prose-sm max-w-none px-6 py-5 prose-headings:text-sf-text prose-p:text-sf-text prose-li:text-sf-text prose-strong:text-sf-text"
       style={{ scrollMarginTop: '5rem' }}
-      dangerouslySetInnerHTML={{ __html: simpleMarkdownToHtml(content || 'No build content yet.', { headingIds }) }}
+      dangerouslySetInnerHTML={{ __html: simpleMarkdownToHtml(content || 'No draft content yet.', { headingIds }) }}
     />
   )
-}
-
-function slugifySectionId(value: string) {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 96)
 }

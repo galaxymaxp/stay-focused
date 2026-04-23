@@ -76,6 +76,11 @@ const MOBILE_NAV_ITEMS = NAV_ITEMS
 const EXPANSION_TRIGGER_SELECTOR = 'button[aria-expanded], [role="button"][aria-expanded], summary'
 const EXPANSION_TARGET_SELECTOR = '[data-expanded-scroll-target], .ui-interactive-card, details, article, section'
 
+function normalizeNavigationPath(pathname: string): string {
+  if (pathname.startsWith('/course/courses')) return '/courses'
+  return pathname
+}
+
 function resolveTopbarSubLabel(pathname: string): string | null {
   if (/\/modules\/[^/]+\/learn/.test(pathname)) return 'Learn'
   if (/\/modules\/[^/]+\/quiz/.test(pathname)) return 'Quiz'
@@ -97,10 +102,11 @@ export function AppShell({
   recentAnnouncements: ParsedAnnouncement[]
 }) {
   const pathname = usePathname()
-  const activeSection = NAV_ITEMS.find((item) => item.matches(pathname)) ?? NAV_ITEMS[0]
-  const subLabel = resolveTopbarSubLabel(pathname)
+  const normalizedPathname = normalizeNavigationPath(pathname)
+  const activeSection = NAV_ITEMS.find((item) => item.matches(normalizedPathname)) ?? NAV_ITEMS[0]
+  const subLabel = resolveTopbarSubLabel(normalizedPathname)
   const [scrolled, setScrolled] = useState(false)
-  const currentModuleId = pathname.match(/\/modules\/([^/]+)/)?.[1] ?? null
+  const currentModuleId = normalizedPathname.match(/\/modules\/([^/]+)/)?.[1] ?? null
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 48)
@@ -156,7 +162,7 @@ export function AppShell({
 
           <nav className="app-nav" aria-label="Primary">
             {NAV_ITEMS.map((item) => {
-              const isActive = item.matches(pathname)
+              const isActive = item.matches(normalizedPathname)
               const showSubNav = item.href === '/courses' && currentModuleId !== null
 
               return (
@@ -180,8 +186,8 @@ export function AppShell({
                           key={sub.href}
                           href={sub.href}
                           className="app-nav-sub-link"
-                          data-active={pathname.startsWith(sub.href)}
-                          aria-current={pathname.startsWith(sub.href) ? 'page' : undefined}
+                          data-active={normalizedPathname.startsWith(sub.href)}
+                          aria-current={normalizedPathname.startsWith(sub.href) ? 'page' : undefined}
                         >
                           {sub.label}
                         </Link>
@@ -225,7 +231,7 @@ export function AppShell({
 
       <nav className="app-bottom-nav" aria-label="Primary mobile">
         {MOBILE_NAV_ITEMS.map((item) => {
-          const isActive = item.matches(pathname)
+          const isActive = item.matches(normalizedPathname)
 
           return (
             <Link key={item.href} href={item.href} className="app-bottom-nav-link" data-active={isActive} aria-current={isActive ? 'page' : undefined}>

@@ -21,7 +21,7 @@ export function TaskDraftSourcePane({
   const sourceNote = context.sourceNote ?? context.taskDetails
   const canRenderInline = canRenderSourceInline(sourceHref, sourceType)
   const fallbackNote = sourceHref && !canRenderInline
-    ? 'This source cannot be rendered inline here, so Stay Focused keeps the surfaced text beside the draft instead.'
+    ? 'This source cannot be rendered inline here, so Stay Focused keeps the surfaced text beside the output instead.'
     : null
 
   return (
@@ -29,7 +29,7 @@ export function TaskDraftSourcePane({
       <div style={{ display: 'grid', gap: '0.45rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.7rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
           <div style={{ minWidth: 0 }}>
-            <p className="ui-kicker" style={{ margin: 0 }}>{isBuilding ? 'Pinned source' : 'Source beside draft'}</p>
+            <p className="ui-kicker" style={{ margin: 0 }}>{isBuilding ? 'Pinned source' : 'Source beside output'}</p>
             <h3 style={{ margin: '0.38rem 0 0', fontSize: '1rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>
               {sourceTitle}
             </h3>
@@ -41,8 +41,8 @@ export function TaskDraftSourcePane({
 
         <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.62, color: 'var(--text-secondary)' }}>
           {isBuilding
-            ? 'Keep the source pinned while the draft builds so the assignment never turns into a blind wait state.'
-            : 'Use the draft and the source side-by-side. The main output stays editable while the source remains visible.'}
+            ? 'Keep the source pinned while the output builds so the assignment never turns into a blind wait state.'
+            : 'Use the output and source side-by-side. The primary answer stays editable while source context remains visible.'}
         </p>
       </div>
 

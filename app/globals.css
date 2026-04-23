@@ -3100,9 +3100,54 @@ details[open] > .ui-interactive-summary,
     padding: 0.35rem;
   }
 
-  .app-bottom-nav-link {
+.app-bottom-nav-link {
     padding: 0.46rem 0.15rem;
     font-size: 10px;
+  }
+}
+
+.deep-learn-mode-row .ui-button {
+  transition: transform 140ms ease, box-shadow 140ms ease;
+}
+
+.deep-learn-mode-row .ui-button:hover {
+  transform: translateY(-1px);
+}
+
+.deep-learn-mode-row .ui-button:focus-visible {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 26%, transparent);
+}
+
+.deep-learn-source-pane {
+  min-height: 0;
+}
+
+.deep-learn-source-content {
+  max-height: clamp(17rem, 46vh, 31rem);
+  overflow: auto;
+  border: 1px solid color-mix(in srgb, var(--border-subtle) 86%, transparent);
+  border-radius: 12px;
+  padding: 0.7rem 0.75rem;
+  background: color-mix(in srgb, var(--surface-soft) 92%, transparent);
+}
+
+.deep-learn-draft-pane {
+  min-height: min(34rem, 62vh);
+}
+
+@media (max-width: 840px) {
+  .deep-learn-source-content {
+    max-height: none;
+    overflow: visible;
+  }
+
+  .deep-learn-draft-pane {
+    min-height: 0;
+  }
+
+  .deep-learn-mode-row .ui-button {
+    flex: 1 1 calc(50% - 0.35rem);
+    justify-content: center;
   }
 }
 

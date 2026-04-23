@@ -66,11 +66,11 @@ export interface CourseLearnStudyMaterialRow {
   outlineSections: StudyFileOutlineSection[]
   outlineHint: string | null
   deepLearnStatus: 'not_started' | 'pending' | 'ready' | 'failed' | 'blocked' | 'unavailable'
-  deepLearnStatusLabel: 'Draft' | 'Organize' | 'Review Ready' | 'Source issue' | 'Unavailable'
+  deepLearnStatusLabel: 'Draft' | 'Review' | 'Review Ready' | 'Source issue' | 'Unavailable'
   deepLearnTone: 'accent' | 'warning' | 'muted'
   deepLearnSummary: string
   deepLearnDetail: string
-  deepLearnPrimaryLabel: 'Create Draft' | 'Open Draft' | 'Open Source'
+  deepLearnPrimaryLabel: 'Create Draft' | 'Open workspace' | 'Open Source'
   deepLearnNoteHref: string
   deepLearnQuizHref: string
   deepLearnQuizReady: boolean

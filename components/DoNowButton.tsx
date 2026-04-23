@@ -38,7 +38,7 @@ export function TaskDraftButton({
   const [, setCacheVersion] = useState(0)
   const sessionKey = getTaskDraftSessionKey(context)
   const initialSnapshot = draftSessionCache.get(sessionKey) ?? null
-  const buttonLabel = initialSnapshot ? 'Open saved draft' : 'Generate draft help'
+  const buttonLabel = initialSnapshot ? 'Open saved output' : 'Generate first output'
 
   const openFromDefault = useEffectEvent(() => {
     setOpen(true)
@@ -83,7 +83,7 @@ export function TaskDraftButton({
             border: '1px solid color-mix(in srgb, var(--blue) 22%, var(--border-subtle) 78%)',
           }}
         >
-          {initialSnapshot.draftSource === 'saved' ? 'Saved draft ready' : 'Draft ready'}
+          {initialSnapshot.draftSource === 'saved' ? 'Saved output ready' : 'Output ready'}
         </span>
       )}
 

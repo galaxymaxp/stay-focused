@@ -23,7 +23,7 @@ test('ready packs surface quiz-ready state and pack-first actions', () => {
 
   assert.equal(state.status, 'ready')
   assert.equal(state.statusLabel, 'Review Ready')
-  assert.equal(state.primaryLabel, 'Open Draft')
+  assert.equal(state.primaryLabel, 'Open workspace')
   assert.equal(state.quizReady, true)
   assert.match(state.detail, /answer-bank review/i)
 })
