@@ -394,6 +394,7 @@ export interface DraftSummary {
 // Extended draft type used by the course-shelf view (includes module/course join data)
 export interface DraftShelfItem {
   id: string
+  entryKind: 'deep_learn_note' | 'draft'
   userId: string
   courseId: string | null
   canonicalSourceId: string
@@ -408,6 +409,8 @@ export interface DraftShelfItem {
   sourceModuleId: string | null
   sourceResourceId?: string | null
   moduleTitle: string | null
+  quizReady: boolean
+  summary: string | null
 }
 
 // What we ask OpenAI to return

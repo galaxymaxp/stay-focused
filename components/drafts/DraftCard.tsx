@@ -2,7 +2,7 @@ import Link from 'next/link'
 import type { DraftShelfItem } from '@/lib/types'
 
 const typeLabels: Record<string, string> = {
-  exam_reviewer: 'Exam Reviewer',
+  exam_reviewer: 'Exam Prep Pack',
   study_notes: 'Study Notes',
   summary: 'Summary',
   flashcard_set: 'Flashcard Set',
@@ -13,7 +13,6 @@ const statusLabels: Record<string, string> = {
   generating: 'Generating',
   refining: 'Refining',
   failed: 'Failed',
-  draft: 'Draft',
 }
 
 function statusTone(status: string): 'accent' | 'warning' | 'muted' {
@@ -80,6 +79,11 @@ export function DraftCard({ draft }: { draft: DraftShelfItem }) {
         }}>
           {statusLabels[draft.status] ?? draft.status}
         </span>
+        {draft.quizReady && (
+          <span className="ui-chip ui-chip-soft" style={{ fontSize: '11px', fontWeight: 700 }}>
+            Quiz ready
+          </span>
+        )}
       </div>
 
       <p style={{ margin: 0, fontSize: '0.93rem', lineHeight: 1.4, color: 'var(--text-primary)', fontWeight: 650 }}>
@@ -96,8 +100,14 @@ export function DraftCard({ draft }: { draft: DraftShelfItem }) {
         </p>
       )}
 
+      {draft.summary && (
+        <p style={{ margin: 0, fontSize: '12px', lineHeight: 1.55, color: 'var(--text-muted)' }}>
+          {draft.summary}
+        </p>
+      )}
+
       <p style={{ margin: '0.1rem 0 0', fontSize: '11px', lineHeight: 1.4, color: 'var(--text-muted)' }}>
-        {draft.sourceType.replace(/_/g, ' ')} · {new Date(draft.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+        {draft.entryKind === 'deep_learn_note' ? 'saved pack' : draft.sourceType.replace(/_/g, ' ')} · {new Date(draft.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
         {draft.tokenCount ? ` · ${draft.tokenCount.toLocaleString()} tokens` : ''}
       </p>
     </Link>

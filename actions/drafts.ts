@@ -6,13 +6,10 @@ import { revalidatePath } from 'next/cache'
 import { createServerClient } from '@supabase/ssr'
 import OpenAI from 'openai'
 import { getRequiredSupabaseAuthEnv, isSupabaseAuthConfigured } from '@/lib/supabase-auth-config'
+import { serializeErrorForLogging } from '@/lib/supabase'
+import { buildDeepLearnNoteRecord, DEEP_LEARN_PROMPT_VERSION } from '@/lib/deep-learn'
 import type { TaskDraftContext, TaskDraftResponse } from '@/lib/do-now'
 import { getDraftPrompt } from '@/lib/prompts/drafts/index'
-import {
-  buildLearnExperience,
-  getModuleWorkspace,
-  resolveLearnResourceSelection,
-} from '@/lib/module-workspace'
 import type {
   Draft,
   DraftLoadAvailability,
@@ -21,6 +18,7 @@ import type {
   DraftStatus,
   DraftSourceType,
   DraftShelfItem,
+  DeepLearnNote,
 } from '@/lib/types'
 
 // Auth-aware Supabase client — uses cookie session so auth.uid() works in RLS
@@ -43,6 +41,34 @@ async function createDraftsClient() {
   })
 }
 
+function classifyDraftQueryFailure(error: unknown): {
+  availability: Exclude<DraftLoadAvailability, 'available'>
+  message: string
+} {
+  const serialized = serializeErrorForLogging(error)
+  const code = typeof serialized?.code === 'string' ? serialized.code : null
+  const message = typeof serialized?.message === 'string' ? serialized.message.toLowerCase() : ''
+
+  if (code === '42703' || message.includes('column') && message.includes('does not exist')) {
+    return {
+      availability: 'failed',
+      message: 'Draft is unavailable because the database schema is behind the current code.',
+    }
+  }
+
+  if (code === '42501' || message.includes('permission denied') || message.includes('insufficient privilege')) {
+    return {
+      availability: 'unavailable',
+      message: 'Draft is unavailable because this session cannot read your saved drafts right now.',
+    }
+  }
+
+  return {
+    availability: 'failed',
+    message: 'Draft could not be loaded right now.',
+  }
+}
+
 function getOpenAIClient() {
   const apiKey = process.env.OPENAI_API_KEY
   if (!apiKey) throw new Error('OPENAI_API_KEY is not configured')
@@ -55,6 +81,31 @@ interface GenerateResult {
   metadata: Record<string, unknown>
   tokenCount: number
   model: string
+}
+
+interface DeepLearnNoteRow {
+  id: string
+  user_id: string
+  module_id: string
+  course_id: string | null
+  resource_id: string
+  status: 'pending' | 'ready' | 'failed'
+  title: string | null
+  overview: string | null
+  sections: unknown
+  note_body: string | null
+  core_terms: unknown
+  key_facts: unknown
+  distinctions: unknown
+  likely_quiz_points: unknown
+  caution_notes: unknown
+  source_grounding: unknown
+  quiz_ready: boolean | null
+  prompt_version: string | null
+  error_message: string | null
+  created_at: string
+  updated_at: string
+  generated_at: string | null
 }
 
 async function generateDraftContent(rawContent: string, draftType: DraftType): Promise<GenerateResult> {
@@ -157,6 +208,64 @@ function mapDraftSummaryRow(row: Record<string, unknown>): DraftSummary {
   }
 }
 
+function mapDeepLearnNoteRow(row: DeepLearnNoteRow): DeepLearnNote {
+  return buildDeepLearnNoteRecord({
+    id: row.id,
+    userId: row.user_id,
+    moduleId: row.module_id,
+    courseId: row.course_id,
+    resourceId: row.resource_id,
+    status: row.status,
+    title: row.title ?? 'Exam Prep Pack',
+    overview: row.overview ?? '',
+    sections: Array.isArray(row.sections) ? row.sections as DeepLearnNote['sections'] : [],
+    noteBody: row.note_body ?? '',
+    answerBank: Array.isArray(row.key_facts) ? row.key_facts as DeepLearnNote['answerBank'] : [],
+    identificationItems: Array.isArray(row.core_terms) ? row.core_terms as DeepLearnNote['identificationItems'] : [],
+    distinctions: Array.isArray(row.distinctions) ? row.distinctions as DeepLearnNote['distinctions'] : [],
+    likelyQuizTargets: Array.isArray(row.likely_quiz_points) ? row.likely_quiz_points as DeepLearnNote['likelyQuizTargets'] : [],
+    cautionNotes: Array.isArray(row.caution_notes) ? row.caution_notes as DeepLearnNote['cautionNotes'] : [],
+    sourceGrounding: row.source_grounding as DeepLearnNote['sourceGrounding'],
+    quizReady: Boolean(row.quiz_ready),
+    promptVersion: row.prompt_version ?? DEEP_LEARN_PROMPT_VERSION,
+    errorMessage: row.error_message,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    generatedAt: row.generated_at,
+  })
+}
+
+function mapDeepLearnShelfRow(row: Record<string, unknown>): DraftShelfItem {
+  const module = row.modules as { title: string } | null
+  const source = row.module_resources as { title: string } | null
+  const status = row.status === 'pending'
+    ? 'generating'
+    : row.status === 'failed'
+      ? 'failed'
+      : 'ready'
+
+  return {
+    id: row.id as string,
+    entryKind: 'deep_learn_note',
+    userId: row.user_id as string,
+    courseId: (row.course_id as string | null) ?? null,
+    canonicalSourceId: `resource:${row.resource_id as string}`,
+    title: (row.title as string | null) ?? 'Exam Prep Pack',
+    draftType: 'exam_reviewer',
+    status,
+    sourceType: 'module_resource',
+    sourceTitle: (source?.title ?? row.title ?? 'Study resource') as string,
+    tokenCount: null,
+    updatedAt: row.updated_at as string,
+    createdAt: row.created_at as string,
+    sourceModuleId: (row.module_id as string | null) ?? null,
+    sourceResourceId: (row.resource_id as string | null) ?? null,
+    moduleTitle: module?.title ?? null,
+    quizReady: Boolean(row.quiz_ready),
+    summary: (row.overview as string | null) ?? null,
+  }
+}
+
 function revalidateUnifiedDraftPaths(input: {
   courseId: string | null
   moduleId: string | null
@@ -182,10 +291,6 @@ function revalidateUnifiedDraftPaths(input: {
     revalidatePath(`/modules/${input.moduleId}/learn/resources/${encodeURIComponent(input.resourceId)}`)
     revalidatePath(`/modules/${input.moduleId}/learn/notes/${encodeURIComponent(input.resourceId)}`)
   }
-}
-
-function buildModuleResourceCanonicalSourceId(resourceId: string) {
-  return `resource:${resourceId}`
 }
 
 function buildTaskCanonicalSourceId(taskId: string, fallbackSourceKey?: string | null) {
@@ -221,23 +326,67 @@ function buildTaskDraftTitle(context: TaskDraftContext) {
 export async function listDraftsForShelves(): Promise<{
   drafts: DraftShelfItem[]
   courses: Array<{ id: string; name: string; code: string }>
+  availability: DraftLoadAvailability
+  message: string | null
 }> {
-  if (!isSupabaseAuthConfigured) return { drafts: [], courses: [] }
+  if (!isSupabaseAuthConfigured) {
+    return {
+      drafts: [],
+      courses: [],
+      availability: 'unavailable',
+      message: 'Draft is unavailable because Supabase is not configured.',
+    }
+  }
 
   const client = await createDraftsClient()
+  const {
+    data: { user },
+  } = await client.auth.getUser()
 
-  const { data: draftRows } = await client
+  if (!user) {
+    return {
+      drafts: [],
+      courses: [],
+      availability: 'unavailable',
+      message: 'Sign in to load your saved drafts.',
+    }
+  }
+
+  const { data: draftRows, error: draftRowsError } = await client
     .from('drafts')
     .select(
       'id, user_id, course_id, source_type, canonical_source_id, source_module_id, source_resource_id, source_title, draft_type, title, status, token_count, created_at, updated_at, modules!source_module_id ( course_id, title )'
     )
+    .neq('source_type', 'module_resource')
     .order('updated_at', { ascending: false })
 
-  const drafts: DraftShelfItem[] = (draftRows ?? []).map((row) => {
+  const { data: noteRows, error: noteRowsError } = await client
+    .from('deep_learn_notes')
+    .select(
+      'id, user_id, course_id, module_id, resource_id, status, title, overview, quiz_ready, created_at, updated_at, modules!module_id ( title ), module_resources!resource_id ( title )'
+    )
+    .order('updated_at', { ascending: false })
+
+  if (draftRowsError || noteRowsError) {
+    const failure = classifyDraftQueryFailure(draftRowsError ?? noteRowsError)
+    console.error('[drafts] listDraftsForShelves query failed', {
+      draftRowsError,
+      noteRowsError,
+    })
+    return {
+      drafts: [],
+      courses: [],
+      availability: failure.availability,
+      message: failure.message,
+    }
+  }
+
+  const savedDraftOutputs: DraftShelfItem[] = (draftRows ?? []).map((row) => {
     const r = row as Record<string, unknown>
     const mod = r.modules as { course_id: string | null; title: string } | null
     return {
       id: r.id as string,
+      entryKind: 'draft',
       userId: r.user_id as string,
       courseId: (r.course_id as string | null) ?? mod?.course_id ?? null,
       canonicalSourceId: ((r.canonical_source_id as string | null) ?? `legacy:${r.id as string}`),
@@ -252,8 +401,14 @@ export async function listDraftsForShelves(): Promise<{
       sourceModuleId: (r.source_module_id as string | null) ?? null,
       sourceResourceId: (r.source_resource_id as string | null) ?? null,
       moduleTitle: mod?.title ?? null,
+      quizReady: false,
+      summary: null,
     }
   })
+
+  const savedLearnOutputs = (noteRows ?? []).map((row) => mapDeepLearnShelfRow(row as Record<string, unknown>))
+  const drafts: DraftShelfItem[] = [...savedLearnOutputs, ...savedDraftOutputs]
+    .sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime())
 
   const courseIds = [...new Set(drafts.flatMap((d) => (d.courseId ? [d.courseId] : [])))]
 
@@ -270,7 +425,7 @@ export async function listDraftsForShelves(): Promise<{
     }))
   }
 
-  return { drafts, courses }
+  return { drafts, courses, availability: 'available', message: null }
 }
 
 export async function listDrafts(): Promise<DraftSummary[]> {
@@ -299,154 +454,18 @@ export async function getDraft(draftId: string): Promise<Draft | null> {
   return mapDraftRow(data as Record<string, unknown>)
 }
 
-export async function getDraftForDeepLearnResource(
-  moduleId: string,
-  resourceId: string,
-): Promise<{
-  draft: Draft | null
-  availability: DraftLoadAvailability
-  message: string | null
-}> {
-  if (!isSupabaseAuthConfigured) {
-    return {
-      draft: null,
-      availability: 'unavailable',
-      message: 'Draft loading is unavailable because Supabase is not configured.',
-    }
-  }
+export async function getDeepLearnNoteById(noteId: string): Promise<DeepLearnNote | null> {
+  if (!isSupabaseAuthConfigured) return null
 
   const client = await createDraftsClient()
-  const canonicalSourceId = buildModuleResourceCanonicalSourceId(resourceId)
-  const { data, error } = await client
-    .from('drafts')
+  const { data } = await client
+    .from('deep_learn_notes')
     .select('*')
-    .eq('source_module_id', moduleId)
-    .eq('canonical_source_id', canonicalSourceId)
-    .order('updated_at', { ascending: false })
-    .limit(1)
+    .eq('id', noteId)
     .maybeSingle()
 
-  if (error) {
-    return {
-      draft: null,
-      availability: 'failed',
-      message: 'Draft could not be loaded for this Deep Learn item.',
-    }
-  }
-
-  return {
-    draft: data ? mapDraftRow(data as Record<string, unknown>) : null,
-    availability: 'available',
-    message: null,
-  }
-}
-
-export async function createDraftForDeepLearnResource(input: {
-  moduleId: string
-  resourceId: string
-  courseId?: string | null
-  draftType?: DraftType
-}): Promise<{ draftId: string; moduleId: string; resourceId: string }> {
-  if (!isSupabaseAuthConfigured) throw new Error('Supabase is not configured.')
-
-  const client = await createDraftsClient()
-  const {
-    data: { user },
-  } = await client.auth.getUser()
-  if (!user) throw new Error('You must be signed in to create a draft.')
-
-  const workspace = await getModuleWorkspace(input.moduleId)
-  if (!workspace) throw new Error('The module could not be loaded for Draft.')
-
-  const experience = buildLearnExperience(workspace.module, {
-    taskCount: workspace.tasks.length,
-    deadlineCount: workspace.deadlines.length,
-    resources: workspace.resources,
-    resourceStudyStates: workspace.resourceStudyStates,
-  })
-  const selection = resolveLearnResourceSelection(experience, workspace.resources, input.resourceId)
-  if (!selection) throw new Error('The selected study resource is not available in Learn.')
-
-  const canonicalResourceId = selection.canonicalResourceId
-  if (!canonicalResourceId) {
-    throw new Error('Draft needs a synced resource record before it can save a draft for this item.')
-  }
-
-  const existing = await getDraftForDeepLearnResource(workspace.module.id, canonicalResourceId)
-  if (existing.draft) {
-    return { draftId: existing.draft.id, moduleId: workspace.module.id, resourceId: canonicalResourceId }
-  }
-  if (existing.availability === 'failed') {
-    throw new Error(existing.message ?? 'Draft could not confirm whether this item already has a draft.')
-  }
-
-  const sourceResource = selection.storedResource
-  const renderedResource = selection.resource
-  const rawContent = (
-    sourceResource?.extractedText
-    ?? renderedResource.extractedText
-    ?? sourceResource?.extractedTextPreview
-    ?? renderedResource.extractedTextPreview
-    ?? ''
-  ).trim()
-  if (!rawContent) throw new Error('This resource has no extracted source text for Draft yet.')
-
-  const draftType = input.draftType ?? 'study_notes'
-  const sourceTitle = renderedResource.title || sourceResource?.title || workspace.module.title
-  const { data: draft, error: insertError } = await client
-    .from('drafts')
-    .insert({
-      user_id: user.id,
-      course_id: workspace.module.courseId ?? null,
-      source_type: 'module_resource',
-      canonical_source_id: buildModuleResourceCanonicalSourceId(canonicalResourceId),
-      source_module_id: workspace.module.id,
-      source_resource_id: canonicalResourceId,
-      source_file_path: `module_resource:${canonicalResourceId}`,
-      source_raw_content: rawContent,
-      source_title: sourceTitle,
-      draft_type: draftType,
-      title: `${draftType.replace(/_/g, ' ')} - ${sourceTitle}`,
-      body_markdown: '',
-      status: 'generating',
-    })
-    .select('id')
-    .single()
-
-  if (insertError || !draft) {
-    const refreshedExisting = await getDraftForDeepLearnResource(workspace.module.id, canonicalResourceId)
-    if (refreshedExisting.draft) {
-      return { draftId: refreshedExisting.draft.id, moduleId: workspace.module.id, resourceId: canonicalResourceId }
-    }
-    throw new Error('Failed to create draft record.')
-  }
-
-  const draftId = draft.id as string
-
-  try {
-    const result = await generateDraftContent(rawContent, draftType)
-    await client
-      .from('drafts')
-      .update({
-        title: result.title,
-        body_markdown: result.body_markdown,
-        status: 'ready',
-        token_count: result.tokenCount,
-        generation_model: result.model,
-      })
-      .eq('id', draftId)
-  } catch {
-    await client.from('drafts').update({ status: 'failed' }).eq('id', draftId)
-  }
-
-  revalidateUnifiedDraftPaths({
-    courseId: workspace.module.courseId ?? null,
-    moduleId: workspace.module.id,
-    resourceId: canonicalResourceId,
-    draftId,
-  })
-
-  return { draftId, moduleId: workspace.module.id, resourceId: canonicalResourceId }
+  if (!data) return null
+  return mapDeepLearnNoteRow(data as DeepLearnNoteRow)
 }
 
 export async function saveDraftFromTaskOutput(input: {

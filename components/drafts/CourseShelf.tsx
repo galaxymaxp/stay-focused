@@ -42,7 +42,7 @@ export function CourseShelf({
           </div>
           <div className="flex items-center gap-3 flex-wrap">
             <span className="text-xs text-sf-muted">
-              {totalCount} draft{totalCount !== 1 ? 's' : ''}
+              {totalCount} saved output{totalCount !== 1 ? 's' : ''}
             </span>
             {quizReadyCount > 0 && (
               <span className="text-xs font-medium text-purple-500">{quizReadyCount} quiz-ready</span>
