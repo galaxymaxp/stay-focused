@@ -413,6 +413,18 @@ export interface DraftShelfItem {
   summary: string | null
 }
 
+export interface StudyLibraryItem {
+  id: string
+  title: string
+  kind: 'learning' | 'task'
+  subtitle?: string
+  courseTitle?: string
+  moduleTitle?: string
+  taskTitle?: string
+  updatedAt?: string
+  href: string
+}
+
 // What we ask OpenAI to return
 export interface AIResponse {
   title: string

@@ -78,16 +78,22 @@ export default async function LibraryItemPage({ params }: Props) {
   const draft = await getDraft(id)
   if (!draft) notFound()
 
+  const isTaskDraft = draft.sourceType === 'task'
   const workspace = draft.sourceModuleId ? await getModuleWorkspace(draft.sourceModuleId) : null
   const moduleId = draft.sourceModuleId ?? draft.id
   const courseId = workspace?.module.courseId ?? null
   const courseName = extractCourseName(workspace?.module.raw_content)
   const resource = buildDraftResource(draft, workspace?.module.title ?? null)
-  const moduleLearnHref = draft.sourceModuleId ? `/modules/${draft.sourceModuleId}/learn` : null
-  const sourceResourceHref = draft.sourceModuleId && draft.sourceResourceId
+  const moduleWorkspaceHref = isTaskDraft
+    ? getTaskWorkspaceHref(draft)
+    : draft.sourceModuleId
+      ? `/modules/${draft.sourceModuleId}/learn`
+      : null
+  const sourceResourceHref = !isTaskDraft && draft.sourceModuleId && draft.sourceResourceId
     ? `/modules/${draft.sourceModuleId}/learn/resources/${encodeURIComponent(draft.sourceResourceId)}`
     : null
   const courseLibraryHref = courseId ? `/library?course=${encodeURIComponent(courseId)}` : '/library'
+  const sourceHref = isTaskDraft ? draft.sourceFilePath : null
 
   const workspaceContent = (
     <div className="command-page command-page-tight">
@@ -96,22 +102,29 @@ export default async function LibraryItemPage({ params }: Props) {
           <p className="ui-kicker">Study Library</p>
           <h1 className="ui-page-title" style={{ marginTop: '0.45rem' }}>{draft.title}</h1>
           <p className="ui-page-copy" style={{ marginTop: '0.38rem', maxWidth: '48rem' }}>
-            This saved study output belongs to {workspace?.module.title ?? 'a saved source'} and stays connected to its course and module workflow.
+            {isTaskDraft
+              ? `This saved task draft stays connected to ${workspace?.module.title ?? 'its module'} so you can jump back into the Do workflow with the source context nearby.`
+              : `This saved study output belongs to ${workspace?.module.title ?? 'a saved source'} and stays connected to its course and module workflow.`}
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
           <Link href={courseLibraryHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
             Study Library
           </Link>
-          {moduleLearnHref && (
-            <Link href={moduleLearnHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-              Open Learn workspace
+          {moduleWorkspaceHref && (
+            <Link href={moduleWorkspaceHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+              {isTaskDraft ? 'Open Tasks workspace' : 'Open Learn workspace'}
             </Link>
           )}
           {sourceResourceHref && (
             <Link href={sourceResourceHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
               Open source context
             </Link>
+          )}
+          {sourceHref && (
+            <a href={sourceHref} target="_blank" rel="noreferrer" className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
+              Open task source
+            </a>
           )}
         </div>
       </section>
@@ -121,9 +134,12 @@ export default async function LibraryItemPage({ params }: Props) {
         resource={resource}
         deepLearnResourceId={draft.id}
         note={null}
-        sourceHref={null}
-        readerHref={moduleLearnHref ?? '/courses'}
-        statusSummary="This saved study output predates the pack-first Learn flow, so it resumes as a standalone document with its source context."
+        sourceHref={sourceHref}
+        readerHref={moduleWorkspaceHref ?? '/courses'}
+        readerLabel={isTaskDraft ? 'Task workspace' : 'Source detail'}
+        statusSummary={isTaskDraft
+          ? 'This saved task draft resumes as a standalone working document while keeping its Do workspace one click away.'
+          : 'This saved study output predates the pack-first Learn flow, so it resumes as a standalone document with its source context.'}
         legacyDraft={draft}
       />
     </div>
@@ -188,7 +204,24 @@ function buildDraftResource(
     extractedCharCount: draft.sourceRawContent.length,
     fullTextAvailable: Boolean(draft.sourceRawContent),
     previewState: draft.sourceRawContent ? 'full_text_available' : 'no_text_available',
-    sourceUrl: null,
+    sourceUrl: draft.sourceFilePath,
     htmlUrl: null,
   }
+}
+
+function getTaskWorkspaceHref(draft: NonNullable<Awaited<ReturnType<typeof getDraft>>>) {
+  if (!draft.sourceModuleId) return null
+
+  const taskId = getTaskIdFromCanonicalSourceId(draft.canonicalSourceId)
+  if (taskId) {
+    return `/modules/${draft.sourceModuleId}/do?task=${encodeURIComponent(taskId)}`
+  }
+
+  return `/modules/${draft.sourceModuleId}/do?taskTitle=${encodeURIComponent(draft.title)}`
+}
+
+function getTaskIdFromCanonicalSourceId(canonicalSourceId: string) {
+  if (!canonicalSourceId.startsWith('task:')) return null
+  const taskId = canonicalSourceId.slice('task:'.length).trim()
+  return taskId || null
 }

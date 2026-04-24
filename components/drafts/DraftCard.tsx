@@ -1,42 +1,15 @@
 import Link from 'next/link'
-import type { DraftShelfItem } from '@/lib/types'
+import type { StudyLibraryItem } from '@/lib/types'
 
-const typeLabels: Record<string, string> = {
-  exam_reviewer: 'Exam Prep Pack',
-  study_notes: 'Study Notes',
-  summary: 'Summary',
-  flashcard_set: 'Flashcard Set',
+const kindLabels: Record<StudyLibraryItem['kind'], string> = {
+  learning: 'Learning',
+  task: 'Task',
 }
 
-const statusLabels: Record<string, string> = {
-  ready: 'Ready',
-  generating: 'Generating',
-  refining: 'Refining',
-  failed: 'Failed',
-}
-
-function statusTone(status: string): 'accent' | 'warning' | 'muted' {
-  if (status === 'ready') return 'accent'
-  if (status === 'failed') return 'warning'
-  return 'muted'
-}
-
-export function DraftCard({ draft }: { draft: DraftShelfItem }) {
-  const tone = statusTone(draft.status)
-  const pillBg = tone === 'accent'
-    ? 'color-mix(in srgb, var(--surface-selected) 84%, var(--accent) 16%)'
-    : tone === 'warning'
-      ? 'color-mix(in srgb, var(--amber-light) 40%, var(--surface-soft) 60%)'
-      : 'color-mix(in srgb, var(--surface-soft) 92%, transparent)'
-  const pillBorder = tone === 'accent'
-    ? 'color-mix(in srgb, var(--accent-border) 30%, var(--border-subtle) 70%)'
-    : tone === 'warning'
-      ? 'color-mix(in srgb, var(--amber) 24%, var(--border-subtle) 76%)'
-      : 'var(--border-subtle)'
-
+export function DraftCard({ item }: { item: StudyLibraryItem }) {
   return (
     <Link
-      href={`/library/${draft.id}`}
+      href={item.href}
       style={{
         display: 'grid',
         gap: '0.38rem',
@@ -63,53 +36,35 @@ export function DraftCard({ draft }: { draft: DraftShelfItem }) {
           lineHeight: 1.2,
           color: 'var(--text-primary)',
         }}>
-          {typeLabels[draft.draftType] ?? draft.draftType}
+          {kindLabels[item.kind]}
         </span>
-        <span style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          padding: '0.24rem 0.55rem',
-          borderRadius: '999px',
-          border: `1px solid ${pillBorder}`,
-          background: pillBg,
-          fontSize: '11px',
-          fontWeight: 700,
-          lineHeight: 1.2,
-          color: 'var(--text-primary)',
-        }}>
-          {statusLabels[draft.status] ?? draft.status}
-        </span>
-        {draft.quizReady && (
-          <span className="ui-chip ui-chip-soft" style={{ fontSize: '11px', fontWeight: 700 }}>
-            Quiz ready
-          </span>
-        )}
+        {item.subtitle ? <span className="ui-chip ui-chip-soft" style={{ fontSize: '11px', fontWeight: 700 }}>{item.subtitle}</span> : null}
       </div>
 
       <p style={{ margin: 0, fontSize: '0.93rem', lineHeight: 1.4, color: 'var(--text-primary)', fontWeight: 650 }}>
-        {draft.title}
+        {item.title}
       </p>
 
-      <p style={{ margin: 0, fontSize: '12px', lineHeight: 1.55, color: 'var(--text-muted)' }}>
-        {draft.sourceTitle}
-      </p>
-
-      {draft.moduleTitle && (
+      {(item.courseTitle || item.moduleTitle || item.taskTitle) && (
         <p style={{ margin: 0, fontSize: '12px', lineHeight: 1.55, color: 'var(--text-muted)' }}>
-          Module: {draft.moduleTitle}
-        </p>
-      )}
-
-      {draft.summary && (
-        <p style={{ margin: 0, fontSize: '12px', lineHeight: 1.55, color: 'var(--text-muted)' }}>
-          {draft.summary}
+          {buildContextLine(item)}
         </p>
       )}
 
       <p style={{ margin: '0.1rem 0 0', fontSize: '11px', lineHeight: 1.4, color: 'var(--text-muted)' }}>
-        {draft.entryKind === 'deep_learn_note' ? 'saved pack' : draft.sourceType.replace(/_/g, ' ')} · {new Date(draft.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-        {draft.tokenCount ? ` · ${draft.tokenCount.toLocaleString()} tokens` : ''}
+        Updated {formatShortDate(item.updatedAt)}
       </p>
     </Link>
   )
+}
+
+function buildContextLine(item: StudyLibraryItem) {
+  const parts = [item.courseTitle, item.moduleTitle].filter(Boolean)
+  if (item.kind === 'task' && item.taskTitle && item.taskTitle !== item.title) parts.push(`Task: ${item.taskTitle}`)
+  return parts.join(' · ')
+}
+
+function formatShortDate(value?: string) {
+  if (!value) return 'recently'
+  return new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }

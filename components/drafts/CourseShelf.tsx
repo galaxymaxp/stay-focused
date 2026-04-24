@@ -1,35 +1,25 @@
 import Link from 'next/link'
 import { ArrowRight } from 'lucide-react'
 import { DraftCard } from '@/components/drafts/DraftCard'
-import type { DraftShelfItem } from '@/lib/types'
+import type { StudyLibraryItem } from '@/lib/types'
 
 interface CourseShelfProps {
   courseName: string
   courseCode: string
-  drafts: DraftShelfItem[]
-  latestDraftId: string
+  items: StudyLibraryItem[]
+  latestItemHref: string
   totalCount: number
-  quizReadyCount: number
-  statusBreakdown: { ready: number; inProgress: number; needsAttention: number }
   lastUpdated: string
 }
 
 export function CourseShelf({
   courseName,
   courseCode,
-  drafts,
-  latestDraftId,
+  items,
+  latestItemHref,
   totalCount,
-  quizReadyCount,
-  statusBreakdown,
   lastUpdated,
 }: CourseShelfProps) {
-  const statusParts: string[] = []
-  if (statusBreakdown.ready > 0) statusParts.push(`${statusBreakdown.ready} ready`)
-  if (statusBreakdown.inProgress > 0) statusParts.push(`${statusBreakdown.inProgress} in progress`)
-  if (statusBreakdown.needsAttention > 0) statusParts.push(`${statusBreakdown.needsAttention} needs attention`)
-  const statusText = statusParts.join(', ')
-
   return (
     <div
       className="section-shell"
@@ -59,17 +49,11 @@ export function CourseShelf({
             <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
               {totalCount} saved output{totalCount !== 1 ? 's' : ''}
             </span>
-            {quizReadyCount > 0 && (
-              <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--blue)' }}>
-                {quizReadyCount} quiz-ready
-              </span>
-            )}
             <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Updated {lastUpdated}</span>
-            {statusText && <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{statusText}</span>}
           </div>
         </div>
         <Link
-          href={`/library/${latestDraftId}`}
+          href={latestItemHref}
           className="ui-button ui-button-ghost ui-button-xs"
           style={{ flexShrink: 0, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
         >
@@ -78,8 +62,8 @@ export function CourseShelf({
         </Link>
       </div>
       <div style={{ padding: '0.85rem 1rem', display: 'grid', gap: '0.6rem' }}>
-        {drafts.map((d) => (
-          <DraftCard key={d.id} draft={d} />
+        {items.map((item) => (
+          <DraftCard key={item.id} item={item} />
         ))}
       </div>
     </div>

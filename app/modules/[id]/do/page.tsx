@@ -101,7 +101,7 @@ export default async function DoPage({ params, searchParams }: Props) {
             <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
               {latestModuleDraft && (
                 <Link href={`/library/${latestModuleDraft.id}`} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
-                  Resume latest pack
+                  Resume latest saved item
                 </Link>
               )}
               <Link href={`/library?module=${encodeURIComponent(module.id)}`} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>

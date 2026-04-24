@@ -359,7 +359,6 @@ export async function listDraftsForShelves(): Promise<{
     .select(
       'id, user_id, course_id, source_type, canonical_source_id, source_module_id, source_resource_id, source_title, draft_type, title, status, token_count, created_at, updated_at, modules!source_module_id ( course_id, title )'
     )
-    .neq('source_type', 'module_resource')
     .order('updated_at', { ascending: false })
 
   const { data: noteRows, error: noteRowsError } = await client

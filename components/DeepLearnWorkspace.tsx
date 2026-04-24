@@ -20,6 +20,7 @@ export function DeepLearnWorkspace({
   note,
   sourceHref,
   readerHref,
+  readerLabel = 'Source detail',
   statusSummary,
   blockedMessage = null,
   legacyDraft = null,
@@ -31,6 +32,7 @@ export function DeepLearnWorkspace({
   note: DeepLearnNote | null
   sourceHref: string | null
   readerHref: string
+  readerLabel?: string
   statusSummary: string
   blockedMessage?: string | null
   legacyDraft?: Draft | null
@@ -40,6 +42,7 @@ export function DeepLearnWorkspace({
       <LegacyDraftWorkspace
         resource={resource}
         readerHref={readerHref}
+        readerLabel={readerLabel}
         sourceHref={sourceHref}
         legacyDraft={legacyDraft}
       />
@@ -80,7 +83,7 @@ export function DeepLearnWorkspace({
             </a>
           )}
           <Link href={readerHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-            Source detail
+            {readerLabel}
           </Link>
         </div>
       </div>
@@ -140,11 +143,13 @@ export function DeepLearnWorkspace({
 function LegacyDraftWorkspace({
   resource,
   readerHref,
+  readerLabel,
   sourceHref,
   legacyDraft,
 }: {
   resource: ModuleSourceResource
   readerHref: string
+  readerLabel: string
   sourceHref: string | null
   legacyDraft: Draft
 }) {
@@ -258,7 +263,7 @@ function LegacyDraftWorkspace({
             </a>
           )}
           <Link href={readerHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-            Source detail
+            {readerLabel}
           </Link>
         </div>
       </div>
