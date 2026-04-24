@@ -4,7 +4,6 @@ import type { CSSProperties, ReactNode } from 'react'
 import { AnnouncementSupportRow } from '@/components/AnnouncementSupportRow'
 import { DeepLearnGenerateButton } from '@/components/DeepLearnGenerateButton'
 import { ModuleLensShell } from '@/components/ModuleLensShell'
-import { ModuleTermBank } from '@/components/ModuleTermBank'
 import { StudyResourceAccordionList } from '@/components/StudyResourceAccordionList'
 import { classifyDeepLearnResourceReadiness } from '@/lib/deep-learn-readiness'
 import { listDeepLearnNotesForModule } from '@/lib/deep-learn-store'
@@ -13,7 +12,6 @@ import { getModuleResourceCapabilityInfo } from '@/lib/module-resource-capabilit
 import { getModuleResourceQualityInfo } from '@/lib/module-resource-quality'
 import { buildModuleLearnOverview, type ModuleStudyMaterial } from '@/lib/module-learn-overview'
 import { buildModuleDoHref, buildModuleInspectHref, getSearchParamValue, getSupportElementId, getTaskElementId } from '@/lib/stay-focused-links'
-import { buildModuleTermBank } from '@/lib/module-term-bank'
 import {
   buildLearnExperience,
   extractCourseName,
@@ -24,6 +22,7 @@ import {
   resolveLearnResourceSelection,
   type ModuleSourceResource,
 } from '@/lib/module-workspace'
+import { generateCourseSummary } from '@/lib/openai'
 import type { Task } from '@/lib/types'
 
 interface Props {
@@ -37,8 +36,9 @@ export default async function LearnPage({ params, searchParams }: Props) {
   const workspace = await getModuleWorkspace(id)
   if (!workspace) notFound()
 
-  const { module, tasks, resources: storedResources, resourceStudyStates, terms, courseInstructor } = workspace
+  const { module, tasks, resources: storedResources, resourceStudyStates, courseInstructor } = workspace
   const courseName = extractCourseName(module.raw_content)
+  const courseSummary = await generateCourseSummary(courseName, module.raw_content ?? undefined)
   const experience = buildLearnExperience(module, {
     taskCount: tasks.length,
     deadlineCount: workspace.deadlines.length,
@@ -50,10 +50,6 @@ export default async function LearnPage({ params, searchParams }: Props) {
     resources: experience.resources,
     doItems: experience.doItems,
     tasks,
-  })
-  const termBank = buildModuleTermBank({
-    overview,
-    storedTerms: terms,
   })
   const deepLearnNotesResult = await listDeepLearnNotesForModule(module.id)
   const deepLearnNotes = deepLearnNotesResult.notes
@@ -67,7 +63,6 @@ export default async function LearnPage({ params, searchParams }: Props) {
   const sortedTasks = sortModuleTasks(tasks)
   const pendingTasks = sortedTasks.filter((task) => task.status !== 'completed')
   const completedTasks = sortedTasks.filter((task) => task.status === 'completed')
-  const summaryText = overview.summary ?? module.summary ?? overview.coverageNote ?? termBank.termsStateMessage
   const targetResourceId = getSearchParamValue(resolvedSearchParams?.resource)
   const targetTaskId = getSearchParamValue(resolvedSearchParams?.task)
   const targetSupportId = getSearchParamValue(resolvedSearchParams?.support)
@@ -119,19 +114,19 @@ export default async function LearnPage({ params, searchParams }: Props) {
       courseName={courseName}
       title={module.title}
       summary={overview.summaryStateMessage}
+      dueCount={pendingTasks.length}
+      completedCount={completedTasks.length}
     >
       <div className="command-page command-page-tight">
         <section className="motion-card motion-delay-1 section-shell section-shell-elevated" style={{ padding: '1rem 1.05rem', display: 'grid', gap: '1rem' }}>
           <div>
             <p className="ui-kicker">{courseName}</p>
             <h2 className="ui-section-title" style={{ marginTop: '0.45rem' }}>{module.title}</h2>
-            {courseInstructor && (
-              <p style={{ margin: '0.32rem 0 0', fontSize: '14px', lineHeight: 1.55, color: 'var(--text-muted)' }}>
-                {courseInstructor}
-              </p>
-            )}
-            <p style={{ margin: '0.48rem 0 0', fontSize: '15px', lineHeight: 1.76, color: 'var(--text-secondary)', maxWidth: '52rem' }}>
-              {summaryText}
+            <p style={{ margin: '0.32rem 0 0', fontSize: '14px', lineHeight: 1.55, color: 'var(--text-muted)' }}>
+              {courseInstructor || 'Instructor name not available'}
+            </p>
+            <p style={{ margin: '0.48rem 0 0', fontSize: '14px', lineHeight: 1.76, color: 'var(--text-secondary)', maxWidth: '52rem' }}>
+              {courseSummary}
             </p>
           </div>
 
@@ -285,15 +280,9 @@ export default async function LearnPage({ params, searchParams }: Props) {
 
           <aside className="command-rail">
             <section id="action-status" className="motion-card motion-delay-2 section-shell" style={{ padding: '1rem 1.05rem', display: 'grid', gap: '0.8rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-                <div>
-                  <p className="ui-kicker">Action status</p>
-                  <h3 style={{ margin: '0.42rem 0 0', fontSize: '1.02rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>Finished graded work already drops out of the way</h3>
-                </div>
-                <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-                  <span className="ui-chip ui-chip-soft">{pendingTasks.length} active</span>
-                  <span className="ui-chip ui-chip-soft">{completedTasks.length} done</span>
-                </div>
+              <div>
+                <p className="ui-kicker">Action status</p>
+                <h3 style={{ margin: '0.42rem 0 0', fontSize: '1.02rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>Finished graded work already drops out of the way</h3>
               </div>
 
               {pendingTasks.length === 0 ? (
@@ -389,16 +378,6 @@ export default async function LearnPage({ params, searchParams }: Props) {
             </section>
 
           </aside>
-        </div>
-
-        <div id="terms">
-          <ModuleTermBank
-            moduleId={module.id}
-            courseId={module.courseId}
-            finalTerms={termBank.finalTerms}
-            suggestedTerms={termBank.suggestedTerms}
-            dismissedCount={termBank.dismissedCount}
-          />
         </div>
 
         <div id="source-support">

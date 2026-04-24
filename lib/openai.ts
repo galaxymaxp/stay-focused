@@ -44,6 +44,25 @@ Return this exact shape:
   "recommended_order": ["task title", ...]
 }`
 
+export async function generateCourseSummary(courseName: string, contextSnippet?: string): Promise<string> {
+  try {
+    const client = getClient()
+    const contextLine = contextSnippet ? `\nContext: ${contextSnippet.slice(0, 400)}` : ''
+    const completion = await client.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [{
+        role: 'user',
+        content: `Generate a 1-2 sentence summary of this course for students. Be concise, friendly, and helpful.\n\nTitle: ${courseName}${contextLine}\n\nSummary:`,
+      }],
+      max_tokens: 100,
+      temperature: 0.7,
+    })
+    return completion.choices[0].message.content?.trim() || 'Course overview not available'
+  } catch {
+    return 'Course overview not available'
+  }
+}
+
 export async function processModuleContent(content: string): Promise<AIResponse> {
   const client = getClient()
 

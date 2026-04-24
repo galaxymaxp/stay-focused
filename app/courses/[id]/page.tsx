@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import { CourseLearnExplorer } from '@/components/CourseLearnExplorer'
 import { getClarityWorkspace } from '@/lib/clarity-workspace'
 import { buildCourseLearnOverview, type CourseLearnModuleCard, type CourseLearnTaskRow } from '@/lib/course-learn-overview'
+import { generateCourseSummary } from '@/lib/openai'
 import { buildModuleDoHref, getSearchParamValue } from '@/lib/stay-focused-links'
 
 interface Props {
@@ -33,17 +34,7 @@ export default async function CourseWorkspacePage({ params, searchParams }: Prop
     (m) => m.quizCount > 0 || m.studyMaterials.some((s) => s.deepLearnQuizReady),
   )
 
-  const initialOpenModuleId = getSearchParamValue(resolvedSearchParams?.module)
-  const initialOpenResourceId = getSearchParamValue(resolvedSearchParams?.resource)
-  const initialTaskId = getSearchParamValue(resolvedSearchParams?.task)
-  const initialFocusedModuleId =
-    getSearchParamValue(resolvedSearchParams?.focus) === '1' ? initialOpenModuleId : null
-
-  const deepLearnReadyCount = modules.reduce(
-    (total, m) => total + m.studyMaterials.filter((s) => s.deepLearnStatus === 'ready').length,
-    0,
-  )
-
+  const courseSummary = await generateCourseSummary(course.name)
   const activeLabel = showDo ? 'Tasks' : showQuiz ? 'Quiz' : 'Modules'
 
   return (
@@ -53,24 +44,21 @@ export default async function CourseWorkspacePage({ params, searchParams }: Prop
         className="motion-card section-shell section-shell-elevated"
         style={{ padding: '1.05rem 1.15rem', display: 'grid', gap: '0.85rem' }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-          <div style={{ minWidth: 0, flex: '1 1 260px' }}>
-            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
-              <p className="ui-kicker">Course</p>
-              <span className="ui-chip ui-chip-soft">{course.code}</span>
-              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{activeLabel}</span>
-            </div>
-            <h1 className="ui-page-title" style={{ marginTop: '0.5rem' }}>{course.name}</h1>
-            {course.instructor && (
-              <p className="ui-page-copy" style={{ marginTop: '0.28rem' }}>{course.instructor}</p>
-            )}
+        <div style={{ minWidth: 0 }}>
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+            <p className="ui-kicker">Course</p>
+            <span className="ui-chip ui-chip-soft">{course.code}</span>
+            <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{activeLabel}</span>
           </div>
-
-          <div className="command-stat-grid" style={{ flex: '0 1 auto' }}>
-            <StatTile label="Modules" value={String(courseOverview.visibleModuleCount)} />
-            <StatTile label="Tasks" value={String(courseOverview.actionCount)} tone="warning" />
-            <StatTile label="Prep packs" value={String(deepLearnReadyCount)} tone="accent" />
-          </div>
+          <h1 className="ui-page-title" style={{ marginTop: '0.5rem' }}>{course.name}</h1>
+          {course.instructor && (
+            <p className="ui-page-copy" style={{ marginTop: '0.28rem' }}>{course.instructor}</p>
+          )}
+          {courseSummary && (
+            <p style={{ margin: '0.38rem 0 0', fontSize: '14px', lineHeight: 1.68, color: 'var(--text-secondary)' }}>
+              {courseSummary}
+            </p>
+          )}
         </div>
 
         {/* Quick-access row — no big tab UI, just ghost buttons */}
@@ -113,13 +101,7 @@ export default async function CourseWorkspacePage({ params, searchParams }: Prop
             </div>
           ) : (
             <div className="command-scroll-body" data-density="tall">
-              <CourseLearnExplorer
-                modules={modules}
-                initialOpenModuleId={initialOpenModuleId}
-                initialFocusedModuleId={initialFocusedModuleId}
-                initialOpenResourceId={initialOpenResourceId}
-                initialTaskId={initialTaskId}
-              />
+              <CourseLearnExplorer modules={modules} />
             </div>
           )}
         </section>
@@ -300,24 +282,6 @@ function QuizModuleRow({ module }: { module: CourseLearnModuleCard }) {
   )
 }
 
-function StatTile({ label, value, tone = 'muted' }: { label: string; value: string; tone?: 'accent' | 'warning' | 'muted' }) {
-  return (
-    <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.72rem 0.78rem' }}>
-      <p style={{ margin: 0, fontSize: '11px', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
-        {label}
-      </p>
-      <p style={{
-        margin: '0.34rem 0 0',
-        fontSize: '20px',
-        lineHeight: 1.1,
-        fontWeight: 650,
-        color: tone === 'warning' ? 'var(--amber)' : tone === 'accent' ? 'var(--accent)' : 'var(--text-primary)',
-      }}>
-        {value}
-      </p>
-    </div>
-  )
-}
 
 function isOverdue(value: string) {
   const date = new Date(value)

@@ -247,6 +247,7 @@ export function ConnectCanvasFlow({
             courseId: course.id,
             courseName: course.name,
             courseCode: course.course_code,
+            instructor: course.teachers?.[0]?.display_name ?? null,
           }))
 
         const result = await syncCourses({

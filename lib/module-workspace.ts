@@ -199,7 +199,7 @@ export async function getModuleWorkspace(id: string): Promise<ModuleWorkspaceDat
     resources: (resourcesResult.data ?? []).map(adaptModuleResourceRow),
     resourceStudyStates,
     terms,
-    courseInstructor: typeof rawInstructor === 'string' && rawInstructor !== 'Course staff' ? rawInstructor : null,
+    courseInstructor: typeof rawInstructor === 'string' && rawInstructor !== 'Course staff' && rawInstructor !== 'Canvas course staff' ? rawInstructor : null,
   }
 }
 

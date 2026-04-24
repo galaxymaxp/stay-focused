@@ -57,6 +57,7 @@ interface SyncCourseInput {
   courseId: number
   courseName: string
   courseCode: string
+  instructor?: string | null
 }
 
 interface SyncCourseResult {
@@ -156,6 +157,7 @@ export async function syncCourse(formData: FormData): Promise<{ error: string } 
   const courseId = Number(formData.get('courseId'))
   const courseName = formData.get('courseName') as string
   const courseCode = (formData.get('courseCode') as string | null)?.trim() ?? ''
+  const instructor = (formData.get('instructor') as string | null)?.trim() || null
   const config = getCanvasConfig(
     formData.get('canvasUrl') as string | null,
     formData.get('accessToken') as string | null
@@ -172,6 +174,7 @@ export async function syncCourse(formData: FormData): Promise<{ error: string } 
       name: courseName,
       course_code: courseCode,
       enrollment_state: 'active',
+      teachers: instructor ? [{ display_name: instructor }] : undefined,
     }, config, user.id)
   } catch (error) {
     logCanvasActionFailure('sync single course', error, {
@@ -214,6 +217,7 @@ export async function syncCourses(input: {
         name: course.courseName,
         course_code: course.courseCode,
         enrollment_state: 'active',
+        teachers: course.instructor ? [{ display_name: course.instructor }] : undefined,
       }, config, user.id)
     } catch (error) {
       logCanvasActionFailure('sync selected courses', error, {

@@ -26,7 +26,7 @@ export default async function CoursesPage() {
             <p className="ui-kicker">Courses</p>
             <h1 className="ui-page-title" style={{ marginTop: '0.35rem' }}>Your courses</h1>
             <p className="ui-page-copy" style={{ marginTop: '0.35rem', maxWidth: '36rem' }}>
-              Each card shows the current task load, ready exam-prep packs, and the next item due.
+              Each card shows how many tasks are due and how many you've completed.
             </p>
           </div>
           <div className="command-stat-grid" style={{ flex: '0 1 auto' }}>
@@ -47,7 +47,9 @@ export default async function CoursesPage() {
 }
 
 function CourseCard({ summary, index }: { summary: CourseSummary; index: number }) {
-  const href = `/courses/${summary.course.id}`
+  const href = summary.firstModuleId
+    ? `/modules/${summary.firstModuleId}/learn`
+    : `/courses/${summary.course.id}`
 
   return (
     <Link
@@ -66,50 +68,18 @@ function CourseCard({ summary, index }: { summary: CourseSummary; index: number 
         )}
       </div>
 
-      {/* Stat chips */}
-      <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
-        <span className="ui-chip ui-chip-soft">
-          {summary.moduleCount} module{summary.moduleCount === 1 ? '' : 's'}
+      {/* Actionable metrics */}
+      <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flex: 1 }}>
+        <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--amber)' }}>
+          Due: {summary.pendingTaskCount}
         </span>
-        {summary.pendingTaskCount > 0 && (
-          <span className="ui-chip ui-chip-soft" style={{ color: 'var(--amber)' }}>
-            {summary.pendingTaskCount} task{summary.pendingTaskCount === 1 ? '' : 's'}
-          </span>
-        )}
-        {summary.readyPackCount > 0 && (
-          <span className="ui-chip ui-chip-soft" style={{ color: 'var(--accent)' }}>
-            {summary.readyPackCount} pack{summary.readyPackCount === 1 ? '' : 's'} ready
-          </span>
-        )}
-        {summary.recentAnnouncementCount > 0 && (
-          <span className="ui-chip ui-chip-soft">
-            {summary.recentAnnouncementCount} announcement{summary.recentAnnouncementCount === 1 ? '' : 's'}
-          </span>
-        )}
-      </div>
-
-      {/* Next due task */}
-      <div style={{ flex: 1 }}>
-        {summary.nextDueTask ? (
-          <p className="courses-card-next-task">
-            <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>Next: </span>
-            <span className="courses-card-next-task-title">{summary.nextDueTask.title}</span>
-            <span style={{ color: 'var(--text-muted)' }}>{' — '}{formatDeadlineLabel(summary.nextDueTask.deadline)}</span>
-          </p>
-        ) : (
-          <p className="courses-card-empty">No pending tasks</p>
-        )}
+        <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+          Done: {summary.completedTaskCount}
+        </span>
       </div>
 
       {/* Footer */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
-        {summary.lastSyncedAt ? (
-          <p className="courses-card-synced">
-            Synced {formatRelativeTime(summary.lastSyncedAt)}
-          </p>
-        ) : (
-          <span />
-        )}
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         <span className="workspace-row-link" style={{ fontSize: '12px', flexShrink: 0 }}>Open course</span>
       </div>
     </Link>
@@ -143,24 +113,3 @@ function StatTile({
   )
 }
 
-function formatDeadlineLabel(value: string) {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  const daysUntil = Math.ceil((date.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
-  if (daysUntil < 0) return 'Overdue'
-  if (daysUntil === 0) return 'Due today'
-  if (daysUntil === 1) return 'Due tomorrow'
-  if (daysUntil <= 7) return `Due in ${daysUntil} days`
-  return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(date)
-}
-
-function formatRelativeTime(value: string) {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return 'recently'
-  const daysAgo = Math.floor((Date.now() - date.getTime()) / (1000 * 60 * 60 * 24))
-  if (daysAgo === 0) return 'today'
-  if (daysAgo === 1) return 'yesterday'
-  if (daysAgo <= 7) return `${daysAgo} days ago`
-  if (daysAgo <= 30) return `${Math.floor(daysAgo / 7)} week${Math.floor(daysAgo / 7) === 1 ? '' : 's'} ago`
-  return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(date)
-}

@@ -239,7 +239,7 @@ export function TodayDashboard({
 
             <div style={{ display: 'grid', gap: 0, marginTop: '0.5rem' }}>
               {upNext.length > 0 && (
-                <QuickScanGroup label="Up next">
+                <QuickScanGroup label="Up next" count={upNext.length}>
                   {upNext.slice(0, 4).map((item) => (
                     <QuickScanRow key={item.id} title={item.title} href={resolveItemHref(item)} />
                   ))}
@@ -247,7 +247,7 @@ export function TodayDashboard({
               )}
 
               {dueSoon.length > 0 && (
-                <QuickScanGroup label="Due soon">
+                <QuickScanGroup label="Due soon" count={dueSoon.length}>
                   {dueSoon.slice(0, 4).map((item) => (
                     <QuickScanRow key={item.id} title={item.title} href={item.href} urgencyLabel={item.urgencyLabel} />
                   ))}
@@ -255,7 +255,7 @@ export function TodayDashboard({
               )}
 
               {visibleActivity.length > 0 && (
-                <QuickScanGroup label="Recent changes">
+                <QuickScanGroup label="Recent changes" count={visibleActivity.length}>
                   {visibleActivity.slice(0, 4).map((item) => (
                     <QuickScanRow key={item.id} title={item.title} href={item.href} external={item.external} />
                   ))}
@@ -467,16 +467,21 @@ function ActivityRow({ item, onDismiss }: { item: HomeActivityItem; onDismiss: (
   )
 }
 
-function QuickScanGroup({ label, children }: { label: string; children: React.ReactNode }) {
+function QuickScanGroup({ label, count, children }: { label: string; count: number; children: React.ReactNode }) {
   return (
-    <div style={{ borderTop: '1px solid color-mix(in srgb, var(--border-subtle) 60%, transparent)', paddingTop: '0.55rem', paddingBottom: '0.45rem' }}>
-      <p style={{ margin: '0 0 0.3rem', fontSize: '10px', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
-        {label}
-      </p>
-      <div style={{ display: 'grid', gap: '0.1rem' }}>
+    <details open style={{ borderTop: '1px solid color-mix(in srgb, var(--border-subtle) 60%, transparent)' }}>
+      <summary style={{ cursor: 'pointer', listStyle: 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.55rem 0' }}>
+        <span style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
+          {label}
+        </span>
+        <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+          {count}
+        </span>
+      </summary>
+      <div style={{ display: 'grid', gap: '0.1rem', paddingBottom: '0.45rem' }}>
         {children}
       </div>
-    </div>
+    </details>
   )
 }
 

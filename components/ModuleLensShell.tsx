@@ -8,6 +8,8 @@ export function ModuleLensShell({
   courseName,
   title,
   summary,
+  dueCount,
+  completedCount,
   children,
 }: {
   currentLens: 'learn' | 'do' | 'quiz'
@@ -16,6 +18,8 @@ export function ModuleLensShell({
   courseName: string
   title: string
   summary: string | null
+  dueCount?: number
+  completedCount?: number
   children: ReactNode
 }) {
   const lensLabel = currentLens === 'learn'
@@ -24,7 +28,7 @@ export function ModuleLensShell({
       ? 'Quiz'
       : 'Do'
   const lensCopy = currentLens === 'learn'
-    ? 'Learning material, extracted terms, and source files all together so the module makes sense in one pass.'
+    ? 'Learning material and source files all together so the module makes sense in one pass.'
     : currentLens === 'quiz'
       ? 'Grounded questions drawn from extracted study note bullets. Pick a note, choose a question count, and test what you know.'
       : 'A clearer action lens for seeing exactly what still needs to get done.'
@@ -59,7 +63,18 @@ export function ModuleLensShell({
               )}
             </div>
 
-            {summary ? (
+            {dueCount !== undefined && completedCount !== undefined ? (
+              <div style={{ display: 'flex', gap: '1.5rem', padding: '0.9rem 1rem', borderRadius: 'var(--radius-tight)', background: 'var(--surface-soft)' }}>
+                <div>
+                  <p style={{ margin: 0, fontSize: '11px', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Due now</p>
+                  <p style={{ margin: '0.3rem 0 0', fontSize: '20px', fontWeight: 650, color: 'var(--amber)' }}>{dueCount}</p>
+                </div>
+                <div>
+                  <p style={{ margin: 0, fontSize: '11px', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Completed</p>
+                  <p style={{ margin: '0.3rem 0 0', fontSize: '20px', fontWeight: 650, color: 'var(--text-muted)' }}>{completedCount}</p>
+                </div>
+              </div>
+            ) : summary ? (
               <div className="workspace-quiet-panel" style={{ gap: '0.32rem' }}>
                 <p className="ui-kicker" style={{ margin: 0 }}>Working context</p>
                 <p className="workspace-quiet-panel-copy">{summary}</p>

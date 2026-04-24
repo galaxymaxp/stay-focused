@@ -5,8 +5,10 @@ import type { Course } from '@/lib/types'
 export interface CourseSummary {
   course: Course
   moduleCount: number
+  firstModuleId: string | null
   lastSyncedAt: string | null
   pendingTaskCount: number
+  completedTaskCount: number
   nextDueTask: { id: string; title: string; deadline: string; moduleId: string } | null
   recentAnnouncementCount: number
   readyPackCount: number
@@ -41,8 +43,17 @@ export async function buildCourseSummaries(
 
   return workspace.courses.map((course) => {
     const courseModules = workspace.modules.filter((m) => m.courseId === course.id)
+    const sortedModules = [...courseModules].sort((a, b) => {
+      const aTime = new Date(a.released_at ?? a.created_at).getTime()
+      const bTime = new Date(b.released_at ?? b.created_at).getTime()
+      return aTime - bTime
+    })
+    const firstModuleId = sortedModules[0]?.id ?? null
     const pendingTasks = workspace.taskItems.filter(
       (t) => t.courseId === course.id && t.status !== 'completed',
+    )
+    const completedTasks = workspace.taskItems.filter(
+      (t) => t.courseId === course.id && t.status === 'completed',
     )
 
     const nextDueTask =
@@ -69,8 +80,10 @@ export async function buildCourseSummaries(
     return {
       course,
       moduleCount: courseModules.length,
+      firstModuleId,
       lastSyncedAt,
       pendingTaskCount: pendingTasks.length,
+      completedTaskCount: completedTasks.length,
       nextDueTask: nextDueTask
         ? {
             id: nextDueTask.id,

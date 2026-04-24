@@ -179,6 +179,7 @@ export function CanvasSyncForm({ courses }: { courses: CanvasCourse[] }) {
             <input type="hidden" name="courseId" value={selected.id} />
             <input type="hidden" name="courseName" value={selected.name} />
             <input type="hidden" name="courseCode" value={selected.course_code} />
+            <input type="hidden" name="instructor" value={selected.teachers?.[0]?.display_name ?? ''} />
           </>
         )}
       </div>
