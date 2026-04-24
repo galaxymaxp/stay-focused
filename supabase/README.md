@@ -21,6 +21,10 @@ Important migration for attachment-backed Learn:
 - `supabase/migrations/20260413_add_auto_prompt_results.sql`
 - `supabase/migrations/20260414_add_auto_prompt_user_identity.sql`
 - `supabase/migrations/20260419_add_user_profile_avatars.sql`
+- `supabase/migrations/20260420_add_deep_learn_notes.sql`
+- `supabase/migrations/20260421000000_add_drafts.sql`
+- `supabase/migrations/20260423000000_unify_draft_identity.sql`
+- `supabase/migrations/20260424010000_add_course_ai_summaries.sql`
 
 That migration creates:
 
@@ -90,6 +94,12 @@ Current app features that depend on `20260419_add_user_profile_avatars.sql`:
 - Google sign-in can persist a default avatar URL in `public.user_profiles`
 - authenticated users can upload a custom avatar into the `profile-avatars` storage bucket
 - avatar APIs under `/api/profile/avatar` and `/api/profile/avatar/upload` resolve custom upload, Google avatar, then placeholder
+
+Current app features that depend on `20260424010000_add_course_ai_summaries.sql`:
+
+- course pages can reuse persisted AI summaries instead of calling OpenAI on every render
+- summary refreshes are tied to a lightweight source fingerprint built from course and module context
+- generated summaries remain durable across reloads and route changes until the underlying course context changes
 
 ## Fresh Project Reset
 

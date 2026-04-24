@@ -1,47 +1,16 @@
 # Stay Focused
 
-Stay Focused is a Next.js study dashboard that pulls course data from Canvas, stores synced workspace data in Supabase, and turns that material into a tighter action flow for students. The app is built around three jobs:
+Stay Focused is a Next.js study workspace that syncs Canvas data into Supabase, reduces school work into the clearest next move, and saves generated outputs into one persistent Study Library.
 
-- sync courses, modules, tasks, announcements, and attachments from Canvas
-- reduce the day to a clear next action on Home, Do, Tasks, and Calendar views
-- turn source material into reusable study outputs such as learning packs, notes, quizzes, and task drafts
+## App Overview
 
-## Current Product Shape
+- Main pages: Home, Courses, Study Library, Calendar, Settings
+- `Study Library` is the permanent generated-content hub for both Learning outputs and Task drafts
+- Drafts are no longer a standalone primary navigation destination
+- `/drafts` routes remain as compatibility entry points and may redirect into Study Library views
+- Product direction stays action-first: one purpose per page, lower cognitive load, persistent outputs, and soft-glow responsive UI with a user-configurable accent color
 
-The codebase currently exposes these main areas:
-
-- `Home` at `/`: a "what should I do right now?" dashboard with one primary action, due-soon work, recent changes, and course snapshots
-- `Canvas` at `/canvas`: connection setup, token guidance, course loading, sync actions, instructor refresh, and imported-module management
-- `Courses` at `/courses` and `/courses/[id]`: course workspaces and course-level learn views
-- `Modules` at `/modules/[id]/*`: module lenses for Deep Learn, Do, Quiz, Inspect, Review, and source/resource drill-down
-- `Tasks` and `Do` at `/tasks` and `/do`: action-focused task views and planner-style next-step flow
-- `Study Library` at `/library` and `/library/[id]`: saved generated content grouped by course
-- `Drafts` at `/drafts/*`: generated draft entry points, with `/drafts` redirecting into the library task filter
-- `Settings` at `/settings`: account state, Canvas shortcuts, avatar management, theme/accent controls, and browser notifications
-- auth and profile APIs: `/sign-in`, `/sign-up`, `/auth/callback`, `/api/profile/avatar`, `/api/profile/avatar/upload`
-
-## Core Capabilities
-
-- Canvas sync with saved connection details, token creation guidance, course selection, repeat-sync protection, and unsync controls
-- Supabase-backed workspace persistence for courses, modules, task items, deadlines, resources, drafts, deep-learn notes, announcements, and profile data
-- AI-assisted module processing and course summaries through OpenAI
-- Attachment-aware Learn flow with resource extraction, study-state tracking, resume cues, and deep links back to Canvas/original files
-- Quiz generation from saved learning notes
-- Saved study outputs and task drafts collected into a course-grouped library
-- Auth-aware profile avatars with Google-photo fallback and custom uploads
-- Theme, accent, notification-permission, and notification-sound controls
-
-## Stack
-
-- Next.js 16 App Router
-- React 19
-- TypeScript
-- Tailwind CSS 4
-- Supabase
-- OpenAI Node SDK
-- Playwright for runtime/browser verification scripts
-
-## Local Setup
+## Setup
 
 1. Install dependencies:
 
@@ -49,7 +18,7 @@ The codebase currently exposes these main areas:
 npm install
 ```
 
-2. Create `.env.local` from `.env.example` and fill in the required values:
+2. Create `.env.local` and provide the required variables:
 
 ```bash
 NEXT_PUBLIC_SUPABASE_URL=
@@ -60,67 +29,68 @@ CANVAS_API_URL=
 CANVAS_API_TOKEN=
 ```
 
-Important setup notes:
-
-- `NEXT_PUBLIC_SUPABASE_URL` must point to a hosted Supabase project, not a local CLI URL
-- the app expects the Supabase migrations in `supabase/migrations/` to be applied
-- `OPENAI_API_KEY` is required for AI-backed module processing and course summaries
-- Canvas sync requires a valid Canvas base URL and personal access token
-
-If you are starting from a fresh Supabase project, read `supabase/README.md` and run:
+3. Apply Supabase migrations:
 
 ```bash
 npx supabase db push
 ```
 
-3. Start the app:
+4. Start the app locally:
 
 ```bash
 npm run dev
 ```
 
-For a production build check:
+## Env Variables
 
-```bash
-npm run build
-npm run start
-```
+- `NEXT_PUBLIC_SUPABASE_URL`: hosted Supabase project URL
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`: client-facing anon key for that project
+- `OPENAI_API_KEY`: required for AI-backed module processing, task outputs, Deep Learn, and cached course summaries
+- `OPENAI_DO_NOW_MODEL`: optional override for the task-output model
+- `CANVAS_API_URL`: Canvas base URL used for sync
+- `CANVAS_API_TOKEN`: Canvas personal access token for sync
 
-## Verification
-
-The repo already includes a few useful checks:
+## Verification Commands
 
 ```bash
 npm run lint
+npm run typecheck
 npm run build
 npx tsx scripts/ui-runtime-check.ts
 npx tsx scripts/verify-canvas-flow.ts
 ```
 
-`ui-runtime-check.ts` exercises the real browser UI with Playwright. `verify-canvas-flow.ts` is the lower-level sync verification path used for Canvas flow checks.
+`ui-runtime-check.ts` covers runtime UI routes with Playwright. `verify-canvas-flow.ts` checks the lower-level sync and persistence path.
 
-## Scan Snapshot
+## Latest Scan Snapshot
 
-Local scan performed on April 24, 2026:
+Current focus after the April 24, 2026 roadmap-alignment pass:
 
-- `/` rendered the empty synced-data state with "No courses synced yet"
-- `/canvas` rendered the signed-out gate with "Canvas sync needs an account"
-- `/sign-in` rendered the auth form correctly
-- `/library` rendered the Study Library shell
-- `/settings` rendered the Preferences shell with account, Canvas, theme, and notification controls
+- Study Library remains the main saved-content destination
+- `/drafts` is treated as a compatibility surface, not a returned primary page
+- `notifyCompletion()` now emits in-app toasts for active tabs while preserving hidden-tab browser notifications and sound preferences
+- course page summaries are now persisted on `public.courses` instead of calling OpenAI on every render
+- the repository includes a migration for cached course-summary fields
+- `npm run lint`, `npm run typecheck`, and `npm run build` all succeeded after this pass
+- local production route checks returned `200` for `/`, `/courses`, `/library`, `/settings`, and `/canvas`
 
-In the same pass:
+## Stack Snapshot
 
-- `npm run build` succeeded
-- `npm run lint` succeeded
+- Next.js 16.2.2 App Router
+- React 19.2.4
+- TypeScript 5
+- Tailwind CSS 4
+- Supabase SSR + Supabase JS
+- OpenAI Node SDK 6
+- `pdf-parse` and `jszip` for learning-material extraction
+- Playwright for runtime UI verification
+- Windows + VS Code development environment
 
 ## Repository Notes
 
-- app routes live under `app/`
+- routes live under `app/`
 - server actions live under `actions/`
 - shared logic lives under `lib/`
 - UI components live under `components/`
-- Supabase schema and migrations live under `supabase/`
-- browser/runtime helper scripts live under `scripts/`
-
-The existing `supabase/README.md` documents schema-sensitive features in more detail, especially around resource sync, study-state tracking, task annotations, drafts, deep-learn notes, and profile avatars.
+- product docs live under `docs/`
+- Supabase migrations and notes live under `supabase/`
