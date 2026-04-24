@@ -4,11 +4,14 @@ import type { TodayItem } from '@/lib/types'
 
 export interface HomeDueSoonItem {
   id: string
+  moduleId: string
+  taskItemId: string
   title: string
   courseName: string
   moduleTitle: string
   urgencyLabel: string
   timingLabel: string
+  completionStatus: 'pending' | 'completed'
   href: string
 }
 
@@ -62,11 +65,14 @@ export function buildHomeOverview(workspace: ClarityWorkspace): HomeOverview {
     .slice(0, 5)
     .map((task) => ({
       id: task.id,
+      moduleId: task.moduleId,
+      taskItemId: task.id,
       title: task.title,
       courseName: task.courseName,
       moduleTitle: task.moduleTitle,
       urgencyLabel: getTaskUrgencyLabel(task),
       timingLabel: formatDate(task.deadline!),
+      completionStatus: task.status,
       href: buildModuleDoHref(task.moduleId, { taskTitle: task.title }),
     }))
 

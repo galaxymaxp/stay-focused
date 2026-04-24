@@ -249,7 +249,17 @@ export function TodayDashboard({
               {dueSoon.length > 0 && (
                 <QuickScanGroup label="Due soon" count={dueSoon.length}>
                   {dueSoon.slice(0, 4).map((item) => (
-                    <QuickScanRow key={item.id} title={item.title} href={item.href} urgencyLabel={item.urgencyLabel} />
+                    <QuickScanRow
+                      key={item.id}
+                      title={item.title}
+                      href={item.href}
+                      urgencyLabel={item.urgencyLabel}
+                      taskAction={{
+                        moduleId: item.moduleId,
+                        status: item.completionStatus,
+                        taskItemId: item.taskItemId,
+                      }}
+                    />
                   ))}
                 </QuickScanGroup>
               )}
@@ -396,24 +406,29 @@ function CompactActionRow({ item }: { item: TodayItem }) {
 }
 
 function DueSoonRow({ item }: { item: HomeDueSoonItem }) {
-  const content = (
-    <>
-      <div className="home-row-meta">
-        <span className="ui-chip ui-chip-soft" style={{ fontWeight: 700 }}>
-          {item.urgencyLabel}
-        </span>
-        <span>{item.courseName}</span>
-      </div>
-      <p className="home-row-title">{item.title}</p>
-      <p className="home-row-copy">{item.moduleTitle}. {item.timingLabel}</p>
-    </>
-  )
-
   return (
-    <article className="home-sheet-row">
-      <Link href={item.href} className="ui-interactive-row home-row-main">
-        {content}
-      </Link>
+    <article className="home-sheet-row" style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
+      <div style={{ flex: '1 1 0', minWidth: 0 }}>
+        <Link href={item.href} className="ui-interactive-row home-row-main">
+          <div className="home-row-meta">
+            <span className="ui-chip ui-chip-soft" style={{ fontWeight: 700 }}>
+              {item.urgencyLabel}
+            </span>
+            <span>{item.courseName}</span>
+          </div>
+          <p className="home-row-title">{item.title}</p>
+          <p className="home-row-copy">{item.moduleTitle}. {item.timingLabel}</p>
+        </Link>
+      </div>
+      <div style={{ flexShrink: 0, paddingTop: '0.25rem' }}>
+        <TaskStatusToggle
+          status={item.completionStatus}
+          moduleId={item.moduleId}
+          title={item.title}
+          taskItemId={item.taskItemId}
+          align="end"
+        />
+      </div>
     </article>
   )
 }
@@ -469,27 +484,43 @@ function ActivityRow({ item, onDismiss }: { item: HomeActivityItem; onDismiss: (
 
 function QuickScanGroup({ label, count, children }: { label: string; count: number; children: React.ReactNode }) {
   return (
-    <details open style={{ borderTop: '1px solid color-mix(in srgb, var(--border-subtle) 60%, transparent)' }}>
-      <summary style={{ cursor: 'pointer', listStyle: 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.55rem 0' }}>
+    <section style={{ borderTop: '1px solid color-mix(in srgb, var(--border-subtle) 60%, transparent)', paddingTop: '0.55rem', paddingBottom: '0.45rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '0.3rem' }}>
         <span style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
           {label}
         </span>
         <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
           {count}
         </span>
-      </summary>
-      <div style={{ display: 'grid', gap: '0.1rem', paddingBottom: '0.45rem' }}>
+      </div>
+      <div style={{ display: 'grid', gap: '0.1rem' }}>
         {children}
       </div>
-    </details>
+    </section>
   )
 }
 
-function QuickScanRow({ title, href, urgencyLabel, external }: { title: string; href: string | null; urgencyLabel?: string; external?: boolean }) {
+function QuickScanRow({
+  title,
+  href,
+  urgencyLabel,
+  external,
+  taskAction,
+}: {
+  title: string
+  href: string | null
+  urgencyLabel?: string
+  external?: boolean
+  taskAction?: {
+    moduleId: string
+    status: 'pending' | 'completed'
+    taskItemId: string
+  }
+}) {
   const rowStyle = {
     display: 'flex',
     gap: '0.5rem',
-    alignItems: 'baseline',
+    alignItems: 'center',
     padding: '0.18rem 0',
     fontSize: '12.5px',
     lineHeight: 1.45,
@@ -510,15 +541,37 @@ function QuickScanRow({ title, href, urgencyLabel, external }: { title: string; 
     </>
   )
 
+  const rowMain = !href
+    ? <div style={{ ...rowStyle, flex: '1 1 0', minWidth: 0 }}>{inner}</div>
+    : external
+      ? <a href={href} target="_blank" rel="noreferrer" style={{ ...rowStyle, flex: '1 1 0', minWidth: 0 }}>{inner}</a>
+      : <Link href={href} style={{ ...rowStyle, flex: '1 1 0', minWidth: 0 }}>{inner}</Link>
+
+  if (taskAction) {
+    return (
+      <div style={{ display: 'flex', gap: '0.45rem', alignItems: 'center' }}>
+        {rowMain}
+        <TaskStatusToggle
+          status={taskAction.status}
+          moduleId={taskAction.moduleId}
+          title={title}
+          taskItemId={taskAction.taskItemId}
+          align="end"
+          style={{ minHeight: '1.85rem', padding: '0.28rem 0.55rem', fontSize: '11px' }}
+        />
+      </div>
+    )
+  }
+
   if (!href) {
-    return <div style={rowStyle}>{inner}</div>
+    return rowMain
   }
 
   if (external) {
-    return <a href={href} target="_blank" rel="noreferrer" style={rowStyle}>{inner}</a>
+    return rowMain
   }
 
-  return <Link href={href} style={rowStyle}>{inner}</Link>
+  return rowMain
 }
 
 function CourseSnapshotRow({ course }: { course: HomeCourseSnapshot }) {

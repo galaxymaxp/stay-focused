@@ -1,17 +1,14 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import type { CSSProperties, ReactNode } from 'react'
-import { AnnouncementSupportRow } from '@/components/AnnouncementSupportRow'
 import { DeepLearnGenerateButton } from '@/components/DeepLearnGenerateButton'
 import { ModuleLensShell } from '@/components/ModuleLensShell'
 import { StudyResourceAccordionList } from '@/components/StudyResourceAccordionList'
 import { classifyDeepLearnResourceReadiness } from '@/lib/deep-learn-readiness'
 import { listDeepLearnNotesForModule } from '@/lib/deep-learn-store'
 import { getDeepLearnResourceUiState } from '@/lib/deep-learn-ui'
-import { getModuleResourceCapabilityInfo } from '@/lib/module-resource-capability'
-import { getModuleResourceQualityInfo } from '@/lib/module-resource-quality'
-import { buildModuleLearnOverview, type ModuleStudyMaterial } from '@/lib/module-learn-overview'
-import { buildModuleDoHref, buildModuleInspectHref, getSearchParamValue, getSupportElementId, getTaskElementId } from '@/lib/stay-focused-links'
+import { buildModuleLearnOverview } from '@/lib/module-learn-overview'
+import { buildModuleDoHref, buildModuleInspectHref, getSearchParamValue, getTaskElementId } from '@/lib/stay-focused-links'
 import {
   buildLearnExperience,
   extractCourseName,
@@ -20,7 +17,6 @@ import {
   getResourceOriginalFileHref,
   getResourceCanvasHref,
   resolveLearnResourceSelection,
-  type ModuleSourceResource,
 } from '@/lib/module-workspace'
 import { generateCourseSummary } from '@/lib/openai'
 import type { Task } from '@/lib/types'
@@ -65,9 +61,6 @@ export default async function LearnPage({ params, searchParams }: Props) {
   const completedTasks = sortedTasks.filter((task) => task.status === 'completed')
   const targetResourceId = getSearchParamValue(resolvedSearchParams?.resource)
   const targetTaskId = getSearchParamValue(resolvedSearchParams?.task)
-  const targetSupportId = getSearchParamValue(resolvedSearchParams?.support)
-  const targetPanel = getSearchParamValue(resolvedSearchParams?.panel)
-  const shouldOpenSourceSupport = targetPanel === 'source-support' || Boolean(targetSupportId)
   const shouldOpenCompletedTasks = Boolean(targetTaskId && completedTasks.some((task) => task.id === targetTaskId))
   const resumeTargetDeepLearn = overview.resumeTarget
     ? (() => {
@@ -213,9 +206,6 @@ export default async function LearnPage({ params, searchParams }: Props) {
                   </Link>
                 )}
                 <ActionButton href={overview.resumeTarget.href} label={overview.resumeTarget.actionLabel} external={overview.resumeTarget.external} tone="ghost" />
-                <Link href={`/modules/${module.id}/learn#source-support`} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-                  Source support
-                </Link>
                 <Link href={buildModuleInspectHref(module.id)} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
                   Inspect resources
                 </Link>
@@ -380,218 +370,8 @@ export default async function LearnPage({ params, searchParams }: Props) {
           </aside>
         </div>
 
-        <div id="source-support">
-          <details open={shouldOpenSourceSupport} className="motion-card motion-delay-3 section-shell" style={{ padding: '1rem 1.05rem' }}>
-            <summary className="ui-interactive-summary" style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                  Source support
-                </summary>
-            <div style={{ display: 'grid', gap: '0.85rem', marginTop: '0.8rem' }}>
-              <div>
-                <p className="ui-kicker">Source support</p>
-                <h3 style={{ margin: '0.42rem 0 0', fontSize: '1.02rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>
-                  Extracted source views and support context stay inside Deep Learn as secondary validation
-                </h3>
-                <p style={{ margin: '0.42rem 0 0', fontSize: '14px', lineHeight: 1.68, color: 'var(--text-secondary)' }}>
-                  {overview.coverageNote}
-                </p>
-              </div>
-
-              {overview.studyMaterials.length > 0 ? (
-                <div className="command-scroll-body" data-density="compact">
-                  <div style={{ display: 'grid', gap: '0.7rem' }}>
-                    {overview.studyMaterials.map((material) => (
-                      <SourceSupportRow
-                        key={`${material.resource.id}-source-support`}
-                        moduleId={module.id}
-                        material={material}
-                        highlighted={targetSupportId === material.resource.id}
-                      />
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <div className="ui-empty" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', fontSize: '14px', lineHeight: 1.68 }}>
-                  No extracted study sources are mapped into this module yet.
-                </div>
-              )}
-
-              {overview.otherContextResources.length > 0 && (
-                <div className="command-scroll-body" data-density="compact">
-                  <div style={{ display: 'grid', gap: '0.7rem' }}>
-                    {overview.otherContextResources.map((item) => (
-                      <SupportContextRow
-                        key={item.id}
-                        moduleId={module.id}
-                        courseId={module.courseId ?? null}
-                        item={item}
-                        highlighted={targetSupportId === item.id}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </details>
-        </div>
       </div>
     </ModuleLensShell>
-  )
-}
-
-function SourceSupportRow({
-  moduleId,
-  material,
-  highlighted = false,
-}: {
-  moduleId: string
-  material: ModuleStudyMaterial
-  highlighted?: boolean
-}) {
-  const canvasHref = getResourceCanvasHref(material.resource)
-  const capability = getModuleResourceCapabilityInfo(material.resource)
-  const quality = getModuleResourceQualityInfo(material.resource)
-  const note = material.note
-  const originalFileHref = getResourceOriginalFileHref(material.resource)
-  const sourceHref = originalFileHref ?? canvasHref
-
-  return (
-    <article
-      id={getSupportElementId(material.resource.id)}
-      className="ui-card-soft"
-      style={{
-        borderRadius: 'var(--radius-panel)',
-        padding: '0.82rem 0.88rem',
-        display: 'grid',
-        gap: '0.55rem',
-        border: highlighted
-          ? '1px solid color-mix(in srgb, var(--accent-border) 38%, var(--border-subtle) 62%)'
-          : undefined,
-      }}
-    >
-      <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-        <StateBadge label={material.fileTypeLabel} tone="muted" />
-        <StateBadge
-          label={material.readinessLabel}
-          tone={material.readiness === 'ready' ? 'accent' : material.readiness === 'limited' ? 'warning' : 'muted'}
-        />
-        <StateBadge label={capability.capabilityLabel} tone={capability.capabilityTone} />
-        <StateBadge label={quality.qualityLabel} tone={quality.qualityTone} />
-      </div>
-
-      <div>
-        <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.5, color: 'var(--text-primary)', fontWeight: 650 }}>
-          {material.resource.title}
-        </p>
-        <p style={{ margin: '0.32rem 0 0', fontSize: '13px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
-          {note}
-        </p>
-      </div>
-
-      <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-        {material.primaryAction === 'source' && sourceHref ? (
-          <a href={sourceHref} target="_blank" rel="noreferrer" className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
-            {material.sourceActionLabel}
-          </a>
-        ) : (
-          <Link href={getLearnResourceHref(moduleId, material.resource.id)} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
-            Source details
-          </Link>
-        )}
-        {material.primaryAction !== 'source' && sourceHref && (
-          <a href={sourceHref} target="_blank" rel="noreferrer" className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-            {material.sourceActionLabel}
-          </a>
-        )}
-        {material.primaryAction === 'source' && (
-          <Link href={getLearnResourceHref(moduleId, material.resource.id)} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-            Source details
-          </Link>
-        )}
-        <Link href={buildModuleInspectHref(moduleId, { resourceId: material.resource.id })} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-          Inspect
-        </Link>
-      </div>
-    </article>
-  )
-}
-
-function SupportContextRow({
-  moduleId,
-  courseId,
-  item,
-  highlighted = false,
-}: {
-  moduleId: string
-  courseId: string | null
-  item: ModuleSourceResource
-  highlighted?: boolean
-}) {
-  if (item.kind === 'announcement') {
-    return (
-      <AnnouncementSupportRow
-        moduleId={moduleId}
-        courseId={courseId}
-        supportId={item.id}
-        title={item.title}
-        canvasHref={getResourceCanvasHref(item)}
-        note={item.linkedContext ?? item.whyItMatters ?? item.qualityReason ?? item.capabilityReason ?? item.moduleName ?? 'Supporting context'}
-        highlighted={highlighted}
-      />
-    )
-  }
-
-  const canvasHref = getResourceCanvasHref(item)
-  const capability = getModuleResourceCapabilityInfo(item)
-  const quality = getModuleResourceQualityInfo(item)
-
-  return (
-    <article
-      id={getSupportElementId(item.id)}
-      className="ui-card-soft"
-      style={{
-        borderRadius: 'var(--radius-panel)',
-        padding: '0.82rem 0.88rem',
-        display: 'grid',
-        gap: '0.55rem',
-        border: highlighted
-          ? '1px solid color-mix(in srgb, var(--accent-border) 38%, var(--border-subtle) 62%)'
-          : undefined,
-      }}
-    >
-      <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-        <StateBadge label={capability.capabilityLabel} tone={capability.capabilityTone} />
-        <StateBadge label={quality.qualityLabel} tone={quality.qualityTone} />
-      </div>
-
-      <div>
-        <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.5, color: 'var(--text-primary)', fontWeight: 650 }}>
-          {item.title}
-        </p>
-        <p style={{ margin: '0.32rem 0 0', fontSize: '13px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
-          {item.linkedContext ?? item.whyItMatters ?? item.qualityReason ?? item.capabilityReason ?? item.moduleName ?? 'Supporting context'}
-        </p>
-      </div>
-
-      <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-        {canvasHref ? (
-          <a href={canvasHref} target="_blank" rel="noreferrer" className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
-            Open target
-          </a>
-        ) : (
-          <Link href={getLearnResourceHref(moduleId, item.id)} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-            Open detail
-          </Link>
-        )}
-        <Link href={buildModuleInspectHref(moduleId, { resourceId: item.id })} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-          Inspect
-        </Link>
-        {canvasHref && (
-          <Link href={getLearnResourceHref(moduleId, item.id)} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-            Open detail
-          </Link>
-        )}
-      </div>
-    </article>
   )
 }
 
@@ -648,15 +428,6 @@ function ActionButton({
     <Link href={href} className={className} style={{ textDecoration: 'none' }}>
       {label}
     </Link>
-  )
-}
-
-function StatCard({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.8rem 0.85rem' }}>
-      <p style={{ margin: 0, fontSize: '11px', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{label}</p>
-      <p style={{ margin: '0.4rem 0 0', fontSize: '20px', lineHeight: 1.1, fontWeight: 650, color: 'var(--text-primary)' }}>{value}</p>
-    </div>
   )
 }
 

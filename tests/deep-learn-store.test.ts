@@ -238,5 +238,6 @@ function createModuleWorkspace(module: Module): ModuleWorkspaceData {
     resources: [],
     resourceStudyStates: [],
     terms: [],
+    courseInstructor: null,
   }
 }

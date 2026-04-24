@@ -42,7 +42,7 @@ export function TaskDraftPanel({
   const router = useRouter()
   const requestPayload = useMemo(() => buildTaskDraftRequestPayload(context), [context])
   const requestBody = useMemo(() => JSON.stringify(requestPayload), [requestPayload])
-  const fallbackDraft = useMemo(() => buildTaskDraftFallback(context), [requestBody])
+  const fallbackDraft = useMemo(() => buildTaskDraftFallback(context), [context])
   const [reusableSnapshot] = useState<PromptBuildSnapshot | null>(() => (
     initialSnapshot?.requestBody === requestBody ? initialSnapshot : null
   ))
@@ -61,7 +61,19 @@ export function TaskDraftPanel({
   const prevBuildingRef = useRef(false)
 
   useEffect(() => {
-    setWorkingDraft(draft)
+    setWorkingDraft((current) => {
+      if (
+        current.requirementSummary === draft.requirementSummary
+        && current.draftOutput === draft.draftOutput
+        && current.missingDetails === draft.missingDetails
+        && current.paperAction === draft.paperAction
+        && current.smallestNextStep === draft.smallestNextStep
+      ) {
+        return current
+      }
+
+      return draft
+    })
     setRefinementPending(null)
     setRefinementError(null)
     setSavePending(false)
