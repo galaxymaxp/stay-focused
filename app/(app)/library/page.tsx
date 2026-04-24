@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { listDraftsForShelves } from '@/actions/drafts'
 import { CourseShelf } from '@/components/drafts/CourseShelf'
-import type { DraftShelfItem, StudyLibraryItem } from '@/lib/types'
+import { resolveStudyLibraryHref, type DraftShelfItem, type StudyLibraryItem } from '@/lib/types'
 
 interface Props {
   searchParams?: Promise<Record<string, string | string[] | undefined>>
@@ -143,7 +143,7 @@ function toStudyLibraryItem(
     moduleTitle: draft.moduleTitle ?? undefined,
     taskTitle: kind === 'task' ? draft.title : undefined,
     updatedAt: draft.updatedAt,
-    href: `/library/${draft.id}`,
+    href: resolveStudyLibraryHref(draft),
   }
 }
 

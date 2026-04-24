@@ -61,7 +61,7 @@ export function DraftCard({ item }: { item: StudyLibraryItem }) {
 function buildContextLine(item: StudyLibraryItem) {
   const parts = [item.courseTitle, item.moduleTitle].filter(Boolean)
   if (item.kind === 'task' && item.taskTitle && item.taskTitle !== item.title) parts.push(`Task: ${item.taskTitle}`)
-  return parts.join(' · ')
+  return parts.join(' / ')
 }
 
 function formatShortDate(value?: string) {

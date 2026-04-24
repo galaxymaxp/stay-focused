@@ -1,3 +1,5 @@
+import { buildDeepLearnNoteHref, buildModuleDoHref, buildModuleLearnHref } from '@/lib/stay-focused-links'
+
 export type ModuleStatus = 'pending' | 'processed' | 'error'
 export type TaskStatus = 'pending' | 'completed'
 export type TaskCompletionOrigin = 'manual' | 'canvas'
@@ -423,6 +425,63 @@ export interface StudyLibraryItem {
   taskTitle?: string
   updatedAt?: string
   href: string
+}
+
+interface CanonicalSourceReference {
+  prefix: string | null
+  value: string | null
+}
+
+export function buildStudyLibraryDetailHref(itemId: string) {
+  return `/library/${encodeURIComponent(itemId)}`
+}
+
+export function parseCanonicalSourceId(canonicalSourceId: string | null | undefined): CanonicalSourceReference {
+  const rawValue = canonicalSourceId?.trim() ?? ''
+  if (!rawValue) {
+    return { prefix: null, value: null }
+  }
+
+  const separatorIndex = rawValue.indexOf(':')
+  if (separatorIndex <= 0) {
+    return { prefix: null, value: rawValue }
+  }
+
+  const prefix = rawValue.slice(0, separatorIndex).trim().toLowerCase() || null
+  const value = rawValue.slice(separatorIndex + 1).trim() || null
+
+  return { prefix, value }
+}
+
+export function getTaskIdFromCanonicalSourceId(canonicalSourceId: string | null | undefined) {
+  const reference = parseCanonicalSourceId(canonicalSourceId)
+  if (reference.prefix !== 'task' || !reference.value) return null
+  return reference.value
+}
+
+export function resolveStudyLibraryHref(
+  item: Pick<DraftShelfItem, 'id' | 'entryKind' | 'sourceType' | 'sourceModuleId' | 'sourceResourceId' | 'canonicalSourceId'>,
+) {
+  const detailHref = buildStudyLibraryDetailHref(item.id)
+
+  if (item.entryKind === 'deep_learn_note' && item.sourceModuleId && item.sourceResourceId) {
+    return buildDeepLearnNoteHref(item.sourceModuleId, item.sourceResourceId)
+  }
+
+  if (item.sourceType === 'task' && item.sourceModuleId) {
+    const taskId = getTaskIdFromCanonicalSourceId(item.canonicalSourceId)
+    if (taskId) {
+      return buildModuleDoHref(item.sourceModuleId, { taskId })
+    }
+
+    return detailHref
+  }
+
+  if (item.sourceType === 'module' && item.sourceModuleId) {
+    return buildModuleLearnHref(item.sourceModuleId)
+  }
+
+  return detailHref
 }
 
 // What we ask OpenAI to return

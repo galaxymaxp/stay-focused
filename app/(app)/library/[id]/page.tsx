@@ -1,16 +1,32 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
+import { getDeepLearnNoteById, getDraft } from '@/actions/drafts'
 import { DeepLearnWorkspace } from '@/components/DeepLearnWorkspace'
 import { ModuleLensShell } from '@/components/ModuleLensShell'
-import { getDeepLearnNoteById, getDraft } from '@/actions/drafts'
 import { extractCourseName, getModuleWorkspace, type ModuleSourceResource } from '@/lib/module-workspace'
+import {
+  buildModuleDoHref,
+  buildModuleLearnHref,
+} from '@/lib/stay-focused-links'
+import {
+  buildStudyLibraryDetailHref,
+  getTaskIdFromCanonicalSourceId,
+  parseCanonicalSourceId,
+} from '@/lib/types'
 
 interface Props {
   params: Promise<{ id: string }>
 }
 
+interface LibraryPrimaryAction {
+  href: string | null
+  label: 'Open Tasks workspace' | 'Open Learn workspace' | 'Open source workspace' | 'Open saved item'
+  note: string | null
+}
+
 export default async function LibraryItemPage({ params }: Props) {
   const { id } = await params
+  const detailHref = buildStudyLibraryDetailHref(id)
   const note = await getDeepLearnNoteById(id)
 
   if (note) {
@@ -18,9 +34,10 @@ export default async function LibraryItemPage({ params }: Props) {
     const resource = buildNoteResource(note, workspace?.module.title ?? null)
     const courseId = workspace?.module.courseId ?? note.courseId ?? null
     const courseName = extractCourseName(workspace?.module.raw_content)
-    const moduleLearnHref = `/modules/${note.moduleId}/learn`
-    const sourceResourceHref = `/modules/${note.moduleId}/learn/resources/${encodeURIComponent(note.resourceId)}`
     const courseLibraryHref = courseId ? `/library?course=${encodeURIComponent(courseId)}` : '/library'
+    const learnWorkspaceHref = workspace ? buildModuleLearnHref(note.moduleId) : null
+    const sourceWorkspaceHref = workspace ? buildLearnResourceWorkspaceHref(note.moduleId, note.resourceId) : null
+    const primaryAction = resolveNotePrimaryAction(learnWorkspaceHref, sourceWorkspaceHref)
 
     const workspaceContent = (
       <div className="command-page command-page-tight">
@@ -36,13 +53,26 @@ export default async function LibraryItemPage({ params }: Props) {
             <Link href={courseLibraryHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
               Study Library
             </Link>
-            <Link href={moduleLearnHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-              Open Learn workspace
-            </Link>
-            <Link href={sourceResourceHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
-              Open source context
-            </Link>
+            {primaryAction.href ? (
+              <Link href={primaryAction.href} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+                {primaryAction.label}
+              </Link>
+            ) : (
+              <span className="ui-button ui-button-ghost ui-button-xs" aria-disabled="true" style={{ opacity: 0.72, cursor: 'default' }}>
+                {primaryAction.label}
+              </span>
+            )}
+            {sourceWorkspaceHref && sourceWorkspaceHref !== primaryAction.href && (
+              <Link href={sourceWorkspaceHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
+                Open source workspace
+              </Link>
+            )}
           </div>
+          {primaryAction.note && (
+            <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.62, color: 'var(--text-secondary)' }}>
+              {primaryAction.note}
+            </p>
+          )}
         </section>
         <DeepLearnWorkspace
           moduleId={note.moduleId}
@@ -51,7 +81,9 @@ export default async function LibraryItemPage({ params }: Props) {
           deepLearnResourceId={note.resourceId}
           note={note}
           sourceHref={resource.sourceUrl ?? resource.htmlUrl ?? null}
-          readerHref={sourceResourceHref}
+          readerHref={primaryAction.href ?? detailHref}
+          readerLabel={primaryAction.label}
+          blockedMessage={primaryAction.note}
           statusSummary="This saved exam prep pack reopens the same Deep Learn review surface with its pinned source beside it."
         />
       </div>
@@ -81,16 +113,12 @@ export default async function LibraryItemPage({ params }: Props) {
   const isTaskDraft = draft.sourceType === 'task'
   const workspace = draft.sourceModuleId ? await getModuleWorkspace(draft.sourceModuleId) : null
   const moduleId = draft.sourceModuleId ?? draft.id
-  const courseId = workspace?.module.courseId ?? null
+  const courseId = workspace?.module.courseId ?? draft.courseId ?? null
   const courseName = extractCourseName(workspace?.module.raw_content)
   const resource = buildDraftResource(draft, workspace?.module.title ?? null)
-  const moduleWorkspaceHref = isTaskDraft
-    ? getTaskWorkspaceHref(draft)
-    : draft.sourceModuleId
-      ? `/modules/${draft.sourceModuleId}/learn`
-      : null
-  const sourceResourceHref = !isTaskDraft && draft.sourceModuleId && draft.sourceResourceId
-    ? `/modules/${draft.sourceModuleId}/learn/resources/${encodeURIComponent(draft.sourceResourceId)}`
+  const detailAction = resolveDraftPrimaryAction(draft, Boolean(workspace))
+  const sourceWorkspaceHref = !isTaskDraft && workspace && draft.sourceModuleId && draft.sourceResourceId
+    ? buildLearnResourceWorkspaceHref(draft.sourceModuleId, draft.sourceResourceId)
     : null
   const courseLibraryHref = courseId ? `/library?course=${encodeURIComponent(courseId)}` : '/library'
   const sourceHref = isTaskDraft ? draft.sourceFilePath : null
@@ -111,14 +139,18 @@ export default async function LibraryItemPage({ params }: Props) {
           <Link href={courseLibraryHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
             Study Library
           </Link>
-          {moduleWorkspaceHref && (
-            <Link href={moduleWorkspaceHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-              {isTaskDraft ? 'Open Tasks workspace' : 'Open Learn workspace'}
+          {detailAction.href ? (
+            <Link href={detailAction.href} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+              {detailAction.label}
             </Link>
+          ) : (
+            <span className="ui-button ui-button-ghost ui-button-xs" aria-disabled="true" style={{ opacity: 0.72, cursor: 'default' }}>
+              {detailAction.label}
+            </span>
           )}
-          {sourceResourceHref && (
-            <Link href={sourceResourceHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
-              Open source context
+          {sourceWorkspaceHref && sourceWorkspaceHref !== detailAction.href && (
+            <Link href={sourceWorkspaceHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
+              Open source workspace
             </Link>
           )}
           {sourceHref && (
@@ -127,6 +159,11 @@ export default async function LibraryItemPage({ params }: Props) {
             </a>
           )}
         </div>
+        {detailAction.note && (
+          <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.62, color: 'var(--text-secondary)' }}>
+            {detailAction.note}
+          </p>
+        )}
       </section>
       <DeepLearnWorkspace
         moduleId={moduleId}
@@ -135,8 +172,9 @@ export default async function LibraryItemPage({ params }: Props) {
         deepLearnResourceId={draft.id}
         note={null}
         sourceHref={sourceHref}
-        readerHref={moduleWorkspaceHref ?? '/courses'}
-        readerLabel={isTaskDraft ? 'Task workspace' : 'Source detail'}
+        readerHref={detailAction.href ?? detailHref}
+        readerLabel={detailAction.label}
+        blockedMessage={detailAction.note}
         statusSummary={isTaskDraft
           ? 'This saved task draft resumes as a standalone working document while keeping its Do workspace one click away.'
           : 'This saved study output predates the pack-first Learn flow, so it resumes as a standalone document with its source context.'}
@@ -209,19 +247,82 @@ function buildDraftResource(
   }
 }
 
-function getTaskWorkspaceHref(draft: NonNullable<Awaited<ReturnType<typeof getDraft>>>) {
-  if (!draft.sourceModuleId) return null
-
-  const taskId = getTaskIdFromCanonicalSourceId(draft.canonicalSourceId)
-  if (taskId) {
-    return `/modules/${draft.sourceModuleId}/do?task=${encodeURIComponent(taskId)}`
+function resolveNotePrimaryAction(
+  learnWorkspaceHref: string | null,
+  sourceWorkspaceHref: string | null,
+): LibraryPrimaryAction {
+  if (learnWorkspaceHref) {
+    return {
+      href: learnWorkspaceHref,
+      label: 'Open Learn workspace',
+      note: null,
+    }
   }
 
-  return `/modules/${draft.sourceModuleId}/do?taskTitle=${encodeURIComponent(draft.title)}`
+  if (sourceWorkspaceHref) {
+    return {
+      href: sourceWorkspaceHref,
+      label: 'Open source workspace',
+      note: null,
+    }
+  }
+
+  return {
+    href: null,
+    label: 'Open saved item',
+    note: 'This saved item stays available here because its source workspace is no longer linked.',
+  }
 }
 
-function getTaskIdFromCanonicalSourceId(canonicalSourceId: string) {
-  if (!canonicalSourceId.startsWith('task:')) return null
-  const taskId = canonicalSourceId.slice('task:'.length).trim()
-  return taskId || null
+function resolveDraftPrimaryAction(
+  draft: NonNullable<Awaited<ReturnType<typeof getDraft>>>,
+  hasWorkspace: boolean,
+): LibraryPrimaryAction {
+  if (draft.sourceType === 'task') {
+    if (!draft.sourceModuleId || !hasWorkspace) {
+      return {
+        href: null,
+        label: 'Open saved item',
+        note: 'This saved task draft stays available here because its task workspace can no longer be resolved.',
+      }
+    }
+
+    const taskId = getTaskIdFromCanonicalSourceId(draft.canonicalSourceId)
+    if (taskId) {
+      return {
+        href: buildModuleDoHref(draft.sourceModuleId, { taskId }),
+        label: 'Open Tasks workspace',
+        note: null,
+      }
+    }
+
+    const canonicalReference = parseCanonicalSourceId(draft.canonicalSourceId)
+    const exactTaskNote = canonicalReference.prefix
+      ? 'This saved task draft can still reopen the module task workspace, but its exact task link is unavailable.'
+      : 'This saved task draft predates stable task IDs, so it reopens at the module task workspace instead of a specific task.'
+
+    return {
+      href: buildModuleDoHref(draft.sourceModuleId),
+      label: 'Open Tasks workspace',
+      note: exactTaskNote,
+    }
+  }
+
+  if (draft.sourceModuleId && hasWorkspace) {
+    return {
+      href: buildModuleLearnHref(draft.sourceModuleId),
+      label: 'Open Learn workspace',
+      note: null,
+    }
+  }
+
+  return {
+    href: null,
+    label: 'Open saved item',
+    note: 'This saved item stays available here because its source workspace is no longer linked.',
+  }
+}
+
+function buildLearnResourceWorkspaceHref(moduleId: string, resourceId: string) {
+  return `/modules/${moduleId}/learn/resources/${encodeURIComponent(resourceId)}`
 }
