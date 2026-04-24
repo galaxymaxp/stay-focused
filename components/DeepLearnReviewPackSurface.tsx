@@ -102,7 +102,7 @@ export function DeepLearnReviewPackSurface({ note }: { note: DeepLearnNote }) {
 
   return (
     <div style={{ display: 'grid', gap: '0.9rem', minHeight: 0 }}>
-      <section className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.95rem 1rem', display: 'grid', gap: '0.8rem' }}>
+      <section className="ui-card-soft deep-learn-review-controls" style={{ borderRadius: 'var(--radius-panel)', padding: '0.95rem 1rem', display: 'grid', gap: '0.8rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
           <p className="ui-kicker" style={{ margin: 0 }}>Review presets</p>
           <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
@@ -113,7 +113,7 @@ export function DeepLearnReviewPackSurface({ note }: { note: DeepLearnNote }) {
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+        <div className="deep-learn-preset-row" style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
           <PresetButton label="Answer Mode" active={preset === 'answer_bank'} onClick={() => setPreset('answer_bank')} />
           <PresetButton label="Identification" active={preset === 'identification'} onClick={() => setPreset('identification')} />
           <PresetButton label="MCQ Drill" active={preset === 'mcq'} onClick={() => setPreset('mcq')} />
@@ -121,14 +121,14 @@ export function DeepLearnReviewPackSurface({ note }: { note: DeepLearnNote }) {
           <PresetButton label="Compare" active={preset === 'distinctions'} onClick={() => setPreset('distinctions')} />
         </div>
 
-        <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+        <div className="deep-learn-preset-row" style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
           <PresetButton label="Exam-safe wording" active={wordingMode === 'exam_safe'} onClick={() => setWordingMode('exam_safe')} />
           <PresetButton label="Exact source" active={wordingMode === 'exact_source'} onClick={() => setWordingMode('exact_source')} />
           <PresetButton label="Simplified" active={wordingMode === 'simplified'} onClick={() => setWordingMode('simplified')} />
         </div>
       </section>
 
-      <div className="contained-scroll-frame review-support-scroll-frame">
+      <div className="contained-scroll-frame review-support-scroll-frame deep-learn-review-results">
         <div style={{ display: 'grid', gap: '0.9rem' }}>
           {preset === 'answer_bank' && (
             <section data-review-support-scope className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem' }}>

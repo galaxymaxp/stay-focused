@@ -94,26 +94,16 @@ export function DeepLearnWorkspace({
         />
       )}
 
-      <div className="deep-learn-build-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: '0.8rem', alignItems: 'stretch' }}>
-        <aside className="ui-card-soft deep-learn-source-pane" style={{ borderRadius: 'var(--radius-panel)', padding: '0.9rem', minHeight: 0 }}>
-          <p className="ui-kicker">Pinned source</p>
-          <p style={{ margin: '0.38rem 0 0', fontSize: '14px', lineHeight: 1.45, color: 'var(--text-primary)', fontWeight: 650 }}>{resource.title}</p>
-          <div className="deep-learn-source-content" style={{ marginTop: '0.7rem' }}>
-            {sourceText ? (
-              <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: '12px', lineHeight: 1.62, color: 'var(--text-secondary)' }}>
-                {sourceText}
-              </pre>
-            ) : (
-              <GeneratedContentState
-                title="The original source is not available."
-                description="You can still use the saved content below."
-                tone="warning"
-              />
-            )}
-          </div>
-        </aside>
+      <div className="deep-learn-build-grid">
+        <PinnedSourcePane
+          resourceTitle={resource.title}
+          sourceText={sourceText}
+          sourceHref={sourceHref}
+          readerHref={readerHref}
+          readerLabel={readerLabel}
+        />
 
-        <div className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', minHeight: 0, overflow: 'hidden' }}>
+        <div className="glass-panel glass-soft deep-learn-review-pane" style={{ borderRadius: 'var(--radius-panel)', minHeight: 0, overflow: 'hidden' }}>
           {!note ? (
             <PackEmptyState
               title="No saved learning pack yet."
@@ -331,26 +321,16 @@ function LegacyDraftWorkspace({
           </form>
         )}
 
-        <div className="deep-learn-build-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: '0.8rem', alignItems: 'stretch' }}>
-          <aside className="ui-card-soft deep-learn-source-pane" style={{ borderRadius: 'var(--radius-panel)', padding: '0.9rem', minHeight: 0 }}>
-            <p className="ui-kicker">Pinned source</p>
-            <p style={{ margin: '0.38rem 0 0', fontSize: '14px', lineHeight: 1.45, color: 'var(--text-primary)', fontWeight: 650 }}>{resource.title}</p>
-            <div className="deep-learn-source-content" style={{ marginTop: '0.7rem' }}>
-              {sourceText ? (
-                <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: '12px', lineHeight: 1.62, color: 'var(--text-secondary)' }}>
-                  {sourceText}
-                </pre>
-              ) : (
-                <GeneratedContentState
-                  title="The original source is not available."
-                  description="You can still use the saved content below."
-                  tone="warning"
-                />
-              )}
-            </div>
-          </aside>
+        <div className="deep-learn-build-grid">
+          <PinnedSourcePane
+            resourceTitle={resource.title}
+            sourceText={sourceText}
+            sourceHref={sourceHref}
+            readerHref={readerHref}
+            readerLabel={readerLabel}
+          />
 
-          <div className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', minHeight: 0, overflow: 'hidden' }}>
+          <div className="glass-panel glass-soft deep-learn-review-pane" style={{ borderRadius: 'var(--radius-panel)', minHeight: 0, overflow: 'hidden' }}>
             {isWorking && !body ? (
               <PackEmptyState
                 title="Saving study output..."
@@ -373,6 +353,149 @@ function LegacyDraftWorkspace({
       </div>
     </section>
   )
+}
+
+function PinnedSourcePane({
+  resourceTitle,
+  sourceText,
+  sourceHref,
+  readerHref,
+  readerLabel,
+}: {
+  resourceTitle: string
+  sourceText: string
+  sourceHref: string | null
+  readerHref: string
+  readerLabel: string
+}) {
+  const [isMobileViewport, setIsMobileViewport] = useState(false)
+  const [isOpen, setIsOpen] = useState(true)
+  const viewportInitialized = useRef(false)
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const mediaQuery = window.matchMedia('(max-width: 840px)')
+    const syncViewport = (matches: boolean) => {
+      setIsMobileViewport(matches)
+      setIsOpen(() => {
+        if (!viewportInitialized.current) {
+          viewportInitialized.current = true
+          return !matches
+        }
+
+        if (matches) return false
+        return true
+      })
+    }
+
+    syncViewport(mediaQuery.matches)
+
+    const handleChange = (event: MediaQueryListEvent) => syncViewport(event.matches)
+
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', handleChange)
+      return () => mediaQuery.removeEventListener('change', handleChange)
+    }
+
+    mediaQuery.addListener(handleChange)
+    return () => mediaQuery.removeListener(handleChange)
+  }, [])
+
+  const snippet = buildSourceSnippet(sourceText)
+
+  if (!isMobileViewport) {
+    return (
+      <aside className="ui-card-soft deep-learn-source-pane" style={{ borderRadius: 'var(--radius-panel)', padding: '0.9rem', minHeight: 0 }}>
+        <div className="deep-learn-source-header">
+          <div>
+            <p className="ui-kicker">Pinned Source</p>
+            <p className="deep-learn-source-title">{resourceTitle}</p>
+          </div>
+          <SourceLinks sourceHref={sourceHref} readerHref={readerHref} readerLabel={readerLabel} />
+        </div>
+
+        <div className="deep-learn-source-content" style={{ marginTop: '0.7rem' }}>
+          <SourcePreview sourceText={sourceText} />
+        </div>
+      </aside>
+    )
+  }
+
+  return (
+    <aside className="ui-card-soft deep-learn-source-pane" style={{ borderRadius: 'var(--radius-panel)', padding: '0.55rem', minHeight: 0 }}>
+      <details
+        className="deep-learn-source-disclosure"
+        open={isOpen}
+        onToggle={(event) => setIsOpen(event.currentTarget.open)}
+        data-disable-expansion-scroll="true"
+      >
+        <summary className="ui-interactive-summary deep-learn-source-summary" data-disable-expansion-scroll="true">
+          <span className="deep-learn-source-summary-copy">
+            <span className="deep-learn-source-summary-label">Pinned Source</span>
+            <span className="deep-learn-source-summary-title">{resourceTitle}</span>
+            <span className="deep-learn-source-summary-snippet">{snippet}</span>
+          </span>
+          <span className="deep-learn-source-summary-toggle" aria-hidden="true">
+            {isOpen ? 'Hide' : 'Show'}
+          </span>
+        </summary>
+
+        <div className="deep-learn-source-disclosure-body">
+          <div className="deep-learn-source-content">
+            <SourcePreview sourceText={sourceText} />
+          </div>
+          <SourceLinks sourceHref={sourceHref} readerHref={readerHref} readerLabel={readerLabel} />
+        </div>
+      </details>
+    </aside>
+  )
+}
+
+function SourcePreview({ sourceText }: { sourceText: string }) {
+  if (!sourceText) {
+    return (
+      <GeneratedContentState
+        title="The original source is not available."
+        description="You can still use the saved content below."
+        tone="warning"
+      />
+    )
+  }
+
+  return (
+    <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: '12px', lineHeight: 1.62, color: 'var(--text-secondary)' }}>
+      {sourceText}
+    </pre>
+  )
+}
+
+function SourceLinks({
+  sourceHref,
+  readerHref,
+  readerLabel,
+}: {
+  sourceHref: string | null
+  readerHref: string
+  readerLabel: string
+}) {
+  return (
+    <div className="deep-learn-source-links">
+      {sourceHref ? (
+        <a href={sourceHref} target="_blank" rel="noreferrer" className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+          Open original source
+        </a>
+      ) : null}
+      <Link href={readerHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+        {readerLabel}
+      </Link>
+    </div>
+  )
+}
+
+function buildSourceSnippet(sourceText: string) {
+  if (!sourceText.trim()) return 'Source preview unavailable.'
+  return sourceText.replace(/\s+/g, ' ').trim().slice(0, 120).trimEnd() + (sourceText.trim().length > 120 ? '...' : '')
 }
 
 function PackEmptyState({

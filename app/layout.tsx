@@ -54,7 +54,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className="app-shell" style={{ background: 'var(--bg)', minHeight: '100vh' }}>
+      <body className="app-shell" style={{ background: 'var(--bg)', minHeight: '100dvh' }}>
         <Script
           id="theme-init"
           strategy="beforeInteractive"

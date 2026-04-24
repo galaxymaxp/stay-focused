@@ -1,6 +1,6 @@
 'use client'
 
-import { type ReactNode, useEffect, useRef, useState } from 'react'
+import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { AnnouncementsMenu } from '@/components/AnnouncementsMenu'
@@ -12,6 +12,7 @@ const NAV_ITEMS = [
   {
     href: '/',
     label: 'Home',
+    mobileLabel: 'Home',
     matches: (pathname: string) => pathname === '/',
     icon: (
       <>
@@ -24,6 +25,7 @@ const NAV_ITEMS = [
   {
     href: '/courses',
     label: 'Courses',
+    mobileLabel: 'Courses',
     matches: (pathname: string) =>
       pathname.startsWith('/courses') ||
       pathname.startsWith('/modules') ||
@@ -39,6 +41,7 @@ const NAV_ITEMS = [
   {
     href: '/library',
     label: 'Study Library',
+    mobileLabel: 'Library',
     matches: (pathname: string) => pathname.startsWith('/library') || pathname.startsWith('/drafts'),
     icon: (
       <>
@@ -52,6 +55,7 @@ const NAV_ITEMS = [
   {
     href: '/calendar',
     label: 'Calendar',
+    mobileLabel: 'Calendar',
     matches: (pathname: string) => pathname.startsWith('/calendar'),
     icon: (
       <>
@@ -63,6 +67,7 @@ const NAV_ITEMS = [
   {
     href: '/settings',
     label: 'Settings',
+    mobileLabel: 'Settings',
     matches: (pathname: string) => pathname.startsWith('/settings') || pathname.startsWith('/canvas') || pathname.startsWith('/sign-in') || pathname.startsWith('/sign-up'),
     icon: (
       <>
@@ -76,6 +81,7 @@ const NAV_ITEMS = [
 const MOBILE_NAV_ITEMS = NAV_ITEMS
 const EXPANSION_TRIGGER_SELECTOR = 'button[aria-expanded], [role="button"][aria-expanded], summary'
 const EXPANSION_TARGET_SELECTOR = '[data-expanded-scroll-target], .ui-interactive-card, details, article, section'
+const MOBILE_NAV_STYLE = { '--mobile-nav-count': MOBILE_NAV_ITEMS.length } as CSSProperties
 
 function normalizeNavigationPath(pathname: string): string {
   if (pathname.startsWith('/course/courses')) return '/courses'
@@ -143,6 +149,7 @@ export function AppShell({
 
       const trigger = eventTarget.closest(EXPANSION_TRIGGER_SELECTOR)
       if (!trigger || !trigger.closest('.app-content')) return
+      if (trigger.closest('[data-disable-expansion-scroll]')) return
 
       const isOpeningDetails = trigger.tagName.toLowerCase() === 'summary'
         && trigger.parentElement instanceof HTMLDetailsElement
@@ -246,7 +253,7 @@ export function AppShell({
         </div>
       </div>
 
-      <nav className="app-bottom-nav" aria-label="Primary mobile">
+      <nav className="app-bottom-nav" aria-label="Primary mobile" style={MOBILE_NAV_STYLE}>
         {MOBILE_NAV_ITEMS.map((item) => {
           const isActive = item.matches(normalizedPathname)
 
@@ -255,7 +262,7 @@ export function AppShell({
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 {item.icon}
               </svg>
-              <span>{item.label}</span>
+              <span>{item.mobileLabel}</span>
             </Link>
           )
         })}
