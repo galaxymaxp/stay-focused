@@ -92,6 +92,11 @@
   --space-10: 2.5rem;
   --space-12: 3rem;
 
+  --scrollbar-size: 0.5rem;
+  --scrollbar-thumb: color-mix(in srgb, var(--border-strong) 68%, transparent);
+  --scrollbar-thumb-hover: color-mix(in srgb, var(--border-hover) 74%, var(--accent) 26%);
+  --scrollbar-thumb-active: color-mix(in srgb, var(--border-hover) 52%, var(--accent) 48%);
+
   color-scheme: light;
 }
 
@@ -170,6 +175,38 @@ body {
 
 * {
   box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: var(--scrollbar-size);
+  height: var(--scrollbar-size);
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background: var(--scrollbar-thumb);
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-thumb:active {
+  background: var(--scrollbar-thumb-active);
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 a,
@@ -662,17 +699,7 @@ select:focus-visible {
   overflow-y: auto;
   overscroll-behavior: contain;
   scroll-behavior: smooth;
-  scrollbar-width: thin;
   padding-right: 0.18rem;
-}
-
-.command-scroll-body::-webkit-scrollbar {
-  width: 0.55rem;
-}
-
-.command-scroll-body::-webkit-scrollbar-thumb {
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--border-strong) 72%, transparent);
 }
 
 .command-scroll-body[data-density='compact'] {
@@ -1487,17 +1514,7 @@ details[open] > .ui-interactive-summary,
   overflow-y: auto;
   overscroll-behavior: contain;
   scroll-behavior: smooth;
-  scrollbar-width: thin;
   padding-right: 0.18rem;
-}
-
-.contained-scroll-frame::-webkit-scrollbar {
-  width: 0.55rem;
-}
-
-.contained-scroll-frame::-webkit-scrollbar-thumb {
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--border-strong) 72%, transparent);
 }
 
 .contained-scroll-frame[data-density='dense'] {
@@ -1543,17 +1560,7 @@ details[open] > .ui-interactive-summary,
   overflow-y: auto;
   overscroll-behavior: contain;
   scroll-behavior: smooth;
-  scrollbar-width: thin;
   padding-right: 0.1rem;
-}
-
-.draft-source-scroll::-webkit-scrollbar {
-  width: 0.55rem;
-}
-
-.draft-source-scroll::-webkit-scrollbar-thumb {
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--border-strong) 72%, transparent);
 }
 
 [id^="deep-learn-draft-section-"],
@@ -2343,8 +2350,6 @@ details[open] > .ui-interactive-summary,
   overflow-y: auto;
   overscroll-behavior: contain;
   scroll-behavior: smooth;
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--border-strong) 62%, transparent) transparent;
   scrollbar-gutter: stable;
   padding-right: 0.22rem;
 }
@@ -2355,23 +2360,6 @@ details[open] > .ui-interactive-summary,
 
 .home-panel-scroll-rail {
   max-height: min(18.5rem, calc(100vh - 18rem));
-}
-
-.home-panel-scroll::-webkit-scrollbar {
-  width: 0.5rem;
-}
-
-.home-panel-scroll::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.home-panel-scroll::-webkit-scrollbar-thumb {
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--border-strong) 56%, transparent);
-}
-
-.home-panel-scroll::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--border-strong) 72%, transparent);
 }
 
 .home-course-card {
