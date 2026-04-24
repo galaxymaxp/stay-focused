@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import type { CSSProperties, ReactNode } from 'react'
 import { DeepLearnGenerateButton } from '@/components/DeepLearnGenerateButton'
+import { GeneratedContentState } from '@/components/generated-content/GeneratedContentState'
 import { ModuleLensShell } from '@/components/ModuleLensShell'
 import { StudyResourceAccordionList } from '@/components/StudyResourceAccordionList'
 import { classifyDeepLearnResourceReadiness } from '@/lib/deep-learn-readiness'
@@ -92,9 +93,16 @@ export default async function LearnPage({ params, searchParams }: Props) {
   if (module.status === 'error') {
     return (
       <main className="page-shell page-shell-compact page-stack">
-        <div className="ui-card ui-card-soft ui-status-danger" style={{ borderRadius: 'var(--radius-control)', padding: '14px', fontSize: '14px' }}>
-          Processing failed. Delete this module and try again.
-        </div>
+        <GeneratedContentState
+          title="This Learn workspace is not ready yet."
+          description="Open Courses, re-sync Canvas, and then try this module again."
+          tone="warning"
+          action={(
+            <Link href="/courses" className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
+              Re-sync Canvas
+            </Link>
+          )}
+        />
       </main>
     )
   }
@@ -124,12 +132,33 @@ export default async function LearnPage({ params, searchParams }: Props) {
           </div>
 
           {deepLearnNotesResult.availability === 'unavailable' && deepLearnNotesResult.message && (
-            <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.9rem 0.95rem', border: '1px solid color-mix(in srgb, var(--amber) 24%, var(--border-subtle) 76%)' }}>
-              <p className="ui-kicker">Exam prep pack status unavailable</p>
-              <p style={{ margin: '0.42rem 0 0', fontSize: '14px', lineHeight: 1.68, color: 'var(--text-secondary)' }}>
-                {deepLearnNotesResult.message} Deep Learn is still rendering the module from resources, source support, and fallback reader state.
-              </p>
-            </div>
+            <GeneratedContentState
+              title="Saved learning packs are unavailable right now."
+              description="You can still open source material below and generate a new pack once the saved library is available again."
+              tone="warning"
+              action={(
+                <Link href={buildModuleInspectHref(module.id)} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
+                  Inspect resources
+                </Link>
+              )}
+            />
+          )}
+
+          {deepLearnNotes.length === 0 && overview.studyMaterials.length > 0 && (
+            <GeneratedContentState
+              title="No learning packs yet."
+              description="Open a source below and generate one to save it here."
+              tone="accent"
+              action={(
+                <Link
+                  href={getLearnResourceHref(module.id, overview.studyMaterials[0].resource.id)}
+                  className="ui-button ui-button-secondary ui-button-xs"
+                  style={{ textDecoration: 'none' }}
+                >
+                  Open first source
+                </Link>
+              )}
+            />
           )}
 
           {overview.suggestedSteps.length > 0 && (
@@ -262,7 +291,7 @@ export default async function LearnPage({ params, searchParams }: Props) {
                   }
                 })}
                 initialOpenResourceId={targetResourceId}
-                emptyMessage="No mapped study resources are available for exam prep in this module yet."
+                emptyMessage="No study sources are ready for Learn in this module yet."
                 scrollable
               />
             </div>

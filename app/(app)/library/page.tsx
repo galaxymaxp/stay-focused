@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { listDraftsForShelves } from '@/actions/drafts'
+import { GeneratedContentState } from '@/components/generated-content/GeneratedContentState'
 import { CourseShelf } from '@/components/drafts/CourseShelf'
 import { resolveStudyLibraryHref, type DraftShelfItem, type StudyLibraryItem } from '@/lib/types'
 
@@ -91,13 +92,34 @@ export default async function StudyLibraryPage({ searchParams }: Props) {
 
       <section className="motion-card motion-delay-1 section-shell" style={{ padding: '1rem 1.05rem' }}>
         {availability !== 'available' ? (
-          <div className="ui-empty" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', fontSize: '14px', lineHeight: 1.68 }}>
-            {message ?? 'Study library could not be loaded right now.'}
-          </div>
+          <GeneratedContentState
+            title={getUnavailableStateTitle(message)}
+            description={getUnavailableStateDescription(message)}
+            tone={isSignedOutMessage(message) ? 'accent' : 'warning'}
+            action={(
+              <Link
+                href={isSignedOutMessage(message) ? '/sign-in?next=/library' : '/courses'}
+                className="ui-button ui-button-secondary ui-button-xs"
+                style={{ textDecoration: 'none' }}
+              >
+                {isSignedOutMessage(message) ? 'Sign in' : 'Go to Courses'}
+              </Link>
+            )}
+          />
         ) : scopedItems.length === 0 ? (
-          <div className="ui-empty" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', fontSize: '14px', lineHeight: 1.68 }}>
-            {getEmptyStateMessage(kindFilter)}
-          </div>
+          <GeneratedContentState
+            title={getEmptyStateTitle({ kindFilter, hasAnyItems: items.length > 0, hasScopedFilters: Boolean(courseFilter || moduleFilter) })}
+            description={getEmptyStateDescription({ kindFilter, hasAnyItems: items.length > 0, hasScopedFilters: Boolean(courseFilter || moduleFilter) })}
+            action={(
+              <Link
+                href={getEmptyStateHref({ kindFilter, hasAnyItems: items.length > 0, hasScopedFilters: Boolean(courseFilter || moduleFilter) })}
+                className="ui-button ui-button-secondary ui-button-xs"
+                style={{ textDecoration: 'none' }}
+              >
+                {getEmptyStateActionLabel({ kindFilter, hasAnyItems: items.length > 0, hasScopedFilters: Boolean(courseFilter || moduleFilter) })}
+              </Link>
+            )}
+          />
         ) : (
           <div style={{ display: 'grid', gap: '0.9rem' }}>
             {grouped.map((group) => {
@@ -186,8 +208,72 @@ function formatShortDate(value?: string) {
   return new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
-function getEmptyStateMessage(kindFilter: string | null) {
+function getEmptyStateTitle({
+  kindFilter,
+  hasAnyItems,
+  hasScopedFilters,
+}: {
+  kindFilter: string | null
+  hasAnyItems: boolean
+  hasScopedFilters: boolean
+}) {
   if (kindFilter === 'learning') return 'No learning packs yet.'
   if (kindFilter === 'tasks') return 'No task drafts yet.'
-  return 'No generated study content yet.'
+  if (hasAnyItems && hasScopedFilters) return 'Nothing matches this view yet.'
+  return 'No saved study content yet.'
+}
+
+function getEmptyStateDescription({
+  kindFilter,
+  hasAnyItems,
+  hasScopedFilters,
+}: {
+  kindFilter: string | null
+  hasAnyItems: boolean
+  hasScopedFilters: boolean
+}) {
+  if (kindFilter === 'learning') return 'Open a module and generate a Learn item to save it here.'
+  if (kindFilter === 'tasks') return 'Start from a task and save a draft to see it here.'
+  if (hasAnyItems && hasScopedFilters) return 'Try a broader library view to reopen another saved item.'
+  return "Generate notes, task drafts, or exam prep packs and they'll appear here."
+}
+
+function getEmptyStateActionLabel({
+  kindFilter,
+  hasAnyItems,
+  hasScopedFilters,
+}: {
+  kindFilter: string | null
+  hasAnyItems: boolean
+  hasScopedFilters: boolean
+}) {
+  if (hasAnyItems && hasScopedFilters && !kindFilter) return 'View all generated content'
+  return hasAnyItems && hasScopedFilters ? 'View all generated content' : 'Go to Courses'
+}
+
+function getEmptyStateHref({
+  hasAnyItems,
+  hasScopedFilters,
+}: {
+  kindFilter: string | null
+  hasAnyItems: boolean
+  hasScopedFilters: boolean
+}) {
+  if (hasAnyItems && hasScopedFilters) return '/library'
+  return '/courses'
+}
+
+function isSignedOutMessage(message: string | null) {
+  return (message ?? '').toLowerCase().includes('sign in')
+}
+
+function getUnavailableStateTitle(message: string | null) {
+  if (isSignedOutMessage(message)) return 'Sign in to load your saved study content.'
+  return "Couldn't load your saved study content."
+}
+
+function getUnavailableStateDescription(message: string | null) {
+  if (isSignedOutMessage(message)) return 'Your saved notes, task drafts, and exam prep packs will appear here after you sign in.'
+  if ((message ?? '').toLowerCase().includes('supabase')) return 'Saved study content is not available in this local setup yet.'
+  return 'Try again in a moment, or head back to Courses while this catches up.'
 }

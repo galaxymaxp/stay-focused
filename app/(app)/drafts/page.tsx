@@ -7,6 +7,7 @@ interface Props {
 export default async function DraftsPageRedirect({ searchParams }: Props) {
   const resolvedSearchParams = await searchParams
   const params = new URLSearchParams()
+  params.set('filter', 'tasks')
   const course = resolvedSearchParams?.course
   const moduleParam = resolvedSearchParams?.module
   if (course) params.set('course', Array.isArray(course) ? course[0] : course)

@@ -80,12 +80,12 @@ export function PromptBuildViewer({
 }
 
 function getPhaseCopy(phase: PromptBuildPhase) {
-  if (phase === 'preparing') return 'Preparing task context...'
-  if (phase === 'reading') return 'Reading assignment details...'
-  if (phase === 'structuring') return 'Structuring prompt...'
-  if (phase === 'streaming') return 'Writing first output...'
+  if (phase === 'preparing') return 'Preparing your task context...'
+  if (phase === 'reading') return 'Reading the assignment details...'
+  if (phase === 'structuring') return 'Structuring the first answer...'
+  if (phase === 'streaming') return 'Writing your first output...'
   if (phase === 'done') return 'Output ready'
-  if (phase === 'error') return 'Output build failed'
+  if (phase === 'error') return "Couldn't generate this yet."
   return 'Waiting to begin...'
 }
 

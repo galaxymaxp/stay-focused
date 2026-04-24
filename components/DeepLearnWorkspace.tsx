@@ -4,13 +4,14 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import type { FormEvent } from 'react'
 import { useEffect, useRef, useState, useTransition } from 'react'
-import { AlertCircle, Check, Download, Loader2, Pencil, Save, X } from 'lucide-react'
+import { Check, Download, Pencil, Save, X } from 'lucide-react'
+import { refineDraft, updateDraftBody } from '@/actions/drafts'
 import { DeepLearnGenerateButton } from '@/components/DeepLearnGenerateButton'
+import { GeneratedContentState } from '@/components/generated-content/GeneratedContentState'
 import { DeepLearnReviewPackSurface } from '@/components/DeepLearnReviewPackSurface'
 import { simpleMarkdownToHtml } from '@/lib/markdown'
-import { refineDraft, updateDraftBody } from '@/actions/drafts'
-import type { DeepLearnNote, Draft } from '@/lib/types'
 import type { ModuleSourceResource } from '@/lib/module-workspace'
+import type { DeepLearnNote, Draft } from '@/lib/types'
 
 export function DeepLearnWorkspace({
   moduleId,
@@ -50,9 +51,6 @@ export function DeepLearnWorkspace({
   }
 
   const sourceText = resource.extractedText ?? resource.extractedTextPreview ?? ''
-  const sourceFallbackMessage = resource.extractionError
-    ? `Source preview failed: ${resource.extractionError}`
-    : 'No extracted source text is available in this item.'
 
   return (
     <section className="motion-card motion-delay-1 section-shell section-shell-elevated" style={{ padding: '1.1rem 1.15rem', display: 'grid', gap: '0.9rem' }}>
@@ -73,7 +71,7 @@ export function DeepLearnWorkspace({
               moduleId={moduleId}
               resourceId={deepLearnResourceId}
               courseId={courseId}
-              label={note?.status === 'failed' ? 'Rebuild pack' : 'Generate pack'}
+              label={note?.status === 'failed' ? 'Generate again' : 'Generate pack'}
               className="ui-button ui-button-secondary ui-button-xs"
             />
           ) : null}
@@ -89,9 +87,11 @@ export function DeepLearnWorkspace({
       </div>
 
       {blockedMessage && (
-        <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '0.85rem 0.9rem' }}>
-          <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.62, color: 'var(--text-secondary)' }}>{blockedMessage}</p>
-        </div>
+        <GeneratedContentState
+          title="This saved item is still available, but its original source could not be reopened."
+          description="You can still use the saved content below."
+          tone="warning"
+        />
       )}
 
       <div className="deep-learn-build-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: '0.8rem', alignItems: 'stretch' }}>
@@ -104,10 +104,11 @@ export function DeepLearnWorkspace({
                 {sourceText}
               </pre>
             ) : (
-              <div style={{ display: 'grid', gap: '0.45rem', color: 'var(--text-secondary)', fontSize: '13px', lineHeight: 1.58 }}>
-                <AlertCircle className="h-4 w-4" />
-                <span>{sourceFallbackMessage}</span>
-              </div>
+              <GeneratedContentState
+                title="The original source is not available."
+                description="You can still use the saved content below."
+                tone="warning"
+              />
             )}
           </div>
         </aside>
@@ -115,19 +116,21 @@ export function DeepLearnWorkspace({
         <div className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', minHeight: 0, overflow: 'hidden' }}>
           {!note ? (
             <PackEmptyState
-              title="Generate the saved review pack"
-              body="Deep Learn saves the exam prep pack itself for this source. Once generated, this pane becomes the resumable answer bank, identification drill, MCQ, and timeline surface."
+              title="No saved learning pack yet."
+              body="Generate this pack to save a reusable review workspace here."
             />
           ) : note.status === 'pending' ? (
             <PackEmptyState
-              title="Exam prep pack is still preparing"
-              body={note.overview || 'Deep Learn is building the saved review pack from the pinned source.'}
+              title="Generating exam prep pack..."
+              body={note.overview || 'Deep Learn is building your saved review pack from the pinned source.'}
               loading
+              tone="accent"
             />
           ) : note.status === 'failed' ? (
             <PackEmptyState
-              title="Exam prep pack could not be built"
-              body={note.errorMessage || 'Deep Learn could not produce a trustworthy review pack from the current source evidence.'}
+              title="Couldn't generate this yet."
+              body="Try again, or open the source and check that it has readable content."
+              tone="warning"
             />
           ) : (
             <div style={{ padding: '0.9rem' }}>
@@ -159,6 +162,7 @@ function LegacyDraftWorkspace({
   const [showRefine, setShowRefine] = useState(false)
   const [refineInput, setRefineInput] = useState('')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [errorTone, setErrorTone] = useState<'save' | 'refine'>('save')
   const [savePending, setSavePending] = useState(false)
   const [isPending, startTransition] = useTransition()
   const saveTimer = useRef<number | null>(null)
@@ -169,6 +173,7 @@ function LegacyDraftWorkspace({
     setShowRefine(false)
     setRefineInput('')
     setErrorMessage(null)
+    setErrorTone('save')
     setSavePending(false)
   }, [legacyDraft.bodyMarkdown, legacyDraft.id, legacyDraft.updatedAt])
 
@@ -183,7 +188,9 @@ function LegacyDraftWorkspace({
           await updateDraftBody(legacyDraft.id, body)
           router.refresh()
         } catch (error) {
-          setErrorMessage(error instanceof Error ? error.message : 'Could not save the study output.')
+          console.error('Legacy draft autosave failed:', error)
+          setErrorTone('save')
+          setErrorMessage("Couldn't save your work. Your draft is still on screen. Try saving again before leaving.")
         } finally {
           setSavePending(false)
         }
@@ -198,13 +205,16 @@ function LegacyDraftWorkspace({
   function saveNow() {
     if (saveTimer.current) window.clearTimeout(saveTimer.current)
     setSavePending(true)
+    setErrorMessage(null)
     startTransition(async () => {
       try {
         await updateDraftBody(legacyDraft.id, body)
         setIsEditing(false)
         router.refresh()
       } catch (error) {
-        setErrorMessage(error instanceof Error ? error.message : 'Could not save the study output.')
+        console.error('Legacy draft save failed:', error)
+        setErrorTone('save')
+        setErrorMessage("Couldn't save your work. Your draft is still on screen. Try saving again before leaving.")
       } finally {
         setSavePending(false)
       }
@@ -224,7 +234,9 @@ function LegacyDraftWorkspace({
         await refineDraft(legacyDraft.id, instruction)
         router.refresh()
       } catch (error) {
-        setErrorMessage(error instanceof Error ? error.message : 'Could not refine the study output.')
+        console.error('Legacy draft refine failed:', error)
+        setErrorTone('refine')
+        setErrorMessage("Couldn't refine this yet. Try again, or reopen the source and check that it has readable content.")
       }
     })
   }
@@ -240,9 +252,6 @@ function LegacyDraftWorkspace({
   }
 
   const sourceText = resource.extractedText ?? resource.extractedTextPreview ?? ''
-  const sourceFallbackMessage = resource.extractionError
-    ? `Source preview failed: ${resource.extractionError}`
-    : 'No extracted source text is available in this item.'
   const isWorking = isPending || savePending || legacyDraft.status === 'generating' || legacyDraft.status === 'refining'
 
   return (
@@ -252,7 +261,7 @@ function LegacyDraftWorkspace({
           <p className="ui-kicker">Saved study output</p>
           <h2 className="ui-section-title" style={{ marginTop: '0.42rem' }}>{legacyDraft.title}</h2>
           <p className="ui-section-copy" style={{ marginTop: '0.45rem', maxWidth: '48rem' }}>
-            This older saved document still resumes here with its source context, but Learn-origin study flows now persist the exam prep pack itself instead of a secondary draft document.
+            This older saved document still resumes here with its source context, but Learn now saves the exam prep pack itself instead of a second draft document.
           </p>
         </div>
 
@@ -269,25 +278,26 @@ function LegacyDraftWorkspace({
       </div>
 
       {errorMessage && (
-        <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.78rem 0.85rem', color: 'var(--red)', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-          <AlertCircle className="h-4 w-4" />
-          <span style={{ fontSize: '13px' }}>{errorMessage}</span>
-        </div>
+        <GeneratedContentState
+          title={errorTone === 'save' ? "Couldn't save your work." : "Couldn't refine this yet."}
+          description={errorMessage}
+          tone="warning"
+        />
       )}
 
       <div style={{ display: 'grid', gap: '0.75rem' }}>
         <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           {savePending && (
             <span className="ui-chip ui-chip-soft" style={{ fontWeight: 700 }}>
-              Saving
+              Saving...
             </span>
           )}
           {isEditing ? (
             <>
-              <button type="button" onClick={saveNow} className="ui-button ui-button-secondary ui-button-xs">
-                <Check className="h-3.5 w-3.5" /> Done
+              <button type="button" onClick={saveNow} className="ui-button ui-button-secondary ui-button-xs" disabled={isWorking}>
+                <Check className="h-3.5 w-3.5" /> {savePending ? 'Saving...' : 'Save'}
               </button>
-              <button type="button" onClick={() => setIsEditing(false)} className="ui-button ui-button-ghost ui-button-xs">
+              <button type="button" onClick={() => setIsEditing(false)} className="ui-button ui-button-ghost ui-button-xs" disabled={isWorking}>
                 <X className="h-3.5 w-3.5" /> Cancel
               </button>
             </>
@@ -316,7 +326,7 @@ function LegacyDraftWorkspace({
               className="flex-1 bg-transparent text-sm text-sf-text placeholder:text-sf-muted outline-none"
             />
             <button type="submit" disabled={!refineInput.trim() || isWorking} className="ui-button ui-button-secondary ui-button-xs">
-              {isWorking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Apply'}
+              {isWorking ? 'Refining...' : 'Apply'}
             </button>
           </form>
         )}
@@ -331,10 +341,11 @@ function LegacyDraftWorkspace({
                   {sourceText}
                 </pre>
               ) : (
-                <div style={{ display: 'grid', gap: '0.45rem', color: 'var(--text-secondary)', fontSize: '13px', lineHeight: 1.58 }}>
-                  <AlertCircle className="h-4 w-4" />
-                  <span>{sourceFallbackMessage}</span>
-                </div>
+                <GeneratedContentState
+                  title="The original source is not available."
+                  description="You can still use the saved content below."
+                  tone="warning"
+                />
               )}
             </div>
           </aside>
@@ -342,9 +353,10 @@ function LegacyDraftWorkspace({
           <div className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', minHeight: 0, overflow: 'hidden' }}>
             {isWorking && !body ? (
               <PackEmptyState
-                title="Saved study output is still preparing"
-                body="This record already exists and is still writing its first version from the pinned source."
+                title="Saving study output..."
+                body="This saved document already exists. Stay here while the first version finishes writing."
                 loading
+                tone="accent"
               />
             ) : isEditing ? (
               <textarea
@@ -354,7 +366,7 @@ function LegacyDraftWorkspace({
                 spellCheck={false}
               />
             ) : (
-              <MarkdownBody content={body} headingIds />
+              <MarkdownBody content={body} headingIds emptyMessage="No saved content yet." />
             )}
           </div>
         </div>
@@ -367,26 +379,37 @@ function PackEmptyState({
   title,
   body,
   loading = false,
+  tone = 'default',
 }: {
   title: string
   body: string
   loading?: boolean
+  tone?: 'default' | 'accent' | 'warning'
 }) {
   return (
-    <div className="ui-empty" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', fontSize: '14px', lineHeight: 1.68, display: 'grid', gap: '0.7rem' }}>
-      {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : null}
-      <strong style={{ color: 'var(--text-primary)' }}>{title}</strong>
-      <span style={{ color: 'var(--text-secondary)' }}>{body}</span>
-    </div>
+    <GeneratedContentState
+      title={title}
+      description={body}
+      loading={loading}
+      tone={tone === 'accent' ? 'accent' : tone === 'warning' ? 'warning' : 'default'}
+    />
   )
 }
 
-function MarkdownBody({ content, headingIds = false }: { content: string; headingIds?: boolean }) {
+function MarkdownBody({
+  content,
+  headingIds = false,
+  emptyMessage,
+}: {
+  content: string
+  headingIds?: boolean
+  emptyMessage: string
+}) {
   return (
     <article
       className="prose prose-sm max-w-none px-6 py-5 prose-headings:text-sf-text prose-p:text-sf-text prose-li:text-sf-text prose-strong:text-sf-text"
       style={{ scrollMarginTop: '5rem' }}
-      dangerouslySetInnerHTML={{ __html: simpleMarkdownToHtml(content || 'No saved content yet.', { headingIds }) }}
+      dangerouslySetInnerHTML={{ __html: simpleMarkdownToHtml(content || emptyMessage, { headingIds }) }}
     />
   )
 }

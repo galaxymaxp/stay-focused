@@ -3,31 +3,31 @@
 import { useRouter } from 'next/navigation'
 import { useEffect, useState, useTransition } from 'react'
 import { generateDeepLearnNoteAction } from '@/actions/deep-learn'
-import { buildDeepLearnNoteHref } from '@/lib/stay-focused-links'
 import { notifyCompletion } from '@/lib/notifications'
+import { buildDeepLearnNoteHref } from '@/lib/stay-focused-links'
 
 const PACK_PROGRESS_STAGES = [
   {
     label: 'Analyzing source',
-    detail: 'Reading the extracted text and source evidence to prepare a study pass.',
+    detail: 'Reading the source text and available evidence before building your review pack.',
     progressValue: 0.08,
     durationHint: null,
   },
   {
     label: 'Generating with AI',
-    detail: 'Building answer banks, identification cues, quiz targets, and distinctions — this usually takes 30–45 seconds.',
-    progressValue: 0.20,
+    detail: 'Building answer banks, quiz targets, and review prompts. This usually takes around 30 to 45 seconds.',
+    progressValue: 0.2,
     durationHint: '~40 sec',
   },
   {
     label: 'Structuring draft',
-    detail: 'Organizing the generated content into sections, MCQ sets, and timeline cues.',
+    detail: 'Organizing the pack into sections you can reopen and study later.',
     progressValue: 0.85,
     durationHint: null,
   },
   {
     label: 'Saving to workspace',
-    detail: 'Writing the exam prep pack into Stay Focused and preparing the study surface.',
+    detail: 'Saving the pack into Stay Focused and opening the study surface.',
     progressValue: 0.95,
     durationHint: null,
   },
@@ -38,7 +38,7 @@ export function DeepLearnGenerateButton({
   resourceId,
   courseId = null,
   label = 'Generate pack',
-  pendingLabel = 'Preparing...',
+  pendingLabel = 'Generating...',
   className = 'ui-button ui-button-secondary ui-button-xs',
 }: {
   moduleId: string
@@ -57,9 +57,6 @@ export function DeepLearnGenerateButton({
   useEffect(() => {
     if (!isPending) return
 
-    // Stage 1: "Generating with AI" after ~1.5s (server action starts, pending record saved)
-    // Stage 2: "Structuring draft" after ~35s (AI call usually completes around here)
-    // Stage 3: "Saving to workspace" after ~42s
     const stageTimes = [1500, 35000, 42000]
     const timers = PACK_PROGRESS_STAGES.slice(1).map((stage, index) => window.setTimeout(() => {
       setStageIndex(index + 1)
@@ -113,12 +110,13 @@ export function DeepLearnGenerateButton({
               router.push(buildDeepLearnNoteHref(result.moduleId, result.resourceId))
               router.refresh()
             } catch (error) {
+              console.error('Deep Learn generation failed to start:', error)
               notifyCompletion(
                 'Pack generation failed',
                 'Deep Learn failed to start the exam prep pack.',
                 { tag: 'exam-pack-generated', soundType: 'error', showBrowser: true, playSound: true },
               )
-              setErrorMessage(error instanceof Error ? error.message : 'Deep Learn failed to start the exam prep pack.')
+              setErrorMessage("Couldn't generate this yet. Try again, or open the source and check that it has readable content.")
             }
           })
         }}
@@ -130,7 +128,7 @@ export function DeepLearnGenerateButton({
       {isPending && (
         <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.78rem 0.82rem', display: 'grid', gap: '0.6rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.6rem', alignItems: 'center', flexWrap: 'wrap' }}>
-            <p className="ui-kicker" style={{ margin: 0 }}>Building exam prep pack</p>
+            <p className="ui-kicker" style={{ margin: 0 }}>Generating exam prep pack</p>
             <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
               {PACK_PROGRESS_STAGES[stageIndex]?.durationHint && (
                 <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontStyle: 'italic' }}>

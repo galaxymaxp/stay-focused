@@ -5,20 +5,20 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { saveDraftFromTaskOutput } from '@/actions/drafts'
-import { notifyCompletion } from '@/lib/notifications'
 import { CopyTaskBundleActions } from '@/components/CopyTaskBundleActions'
 import { PromptBuildViewer } from '@/components/PromptBuildViewer'
 import { TaskDraftSourcePane } from '@/components/TaskDraftSourcePane'
 import { usePromptBuild, type PromptBuildSnapshot } from '@/components/usePromptBuild'
+import { notifyCompletion } from '@/lib/notifications'
 import {
-  buildTaskDraftFallback,
   buildTaskDraftContextText,
-  buildTaskDraftSourceKey,
+  buildTaskDraftFallback,
   buildTaskDraftRequestPayload,
+  buildTaskDraftSourceKey,
   isTaskDraftApiResponse,
   type TaskDraftApiRequest,
-  type TaskDraftResponse,
   type TaskDraftContext,
+  type TaskDraftResponse,
 } from '@/lib/do-now'
 import type { ManualCopyBundleResult } from '@/lib/manual-copy-bundle'
 
@@ -115,12 +115,13 @@ export function TaskDraftPanel({
         throw new Error(extractRefinementErrorMessage(data))
       }
       if (!isTaskDraftApiResponse(data)) {
-        throw new Error('Could not parse the refined output.')
+        throw new Error("Couldn't refine this yet.")
       }
 
       setWorkingDraft(data.draft)
     } catch (error) {
-      setRefinementError(error instanceof Error ? error.message : 'Could not refine the output.')
+      console.error('Task draft refine failed:', error)
+      setRefinementError("Couldn't refine this yet. Try again, or open the source and check that it has readable content.")
     } finally {
       setRefinementPending(null)
     }
@@ -143,10 +144,11 @@ export function TaskDraftPanel({
         { tag: 'draft-saved', soundType: 'success', showBrowser: true, playSound: true },
       )
       onClose()
-      router.push(`/drafts/${result.draftId}`)
+      router.push(`/library/${result.draftId}`)
       router.refresh()
     } catch (error) {
-      setSaveError(error instanceof Error ? error.message : 'Could not save this draft.')
+      console.error('Task draft save failed:', error)
+      setSaveError("Couldn't save your work. Your draft is still on screen. Try saving again before leaving.")
       setSavePending(false)
     }
   }
@@ -235,7 +237,6 @@ export function TaskDraftPanel({
                   phase={promptBuild.phase === 'error' ? 'error' : 'done'}
                   draftSource={promptBuild.draftSource}
                   reopenSource={promptBuild.reopenSource}
-                  errorMessage={promptBuild.errorMessage}
                 />
 
                 <div style={sectionsStyle}>
@@ -302,7 +303,7 @@ export function TaskDraftPanel({
               style={footerButtonStyle}
               disabled={savePending}
             >
-              {savePending ? 'Saving draft...' : 'Save to Draft'}
+              {savePending ? 'Saving...' : 'Save to Draft'}
             </button>
           )}
           {entryOrigin === 'today' && doPageHref && (
@@ -389,7 +390,7 @@ function PrimaryOutputSection({
             className="ui-button ui-button-ghost ui-button-xs"
             disabled={Boolean(pendingMode)}
           >
-            {pendingMode === action.key ? 'Working...' : action.label}
+            {pendingMode === action.key ? 'Refining...' : action.label}
           </button>
         ))}
       </div>
@@ -413,19 +414,17 @@ function StatusBanner({
   phase,
   draftSource,
   reopenSource,
-  errorMessage,
 }: {
   phase: 'done' | 'error'
   draftSource: 'saved' | 'generated'
   reopenSource: 'session' | null
-  errorMessage: string | null
 }) {
   return (
     <div style={statusBannerStyle(phase)}>
-      <p style={statusTitleStyle}>{phase === 'error' ? 'Output build failed' : 'Output ready'}</p>
+      <p style={statusTitleStyle}>{phase === 'error' ? 'Need another try' : 'Output ready'}</p>
       <p style={statusBodyStyle}>
         {phase === 'error'
-          ? `${errorMessage ?? 'OpenAI generation failed.'} Showing the local first output instead.`
+          ? "Couldn't generate this yet. Try again, or open the source and check that it has readable content. Showing a fallback draft below."
           : reopenSource === 'session'
             ? draftSource === 'saved'
               ? 'This reopened the same saved output from this session because the task context has not changed.'
@@ -483,9 +482,9 @@ function buildRefinementPayload({
 
 function extractRefinementErrorMessage(value: unknown) {
   if (value && typeof value === 'object' && 'error' in value && typeof (value as { error?: unknown }).error === 'string') {
-    return (value as { error: string }).error
+    console.error('Task draft refinement response error:', value)
   }
-  return 'Could not refine the output right now.'
+  return "Couldn't refine this yet."
 }
 
 export function getTaskDraftSessionKey(context: TaskDraftContext) {

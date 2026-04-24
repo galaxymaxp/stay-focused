@@ -239,7 +239,7 @@ export function usePromptBuild({
           reopenSource: null,
           errorMessage: error instanceof Error
             ? error.message
-            : 'Could not generate output right now.',
+            : "Couldn't generate this yet.",
         })
       }
     }
@@ -334,7 +334,7 @@ function extractErrorMessage(value: unknown) {
     return value.error
   }
 
-  return 'Could not generate output right now.'
+  return "Couldn't generate this yet."
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {

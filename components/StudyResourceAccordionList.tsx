@@ -175,7 +175,7 @@ export function StudyResourceAccordionList({
                     <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.9rem 0.95rem' }}>
                       <p className="ui-kicker" style={{ margin: 0 }}>Pack error</p>
                       <p style={{ margin: '0.38rem 0 0', fontSize: '12px', lineHeight: 1.6, color: 'var(--red)' }}>
-                        {item.deepLearnNoteFailure}
+                        Couldn&apos;t generate this yet. Try again, or open the source and check that it has readable content.
                       </p>
                     </div>
                   )}

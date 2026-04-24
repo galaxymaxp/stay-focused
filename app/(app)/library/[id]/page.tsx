@@ -1,13 +1,15 @@
-import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { getDeepLearnNoteById, getDraft } from '@/actions/drafts'
 import { DeepLearnWorkspace } from '@/components/DeepLearnWorkspace'
+import { GeneratedContentState } from '@/components/generated-content/GeneratedContentState'
 import { ModuleLensShell } from '@/components/ModuleLensShell'
+import { getAuthenticatedUserServer } from '@/lib/auth-server'
 import { extractCourseName, getModuleWorkspace, type ModuleSourceResource } from '@/lib/module-workspace'
 import {
   buildModuleDoHref,
   buildModuleLearnHref,
 } from '@/lib/stay-focused-links'
+import { isSupabaseAuthConfigured } from '@/lib/supabase-auth-config'
 import {
   buildStudyLibraryDetailHref,
   getTaskIdFromCanonicalSourceId,
@@ -27,6 +29,42 @@ interface LibraryPrimaryAction {
 export default async function LibraryItemPage({ params }: Props) {
   const { id } = await params
   const detailHref = buildStudyLibraryDetailHref(id)
+  const user = await getAuthenticatedUserServer()
+
+  if (!isSupabaseAuthConfigured) {
+    return (
+      <main className="page-shell">
+        <GeneratedContentState
+          title="Saved study content is not available here yet."
+          description="This local setup does not have saved Library items configured."
+          tone="warning"
+          action={(
+            <Link href="/courses" className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
+              Go to Courses
+            </Link>
+          )}
+        />
+      </main>
+    )
+  }
+
+  if (!user) {
+    return (
+      <main className="page-shell">
+        <GeneratedContentState
+          title="Sign in to load your saved study content."
+          description="Your saved notes, task drafts, and exam prep packs will appear here after you sign in."
+          tone="accent"
+          action={(
+            <Link href={`/sign-in?next=${encodeURIComponent(detailHref)}`} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
+              Sign in
+            </Link>
+          )}
+        />
+      </main>
+    )
+  }
+
   const note = await getDeepLearnNoteById(id)
 
   if (note) {
@@ -69,9 +107,11 @@ export default async function LibraryItemPage({ params }: Props) {
             )}
           </div>
           {primaryAction.note && (
-            <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.62, color: 'var(--text-secondary)' }}>
-              {primaryAction.note}
-            </p>
+            <GeneratedContentState
+              title="This saved item is still available, but its original source could not be reopened."
+              description="You can still use the saved content below."
+              tone="warning"
+            />
           )}
         </section>
         <DeepLearnWorkspace
@@ -108,7 +148,22 @@ export default async function LibraryItemPage({ params }: Props) {
   }
 
   const draft = await getDraft(id)
-  if (!draft) notFound()
+  if (!draft) {
+    return (
+      <main className="page-shell">
+        <GeneratedContentState
+          title="This saved item is no longer available."
+          description="It may have been removed, or the link no longer points to a saved Library item."
+          tone="warning"
+          action={(
+            <Link href="/library" className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
+              Back to Library
+            </Link>
+          )}
+        />
+      </main>
+    )
+  }
 
   const isTaskDraft = draft.sourceType === 'task'
   const workspace = draft.sourceModuleId ? await getModuleWorkspace(draft.sourceModuleId) : null
@@ -160,9 +215,11 @@ export default async function LibraryItemPage({ params }: Props) {
           )}
         </div>
         {detailAction.note && (
-          <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.62, color: 'var(--text-secondary)' }}>
-            {detailAction.note}
-          </p>
+          <GeneratedContentState
+            title="This saved item is still available, but its original source could not be reopened."
+            description="You can still use the saved content below."
+            tone="warning"
+          />
         )}
       </section>
       <DeepLearnWorkspace

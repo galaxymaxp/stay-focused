@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { listDraftsForShelves } from '@/actions/drafts'
+import { GeneratedContentState } from '@/components/generated-content/GeneratedContentState'
 import { ModuleLensShell } from '@/components/ModuleLensShell'
 import { buildLearnExperience, extractCourseName, findRecommendedStepTargets, getModuleWorkspace, getResourceCanvasHref, getResourceOriginalFileHref, matchTaskToResource } from '@/lib/module-workspace'
 import { buildModuleLearnHref, getSearchParamValue, getTaskElementId } from '@/lib/stay-focused-links'
@@ -57,13 +58,21 @@ export default async function DoPage({ params, searchParams }: Props) {
   })()
   const highlightedTaskId = targetedTask?.id ?? null
   const shouldOpenCompleted = Boolean(highlightedTaskId && completedTasks.some((task) => task.id === highlightedTaskId))
+  const firstPendingTask = pendingTasks[0] ?? null
 
   if (module.status === 'error') {
     return (
       <main className="page-shell page-shell-compact page-stack">
-        <div className="ui-card ui-card-soft ui-status-danger" style={{ borderRadius: 'var(--radius-control)', padding: '14px', fontSize: '14px' }}>
-          Processing failed. Delete this module and try again.
-        </div>
+        <GeneratedContentState
+          title="This task workspace is not ready yet."
+          description="Open Courses, re-sync Canvas, and then try this module again."
+          tone="warning"
+          action={(
+            <Link href="/courses" className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
+              Re-sync Canvas
+            </Link>
+          )}
+        />
       </main>
     )
   }
@@ -96,12 +105,22 @@ export default async function DoPage({ params, searchParams }: Props) {
           <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.82rem 0.88rem', marginBottom: '0.9rem', display: 'grid', gap: '0.5rem' }}>
             <p className="ui-kicker" style={{ margin: 0 }}>Study Library</p>
             <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.62, color: 'var(--text-secondary)' }}>
-              Save task outputs from the output panel, then reopen them from the Study Library to continue right where you left off.
+              {latestModuleDraft
+                ? 'Save task outputs from the output panel, then reopen them from the Study Library to continue right where you left off.'
+                : 'No task drafts yet. Start from a task and save a draft to keep it here.'}
             </p>
             <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-              {latestModuleDraft && (
+              {latestModuleDraft ? (
                 <Link href={`/library/${latestModuleDraft.id}`} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
                   Resume latest saved item
+                </Link>
+              ) : (
+                <Link
+                  href={firstPendingTask ? `#${getTaskElementId(firstPendingTask.id)}` : `/library?module=${encodeURIComponent(module.id)}&filter=tasks`}
+                  className="ui-button ui-button-secondary ui-button-xs"
+                  style={{ textDecoration: 'none' }}
+                >
+                  {firstPendingTask ? 'Start with top task' : 'Open module library'}
                 </Link>
               )}
               <Link href={`/library?module=${encodeURIComponent(module.id)}`} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
