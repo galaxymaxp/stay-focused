@@ -3341,6 +3341,69 @@ details[open] > .ui-interactive-summary,
   gap: var(--space-4);
 }
 
+.settings-layout {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.settings-nav {
+  border-radius: var(--radius-tight);
+  border: 1px solid color-mix(in srgb, var(--border-subtle) 88%, transparent);
+  background: color-mix(in srgb, var(--surface-elevated) 94%, transparent);
+  box-shadow: var(--highlight-sheen);
+  overflow: hidden;
+}
+
+.settings-nav-list {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+.settings-nav-link {
+  min-width: 168px;
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in srgb, var(--border-subtle) 88%, transparent);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-elevated) 96%, transparent), color-mix(in srgb, var(--surface-elevated) 88%, transparent)),
+    radial-gradient(circle at top left, color-mix(in srgb, var(--accent-soft) 22%, transparent), transparent 58%);
+  padding: var(--space-3);
+  display: grid;
+  gap: 6px;
+  text-decoration: none;
+  flex-shrink: 0;
+}
+
+.settings-nav-link[data-active='true'] {
+  border-color: color-mix(in srgb, var(--accent-border) 64%, var(--border-subtle) 36%);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent-border) 32%, transparent),
+    0 18px 40px color-mix(in srgb, var(--accent-shadow) 46%, transparent);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-selected) 82%, transparent), color-mix(in srgb, var(--surface-elevated) 92%, transparent)),
+    radial-gradient(circle at top left, color-mix(in srgb, var(--accent-soft) 34%, transparent), transparent 62%);
+}
+
+.settings-nav-label {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.settings-nav-desc {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.settings-panel-stack {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
 .settings-page-header {
   display: grid;
   gap: var(--space-2);
@@ -3368,6 +3431,56 @@ details[open] > .ui-interactive-summary,
   gap: var(--space-3);
 }
 
+.settings-subsection {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.settings-subsection + .settings-subsection {
+  padding-top: var(--space-1);
+}
+
+.settings-subsection-header {
+  display: grid;
+  gap: 4px;
+}
+
+.settings-subsection-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.settings-subsection-desc {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+.settings-stack-tight {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.settings-option-row-stack {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+}
+
+.settings-inline-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.settings-inline-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .settings-swatch-dots {
   display: flex;
   gap: var(--space-2);
@@ -3379,4 +3492,45 @@ details[open] > .ui-interactive-summary,
   border-radius: var(--radius-pill);
   border: 1px solid;
   display: inline-block;
+}
+
+@media (min-width: 900px) {
+  .settings-layout {
+    grid-template-columns: minmax(220px, 248px) minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .settings-nav {
+    position: sticky;
+    top: calc(var(--app-header-height, 0px) + var(--space-4));
+  }
+
+  .settings-nav-list {
+    flex-direction: column;
+    overflow-x: visible;
+  }
+
+  .settings-nav-link {
+    min-width: 0;
+  }
+}
+
+@media (max-width: 640px) {
+  .settings-nav-list {
+    padding: var(--space-2);
+  }
+
+  .settings-nav-link {
+    min-width: 144px;
+    padding: var(--space-3) var(--space-3);
+  }
+
+  .settings-inline-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .settings-inline-actions {
+    justify-content: space-between;
+  }
 }

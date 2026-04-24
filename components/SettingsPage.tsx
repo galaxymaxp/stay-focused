@@ -1,7 +1,8 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import Link from 'next/link'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { requestNotificationPermission, setNotificationVolume, setSoundEnabled, playNotificationSound } from '@/lib/notifications'
 import { useResolvedUserAvatar } from '@/components/useResolvedUserAvatar'
 import { UserAvatar } from '@/components/UserAvatar'
@@ -17,7 +18,50 @@ const MODE_OPTIONS: { value: ThemeMode; label: string; description: string }[] =
   { value: 'system', label: 'System', description: 'Follow your device preference automatically.' },
 ]
 
+const SECTION_ORDER = ['account', 'canvas', 'theme', 'notifications', 'advanced'] as const
+
+type SettingsSectionId = typeof SECTION_ORDER[number]
+
+interface SettingsSectionLinkItem {
+  id: SettingsSectionId
+  label: string
+  description: string
+}
+
+interface SavedCanvasConnection {
+  url: string
+  token: string
+  testedAt: string
+  courseCount?: number
+}
+
+const SECTION_LABELS: Record<Exclude<SettingsSectionId, 'advanced'>, SettingsSectionLinkItem> = {
+  account: {
+    id: 'account',
+    label: 'Account',
+    description: 'Identity, sign-in state, and profile photo.',
+  },
+  canvas: {
+    id: 'canvas',
+    label: 'Canvas',
+    description: 'Connection setup, sync flow, and course import actions.',
+  },
+  theme: {
+    id: 'theme',
+    label: 'Theme',
+    description: 'Appearance mode and accent color.',
+  },
+  notifications: {
+    id: 'notifications',
+    label: 'Notifications',
+    description: 'Browser permission, sound, and volume.',
+  },
+}
+
 export function SettingsPage() {
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const { mode, accent, resolvedTheme, setMode, setAccent } = useThemeSettings()
   const authSummary = useAuthSummary()
   const resolvedAvatar = useResolvedUserAvatar(authSummary.user)
@@ -25,6 +69,36 @@ export function SettingsPage() {
   const [avatarActionPending, setAvatarActionPending] = useState<'source' | 'upload' | 'remove' | null>(null)
   const [avatarActionError, setAvatarActionError] = useState<string | null>(null)
   const [avatarActionMessage, setAvatarActionMessage] = useState<string | null>(null)
+  const [savedCanvasConnection, setSavedCanvasConnection] = useState<SavedCanvasConnection | null>(null)
+
+  const availableSections = buildAvailableSections()
+  const requestedSection = searchParams.get('section')
+  const activeSection = resolveActiveSection(requestedSection, availableSections)
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const stored = window.localStorage.getItem('stay-focused.canvas-connection')
+    if (!stored) return
+
+    try {
+      const parsed = JSON.parse(stored) as SavedCanvasConnection
+      if (typeof parsed.url === 'string' && typeof parsed.token === 'string' && typeof parsed.testedAt === 'string') {
+        setSavedCanvasConnection(parsed)
+      }
+    } catch {
+      setSavedCanvasConnection(null)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!requestedSection) return
+    if (requestedSection === activeSection) return
+
+    const nextParams = new URLSearchParams(searchParams.toString())
+    nextParams.set('section', activeSection)
+    router.replace(`${pathname}?${nextParams.toString()}`, { scroll: false })
+  }, [activeSection, pathname, requestedSection, router, searchParams])
 
   async function setAvatarSource(nextSource: AvatarSource) {
     if (!authSummary.user) return
@@ -118,196 +192,316 @@ export function SettingsPage() {
         <p className="ui-kicker">Settings</p>
         <h1 className="ui-page-title">Preferences</h1>
         <p className="ui-page-copy settings-page-intro">
-          Adjust the appearance of the app. These settings apply across Today, Learn, Do, Calendar, and module workspaces.
+          Move between account, Canvas, appearance, and notification controls without scanning one long mixed page.
         </p>
       </header>
 
-      <SettingsSection
-        eyebrow="Account"
-        title="Authentication"
-        description="Sign in to save your progress and access Stay Focused from any device. Email/password and Google sign-in are both supported."
-      >
-        {!authSummary.user ? (
-          <div className="settings-account-card">
-            <div>
-              <p className="settings-card-title">Not signed in</p>
-              <p className="settings-card-desc">Sign in to keep your work saved across devices and sessions.</p>
-            </div>
-            <div className="settings-card-actions">
-              <Link href="/sign-in?next=%2Fsettings" className="ui-button ui-button-primary">
-                Sign in
-              </Link>
-              <Link href="/sign-up?next=%2Fsettings" className="ui-button ui-button-secondary">
-                Create account
-              </Link>
-            </div>
-          </div>
-        ) : (
-          <div className="settings-profile-card">
-            <div className="settings-profile-row">
-              <UserAvatar
-                value={{
-                  url: resolvedAvatar.resolvedAvatar.url,
-                  initials: resolvedAvatar.resolvedAvatar.initials,
-                }}
-                size={64}
-                active
-              />
-              <div style={{ minWidth: 0 }}>
-                <p className="settings-card-title">Profile photo</p>
-                <p className="settings-card-desc">
-                  Current source: {getAvatarSourceLabel(resolvedAvatar.resolvedAvatar.source)}
-                </p>
-                <p className="settings-card-desc">
-                  {resolvedAvatar.loading
-                    ? 'Loading your avatar settings...'
-                    : resolvedAvatar.error
-                      ? 'Could not load your avatar settings right now.'
-                    : resolvedAvatar.hasGoogleAvatar
-                      ? 'Google photo is available for this account.'
-                      : 'No Google photo detected for this account. Placeholder initials will be used until you upload one.'}
-                </p>
-              </div>
-            </div>
+      <div className="settings-layout">
+        <nav className="settings-nav motion-card" aria-label="Settings sections">
+          <div className="settings-nav-list" role="tablist" aria-orientation="vertical">
+            {availableSections.map((section) => {
+              const href = buildSectionHref(pathname, searchParams, section.id)
+              const selected = section.id === activeSection
 
-            <div className="settings-card-actions">
-              <button
-                type="button"
-                className="ui-button ui-button-secondary"
-                onClick={() => setAvatarSource('google')}
-                disabled={!resolvedAvatar.hasGoogleAvatar || Boolean(avatarActionPending)}
-              >
-                Use Google photo
-              </button>
-              <button
-                type="button"
-                className="ui-button ui-button-primary"
-                onClick={() => uploadInputRef.current?.click()}
-                disabled={Boolean(avatarActionPending)}
-              >
-                {avatarActionPending === 'upload' ? 'Uploading...' : 'Upload custom photo'}
-              </button>
-              <button
-                type="button"
-                className="ui-button ui-button-ghost"
-                onClick={removeCustomPhoto}
-                disabled={!resolvedAvatar.profile.avatarUrl || Boolean(avatarActionPending)}
-              >
-                Remove custom photo
-              </button>
-            </div>
-
-            <input
-              ref={uploadInputRef}
-              type="file"
-              accept="image/jpeg,image/png,image/webp,image/gif"
-              style={{ display: 'none' }}
-              onChange={(event) => {
-                const file = event.currentTarget.files?.[0] ?? null
-                if (file) {
-                  void uploadCustomPhoto(file)
-                }
-                event.currentTarget.value = ''
-              }}
-            />
-
-            <p className="settings-card-note">
-              Accepted: JPG, PNG, WEBP, GIF — max 5 MB. Priority: custom upload, then Google photo, then initials.
-            </p>
-            {resolvedAvatar.error ? <p className="settings-card-error">{resolvedAvatar.error}</p> : null}
-            {avatarActionError ? <p className="settings-card-error">{avatarActionError}</p> : null}
-            {avatarActionMessage ? <p className="settings-card-message">{avatarActionMessage}</p> : null}
-          </div>
-        )}
-      </SettingsSection>
-
-      <SettingsSection
-        eyebrow="Appearance"
-        title="Theme mode"
-        description={`Choose how the app handles light and dark mode. Current: ${resolvedTheme}.`}
-      >
-        <div className="settings-option-list">
-          {MODE_OPTIONS.map((option) => {
-            const selected = option.value === mode
-
-            return (
-              <button
-                key={option.value}
-                type="button"
-                onClick={() => setMode(option.value)}
-                aria-pressed={selected}
-                className="settings-option-row ui-interactive-card"
-              >
-                <div style={{ minWidth: 0 }}>
-                  <p className="settings-card-title">{option.label}</p>
-                  <p className="settings-card-desc">{option.description}</p>
-                </div>
-                <span
-                  className="settings-option-label"
-                  data-selected={selected ? 'true' : 'false'}
+              return (
+                <Link
+                  key={section.id}
+                  href={href}
+                  scroll={false}
+                  role="tab"
+                  aria-selected={selected}
+                  aria-current={selected ? 'page' : undefined}
+                  className="settings-nav-link ui-interactive-card"
+                  data-active={selected ? 'true' : 'false'}
                 >
-                  {selected ? 'Current' : 'Select'}
-                </span>
-              </button>
-            )
-          })}
-        </div>
-      </SettingsSection>
+                  <span className="settings-nav-label">{section.label}</span>
+                  <span className="settings-nav-desc">{section.description}</span>
+                </Link>
+              )
+            })}
+          </div>
+        </nav>
 
-      <SettingsSection
-        eyebrow="Accent"
-        title="Highlight color"
-        description="Choose the accent used for key actions, highlights, and supporting emphasis."
-      >
-        <div className="settings-swatch-grid">
-          {Object.entries(ACCENT_OPTIONS).map(([name, palette]) => {
-            const selected = name === accent
+        <div className="settings-panel-stack">
+          {activeSection === 'account' ? (
+            <SettingsSection
+              id="account"
+              eyebrow="Account"
+              title="Account"
+              description="View your sign-in state and manage the profile photo tied to this workspace."
+            >
+              {!authSummary.user ? (
+                <div className="settings-account-card">
+                  <div>
+                    <p className="settings-card-title">Not signed in</p>
+                    <p className="settings-card-desc">Sign in to keep your work saved across devices and sessions.</p>
+                  </div>
+                  <div className="settings-card-actions">
+                    <Link href="/sign-in?next=%2Fsettings" className="ui-button ui-button-primary">
+                      Sign in
+                    </Link>
+                    <Link href="/sign-up?next=%2Fsettings" className="ui-button ui-button-secondary">
+                      Create account
+                    </Link>
+                  </div>
+                </div>
+              ) : (
+                <div className="settings-profile-card">
+                  <div className="settings-profile-row">
+                    <UserAvatar
+                      value={{
+                        url: resolvedAvatar.resolvedAvatar.url,
+                        initials: resolvedAvatar.resolvedAvatar.initials,
+                      }}
+                      size={64}
+                      active
+                    />
+                    <div style={{ minWidth: 0 }}>
+                      <p className="settings-card-title">Profile photo</p>
+                      <p className="settings-card-desc">
+                        Current source: {getAvatarSourceLabel(resolvedAvatar.resolvedAvatar.source)}
+                      </p>
+                      <p className="settings-card-desc">
+                        {resolvedAvatar.loading
+                          ? 'Loading your avatar settings...'
+                          : resolvedAvatar.error
+                            ? 'Could not load your avatar settings right now.'
+                          : resolvedAvatar.hasGoogleAvatar
+                            ? 'Google photo is available for this account.'
+                            : 'No Google photo detected for this account. Placeholder initials will be used until you upload one.'}
+                      </p>
+                    </div>
+                  </div>
 
-            return (
-              <button
-                key={name}
-                type="button"
-                onClick={() => setAccent(name as AccentName)}
-                aria-pressed={selected}
-                className="settings-swatch-card ui-interactive-card"
-              >
-                <div className="settings-swatch-dots">
-                  <span className="settings-swatch-dot" style={{ background: palette.accent, borderColor: palette.accentBorder }} />
-                  <span className="settings-swatch-dot" style={{ background: palette.accentLight, borderColor: palette.accentBorder }} />
+                  <div className="settings-card-actions">
+                    <button
+                      type="button"
+                      className="ui-button ui-button-secondary"
+                      onClick={() => setAvatarSource('google')}
+                      disabled={!resolvedAvatar.hasGoogleAvatar || Boolean(avatarActionPending)}
+                    >
+                      Use Google photo
+                    </button>
+                    <button
+                      type="button"
+                      className="ui-button ui-button-primary"
+                      onClick={() => uploadInputRef.current?.click()}
+                      disabled={Boolean(avatarActionPending)}
+                    >
+                      {avatarActionPending === 'upload' ? 'Uploading...' : 'Upload custom photo'}
+                    </button>
+                    <button
+                      type="button"
+                      className="ui-button ui-button-ghost"
+                      onClick={removeCustomPhoto}
+                      disabled={!resolvedAvatar.profile.avatarUrl || Boolean(avatarActionPending)}
+                    >
+                      Remove custom photo
+                    </button>
+                  </div>
+
+                  <input
+                    ref={uploadInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif"
+                    style={{ display: 'none' }}
+                    onChange={(event) => {
+                      const file = event.currentTarget.files?.[0] ?? null
+                      if (file) {
+                        void uploadCustomPhoto(file)
+                      }
+                      event.currentTarget.value = ''
+                    }}
+                  />
+
+                  <p className="settings-card-note">
+                    Accepted: JPG, PNG, WEBP, GIF, max 5 MB. Priority: custom upload, then Google photo, then initials.
+                  </p>
+                  {resolvedAvatar.error ? <p className="settings-card-error">{resolvedAvatar.error}</p> : null}
+                  {avatarActionError ? <p className="settings-card-error">{avatarActionError}</p> : null}
+                  {avatarActionMessage ? <p className="settings-card-message">{avatarActionMessage}</p> : null}
                 </div>
-                <div style={{ minWidth: 0 }}>
-                  <p className="settings-card-title">{palette.label}</p>
-                  <p className="settings-card-desc">{selected ? 'Current accent' : 'Apply accent'}</p>
+              )}
+            </SettingsSection>
+          ) : null}
+
+          {activeSection === 'canvas' ? (
+            <SettingsSection
+              id="canvas"
+              eyebrow="Canvas"
+              title="Canvas"
+              description="Open the existing Canvas sync flow for base URL, token, course loading, and import actions."
+            >
+              {!authSummary.user ? (
+                <div className="settings-account-card">
+                  <div>
+                    <p className="settings-card-title">Canvas sync needs an account</p>
+                    <p className="settings-card-desc">Sign in before connecting Canvas so sync data stays tied to your account.</p>
+                  </div>
+                  <div className="settings-card-actions">
+                    <Link href="/sign-in?next=%2Fcanvas" className="ui-button ui-button-primary">
+                      Sign in
+                    </Link>
+                    <Link href="/sign-up?next=%2Fcanvas" className="ui-button ui-button-secondary">
+                      Create account
+                    </Link>
+                  </div>
                 </div>
-              </button>
-            )
-          })}
+              ) : (
+                <div className="settings-option-list">
+                  <div className="settings-profile-card">
+                    <div className="settings-stack-tight">
+                      <p className="settings-card-title">
+                        {savedCanvasConnection ? 'Saved Canvas connection found' : 'Canvas setup lives in the sync workspace'}
+                      </p>
+                      <p className="settings-card-desc">
+                        {savedCanvasConnection
+                          ? `Base URL: ${formatCanvasConnectionUrl(savedCanvasConnection.url)}. Reopen Canvas sync to retest the connection, update the token, or load more courses.`
+                          : 'Open Canvas sync to add your school URL, create or paste an access token, test the connection, and choose courses to import.'}
+                      </p>
+                      {savedCanvasConnection?.testedAt ? (
+                        <p className="settings-card-note">Last tested: {formatSavedConnectionTime(savedCanvasConnection.testedAt)}</p>
+                      ) : null}
+                      {typeof savedCanvasConnection?.courseCount === 'number' ? (
+                        <p className="settings-card-note">
+                          Last course load found {savedCanvasConnection.courseCount} course{savedCanvasConnection.courseCount === 1 ? '' : 's'}.
+                        </p>
+                      ) : null}
+                    </div>
+
+                    <div className="settings-card-actions">
+                      <Link
+                        href={savedCanvasConnection ? '/canvas?action=sync' : '/canvas?action=reconnect'}
+                        className="ui-button ui-button-primary"
+                      >
+                        {savedCanvasConnection ? 'Open Canvas sync' : 'Set up Canvas'}
+                      </Link>
+                      <Link href="/canvas" className="ui-button ui-button-secondary">
+                        View sync workspace
+                      </Link>
+                    </div>
+                  </div>
+
+                  <div className="settings-option-row ui-interactive-card" style={{ cursor: 'default' }}>
+                    <div style={{ minWidth: 0 }}>
+                      <p className="settings-card-title">Token setup</p>
+                      <p className="settings-card-desc">
+                        The existing Canvas flow already opens your Canvas settings page, guides token creation, tests the connection, and keeps sync actions in one place.
+                      </p>
+                    </div>
+                    <span className="settings-option-label" data-selected={savedCanvasConnection ? 'true' : 'false'}>
+                      {savedCanvasConnection ? 'Ready' : 'Needs setup'}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </SettingsSection>
+          ) : null}
+
+          {activeSection === 'theme' ? (
+            <SettingsSection
+              id="theme"
+              eyebrow="Theme"
+              title="Theme"
+              description="Choose the appearance mode and accent color used across the app."
+            >
+              <div className="settings-subsection">
+                <div className="settings-subsection-header">
+                  <h3 className="settings-subsection-title">Appearance mode</h3>
+                  <p className="settings-subsection-desc">Current: {resolvedTheme}.</p>
+                </div>
+                <div className="settings-option-list">
+                  {MODE_OPTIONS.map((option) => {
+                    const selected = option.value === mode
+
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => setMode(option.value)}
+                        aria-pressed={selected}
+                        className="settings-option-row ui-interactive-card"
+                      >
+                        <div style={{ minWidth: 0 }}>
+                          <p className="settings-card-title">{option.label}</p>
+                          <p className="settings-card-desc">{option.description}</p>
+                        </div>
+                        <span
+                          className="settings-option-label"
+                          data-selected={selected ? 'true' : 'false'}
+                        >
+                          {selected ? 'Current' : 'Select'}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div className="settings-subsection">
+                <div className="settings-subsection-header">
+                  <h3 className="settings-subsection-title">Accent color</h3>
+                  <p className="settings-subsection-desc">Used for highlights, selected states, and primary emphasis.</p>
+                </div>
+                <div className="settings-swatch-grid">
+                  {Object.entries(ACCENT_OPTIONS).map(([name, palette]) => {
+                    const selected = name === accent
+
+                    return (
+                      <button
+                        key={name}
+                        type="button"
+                        onClick={() => setAccent(name as AccentName)}
+                        aria-pressed={selected}
+                        className="settings-swatch-card ui-interactive-card"
+                      >
+                        <div className="settings-swatch-dots">
+                          <span className="settings-swatch-dot" style={{ background: palette.accent, borderColor: palette.accentBorder }} />
+                          <span className="settings-swatch-dot" style={{ background: palette.accentLight, borderColor: palette.accentBorder }} />
+                        </div>
+                        <div style={{ minWidth: 0 }}>
+                          <p className="settings-card-title">{palette.label}</p>
+                          <p className="settings-card-desc">{selected ? 'Current accent' : 'Apply accent'}</p>
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            </SettingsSection>
+          ) : null}
+
+          {activeSection === 'notifications' ? (
+            <BrowserNotificationsSection />
+          ) : null}
         </div>
-      </SettingsSection>
-      <BrowserNotificationsSection />
+      </div>
     </main>
   )
 }
 
 function BrowserNotificationsSection() {
-  const [permission, setPermission] = useState<NotificationPermission | 'unsupported'>(() => getNotificationPermissionState())
-  const [soundEnabled, setSoundEnabledState] = useState(() => getStoredSoundEnabled())
-  const [volume, setVolumeState] = useState(() => getStoredVolume())
+  const settings = useSyncExternalStore(
+    subscribeNotificationSettings,
+    getNotificationSettingsSnapshot,
+    getNotificationSettingsServerSnapshot,
+  )
+  const { permission, soundEnabled, volume } = settings
 
   async function handleRequestPermission() {
-    const granted = await requestNotificationPermission()
-    setPermission(granted ? 'granted' : Notification.permission)
+    await requestNotificationPermission()
+    emitNotificationSettingsChange()
   }
 
   function handleSoundToggle() {
     const next = !soundEnabled
-    setSoundEnabledState(next)
     setSoundEnabled(next)
+    emitNotificationSettingsChange()
   }
 
   function handleVolumeChange(value: number) {
-    setVolumeState(value)
     setNotificationVolume(value / 100)
+    emitNotificationSettingsChange()
   }
 
   function handleTestSound() {
@@ -316,9 +510,10 @@ function BrowserNotificationsSection() {
 
   return (
     <SettingsSection
+      id="notifications"
       eyebrow="Notifications"
-      title="Browser notifications"
-      description="Get notified about Canvas syncs and important events even when the tab is in the background."
+      title="Notifications"
+      description="Manage browser permission, sound playback, and notification volume for sync updates."
     >
       <div className="settings-option-list">
         <div className="settings-option-row ui-interactive-card" style={{ cursor: 'default' }}>
@@ -327,7 +522,7 @@ function BrowserNotificationsSection() {
             <p className="settings-card-desc">
               {permission === 'unsupported' && 'Your browser does not support notifications.'}
               {permission === 'granted' && 'Notifications are allowed.'}
-              {permission === 'denied' && 'Notifications are blocked. Enable them in browser settings.'}
+              {permission === 'denied' && 'Notifications are blocked. Open your browser site permissions, allow notifications, then return here.'}
               {permission === 'default' && 'Grant permission to receive background notifications.'}
             </p>
           </div>
@@ -360,13 +555,13 @@ function BrowserNotificationsSection() {
         </button>
 
         {soundEnabled && (
-          <div className="settings-option-row ui-interactive-card" style={{ cursor: 'default', flexDirection: 'column', alignItems: 'stretch', gap: '12px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div className="settings-option-row settings-option-row-stack ui-interactive-card" style={{ cursor: 'default' }}>
+            <div className="settings-inline-header">
               <div style={{ minWidth: 0 }}>
                 <p className="settings-card-title">Volume</p>
                 <p className="settings-card-desc">Adjust how loud notification sounds play.</p>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div className="settings-inline-actions">
                 <span className="settings-option-label" data-selected="false" style={{ minWidth: '3ch', textAlign: 'right' }}>
                   {volume}%
                 </span>
@@ -391,21 +586,23 @@ function BrowserNotificationsSection() {
 }
 
 function SettingsSection({
+  id,
   eyebrow,
   title,
   description,
   children,
 }: {
+  id: string
   eyebrow: string
   title: string
   description: string
-  children: React.ReactNode
+  children: ReactNode
 }) {
   return (
-    <section className="settings-section">
+    <section className="settings-section" id={`settings-section-${id}`} aria-labelledby={`settings-section-title-${id}`}>
       <div className="settings-section-header">
         <p className="ui-kicker">{eyebrow}</p>
-        <h2 className="settings-section-title">{title}</h2>
+        <h2 className="settings-section-title" id={`settings-section-title-${id}`}>{title}</h2>
         <p className="settings-section-desc">{description}</p>
       </div>
       <div className="settings-section-body">
@@ -413,6 +610,31 @@ function SettingsSection({
       </div>
     </section>
   )
+}
+
+function buildAvailableSections() {
+  return SECTION_ORDER
+    .map((id) => SECTION_LABELS[id as keyof typeof SECTION_LABELS] ?? null)
+    .filter((section): section is SettingsSectionLinkItem => section !== null)
+}
+
+function resolveActiveSection(
+  requested: string | null,
+  sections: SettingsSectionLinkItem[],
+): SettingsSectionId {
+  const fallback = sections[0]?.id ?? 'account'
+
+  if (!requested) return fallback
+
+  return sections.some((section) => section.id === requested)
+    ? requested as SettingsSectionId
+    : fallback
+}
+
+function buildSectionHref(pathname: string, searchParams: URLSearchParams, sectionId: SettingsSectionId) {
+  const nextParams = new URLSearchParams(searchParams.toString())
+  nextParams.set('section', sectionId)
+  return `${pathname}?${nextParams.toString()}`
 }
 
 function getAvatarSourceLabel(source: AvatarSource) {
@@ -440,4 +662,85 @@ function getStoredVolume() {
   const storedValue = localStorage.getItem('stay-focused.sound-volume')
   const parsed = storedValue ? parseFloat(storedValue) : 0.5
   return Number.isNaN(parsed) ? 50 : Math.round(parsed * 100)
+}
+
+function formatSavedConnectionTime(value: string) {
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return 'Recently'
+  return parsed.toLocaleString()
+}
+
+function formatCanvasConnectionUrl(value: string) {
+  try {
+    const url = new URL(value)
+    return url.origin.replace(/^https?:\/\//, '')
+  } catch {
+    return value.replace(/^https?:\/\//, '')
+  }
+}
+
+type NotificationSettingsSnapshot = {
+  permission: NotificationPermission | 'unsupported'
+  soundEnabled: boolean
+  volume: number
+}
+
+const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettingsSnapshot = {
+  permission: 'default',
+  soundEnabled: true,
+  volume: 50,
+}
+
+const notificationSettingsListeners = new Set<() => void>()
+let lastNotificationSnapshot: NotificationSettingsSnapshot | null = null
+
+function subscribeNotificationSettings(listener: () => void) {
+  notificationSettingsListeners.add(listener)
+
+  if (typeof window === 'undefined') {
+    return () => {
+      notificationSettingsListeners.delete(listener)
+    }
+  }
+
+  const handleStorage = (event: StorageEvent) => {
+    if (!event.key || event.key.startsWith('stay-focused.sound-')) {
+      listener()
+    }
+  }
+
+  window.addEventListener('storage', handleStorage)
+
+  return () => {
+    notificationSettingsListeners.delete(listener)
+    window.removeEventListener('storage', handleStorage)
+  }
+}
+
+function emitNotificationSettingsChange() {
+  notificationSettingsListeners.forEach((listener) => listener())
+}
+
+function getNotificationSettingsSnapshot(): NotificationSettingsSnapshot {
+  const nextSnapshot = {
+    permission: getNotificationPermissionState(),
+    soundEnabled: getStoredSoundEnabled(),
+    volume: getStoredVolume(),
+  }
+
+  if (
+    lastNotificationSnapshot &&
+    lastNotificationSnapshot.permission === nextSnapshot.permission &&
+    lastNotificationSnapshot.soundEnabled === nextSnapshot.soundEnabled &&
+    lastNotificationSnapshot.volume === nextSnapshot.volume
+  ) {
+    return lastNotificationSnapshot
+  }
+
+  lastNotificationSnapshot = nextSnapshot
+  return nextSnapshot
+}
+
+function getNotificationSettingsServerSnapshot(): NotificationSettingsSnapshot {
+  return DEFAULT_NOTIFICATION_SETTINGS
 }
