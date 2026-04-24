@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation'
 import { CourseLearnExplorer } from '@/components/CourseLearnExplorer'
 import { getClarityWorkspace } from '@/lib/clarity-workspace'
 import { buildCourseLearnOverview, type CourseLearnModuleCard, type CourseLearnTaskRow } from '@/lib/course-learn-overview'
-import { generateCourseSummary } from '@/lib/openai'
+import { getPersistedCoursePageSummary } from '@/lib/course-page-summary'
 import { buildModuleDoHref, getSearchParamValue } from '@/lib/stay-focused-links'
 
 interface Props {
@@ -34,7 +34,7 @@ export default async function CourseWorkspacePage({ params, searchParams }: Prop
     (m) => m.quizCount > 0 || m.studyMaterials.some((s) => s.deepLearnQuizReady),
   )
 
-  const courseSummary = await generateCourseSummary(course.name)
+  const courseSummary = await getPersistedCoursePageSummary(course, modules)
   const activeLabel = showDo ? 'Tasks' : showQuiz ? 'Quiz' : 'Modules'
 
   return (

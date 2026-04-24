@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Script from 'next/script'
 import { AppShell } from '@/components/AppShell'
 import { ThemeProvider } from '@/components/ThemeProvider'
+import { ToastHost } from '@/components/ToastHost'
 import { getRecentAnnouncements } from '@/lib/announcements'
 import { loadWorkspaceSource } from '@/lib/workspace-source'
 import './globals.css'
@@ -61,6 +62,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }}
         />
         <ThemeProvider>
+          <ToastHost />
           <AppShell recentAnnouncements={recentAnnouncements}>{children}</AppShell>
         </ThemeProvider>
       </body>

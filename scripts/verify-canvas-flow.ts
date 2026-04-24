@@ -3,6 +3,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import http from 'node:http'
+import { spawn, type ChildProcess } from 'node:child_process'
 import { renderToStaticMarkup } from 'react-dom/server'
 
 function loadEnvFile() {
@@ -85,13 +86,94 @@ async function startMockCanvasServer(routes: Record<string, unknown>) {
   }
 }
 
+async function reservePort() {
+  return await new Promise<number>((resolve, reject) => {
+    const server = http.createServer()
+    server.once('error', reject)
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address()
+      if (!address || typeof address === 'string') {
+        reject(new Error('Failed to reserve port'))
+        return
+      }
+
+      const { port } = address
+      server.close((error) => {
+        if (error) reject(error)
+        else resolve(port)
+      })
+    })
+  })
+}
+
+async function waitForHttp(url: string, timeoutMs = 60_000) {
+  const start = Date.now()
+  let lastError: unknown
+
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const response = await fetch(url, { redirect: 'manual' })
+      if (response.status < 500) return
+      lastError = `HTTP ${response.status}`
+    } catch (error) {
+      lastError = error
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 500))
+  }
+
+  throw new Error(`Timed out waiting for ${url}. Last error: ${String(lastError)}`)
+}
+
+async function startNextServer(envOverrides: Record<string, string>) {
+  const port = await reservePort()
+  const child = spawn(
+    'cmd.exe',
+    ['/c', 'npm', 'run', 'start', '--', '--port', String(port)],
+    {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        PORT: String(port),
+        ...envOverrides,
+      },
+      stdio: 'ignore',
+      windowsHide: true,
+    },
+  )
+
+  try {
+    await waitForHttp(`http://127.0.0.1:${port}/`)
+  } catch (error) {
+    child.kill()
+    throw error
+  }
+
+  return {
+    baseUrl: `http://127.0.0.1:${port}`,
+    async stop() {
+      await stopChildProcess(child)
+    },
+  }
+}
+
+async function stopChildProcess(child: ChildProcess) {
+  if (child.exitCode !== null || child.killed) return
+
+  child.kill()
+
+  await new Promise<void>((resolve) => {
+    child.once('exit', () => resolve())
+    setTimeout(() => resolve(), 5_000)
+  })
+}
+
 async function importProject() {
-  const [{ fetchCourses, syncCourse }, { supabase }, dashboardModule, modulePageModule, canvasPageModule] = await Promise.all([
+  const [{ fetchCourses, syncCourse }, { supabase }, dashboardModule, modulePageModule] = await Promise.all([
     import('../actions/canvas'),
     import('../lib/supabase'),
     import('../app/(app)/page'),
     import('../app/modules/[id]/page'),
-    import('../app/canvas/page'),
   ])
 
   if (!supabase) {
@@ -104,7 +186,6 @@ async function importProject() {
     supabase,
     Dashboard: dashboardModule.default,
     ModulePage: modulePageModule.default,
-    CanvasPage: canvasPageModule.default,
   }
 }
 
@@ -348,9 +429,9 @@ async function runInvalidKeyCase() {
   }
 }
 
-async function runNoCoursesCase() {
-  const { CanvasPage } = await importProject()
-  const markup = renderToStaticMarkup(await CanvasPage())
+async function runNoCoursesCase(baseUrl: string) {
+  const response = await fetch(`${baseUrl}/canvas`)
+  const markup = await response.text()
 
   return {
     status: 'ok',
@@ -426,11 +507,14 @@ async function main() {
     const mockServer = await startMockCanvasServer({
       'GET /api/v1/courses': [],
     })
-    process.env.CANVAS_API_URL = mockServer.url
-    process.env.CANVAS_API_TOKEN = 'mock-token'
+    const nextServer = await startNextServer({
+      CANVAS_API_URL: mockServer.url,
+      CANVAS_API_TOKEN: 'mock-token',
+    })
     try {
-      result = await runNoCoursesCase()
+      result = await runNoCoursesCase(nextServer.baseUrl)
     } finally {
+      await nextServer.stop()
       await mockServer.close()
     }
   } else if (caseName === 'no-content') {

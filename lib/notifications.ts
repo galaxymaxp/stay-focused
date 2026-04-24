@@ -1,3 +1,14 @@
+export const STAY_FOCUSED_TOAST_EVENT = 'stay-focused:toast'
+
+export type StayFocusedToastTone = 'success' | 'error' | 'info'
+
+export interface StayFocusedToastDetail {
+  title: string
+  description: string
+  tone: StayFocusedToastTone
+  tag?: string
+}
+
 export async function requestNotificationPermission(): Promise<boolean> {
   if (typeof window === 'undefined' || !('Notification' in window)) return false
   if (Notification.permission === 'granted') return true
@@ -17,6 +28,16 @@ export function showBrowserNotification(title: string, body: string, tag?: strin
     badge: '/badge-96.svg',
     requireInteraction: false,
   })
+}
+
+export function dispatchInAppToast(detail: StayFocusedToastDetail) {
+  if (typeof window === 'undefined') return
+
+  window.dispatchEvent(
+    new CustomEvent<StayFocusedToastDetail>(STAY_FOCUSED_TOAST_EVENT, {
+      detail,
+    }),
+  )
 }
 
 function getNotificationVolume(): number {
@@ -62,11 +83,18 @@ export function notifyCompletion(
   options?: {
     showBrowser?: boolean
     playSound?: boolean
-    soundType?: 'success' | 'error' | 'info'
+    soundType?: StayFocusedToastTone
     tag?: string
   },
 ) {
   const { showBrowser = true, playSound = false, soundType = 'success', tag } = options ?? {}
+
+  dispatchInAppToast({
+    title,
+    description,
+    tone: soundType,
+    tag,
+  })
 
   if (showBrowser && typeof document !== 'undefined' && document.hidden) {
     showBrowserNotification(title, description, tag)
