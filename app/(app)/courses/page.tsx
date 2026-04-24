@@ -26,7 +26,7 @@ export default async function CoursesPage() {
             <p className="ui-kicker">Courses</p>
             <h1 className="ui-page-title" style={{ marginTop: '0.35rem' }}>Your courses</h1>
             <p className="ui-page-copy" style={{ marginTop: '0.35rem', maxWidth: '36rem' }}>
-              Each card shows how many tasks are due and how many you've completed.
+              Each card shows how many tasks are due and how many you&apos;ve completed.
             </p>
           </div>
           <div className="command-stat-grid" style={{ flex: '0 1 auto' }}>
@@ -112,4 +112,3 @@ function StatTile({
     </div>
   )
 }
-

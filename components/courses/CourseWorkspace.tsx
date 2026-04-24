@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import Link from 'next/link'
 import { CheckCircle2, Circle, BookOpen, Play, Layers, ArrowRight } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { StatusBadge, TypeBadge } from '@/components/ui/Badge'

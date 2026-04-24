@@ -36,7 +36,6 @@ function eventsForDate(year: number, month: number, day: number) {
 
 function MonthView({ year, month }: { year: number; month: number }) {
   const grid = getMonthGrid(year, month)
-  const today = '2026-04-21'
   const todayDay = 21
 
   return (

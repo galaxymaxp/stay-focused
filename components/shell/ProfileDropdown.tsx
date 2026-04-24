@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
-import { User, Settings, LogOut, LogIn, ChevronDown } from 'lucide-react'
+import { User, Settings, LogOut, ChevronDown } from 'lucide-react'
 
 export function ProfileDropdown() {
   const [open, setOpen] = useState(false)

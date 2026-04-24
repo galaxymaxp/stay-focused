@@ -25,18 +25,10 @@ export function CanvasSyncForm({ courses }: { courses: CanvasCourse[] }) {
   const [stageIndex, setStageIndex] = useState(0)
   const [progressValue, setProgressValue] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
-  const prevPending = useRef(false)
   const syncedCourseName = useRef<string | null>(null)
 
   useEffect(() => {
-    if (!isPending) {
-      setStageIndex(0)
-      setProgressValue(0)
-      return
-    }
-
-    setStageIndex(0)
-    setProgressValue(SYNC_STAGES[0].progressValue)
+    if (!isPending) return
 
     const stageTimes = [1200, 3500, 7000, 12000, 18000, 24000, 32000]
     const timers = SYNC_STAGES.slice(1).map((stage, index) =>
@@ -56,21 +48,6 @@ export function CanvasSyncForm({ courses }: { courses: CanvasCourse[] }) {
     }
   }, [isPending])
 
-  useEffect(() => {
-    if (prevPending.current && !isPending) {
-      if (error) {
-        notifyCompletion('Sync failed', error, { showBrowser: true, playSound: true, soundType: 'error', tag: 'canvas-sync' })
-      } else {
-        notifyCompletion(
-          'Sync complete',
-          syncedCourseName.current ? `${syncedCourseName.current} synced successfully.` : 'Course synced successfully.',
-          { showBrowser: true, playSound: true, soundType: 'success', tag: 'canvas-sync' },
-        )
-      }
-    }
-    prevPending.current = isPending
-  }, [isPending, error])
-
   const filtered = courses.filter((course) =>
     course.name.toLowerCase().includes(search.toLowerCase()) ||
     course.course_code?.toLowerCase().includes(search.toLowerCase())
@@ -86,15 +63,29 @@ export function CanvasSyncForm({ courses }: { courses: CanvasCourse[] }) {
     if (!selected) return
 
     setError(null)
+    setStageIndex(0)
+    setProgressValue(SYNC_STAGES[0].progressValue)
     syncedCourseName.current = selected.name
     startTransition(async () => {
       try {
         const result = await syncCourse(formData)
         if (result?.error) {
           setError(result.error)
+          notifyCompletion('Sync failed', result.error, { showBrowser: true, playSound: true, soundType: 'error', tag: 'canvas-sync' })
+        } else {
+          notifyCompletion(
+            'Sync complete',
+            syncedCourseName.current ? `${syncedCourseName.current} synced successfully.` : 'Course synced successfully.',
+            { showBrowser: true, playSound: true, soundType: 'success', tag: 'canvas-sync' },
+          )
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Sync failed.')
+        const message = err instanceof Error ? err.message : 'Sync failed.'
+        setError(message)
+        notifyCompletion('Sync failed', message, { showBrowser: true, playSound: true, soundType: 'error', tag: 'canvas-sync' })
+      } finally {
+        setStageIndex(0)
+        setProgressValue(0)
       }
     })
   }

@@ -8,9 +8,9 @@ export default async function DraftsPageRedirect({ searchParams }: Props) {
   const resolvedSearchParams = await searchParams
   const params = new URLSearchParams()
   const course = resolvedSearchParams?.course
-  const module = resolvedSearchParams?.module
+  const moduleParam = resolvedSearchParams?.module
   if (course) params.set('course', Array.isArray(course) ? course[0] : course)
-  if (module) params.set('module', Array.isArray(module) ? module[0] : module)
+  if (moduleParam) params.set('module', Array.isArray(moduleParam) ? moduleParam[0] : moduleParam)
   const query = params.toString()
   redirect(query ? `/library?${query}` : '/library')
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import Link from 'next/link'
 import { requestNotificationPermission, setNotificationVolume, setSoundEnabled, playNotificationSound } from '@/lib/notifications'
 import { useResolvedUserAvatar } from '@/components/useResolvedUserAvatar'
@@ -290,22 +290,9 @@ export function SettingsPage() {
 }
 
 function BrowserNotificationsSection() {
-  const [permission, setPermission] = useState<NotificationPermission | 'unsupported'>('default')
-  const [soundEnabled, setSoundEnabledState] = useState(true)
-  const [volume, setVolumeState] = useState(50)
-
-  useEffect(() => {
-    if (typeof window === 'undefined' || !('Notification' in window)) {
-      setPermission('unsupported')
-      return
-    }
-    setPermission(Notification.permission)
-    const storedSound = localStorage.getItem('stay-focused.sound-enabled')
-    setSoundEnabledState(storedSound !== 'false')
-    const storedVol = localStorage.getItem('stay-focused.sound-volume')
-    const parsed = storedVol ? parseFloat(storedVol) : 0.5
-    setVolumeState(isNaN(parsed) ? 50 : Math.round(parsed * 100))
-  }, [])
+  const [permission, setPermission] = useState<NotificationPermission | 'unsupported'>(() => getNotificationPermissionState())
+  const [soundEnabled, setSoundEnabledState] = useState(() => getStoredSoundEnabled())
+  const [volume, setVolumeState] = useState(() => getStoredVolume())
 
   async function handleRequestPermission() {
     const granted = await requestNotificationPermission()
@@ -432,4 +419,25 @@ function getAvatarSourceLabel(source: AvatarSource) {
   if (source === 'upload') return 'Custom photo'
   if (source === 'google') return 'Google photo'
   return 'Placeholder'
+}
+
+function getNotificationPermissionState(): NotificationPermission | 'unsupported' {
+  if (typeof window === 'undefined' || !('Notification' in window)) {
+    return 'unsupported'
+  }
+
+  return Notification.permission
+}
+
+function getStoredSoundEnabled() {
+  if (typeof window === 'undefined') return true
+  return localStorage.getItem('stay-focused.sound-enabled') !== 'false'
+}
+
+function getStoredVolume() {
+  if (typeof window === 'undefined') return 50
+
+  const storedValue = localStorage.getItem('stay-focused.sound-volume')
+  const parsed = storedValue ? parseFloat(storedValue) : 0.5
+  return Number.isNaN(parsed) ? 50 : Math.round(parsed * 100)
 }

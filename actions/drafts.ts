@@ -236,7 +236,7 @@ function mapDeepLearnNoteRow(row: DeepLearnNoteRow): DeepLearnNote {
 }
 
 function mapDeepLearnShelfRow(row: Record<string, unknown>): DraftShelfItem {
-  const module = row.modules as { title: string } | null
+  const moduleRow = row.modules as { title: string } | null
   const source = row.module_resources as { title: string } | null
   const status = row.status === 'pending'
     ? 'generating'
@@ -260,7 +260,7 @@ function mapDeepLearnShelfRow(row: Record<string, unknown>): DraftShelfItem {
     createdAt: row.created_at as string,
     sourceModuleId: (row.module_id as string | null) ?? null,
     sourceResourceId: (row.resource_id as string | null) ?? null,
-    moduleTitle: module?.title ?? null,
+    moduleTitle: moduleRow?.title ?? null,
     quizReady: Boolean(row.quiz_ready),
     summary: (row.overview as string | null) ?? null,
   }
