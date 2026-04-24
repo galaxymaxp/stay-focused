@@ -4,7 +4,7 @@ import type { CSSProperties, ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { syncCourses, testCanvasConnection, type CanvasConnectionResult } from '@/actions/canvas'
+import { refreshCourseInstructors, syncCourses, testCanvasConnection, type CanvasConnectionResult } from '@/actions/canvas'
 import { CanvasSyncStatusCard } from '@/components/CanvasSyncStatusCard'
 import { UnsyncButton } from '@/components/UnsyncButton'
 import { useCanvasSyncStatus, type CanvasSyncPhase, type SyncActivitySnapshot } from '@/components/useCanvasSyncStatus'
@@ -66,6 +66,8 @@ export function ConnectCanvasFlow({
   const [savedConnection, setSavedConnection] = useState<SavedCanvasConnection | null>(initialSavedConnection)
   const [isTesting, startTesting] = useTransition()
   const [isSyncing, startSyncing] = useTransition()
+  const [isRefreshingInstructors, startRefreshingInstructors] = useTransition()
+  const [instructorRefreshResult, setInstructorRefreshResult] = useState<{ message: string; tone: 'success' | 'error' } | null>(null)
   const initialActionHandledRef = useRef(false)
   const syncStatus = useCanvasSyncStatus(lastSync)
   const {
@@ -275,6 +277,35 @@ export function ConnectCanvasFlow({
     })
   }
 
+  function handleRefreshInstructors() {
+    const url = canvasUrl || connectionSummary?.url || ''
+    const tok = token || savedConnection?.token || ''
+    if (!url || !tok) {
+      setInstructorRefreshResult({ message: 'Reconnect to Canvas first so instructor names can be refreshed.', tone: 'error' })
+      return
+    }
+
+    setInstructorRefreshResult(null)
+    startRefreshingInstructors(async () => {
+      try {
+        const result = await refreshCourseInstructors({ canvasUrl: url, accessToken: tok })
+        if ('error' in result) {
+          setInstructorRefreshResult({ message: result.error, tone: 'error' })
+          return
+        }
+        setInstructorRefreshResult({
+          message: result.updatedCount > 0
+            ? `Updated instructor names for ${result.updatedCount} course${result.updatedCount === 1 ? '' : 's'}.`
+            : 'No instructor names were updated. Canvas may not have teacher data available for your courses.',
+          tone: result.updatedCount > 0 ? 'success' : 'error',
+        })
+        router.refresh()
+      } catch (error) {
+        setInstructorRefreshResult({ message: error instanceof Error ? error.message : 'Could not refresh instructor names.', tone: 'error' })
+      }
+    })
+  }
+
   return (
     <main className="page-stack" style={{ gap: '1rem' }}>
       <header className="motion-card" style={{ display: 'grid', gap: '0.5rem' }}>
@@ -310,7 +341,23 @@ export function ConnectCanvasFlow({
               <button type="button" onClick={handleForgetConnection} disabled={isTesting || isSyncActionPending} className="ui-button ui-button-ghost ui-button-sm">
                 Forget saved connection
               </button>
+              <button type="button" onClick={handleRefreshInstructors} disabled={isRefreshingInstructors || isTesting || isSyncActionPending} className="ui-button ui-button-ghost ui-button-sm">
+                {isRefreshingInstructors ? 'Refreshing...' : 'Refresh instructor names'}
+              </button>
             </div>
+            {instructorRefreshResult && (
+              <div style={{
+                borderRadius: '12px',
+                border: `1px solid ${instructorRefreshResult.tone === 'success' ? 'color-mix(in srgb, var(--green) 22%, var(--border-subtle) 78%)' : 'color-mix(in srgb, var(--red) 22%, var(--border-subtle) 78%)'}`,
+                background: instructorRefreshResult.tone === 'success' ? 'color-mix(in srgb, var(--green-light) 18%, var(--surface-elevated) 82%)' : 'color-mix(in srgb, var(--red-light) 20%, var(--surface-elevated) 80%)',
+                padding: '0.85rem 0.95rem',
+                fontSize: '13px',
+                lineHeight: 1.6,
+                color: 'var(--text-secondary)',
+              }}>
+                {instructorRefreshResult.message}
+              </div>
+            )}
           </div>
         ) : (
           <div style={{ display: 'grid', gap: '0.85rem' }}>

@@ -192,6 +192,53 @@ export async function syncCourse(formData: FormData): Promise<{ error: string } 
   redirect(`/modules/${result.moduleId}`)
 }
 
+export async function refreshCourseInstructors(input: {
+  canvasUrl: string
+  accessToken: string
+}): Promise<{ success: true; updatedCount: number } | { error: string }> {
+  if (!supabase) {
+    return { error: 'Supabase is not configured yet.' }
+  }
+
+  const user = await requireAuthenticatedUserServer()
+
+  let config: ReturnType<typeof getRequiredCanvasConfig>
+  try {
+    config = getRequiredCanvasConfig(input.canvasUrl, input.accessToken)
+  } catch (error) {
+    return { error: formatCanvasActionError(error, 'We could not connect to Canvas.') }
+  }
+
+  let canvasCourses: Awaited<ReturnType<typeof getCourses>>
+  try {
+    canvasCourses = await getCourses(config)
+  } catch (error) {
+    logCanvasActionFailure('refresh instructors: fetch courses', error)
+    return { error: formatCanvasActionError(error, 'We could not fetch courses from Canvas.') }
+  }
+
+  let updatedCount = 0
+
+  for (const course of canvasCourses) {
+    const instructor = resolveInstructorName(course)
+    if (instructor === 'Canvas course staff') continue
+
+    const { error } = await supabase
+      .from('courses')
+      .update({ instructor })
+      .eq('user_id', user.id)
+      .eq('canvas_course_id', course.id)
+      .eq('canvas_instance_url', normalizeCanvasUrl(config.url))
+
+    if (!error) updatedCount++
+  }
+
+  revalidatePath('/')
+  revalidatePath('/canvas')
+
+  return { success: true, updatedCount }
+}
+
 export async function syncCourses(input: {
   courses: SyncCourseInput[]
   canvasUrl: string
