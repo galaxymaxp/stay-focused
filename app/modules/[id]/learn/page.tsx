@@ -10,7 +10,7 @@ import { classifyDeepLearnResourceReadiness } from '@/lib/deep-learn-readiness'
 import { listDeepLearnNotesForModule } from '@/lib/deep-learn-store'
 import { getDeepLearnResourceUiState } from '@/lib/deep-learn-ui'
 import { buildModuleLearnOverview } from '@/lib/module-learn-overview'
-import { getModuleSummary, listResourceSummaries } from '@/lib/source-summaries'
+import { buildModuleOverviewFallback, getModuleSummary, listResourceSummaries } from '@/lib/source-summaries'
 import { getSourceReadinessBucket, normalizeSourceReadiness } from '@/lib/source-readiness'
 import { buildModuleDoHref, buildModuleInspectHref, getSearchParamValue, getTaskElementId } from '@/lib/stay-focused-links'
 import {
@@ -56,6 +56,11 @@ export default async function LearnPage({ params, searchParams }: Props) {
     listResourceSummaries(storedResources.map((resource) => resource.id)),
     getModuleSummary(module.id),
   ])
+  const moduleOverviewFallback = buildModuleOverviewFallback({
+    readyCount: overview.readyStudyFileCount,
+    needsActionCount: overview.limitedStudyFileCount,
+    summary: moduleSummary,
+  })
   const deepLearnSelectionByDisplayId = new Map(
     overview.studyMaterials.map((material) => [
       material.resource.id,
@@ -132,7 +137,9 @@ export default async function LearnPage({ params, searchParams }: Props) {
               {courseInstructor || 'Instructor name not available'}
             </p>
             <p style={{ margin: '0.48rem 0 0', fontSize: '14px', lineHeight: 1.76, color: 'var(--text-secondary)', maxWidth: '52rem' }}>
-              {overview.summary ?? module.summary ?? overview.summaryStateMessage}
+              {moduleSummary?.status === 'ready' && moduleSummary.summary
+                ? moduleSummary.summary
+                : moduleOverviewFallback}
             </p>
           </div>
 
@@ -210,7 +217,7 @@ export default async function LearnPage({ params, searchParams }: Props) {
 
           <ModuleOverviewCard
             moduleId={module.id}
-            fallbackSummary={overview.summary ?? module.summary ?? overview.summaryStateMessage}
+            fallbackSummary={moduleOverviewFallback}
             readyCount={overview.readyStudyFileCount}
             needsActionCount={overview.limitedStudyFileCount}
             unsupportedCount={overview.unavailableStudyFileCount}

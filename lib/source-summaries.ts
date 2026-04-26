@@ -1,7 +1,9 @@
 import crypto from 'node:crypto'
 import OpenAI from 'openai'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { getAuthenticatedUserServer } from '@/lib/auth-server'
 import { getModuleResourceQualityInfo, normalizeModuleResourceStudyText } from '@/lib/module-resource-quality'
+import { createSupabaseServiceRoleClient } from '@/lib/supabase-service'
 import { supabase } from '@/lib/supabase'
 import type { Module, ModuleResource } from '@/lib/types'
 
@@ -33,11 +35,39 @@ export interface ModuleSummaryRow {
   generatedAt: string | null
 }
 
+export interface ModuleOverviewInput {
+  module: Pick<Module, 'id' | 'title' | 'summary' | 'concepts' | 'recommended_order'>
+  resources: ModuleResource[]
+  resourceSummaries: Map<string, ResourceSummaryRow>
+}
+
+export interface CleanModuleOverviewInput {
+  moduleTitle: string
+  moduleSummary: string | null
+  topicHints: string[]
+  sourceLines: string[]
+  suggestedFirstSource: string | null
+  warnings: string[]
+  cleanMaterialCharCount: number
+  assignmentOnly: boolean
+  enoughCleanMaterial: boolean
+}
+
+const MIN_RESOURCE_SUMMARY_TEXT = 220
+const MIN_MODULE_CLEAN_TEXT = 260
+const SUMMARY_MODEL_FALLBACK = 'gpt-4o-mini'
+const NOT_ENOUGH_CLEAN_MATERIAL = 'Not enough clean study material yet. This module currently contains task instructions, but no readable study source has been processed.'
+
+const ADMIN_NOISE_PATTERN = /\b(?:canvas inbox|facebook messenger|credit hours?|prerequisites?|prepared by|instructor|contact\s*(?:no|number|email)?|course\s+introduction\s+and\s+orientation|dashboard|account|calendar|grades|people|syllabus|announcements|assignments|discussions|quizzes)\b/i
+const ASSIGNMENT_PROMPT_PATTERN = /\b(?:as a group|answer the following|submit|submission|deadline|due date|1 whole sheet of paper|write your answer|upload|turn in|perform the following|situational cases?)\b/i
+const FILE_NAME_ONLY_PATTERN = /^[\w\s().-]+\.(?:pdf|pptx?|docx?|txt|pkt)$/i
+
 export async function listResourceSummaries(resourceIds: string[]) {
   const user = await getAuthenticatedUserServer()
-  if (!supabase || !user || resourceIds.length === 0) return new Map<string, ResourceSummaryRow>()
+  const client = getSummaryClient()
+  if (!client || !user || resourceIds.length === 0) return new Map<string, ResourceSummaryRow>()
 
-  const { data, error } = await supabase
+  const { data, error } = await client
     .from('resource_summaries')
     .select('*')
     .eq('user_id', user.id)
@@ -54,9 +84,10 @@ export async function listResourceSummaries(resourceIds: string[]) {
 
 export async function getModuleSummary(moduleId: string) {
   const user = await getAuthenticatedUserServer()
-  if (!supabase || !user) return null
+  const client = getSummaryClient()
+  if (!client || !user) return null
 
-  const { data, error } = await supabase
+  const { data, error } = await client
     .from('module_summaries')
     .select('*')
     .eq('user_id', user.id)
@@ -84,9 +115,15 @@ export async function getModuleSummary(moduleId: string) {
 
 export async function summarizeResourceForUser(resourceId: string) {
   const user = await getAuthenticatedUserServer()
-  if (!supabase || !user) throw new Error('Sign in before summarizing sources.')
+  if (!user) throw new Error('Sign in before summarizing sources.')
+  return summarizeResourceForUserId(resourceId, user.id)
+}
 
-  const { data: resourceRow, error: resourceError } = await supabase
+export async function summarizeResourceForUserId(resourceId: string, userId: string, inputClient?: SupabaseClient | null) {
+  const client = inputClient ?? getSummaryClient()
+  if (!client) throw new Error('Supabase is not configured yet.')
+
+  const { data: resourceRow, error: resourceError } = await client
     .from('module_resources')
     .select('*')
     .eq('id', resourceId)
@@ -94,7 +131,7 @@ export async function summarizeResourceForUser(resourceId: string) {
   if (resourceError || !resourceRow) throw new Error(resourceError?.message ?? 'Source not found.')
 
   const resource = adaptResourceForSummary(resourceRow as Record<string, unknown>)
-  await verifyCourseOwnership(resource.courseId, user.id)
+  await verifyCourseOwnership(client, resource.courseId, userId)
 
   const quality = getModuleResourceQualityInfo(resource)
   if (!(quality.quality === 'strong' || quality.quality === 'usable') || !quality.meaningfulText.trim()) {
@@ -105,19 +142,22 @@ export async function summarizeResourceForUser(resourceId: string) {
   }
 
   const sourceHash = buildResourceSummaryHash(resource)
-  const cached = await getCachedResourceSummary(resource.id, user.id)
+  const cached = await getCachedResourceSummary(client, resource.id, userId)
   if (cached?.status === 'ready' && cached.sourceHash === sourceHash && cached.summary) return cached
 
   const model = getSummaryModel()
-  const promptText = quality.meaningfulText.slice(0, 18000)
+  const promptText = cleanStudyTextForOverview(quality.meaningfulText).slice(0, 18000)
+  if (promptText.trim().length < MIN_RESOURCE_SUMMARY_TEXT) {
+    throw new Error('This source does not have enough clean readable text to summarize yet.')
+  }
   const generated = await generateResourceSummaryJson(resource.title, promptText, model)
   const now = new Date().toISOString()
 
-  const { data, error } = await supabase
+  const { data, error } = await client
     .from('resource_summaries')
     .upsert({
       resource_id: resource.id,
-      user_id: user.id,
+      user_id: userId,
       summary: generated.summary,
       topics: generated.topics,
       study_value: generated.study_value,
@@ -132,15 +172,24 @@ export async function summarizeResourceForUser(resourceId: string) {
     .select('*')
     .single()
 
+  if (isMissingSchemaObjectError(error)) {
+    throw new Error('Resource summaries are not installed yet. Apply the source summaries migration and reload the Supabase schema cache.')
+  }
   if (error || !data) throw new Error(error?.message ?? 'Could not save source summary.')
   return adaptResourceSummaryRow(data as Record<string, unknown>)
 }
 
 export async function summarizeModuleForUser(moduleId: string) {
   const user = await getAuthenticatedUserServer()
-  if (!supabase || !user) throw new Error('Sign in before summarizing modules.')
+  if (!user) throw new Error('Sign in before summarizing modules.')
+  return summarizeModuleForUserId(moduleId, user.id)
+}
 
-  const { data: moduleRow, error: moduleError } = await supabase
+export async function summarizeModuleForUserId(moduleId: string, userId: string, inputClient?: SupabaseClient | null) {
+  const client = inputClient ?? getSummaryClient()
+  if (!client) throw new Error('Supabase is not configured yet.')
+
+  const { data: moduleRow, error: moduleError } = await client
     .from('modules')
     .select('*')
     .eq('id', moduleId)
@@ -149,9 +198,9 @@ export async function summarizeModuleForUser(moduleId: string) {
 
   const moduleRecord = adaptModuleForSummary(moduleRow as Record<string, unknown>)
   if (!moduleRecord.courseId) throw new Error('Module is missing course context.')
-  await verifyCourseOwnership(moduleRecord.courseId, user.id)
+  await verifyCourseOwnership(client, moduleRecord.courseId, userId)
 
-  const { data: resourceRows, error: resourceError } = await supabase
+  const { data: resourceRows, error: resourceError } = await client
     .from('module_resources')
     .select('*')
     .eq('module_id', moduleId)
@@ -160,23 +209,39 @@ export async function summarizeModuleForUser(moduleId: string) {
 
   const resources = (resourceRows ?? []).map((row) => adaptResourceForSummary(row as Record<string, unknown>))
   const sourceHash = buildModuleSummaryHash(moduleRecord, resources)
-  const cached = await getCachedModuleSummary(moduleId, user.id)
+  const cached = await getCachedModuleSummary(client, moduleId, userId)
   if (cached?.status === 'ready' && cached.sourceHash === sourceHash && cached.summary) return cached
 
-  const resourceSummaries = await listResourceSummaries(resources.map((resource) => resource.id))
+  const resourceSummaries = await getResourceSummaryMapForUser(client, resources.map((resource) => resource.id), userId)
+  const cleanInput = buildCleanModuleOverviewInput({
+    module: moduleRecord,
+    resources,
+    resourceSummaries,
+  })
+
+  if (!cleanInput.enoughCleanMaterial) {
+    return upsertModuleSummaryFailure(client, {
+      moduleId,
+      userId,
+      sourceHash,
+      error: cleanInput.assignmentOnly ? NOT_ENOUGH_CLEAN_MATERIAL : 'Overview will appear after readable sources are processed.',
+      warnings: cleanInput.warnings,
+    })
+  }
+
   const model = getSummaryModel()
-  const generated = await generateModuleSummaryJson(moduleRecord, resources, resourceSummaries, model)
+  const generated = await generateModuleSummaryJson(moduleRecord, cleanInput, model)
   const now = new Date().toISOString()
 
-  const { data, error } = await supabase
+  const { data, error } = await client
     .from('module_summaries')
     .upsert({
       module_id: moduleId,
-      user_id: user.id,
+      user_id: userId,
       summary: generated.summary,
       topics: generated.topics,
       suggested_order: generated.suggested_order,
-      warnings: generated.warnings,
+      warnings: [...cleanInput.warnings, ...generated.warnings].slice(0, 8),
       status: 'ready',
       model,
       source_hash: sourceHash,
@@ -194,14 +259,127 @@ export async function summarizeModuleForUser(moduleId: string) {
   return adaptModuleSummaryRow(data as Record<string, unknown>)
 }
 
+export async function generateSummariesForSyncedModule(input: {
+  moduleId: string
+  userId: string
+}) {
+  const client = getSummaryClient()
+  const counts = { resourceSummaries: 0, moduleSummaries: 0, skipped: 0, failed: 0 }
+  if (!client) return counts
+
+  const { data: resourceRows, error } = await client
+    .from('module_resources')
+    .select('id')
+    .eq('module_id', input.moduleId)
+
+  if (isMissingSchemaObjectError(error)) return counts
+  if (error) {
+    counts.failed += 1
+    return counts
+  }
+
+  for (const row of resourceRows ?? []) {
+    const resourceId = typeof row.id === 'string' ? row.id : null
+    if (!resourceId) continue
+    try {
+      await summarizeResourceForUserId(resourceId, input.userId, client)
+      counts.resourceSummaries += 1
+    } catch (error) {
+      if (isExpectedSummarySkip(error)) counts.skipped += 1
+      else counts.failed += 1
+    }
+  }
+
+  try {
+    const summary = await summarizeModuleForUserId(input.moduleId, input.userId, client)
+    if (summary.status === 'ready') counts.moduleSummaries += 1
+    else counts.skipped += 1
+  } catch (error) {
+    if (isExpectedSummarySkip(error)) counts.skipped += 1
+    else counts.failed += 1
+  }
+
+  return counts
+}
+
 export function buildResourceSummaryHash(resource: ModuleResource) {
   return hashObject({
     id: resource.id,
     status: resource.extractionStatus,
     text: normalizeModuleResourceStudyText(resource.extractedText ?? resource.extractedTextPreview ?? ''),
+    count: resource.extractedCharCount,
     error: resource.extractionError,
     extension: resource.extension,
   })
+}
+
+export function buildCleanModuleOverviewInput(input: ModuleOverviewInput): CleanModuleOverviewInput {
+  const rankedSources = input.resources
+    .map((resource) => {
+      const summary = input.resourceSummaries.get(resource.id)
+      const quality = getModuleResourceQualityInfo(resource)
+      const textFromSummary = summary?.status === 'ready' && summary.summary
+        ? `${summary.summary}\nTopics: ${summary.topics.join(', ')}\nSuggested use: ${summary.suggestedUse ?? ''}`
+        : ''
+      const cleanText = textFromSummary || cleanStudyTextForOverview(quality.meaningfulText)
+      const normalizedType = normalizeSourceType(resource)
+      const assignmentLike = isAssignmentLike(resource, cleanText)
+      const noiseScore = scoreNoise(cleanText) + scoreNoise(resource.title)
+      const score = (summary?.status === 'ready' ? 80 : 0)
+        + (quality.quality === 'strong' ? 45 : quality.quality === 'usable' ? 28 : 0)
+        + (normalizedType === 'file' ? 16 : normalizedType === 'page' ? 8 : 0)
+        - (assignmentLike ? 70 : 0)
+        - noiseScore
+
+      return {
+        resource,
+        cleanText,
+        score,
+        assignmentLike,
+        hasCachedSummary: summary?.status === 'ready' && Boolean(summary.summary),
+        usable: cleanText.length >= (summary?.status === 'ready' ? 80 : MIN_RESOURCE_SUMMARY_TEXT) && !assignmentLike && score > 0,
+      }
+    })
+    .sort((left, right) => right.score - left.score)
+
+  const usableSources = rankedSources.filter((source) => source.usable)
+  const sourceLines = usableSources.slice(0, 8).map((source) => {
+    const label = summarizeResourceLabel(source.resource)
+    return `- ${source.resource.title}${label ? ` (${label})` : ''}: ${source.cleanText.slice(0, 1200)}`
+  })
+  const cleanMaterialCharCount = sourceLines.join('\n').length
+  const assignmentOnly = rankedSources.length > 0 && usableSources.length === 0 && rankedSources.every((source) => source.assignmentLike || scoreNoise(source.cleanText) >= 30)
+  const warningCount = input.resources.filter((resource) => {
+    const quality = getModuleResourceQualityInfo(resource)
+    return quality.quality === 'empty' || quality.quality === 'failed' || quality.quality === 'unsupported'
+  }).length
+  const warnings = [
+    warningCount > 0 ? `${warningCount} source${warningCount === 1 ? '' : 's'} need attention before the overview can be complete.` : null,
+    assignmentOnly ? 'Only task instructions were found.' : null,
+  ].filter((value): value is string => Boolean(value))
+
+  return {
+    moduleTitle: input.module.title,
+    moduleSummary: cleanShortText(input.module.summary),
+    topicHints: (input.module.concepts ?? []).map(cleanShortText).filter((value): value is string => Boolean(value)).slice(0, 8),
+    sourceLines,
+    suggestedFirstSource: usableSources[0]?.resource.title ?? null,
+    warnings,
+    cleanMaterialCharCount,
+    assignmentOnly,
+    enoughCleanMaterial: cleanMaterialCharCount >= MIN_MODULE_CLEAN_TEXT || usableSources.some((source) => source.hasCachedSummary),
+  }
+}
+
+export function buildModuleOverviewFallback(input: {
+  readyCount: number
+  needsActionCount: number
+  summary: ModuleSummaryRow | null
+}) {
+  if (input.summary?.status === 'failed' && input.summary.error) return input.summary.error
+  if (input.readyCount > 0) return 'Overview is being prepared from readable study sources.'
+  if (input.needsActionCount > 0) return 'Overview will appear after readable sources are processed.'
+  return 'No readable study source is available for an overview yet.'
 }
 
 function buildModuleSummaryHash(module: Module, resources: ModuleResource[]) {
@@ -209,7 +387,7 @@ function buildModuleSummaryHash(module: Module, resources: ModuleResource[]) {
     module: {
       id: module.id,
       title: module.title,
-      summary: module.summary,
+      summary: cleanShortText(module.summary),
       concepts: module.concepts,
       recommended_order: module.recommended_order,
     },
@@ -218,14 +396,30 @@ function buildModuleSummaryHash(module: Module, resources: ModuleResource[]) {
       title: resource.title,
       status: resource.extractionStatus,
       extension: resource.extension,
+      count: resource.extractedCharCount,
       hash: buildResourceSummaryHash(resource),
     })),
   })
 }
 
-async function getCachedResourceSummary(resourceId: string, userId: string) {
-  if (!supabase) return null
-  const { data, error } = await supabase
+async function getResourceSummaryMapForUser(client: SupabaseClient, resourceIds: string[], userId: string) {
+  if (resourceIds.length === 0) return new Map<string, ResourceSummaryRow>()
+
+  const { data, error } = await client
+    .from('resource_summaries')
+    .select('*')
+    .eq('user_id', userId)
+    .in('resource_id', resourceIds)
+
+  if (isMissingSchemaObjectError(error) || error) return new Map<string, ResourceSummaryRow>()
+  return new Map((data ?? []).map((row) => {
+    const summary = adaptResourceSummaryRow(row as Record<string, unknown>)
+    return [summary.resourceId, summary]
+  }))
+}
+
+async function getCachedResourceSummary(client: SupabaseClient, resourceId: string, userId: string) {
+  const { data, error } = await client
     .from('resource_summaries')
     .select('*')
     .eq('resource_id', resourceId)
@@ -235,15 +429,45 @@ async function getCachedResourceSummary(resourceId: string, userId: string) {
   return adaptResourceSummaryRow(data as Record<string, unknown>)
 }
 
-async function getCachedModuleSummary(moduleId: string, userId: string) {
-  if (!supabase) return null
-  const { data, error } = await supabase
+async function getCachedModuleSummary(client: SupabaseClient, moduleId: string, userId: string) {
+  const { data, error } = await client
     .from('module_summaries')
     .select('*')
     .eq('module_id', moduleId)
     .eq('user_id', userId)
     .maybeSingle()
   if (error || !data) return null
+  return adaptModuleSummaryRow(data as Record<string, unknown>)
+}
+
+async function upsertModuleSummaryFailure(client: SupabaseClient, input: {
+  moduleId: string
+  userId: string
+  sourceHash: string
+  error: string
+  warnings: string[]
+}) {
+  const now = new Date().toISOString()
+  const { data, error } = await client
+    .from('module_summaries')
+    .upsert({
+      module_id: input.moduleId,
+      user_id: input.userId,
+      summary: null,
+      topics: [],
+      suggested_order: [],
+      warnings: input.warnings,
+      status: 'failed',
+      model: null,
+      source_hash: input.sourceHash,
+      error: input.error,
+      generated_at: null,
+      updated_at: now,
+    }, { onConflict: 'module_id,user_id' })
+    .select('*')
+    .single()
+
+  if (error || !data) throw new Error(error?.message ?? 'Could not save module overview status.')
   return adaptModuleSummaryRow(data as Record<string, unknown>)
 }
 
@@ -254,10 +478,10 @@ async function generateResourceSummaryJson(title: string, text: string, model: s
     response_format: { type: 'json_object' },
     temperature: 0.2,
     messages: [
-      { role: 'system', content: 'Summarize student study sources. Return only strict JSON with summary, topics, study_value, and suggested_use.' },
+      { role: 'system', content: 'Summarize student study sources. Return only strict JSON with summary, topics, study_value, and suggested_use. Avoid Canvas navigation, instructor contact details, due dates, and assignment submission instructions unless they are the source purpose.' },
       {
         role: 'user',
-        content: `Source title: ${title}\n\nReturn JSON exactly shaped like {"summary":"...","topics":["..."],"study_value":"high | medium | low","suggested_use":"read first | review before quiz | use for lab practice | reference only"}.\n\nReadable text:\n${text}`,
+        content: `Source title: ${title}\n\nReturn JSON exactly shaped like {"summary":"...","topics":["..."],"study_value":"high | medium | low","suggested_use":"read first | review before quiz | use for lab practice | reference only"}.\n\nClean readable study text:\n${text}`,
       },
     ],
   })
@@ -266,33 +490,45 @@ async function generateResourceSummaryJson(title: string, text: string, model: s
 
 async function generateModuleSummaryJson(
   module: Module,
-  resources: ModuleResource[],
-  summaries: Map<string, ResourceSummaryRow>,
+  cleanInput: CleanModuleOverviewInput,
   model: string,
 ) {
   const client = new OpenAI({ apiKey: getOpenAIApiKey() })
-  const sourceLines = resources.map((resource) => {
-    const summary = summaries.get(resource.id)
-    return `- ${resource.title} (${resource.resourceType}${resource.extension ? ` .${resource.extension}` : ''}, ${resource.extractionStatus}): ${summary?.summary ?? resource.extractionError ?? 'No cached summary'}`
-  }).join('\n')
   const response = await client.chat.completions.create({
     model,
     response_format: { type: 'json_object' },
     temperature: 0.2,
     messages: [
-      { role: 'system', content: 'Create compact module overviews for students. Return only strict JSON.' },
+      {
+        role: 'system',
+        content: [
+          'Create compact module overviews for students.',
+          'Use the cleaned/ranked study sources and cached source summaries.',
+          'Do not quote raw slide headers, Canvas inbox/navigation, Facebook Messenger, credit hours, prerequisites, prepared-by metadata, filenames alone, or assignment submission prompts as the overview.',
+          'If a source is a task prompt, mention it only as a warning or suggested action, not as the module concept.',
+          'Return only strict JSON.',
+        ].join(' '),
+      },
       {
         role: 'user',
-        content: `Return JSON exactly shaped like {"summary":"...","topics":["..."],"suggested_order":["..."],"warnings":["..."]}.\n\nModule: ${module.title}\nExisting module summary: ${module.summary ?? 'None'}\nExisting topics: ${(module.concepts ?? []).join(', ') || 'None'}\nSources:\n${sourceLines}`,
+        content: [
+          'Return JSON exactly shaped like {"summary":"...","topics":["..."],"suggested_order":["..."],"warnings":["..."]}.',
+          `Module: ${module.title}`,
+          `Existing clean topic hints: ${cleanInput.topicHints.join(', ') || 'None'}`,
+          `Suggested first source: ${cleanInput.suggestedFirstSource ?? 'None'}`,
+          `Needs-action warnings: ${cleanInput.warnings.join(' ') || 'None'}`,
+          'Clean ranked source material:',
+          cleanInput.sourceLines.join('\n'),
+        ].join('\n\n'),
       },
     ],
   })
-  return parseModuleSummary(response.choices[0]?.message.content)
+  return parseModuleSummary(response.choices[0]?.message.content, cleanInput)
 }
 
-async function verifyCourseOwnership(courseId: string | null, userId: string) {
-  if (!supabase || !courseId) throw new Error('Missing course context.')
-  const { data, error } = await supabase
+async function verifyCourseOwnership(client: SupabaseClient, courseId: string | null, userId: string) {
+  if (!courseId) throw new Error('Missing course context.')
+  const { data, error } = await client
     .from('courses')
     .select('id')
     .eq('id', courseId)
@@ -379,21 +615,103 @@ function parseResourceSummary(value: string | null | undefined) {
     ? parsed.study_value
     : 'medium'
   return {
-    summary: typeof parsed.summary === 'string' ? parsed.summary : 'Summary unavailable.',
-    topics: Array.isArray(parsed.topics) ? parsed.topics.filter((topic): topic is string => typeof topic === 'string').slice(0, 8) : [],
+    summary: typeof parsed.summary === 'string' ? sanitizeGeneratedText(parsed.summary) : 'Summary unavailable.',
+    topics: Array.isArray(parsed.topics) ? parsed.topics.filter((topic): topic is string => typeof topic === 'string').map(sanitizeGeneratedText).filter(Boolean).slice(0, 8) : [],
     study_value: studyValue,
-    suggested_use: typeof parsed.suggested_use === 'string' ? parsed.suggested_use : 'review before quiz',
+    suggested_use: typeof parsed.suggested_use === 'string' ? sanitizeGeneratedText(parsed.suggested_use) : 'review before quiz',
   }
 }
 
-function parseModuleSummary(value: string | null | undefined) {
+function parseModuleSummary(value: string | null | undefined, cleanInput: CleanModuleOverviewInput) {
   const parsed = JSON.parse(value ?? '{}') as Record<string, unknown>
+  const summary = typeof parsed.summary === 'string' ? sanitizeGeneratedText(parsed.summary) : 'Module summary unavailable.'
   return {
-    summary: typeof parsed.summary === 'string' ? parsed.summary : 'Module summary unavailable.',
-    topics: Array.isArray(parsed.topics) ? parsed.topics.filter((topic): topic is string => typeof topic === 'string').slice(0, 10) : [],
-    suggested_order: Array.isArray(parsed.suggested_order) ? parsed.suggested_order.filter((item): item is string => typeof item === 'string').slice(0, 8) : [],
-    warnings: Array.isArray(parsed.warnings) ? parsed.warnings.filter((item): item is string => typeof item === 'string').slice(0, 8) : [],
+    summary: cleanGeneratedOverview(summary, cleanInput),
+    topics: Array.isArray(parsed.topics) ? parsed.topics.filter((topic): topic is string => typeof topic === 'string').map(sanitizeGeneratedText).filter(Boolean).slice(0, 10) : [],
+    suggested_order: Array.isArray(parsed.suggested_order) ? parsed.suggested_order.filter((item): item is string => typeof item === 'string').map(sanitizeGeneratedText).filter(Boolean).slice(0, 8) : [],
+    warnings: Array.isArray(parsed.warnings) ? parsed.warnings.filter((item): item is string => typeof item === 'string').map(sanitizeGeneratedText).filter(Boolean).slice(0, 8) : [],
   }
+}
+
+export function cleanStudyTextForOverview(text: string) {
+  const normalized = normalizeModuleResourceStudyText(text)
+  const seen = new Set<string>()
+  const lines = normalized
+    .split('\n')
+    .map((line) => line.replace(/^slide:\s*/i, '').trim())
+    .filter((line) => {
+      if (!line || line.length < 24) return false
+      if (ADMIN_NOISE_PATTERN.test(line) || ASSIGNMENT_PROMPT_PATTERN.test(line) || FILE_NAME_ONLY_PATTERN.test(line)) return false
+      const key = normalizeLookup(line)
+      if (!key || seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+
+  return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim()
+}
+
+function cleanShortText(value: string | null | undefined) {
+  if (!value) return null
+  const cleaned = cleanStudyTextForOverview(value)
+  if (cleaned.length >= 80) return cleaned.slice(0, 700)
+  const trimmed = sanitizeGeneratedText(value)
+  if (ADMIN_NOISE_PATTERN.test(trimmed) || ASSIGNMENT_PROMPT_PATTERN.test(trimmed) || FILE_NAME_ONLY_PATTERN.test(trimmed)) return null
+  return trimmed || null
+}
+
+function cleanGeneratedOverview(value: string, cleanInput: CleanModuleOverviewInput) {
+  const cleaned = sanitizeGeneratedText(value)
+  if (!cleaned || scoreNoise(cleaned) >= 30 || ASSIGNMENT_PROMPT_PATTERN.test(cleaned)) {
+    return cleanInput.suggestedFirstSource
+      ? `This module has readable study material ready. Start with ${cleanInput.suggestedFirstSource}, then review the remaining sources before generating a learning pack.`
+      : 'This module has readable study material ready for review.'
+  }
+  return cleaned
+}
+
+function sanitizeGeneratedText(value: string) {
+  return value
+    .replace(/^slide:\s*/i, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function scoreNoise(value: string) {
+  if (!value) return 0
+  let score = 0
+  if (ADMIN_NOISE_PATTERN.test(value)) score += 30
+  if (ASSIGNMENT_PROMPT_PATTERN.test(value)) score += 25
+  if (FILE_NAME_ONLY_PATTERN.test(value.trim())) score += 20
+  if (/^slide:/i.test(value.trim())) score += 10
+  return score
+}
+
+function normalizeSourceType(resource: ModuleResource) {
+  const metadataType = typeof resource.metadata.normalizedSourceType === 'string' ? resource.metadata.normalizedSourceType.toLowerCase() : ''
+  const type = `${metadataType} ${resource.resourceType}`.toLowerCase()
+  if (type.includes('assignment')) return 'assignment'
+  if (type.includes('quiz')) return 'assignment'
+  if (type.includes('discussion')) return 'assignment'
+  if (type.includes('page')) return 'page'
+  if (type.includes('file') || resource.extension) return 'file'
+  if (type.includes('external')) return 'external'
+  return 'source'
+}
+
+function isAssignmentLike(resource: ModuleResource, text: string) {
+  const type = normalizeSourceType(resource)
+  return type === 'assignment' || ASSIGNMENT_PROMPT_PATTERN.test(resource.title) || ASSIGNMENT_PROMPT_PATTERN.test(text)
+}
+
+function summarizeResourceLabel(resource: ModuleResource) {
+  const type = normalizeSourceType(resource)
+  const extension = resource.extension ? `.${resource.extension}` : null
+  if (type === 'file' && extension) return extension
+  if (type === 'page') return 'Canvas page'
+  if (type === 'assignment') return 'task instructions'
+  if (type === 'external') return 'external link'
+  return resource.resourceType
 }
 
 function hashObject(value: unknown) {
@@ -407,7 +725,11 @@ function getOpenAIApiKey() {
 }
 
 function getSummaryModel() {
-  return process.env.OPENAI_SUMMARY_MODEL?.trim() || process.env.OPENAI_MODEL?.trim() || 'gpt-4o-mini'
+  return process.env.OPENAI_SUMMARY_MODEL?.trim() || process.env.OPENAI_MODEL?.trim() || SUMMARY_MODEL_FALLBACK
+}
+
+function getSummaryClient() {
+  return createSupabaseServiceRoleClient() ?? supabase
 }
 
 function normalizeExtractionStatus(value: unknown): ModuleResource['extractionStatus'] {
@@ -416,6 +738,17 @@ function normalizeExtractionStatus(value: unknown): ModuleResource['extractionSt
     : 'metadata_only'
 }
 
-function isMissingSchemaObjectError(error: { code?: string | null } | null | undefined) {
+function isMissingSchemaObjectError(error: { code?: string | null; message?: string | null } | null | undefined) {
   return error?.code === 'PGRST205'
+    || error?.code === '42P01'
+    || /schema cache|module_summaries|resource_summaries/i.test(error?.message ?? '')
+}
+
+function isExpectedSummarySkip(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error)
+  return /not enough|cannot be summarized|packet tracer|OPENAI_API_KEY is not set/i.test(message)
+}
+
+function normalizeLookup(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
 }

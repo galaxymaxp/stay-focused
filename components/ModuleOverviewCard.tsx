@@ -1,5 +1,6 @@
 'use client'
 
+import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import type { ModuleSummaryRow } from '@/lib/source-summaries'
 
@@ -18,20 +19,26 @@ export function ModuleOverviewCard({
   unsupportedCount: number
   summary: ModuleSummaryRow | null
 }) {
+  const router = useRouter()
   const [moduleSummary, setModuleSummary] = useState(summary)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(summary?.status === 'failed' ? summary.error : null)
+  const overviewState = getOverviewState(moduleSummary, readyCount, needsActionCount)
+  const hasReadyOverview = moduleSummary?.status === 'ready' && Boolean(moduleSummary.summary)
+  const canRefresh = readyCount > 0 || hasReadyOverview || moduleSummary?.status === 'failed'
 
-  async function generateSummary() {
+  async function refreshSummary() {
     setBusy(true)
     setError(null)
     try {
       const response = await fetch(`/api/modules/${encodeURIComponent(moduleId)}/summary`, { method: 'POST' })
       const payload = await response.json().catch(() => null) as { ok?: boolean; error?: string; summary?: ModuleSummaryRow } | null
-      if (!response.ok || !payload?.ok || !payload.summary) throw new Error(payload?.error ?? 'Could not summarize this module.')
+      if (!response.ok || !payload?.ok || !payload.summary) throw new Error(payload?.error ?? 'Could not refresh this overview.')
       setModuleSummary(payload.summary)
+      setError(payload.summary.status === 'failed' ? payload.summary.error : null)
+      router.refresh()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not summarize this module.')
+      setError(err instanceof Error ? err.message : 'Could not refresh this overview.')
     } finally {
       setBusy(false)
     }
@@ -42,15 +49,21 @@ export function ModuleOverviewCard({
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
         <div style={{ minWidth: 0, flex: '1 1 280px' }}>
           <p className="ui-kicker" style={{ margin: 0 }}>Module overview</p>
-          <p style={{ margin: '0.42rem 0 0', fontSize: '13px', lineHeight: 1.6, color: 'var(--text-secondary)' }}>
-            {moduleSummary?.summary ?? fallbackSummary}
+          <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', flexWrap: 'wrap', marginTop: '0.42rem' }}>
+            <MetricPill label={overviewState.label} tone={overviewState.tone} />
+          </div>
+          <p style={{ margin: '0.5rem 0 0', fontSize: '13px', lineHeight: 1.6, color: 'var(--text-secondary)' }}>
+            {hasReadyOverview ? moduleSummary?.summary : fallbackSummary}
           </p>
         </div>
-        {!moduleSummary?.summary && moduleSummary?.status !== 'failed' && (
-          <button type="button" onClick={generateSummary} disabled={busy} className="ui-button ui-button-secondary ui-button-xs">
-            {busy ? 'Summarizing...' : 'Summarize module'}
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={refreshSummary}
+          disabled={busy || !canRefresh}
+          className="ui-button ui-button-secondary ui-button-xs"
+        >
+          {busy ? 'Generating overview...' : getButtonLabel(moduleSummary, readyCount)}
+        </button>
       </div>
 
       <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
@@ -59,14 +72,14 @@ export function ModuleOverviewCard({
         <MetricPill label={`${unsupportedCount} reference`} tone="muted" />
       </div>
 
-      {moduleSummary?.topics && moduleSummary.topics.length > 0 && (
+      {hasReadyOverview && moduleSummary?.topics && moduleSummary.topics.length > 0 && (
         <p style={{ margin: 0, fontSize: '11px', lineHeight: 1.5, color: 'var(--text-muted)' }}>
           {moduleSummary.topics.slice(0, 7).join(' · ')}
         </p>
       )}
-      {moduleSummary?.suggestedOrder && moduleSummary.suggestedOrder.length > 0 && (
+      {hasReadyOverview && moduleSummary?.suggestedOrder && moduleSummary.suggestedOrder.length > 0 && (
         <p style={{ margin: 0, fontSize: '12px', lineHeight: 1.55, color: 'var(--text-secondary)' }}>
-          Suggested order: {moduleSummary.suggestedOrder.slice(0, 4).join(' → ')}
+          Suggested order: {moduleSummary.suggestedOrder.slice(0, 4).join(' -> ')}
         </p>
       )}
       {(moduleSummary?.warnings?.length ?? 0) > 0 && (
@@ -74,9 +87,36 @@ export function ModuleOverviewCard({
           Needs attention: {moduleSummary?.warnings.slice(0, 3).join(' ')}
         </p>
       )}
-      {error && <p style={{ margin: 0, fontSize: '11px', lineHeight: 1.45, color: 'var(--red)' }}>{error}</p>}
+      {error && moduleSummary?.status !== 'failed' && <p style={{ margin: 0, fontSize: '11px', lineHeight: 1.45, color: 'var(--red)' }}>{error}</p>}
     </div>
   )
+}
+
+function getOverviewState(summary: ModuleSummaryRow | null, readyCount: number, needsActionCount: number) {
+  if (summary?.status === 'ready' && summary.summary) {
+    const lowConfidence = summary.warnings.some((warning) => /need attention|not enough|only task/i.test(warning))
+    return {
+      label: lowConfidence ? 'Low confidence overview' : 'Ready overview',
+      tone: lowConfidence ? 'warning' as const : 'accent' as const,
+    }
+  }
+
+  if (summary?.status === 'pending') return { label: 'Generating overview', tone: 'muted' as const }
+  if (summary?.status === 'failed') {
+    return /not enough|processed|readable/i.test(summary.error ?? '')
+      ? { label: 'Needs source processing', tone: 'warning' as const }
+      : { label: 'Overview failed', tone: 'warning' as const }
+  }
+  if (readyCount > 0) return { label: 'Generating overview', tone: 'muted' as const }
+  if (needsActionCount > 0) return { label: 'Needs source processing', tone: 'warning' as const }
+  return { label: 'Needs source processing', tone: 'muted' as const }
+}
+
+function getButtonLabel(summary: ModuleSummaryRow | null, readyCount: number) {
+  if (summary?.status === 'ready' && summary.summary) return 'Refresh overview'
+  if (summary?.status === 'failed') return 'Retry overview'
+  if (readyCount <= 0) return 'Process sources first'
+  return 'Refresh overview'
 }
 
 function MetricPill({ label, tone }: { label: string; tone: 'accent' | 'warning' | 'muted' }) {

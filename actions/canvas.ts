@@ -39,6 +39,7 @@ import {
   type NormalizedCanvasCourseForSync,
 } from '@/lib/canvas-sync'
 import { dedupeAIResponseDeadlines } from '@/lib/course-work-dedupe'
+import { generateCoursePageSummaryForUserId } from '@/lib/course-page-summary'
 import { processModuleContent } from '@/lib/openai'
 import { getSupabaseLoggingContext, serializeErrorForLogging, supabase } from '@/lib/supabase'
 import {
@@ -50,6 +51,7 @@ import {
   summarizeSourceRepairCounts,
   type SourceRepairCounts,
 } from '@/lib/source-repair'
+import { generateSummariesForSyncedModule } from '@/lib/source-summaries'
 import { populateModuleTerms } from '@/actions/module-terms'
 import type { AIResponse, Course, ModuleResourceExtractionStatus, Priority, TaskItem } from '@/lib/types'
 
@@ -72,6 +74,12 @@ interface SyncCourseInput {
 interface SyncCourseResult {
   moduleId: string
   courseName: string
+  summaryCounts?: {
+    resourceSummaries: number
+    moduleSummaries: number
+    skipped: number
+    failed: number
+  }
 }
 
 interface ExistingModuleMatch {
@@ -513,9 +521,47 @@ async function syncSingleCourse(course: CanvasCourse, config: Partial<CanvasConf
     courseId: courseRecord.id,
   })
 
+  const summaryCounts = await generateSummariesAfterSync({
+    moduleId,
+    courseId: courseRecord.id,
+    userId,
+  })
+
   return {
     moduleId,
     courseName: databaseSafeCourse.name,
+    summaryCounts,
+  }
+}
+
+async function generateSummariesAfterSync(input: {
+  moduleId: string
+  courseId: string
+  userId: string
+}) {
+  try {
+    const counts = await generateSummariesForSyncedModule({
+      moduleId: input.moduleId,
+      userId: input.userId,
+    })
+    const courseCounts = await generateCoursePageSummaryForUserId({
+      courseId: input.courseId,
+      userId: input.userId,
+    })
+    console.info('[Canvas sync] summary generation', {
+      moduleId: input.moduleId,
+      courseId: input.courseId,
+      ...counts,
+      courseOverviews: courseCounts.generated,
+    })
+    return counts
+  } catch (error) {
+    console.warn('[Canvas sync] summary generation skipped', {
+      moduleId: input.moduleId,
+      courseId: input.courseId,
+      message: error instanceof Error ? error.message : String(error),
+    })
+    return { resourceSummaries: 0, moduleSummaries: 0, skipped: 0, failed: 1 }
   }
 }
 

@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import type { CourseLearnModuleCard } from '@/lib/course-learn-overview'
 import { generateCourseSummary } from '@/lib/openai'
+import { createSupabaseServiceRoleClient } from '@/lib/supabase-service'
 import { getAuthenticatedSupabaseServerContext } from '@/lib/supabase-auth-app'
 import type { Course } from '@/lib/types'
 
@@ -9,16 +11,23 @@ interface StoredCourseSummaryRow {
   ai_summary_source_hash?: string | null
 }
 
+interface CourseSummaryModuleContext {
+  id: string
+  title: string
+  summary: string | null
+  pendingTasks: { title: string }[]
+  completedTasks: unknown[]
+}
+
 export async function getPersistedCoursePageSummary(
   course: Course,
   modules: CourseLearnModuleCard[],
 ) {
-  const contextSnippet = buildCourseSummaryContextSnippet(course, modules)
   const summarySourceHash = buildCourseSummarySourceHash(course, modules)
   const authContext = await getAuthenticatedSupabaseServerContext()
 
   if (!authContext) {
-    return generateCourseSummary(course.name, contextSnippet)
+    return 'Course overview will appear after sync finishes processing sources.'
   }
 
   const { client, user } = authContext
@@ -32,31 +41,121 @@ export async function getPersistedCoursePageSummary(
   const storedSummary = ((storedRow as StoredCourseSummaryRow | null)?.ai_summary ?? '').trim()
   const storedHash = ((storedRow as StoredCourseSummaryRow | null)?.ai_summary_source_hash ?? '').trim()
 
-  if (storedSummary && storedHash === summarySourceHash) {
-    return storedSummary
-  }
-
-  const generatedSummary = (await generateCourseSummary(course.name, contextSnippet)).trim()
-  const resolvedSummary = generatedSummary && generatedSummary !== 'Course overview not available'
-    ? generatedSummary
-    : storedSummary || 'Course overview not available'
-
-  if (resolvedSummary !== 'Course overview not available') {
-    await client
-      .from('courses')
-      .update({
-        ai_summary: resolvedSummary,
-        ai_summary_source_hash: summarySourceHash,
-        ai_summary_generated_at: new Date().toISOString(),
-      })
-      .eq('id', course.id)
-      .eq('user_id', user.id)
-  }
-
-  return resolvedSummary
+  if (storedSummary && storedHash === summarySourceHash) return storedSummary
+  if (storedSummary) return `${storedSummary} Updated course overview is being prepared after sync.`
+  return 'Course overview will appear after sync finishes processing sources.'
 }
 
-function buildCourseSummaryContextSnippet(course: Course, modules: CourseLearnModuleCard[]) {
+export async function generateCoursePageSummaryForUserId(input: {
+  courseId: string
+  userId: string
+  client?: SupabaseClient | null
+}) {
+  const client = input.client ?? createSupabaseServiceRoleClient()
+  if (!client) return { generated: 0, skipped: 1, failed: 0 }
+
+  const { data: courseRow, error: courseError } = await client
+    .from('courses')
+    .select('*')
+    .eq('id', input.courseId)
+    .eq('user_id', input.userId)
+    .maybeSingle()
+
+  if (courseError || !courseRow) return { generated: 0, skipped: 0, failed: 1 }
+
+  const course = adaptCourse(courseRow as Record<string, unknown>)
+  const { data: moduleRows, error: moduleError } = await client
+    .from('modules')
+    .select('id,title,summary')
+    .eq('course_id', input.courseId)
+    .order('created_at')
+
+  if (moduleError) return { generated: 0, skipped: 0, failed: 1 }
+
+  const moduleIds = (moduleRows ?? []).map((row) => String(row.id ?? '')).filter(Boolean)
+  const summaryByModuleId = await loadModuleSummaryText(client, moduleIds, input.userId)
+  const taskCountsByModuleId = await loadTaskTitles(client, moduleIds)
+  const modules = (moduleRows ?? []).map((row) => {
+    const id = String(row.id ?? '')
+    return {
+      id,
+      title: typeof row.title === 'string' ? row.title : 'Module',
+      summary: summaryByModuleId.get(id) ?? (typeof row.summary === 'string' ? row.summary : null),
+      pendingTasks: taskCountsByModuleId.get(id) ?? [],
+      completedTasks: [],
+    } satisfies CourseSummaryModuleContext
+  })
+  const summarySourceHash = buildCourseSummarySourceHash(course, modules)
+  const storedSummary = typeof (courseRow as StoredCourseSummaryRow).ai_summary === 'string'
+    ? (courseRow as StoredCourseSummaryRow).ai_summary?.trim() ?? ''
+    : ''
+  const storedHash = typeof (courseRow as StoredCourseSummaryRow).ai_summary_source_hash === 'string'
+    ? (courseRow as StoredCourseSummaryRow).ai_summary_source_hash?.trim() ?? ''
+    : ''
+
+  if (storedSummary && storedHash === summarySourceHash) return { generated: 0, skipped: 1, failed: 0 }
+
+  const contextSnippet = buildCourseSummaryContextSnippet(course, modules)
+  if (contextSnippet.length < 160) return { generated: 0, skipped: 1, failed: 0 }
+
+  const generatedSummary = (await generateCourseSummary(course.name, contextSnippet)).trim()
+  if (!generatedSummary || generatedSummary === 'Course overview not available') return { generated: 0, skipped: 1, failed: 0 }
+
+  const { error: updateError } = await client
+    .from('courses')
+    .update({
+      ai_summary: generatedSummary,
+      ai_summary_source_hash: summarySourceHash,
+      ai_summary_generated_at: new Date().toISOString(),
+    })
+    .eq('id', input.courseId)
+    .eq('user_id', input.userId)
+
+  if (updateError) return { generated: 0, skipped: 0, failed: 1 }
+  return { generated: 1, skipped: 0, failed: 0 }
+}
+
+async function loadModuleSummaryText(client: SupabaseClient, moduleIds: string[], userId: string) {
+  if (moduleIds.length === 0) return new Map<string, string>()
+
+  const { data, error } = await client
+    .from('module_summaries')
+    .select('module_id,summary,status')
+    .eq('user_id', userId)
+    .eq('status', 'ready')
+    .in('module_id', moduleIds)
+
+  if (error) return new Map<string, string>()
+
+  return new Map((data ?? [])
+    .map((row) => [String(row.module_id ?? ''), typeof row.summary === 'string' ? row.summary : ''] as const)
+    .filter((entry) => entry[0] && entry[1].trim()))
+}
+
+async function loadTaskTitles(client: SupabaseClient, moduleIds: string[]) {
+  if (moduleIds.length === 0) return new Map<string, { title: string }[]>()
+
+  const { data, error } = await client
+    .from('task_items')
+    .select('module_id,title,status')
+    .in('module_id', moduleIds)
+    .neq('status', 'completed')
+
+  if (error) return new Map<string, { title: string }[]>()
+
+  const byModuleId = new Map<string, { title: string }[]>()
+  for (const row of data ?? []) {
+    const moduleId = String(row.module_id ?? '')
+    const title = typeof row.title === 'string' ? row.title : null
+    if (!moduleId || !title) continue
+    const existing = byModuleId.get(moduleId) ?? []
+    if (existing.length < 3) existing.push({ title })
+    byModuleId.set(moduleId, existing)
+  }
+  return byModuleId
+}
+
+function buildCourseSummaryContextSnippet(course: Course, modules: CourseSummaryModuleContext[]) {
   const moduleContext = modules
     .slice(0, 6)
     .map((module) => {
@@ -86,7 +185,7 @@ function buildCourseSummaryContextSnippet(course: Course, modules: CourseLearnMo
   return context.slice(0, 1200)
 }
 
-function buildCourseSummarySourceHash(course: Course, modules: CourseLearnModuleCard[]) {
+function buildCourseSummarySourceHash(course: Course, modules: CourseSummaryModuleContext[]) {
   const digest = createHash('sha256')
   digest.update(course.name)
   digest.update('|')
@@ -110,4 +209,18 @@ function buildCourseSummarySourceHash(course: Course, modules: CourseLearnModule
   }
 
   return digest.digest('hex')
+}
+
+function adaptCourse(row: Record<string, unknown>): Course {
+  return {
+    id: String(row.id ?? ''),
+    code: typeof row.code === 'string' ? row.code : '',
+    name: typeof row.name === 'string' ? row.name : 'Course',
+    term: typeof row.term === 'string' ? row.term : '',
+    instructor: typeof row.instructor === 'string' ? row.instructor : '',
+    focusLabel: typeof row.focus_label === 'string' ? row.focus_label : 'Course',
+    colorToken: row.color_token === 'yellow' || row.color_token === 'orange' || row.color_token === 'blue' || row.color_token === 'green'
+      ? row.color_token
+      : 'blue',
+  }
 }
