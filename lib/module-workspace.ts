@@ -710,7 +710,7 @@ function buildSummaryFallback(
   const doCount = resources.filter((resource) => resource.lane === 'do').length
   const assignmentCount = parsed.assignments.length
   const resourceCount = parsed.modules.reduce((total, module) => total + module.items.length, 0)
-  const extractedCount = resources.filter((resource) => resource.extractionStatus === 'extracted' && resource.extractedText).length
+  const extractedCount = resources.filter((resource) => (resource.extractionStatus === 'extracted' || resource.extractionStatus === 'completed') && resource.extractedText).length
 
   if (extractedCount > 0 && extractedTextBlocks.length > 0) {
     return `This module is attachment-led: ${learnCount} resource${learnCount === 1 ? '' : 's'} belong in Learn first, while ${doCount} item${doCount === 1 ? '' : 's'} are better treated as action work. ${summarizeExtractedText(extractedTextBlocks.join(' '))}`
@@ -863,7 +863,7 @@ function buildAfterReadingSteps(resources: ModuleSourceResource[], doItems: Modu
 
 function buildLearnAudit(module: Module, resources: ModuleSourceResource[], fileResources: ModuleSourceResource[]): LearnAudit {
   const hasFileBasedResources = fileResources.length > 0
-  const extractedFileResources = fileResources.filter((resource) => resource.extractionStatus === 'extracted' && resource.extractedText)
+  const extractedFileResources = fileResources.filter((resource) => (resource.extractionStatus === 'extracted' || resource.extractionStatus === 'completed') && resource.extractedText)
   const hasStructuredExtraction = Boolean(module.summary?.trim()) || (module.concepts?.length ?? 0) > 0 || (module.study_prompts?.length ?? 0) > 0
   const missingFileExtraction = hasFileBasedResources && extractedFileResources.length === 0 && !hasStructuredExtraction
 

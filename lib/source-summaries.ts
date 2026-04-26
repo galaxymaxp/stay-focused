@@ -63,7 +63,22 @@ export async function getModuleSummary(moduleId: string) {
     .eq('module_id', moduleId)
     .maybeSingle()
 
-  if (isMissingSchemaObjectError(error) || error || !data) return null
+  if (isMissingSchemaObjectError(error)) {
+    return {
+      moduleId,
+      userId: user.id,
+      summary: null,
+      topics: [],
+      suggestedOrder: [],
+      warnings: [],
+      status: 'failed',
+      model: null,
+      sourceHash: null,
+      error: 'Module summaries are not installed yet. Apply the source summaries migration and reload the Supabase schema cache.',
+      generatedAt: null,
+    } satisfies ModuleSummaryRow
+  }
+  if (error || !data) return null
   return adaptModuleSummaryRow(data as Record<string, unknown>)
 }
 
@@ -172,6 +187,9 @@ export async function summarizeModuleForUser(moduleId: string) {
     .select('*')
     .single()
 
+  if (isMissingSchemaObjectError(error)) {
+    throw new Error('Module summaries are not installed yet. Apply supabase/migrations/20260427000000_add_source_summaries.sql, then reload the Supabase schema cache.')
+  }
   if (error || !data) throw new Error(error?.message ?? 'Could not save module summary.')
   return adaptModuleSummaryRow(data as Record<string, unknown>)
 }
@@ -393,7 +411,7 @@ function getSummaryModel() {
 }
 
 function normalizeExtractionStatus(value: unknown): ModuleResource['extractionStatus'] {
-  return value === 'pending' || value === 'extracted' || value === 'metadata_only' || value === 'unsupported' || value === 'empty' || value === 'failed'
+  return value === 'pending' || value === 'extracted' || value === 'completed' || value === 'metadata_only' || value === 'unsupported' || value === 'empty' || value === 'failed'
     ? value
     : 'metadata_only'
 }

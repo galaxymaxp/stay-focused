@@ -575,9 +575,9 @@ function mapNormalizedToModuleResourceStatus(content: NormalizedCanvasContent): 
 }
 
 function mapLowLevelExtractionStatus(
-  extractionStatus: 'pending' | 'extracted' | 'metadata_only' | 'unsupported' | 'empty' | 'failed',
+  extractionStatus: 'pending' | 'extracted' | 'completed' | 'metadata_only' | 'unsupported' | 'empty' | 'failed',
 ): NormalizedCanvasContentExtractionStatus {
-  if (extractionStatus === 'extracted') return 'success'
+  if (extractionStatus === 'extracted' || extractionStatus === 'completed') return 'success'
   if (extractionStatus === 'unsupported') return 'unsupported'
   if (extractionStatus === 'failed') return 'failed'
   if (extractionStatus === 'pending' || extractionStatus === 'metadata_only') return 'partial'
@@ -585,7 +585,7 @@ function mapLowLevelExtractionStatus(
 }
 
 function resolveLowLevelFallbackState(
-  extractionStatus: 'pending' | 'extracted' | 'metadata_only' | 'unsupported' | 'empty' | 'failed',
+  extractionStatus: 'pending' | 'extracted' | 'completed' | 'metadata_only' | 'unsupported' | 'empty' | 'failed',
   context: 'file' | 'attachment',
 ): CanvasContentFallbackState {
   if (extractionStatus === 'pending') return 'loading'

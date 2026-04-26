@@ -7,7 +7,7 @@ import {
   type RepairableLearningItem,
 } from '../lib/source-repair'
 import { normalizeSourceReadiness } from '../lib/source-readiness'
-import { isProcessableReadableSource } from '../lib/source-processing'
+import { formatSourceProcessingSummary, isProcessableReadableSource, normalizeSourceProcessingResult } from '../lib/source-processing'
 import type { ModuleResource } from '../lib/types'
 import type { ModuleSourceResource } from '../lib/module-workspace'
 
@@ -91,9 +91,100 @@ test('pending PPTX sources classify as needs processing', () => {
   assert.match(readiness.message, /Process source|Process all readable sources/)
 })
 
+test('PPTX extraction success persists completed status and text', () => {
+  const result = normalizeSourceProcessingResult({
+    resource: createResource({ extension: 'pptx' }),
+    extractionStatus: 'extracted',
+    extractedText: 'OSPF configuration requires router IDs, neighbor adjacency, and advertised networks.'.repeat(3),
+    extractedTextPreview: 'OSPF configuration requires router IDs.',
+    extractedCharCount: 240,
+    extractionError: 'old error',
+    metadata: {},
+  })
+
+  assert.equal(result.extractionStatus, 'completed')
+  assert.equal(result.outcome, 'ready')
+  assert.equal(result.extractionError, null)
+  assert.match(result.extractedText ?? '', /OSPF configuration/)
+})
+
+test('successful processed resource becomes source-readiness ready', () => {
+  const text = 'OSPF configuration requires router IDs, neighbor adjacency, and advertised networks.'.repeat(3)
+  const readiness = normalizeSourceReadiness({
+    resource: createLearnResource({ extractedText: text, extractedCharCount: text.length, extractionStatus: 'completed' }),
+    storedResource: createResource({ extractedText: text, extractedTextPreview: text.slice(0, 120), extractedCharCount: text.length, extractionStatus: 'completed' }),
+    canonicalResourceId: 'resource-1',
+    moduleId: 'module-1',
+    moduleTitle: 'Networking',
+  })
+
+  assert.equal(readiness.state, 'ready')
+  assert.deepEqual(readiness.actions.slice(0, 2), ['preview', 'start_deep_learn'])
+})
+
+test('empty extraction becomes empty_or_metadata_only', () => {
+  const result = normalizeSourceProcessingResult({
+    resource: createResource({ extension: 'pptx' }),
+    extractionStatus: 'empty',
+    extractedText: null,
+    extractedTextPreview: null,
+    extractedCharCount: 0,
+    extractionError: null,
+    metadata: {},
+  })
+  const readiness = normalizeSourceReadiness({
+    resource: createLearnResource({ extractionStatus: result.extractionStatus }),
+    storedResource: createResource(result),
+    canonicalResourceId: 'resource-1',
+    moduleId: 'module-1',
+    moduleTitle: 'Networking',
+  })
+
+  assert.equal(result.outcome, 'empty')
+  assert.equal(readiness.state, 'empty_or_metadata_only')
+  assert.match(readiness.message, /could not find readable text/i)
+})
+
+test('failed extraction becomes extraction_failed', () => {
+  const result = normalizeSourceProcessingResult({
+    resource: createResource({ extension: 'pptx' }),
+    extractionStatus: 'failed',
+    extractedText: null,
+    extractedTextPreview: null,
+    extractedCharCount: 0,
+    extractionError: 'Zip parse failed',
+    metadata: {},
+  })
+  const readiness = normalizeSourceReadiness({
+    resource: createLearnResource({ extractionStatus: result.extractionStatus, extractionError: result.extractionError }),
+    storedResource: createResource(result),
+    canonicalResourceId: 'resource-1',
+    moduleId: 'module-1',
+    moduleTitle: 'Networking',
+  })
+
+  assert.equal(result.outcome, 'failed')
+  assert.equal(readiness.state, 'extraction_failed')
+})
+
 test('process all skips unsupported files', () => {
   assert.equal(isProcessableReadableSource(createResource({ extension: 'pptx', sourceUrl: 'https://canvas.example/files/1/download' })), true)
   assert.equal(isProcessableReadableSource(createResource({ extension: 'pkt', sourceUrl: 'https://canvas.example/files/2/download' })), false)
+})
+
+test('processing summary uses honest ready, empty, and failed text', () => {
+  assert.equal(
+    formatSourceProcessingSummary({ processed: 1, ready: 1, empty: 0, skipped: 0, failed: 0 }),
+    'Processed 1 source · 1 ready for Deep Learn',
+  )
+  assert.equal(
+    formatSourceProcessingSummary({ processed: 1, ready: 0, empty: 1, skipped: 0, failed: 0 }),
+    'Processed 1 source · no readable text found',
+  )
+  assert.equal(
+    formatSourceProcessingSummary({ processed: 0, ready: 0, empty: 0, skipped: 0, failed: 1 }),
+    'Processing failed for 1 source',
+  )
 })
 
 function createItem(overrides: Partial<RepairableLearningItem> = {}): RepairableLearningItem {

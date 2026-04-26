@@ -15,3 +15,5 @@ create index if not exists learning_items_source_resource_idx
 create index if not exists learning_items_canonical_source_idx
   on public.learning_items(canonical_source_id)
   where canonical_source_id is not null;
+
+notify pgrst, 'reload schema';

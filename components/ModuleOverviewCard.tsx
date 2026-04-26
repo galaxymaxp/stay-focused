@@ -20,7 +20,7 @@ export function ModuleOverviewCard({
 }) {
   const [moduleSummary, setModuleSummary] = useState(summary)
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(summary?.status === 'failed' ? summary.error : null)
 
   async function generateSummary() {
     setBusy(true)
@@ -46,7 +46,7 @@ export function ModuleOverviewCard({
             {moduleSummary?.summary ?? fallbackSummary}
           </p>
         </div>
-        {!moduleSummary?.summary && (
+        {!moduleSummary?.summary && moduleSummary?.status !== 'failed' && (
           <button type="button" onClick={generateSummary} disabled={busy} className="ui-button ui-button-secondary ui-button-xs">
             {busy ? 'Summarizing...' : 'Summarize module'}
           </button>

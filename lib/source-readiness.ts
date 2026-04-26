@@ -79,13 +79,17 @@ export function normalizeSourceReadiness(input: {
   const fileExtension = normalizeExtension(resource.extension ?? input.resource.extension)
   const isPacketTracer = fileExtension === 'pkt' || /packet\s*tracer/i.test(input.resource.title)
   const hasSourceHref = Boolean(getSourceHref(input.resource) || input.storedResource?.sourceUrl || input.storedResource?.htmlUrl)
-  const isReadable = (quality.quality === 'strong' || quality.quality === 'usable') && Boolean(quality.meaningfulText.trim())
+  const readableTextLength = getReadableTextLength(resource)
+  const hasCompletedExtraction = resource.extractionStatus === 'completed' || resource.extractionStatus === 'extracted'
+  const isReadable = hasCompletedExtraction && readableTextLength >= 120 && capability.capability === 'supported'
   const state = resolveSourceReadinessState({
     hasStoredResource: Boolean(input.storedResource && input.canonicalResourceId),
     extractionStatus: resource.extractionStatus,
     sourceType,
     capability: capability.capability,
     quality: quality.quality,
+    readableTextLength,
+    hasCompletedExtraction,
     isReadable,
     isPacketTracer,
     hasSourceHref,
@@ -130,6 +134,8 @@ function resolveSourceReadinessState(input: {
   sourceType: string
   capability: string
   quality: string
+  readableTextLength: number
+  hasCompletedExtraction: boolean
   isReadable: boolean
   isPacketTracer: boolean
   hasSourceHref: boolean
@@ -143,13 +149,14 @@ function resolveSourceReadinessState(input: {
     return 'unknown'
   }
   if (input.isReadable) return 'ready'
+  if (input.hasCompletedExtraction && input.readableTextLength < 120) return 'empty_or_metadata_only'
   if (input.extractionStatus === 'pending') return 'needs_processing'
   if (input.extractionStatus === 'failed' || input.capability === 'failed') return 'extraction_failed'
   if (input.sourceType === 'external_url' || input.sourceType === 'external_tool') return 'external_link'
   if (input.sourceType === 'page') return 'canvas_lesson_page'
   if (input.capability === 'unsupported') return 'unsupported_file_type'
   if (input.extractionStatus === 'empty' || input.extractionStatus === 'metadata_only' || input.quality === 'empty') {
-    return input.fallbackReason === 'canvas_resolution_required' || !input.hasSourceHref
+    return input.fallbackReason === 'canvas_resolution_required'
       ? 'missing_resource_link'
       : 'empty_or_metadata_only'
   }
@@ -217,7 +224,7 @@ function messageForState(state: SourceReadinessState, isPacketTracer: boolean) {
   if (state === 'canvas_lesson_page') return 'This looks like a Canvas lesson page. Open it in Canvas or summarize it once page extraction is available.'
   if (state === 'external_link') return 'This source opens outside Canvas. Use the original link for now.'
   if (state === 'extraction_failed') return 'Deep Learn could not read this source. You can retry processing or open the original file.'
-  if (state === 'empty_or_metadata_only') return 'This file has little or no readable text. It may be scanned or image-only.'
+  if (state === 'empty_or_metadata_only') return 'The file was processed, but Deep Learn could not find readable text.'
   return 'Deep Learn needs a little more source information before it can use this item well.'
 }
 
@@ -240,4 +247,9 @@ function getSourceHref(resource: ModuleSourceResource) {
 function normalizeExtension(value: string | null | undefined) {
   const normalized = value?.replace(/^\./, '').trim().toLowerCase()
   return normalized || null
+}
+
+function getReadableTextLength(resource: Pick<ModuleResource, 'extractedText' | 'extractedTextPreview' | 'extractedCharCount'> | ModuleSourceResource) {
+  if (typeof resource.extractedCharCount === 'number' && resource.extractedCharCount > 0) return resource.extractedCharCount
+  return (resource.extractedText?.trim() ?? resource.extractedTextPreview?.trim() ?? '').length
 }

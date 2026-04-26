@@ -333,7 +333,7 @@ async function syncSingleCourse(course: CanvasCourse, config: Partial<CanvasConf
     announcements,
     modules,
     resourceIngestion
-      .filter((resource) => resource.extractionStatus === 'extracted' && resource.extractedText)
+      .filter((resource) => (resource.extractionStatus === 'extracted' || resource.extractionStatus === 'completed') && resource.extractedText)
       .map((resource) => ({
         title: resource.title,
         resourceType: resource.resourceType,

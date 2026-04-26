@@ -641,7 +641,7 @@ function qualityWeight(quality: ModuleResourceQualityInfo['quality']) {
 }
 
 function hasReadableText(resource: ModuleSourceResource) {
-  if (resource.extractionStatus !== 'extracted') return false
+  if (resource.extractionStatus !== 'extracted' && resource.extractionStatus !== 'completed') return false
   return Boolean(resource.extractedText?.trim() || resource.extractedTextPreview?.trim())
 }
 

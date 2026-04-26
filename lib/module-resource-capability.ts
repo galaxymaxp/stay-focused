@@ -179,7 +179,7 @@ function resolveModuleResourceCapability(input: {
 }) {
   if (input.extractionStatus === 'failed') return 'failed'
   if (input.extractionStatus === 'unsupported') return 'unsupported'
-  if (input.extractionStatus === 'extracted' && input.hasReadableText) return 'supported'
+  if ((input.extractionStatus === 'extracted' || input.extractionStatus === 'completed') && input.hasReadableText) return 'supported'
 
   if (input.extractionStatus === 'metadata_only' || input.extractionStatus === 'empty' || input.extractionStatus === 'pending') {
     return LINK_ONLY_SOURCE_TYPES.has(input.normalizedSourceType) ? 'unsupported' : 'partial'
@@ -251,6 +251,7 @@ function normalizeCapability(value: unknown): ModuleResourceCapability | null {
 function normalizeExtractionStatus(value: unknown): ModuleResourceExtractionStatus {
   return value === 'pending'
     || value === 'extracted'
+    || value === 'completed'
     || value === 'metadata_only'
     || value === 'unsupported'
     || value === 'empty'
