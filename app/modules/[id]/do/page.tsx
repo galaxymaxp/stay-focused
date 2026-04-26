@@ -65,11 +65,11 @@ export default async function DoPage({ params, searchParams }: Props) {
       <main className="page-shell page-shell-compact page-stack">
         <GeneratedContentState
           title="This task workspace is not ready yet."
-          description="Open Courses, re-sync Canvas, and then try this module again."
+          description="Open Courses, try source repair, and then open the item in Canvas if it still needs attention."
           tone="warning"
           action={(
             <Link href="/courses" className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
-              Re-sync Canvas
+              Open Courses
             </Link>
           )}
         />

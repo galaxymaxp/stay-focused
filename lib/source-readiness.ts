@@ -5,6 +5,7 @@ import {
 } from '@/lib/module-resource-capability'
 import { getModuleResourceQualityInfo } from '@/lib/module-resource-quality'
 import { getResourceCanvasHref, getResourceOriginalFileHref, type ModuleSourceResource } from '@/lib/module-workspace'
+import { classifyUnrepairedCanvasItem } from '@/lib/source-repair'
 import type { ModuleResource } from '@/lib/types'
 
 export type SourceReadinessState =
@@ -100,7 +101,7 @@ export function normalizeSourceReadiness(input: {
     title: input.resource.title,
     moduleId: input.moduleId,
     moduleTitle: input.moduleTitle,
-    sourceTypeLabel: buildSourceTypeLabel(sourceType, fileExtension, isPacketTracer),
+    sourceTypeLabel: buildSourceTypeLabel(input.resource, sourceType, fileExtension, isPacketTracer, Boolean(input.storedResource)),
     originLabel: buildOriginLabel(input.resource, sourceType),
     state,
     statusLabel: statusLabelForState(state, isPacketTracer),
@@ -134,8 +135,13 @@ function resolveSourceReadinessState(input: {
   hasSourceHref: boolean
   fallbackReason: string | null
 }): SourceReadinessState {
-  if (!input.hasStoredResource) return 'missing_resource_link'
   if (input.isPacketTracer) return 'unsupported_file_type'
+  if (!input.hasStoredResource) {
+    if (input.hasSourceHref) return 'missing_resource_link'
+    if (input.sourceType === 'page') return 'canvas_lesson_page'
+    if (input.sourceType === 'external_url' || input.sourceType === 'external_tool') return 'external_link'
+    return 'unknown'
+  }
   if (input.isReadable) return 'ready'
   if (input.extractionStatus === 'pending') return 'needs_processing'
   if (input.extractionStatus === 'failed' || input.capability === 'failed') return 'extraction_failed'
@@ -151,9 +157,30 @@ function resolveSourceReadinessState(input: {
   return 'unknown'
 }
 
-function buildSourceTypeLabel(sourceType: ReturnType<typeof getNormalizedModuleResourceSourceType>, extension: string | null, isPacketTracer: boolean) {
+function buildSourceTypeLabel(
+  resource: ModuleSourceResource,
+  sourceType: ReturnType<typeof getNormalizedModuleResourceSourceType>,
+  extension: string | null,
+  isPacketTracer: boolean,
+  hasStoredResource: boolean,
+) {
   if (isPacketTracer) return 'Packet Tracer lab'
   if (extension && sourceType === 'file') return `${extension.toUpperCase()} file`
+  if (!hasStoredResource) {
+    return classifyUnrepairedCanvasItem({
+      title: resource.title,
+      type: resource.type,
+      canvasUrl: resource.canvasUrl,
+      htmlUrl: resource.htmlUrl,
+      externalUrl: null,
+      sourceUrl: resource.sourceUrl,
+      metadata: {
+        extension: resource.extension,
+        contentType: resource.contentType,
+        sourceType: resource.type,
+      },
+    })
+  }
   return formatNormalizedModuleResourceSourceType(sourceType)
 }
 
@@ -180,8 +207,8 @@ function statusLabelForState(state: SourceReadinessState, isPacketTracer: boolea
 
 function messageForState(state: SourceReadinessState, isPacketTracer: boolean) {
   if (state === 'ready') return 'Deep Learn can read this source and use it for notes, quizzes, and review.'
-  if (state === 'needs_processing') return 'This source needs to be processed before Deep Learn can use it confidently.'
-  if (state === 'missing_resource_link') return 'This item needs to be reconnected to its Canvas source before Deep Learn can save notes or quizzes.'
+  if (state === 'needs_processing') return 'This source can be processed from its original Canvas file. Use Process source or Process all readable sources.'
+  if (state === 'missing_resource_link') return 'Try repair. If this still fails, open the item in Canvas.'
   if (state === 'unsupported_file_type') {
     return isPacketTracer
       ? 'Packet Tracer files cannot be read directly. Open the lab file or add notes/screenshots for Deep Learn.'

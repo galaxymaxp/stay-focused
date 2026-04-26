@@ -692,7 +692,7 @@ async function fetchStoredJson<T>(url: string, canvasConfig: CanvasConfig | null
   const contentType = response.headers.get('content-type')?.toLowerCase() ?? ''
 
   if (!contentType.includes('json')) {
-    throw new Error('The stored source URL did not return Canvas JSON. This resource may need a fresh sync to store a reprocessable API URL.')
+    throw new Error('The stored source URL did not return Canvas JSON. Try repair. If this still fails, open the item in Canvas.')
   }
 
   return response.json() as Promise<T>
@@ -747,11 +747,11 @@ function buildStoredFetchError(status: number, absoluteUrl: string, canvasConfig
       return 'Canvas auth is required to reprocess this resource. Add CANVAS_API_URL and CANVAS_API_TOKEN for this Canvas host, then retry.'
     }
 
-    return 'Canvas rejected the stored reprocess request for this resource. Check CANVAS_API_TOKEN or resync the module with a working Canvas connection.'
+    return 'Canvas rejected the stored reprocess request for this resource. Check CANVAS_API_TOKEN, try repair, or open the item in Canvas.'
   }
 
   if (status === 404) {
-    return 'The stored source URL no longer resolves. This resource may need a fresh sync to refresh its Canvas links.'
+    return 'The stored source URL no longer resolves. Try repair. If this still fails, open the item in Canvas.'
   }
 
   return `The stored source request failed with HTTP ${status}.`

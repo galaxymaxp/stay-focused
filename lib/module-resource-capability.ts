@@ -167,7 +167,7 @@ export function formatNormalizedModuleResourceSourceType(value: NormalizedModule
   if (value === 'external_tool') return 'External tool'
   if (value === 'subheader') return 'Module subheader'
   if (value === 'module_item') return 'Module item'
-  if (value === 'file') return 'Generic file'
+  if (value === 'file') return 'Canvas file'
   return 'Unknown'
 }
 

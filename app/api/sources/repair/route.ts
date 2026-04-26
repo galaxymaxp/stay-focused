@@ -1,5 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseRouteClient } from '@/lib/supabase-auth-server'
+import {
+  adaptRepairableLearningItem,
+  adaptRepairModuleResourceRow,
+  buildLearningItemSourcePatch,
+  classifyUnrepairedCanvasItem,
+  findSourceRepairMatch,
+  summarizeSourceRepairCounts,
+  type SourceRepairCounts,
+} from '@/lib/source-repair'
 
 export async function POST(request: NextRequest) {
   const supabase = createSupabaseRouteClient(request)
@@ -13,7 +22,9 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json().catch(() => null) as {
+    bulk?: unknown
     moduleId?: unknown
+    courseId?: unknown
     title?: unknown
     sourceUrl?: unknown
     canvasItemId?: unknown
@@ -21,8 +32,9 @@ export async function POST(request: NextRequest) {
   } | null
   const moduleId = typeof body?.moduleId === 'string' ? body.moduleId : null
   const title = typeof body?.title === 'string' ? body.title.trim() : null
+  const bulk = body?.bulk === true
 
-  if (!moduleId || !title) {
+  if (!moduleId || (!bulk && !title)) {
     return NextResponse.json({ ok: false, error: 'Module and source title are required.' }, { status: 400 })
   }
 
@@ -45,6 +57,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: 'You do not have access to this module.' }, { status: 403 })
   }
 
+  if (bulk) {
+    const result = await repairLearningItemsForModule(supabase, moduleId, moduleRow.course_id)
+    return NextResponse.json({
+      ok: true,
+      ...result,
+      message: summarizeSourceRepairCounts(result.counts),
+    })
+  }
+
   const { data: resources, error: resourceError } = await supabase
     .from('module_resources')
     .select('*')
@@ -53,26 +74,29 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: resourceError.message }, { status: 500 })
   }
 
-  const sourceUrl = typeof body?.sourceUrl === 'string' ? body.sourceUrl.trim() : null
-  const canvasItemId = typeof body?.canvasItemId === 'number' ? body.canvasItemId : null
-  const canvasFileId = typeof body?.canvasFileId === 'number' ? body.canvasFileId : null
-  const match = (resources ?? []).find((resource: Record<string, unknown>) => {
-    if (canvasItemId && resource.canvas_item_id === canvasItemId) return true
-    if (canvasFileId && resource.canvas_file_id === canvasFileId) return true
-    if (sourceUrl && (resource.source_url === sourceUrl || resource.html_url === sourceUrl)) return true
-    return normalizeLookup(String(resource.title ?? '')) === normalizeLookup(title)
+  const item = adaptRepairableLearningItem({
+    id: 'single',
+    module_id: moduleId,
+    course_id: moduleRow.course_id,
+    title,
+    type: body?.canvasFileId ? 'file' : 'canvas_item',
+    source_url: typeof body?.sourceUrl === 'string' ? body.sourceUrl.trim() : null,
+    canvas_item_id: typeof body?.canvasItemId === 'number' ? body.canvasItemId : null,
+    canvas_file_id: typeof body?.canvasFileId === 'number' ? body.canvasFileId : null,
   })
+  const match = findSourceRepairMatch(item, (resources ?? []).map((row) => adaptRepairModuleResourceRow(row as Record<string, unknown>)))
 
   if (match) {
     return NextResponse.json({
       ok: true,
       repaired: true,
-      resourceId: String((match as Record<string, unknown>).id ?? ''),
+      resourceId: match.resource.id,
+      strategy: match.strategy,
       message: 'Source link repaired. Refresh the page if the source card does not update immediately.',
     })
   }
 
-  if (sourceUrl) {
+  if (item.sourceUrl) {
     const { data: created, error: createError } = await supabase
       .from('module_resources')
       .insert({
@@ -80,11 +104,11 @@ export async function POST(request: NextRequest) {
         course_id: moduleRow.course_id,
         title,
         resource_type: 'Canvas item',
-        source_url: sourceUrl,
-        html_url: sourceUrl,
+        source_url: item.sourceUrl,
+        html_url: item.sourceUrl,
         extraction_status: 'metadata_only',
         extraction_error: 'This source was reconnected from Canvas metadata. Process it to extract readable text.',
-        metadata: { repairedFromLearn: true },
+        metadata: { repairedFromLearn: true, sourceLabel: classifyUnrepairedCanvasItem(item) },
       })
       .select('id')
       .single()
@@ -101,10 +125,69 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({
     ok: true,
     repaired: false,
-    message: 'Stay Focused could not reconnect this item automatically. Re-sync the course or open the item in Canvas.',
+    sourceLabel: classifyUnrepairedCanvasItem(item),
+    message: 'Stay Focused could not reconnect this item automatically. Try opening the item in Canvas.',
   })
 }
 
-function normalizeLookup(value: string) {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+async function repairLearningItemsForModule(
+  supabase: ReturnType<typeof createSupabaseRouteClient>,
+  moduleId: string,
+  courseId: string,
+) {
+  const counts: SourceRepairCounts = { repaired: 0, created: 0, classified: 0, skipped: 0, failed: 0 }
+  const { data: itemRows, error: itemsError } = await supabase
+    .from('learning_items')
+    .select('*')
+    .eq('module_id', moduleId)
+  if (itemsError) throw new Error(itemsError.message)
+
+  const { data: resourceRows, error: resourcesError } = await supabase
+    .from('module_resources')
+    .select('*')
+    .eq('course_id', courseId)
+  if (resourcesError) throw new Error(resourcesError.message)
+
+  const resources = (resourceRows ?? []).map((row) => adaptRepairModuleResourceRow(row as Record<string, unknown>))
+  const items = (itemRows ?? []).map((row) => adaptRepairableLearningItem(row as Record<string, unknown>))
+
+  for (const item of items) {
+    if (item.sourceResourceId || item.canonicalSourceId?.startsWith('module_resource:')) {
+      counts.skipped += 1
+      continue
+    }
+
+    const match = findSourceRepairMatch(item, resources)
+    if (match) {
+      const { error } = await supabase
+        .from('learning_items')
+        .update({
+          ...buildLearningItemSourcePatch(match.resource),
+          source_label: classifyUnrepairedCanvasItem(item),
+          source_repair_status: 'repaired',
+          source_repair_note: `Matched by ${match.strategy}.`,
+        })
+        .eq('id', item.id)
+      if (error) counts.failed += 1
+      else counts.repaired += 1
+      continue
+    }
+
+    const label = classifyUnrepairedCanvasItem(item)
+    const { error } = await supabase
+      .from('learning_items')
+      .update({
+        source_label: label,
+        source_repair_status: 'needs_canvas',
+        source_repair_note: 'Try repair. If this still fails, open the item in Canvas.',
+      })
+      .eq('id', item.id)
+    if (error) counts.failed += 1
+    else {
+      counts.classified += 1
+      counts.skipped += 1
+    }
+  }
+
+  return { counts }
 }

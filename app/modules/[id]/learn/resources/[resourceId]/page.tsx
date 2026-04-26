@@ -187,7 +187,7 @@ export default async function ResourceDetailPage({ params }: Props) {
                 </a>
               )}
               <Link href="/canvas" className="ui-button ui-button-ghost">
-                Reconnect / resync
+                Repair source
               </Link>
             </div>
           </div>

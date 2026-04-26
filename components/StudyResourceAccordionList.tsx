@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
 import { DeepLearnGenerateButton } from '@/components/DeepLearnGenerateButton'
 import { SourceReadinessFilters, type SourceReadinessFilter } from '@/components/SourceReadinessFilters'
@@ -74,7 +75,10 @@ export function StudyResourceAccordionList({
   scrollDensity?: 'comfort' | 'dense'
 }) {
   const lastScrolledResourceId = useRef<string | null>(null)
+  const router = useRouter()
   const [filter, setFilter] = useState<SourceReadinessFilter>('all')
+  const [operationMessage, setOperationMessage] = useState<string | null>(null)
+  const [bulkBusy, setBulkBusy] = useState<'repair' | 'process' | null>(null)
   const itemIdKey = items.map((item) => item.id).join('|')
   const hasInitialOpenResource = Boolean(initialOpenResourceId && items.some((item) => item.id === initialOpenResourceId))
   const routeKey = `${itemIdKey}:${initialOpenResourceId ?? ''}`
@@ -128,8 +132,45 @@ export function StudyResourceAccordionList({
           <section key={group.key} style={{ display: 'grid', gap: '0.55rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.6rem', alignItems: 'center' }}>
               <p className="ui-kicker" style={{ margin: 0 }}>{group.title}</p>
-              <ResourcePill label={`${group.items.length}`} tone={group.bucket === 'ready' ? 'accent' : group.bucket === 'needs_action' ? 'warning' : 'muted'} />
+              <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                {group.key === 'repair' && (
+                  <button
+                    type="button"
+                    disabled={bulkBusy !== null}
+                    onClick={() => runBulkSourceOperation({
+                      kind: 'repair',
+                      moduleId: group.items[0]?.moduleId,
+                      setBusy: setBulkBusy,
+                      setMessage: setOperationMessage,
+                      refresh: () => router.refresh(),
+                    })}
+                    className="ui-button ui-button-secondary ui-button-xs"
+                  >
+                    {bulkBusy === 'repair' ? 'Repairing...' : 'Repair all'}
+                  </button>
+                )}
+                {group.key === 'action' && group.items.some((item) => item.sourceReadinessActions.includes('process_source')) && (
+                  <button
+                    type="button"
+                    disabled={bulkBusy !== null}
+                    onClick={() => runBulkSourceOperation({
+                      kind: 'process',
+                      moduleId: group.items[0]?.moduleId,
+                      setBusy: setBulkBusy,
+                      setMessage: setOperationMessage,
+                      refresh: () => router.refresh(),
+                    })}
+                    className="ui-button ui-button-secondary ui-button-xs"
+                  >
+                    {bulkBusy === 'process' ? 'Processing...' : 'Process all readable sources'}
+                  </button>
+                )}
+                <ResourcePill label={`${group.items.length}`} tone={group.bucket === 'ready' ? 'accent' : group.bucket === 'needs_action' ? 'warning' : 'muted'} />
+              </div>
             </div>
+            {operationMessage && group.key !== 'ready' && (
+              <p style={{ margin: 0, fontSize: '11px', lineHeight: 1.45, color: 'var(--text-muted)' }}>{operationMessage}</p>
+            )}
             {group.items.map((item) => {
           const expanded = resolvedOpenResourceId === item.id
           const sourceHref = item.originalFileHref ?? item.canvasHref
@@ -208,12 +249,14 @@ export function StudyResourceAccordionList({
 
               {expanded && (
                 <div style={{ display: 'grid', gap: '0.75rem' }}>
-                  <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.72rem 0.78rem', display: 'grid', gap: '0.35rem' }}>
-                    <p className="ui-kicker" style={{ margin: 0 }}>Source origin</p>
-                    <p style={{ margin: 0, fontSize: '12px', lineHeight: 1.55, color: 'var(--text-secondary)' }}>
+                  <details className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.72rem 0.78rem' }}>
+                    <summary className="ui-interactive-summary" style={{ padding: 0, fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                      Source details
+                    </summary>
+                    <p style={{ margin: '0.42rem 0 0', fontSize: '12px', lineHeight: 1.55, color: 'var(--text-secondary)' }}>
                       {item.originLabel}
                     </p>
-                  </div>
+                  </details>
 
                   <SourceSummaryBadge
                     resourceId={item.canonicalResourceId}
@@ -260,9 +303,7 @@ export function StudyResourceAccordionList({
                       </a>
                     )}
                     {item.sourceReadinessActions.includes('retry_extraction') || item.sourceReadinessActions.includes('process_source') ? (
-                      <Link href={`/modules/${item.moduleId}/inspect`} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-                        {item.sourceReadinessActions.includes('retry_extraction') ? 'Retry extraction' : 'Process source'}
-                      </Link>
+                      <ProcessSourceButton item={item} />
                     ) : null}
                     {item.sourceReadinessActions.includes('add_notes') && (
                       <Link href={item.readerHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
@@ -318,6 +359,36 @@ function ResourcePill({
   )
 }
 
+async function runBulkSourceOperation({
+  kind,
+  moduleId,
+  setBusy,
+  setMessage,
+  refresh,
+}: {
+  kind: 'repair' | 'process'
+  moduleId: string | undefined
+  setBusy: (value: 'repair' | 'process' | null) => void
+  setMessage: (value: string | null) => void
+  refresh: () => void
+}) {
+  if (!moduleId) return
+  setBusy(kind)
+  setMessage(null)
+  try {
+    const response = await fetch(kind === 'repair' ? '/api/sources/repair' : '/api/sources/process', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ moduleId, bulk: true }),
+    })
+    const payload = await response.json().catch(() => null) as { message?: string; error?: string } | null
+    setMessage(payload?.message ?? payload?.error ?? (response.ok ? 'Done.' : 'Could not complete this action.'))
+    if (response.ok) refresh()
+  } finally {
+    setBusy(null)
+  }
+}
+
 function SourceRepairButton({ item }: { item: StudyResourceAccordionItem }) {
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
@@ -357,6 +428,41 @@ function SourceRepairButton({ item }: { item: StudyResourceAccordionItem }) {
         className="ui-button ui-button-secondary ui-button-xs"
       >
         {busy ? 'Repairing...' : 'Repair source link'}
+      </button>
+      {message && <span style={{ fontSize: '11px', lineHeight: 1.45, color: 'var(--text-muted)', alignSelf: 'center' }}>{message}</span>}
+    </>
+  )
+}
+
+function ProcessSourceButton({ item }: { item: StudyResourceAccordionItem }) {
+  const router = useRouter()
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState<string | null>(null)
+
+  return (
+    <>
+      <button
+        type="button"
+        disabled={busy || !item.canonicalResourceId}
+        onClick={async () => {
+          setBusy(true)
+          setMessage(null)
+          try {
+            const response = await fetch('/api/sources/process', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ resourceId: item.canonicalResourceId, moduleId: item.moduleId }),
+            })
+            const payload = await response.json().catch(() => null) as { message?: string; error?: string } | null
+            setMessage(payload?.message ?? payload?.error ?? (response.ok ? 'Processed.' : 'Could not process this source.'))
+            if (response.ok) router.refresh()
+          } finally {
+            setBusy(false)
+          }
+        }}
+        className="ui-button ui-button-ghost ui-button-xs"
+      >
+        {busy ? 'Processing...' : item.sourceReadinessActions.includes('retry_extraction') ? 'Retry extraction' : 'Process source'}
       </button>
       {message && <span style={{ fontSize: '11px', lineHeight: 1.45, color: 'var(--text-muted)', alignSelf: 'center' }}>{message}</span>}
     </>

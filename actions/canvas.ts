@@ -41,6 +41,15 @@ import {
 import { dedupeAIResponseDeadlines } from '@/lib/course-work-dedupe'
 import { processModuleContent } from '@/lib/openai'
 import { getSupabaseLoggingContext, serializeErrorForLogging, supabase } from '@/lib/supabase'
+import {
+  adaptRepairableLearningItem,
+  adaptRepairModuleResourceRow,
+  buildLearningItemSourcePatch,
+  classifyUnrepairedCanvasItem,
+  findSourceRepairMatch,
+  summarizeSourceRepairCounts,
+  type SourceRepairCounts,
+} from '@/lib/source-repair'
 import { populateModuleTerms } from '@/actions/module-terms'
 import type { AIResponse, Course, ModuleResourceExtractionStatus, Priority, TaskItem } from '@/lib/types'
 
@@ -428,6 +437,14 @@ async function syncSingleCourse(course: CanvasCourse, config: Partial<CanvasConf
     }
   }
 
+  const backfillResult = await backfillLearningItemSourceLinks(moduleId, courseRecord.id)
+  console.info('[Canvas sync] source backfill', {
+    moduleId,
+    courseId: courseRecord.id,
+    ...backfillResult.counts,
+    summary: summarizeSourceRepairCounts(backfillResult.counts),
+  })
+
   const syncedTaskDrafts = buildSyncedTaskDrafts(normalizedAiResult, {
     taskCanvasLinks,
   })
@@ -500,6 +517,79 @@ async function syncSingleCourse(course: CanvasCourse, config: Partial<CanvasConf
     moduleId,
     courseName: databaseSafeCourse.name,
   }
+}
+
+async function backfillLearningItemSourceLinks(moduleId: string, courseId: string) {
+  const counts: SourceRepairCounts = { repaired: 0, created: 0, classified: 0, skipped: 0, failed: 0 }
+  if (!supabase) return { counts }
+
+  const { data: itemRows, error: itemsError } = await supabase
+    .from('learning_items')
+    .select('*')
+    .eq('module_id', moduleId)
+
+  if (isOptionalSourceLinkSchemaError(itemsError)) return { counts }
+  if (itemsError) {
+    console.warn('[Canvas sync] source backfill skipped learning_items load', itemsError)
+    return { counts: { ...counts, failed: 1 } }
+  }
+
+  const { data: resourceRows, error: resourcesError } = await supabase
+    .from('module_resources')
+    .select('*')
+    .eq('course_id', courseId)
+
+  if (resourcesError) {
+    console.warn('[Canvas sync] source backfill skipped module_resources load', resourcesError)
+    return { counts: { ...counts, failed: 1 } }
+  }
+
+  const resources = (resourceRows ?? []).map((row) => adaptRepairModuleResourceRow(row as Record<string, unknown>))
+  const items = (itemRows ?? []).map((row) => adaptRepairableLearningItem(row as Record<string, unknown>))
+
+  for (const item of items) {
+    if (item.sourceResourceId || item.canonicalSourceId?.startsWith('module_resource:')) {
+      counts.skipped += 1
+      continue
+    }
+
+    const match = findSourceRepairMatch(item, resources)
+    const update = match
+      ? {
+          ...buildLearningItemSourcePatch(match.resource),
+          source_label: classifyUnrepairedCanvasItem(item),
+          source_repair_status: 'repaired',
+          source_repair_note: `Matched by ${match.strategy}.`,
+        }
+      : {
+          source_label: classifyUnrepairedCanvasItem(item),
+          source_repair_status: 'needs_canvas',
+          source_repair_note: 'Try repair. If this still fails, open the item in Canvas.',
+        }
+
+    const { error } = await supabase
+      .from('learning_items')
+      .update(update)
+      .eq('id', item.id)
+
+    if (isOptionalSourceLinkSchemaError(error)) return { counts }
+    if (error) {
+      counts.failed += 1
+      continue
+    }
+
+    if (match) counts.repaired += 1
+    else {
+      counts.classified += 1
+      counts.skipped += 1
+    }
+  }
+
+  return { counts }
+}
+
+function isOptionalSourceLinkSchemaError(error: { code?: string | null; message?: string | null } | null | undefined) {
+  return error?.code === 'PGRST204' || error?.code === '42703' || /canonical_source_id|source_resource_id|source_label|metadata/i.test(error?.message ?? '')
 }
 
 async function findExistingSyncedModule(

@@ -208,7 +208,7 @@ export function buildStudyFileReaderModel(resource: ModuleSourceResource): Study
     overviewBody: `The app could not prepare a readable study view for this ${sourceNoun} this time. The original ${canvasSourceLabel.toLowerCase()} is still available, and this page keeps the state clear without making the reader feel broken.`,
     keyPointsHint: `Key points are hidden because extraction did not complete cleanly for this ${sourceNoun}.`,
     outlineHint: `Structured study notes are hidden because extraction did not complete cleanly for this ${sourceNoun}.`,
-    previewHint: `Use the Canvas link for the original ${sourceNoun}, then resync later if you want the reader to try again.`,
+    previewHint: `Use the Canvas link for the original ${sourceNoun}, then try repair if you want the reader to try again.`,
     transparencyNote: capability.reason,
   }
 }
