@@ -122,6 +122,34 @@ test('successful processed resource becomes source-readiness ready', () => {
   assert.deepEqual(readiness.actions.slice(0, 2), ['preview', 'start_deep_learn'])
 })
 
+test('extracted resource with readable text is source-readiness ready', () => {
+  const text = 'OSPF configuration requires router IDs, neighbor adjacency, and advertised networks.'.repeat(3)
+  const readiness = normalizeSourceReadiness({
+    resource: createLearnResource({ extractedText: text, extractedCharCount: text.length, extractionStatus: 'extracted' }),
+    storedResource: createResource({ extractedText: text, extractedTextPreview: text.slice(0, 120), extractedCharCount: text.length, extractionStatus: 'extracted' }),
+    canonicalResourceId: 'resource-1',
+    moduleId: 'module-1',
+    moduleTitle: 'Networking',
+  })
+
+  assert.equal(readiness.state, 'ready')
+  assert.equal(readiness.statusLabel, 'Ready')
+  assert.equal(readiness.actions.includes('process_source'), false)
+})
+
+test('extracted resource with only char count loaded is source-readiness ready', () => {
+  const readiness = normalizeSourceReadiness({
+    resource: createLearnResource({ extractedText: null, extractedTextPreview: null, extractedCharCount: 26574, extractionStatus: 'extracted' }),
+    storedResource: createResource({ extractedText: null, extractedTextPreview: null, extractedCharCount: 26574, extractionStatus: 'extracted' }),
+    canonicalResourceId: 'resource-1',
+    moduleId: 'module-1',
+    moduleTitle: 'Networking',
+  })
+
+  assert.equal(readiness.state, 'ready')
+  assert.deepEqual(readiness.actions.slice(0, 2), ['preview', 'start_deep_learn'])
+})
+
 test('empty extraction becomes empty_or_metadata_only', () => {
   const result = normalizeSourceProcessingResult({
     resource: createResource({ extension: 'pptx' }),
@@ -143,6 +171,43 @@ test('empty extraction becomes empty_or_metadata_only', () => {
   assert.equal(result.outcome, 'empty')
   assert.equal(readiness.state, 'empty_or_metadata_only')
   assert.match(readiness.message, /could not find readable text/i)
+})
+
+test('pending or missing extraction status stays needs_processing for supported files', () => {
+  const pendingReadiness = normalizeSourceReadiness({
+    resource: createLearnResource({ extractionStatus: 'pending', sourceUrl: 'https://canvas.example/files/1/download', extension: 'pptx' }),
+    storedResource: createResource({ extractionStatus: 'pending', sourceUrl: 'https://canvas.example/files/1/download', extension: 'pptx' }),
+    canonicalResourceId: 'resource-1',
+    moduleId: 'module-1',
+    moduleTitle: 'Networking',
+  })
+  const missingStatusResource = createResource({
+    sourceUrl: 'https://canvas.example/files/1/download',
+    extension: 'pptx',
+  })
+  ;(missingStatusResource as { extractionStatus?: unknown }).extractionStatus = null
+  const missingReadiness = normalizeSourceReadiness({
+    resource: createLearnResource({ sourceUrl: 'https://canvas.example/files/1/download', extension: 'pptx' }),
+    storedResource: missingStatusResource,
+    canonicalResourceId: 'resource-1',
+    moduleId: 'module-1',
+    moduleTitle: 'Networking',
+  })
+
+  assert.equal(pendingReadiness.state, 'needs_processing')
+  assert.equal(missingReadiness.state, 'needs_processing')
+})
+
+test('metadata-only resource with no text becomes empty_or_metadata_only', () => {
+  const readiness = normalizeSourceReadiness({
+    resource: createLearnResource({ extractionStatus: 'metadata_only', sourceUrl: 'https://canvas.example/files/1/download', extension: 'pptx' }),
+    storedResource: createResource({ extractionStatus: 'metadata_only', sourceUrl: 'https://canvas.example/files/1/download', extension: 'pptx' }),
+    canonicalResourceId: 'resource-1',
+    moduleId: 'module-1',
+    moduleTitle: 'Networking',
+  })
+
+  assert.equal(readiness.state, 'empty_or_metadata_only')
 })
 
 test('failed extraction becomes extraction_failed', () => {

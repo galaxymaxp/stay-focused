@@ -81,7 +81,7 @@ export function normalizeSourceReadiness(input: {
   const hasSourceHref = Boolean(getSourceHref(input.resource) || input.storedResource?.sourceUrl || input.storedResource?.htmlUrl)
   const readableTextLength = getReadableTextLength(resource)
   const hasCompletedExtraction = resource.extractionStatus === 'completed' || resource.extractionStatus === 'extracted'
-  const isReadable = hasCompletedExtraction && readableTextLength >= 120 && capability.capability === 'supported'
+  const isReadable = hasCompletedExtraction && readableTextLength >= 120
   const state = resolveSourceReadinessState({
     hasStoredResource: Boolean(input.storedResource && input.canonicalResourceId),
     extractionStatus: resource.extractionStatus,
@@ -150,6 +150,7 @@ function resolveSourceReadinessState(input: {
   }
   if (input.isReadable) return 'ready'
   if (input.hasCompletedExtraction && input.readableTextLength < 120) return 'empty_or_metadata_only'
+  if (!input.extractionStatus && input.hasSourceHref && isProcessableSourceType(input.sourceType)) return 'needs_processing'
   if (input.extractionStatus === 'pending') return 'needs_processing'
   if (input.extractionStatus === 'failed' || input.capability === 'failed') return 'extraction_failed'
   if (input.sourceType === 'external_url' || input.sourceType === 'external_tool') return 'external_link'
@@ -252,4 +253,17 @@ function normalizeExtension(value: string | null | undefined) {
 function getReadableTextLength(resource: Pick<ModuleResource, 'extractedText' | 'extractedTextPreview' | 'extractedCharCount'> | ModuleSourceResource) {
   if (typeof resource.extractedCharCount === 'number' && resource.extractedCharCount > 0) return resource.extractedCharCount
   return (resource.extractedText?.trim() ?? resource.extractedTextPreview?.trim() ?? '').length
+}
+
+function isProcessableSourceType(value: string) {
+  return value === 'pdf'
+    || value === 'pptx'
+    || value === 'docx'
+    || value === 'doc'
+    || value === 'text'
+    || value === 'markdown'
+    || value === 'csv'
+    || value === 'html'
+    || value === 'file'
+    || value === 'module_item'
 }
