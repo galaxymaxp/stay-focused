@@ -1,7 +1,7 @@
 import crypto from 'node:crypto'
 import OpenAI from 'openai'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { getAuthenticatedUserServer } from '@/lib/auth-server'
+import { createAuthenticatedSupabaseServerClient, getAuthenticatedUserServer } from '@/lib/auth-server'
 import { getModuleResourceQualityInfo, normalizeModuleResourceStudyText } from '@/lib/module-resource-quality'
 import { createSupabaseServiceRoleClient } from '@/lib/supabase-service'
 import { supabase } from '@/lib/supabase'
@@ -57,6 +57,8 @@ const MIN_RESOURCE_SUMMARY_TEXT = 220
 const MIN_MODULE_CLEAN_TEXT = 260
 const SUMMARY_MODEL_FALLBACK = 'gpt-4o-mini'
 const NOT_ENOUGH_CLEAN_MATERIAL = 'Not enough clean study material yet. This module currently contains task instructions, but no readable study source has been processed.'
+const MODULE_SUMMARIES_MISSING_MESSAGE = 'Module summaries are not installed yet. Apply supabase/migrations/20260427000000_add_source_summaries.sql, then reload the Supabase schema cache.'
+const SUMMARY_PERMISSION_REPAIR_MESSAGE = 'Overview permissions need repair.'
 
 const ADMIN_NOISE_PATTERN = /\b(?:canvas inbox|facebook messenger|credit hours?|prerequisites?|prepared by|instructor|contact\s*(?:no|number|email)?|course\s+introduction\s+and\s+orientation|dashboard|account|calendar|grades|people|syllabus|announcements|assignments|discussions|quizzes)\b/i
 const ASSIGNMENT_PROMPT_PATTERN = /\b(?:as a group|answer the following|submit|submission|deadline|due date|1 whole sheet of paper|write your answer|upload|turn in|perform the following|situational cases?)\b/i
@@ -64,7 +66,7 @@ const FILE_NAME_ONLY_PATTERN = /^[\w\s().-]+\.(?:pdf|pptx?|docx?|txt|pkt)$/i
 
 export async function listResourceSummaries(resourceIds: string[]) {
   const user = await getAuthenticatedUserServer()
-  const client = getSummaryClient()
+  const client = await getAuthenticatedSummaryClient()
   if (!client || !user || resourceIds.length === 0) return new Map<string, ResourceSummaryRow>()
 
   const { data, error } = await client
@@ -73,7 +75,7 @@ export async function listResourceSummaries(resourceIds: string[]) {
     .eq('user_id', user.id)
     .in('resource_id', resourceIds)
 
-  if (isMissingSchemaObjectError(error)) return new Map<string, ResourceSummaryRow>()
+  if (isMissingSummarySchemaError(error)) return new Map<string, ResourceSummaryRow>()
   if (error) return new Map<string, ResourceSummaryRow>()
 
   return new Map((data ?? []).map((row) => {
@@ -84,8 +86,16 @@ export async function listResourceSummaries(resourceIds: string[]) {
 
 export async function getModuleSummary(moduleId: string) {
   const user = await getAuthenticatedUserServer()
-  const client = getSummaryClient()
-  if (!client || !user) return null
+  const client = await getAuthenticatedSummaryClient()
+  if (!client || !user) {
+    logSummaryAvailabilityCheck({
+      moduleId,
+      hasUserId: Boolean(user?.id),
+      error: null,
+      tableMissing: false,
+    })
+    return null
+  }
 
   const { data, error } = await client
     .from('module_summaries')
@@ -94,7 +104,15 @@ export async function getModuleSummary(moduleId: string) {
     .eq('module_id', moduleId)
     .maybeSingle()
 
-  if (isMissingSchemaObjectError(error)) {
+  const tableMissing = isMissingSummarySchemaError(error)
+  logSummaryAvailabilityCheck({
+    moduleId,
+    hasUserId: Boolean(user.id),
+    error,
+    tableMissing,
+  })
+
+  if (tableMissing) {
     return {
       moduleId,
       userId: user.id,
@@ -105,7 +123,22 @@ export async function getModuleSummary(moduleId: string) {
       status: 'failed',
       model: null,
       sourceHash: null,
-      error: 'Module summaries are not installed yet. Apply the source summaries migration and reload the Supabase schema cache.',
+      error: MODULE_SUMMARIES_MISSING_MESSAGE,
+      generatedAt: null,
+    } satisfies ModuleSummaryRow
+  }
+  if (isSummaryPermissionError(error)) {
+    return {
+      moduleId,
+      userId: user.id,
+      summary: null,
+      topics: [],
+      suggestedOrder: [],
+      warnings: [],
+      status: 'failed',
+      model: null,
+      sourceHash: null,
+      error: SUMMARY_PERMISSION_REPAIR_MESSAGE,
       generatedAt: null,
     } satisfies ModuleSummaryRow
   }
@@ -120,7 +153,7 @@ export async function summarizeResourceForUser(resourceId: string) {
 }
 
 export async function summarizeResourceForUserId(resourceId: string, userId: string, inputClient?: SupabaseClient | null) {
-  const client = inputClient ?? getSummaryClient()
+  const client = inputClient ?? await getAuthenticatedSummaryClient()
   if (!client) throw new Error('Supabase is not configured yet.')
 
   const { data: resourceRow, error: resourceError } = await client
@@ -172,7 +205,7 @@ export async function summarizeResourceForUserId(resourceId: string, userId: str
     .select('*')
     .single()
 
-  if (isMissingSchemaObjectError(error)) {
+  if (isMissingSummarySchemaError(error)) {
     throw new Error('Resource summaries are not installed yet. Apply the source summaries migration and reload the Supabase schema cache.')
   }
   if (error || !data) throw new Error(error?.message ?? 'Could not save source summary.')
@@ -186,7 +219,7 @@ export async function summarizeModuleForUser(moduleId: string) {
 }
 
 export async function summarizeModuleForUserId(moduleId: string, userId: string, inputClient?: SupabaseClient | null) {
-  const client = inputClient ?? getSummaryClient()
+  const client = inputClient ?? await getAuthenticatedSummaryClient()
   if (!client) throw new Error('Supabase is not configured yet.')
 
   const { data: moduleRow, error: moduleError } = await client
@@ -252,9 +285,10 @@ export async function summarizeModuleForUserId(moduleId: string, userId: string,
     .select('*')
     .single()
 
-  if (isMissingSchemaObjectError(error)) {
-    throw new Error('Module summaries are not installed yet. Apply supabase/migrations/20260427000000_add_source_summaries.sql, then reload the Supabase schema cache.')
+  if (isMissingSummarySchemaError(error)) {
+    throw new Error(MODULE_SUMMARIES_MISSING_MESSAGE)
   }
+  if (isSummaryPermissionError(error)) throw new Error(SUMMARY_PERMISSION_REPAIR_MESSAGE)
   if (error || !data) throw new Error(error?.message ?? 'Could not save module summary.')
   return adaptModuleSummaryRow(data as Record<string, unknown>)
 }
@@ -263,7 +297,7 @@ export async function generateSummariesForSyncedModule(input: {
   moduleId: string
   userId: string
 }) {
-  const client = getSummaryClient()
+  const client = createSupabaseServiceRoleClient()
   const counts = { resourceSummaries: 0, moduleSummaries: 0, skipped: 0, failed: 0 }
   if (!client) return counts
 
@@ -272,7 +306,7 @@ export async function generateSummariesForSyncedModule(input: {
     .select('id')
     .eq('module_id', input.moduleId)
 
-  if (isMissingSchemaObjectError(error)) return counts
+  if (isMissingSummarySchemaError(error)) return counts
   if (error) {
     counts.failed += 1
     return counts
@@ -378,7 +412,7 @@ export function buildModuleOverviewFallback(input: {
 }) {
   if (input.summary?.status === 'failed' && input.summary.error) return input.summary.error
   if (input.readyCount > 0) return 'Overview is being prepared from readable study sources.'
-  if (input.needsActionCount > 0) return 'Overview will appear after readable sources are processed.'
+  if (input.needsActionCount > 0) return 'No overview yet. Refresh overview after processing sources.'
   return 'No readable study source is available for an overview yet.'
 }
 
@@ -411,7 +445,7 @@ async function getResourceSummaryMapForUser(client: SupabaseClient, resourceIds:
     .eq('user_id', userId)
     .in('resource_id', resourceIds)
 
-  if (isMissingSchemaObjectError(error) || error) return new Map<string, ResourceSummaryRow>()
+  if (isMissingSummarySchemaError(error) || error) return new Map<string, ResourceSummaryRow>()
   return new Map((data ?? []).map((row) => {
     const summary = adaptResourceSummaryRow(row as Record<string, unknown>)
     return [summary.resourceId, summary]
@@ -467,6 +501,8 @@ async function upsertModuleSummaryFailure(client: SupabaseClient, input: {
     .select('*')
     .single()
 
+  if (isMissingSummarySchemaError(error)) throw new Error(MODULE_SUMMARIES_MISSING_MESSAGE)
+  if (isSummaryPermissionError(error)) throw new Error(SUMMARY_PERMISSION_REPAIR_MESSAGE)
   if (error || !data) throw new Error(error?.message ?? 'Could not save module overview status.')
   return adaptModuleSummaryRow(data as Record<string, unknown>)
 }
@@ -728,8 +764,8 @@ function getSummaryModel() {
   return process.env.OPENAI_SUMMARY_MODEL?.trim() || process.env.OPENAI_MODEL?.trim() || SUMMARY_MODEL_FALLBACK
 }
 
-function getSummaryClient() {
-  return createSupabaseServiceRoleClient() ?? supabase
+async function getAuthenticatedSummaryClient() {
+  return await createAuthenticatedSupabaseServerClient() ?? supabase
 }
 
 function normalizeExtractionStatus(value: unknown): ModuleResource['extractionStatus'] {
@@ -738,10 +774,34 @@ function normalizeExtractionStatus(value: unknown): ModuleResource['extractionSt
     : 'metadata_only'
 }
 
-function isMissingSchemaObjectError(error: { code?: string | null; message?: string | null } | null | undefined) {
+export function isMissingSummarySchemaError(error: { code?: string | null; message?: string | null } | null | undefined) {
+  const message = error?.message ?? ''
   return error?.code === 'PGRST205'
     || error?.code === '42P01'
-    || /schema cache|module_summaries|resource_summaries/i.test(error?.message ?? '')
+    || /relation .* does not exist/i.test(message)
+    || /could not find (?:the )?table .* in (?:the )?schema cache/i.test(message)
+}
+
+export function isSummaryPermissionError(error: { code?: string | null; message?: string | null } | null | undefined) {
+  const message = error?.message ?? ''
+  return error?.code === '42501'
+    || /permission denied/i.test(message)
+    || /row-level security|row level security|\brls\b/i.test(message)
+}
+
+function logSummaryAvailabilityCheck(input: {
+  moduleId: string
+  hasUserId: boolean
+  error: { code?: string | null; message?: string | null } | null | undefined
+  tableMissing: boolean
+}) {
+  console.info('[Summary availability]', {
+    moduleId: input.moduleId,
+    userIdPresent: input.hasUserId,
+    errorCode: input.error?.code ?? null,
+    errorMessage: input.error?.message ?? null,
+    tableMissing: input.tableMissing,
+  })
 }
 
 function isExpectedSummarySkip(error: unknown) {

@@ -5,6 +5,8 @@ import {
   buildCleanModuleOverviewInput,
   buildModuleOverviewFallback,
   cleanStudyTextForOverview,
+  isMissingSummarySchemaError,
+  isSummaryPermissionError,
   type ResourceSummaryRow,
 } from '../lib/source-summaries'
 import type { Module, ModuleResource } from '../lib/types'
@@ -116,6 +118,87 @@ test('fallback is honest when only noisy text exists', () => {
   })
 
   assert.equal(fallback, 'Not enough clean study material yet. This module currently contains task instructions, but no readable study source has been processed.')
+})
+
+test('empty module summary result does not mean summaries table is missing', () => {
+  const fallback = buildModuleOverviewFallback({
+    readyCount: 1,
+    needsActionCount: 0,
+    summary: null,
+  })
+
+  assert.equal(isMissingSummarySchemaError(null), false)
+  assert.equal(fallback, 'Overview is being prepared from readable study sources.')
+})
+
+test('RLS and permission errors do not become migration warnings', () => {
+  const permissionError = {
+    code: '42501',
+    message: 'new row violates row-level security policy for table "module_summaries"',
+  }
+  const fallback = buildModuleOverviewFallback({
+    readyCount: 1,
+    needsActionCount: 0,
+    summary: {
+      moduleId: 'module-1',
+      userId: 'user-1',
+      summary: null,
+      topics: [],
+      suggestedOrder: [],
+      warnings: [],
+      status: 'failed',
+      model: null,
+      sourceHash: null,
+      error: 'Overview permissions need repair.',
+      generatedAt: null,
+    },
+  })
+
+  assert.equal(isSummaryPermissionError(permissionError), true)
+  assert.equal(isMissingSummarySchemaError(permissionError), false)
+  assert.equal(fallback, 'Overview permissions need repair.')
+})
+
+test('PGRST205 and missing relation errors show migration warning', () => {
+  const pgrstError = {
+    code: 'PGRST205',
+    message: "Could not find the table 'public.module_summaries' in the schema cache",
+  }
+  const relationError = {
+    code: '42P01',
+    message: 'relation "public.module_summaries" does not exist',
+  }
+
+  assert.equal(isMissingSummarySchemaError(pgrstError), true)
+  assert.equal(isMissingSummarySchemaError(relationError), true)
+})
+
+test('pending or no summary shows preparing state instead of migration warning', () => {
+  const pendingFallback = buildModuleOverviewFallback({
+    readyCount: 1,
+    needsActionCount: 0,
+    summary: {
+      moduleId: 'module-1',
+      userId: 'user-1',
+      summary: null,
+      topics: [],
+      suggestedOrder: [],
+      warnings: [],
+      status: 'pending',
+      model: null,
+      sourceHash: null,
+      error: null,
+      generatedAt: null,
+    },
+  })
+  const noReadableFallback = buildModuleOverviewFallback({
+    readyCount: 0,
+    needsActionCount: 1,
+    summary: null,
+  })
+
+  assert.equal(pendingFallback, 'Overview is being prepared from readable study sources.')
+  assert.equal(noReadableFallback, 'No overview yet. Refresh overview after processing sources.')
 })
 
 test('sync action imports summary generation but normal Learn render does not trigger generation', () => {

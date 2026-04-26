@@ -7,13 +7,13 @@ export interface AuthenticatedUserSummary {
   email: string | null
 }
 
-export async function getAuthenticatedUserServer(): Promise<AuthenticatedUserSummary | null> {
+export async function createAuthenticatedSupabaseServerClient() {
   if (!isSupabaseAuthConfigured) return null
 
   const cookieStore = await cookies()
   const { supabaseUrl, supabaseAnonKey } = getRequiredSupabaseAuthEnv()
 
-  const client = createServerClient(supabaseUrl, supabaseAnonKey, {
+  return createServerClient(supabaseUrl, supabaseAnonKey, {
     cookies: {
       getAll() {
         return cookieStore.getAll().map((cookie) => ({
@@ -32,6 +32,11 @@ export async function getAuthenticatedUserServer(): Promise<AuthenticatedUserSum
       },
     },
   })
+}
+
+export async function getAuthenticatedUserServer(): Promise<AuthenticatedUserSummary | null> {
+  const client = await createAuthenticatedSupabaseServerClient()
+  if (!client) return null
 
   const {
     data: { user },
