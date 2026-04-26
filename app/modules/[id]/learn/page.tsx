@@ -4,11 +4,14 @@ import type { CSSProperties, ReactNode } from 'react'
 import { DeepLearnGenerateButton } from '@/components/DeepLearnGenerateButton'
 import { GeneratedContentState } from '@/components/generated-content/GeneratedContentState'
 import { ModuleLensShell } from '@/components/ModuleLensShell'
+import { ModuleOverviewCard } from '@/components/ModuleOverviewCard'
 import { StudyResourceAccordionList } from '@/components/StudyResourceAccordionList'
 import { classifyDeepLearnResourceReadiness } from '@/lib/deep-learn-readiness'
 import { listDeepLearnNotesForModule } from '@/lib/deep-learn-store'
 import { getDeepLearnResourceUiState } from '@/lib/deep-learn-ui'
 import { buildModuleLearnOverview } from '@/lib/module-learn-overview'
+import { getModuleSummary, listResourceSummaries } from '@/lib/source-summaries'
+import { getSourceReadinessBucket, normalizeSourceReadiness } from '@/lib/source-readiness'
 import { buildModuleDoHref, buildModuleInspectHref, getSearchParamValue, getTaskElementId } from '@/lib/stay-focused-links'
 import {
   buildLearnExperience,
@@ -19,7 +22,6 @@ import {
   getResourceCanvasHref,
   resolveLearnResourceSelection,
 } from '@/lib/module-workspace'
-import { generateCourseSummary } from '@/lib/openai'
 import type { Task } from '@/lib/types'
 
 interface Props {
@@ -35,7 +37,6 @@ export default async function LearnPage({ params, searchParams }: Props) {
 
   const { module, tasks, resources: storedResources, resourceStudyStates, courseInstructor } = workspace
   const courseName = extractCourseName(module.raw_content)
-  const courseSummary = await generateCourseSummary(courseName, module.raw_content ?? undefined)
   const experience = buildLearnExperience(module, {
     taskCount: tasks.length,
     deadlineCount: workspace.deadlines.length,
@@ -51,6 +52,10 @@ export default async function LearnPage({ params, searchParams }: Props) {
   const deepLearnNotesResult = await listDeepLearnNotesForModule(module.id)
   const deepLearnNotes = deepLearnNotesResult.notes
   const deepLearnNoteByResourceId = new Map(deepLearnNotes.map((note) => [note.resourceId, note]))
+  const [resourceSummaryById, moduleSummary] = await Promise.all([
+    listResourceSummaries(storedResources.map((resource) => resource.id)),
+    getModuleSummary(module.id),
+  ])
   const deepLearnSelectionByDisplayId = new Map(
     overview.studyMaterials.map((material) => [
       material.resource.id,
@@ -127,7 +132,7 @@ export default async function LearnPage({ params, searchParams }: Props) {
               {courseInstructor || 'Instructor name not available'}
             </p>
             <p style={{ margin: '0.48rem 0 0', fontSize: '14px', lineHeight: 1.76, color: 'var(--text-secondary)', maxWidth: '52rem' }}>
-              {courseSummary}
+              {overview.summary ?? module.summary ?? overview.summaryStateMessage}
             </p>
           </div>
 
@@ -203,6 +208,15 @@ export default async function LearnPage({ params, searchParams }: Props) {
             </div>
           )}
 
+          <ModuleOverviewCard
+            moduleId={module.id}
+            fallbackSummary={overview.summary ?? module.summary ?? overview.summaryStateMessage}
+            readyCount={overview.readyStudyFileCount}
+            needsActionCount={overview.limitedStudyFileCount}
+            unsupportedCount={overview.unavailableStudyFileCount}
+            summary={moduleSummary}
+          />
+
           {overview.resumeTarget && (
             <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.85rem 0.9rem', display: 'grid', gap: '0.45rem' }}>
               <p className="ui-kicker">{overview.resumeTarget.promptLabel}</p>
@@ -256,6 +270,14 @@ export default async function LearnPage({ params, searchParams }: Props) {
                     storedResource: selection?.storedResource ?? null,
                     canonicalResourceId: selection?.canonicalResourceId ?? null,
                   })
+                  const sourceReadiness = normalizeSourceReadiness({
+                    resource: material.resource,
+                    storedResource: selection?.storedResource ?? null,
+                    canonicalResourceId: selection?.canonicalResourceId ?? null,
+                    moduleId: module.id,
+                    moduleTitle: module.title,
+                    summary: toSourceSummarySnapshot(selection?.canonicalResourceId ? resourceSummaryById.get(selection.canonicalResourceId) : null),
+                  })
 
                   return {
                     ...buildDeepLearnAccordionState(
@@ -288,6 +310,16 @@ export default async function LearnPage({ params, searchParams }: Props) {
                     readerHref: getLearnResourceHref(module.id, material.resource.id),
                     canvasHref: getResourceCanvasHref(material.resource),
                     originalFileHref: getResourceOriginalFileHref(material.resource),
+                    sourceReadinessState: sourceReadiness.state,
+                    sourceReadinessStatusLabel: sourceReadiness.statusLabel,
+                    sourceReadinessMessage: sourceReadiness.message,
+                    sourceReadinessActions: sourceReadiness.actions,
+                    sourceReadinessBucket: getSourceReadinessBucket(sourceReadiness.state),
+                    sourceTypeLabel: sourceReadiness.sourceTypeLabel,
+                    originLabel: sourceReadiness.originLabel,
+                    canonicalResourceId: sourceReadiness.canonicalResourceId,
+                    isSummarizable: sourceReadiness.isSummarizable,
+                    sourceSummary: sourceReadiness.summary,
                   }
                 })}
                 initialOpenResourceId={targetResourceId}
@@ -567,6 +599,18 @@ function deadlineTone(value: string): 'warning' | 'accent' | 'muted' {
   if (daysUntil <= 1) return 'warning'
   if (daysUntil <= 7) return 'accent'
   return 'muted'
+}
+
+function toSourceSummarySnapshot(summary: Awaited<ReturnType<typeof listResourceSummaries>> extends Map<string, infer Row> ? Row | undefined | null : never) {
+  if (!summary) return null
+  return {
+    summary: summary.summary,
+    topics: summary.topics,
+    studyValue: summary.studyValue,
+    suggestedUse: summary.suggestedUse,
+    status: summary.status,
+    generatedAt: summary.generatedAt,
+  }
 }
 
 function buildDeepLearnAccordionState(

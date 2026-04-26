@@ -66,7 +66,7 @@ export interface CourseLearnStudyMaterialRow {
   outlineSections: StudyFileOutlineSection[]
   outlineHint: string | null
   deepLearnStatus: 'not_started' | 'pending' | 'ready' | 'failed' | 'blocked' | 'unavailable'
-  deepLearnStatusLabel: 'Pack' | 'Review' | 'Review Ready' | 'Source issue' | 'Unavailable'
+  deepLearnStatusLabel: 'Pack' | 'Review' | 'Review Ready' | 'Needs action' | 'Unavailable'
   deepLearnTone: 'accent' | 'warning' | 'muted'
   deepLearnSummary: string
   deepLearnDetail: string

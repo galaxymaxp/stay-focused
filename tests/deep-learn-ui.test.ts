@@ -51,7 +51,7 @@ test('unavailable pack loading is distinct from having no pack yet', () => {
   assert.match(state.summary, /deep_learn_notes table/i)
 })
 
-test('unreadable resources suppress the generate affordance and show the source issue', () => {
+test('unreadable resources suppress the generate affordance and show the source action state', () => {
   const state = getDeepLearnResourceUiState('module-1', 'resource-1', null, {
     readiness: {
       state: 'unreadable',
@@ -62,14 +62,14 @@ test('unreadable resources suppress the generate affordance and show the source 
       label: 'Unreadable',
       tone: 'muted',
       summary: 'No fetchable source path is stored for this item.',
-      detail: 'The synced resource record does not currently include a Canvas API URL, file URL, or resolvable module-item target that Deep Learn can read.',
+      detail: 'This item needs to be reconnected to its Canvas source before Deep Learn can save notes or quizzes.',
     },
   })
 
   assert.equal(state.status, 'blocked')
-  assert.equal(state.statusLabel, 'Source issue')
+  assert.equal(state.statusLabel, 'Needs action')
   assert.equal(state.primaryLabel, 'Open Source')
-  assert.match(state.detail, /resolvable module-item target/i)
+  assert.match(state.detail, /Canvas source/i)
 })
 
 function createNote(overrides: Partial<DeepLearnNote> = {}): DeepLearnNote {

@@ -127,7 +127,7 @@ export default async function ModuleInspectPage({ params, searchParams }: Props)
 
         <section className="motion-card motion-delay-2 section-shell" style={{ padding: '1rem 1.05rem', display: 'grid', gap: '0.8rem' }}>
               <div>
-                <p className="ui-kicker">Persisted resource rows</p>
+                <p className="ui-kicker">Persisted sources</p>
                 <h3 style={{ margin: '0.42rem 0 0', fontSize: '1.04rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>
               Title, type, capability, quality, grounding treatment, char count, preview, and reason
                 </h3>
@@ -375,7 +375,7 @@ function buildNotice(searchParams?: Record<string, string | string[] | undefined
   if (reprocess === 'done') {
     return {
       tone: 'accent' as const,
-      message: `Reprocessed ${count ?? '0'} ${scope === 'single' ? 'resource' : 'resource rows'} using the current extraction logic.`,
+      message: `Reprocessed ${count ?? '0'} ${scope === 'single' ? 'source' : 'sources'} using the current extraction logic.`,
     }
   }
 

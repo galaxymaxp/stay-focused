@@ -26,8 +26,46 @@ export function CourseLearnExplorer({ modules }: { modules: CourseLearnModuleCar
           <h2 style={{ margin: 0, fontSize: '18px', lineHeight: 1.28, fontWeight: 650, color: 'var(--text-primary)' }}>
             {module.title}
           </h2>
+          <p style={{ margin: 0, fontSize: '12px', lineHeight: 1.55, color: 'var(--text-secondary)' }}>
+            {module.summary}
+          </p>
+          <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginTop: '0.12rem' }}>
+            <MiniPill label={`${module.studyCount} sources`} tone={module.readinessTone === 'ready' ? 'accent' : 'muted'} />
+            <MiniPill label={`${module.studyMaterials.filter((item) => item.readinessLabel === 'Ready').length} ready`} tone="accent" />
+            <MiniPill
+              label={`${module.studyMaterials.filter((item) => item.readinessLabel === 'Partial' || item.deepLearnStatus === 'blocked').length} need action`}
+              tone="warning"
+            />
+            <MiniPill
+              label={`${module.studyMaterials.filter((item) => item.readinessLabel === 'Unsupported' || item.readinessLabel === 'Link only' || item.readinessLabel === 'Source first').length} reference`}
+              tone="muted"
+            />
+          </div>
         </Link>
       ))}
     </div>
+  )
+}
+
+function MiniPill({ label, tone }: { label: string; tone: 'accent' | 'warning' | 'muted' }) {
+  const background = tone === 'accent'
+    ? 'color-mix(in srgb, var(--surface-selected) 84%, var(--accent) 16%)'
+    : tone === 'warning'
+      ? 'color-mix(in srgb, var(--amber-light) 42%, var(--surface-soft) 58%)'
+      : 'color-mix(in srgb, var(--surface-soft) 92%, transparent)'
+
+  return (
+    <span style={{
+      display: 'inline-flex',
+      padding: '0.2rem 0.48rem',
+      borderRadius: '999px',
+      border: '1px solid var(--border-subtle)',
+      background,
+      color: 'var(--text-primary)',
+      fontSize: '11px',
+      fontWeight: 700,
+    }}>
+      {label}
+    </span>
   )
 }

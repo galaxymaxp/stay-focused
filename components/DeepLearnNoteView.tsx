@@ -35,7 +35,7 @@ export function DeepLearnNoteView({
   const effectiveAvailability = deepLearnResourceId ? noteAvailability : 'unavailable'
   const effectiveAvailabilityMessage = deepLearnResourceId
     ? noteAvailabilityMessage
-    : noteAvailabilityMessage ?? 'Deep Learn needs a synced resource record for this item before it can save exam prep packs.'
+    : noteAvailabilityMessage ?? 'This item needs to be reconnected to its Canvas source before Deep Learn can save notes or quizzes.'
   const ui = getDeepLearnResourceUiState(moduleId, resolvedDeepLearnResourceId, note, {
     notesAvailability: effectiveAvailability,
     unavailableMessage: effectiveAvailabilityMessage,

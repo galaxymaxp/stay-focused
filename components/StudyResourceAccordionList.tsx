@@ -3,10 +3,13 @@
 import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
 import { DeepLearnGenerateButton } from '@/components/DeepLearnGenerateButton'
+import { SourceReadinessFilters, type SourceReadinessFilter } from '@/components/SourceReadinessFilters'
+import { SourceSummaryBadge, type SourceSummaryBadgeModel } from '@/components/SourceSummaryBadge'
 import { getResourceElementId } from '@/lib/stay-focused-links'
 import type { StudyFileOutlineSection, StudyFileReaderState } from '@/lib/study-file-reader'
 import type { LearnResourceActionPriority, LearnResourceStatusKey } from '@/lib/learn-resource-ui'
 import type { DeepLearnNoteLoadAvailability } from '@/lib/types'
+import type { SourceReadinessAction, SourceReadinessState } from '@/lib/source-readiness'
 
 export interface StudyResourceAccordionItem {
   id: string
@@ -38,13 +41,23 @@ export interface StudyResourceAccordionItem {
   deepLearnQuizHref: string
   deepLearnQuizReady: boolean
   deepLearnNoteFailure?: string | null
-  deepLearnStatusLabel?: 'Pack' | 'Review' | 'Review Ready' | 'Source issue' | 'Unavailable'
+  deepLearnStatusLabel?: 'Pack' | 'Review' | 'Review Ready' | 'Needs action' | 'Unavailable'
   deepLearnTone?: 'accent' | 'warning' | 'muted'
   deepLearnDetail?: string
   deepLearnPrimaryLabel?: string
   deepLearnTermCount?: number
   deepLearnFactCount?: number
   deepLearnAvailability?: DeepLearnNoteLoadAvailability
+  sourceReadinessState: SourceReadinessState
+  sourceReadinessStatusLabel: string
+  sourceReadinessMessage: string
+  sourceReadinessActions: SourceReadinessAction[]
+  sourceReadinessBucket: 'ready' | 'needs_action' | 'unsupported'
+  sourceTypeLabel: string
+  originLabel: string
+  canonicalResourceId: string | null
+  isSummarizable: boolean
+  sourceSummary: SourceSummaryBadgeModel | null
 }
 
 export function StudyResourceAccordionList({
@@ -61,6 +74,7 @@ export function StudyResourceAccordionList({
   scrollDensity?: 'comfort' | 'dense'
 }) {
   const lastScrolledResourceId = useRef<string | null>(null)
+  const [filter, setFilter] = useState<SourceReadinessFilter>('all')
   const itemIdKey = items.map((item) => item.id).join('|')
   const hasInitialOpenResource = Boolean(initialOpenResourceId && items.some((item) => item.id === initialOpenResourceId))
   const routeKey = `${itemIdKey}:${initialOpenResourceId ?? ''}`
@@ -99,12 +113,28 @@ export function StudyResourceAccordionList({
     )
   }
 
+  const counts = buildFilterCounts(items)
+  const repeatedTitleCounts = buildRepeatedTitleCounts(items)
+  const visibleItems = items
+    .filter((item) => filter === 'all' || item.sourceReadinessBucket === filter)
+    .sort(compareSourceReadinessItems)
+  const groupedItems = buildSourceGroups(visibleItems)
+
   return (
     <div className={scrollable ? 'contained-scroll-frame' : undefined} data-density={scrollDensity === 'dense' ? 'dense' : undefined}>
       <div style={{ display: 'grid', gap: '0.75rem' }}>
-        {items.map((item) => {
+        <SourceReadinessFilters value={filter} counts={counts} onChange={setFilter} />
+        {groupedItems.map((group) => (
+          <section key={group.key} style={{ display: 'grid', gap: '0.55rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.6rem', alignItems: 'center' }}>
+              <p className="ui-kicker" style={{ margin: 0 }}>{group.title}</p>
+              <ResourcePill label={`${group.items.length}`} tone={group.bucket === 'ready' ? 'accent' : group.bucket === 'needs_action' ? 'warning' : 'muted'} />
+            </div>
+            {group.items.map((item) => {
           const expanded = resolvedOpenResourceId === item.id
           const sourceHref = item.originalFileHref ?? item.canvasHref
+          const titleCount = repeatedTitleCounts.get(normalizeTitle(item.title)) ?? 0
+          const shouldShowModuleContext = titleCount > 1 || normalizeTitle(item.title) === 'learning targets'
 
           return (
             <article
@@ -151,26 +181,46 @@ export function StudyResourceAccordionList({
               >
                 <div style={{ minWidth: 0, flex: '1 1 320px', display: 'grid', gap: '0.38rem' }}>
                   <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                    <ResourcePill label={item.fileTypeLabel} />
+                    <ResourcePill label={item.sourceTypeLabel || item.fileTypeLabel} />
                     <ResourcePill
-                      label={item.deepLearnStatusLabel ?? fallbackStageLabel(item.deepLearnStatus, item.deepLearnQuizReady)}
-                      tone={item.deepLearnStatus === 'ready' ? 'accent' : item.deepLearnStatus === 'failed' || item.deepLearnStatus === 'blocked' ? 'warning' : 'muted'}
+                      label={item.sourceReadinessStatusLabel}
+                      tone={item.sourceReadinessBucket === 'ready' ? 'accent' : item.sourceReadinessBucket === 'needs_action' ? 'warning' : 'muted'}
                     />
                     {item.required && <ResourcePill label="Required" tone="warning" />}
                   </div>
                   <h4 style={{ margin: 0, fontSize: '0.98rem', lineHeight: 1.38, color: 'var(--text-primary)' }}>
                     {item.title}
                   </h4>
+                  {shouldShowModuleContext && (
+                    <p style={{ margin: 0, fontSize: '11px', lineHeight: 1.45, color: 'var(--text-muted)' }}>
+                      {item.title.toLowerCase() === 'learning targets'
+                        ? 'Learning Targets list what this module expects you to understand.'
+                        : item.originLabel}
+                    </p>
+                  )}
                   <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.62, color: 'var(--text-secondary)' }}>
-                    {truncateText(item.deepLearnSummary || item.note, expanded ? 260 : 180)}
+                    {truncateText(item.sourceReadinessMessage || item.deepLearnSummary || item.note, expanded ? 260 : 180)}
                   </p>
                 </div>
 
-                <ResourcePill label={expanded ? 'Open' : 'Preview'} tone={expanded ? 'accent' : 'muted'} />
+                <ResourcePill label={expanded ? 'Open' : item.sourceReadinessBucket === 'ready' ? 'Preview' : 'Details'} tone={expanded ? 'accent' : 'muted'} />
               </button>
 
               {expanded && (
                 <div style={{ display: 'grid', gap: '0.75rem' }}>
+                  <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.72rem 0.78rem', display: 'grid', gap: '0.35rem' }}>
+                    <p className="ui-kicker" style={{ margin: 0 }}>Source origin</p>
+                    <p style={{ margin: 0, fontSize: '12px', lineHeight: 1.55, color: 'var(--text-secondary)' }}>
+                      {item.originLabel}
+                    </p>
+                  </div>
+
+                  <SourceSummaryBadge
+                    resourceId={item.canonicalResourceId}
+                    summary={item.sourceSummary}
+                    canSummarize={item.isSummarizable}
+                  />
+
                   {item.deepLearnNoteFailure && (
                     <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.9rem 0.95rem' }}>
                       <p className="ui-kicker" style={{ margin: 0 }}>Pack error</p>
@@ -181,21 +231,23 @@ export function StudyResourceAccordionList({
                   )}
 
                   <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-                    {item.deepLearnStatus === 'ready' || item.deepLearnStatus === 'pending' ? (
+                    {shouldShowDeepLearnWorkspaceAction(item) ? (
                       <Link href={item.deepLearnNoteHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
                         Open workspace
                       </Link>
-                    ) : item.deepLearnStatus === 'unavailable' || item.deepLearnStatus === 'blocked' ? (
-                      <Link href={item.readerHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
-                        Open Source
-                      </Link>
-                    ) : (
+                    ) : item.sourceReadinessActions.includes('start_deep_learn') && item.deepLearnStatus !== 'unavailable' ? (
                       <DeepLearnGenerateButton
                         moduleId={item.moduleId}
-                        resourceId={item.id}
+                        resourceId={item.canonicalResourceId ?? item.id}
                         courseId={item.courseId ?? null}
-                        label="Generate pack"
+                        label="Start Deep Learn"
                       />
+                    ) : item.sourceReadinessActions.includes('preview') ? (
+                      <Link href={item.readerHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
+                        Preview
+                      </Link>
+                    ) : (
+                      <SourceRepairButton item={item} />
                     )}
                     {item.deepLearnStatus === 'ready' && item.deepLearnQuizReady && (
                       <Link href={item.deepLearnQuizHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
@@ -204,30 +256,31 @@ export function StudyResourceAccordionList({
                     )}
                     {sourceHref && (
                       <a href={sourceHref} target="_blank" rel="noreferrer" className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-                        {item.sourceActionLabel}
+                        {labelForSourceAction(item)}
                       </a>
+                    )}
+                    {item.sourceReadinessActions.includes('retry_extraction') || item.sourceReadinessActions.includes('process_source') ? (
+                      <Link href={`/modules/${item.moduleId}/inspect`} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+                        {item.sourceReadinessActions.includes('retry_extraction') ? 'Retry extraction' : 'Process source'}
+                      </Link>
+                    ) : null}
+                    {item.sourceReadinessActions.includes('add_notes') && (
+                      <Link href={item.readerHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+                        Add notes
+                      </Link>
                     )}
                   </div>
                 </div>
               )}
             </article>
           )
-        })}
+            })}
+          </section>
+        ))}
       </div>
     </div>
   )
 }
-
-function fallbackStageLabel(
-  status: StudyResourceAccordionItem['deepLearnStatus'],
-  quizReady: boolean,
-) {
-  if (status === 'ready') return quizReady ? 'Review Ready' : 'Review'
-  if (status === 'blocked') return 'Source issue'
-  if (status === 'unavailable') return 'Unavailable'
-  return 'Pack'
-}
-
 
 function ResourcePill({
   label,
@@ -263,6 +316,114 @@ function ResourcePill({
       {label}
     </span>
   )
+}
+
+function SourceRepairButton({ item }: { item: StudyResourceAccordionItem }) {
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState<string | null>(null)
+
+  if (!item.sourceReadinessActions.includes('repair_source_link')) {
+    return (
+      <Link href={item.readerHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
+        Details
+      </Link>
+    )
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true)
+          setMessage(null)
+          try {
+            const response = await fetch('/api/sources/repair', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({
+                moduleId: item.moduleId,
+                title: item.title,
+                sourceUrl: item.originalFileHref ?? item.canvasHref,
+              }),
+            })
+            const payload = await response.json().catch(() => null) as { message?: string; error?: string } | null
+            setMessage(payload?.message ?? payload?.error ?? (response.ok ? 'Repair attempted.' : 'Could not repair this source.'))
+          } finally {
+            setBusy(false)
+          }
+        }}
+        className="ui-button ui-button-secondary ui-button-xs"
+      >
+        {busy ? 'Repairing...' : 'Repair source link'}
+      </button>
+      {message && <span style={{ fontSize: '11px', lineHeight: 1.45, color: 'var(--text-muted)', alignSelf: 'center' }}>{message}</span>}
+    </>
+  )
+}
+
+function shouldShowDeepLearnWorkspaceAction(item: StudyResourceAccordionItem) {
+  return item.deepLearnStatus === 'ready' || item.deepLearnStatus === 'pending'
+}
+
+function labelForSourceAction(item: StudyResourceAccordionItem) {
+  if (item.sourceReadinessActions.includes('open_link')) return 'Open link'
+  if (item.sourceReadinessActions.includes('open_lesson')) return 'Open lesson'
+  if (item.sourceReadinessActions.includes('open_canvas')) return 'Open in Canvas'
+  return item.sourceActionLabel || 'Open source'
+}
+
+function buildFilterCounts(items: StudyResourceAccordionItem[]): Record<SourceReadinessFilter, number> {
+  return {
+    all: items.length,
+    ready: items.filter((item) => item.sourceReadinessBucket === 'ready').length,
+    needs_action: items.filter((item) => item.sourceReadinessBucket === 'needs_action').length,
+    unsupported: items.filter((item) => item.sourceReadinessBucket === 'unsupported').length,
+  }
+}
+
+function buildSourceGroups(items: StudyResourceAccordionItem[]) {
+  const groups = [
+    { key: 'ready', title: 'Ready for Deep Learn', bucket: 'ready' as const, items: [] as StudyResourceAccordionItem[] },
+    { key: 'repair', title: 'Needs source repair', bucket: 'needs_action' as const, items: [] as StudyResourceAccordionItem[] },
+    { key: 'action', title: 'Needs action', bucket: 'needs_action' as const, items: [] as StudyResourceAccordionItem[] },
+    { key: 'reference', title: 'Labs and reference-only sources', bucket: 'unsupported' as const, items: [] as StudyResourceAccordionItem[] },
+  ]
+
+  for (const item of items) {
+    if (item.sourceReadinessBucket === 'ready') groups[0].items.push(item)
+    else if (item.sourceReadinessState === 'missing_resource_link') groups[1].items.push(item)
+    else if (item.sourceReadinessBucket === 'unsupported') groups[3].items.push(item)
+    else groups[2].items.push(item)
+  }
+
+  return groups.filter((group) => group.items.length > 0)
+}
+
+function compareSourceReadinessItems(left: StudyResourceAccordionItem, right: StudyResourceAccordionItem) {
+  return bucketWeight(left.sourceReadinessBucket) - bucketWeight(right.sourceReadinessBucket)
+    || Number(right.required) - Number(left.required)
+    || left.title.localeCompare(right.title)
+}
+
+function bucketWeight(bucket: StudyResourceAccordionItem['sourceReadinessBucket']) {
+  if (bucket === 'ready') return 0
+  if (bucket === 'needs_action') return 1
+  return 2
+}
+
+function buildRepeatedTitleCounts(items: StudyResourceAccordionItem[]) {
+  const counts = new Map<string, number>()
+  for (const item of items) {
+    const key = normalizeTitle(item.title)
+    counts.set(key, (counts.get(key) ?? 0) + 1)
+  }
+  return counts
+}
+
+function normalizeTitle(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
 }
 
 function truncateText(value: string, maxLength: number) {

@@ -86,7 +86,7 @@ export default async function ResourceDetailPage({ params }: Props) {
     ? deepLearnReadiness.detail
     : deepLearnResourceId
       ? deepLearnNoteResult.message
-      : 'Deep Learn needs a synced resource record for this item before it can save exam prep packs or generate a quiz-ready pack.'
+      : 'This item needs to be reconnected to its Canvas source before Deep Learn can save notes or quizzes.'
 
   if (resource.kind === 'study_file') {
     return (

@@ -6,7 +6,7 @@ export type DeepLearnUiStatus = 'not_started' | 'pending' | 'ready' | 'failed' |
 
 export interface DeepLearnResourceUiState {
   status: DeepLearnUiStatus
-  statusLabel: 'Pack' | 'Review' | 'Review Ready' | 'Source issue' | 'Unavailable'
+  statusLabel: 'Pack' | 'Review' | 'Review Ready' | 'Needs action' | 'Unavailable'
   tone: 'accent' | 'warning' | 'muted'
   noteHref: string
   quizHref: string
@@ -47,7 +47,7 @@ export function getDeepLearnResourceUiState(
   if ((note?.status === 'failed' || !note) && readiness?.state === 'unreadable') {
     return {
       status: 'blocked',
-      statusLabel: 'Source issue',
+      statusLabel: 'Needs action',
       tone: 'warning',
       noteHref,
       quizHref,

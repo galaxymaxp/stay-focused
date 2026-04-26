@@ -243,8 +243,8 @@ function describeDeepLearnBlockedReason(input: {
 
   if (input.blockedReason === 'no_stored_resource') {
     return {
-      summary: 'This item still needs a synced resource row before Deep Learn can save an exam prep pack.',
-      detail: 'The Learn card exists, but it still does not map to a stored module resource record, so Deep Learn cannot save a stable review pack for it yet.',
+      summary: 'This item needs to be reconnected to its Canvas source before Deep Learn can save notes or quizzes.',
+      detail: 'Open Canvas or use source repair so Stay Focused can reconnect the original item.',
     }
   }
 
@@ -252,15 +252,17 @@ function describeDeepLearnBlockedReason(input: {
     return {
       summary: 'No fetchable source path is stored for this item.',
       detail: sourceNote
-        ?? 'The synced resource record does not currently include a Canvas API URL, file URL, or resolvable module-item target that Deep Learn can read.',
+        ?? 'This item needs to be reconnected to its Canvas source before Deep Learn can save notes or quizzes.',
     }
   }
 
   if (input.blockedReason === 'unsupported_source_type') {
     return {
-      summary: `This ${sourceTypeLabel} source type is outside the current readable Deep Learn path.`,
+      summary: sourceTypeLabel === 'study'
+        ? 'Deep Learn cannot read this source type yet.'
+        : `Deep Learn cannot read this ${sourceTypeLabel} yet.`,
       detail: sourceNote
-        ?? 'Stay Focused keeps the source visible, but this type of item still sits outside the current extraction and scan-fallback path.',
+        ?? 'Stay Focused keeps the source visible and labels it as reference material instead of treating it like broken study text.',
     }
   }
 
@@ -274,7 +276,7 @@ function describeDeepLearnBlockedReason(input: {
 
   if (input.blockedReason === 'external_link_only') {
     return {
-      summary: 'This item only resolves to an external link.',
+      summary: 'This source opens outside Canvas. Use the original link for now.',
       detail: sourceNote
         ?? 'Stay Focused can keep the original link available, but it cannot ground the destination content as a trustworthy exam prep pack yet.',
     }
@@ -289,7 +291,7 @@ function describeDeepLearnBlockedReason(input: {
   }
 
   return {
-    summary: 'No usable text or scan path is available after source recovery.',
+    summary: 'This file has little or no readable text. It may be scanned or image-only.',
     detail: sourceNote
       ?? 'The original source was available, but the recovery pass still did not surface enough readable material to build a trustworthy exam prep pack.',
   }
