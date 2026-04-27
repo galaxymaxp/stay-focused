@@ -250,7 +250,7 @@ async function createPptxBuffer(text: string) {
 }
 
 async function createTextPdfBuffer() {
-  return readFile('node_modules/pdf-parse/test/data/01-valid.pdf')
+  return readFile('tests/fixtures/text-readable.pdf')
 }
 
 function createImageOnlyPdfBuffer() {

@@ -4,13 +4,13 @@ import test from 'node:test'
 import { extractPdfTextFromBuffer } from '../lib/extraction/pdf-extractor'
 
 test('server PDF adapter extracts text without browser runtime globals', async () => {
-  const buffer = await readFile('node_modules/pdf-parse/test/data/01-valid.pdf')
+  const buffer = await readFile('tests/fixtures/text-readable.pdf')
   const result = await extractPdfTextFromBuffer(buffer)
 
   assert.notEqual(result.errorCode, 'pdf_runtime_missing_dom_matrix')
   assert.equal(result.status, 'extracted')
   assert.ok((result.pageCount ?? 0) > 0)
-  assert.ok(result.text.length > 0)
+  assert.match(result.text, /Stay Focused PDF extraction test/)
   assert.ok(result.charCount > 0)
   assert.ok(result.quality.wordCount >= 20)
   assert.ok(result.quality.sentenceCount >= 2)
