@@ -52,6 +52,37 @@ export function AuthForm({
                 const supabase = createSupabaseBrowserClient()
                 const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`
                 const { error } = await supabase.auth.signInWithOAuth({
+                  provider: 'azure',
+                  options: {
+                    redirectTo,
+                    scopes: 'email',
+                  },
+                })
+
+                if (error) throw error
+              } catch (error) {
+                setErrorMessage(error instanceof Error ? error.message : 'Could not start Microsoft sign-in.')
+              }
+            })
+          }}
+        >
+          {isPending ? 'Working...' : 'Continue with Microsoft'}
+        </button>
+
+        <button
+          type="button"
+          className="ui-button ui-button-secondary"
+          style={{ minHeight: '2.7rem' }}
+          disabled={isPending}
+          onClick={() => {
+            setMessage(null)
+            setErrorMessage(null)
+
+            startTransition(async () => {
+              try {
+                const supabase = createSupabaseBrowserClient()
+                const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`
+                const { error } = await supabase.auth.signInWithOAuth({
                   provider: 'google',
                   options: {
                     redirectTo,

@@ -3,6 +3,8 @@ import { SyncFirstEmptyState } from '@/components/SyncFirstEmptyState'
 import { getClarityWorkspace } from '@/lib/clarity-workspace'
 import { buildHomeOverview } from '@/lib/home-overview'
 
+export const dynamic = 'force-dynamic'
+
 export default async function Dashboard() {
   const workspace = await getClarityWorkspace()
 

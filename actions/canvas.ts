@@ -3,6 +3,7 @@
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { requireAuthenticatedUserServer } from '@/lib/auth-server'
+import { resolveCanvasConfigFromUser } from '@/lib/canvas-user-config'
 import {
   compileCanvasContent,
   getCanvasAssignment,
@@ -16,7 +17,6 @@ import {
   getModules,
   normalizeCanvasUrl,
   resolveCanvasLinkedTarget,
-  resolveCanvasConfig,
   type CanvasConfig,
   type CanvasAssignment,
   type CanvasCourse,
@@ -206,6 +206,9 @@ export async function syncCourse(formData: FormData): Promise<{ error: string } 
 
   revalidatePath('/')
   revalidatePath('/canvas')
+  revalidatePath('/home')
+  revalidatePath('/courses')
+  revalidatePath('/calendar')
   redirect(`/modules/${result.moduleId}`)
 }
 
@@ -298,6 +301,9 @@ export async function syncCourses(input: {
 
   revalidatePath('/')
   revalidatePath('/canvas')
+  revalidatePath('/home')
+  revalidatePath('/courses')
+  revalidatePath('/calendar')
 
   return {
     success: true,
@@ -308,7 +314,7 @@ export async function syncCourses(input: {
 
 async function syncSingleCourse(course: CanvasCourse, config: Partial<CanvasConfig>, userId: string): Promise<SyncCourseResult> {
   if (!supabase) throw new Error('Supabase is not configured yet.')
-  const resolvedConfig = resolveCanvasConfig(config)
+  const resolvedConfig = await resolveCanvasConfigFromUser(config)
   const normalizedCourse = normalizeCanvasCourseForSync(course, resolvedConfig.url)
   const databaseSafeCourse: CanvasCourse = {
     ...course,
@@ -360,6 +366,7 @@ async function syncSingleCourse(course: CanvasCourse, config: Partial<CanvasConf
   const { data: moduleRecord, error: insertError } = await supabase
     .from('modules')
     .insert(sanitizeDatabaseValue({
+      user_id: userId,
       course_id: courseRecord.id,
       title: 'Processing...',
       raw_content: rawContent,
@@ -385,6 +392,7 @@ async function syncSingleCourse(course: CanvasCourse, config: Partial<CanvasConf
     const resourceRows = buildModuleResourcesForSync(resourceIngestion, {
       moduleId,
       courseId: courseRecord.id,
+      userId,
     })
 
     const { error: resourcesInsertError } = await supabase
@@ -431,7 +439,7 @@ async function syncSingleCourse(course: CanvasCourse, config: Partial<CanvasConf
     throw createSupabaseStepError('update processed module', moduleUpdateError, { moduleId, title: normalizedAiResult.title })
   }
 
-  const learningItems = buildLearningItemsForSync(normalizedAiResult, courseRecord.id, moduleId)
+  const learningItems = buildLearningItemsForSync(normalizedAiResult, courseRecord.id, moduleId, userId)
   if (learningItems.length > 0) {
     const { error: learningItemsError } = await supabase
       .from('learning_items')
@@ -460,6 +468,7 @@ async function syncSingleCourse(course: CanvasCourse, config: Partial<CanvasConf
     courseId: courseRecord.id,
     moduleId,
     extractedFrom: normalizedAiResult.title,
+    userId,
   })
 
   if (clarityTaskItems.length > 0) {
@@ -478,6 +487,7 @@ async function syncSingleCourse(course: CanvasCourse, config: Partial<CanvasConf
   if (normalizedAiResult.tasks.length > 0) {
     const { error: tasksInsertError } = await supabase.from('tasks').insert(
       sanitizeDatabaseValue(syncedTaskDrafts.map((task) => ({
+        user_id: userId,
         module_id: moduleId,
         title: task.title,
         details: task.details,
@@ -502,6 +512,7 @@ async function syncSingleCourse(course: CanvasCourse, config: Partial<CanvasConf
   if (standaloneDeadlines.length > 0) {
     const { error: deadlinesInsertError } = await supabase.from('deadlines').insert(
       sanitizeDatabaseValue(standaloneDeadlines.map((deadline) => ({
+        user_id: userId,
         module_id: moduleId,
         label: deadline.label,
         date: deadline.date,
@@ -733,10 +744,11 @@ async function upsertCanvasCourseRecord(course: NormalizedCanvasCourseForSync, u
   return courseRecord as ExistingCourseMatch
 }
 
-function buildLearningItemsForSync(aiResult: AIResponse, courseId: string, moduleId: string) {
+function buildLearningItemsForSync(aiResult: AIResponse, courseId: string, moduleId: string, userId: string) {
   const items = sanitizeDatabaseValue([
     aiResult.summary
       ? {
+          user_id: userId,
           course_id: courseId,
           module_id: moduleId,
           title: 'What this module is trying to teach',
@@ -746,6 +758,7 @@ function buildLearningItemsForSync(aiResult: AIResponse, courseId: string, modul
         }
       : null,
     ...aiResult.concepts.map((concept, index) => ({
+      user_id: userId,
       course_id: courseId,
       module_id: moduleId,
       title: `Key idea ${index + 1}`,
@@ -754,6 +767,7 @@ function buildLearningItemsForSync(aiResult: AIResponse, courseId: string, modul
       order: index + 1,
     })),
     ...aiResult.study_prompts.map((prompt, index) => ({
+      user_id: userId,
       course_id: courseId,
       module_id: moduleId,
       title: `Check your understanding ${index + 1}`,
@@ -768,7 +782,7 @@ function buildLearningItemsForSync(aiResult: AIResponse, courseId: string, modul
 
 function buildModuleResourcesForSync(
   resources: ResourceIngestionRecord[],
-  context: { moduleId: string; courseId: string },
+  context: { moduleId: string; courseId: string; userId: string },
 ) {
   return sanitizeDatabaseValue(resources.map((resource) => {
     const assessmentMetadata = buildModuleResourceAssessmentMetadata({
@@ -784,6 +798,7 @@ function buildModuleResourcesForSync(
     }, resource.metadata)
 
     return {
+      user_id: context.userId,
       module_id: context.moduleId,
       course_id: context.courseId,
       canvas_module_id: resource.canvasModuleId,
@@ -831,9 +846,10 @@ function buildSyncedTaskDrafts(
 
 function buildTaskItemsForSync(
   syncedTasks: SyncedTaskDraft[],
-  context: { courseId: string; moduleId: string; extractedFrom: string },
+  context: { courseId: string; moduleId: string; extractedFrom: string; userId: string },
 ) {
   return sanitizeDatabaseValue(syncedTasks.map((task) => ({
+    user_id: context.userId,
     course_id: context.courseId,
     module_id: context.moduleId,
     title: task.title,

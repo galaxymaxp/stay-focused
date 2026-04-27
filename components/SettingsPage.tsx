@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } fro
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { requestNotificationPermission, setNotificationVolume, setSoundEnabled, playNotificationSound } from '@/lib/notifications'
+import { getUserSettings, updateCanvasSettings, type UserSettings } from '@/actions/user-settings'
 import { useResolvedUserAvatar } from '@/components/useResolvedUserAvatar'
 import { UserAvatar } from '@/components/UserAvatar'
 import { useThemeSettings } from '@/components/ThemeProvider'
@@ -26,13 +27,6 @@ interface SettingsSectionLinkItem {
   id: SettingsSectionId
   label: string
   description: string
-}
-
-interface SavedCanvasConnection {
-  url: string
-  token: string
-  testedAt: string
-  courseCount?: number
 }
 
 const SECTION_LABELS: Record<Exclude<SettingsSectionId, 'advanced'>, SettingsSectionLinkItem> = {
@@ -69,27 +63,47 @@ export function SettingsPage() {
   const [avatarActionPending, setAvatarActionPending] = useState<'source' | 'upload' | 'remove' | null>(null)
   const [avatarActionError, setAvatarActionError] = useState<string | null>(null)
   const [avatarActionMessage, setAvatarActionMessage] = useState<string | null>(null)
-  const [savedCanvasConnection, setSavedCanvasConnection] = useState<SavedCanvasConnection | null>(null)
+  const [userSettings, setUserSettings] = useState<UserSettings | null>(null)
+  const [settingsLoading, setSettingsLoading] = useState(true)
+  const [settingsError, setSettingsError] = useState<string | null>(null)
+  const [canvasSaving, setCanvasSaving] = useState(false)
+  const [canvasSaveMessage, setCanvasSaveMessage] = useState<string | null>(null)
 
   const availableSections = buildAvailableSections()
   const requestedSection = searchParams.get('section')
   const activeSection = resolveActiveSection(requestedSection, availableSections)
 
   useEffect(() => {
-    if (typeof window === 'undefined') return
-
-    const stored = window.localStorage.getItem('stay-focused.canvas-connection')
-    if (!stored) return
-
-    try {
-      const parsed = JSON.parse(stored) as SavedCanvasConnection
-      if (typeof parsed.url === 'string' && typeof parsed.token === 'string' && typeof parsed.testedAt === 'string') {
-        setSavedCanvasConnection(parsed)
-      }
-    } catch {
-      setSavedCanvasConnection(null)
+    if (!authSummary.user) {
+      setSettingsLoading(false)
+      return
     }
-  }, [])
+
+    let mounted = true
+
+    async function loadSettings() {
+      setSettingsLoading(true)
+      setSettingsError(null)
+
+      const result = await getUserSettings()
+
+      if (!mounted) return
+
+      if (result.ok) {
+        setUserSettings(result.settings)
+      } else {
+        setSettingsError(result.error)
+      }
+
+      setSettingsLoading(false)
+    }
+
+    void loadSettings()
+
+    return () => {
+      mounted = false
+    }
+  }, [authSummary.user])
 
   useEffect(() => {
     if (!requestedSection) return
@@ -330,7 +344,7 @@ export function SettingsPage() {
               id="canvas"
               eyebrow="Canvas"
               title="Canvas"
-              description="Open the existing Canvas sync flow for base URL, token, course loading, and import actions."
+              description="Configure your Canvas API connection for syncing courses, modules, and tasks."
             >
               {!authSummary.user ? (
                 <div className="settings-account-card">
@@ -339,10 +353,10 @@ export function SettingsPage() {
                     <p className="settings-card-desc">Sign in before connecting Canvas so sync data stays tied to your account.</p>
                   </div>
                   <div className="settings-card-actions">
-                    <Link href="/sign-in?next=%2Fcanvas" className="ui-button ui-button-primary">
+                    <Link href="/sign-in?next=%2Fsettings%3Fsection%3Dcanvas" className="ui-button ui-button-primary">
                       Sign in
                     </Link>
-                    <Link href="/sign-up?next=%2Fcanvas" className="ui-button ui-button-secondary">
+                    <Link href="/sign-up?next=%2Fsettings%3Fsection%3Dcanvas" className="ui-button ui-button-secondary">
                       Create account
                     </Link>
                   </div>
@@ -351,48 +365,107 @@ export function SettingsPage() {
                 <div className="settings-option-list">
                   <div className="settings-profile-card">
                     <div className="settings-stack-tight">
-                      <p className="settings-card-title">
-                        {savedCanvasConnection ? 'Saved Canvas connection found' : 'Canvas setup lives in the sync workspace'}
-                      </p>
+                      <p className="settings-card-title">Canvas API Connection</p>
                       <p className="settings-card-desc">
-                        {savedCanvasConnection
-                          ? `Base URL: ${formatCanvasConnectionUrl(savedCanvasConnection.url)}. Reopen Canvas sync to retest the connection, update the token, or load more courses.`
-                          : 'Open Canvas sync to add your school URL, create or paste an access token, test the connection, and choose courses to import.'}
+                        {settingsLoading
+                          ? 'Loading your Canvas settings...'
+                          : userSettings?.canvasApiUrl && userSettings?.canvasAccessToken
+                            ? `Connected to ${new URL(userSettings.canvasApiUrl).hostname}. Your Canvas token is saved securely.`
+                            : 'Add your Canvas URL and access token to enable course syncing.'}
                       </p>
-                      {savedCanvasConnection?.testedAt ? (
-                        <p className="settings-card-note">Last tested: {formatSavedConnectionTime(savedCanvasConnection.testedAt)}</p>
-                      ) : null}
-                      {typeof savedCanvasConnection?.courseCount === 'number' ? (
-                        <p className="settings-card-note">
-                          Last course load found {savedCanvasConnection.courseCount} course{savedCanvasConnection.courseCount === 1 ? '' : 's'}.
-                        </p>
-                      ) : null}
                     </div>
 
-                    <div className="settings-card-actions">
-                      <Link
-                        href={savedCanvasConnection ? '/canvas?action=sync' : '/canvas?action=reconnect'}
-                        className="ui-button ui-button-primary"
+                    {!settingsLoading && (
+                      <form
+                        style={{ display: 'grid', gap: '0.8rem', marginTop: '1rem' }}
+                        onSubmit={async (e) => {
+                          e.preventDefault()
+                          setCanvasSaving(true)
+                          setCanvasSaveMessage(null)
+                          setSettingsError(null)
+
+                          const formData = new FormData(e.currentTarget)
+                          const canvasApiUrl = formData.get('canvasApiUrl') as string
+                          const canvasAccessToken = formData.get('canvasAccessToken') as string
+
+                          const result = await updateCanvasSettings({
+                            canvasApiUrl,
+                            canvasAccessToken,
+                          })
+
+                          if (result.ok) {
+                            setCanvasSaveMessage('Canvas settings saved successfully!')
+                            const refreshResult = await getUserSettings()
+                            if (refreshResult.ok) {
+                              setUserSettings(refreshResult.settings)
+                            }
+                          } else {
+                            setSettingsError(result.error)
+                          }
+
+                          setCanvasSaving(false)
+                        }}
                       >
-                        {savedCanvasConnection ? 'Open Canvas sync' : 'Set up Canvas'}
-                      </Link>
-                      <Link href="/canvas" className="ui-button ui-button-secondary">
-                        View sync workspace
-                      </Link>
-                    </div>
+                        <label style={{ display: 'grid', gap: '0.4rem' }}>
+                          <span style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
+                            Canvas URL
+                          </span>
+                          <input
+                            type="url"
+                            name="canvasApiUrl"
+                            defaultValue={userSettings?.canvasApiUrl ?? ''}
+                            placeholder="https://yourschool.instructure.com"
+                            required
+                            className="ui-input"
+                            style={{ width: '100%', minHeight: '2.7rem', borderRadius: 'var(--radius-control)', border: '1px solid var(--border-subtle)', background: 'var(--surface-base)', padding: '0.7rem 0.85rem', color: 'var(--text-primary)' }}
+                          />
+                        </label>
+
+                        <label style={{ display: 'grid', gap: '0.4rem' }}>
+                          <span style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
+                            Access Token
+                          </span>
+                          <input
+                            type="password"
+                            name="canvasAccessToken"
+                            defaultValue={userSettings?.canvasAccessToken ?? ''}
+                            placeholder="Paste your Canvas access token"
+                            required
+                            className="ui-input"
+                            style={{ width: '100%', minHeight: '2.7rem', borderRadius: 'var(--radius-control)', border: '1px solid var(--border-subtle)', background: 'var(--surface-base)', padding: '0.7rem 0.85rem', color: 'var(--text-primary)' }}
+                          />
+                        </label>
+
+                        <button
+                          type="submit"
+                          className="ui-button ui-button-primary"
+                          style={{ minHeight: '2.7rem' }}
+                          disabled={canvasSaving}
+                        >
+                          {canvasSaving ? 'Saving...' : 'Save Canvas Settings'}
+                        </button>
+
+                        {canvasSaveMessage && (
+                          <p style={{ margin: 0, fontSize: '13px', color: 'var(--blue)' }}>{canvasSaveMessage}</p>
+                        )}
+                        {settingsError && (
+                          <p style={{ margin: 0, fontSize: '13px', color: 'var(--red)' }}>{settingsError}</p>
+                        )}
+                      </form>
+                    )}
+
+                    <p className="settings-card-note" style={{ marginTop: '1rem' }}>
+                      To create a Canvas access token: Go to Canvas → Account → Settings → New Access Token. Your token is stored securely and only used to sync your courses.
+                    </p>
                   </div>
 
-                  <div className="settings-option-row ui-interactive-card" style={{ cursor: 'default' }}>
-                    <div style={{ minWidth: 0 }}>
-                      <p className="settings-card-title">Token setup</p>
-                      <p className="settings-card-desc">
-                        The existing Canvas flow already opens your Canvas settings page, guides token creation, tests the connection, and keeps sync actions in one place.
-                      </p>
+                  {userSettings?.canvasApiUrl && userSettings?.canvasAccessToken && (
+                    <div className="settings-card-actions">
+                      <Link href="/canvas" className="ui-button ui-button-secondary">
+                        Go to Canvas Sync
+                      </Link>
                     </div>
-                    <span className="settings-option-label" data-selected={savedCanvasConnection ? 'true' : 'false'}>
-                      {savedCanvasConnection ? 'Ready' : 'Needs setup'}
-                    </span>
-                  </div>
+                  )}
                 </div>
               )}
             </SettingsSection>
@@ -664,20 +737,6 @@ function getStoredVolume() {
   return Number.isNaN(parsed) ? 50 : Math.round(parsed * 100)
 }
 
-function formatSavedConnectionTime(value: string) {
-  const parsed = new Date(value)
-  if (Number.isNaN(parsed.getTime())) return 'Recently'
-  return parsed.toLocaleString()
-}
-
-function formatCanvasConnectionUrl(value: string) {
-  try {
-    const url = new URL(value)
-    return url.origin.replace(/^https?:\/\//, '')
-  } catch {
-    return value.replace(/^https?:\/\//, '')
-  }
-}
 
 type NotificationSettingsSnapshot = {
   permission: NotificationPermission | 'unsupported'

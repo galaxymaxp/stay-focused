@@ -3,6 +3,8 @@ import { SyncFirstEmptyState } from '@/components/SyncFirstEmptyState'
 import { getClarityWorkspace } from '@/lib/clarity-workspace'
 import { buildCourseSummaries, type CourseSummary } from '@/lib/course-summary'
 
+export const revalidate = 300
+
 export default async function CoursesPage() {
   const workspace = await getClarityWorkspace()
 
