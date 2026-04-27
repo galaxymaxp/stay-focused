@@ -11,13 +11,14 @@ export type LearnResourceStatusKey =
   | 'link_only'
   | 'unsupported'
   | 'no_extract'
+  | 'visual_ocr_required'
   | 'loading'
 
 export type LearnResourceActionPriority = 'reader' | 'source'
 
 export interface LearnResourceUiState {
   statusKey: LearnResourceStatusKey
-  statusLabel: 'Ready' | 'Partial' | 'Source first' | 'Link only' | 'Unsupported' | 'No extract' | 'Loading'
+  statusLabel: 'Ready' | 'Partial' | 'Source first' | 'Link only' | 'Unsupported' | 'No extract' | 'No selectable text' | 'Loading'
   tone: 'accent' | 'warning' | 'muted'
   primaryAction: LearnResourceActionPriority
   summary: string
@@ -32,6 +33,12 @@ export interface LearnResourceUiLike extends ModuleResourceCapabilityLike {
   sourceUrlCategory?: string | null
   resolvedUrlCategory?: string | null
   normalizedSourceType?: NormalizedModuleResourceSourceType | null
+  visualExtractionStatus?: 'not_started' | 'available' | 'queued' | 'running' | 'completed' | 'failed' | 'skipped'
+  visualExtractedText?: string | null
+  visualExtractionError?: string | null
+  pageCount?: number | null
+  pagesProcessed?: number | null
+  extractionProvider?: string | null
 }
 
 export function getLearnResourceUiState(
@@ -74,6 +81,19 @@ export function getLearnResourceUiState(
     }
   }
 
+  if (resource.visualExtractionStatus === 'completed' && resource.visualExtractedText?.trim()) {
+    return {
+      statusKey: 'ready',
+      statusLabel: 'Ready',
+      tone: 'accent',
+      primaryAction: 'reader',
+      summary: 'Readable text was recovered from the image-based PDF.',
+      detail: 'Use Deep Learn for the main study pass. Open the original source when exact page layout matters.',
+      sourceActionLabel,
+      textAvailabilityLabel: 'Full text available',
+    }
+  }
+
   if (fallbackReason === 'external_link_only') {
     return {
       statusKey: 'link_only',
@@ -102,6 +122,18 @@ export function getLearnResourceUiState(
 
   if (resource.extractionStatus === 'empty' || fallbackReason === 'no_text_in_file') {
     const likelyScanned = /scanned|image-only|image based|image-based/i.test(resource.extractionError ?? '')
+    if (likelyScanned || resource.visualExtractionStatus === 'available') {
+      return {
+        statusKey: 'visual_ocr_required',
+        statusLabel: 'No selectable text',
+        tone: 'warning',
+        primaryAction: 'source',
+        summary: 'This PDF has no selectable text. Image text extraction is required before Deep Learn can use it.',
+        detail: `Stay Focused recognized this as an image-based ${sourceNoun}, not a broken file. Open the original ${sourceLabel} for now; OCR support is ready to be added as a separate action.`,
+        sourceActionLabel,
+        textAvailabilityLabel,
+      }
+    }
 
     return {
       statusKey: 'no_extract',

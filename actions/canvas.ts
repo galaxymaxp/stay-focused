@@ -102,6 +102,12 @@ interface ResourceIngestionRecord {
   extractedTextPreview: string | null
   extractedCharCount: number
   extractionError: string | null
+  visualExtractionStatus?: string | null
+  visualExtractedText?: string | null
+  visualExtractionError?: string | null
+  pageCount?: number | null
+  pagesProcessed?: number | null
+  extractionProvider?: string | null
   required: boolean
   metadata: Record<string, unknown>
 }
@@ -937,6 +943,12 @@ function buildModuleResourcesForSync(
       extracted_text_preview: normalizeOptionalCanvasSyncText(resource.extractedTextPreview),
       extracted_char_count: resource.extractedCharCount,
       extraction_error: normalizeOptionalCanvasSyncText(resource.extractionError),
+      visual_extraction_status: resource.visualExtractionStatus ?? 'not_started',
+      visual_extracted_text: normalizeOptionalCanvasSyncText(resource.visualExtractedText ?? null),
+      visual_extraction_error: normalizeOptionalCanvasSyncText(resource.visualExtractionError ?? null),
+      page_count: resource.pageCount ?? null,
+      pages_processed: resource.pagesProcessed ?? 0,
+      extraction_provider: normalizeOptionalCanvasSyncText(resource.extractionProvider ?? null),
       required: resource.required,
       metadata: assessmentMetadata,
     }
@@ -1431,6 +1443,12 @@ function createResolvedResourceRecord(
     extractedTextPreview: resolved.persisted.extractedTextPreview,
     extractedCharCount: resolved.persisted.extractedCharCount,
     extractionError: overrides.extractionError ?? resolved.persisted.extractionError,
+    visualExtractionStatus: resolved.persisted.visualExtractionStatus,
+    visualExtractedText: resolved.persisted.visualExtractedText,
+    visualExtractionError: resolved.persisted.visualExtractionError,
+    pageCount: resolved.persisted.pageCount,
+    pagesProcessed: resolved.persisted.pagesProcessed,
+    extractionProvider: resolved.persisted.extractionProvider,
     metadata: {
       ...baseRecord.metadata,
       ...resolved.persisted.metadataPatch,

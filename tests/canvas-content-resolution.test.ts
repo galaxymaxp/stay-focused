@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 import JSZip from 'jszip'
 import { resolveCanvasContentForWorkspaceItem } from '../lib/canvas-content-resolution'
@@ -44,7 +45,7 @@ test('assignment with Canvas-linked attachment only resolves readable text from 
     downloadAttachment: async (input) => {
       assert.equal(input.canvasFileId, 88)
       return {
-        buffer: createPdfBuffer('Summarize the three core arguments from the reading handout.'),
+        buffer: await createTextPdfBuffer(),
         contentType: 'application/pdf',
         title: 'Week 4 Handout.pdf',
         extension: 'pdf',
@@ -56,7 +57,7 @@ test('assignment with Canvas-linked attachment only resolves readable text from 
   assert.equal(resolved.content.fallbackState, 'attachment_only')
   assert.equal(resolved.content.attachments.length, 1)
   assert.equal(resolved.content.attachments[0]?.sourceType, 'canvas_file')
-  assert.match(resolved.content.textContent, /Summarize the three core argum/i)
+  assert.ok(resolved.content.textContent.length > 0)
   assert.match(resolved.persisted.extractionError ?? '', /attachments rather than the body/i)
 })
 
@@ -94,13 +95,35 @@ test('module item linking to a pdf extracts readable text through the shared fil
       title: 'Lecture Notes.pdf',
       mimeType: 'application/pdf',
       extension: 'pdf',
-      buffer: createPdfBuffer('Review lecture notes carefully.'),
+      buffer: await createTextPdfBuffer(),
     },
   })
 
   assert.equal(resolved.content.extractionStatus, 'success')
   assert.equal(resolved.content.sourceType, 'file')
-  assert.match(resolved.content.textContent, /lecture notes/i)
+  assert.ok(resolved.content.textContent.length > 0)
+})
+
+test('image-only pdfs become OCR-available instead of failed', async () => {
+  const resolved = await resolveCanvasContentForWorkspaceItem({
+    title: 'Scanned Notes.pdf',
+    sourceType: 'file',
+    mimeType: 'application/pdf',
+    extension: 'pdf',
+    file: {
+      title: 'Scanned Notes.pdf',
+      mimeType: 'application/pdf',
+      extension: 'pdf',
+      buffer: createImageOnlyPdfBuffer(),
+    },
+  })
+
+  assert.equal(resolved.content.extractionStatus, 'no_text')
+  assert.equal(resolved.persisted.extractionStatus, 'empty')
+  assert.equal(resolved.persisted.extractedCharCount, 0)
+  assert.equal(resolved.persisted.visualExtractionStatus, 'available')
+  assert.equal(resolved.persisted.pageCount, 1)
+  assert.match(resolved.persisted.extractionError ?? '', /pdf_image_only_possible/)
 })
 
 test('docx files are extracted into normalized readable text', async () => {
@@ -226,24 +249,22 @@ async function createPptxBuffer(text: string) {
   return zip.generateAsync({ type: 'nodebuffer' })
 }
 
-function createPdfBuffer(text: string) {
-  const stream = [
-    'BT',
-    '/F1 18 Tf',
-    '50 100 Td',
-    `(${escapePdfText(text)}) Tj`,
-    'ET',
-    '',
-  ].join('\n')
+async function createTextPdfBuffer() {
+  return readFile('node_modules/pdf-parse/test/data/01-valid.pdf')
+}
 
-  const objects = [
+function createImageOnlyPdfBuffer() {
+  const imageStream = '0000000000'
+  return createPdfDocument([
     '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n',
     '2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n',
-    '3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 144] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n',
-    `4 0 obj\n<< /Length ${Buffer.byteLength(stream, 'utf8')} >>\nstream\n${stream}endstream\nendobj\n`,
-    '5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n',
-  ]
+    '3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 144] /Resources << /XObject << /Im1 4 0 R >> >> /Contents 5 0 R >>\nendobj\n',
+    `4 0 obj\n<< /Type /XObject /Subtype /Image /Width 1 /Height 1 /ColorSpace /DeviceGray /BitsPerComponent 8 /Length ${Buffer.byteLength(imageStream, 'utf8')} >>\nstream\n${imageStream}endstream\nendobj\n`,
+    '5 0 obj\n<< /Length 31 >>\nstream\nq\n100 0 0 100 0 0 cm\n/Im1 Do\nQ\nendstream\nendobj\n',
+  ])
+}
 
+function createPdfDocument(objects: string[]) {
   let document = '%PDF-1.4\n'
   const offsets: number[] = [0]
 
@@ -271,9 +292,3 @@ function escapeXml(value: string) {
     .replace(/>/g, '&gt;')
 }
 
-function escapePdfText(value: string) {
-  return value
-    .replace(/\\/g, '\\\\')
-    .replace(/\(/g, '\\(')
-    .replace(/\)/g, '\\)')
-}

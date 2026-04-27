@@ -75,6 +75,12 @@ export interface ModuleSourceResource {
   extractedTextPreview?: string | null
   extractedCharCount?: number
   extractionError?: string | null
+  visualExtractionStatus?: ModuleResource['visualExtractionStatus']
+  visualExtractedText?: string | null
+  visualExtractionError?: string | null
+  pageCount?: number | null
+  pagesProcessed?: number | null
+  extractionProvider?: string | null
   normalizedSourceType?: NormalizedModuleResourceSourceType | null
   capability?: ModuleResourceCapability | null
   capabilityReason?: string | null
@@ -623,6 +629,12 @@ function adaptStoredResourceForLearn(resource: ModuleResource): ModuleSourceReso
     extractedTextPreview: resource.extractedTextPreview,
     extractedCharCount: resource.extractedCharCount,
     extractionError: resource.extractionError,
+    visualExtractionStatus: resource.visualExtractionStatus,
+    visualExtractedText: resource.visualExtractedText,
+    visualExtractionError: resource.visualExtractionError,
+    pageCount: resource.pageCount,
+    pagesProcessed: resource.pagesProcessed,
+    extractionProvider: resource.extractionProvider,
     normalizedSourceType: capability.normalizedSourceType,
     capability: capability.capability,
     capabilityReason: capability.reason,

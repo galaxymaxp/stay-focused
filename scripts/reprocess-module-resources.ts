@@ -193,6 +193,12 @@ async function main() {
           extracted_text_preview: reprocessed.update.extractedTextPreview,
           extracted_char_count: reprocessed.update.extractedCharCount,
           extraction_error: reprocessed.update.extractionError,
+          visual_extraction_status: reprocessed.update.visualExtractionStatus,
+          visual_extracted_text: reprocessed.update.visualExtractedText,
+          visual_extraction_error: reprocessed.update.visualExtractionError,
+          page_count: reprocessed.update.pageCount,
+          pages_processed: reprocessed.update.pagesProcessed,
+          extraction_provider: reprocessed.update.extractionProvider,
           metadata: reprocessed.update.metadata,
           updated_at: new Date().toISOString(),
         })

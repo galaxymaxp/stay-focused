@@ -56,6 +56,7 @@ export default async function ResourceDetailPage({ params }: Props) {
   })
   const sourceHref = originalFileHref ?? canvasHref
   const showSourceAsPrimary = uiState.primaryAction === 'source' && Boolean(sourceHref)
+  const visualExtractionAvailable = resource.visualExtractionStatus === 'available'
   const grounding = unit?.grounding ?? getResourceGrounding(resource)
   const capability = getModuleResourceCapabilityInfo(resource)
   const quality = getModuleResourceQualityInfo(resource)
@@ -284,18 +285,28 @@ export default async function ResourceDetailPage({ params }: Props) {
               </div>
             )}
 
-            {(resource.extractedTextPreview || resource.extractionError || grounding.evidenceSnippet) && (
+            {(resource.extractedTextPreview || resource.extractionError || grounding.evidenceSnippet || visualExtractionAvailable) && (
               <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem' }}>
-                <p className="ui-kicker">Extraction evidence</p>
+                <p className="ui-kicker">{visualExtractionAvailable ? 'No selectable text' : 'Extraction evidence'}</p>
+                {visualExtractionAvailable && (
+                  <p style={{ margin: '0.55rem 0 0', fontSize: '14px', lineHeight: 1.7, color: 'var(--text-secondary)' }}>
+                    This PDF appears to be image-only. OCR is required before Deep Learn can use its page text.
+                  </p>
+                )}
                 {resource.extractedTextPreview && (
                   <p style={{ margin: '0.55rem 0 0', fontSize: '14px', lineHeight: 1.7, color: 'var(--text-secondary)' }}>
                     {resource.extractedTextPreview}
                   </p>
                 )}
                 {resource.extractionError && (
-                  <p style={{ margin: resource.extractedTextPreview ? '0.6rem 0 0' : '0.55rem 0 0', fontSize: '13px', lineHeight: 1.6, color: 'var(--red)' }}>
+                  <p style={{ margin: resource.extractedTextPreview || visualExtractionAvailable ? '0.6rem 0 0' : '0.55rem 0 0', fontSize: '13px', lineHeight: 1.6, color: visualExtractionAvailable ? 'var(--text-muted)' : 'var(--red)' }}>
                     {resource.extractionError}
                   </p>
+                )}
+                {visualExtractionAvailable && (
+                  <button type="button" className="ui-button ui-button-secondary ui-button-xs" disabled style={{ marginTop: '0.75rem' }}>
+                    Extract text from images
+                  </button>
                 )}
               </div>
             )}
@@ -315,6 +326,9 @@ export default async function ResourceDetailPage({ params }: Props) {
                 <MetaLine label="Resolved URL category" value={resource.resolvedUrlCategory ?? 'Not recorded'} />
                 <MetaLine label="Resolved URL" value={resource.resolvedUrl ?? 'Not recorded'} />
                 <MetaLine label="Text in source view" value={uiState.textAvailabilityLabel} />
+                <MetaLine label="Visual extraction" value={resource.visualExtractionStatus ?? 'not_started'} />
+                <MetaLine label="Page count" value={typeof resource.pageCount === 'number' ? `${resource.pageCount}` : 'Not recorded'} />
+                <MetaLine label="Pages processed" value={typeof resource.pagesProcessed === 'number' ? `${resource.pagesProcessed}` : '0'} />
                 <MetaLine label="Full text stored" value={resource.fullTextAvailable ? 'Yes' : 'No'} />
                 <MetaLine label="Character count" value={typeof resource.extractedCharCount === 'number' && resource.extractedCharCount > 0 ? `${resource.extractedCharCount}` : 'Not available'} />
                 <MetaLine label="Stored text length" value={typeof resource.storedTextLength === 'number' ? `${resource.storedTextLength}` : 'Not recorded'} />

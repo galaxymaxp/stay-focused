@@ -419,6 +419,12 @@ async function persistRefreshedResource(
       extracted_text_preview: refreshedResource.extractedTextPreview,
       extracted_char_count: refreshedResource.extractedCharCount,
       extraction_error: refreshedResource.extractionError,
+      visual_extraction_status: refreshedResource.visualExtractionStatus,
+      visual_extracted_text: refreshedResource.visualExtractedText,
+      visual_extraction_error: refreshedResource.visualExtractionError,
+      page_count: refreshedResource.pageCount,
+      pages_processed: refreshedResource.pagesProcessed,
+      extraction_provider: refreshedResource.extractionProvider,
       metadata: refreshedResource.metadata,
       updated_at: new Date().toISOString(),
     })

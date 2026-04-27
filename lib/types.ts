@@ -6,6 +6,7 @@ export type TaskCompletionOrigin = 'manual' | 'canvas'
 export type TaskPlanningAnnotation = 'best_next_step' | 'needs_attention' | 'worth_reviewing' | 'none'
 export type Priority = 'high' | 'medium' | 'low'
 export type ModuleResourceExtractionStatus = 'pending' | 'extracted' | 'completed' | 'metadata_only' | 'unsupported' | 'empty' | 'failed'
+export type ModuleResourceVisualExtractionStatus = 'not_started' | 'available' | 'queued' | 'running' | 'completed' | 'failed' | 'skipped'
 export type ModuleResourceCapability = 'supported' | 'partial' | 'unsupported' | 'failed'
 export type ModuleResourceQuality = 'strong' | 'usable' | 'weak' | 'empty' | 'unsupported' | 'failed'
 export type ModuleResourceGroundingLevel = 'strong' | 'weak' | 'none'
@@ -82,6 +83,12 @@ export interface ModuleResource {
   extractedTextPreview: string | null
   extractedCharCount: number
   extractionError: string | null
+  visualExtractionStatus?: ModuleResourceVisualExtractionStatus
+  visualExtractedText?: string | null
+  visualExtractionError?: string | null
+  pageCount?: number | null
+  pagesProcessed?: number
+  extractionProvider?: string | null
   required: boolean
   metadata: Record<string, unknown>
   created_at: string

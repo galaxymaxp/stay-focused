@@ -42,6 +42,7 @@ export function DeepLearnNoteView({
     readiness,
   })
   const quizHref = buildModuleQuizHref(moduleId, { resourceId: resolvedDeepLearnResourceId })
+  const visualExtractionAvailable = resource.visualExtractionStatus === 'available'
 
   return (
     <div style={{ display: 'grid', gap: '0.9rem' }}>
@@ -78,6 +79,11 @@ export function DeepLearnNoteView({
               className="ui-button ui-button-secondary ui-button-xs"
             />
           ) : null}
+          {visualExtractionAvailable && (
+            <button type="button" className="ui-button ui-button-secondary ui-button-xs" disabled title="OCR is not enabled yet for this project.">
+              Extract text from images
+            </button>
+          )}
           {note?.status === 'ready' && note.quizReady && (
             <Link href={quizHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
               Quiz this

@@ -144,6 +144,27 @@ test('empty extracts map to no-extract guidance', () => {
   assert.equal(state.textAvailabilityLabel, 'No text available')
 })
 
+test('image-only PDFs map to no selectable text and OCR-required copy', () => {
+  const state = getLearnResourceUiState(createResource({
+    extractionStatus: 'empty',
+    extractedText: null,
+    extractedTextPreview: null,
+    extractedCharCount: 0,
+    extractionError: 'pdf_image_only_possible: PDF parsed, but it appears to be image-only or scanned.',
+    visualExtractionStatus: 'available',
+    pageCount: 51,
+    previewState: 'no_text_available',
+  }), {
+    hasOriginalFile: true,
+    hasCanvasLink: true,
+  })
+
+  assert.equal(state.statusLabel, 'No selectable text')
+  assert.equal(state.statusKey, 'visual_ocr_required')
+  assert.equal(state.primaryAction, 'source')
+  assert.match(state.summary, /Image text extraction is required/i)
+})
+
 function createResource(overrides: Partial<LearnResourceUiLike> = {}): LearnResourceUiLike {
   return {
     type: 'File',

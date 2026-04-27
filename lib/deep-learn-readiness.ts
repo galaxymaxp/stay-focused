@@ -56,10 +56,33 @@ export function classifyDeepLearnResourceReadiness(input: {
     }
   }
 
+  if (sourceRecord.visualExtractionStatus === 'completed' && hasGroundingText) {
+    return {
+      state: 'text_ready',
+      canonicalResourceId,
+      blockedReason: null,
+      canGenerate: true,
+      shouldAttemptSourceFetch: false,
+      label: 'Text ready',
+      tone: 'accent',
+      summary: 'Visual text is ready for an answer-first exam prep pass.',
+      detail: 'Text was recovered through the visual extraction channel and can now ground Deep Learn.',
+    }
+  }
+
   if (explicitBlockedReason === 'external_link_only' || explicitBlockedReason === 'unsupported_source_type' || explicitBlockedReason === 'auth_required') {
     return buildUnreadableReadiness({
       canonicalResourceId,
       blockedReason: explicitBlockedReason,
+      sourceNote: getDeepLearnSourceNote(sourceRecord),
+      sourceType: getNormalizedModuleResourceSourceType(sourceRecord),
+    })
+  }
+
+  if (requiresVisualExtraction(sourceRecord) && sourceRecord.visualExtractionStatus !== 'completed' && !hasGroundingText) {
+    return buildUnreadableReadiness({
+      canonicalResourceId,
+      blockedReason: 'extraction_unusable_after_fetch',
       sourceNote: getDeepLearnSourceNote(sourceRecord),
       sourceType: getNormalizedModuleResourceSourceType(sourceRecord),
     })
@@ -142,7 +165,13 @@ export function isDeepLearnScanFallbackCapable(resource: ModuleResourceCapabilit
   contentType?: string | null
   extension?: string | null
   sourceUrl?: string | null
+  visualExtractionStatus?: ModuleResource['visualExtractionStatus']
+  metadata?: Record<string, unknown> | null
 }) {
+  if (requiresVisualExtraction(resource) && resource.visualExtractionStatus !== 'completed') {
+    return false
+  }
+
   const sourceType = getNormalizedModuleResourceSourceType(resource)
   const contentType = resource.contentType?.toLowerCase() ?? ''
   const extension = resource.extension?.toLowerCase() ?? ''
@@ -158,12 +187,22 @@ export function isDeepLearnScanFallbackCapable(resource: ModuleResourceCapabilit
 }
 
 export function selectDeepLearnGroundingText(
-  resource: Pick<ModuleResourceCapabilityLike, 'extractedText' | 'extractedTextPreview'>,
+  resource: Pick<ModuleResourceCapabilityLike, 'extractedText' | 'extractedTextPreview'> & {
+    visualExtractionStatus?: ModuleResource['visualExtractionStatus']
+    visualExtractedText?: string | null
+  },
 ) {
   const extractedText = resource.extractedText?.trim() ?? ''
   if (extractedText) return extractedText
 
-  return resource.extractedTextPreview?.trim() ?? ''
+  const extractedPreview = resource.extractedTextPreview?.trim() ?? ''
+  if (extractedPreview) return extractedPreview
+
+  if (resource.visualExtractionStatus === 'completed') {
+    return resource.visualExtractedText?.trim() ?? ''
+  }
+
+  return ''
 }
 
 export function detectDeepLearnBlockedReasonAfterSourceFetch(resource: ModuleResource): DeepLearnBlockedReason {
@@ -230,7 +269,26 @@ function detectExplicitDeepLearnBlockedReason(resource: ModuleResourceCapability
     return 'extraction_unusable_after_fetch'
   }
 
+  if (requiresVisualExtraction(resource)) {
+    return 'extraction_unusable_after_fetch'
+  }
+
   return null
+}
+
+function requiresVisualExtraction(resource: ModuleResourceCapabilityLike & {
+  metadata?: Record<string, unknown> | null
+  extractionError?: string | null
+}) {
+  const metadata = typeof resource.metadata === 'object' && resource.metadata !== null && !Array.isArray(resource.metadata)
+    ? resource.metadata as Record<string, unknown>
+    : {}
+  const pdfExtraction = typeof metadata.pdfExtraction === 'object' && metadata.pdfExtraction !== null && !Array.isArray(metadata.pdfExtraction)
+    ? metadata.pdfExtraction as Record<string, unknown>
+    : {}
+
+  return pdfExtraction.errorCode === 'pdf_image_only_possible'
+    || /\bpdf_image_only_possible\b|\bimage-only\b|\bscanned\b/i.test(resource.extractionError ?? '')
 }
 
 function describeDeepLearnBlockedReason(input: {

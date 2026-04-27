@@ -15,7 +15,7 @@ export interface ModuleStudyMaterial {
   quality: ModuleResourceQualityInfo
   fileTypeLabel: string
   readiness: ModuleStudyReadiness
-  readinessLabel: 'Ready' | 'Partial' | 'Source first' | 'Link only' | 'Unsupported' | 'No extract' | 'Loading'
+  readinessLabel: 'Ready' | 'Partial' | 'Source first' | 'Link only' | 'Unsupported' | 'No extract' | 'No selectable text' | 'Loading'
   readinessTone: 'accent' | 'warning' | 'muted'
   statusKey: LearnResourceStatusKey
   note: string

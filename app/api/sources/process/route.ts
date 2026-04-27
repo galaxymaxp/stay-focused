@@ -89,6 +89,12 @@ export async function POST(request: NextRequest) {
           extracted_text_preview: normalized.extractedTextPreview,
           extracted_char_count: normalized.extractedCharCount,
           extraction_error: normalized.extractionError,
+          visual_extraction_status: result.update.visualExtractionStatus,
+          visual_extracted_text: result.update.visualExtractedText,
+          visual_extraction_error: result.update.visualExtractionError,
+          page_count: result.update.pageCount,
+          pages_processed: result.update.pagesProcessed,
+          extraction_provider: result.update.extractionProvider,
           metadata: normalized.metadata,
           updated_at: new Date().toISOString(),
         })

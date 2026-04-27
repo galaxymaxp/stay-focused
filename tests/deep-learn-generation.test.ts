@@ -32,6 +32,12 @@ test('buildDeepLearnGroundingWithDependencies recovers weak resources through so
         extractedTextPreview: 'Acceptance requires an objective manifestation of assent to the offer terms.',
         extractedCharCount: 980,
         extractionError: null,
+        visualExtractionStatus: 'not_started',
+        visualExtractedText: null,
+        visualExtractionError: null,
+        pageCount: null,
+        pagesProcessed: 0,
+        extractionProvider: null,
         metadata: {
           normalizedSourceType: 'page',
           previewState: 'full_text_available',
@@ -97,16 +103,19 @@ test('buildDeepLearnGroundingWithDependencies recovers weak resources through so
   assert.ok(grounding.sourceGrounding.charCount > 0)
 })
 
-test('buildDeepLearnGroundingWithDependencies switches to scan fallback for scan-capable PDFs', async () => {
+test('buildDeepLearnGroundingWithDependencies blocks image-only PDFs until visual extraction completes', async () => {
   const resource = createLearnResource({
     type: 'File',
     contentType: 'application/pdf',
     extension: 'pdf',
     normalizedSourceType: 'pdf',
     sourceUrl: 'https://canvas.example/files/acceptance.pdf',
-    extractionStatus: 'metadata_only',
+    extractionStatus: 'empty',
     extractedText: null,
     extractedTextPreview: null,
+    extractedCharCount: 0,
+    extractionError: 'pdf_image_only_possible: PDF parsed, but it appears to be image-only or scanned.',
+    visualExtractionStatus: 'available',
     previewState: 'no_text_available',
     fullTextAvailable: false,
     storedTextLength: 0,
@@ -118,9 +127,12 @@ test('buildDeepLearnGroundingWithDependencies switches to scan fallback for scan
     contentType: 'application/pdf',
     extension: 'pdf',
     sourceUrl: 'https://canvas.example/files/acceptance.pdf',
-    extractionStatus: 'metadata_only',
+    extractionStatus: 'empty',
     extractedText: null,
     extractedTextPreview: null,
+    extractedCharCount: 0,
+    extractionError: 'pdf_image_only_possible: PDF parsed, but it appears to be image-only or scanned.',
+    visualExtractionStatus: 'available',
     metadata: {
       normalizedSourceType: 'pdf',
       previewState: 'no_text_available',
@@ -128,22 +140,78 @@ test('buildDeepLearnGroundingWithDependencies switches to scan fallback for scan
       storedTextLength: 0,
       storedPreviewLength: 0,
       storedWordCount: 0,
+      pdfExtraction: {
+        errorCode: 'pdf_image_only_possible',
+        pageCount: 51,
+      },
     },
   })
 
-  const grounding = await buildDeepLearnGroundingWithDependencies(createContext(resource, storedResource), {
-    downloadScanFallbackSource: async () => ({
-      inputType: 'file',
-      contentType: 'application/pdf',
-      filename: 'acceptance.pdf',
-      fileData: 'ZmFrZS1wZGY=',
+  await assert.rejects(
+    () => buildDeepLearnGroundingWithDependencies(createContext(resource, storedResource), {
+      downloadScanFallbackSource: async () => {
+        throw new Error('Scan fallback should not run before visual extraction completes.')
+      },
     }),
+    (error: unknown) => {
+      assert.ok(error instanceof DeepLearnGenerationBlockedError)
+      assert.equal(error.blockedReason, 'extraction_unusable_after_fetch')
+      assert.match(error.message, /image-only|scanned|readable text/i)
+      return true
+    },
+  )
+})
+
+test('buildDeepLearnGroundingWithDependencies can use completed visual extracted text', async () => {
+  const visualText = buildLongText('Visual OCR recovered the data organization lesson with fields, records, and categories.')
+  const resource = createLearnResource({
+    type: 'File',
+    contentType: 'application/pdf',
+    extension: 'pdf',
+    normalizedSourceType: 'pdf',
+    sourceUrl: 'https://canvas.example/files/data-organization.pdf',
+    extractionStatus: 'empty',
+    extractedText: null,
+    extractedTextPreview: null,
+    extractedCharCount: 0,
+    extractionError: 'pdf_image_only_possible: PDF parsed, but it appears to be image-only or scanned.',
+    visualExtractionStatus: 'completed',
+    visualExtractedText: visualText,
+    pageCount: 51,
+    pagesProcessed: 5,
+    extractionProvider: 'manual_test',
+    previewState: 'no_text_available',
+  })
+  const storedResource = createStoredResource({
+    resourceType: 'File',
+    contentType: 'application/pdf',
+    extension: 'pdf',
+    sourceUrl: 'https://canvas.example/files/data-organization.pdf',
+    extractionStatus: 'empty',
+    extractedText: null,
+    extractedTextPreview: null,
+    extractedCharCount: 0,
+    extractionError: 'pdf_image_only_possible: PDF parsed, but it appears to be image-only or scanned.',
+    visualExtractionStatus: 'completed',
+    visualExtractedText: visualText,
+    pageCount: 51,
+    pagesProcessed: 5,
+    extractionProvider: 'manual_test',
+    metadata: {
+      normalizedSourceType: 'pdf',
+      pdfExtraction: {
+        errorCode: 'pdf_image_only_possible',
+        pageCount: 51,
+      },
+    },
   })
 
-  assert.equal(grounding.generationMode, 'scan_fallback')
-  assert.equal(grounding.sourceGrounding.groundingStrategy, 'scan_fallback')
-  assert.equal(grounding.scanFallbackInput?.filename, 'acceptance.pdf')
-  assert.match(grounding.promptGrounding, /Scan fallback is active/i)
+  const grounding = await buildDeepLearnGroundingWithDependencies(createContext(resource, storedResource))
+
+  assert.equal(grounding.generationMode, 'text')
+  assert.equal(grounding.scanFallbackInput, null)
+  assert.match(grounding.promptGrounding, /Visual OCR recovered the data organization lesson/i)
+  assert.ok(grounding.sourceGrounding.charCount > 0)
 })
 
 test('buildDeepLearnGroundingWithDependencies blocks when source fetch still yields unusable text', async () => {
@@ -172,6 +240,12 @@ test('buildDeepLearnGroundingWithDependencies blocks when source fetch still yie
           extractedTextPreview: null,
           extractedCharCount: 0,
           extractionError: 'The file was fetched, but no readable text surfaced from the file body.',
+          visualExtractionStatus: 'not_started',
+          visualExtractedText: null,
+          visualExtractionError: null,
+          pageCount: null,
+          pagesProcessed: 0,
+          extractionProvider: null,
           metadata: {
             normalizedSourceType: 'page',
             fallbackReason: 'no_text_in_file',
@@ -289,6 +363,12 @@ function createLearnResource(overrides: Partial<ModuleSourceResource> = {}): Mod
     extractedTextPreview: overrides.extractedTextPreview ?? null,
     extractedCharCount: overrides.extractedCharCount ?? 0,
     extractionError: overrides.extractionError ?? null,
+    visualExtractionStatus: overrides.visualExtractionStatus ?? 'not_started',
+    visualExtractedText: overrides.visualExtractedText ?? null,
+    visualExtractionError: overrides.visualExtractionError ?? null,
+    pageCount: overrides.pageCount ?? null,
+    pagesProcessed: overrides.pagesProcessed ?? 0,
+    extractionProvider: overrides.extractionProvider ?? null,
     normalizedSourceType: overrides.normalizedSourceType ?? 'page',
     capability: overrides.capability ?? 'partial',
     capabilityReason: overrides.capabilityReason ?? null,
@@ -334,6 +414,12 @@ function createStoredResource(overrides: Partial<ModuleResource> = {}): ModuleRe
     extractedTextPreview: overrides.extractedTextPreview ?? null,
     extractedCharCount: overrides.extractedCharCount ?? 0,
     extractionError: overrides.extractionError ?? null,
+    visualExtractionStatus: overrides.visualExtractionStatus ?? 'not_started',
+    visualExtractedText: overrides.visualExtractedText ?? null,
+    visualExtractionError: overrides.visualExtractionError ?? null,
+    pageCount: overrides.pageCount ?? null,
+    pagesProcessed: overrides.pagesProcessed ?? 0,
+    extractionProvider: overrides.extractionProvider ?? null,
     required: overrides.required ?? true,
     metadata: overrides.metadata ?? {
       normalizedSourceType: 'page',

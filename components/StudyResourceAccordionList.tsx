@@ -305,6 +305,11 @@ export function StudyResourceAccordionList({
                     {item.sourceReadinessActions.includes('retry_extraction') || item.sourceReadinessActions.includes('process_source') ? (
                       <ProcessSourceButton item={item} />
                     ) : null}
+                    {item.sourceReadinessActions.includes('extract_text_from_images') && (
+                      <button type="button" className="ui-button ui-button-secondary ui-button-xs" disabled title="OCR is not enabled yet for this project.">
+                        Extract text from images
+                      </button>
+                    )}
                     {item.sourceReadinessActions.includes('add_notes') && (
                       <Link href={item.readerHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
                         Add notes

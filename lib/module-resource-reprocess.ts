@@ -15,7 +15,7 @@ import {
   type ResolveCanvasAttachmentDownloadInput,
 } from './canvas-content-resolution'
 import { resolveCanvasConfig, resolveCanvasLinkedTarget, type CanvasConfig } from './canvas'
-import type { ModuleResource, ModuleResourceExtractionStatus } from './types'
+import type { ModuleResource, ModuleResourceExtractionStatus, ModuleResourceVisualExtractionStatus } from './types'
 
 type CanvasPagePayload = {
   title?: string | null
@@ -58,6 +58,12 @@ export interface ReprocessedModuleResourceResult {
     extractedTextPreview: string | null
     extractedCharCount: number
     extractionError: string | null
+    visualExtractionStatus: ModuleResourceVisualExtractionStatus
+    visualExtractedText: string | null
+    visualExtractionError: string | null
+    pageCount: number | null
+    pagesProcessed: number
+    extractionProvider: string | null
     metadata: Record<string, unknown>
   }
   capability: ModuleResourceCapabilityInfo
@@ -89,6 +95,12 @@ export async function reprocessStoredModuleResource(
     extractedTextPreview: string | null
     extractedCharCount: number
     extractionError: string | null
+    visualExtractionStatus: ModuleResourceVisualExtractionStatus
+    visualExtractedText: string | null
+    visualExtractionError: string | null
+    pageCount: number | null
+    pagesProcessed: number
+    extractionProvider: string | null
     metadataPatch: Record<string, unknown>
   } = buildFailedPersistedUpdate('Resource reprocess did not run.')
   let metadataPatch: Record<string, unknown> = {
@@ -226,6 +238,12 @@ export async function reprocessStoredModuleResource(
         extractedTextPreview: null,
         extractedCharCount: 0,
         extractionError: 'This stored module link has no resolvable Canvas or external URL yet, so reprocessing keeps it as context-only metadata.',
+        visualExtractionStatus: 'not_started',
+        visualExtractedText: null,
+        visualExtractionError: null,
+        pageCount: null,
+        pagesProcessed: 0,
+        extractionProvider: null,
         metadataPatch: {},
       }
     }
@@ -236,6 +254,12 @@ export async function reprocessStoredModuleResource(
       extractedTextPreview: null,
       extractedCharCount: 0,
       extractionError: 'This resource is structural or link-only in Stay Focused right now, so reprocessing preserves the note instead of inventing readable content.',
+      visualExtractionStatus: 'not_started',
+      visualExtractedText: null,
+      visualExtractionError: null,
+      pageCount: null,
+      pagesProcessed: 0,
+      extractionProvider: null,
       metadataPatch: {},
     }
   } else {
@@ -284,6 +308,12 @@ export async function reprocessStoredModuleResource(
     extractedTextPreview: update.extractedTextPreview,
     extractedCharCount: update.extractedCharCount,
     extractionError: update.extractionError,
+    visualExtractionStatus: update.visualExtractionStatus,
+    visualExtractedText: update.visualExtractedText,
+    visualExtractionError: update.visualExtractionError,
+    pageCount: update.pageCount,
+    pagesProcessed: update.pagesProcessed,
+    extractionProvider: update.extractionProvider,
     metadata: provisionalMetadata,
   }
   const capability = getModuleResourceCapabilityInfo(nextResource)
@@ -311,6 +341,12 @@ export async function reprocessStoredModuleResource(
       extractedTextPreview: update.extractedTextPreview,
       extractedCharCount: update.extractedCharCount,
       extractionError: update.extractionError,
+      visualExtractionStatus: update.visualExtractionStatus,
+      visualExtractedText: update.visualExtractedText,
+      visualExtractionError: update.visualExtractionError,
+      pageCount: update.pageCount,
+      pagesProcessed: update.pagesProcessed,
+      extractionProvider: update.extractionProvider,
       metadata: {
         ...assessmentMetadata,
         lastReprocessedAt: now,
@@ -815,6 +851,12 @@ function buildFailedPersistedUpdate(message: string): {
   extractedTextPreview: string | null
   extractedCharCount: number
   extractionError: string | null
+  visualExtractionStatus: ModuleResourceVisualExtractionStatus
+  visualExtractedText: string | null
+  visualExtractionError: string | null
+  pageCount: number | null
+  pagesProcessed: number
+  extractionProvider: string | null
   metadataPatch: Record<string, unknown>
 } {
   return {
@@ -823,6 +865,12 @@ function buildFailedPersistedUpdate(message: string): {
     extractedTextPreview: null,
     extractedCharCount: 0,
     extractionError: message,
+    visualExtractionStatus: 'not_started',
+    visualExtractedText: null,
+    visualExtractionError: null,
+    pageCount: null,
+    pagesProcessed: 0,
+    extractionProvider: null,
     metadataPatch: {},
   }
 }

@@ -4,6 +4,7 @@ import {
   normalizeExtension,
 } from './canvas-resource-extraction'
 import type { ModuleResourceExtractionStatus } from './types'
+import type { ModuleResourceVisualExtractionStatus } from './types'
 
 export type NormalizedCanvasContentSourceType =
   | 'assignment'
@@ -133,6 +134,12 @@ export interface PersistedCanvasContentResult {
   extractedTextPreview: string | null
   extractedCharCount: number
   extractionError: string | null
+  visualExtractionStatus: ModuleResourceVisualExtractionStatus
+  visualExtractedText: string | null
+  visualExtractionError: string | null
+  pageCount: number | null
+  pagesProcessed: number
+  extractionProvider: string | null
   metadataPatch: Record<string, unknown>
 }
 
@@ -540,6 +547,9 @@ function buildPersistedCanvasContentResult(
   const extractedText = trimToNull(content.textContent)
   const extractedTextPreview = extractedText ? extractedText.slice(0, 420) : null
   const previewState = inferCanvasContentPreviewState(extractedText, extractedTextPreview)
+  const pdfExtraction = readPlainRecord(context.metadataPatch.pdfExtraction)
+  const imageOnlyPdf = pdfExtraction?.errorCode === 'pdf_image_only_possible'
+  const pageCount = typeof pdfExtraction?.pageCount === 'number' ? pdfExtraction.pageCount : null
   const metadataPatch = {
     ...context.metadataPatch,
     normalizedContentStatus: content.extractionStatus,
@@ -574,6 +584,12 @@ function buildPersistedCanvasContentResult(
     extractedTextPreview,
     extractedCharCount: extractedText?.length ?? 0,
     extractionError: buildWarningSummary(content.warnings),
+    visualExtractionStatus: imageOnlyPdf && !extractedText ? 'available' : 'not_started',
+    visualExtractedText: null,
+    visualExtractionError: imageOnlyPdf && !extractedText ? null : null,
+    pageCount,
+    pagesProcessed: 0,
+    extractionProvider: null,
     metadataPatch,
   }
 }
@@ -914,6 +930,12 @@ function uniqueWarnings(warnings: Array<string | null | undefined>) {
 function trimToNull(value: string | null | undefined) {
   const normalized = value?.trim()
   return normalized ? normalized : null
+}
+
+function readPlainRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null
 }
 
 function normalizeLookup(value: string | null | undefined) {

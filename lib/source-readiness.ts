@@ -16,6 +16,7 @@ export type SourceReadinessState =
   | 'canvas_lesson_page'
   | 'external_link'
   | 'extraction_failed'
+  | 'visual_ocr_available'
   | 'empty_or_metadata_only'
   | 'unknown'
 
@@ -32,6 +33,7 @@ export type SourceReadinessAction =
   | 'retry_extraction'
   | 'open_link'
   | 'summarize'
+  | 'extract_text_from_images'
 
 export interface SourceSummarySnapshot {
   summary: string | null
@@ -80,7 +82,9 @@ export function normalizeSourceReadiness(input: {
   const isPacketTracer = fileExtension === 'pkt' || /packet\s*tracer/i.test(input.resource.title)
   const hasSourceHref = Boolean(getSourceHref(input.resource) || input.storedResource?.sourceUrl || input.storedResource?.htmlUrl)
   const readableTextLength = getReadableTextLength(resource)
-  const hasCompletedExtraction = resource.extractionStatus === 'completed' || resource.extractionStatus === 'extracted'
+  const hasCompletedExtraction = resource.extractionStatus === 'completed'
+    || resource.extractionStatus === 'extracted'
+    || resource.visualExtractionStatus === 'completed'
   const isReadable = hasCompletedExtraction && readableTextLength >= 120
   const state = resolveSourceReadinessState({
     hasStoredResource: Boolean(input.storedResource && input.canonicalResourceId),
@@ -94,6 +98,8 @@ export function normalizeSourceReadiness(input: {
     isPacketTracer,
     hasSourceHref,
     fallbackReason: quality.fallbackReason,
+    visualExtractionStatus: resource.visualExtractionStatus,
+    extractionError: resource.extractionError,
   })
   const isUnsupported = state === 'unsupported_file_type'
   const isRepairable = state === 'missing_resource_link'
@@ -140,6 +146,8 @@ function resolveSourceReadinessState(input: {
   isPacketTracer: boolean
   hasSourceHref: boolean
   fallbackReason: string | null
+  visualExtractionStatus?: ModuleResource['visualExtractionStatus']
+  extractionError?: string | null
 }): SourceReadinessState {
   if (input.isPacketTracer) return 'unsupported_file_type'
   if (!input.hasStoredResource) {
@@ -153,6 +161,9 @@ function resolveSourceReadinessState(input: {
   if (!input.extractionStatus && input.hasSourceHref && isProcessableSourceType(input.sourceType)) return 'needs_processing'
   if (input.extractionStatus === 'pending') return 'needs_processing'
   if (input.extractionStatus === 'failed' || input.capability === 'failed') return 'extraction_failed'
+  if (input.visualExtractionStatus === 'available' || /\bpdf_image_only_possible\b|\bimage-only\b|\bscanned\b/i.test(input.extractionError ?? '')) {
+    return 'visual_ocr_available'
+  }
   if (input.sourceType === 'external_url' || input.sourceType === 'external_tool') return 'external_link'
   if (input.sourceType === 'page') return 'canvas_lesson_page'
   if (input.capability === 'unsupported') return 'unsupported_file_type'
@@ -209,6 +220,7 @@ function statusLabelForState(state: SourceReadinessState, isPacketTracer: boolea
   if (state === 'canvas_lesson_page') return 'Canvas lesson page'
   if (state === 'external_link') return 'External link'
   if (state === 'extraction_failed') return 'Retry needed'
+  if (state === 'visual_ocr_available') return 'No selectable text'
   if (state === 'empty_or_metadata_only') return 'Little readable text'
   return 'Needs review'
 }
@@ -225,6 +237,7 @@ function messageForState(state: SourceReadinessState, isPacketTracer: boolean) {
   if (state === 'canvas_lesson_page') return 'This looks like a Canvas lesson page. Open it in Canvas or summarize it once page extraction is available.'
   if (state === 'external_link') return 'This source opens outside Canvas. Use the original link for now.'
   if (state === 'extraction_failed') return 'Deep Learn could not read this source. You can retry processing or open the original file.'
+  if (state === 'visual_ocr_available') return 'This PDF is image-based. OCR is required before Deep Learn can use it.'
   if (state === 'empty_or_metadata_only') return 'The file was processed, but Deep Learn could not find readable text.'
   return 'Deep Learn needs a little more source information before it can use this item well.'
 }
@@ -236,6 +249,7 @@ function actionsForState(state: SourceReadinessState, isSummarizable: boolean): 
   if (state === 'unsupported_file_type') return ['open_source', 'add_notes']
   if (state === 'canvas_lesson_page') return ['open_lesson', 'summarize_page']
   if (state === 'extraction_failed') return ['retry_extraction', 'open_source']
+  if (state === 'visual_ocr_available') return ['extract_text_from_images', 'open_source']
   if (state === 'empty_or_metadata_only') return ['open_source', 'add_notes']
   if (state === 'external_link') return ['open_link']
   return ['open_source']
@@ -250,8 +264,11 @@ function normalizeExtension(value: string | null | undefined) {
   return normalized || null
 }
 
-function getReadableTextLength(resource: Pick<ModuleResource, 'extractedText' | 'extractedTextPreview' | 'extractedCharCount'> | ModuleSourceResource) {
+function getReadableTextLength(resource: Pick<ModuleResource, 'extractedText' | 'extractedTextPreview' | 'extractedCharCount' | 'visualExtractionStatus' | 'visualExtractedText'> | ModuleSourceResource) {
   if (typeof resource.extractedCharCount === 'number' && resource.extractedCharCount > 0) return resource.extractedCharCount
+  if (resource.visualExtractionStatus === 'completed' && resource.visualExtractedText?.trim()) {
+    return resource.visualExtractedText.trim().length
+  }
   return (resource.extractedText?.trim() ?? resource.extractedTextPreview?.trim() ?? '').length
 }
 

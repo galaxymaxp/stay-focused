@@ -623,10 +623,28 @@ function adaptResourceForSummary(row: Record<string, unknown>): ModuleResource {
     extractedTextPreview: typeof row.extracted_text_preview === 'string' ? row.extracted_text_preview : null,
     extractedCharCount: typeof row.extracted_char_count === 'number' ? row.extracted_char_count : 0,
     extractionError: typeof row.extraction_error === 'string' ? row.extraction_error : null,
+    visualExtractionStatus: normalizeVisualExtractionStatus(row.visual_extraction_status),
+    visualExtractedText: typeof row.visual_extracted_text === 'string' ? row.visual_extracted_text : null,
+    visualExtractionError: typeof row.visual_extraction_error === 'string' ? row.visual_extraction_error : null,
+    pageCount: typeof row.page_count === 'number' ? row.page_count : null,
+    pagesProcessed: typeof row.pages_processed === 'number' ? row.pages_processed : 0,
+    extractionProvider: typeof row.extraction_provider === 'string' ? row.extraction_provider : null,
     required: typeof row.required === 'boolean' ? row.required : false,
     metadata: typeof row.metadata === 'object' && row.metadata !== null && !Array.isArray(row.metadata) ? row.metadata as Record<string, unknown> : {},
     created_at: typeof row.created_at === 'string' ? row.created_at : new Date().toISOString(),
   }
+}
+
+function normalizeVisualExtractionStatus(value: unknown): ModuleResource['visualExtractionStatus'] {
+  return value === 'not_started'
+    || value === 'available'
+    || value === 'queued'
+    || value === 'running'
+    || value === 'completed'
+    || value === 'failed'
+    || value === 'skipped'
+    ? value
+    : 'not_started'
 }
 
 function adaptModuleForSummary(row: Record<string, unknown>): Module {

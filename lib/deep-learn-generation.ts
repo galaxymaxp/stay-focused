@@ -320,6 +320,12 @@ export async function buildDeepLearnGroundingWithDependencies(
         extractedTextPreview: reprocessed.update.extractedTextPreview,
         extractedCharCount: reprocessed.update.extractedCharCount,
         extractionError: reprocessed.update.extractionError,
+        visualExtractionStatus: reprocessed.update.visualExtractionStatus,
+        visualExtractedText: reprocessed.update.visualExtractedText,
+        visualExtractionError: reprocessed.update.visualExtractionError,
+        pageCount: reprocessed.update.pageCount,
+        pagesProcessed: reprocessed.update.pagesProcessed,
+        extractionProvider: reprocessed.update.extractionProvider,
         metadata: reprocessed.update.metadata,
       }
       surfaceResource = {
@@ -329,6 +335,12 @@ export async function buildDeepLearnGroundingWithDependencies(
         extractedTextPreview: refreshedResource.extractedTextPreview,
         extractedCharCount: refreshedResource.extractedCharCount,
         extractionError: refreshedResource.extractionError,
+        visualExtractionStatus: refreshedResource.visualExtractionStatus,
+        visualExtractedText: refreshedResource.visualExtractedText,
+        visualExtractionError: refreshedResource.visualExtractionError,
+        pageCount: refreshedResource.pageCount,
+        pagesProcessed: refreshedResource.pagesProcessed,
+        extractionProvider: refreshedResource.extractionProvider,
         fallbackReason: typeof refreshedResource.metadata.fallbackReason === 'string'
           ? refreshedResource.metadata.fallbackReason
           : surfaceResource.fallbackReason,

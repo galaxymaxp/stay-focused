@@ -19,6 +19,12 @@ export function adaptModuleResourceRow(row: Record<string, unknown>): ModuleReso
     extractedTextPreview: typeof row.extracted_text_preview === 'string' ? row.extracted_text_preview : null,
     extractedCharCount: typeof row.extracted_char_count === 'number' ? row.extracted_char_count : 0,
     extractionError: typeof row.extraction_error === 'string' ? row.extraction_error : null,
+    visualExtractionStatus: normalizeVisualExtractionStatus(row.visual_extraction_status),
+    visualExtractedText: typeof row.visual_extracted_text === 'string' ? row.visual_extracted_text : null,
+    visualExtractionError: typeof row.visual_extraction_error === 'string' ? row.visual_extraction_error : null,
+    pageCount: typeof row.page_count === 'number' ? row.page_count : null,
+    pagesProcessed: typeof row.pages_processed === 'number' ? row.pages_processed : 0,
+    extractionProvider: typeof row.extraction_provider === 'string' ? row.extraction_provider : null,
     required: Boolean(row.required),
     metadata: isPlainRecord(row.metadata) ? row.metadata : {},
     created_at: typeof row.created_at === 'string' ? row.created_at : new Date().toISOString(),
@@ -35,6 +41,18 @@ function normalizeExtractionStatus(value: unknown): ModuleResource['extractionSt
     || value === 'failed'
     ? value
     : 'metadata_only'
+}
+
+function normalizeVisualExtractionStatus(value: unknown): ModuleResource['visualExtractionStatus'] {
+  return value === 'not_started'
+    || value === 'available'
+    || value === 'queued'
+    || value === 'running'
+    || value === 'completed'
+    || value === 'failed'
+    || value === 'skipped'
+    ? value
+    : 'not_started'
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {

@@ -65,6 +65,12 @@ export async function reprocessModuleResourcesAction(formData: FormData) {
           extracted_text_preview: result.update.extractedTextPreview,
           extracted_char_count: result.update.extractedCharCount,
           extraction_error: result.update.extractionError,
+          visual_extraction_status: result.update.visualExtractionStatus,
+          visual_extracted_text: result.update.visualExtractedText,
+          visual_extraction_error: result.update.visualExtractionError,
+          page_count: result.update.pageCount,
+          pages_processed: result.update.pagesProcessed,
+          extraction_provider: result.update.extractionProvider,
           metadata: result.update.metadata,
           updated_at: new Date().toISOString(),
         })
