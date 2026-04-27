@@ -7,6 +7,7 @@ import { buildLearnExperience, extractCourseName, findRecommendedStepTargets, ge
 import { buildModuleLearnHref, getSearchParamValue, getTaskElementId } from '@/lib/stay-focused-links'
 import { sortTasksByRecommendation } from '@/lib/task-ranking'
 import { TaskDraftButton } from '@/components/DoNowButton'
+import { QueueDoButton } from '@/components/QueueDoButton'
 import { buildTaskDraftContextText } from '@/lib/do-now'
 import { buildManualCopyBundle } from '@/lib/manual-copy-bundle'
 
@@ -240,6 +241,32 @@ export default async function DoPage({ params, searchParams }: Props) {
                               sourceHref,
                               sourceText,
                               sourceNote: matchedResource?.linkedContext ?? matchedResource?.whyItMatters ?? task.details,
+                          }}
+                        />
+                        <QueueDoButton
+                          taskId={task.id}
+                          moduleId={module.id}
+                          context={{
+                            taskId: task.id,
+                            moduleId: module.id,
+                            courseId: module.courseId,
+                            taskTitle: task.title,
+                            taskDetails: task.details,
+                            deadline: task.deadline,
+                            priority: task.priority,
+                            courseName,
+                            moduleTitle: module.title,
+                            studyPrompts: module.study_prompts,
+                            concepts: module.concepts,
+                            moduleSummary: module.summary,
+                            resourceSnippet,
+                            canvasUrl: task.canvasUrl,
+                            learnHref,
+                            sourceTitle: matchedResource?.title ?? task.title,
+                            sourceType: matchedResource?.type ?? 'Task',
+                            sourceHref,
+                            sourceText,
+                            sourceNote: matchedResource?.linkedContext ?? matchedResource?.whyItMatters ?? task.details,
                           }}
                         />
                         <Link href={learnHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>

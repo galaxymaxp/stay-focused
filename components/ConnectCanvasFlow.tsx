@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { refreshCourseInstructors, syncCanvasCourse, testCanvasConnection, type CanvasConnectionResult } from '@/actions/canvas'
+import { queueCanvasSyncAction } from '@/actions/queue-canvas'
 import { CanvasSyncStatusCard } from '@/components/CanvasSyncStatusCard'
 import { UnsyncButton } from '@/components/UnsyncButton'
 import { useCanvasSyncStatus, type CanvasSyncPhase, type SyncActivitySnapshot } from '@/components/useCanvasSyncStatus'
@@ -74,6 +75,7 @@ export function ConnectCanvasFlow({
   const [isTesting, startTesting] = useTransition()
   const [isSyncing, startSyncing] = useTransition()
   const [isRefreshingInstructors, startRefreshingInstructors] = useTransition()
+  const [queueSyncState, setQueueSyncState] = useState<'idle' | 'queuing' | 'queued' | 'error'>('idle')
   const [instructorRefreshResult, setInstructorRefreshResult] = useState<{ message: string; tone: 'success' | 'error' } | null>(null)
   const initialActionHandledRef = useRef(false)
   const syncStatus = useCanvasSyncStatus(lastSync)
@@ -243,6 +245,40 @@ export function ConnectCanvasFlow({
         ? current.filter((id) => id !== courseId)
         : [...current, courseId]
     )
+  }
+
+  async function handleQueueSync() {
+    if (selectedCourseIds.length === 0 || queueSyncState !== 'idle') return
+
+    const selectedCourses = courses
+      .filter((course) => selectedCourseIds.includes(course.id) && !isCourseAlreadySynced(course))
+      .map((course) => ({
+        courseId: course.id,
+        courseName: course.name,
+        courseCode: course.course_code,
+        instructor: course.teachers?.[0]?.display_name ?? null,
+      }))
+
+    if (selectedCourses.length === 0) return
+
+    setQueueSyncState('queuing')
+
+    for (const course of selectedCourses) {
+      const result = await queueCanvasSyncAction({
+        course,
+        canvasUrl,
+        accessToken: token,
+      })
+
+      if (result.error) {
+        setQueueSyncState('error')
+        setTimeout(() => setQueueSyncState('idle'), 4000)
+        return
+      }
+    }
+
+    setQueueSyncState('queued')
+    setTimeout(() => setQueueSyncState('idle'), 5000)
   }
 
   function handleCourseSubmit() {
@@ -570,6 +606,18 @@ export function ConnectCanvasFlow({
                     phase: syncPhase,
                     selectedCourseCount: selectedCourseIds.length,
                   })}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleQueueSync}
+                  disabled={selectedCourseIds.length === 0 || isSyncActionPending || courses.length === 0 || queueSyncState !== 'idle'}
+                  className="ui-button ui-button-secondary ui-button-sm"
+                  title="Queue sync to run in background"
+                >
+                  {queueSyncState === 'queuing' && 'Queuing…'}
+                  {queueSyncState === 'queued' && '✓ Sync queued'}
+                  {queueSyncState === 'error' && 'Queue failed'}
+                  {queueSyncState === 'idle' && 'Sync in background'}
                 </button>
                 <button type="button" onClick={handleReconnect} disabled={isSyncActionPending} className="ui-button ui-button-ghost ui-button-sm">
                   Open setup

@@ -1,5 +1,6 @@
 import { Menu } from 'lucide-react'
-import { AnnouncementsPanel } from './AnnouncementsPanel'
+import { NotificationsPanel } from './NotificationsPanel'
+import { QueuePanel } from './QueuePanel'
 import { SyncStatusChip } from './SyncStatusChip'
 import { ProfileDropdown } from './ProfileDropdown'
 
@@ -25,7 +26,8 @@ export function Topnav({ onMenuClick, pageTitle }: Props) {
 
       <div className="flex items-center gap-2">
         <SyncStatusChip />
-        <AnnouncementsPanel />
+        <QueuePanel />
+        <NotificationsPanel />
         <ProfileDropdown />
       </div>
     </header>

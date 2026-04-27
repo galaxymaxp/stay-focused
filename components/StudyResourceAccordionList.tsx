@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
 import { DeepLearnGenerateButton } from '@/components/DeepLearnGenerateButton'
+import { QueueLearnButton } from '@/components/QueueLearnButton'
 import { OcrSourceButton } from '@/components/OcrSourceButton'
 import { SourceReadinessFilters, type SourceReadinessFilter } from '@/components/SourceReadinessFilters'
 import { SourceSummaryBadge, type SourceSummaryBadgeModel } from '@/components/SourceSummaryBadge'
@@ -282,13 +283,24 @@ export function StudyResourceAccordionList({
                         Open workspace
                       </Link>
                     ) : item.deepLearnStatus !== 'unavailable' ? (
-                      <DeepLearnGenerateButton
-                        moduleId={item.moduleId}
-                        resourceId={item.canonicalResourceId ?? item.id}
-                        courseId={item.courseId ?? null}
-                        label="Generate Deep Learn pack"
-                        disabledReason={item.deepLearnDisabledReason}
-                      />
+                      <>
+                        <DeepLearnGenerateButton
+                          moduleId={item.moduleId}
+                          resourceId={item.canonicalResourceId ?? item.id}
+                          courseId={item.courseId ?? null}
+                          label="Generate Deep Learn pack"
+                          disabledReason={item.deepLearnDisabledReason}
+                        />
+                        {item.deepLearnCanGenerate && (
+                          <QueueLearnButton
+                            moduleId={item.moduleId}
+                            resourceId={item.canonicalResourceId ?? item.id}
+                            courseId={item.courseId ?? null}
+                            resourceTitle={item.title}
+                            variant="inline"
+                          />
+                        )}
+                      </>
                     ) : (
                       <DeepLearnGenerateButton
                         moduleId={item.moduleId}
