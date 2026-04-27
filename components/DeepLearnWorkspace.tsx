@@ -51,6 +51,7 @@ export function DeepLearnWorkspace({
   }
 
   const sourceText = resource.extractedText ?? resource.extractedTextPreview ?? ''
+  const isImageOnly = resource.visualExtractionStatus === 'available'
 
   return (
     <section className="motion-card motion-delay-1 section-shell section-shell-elevated" style={{ padding: '1.1rem 1.15rem', display: 'grid', gap: '0.9rem' }}>
@@ -86,10 +87,10 @@ export function DeepLearnWorkspace({
         </div>
       </div>
 
-      {blockedMessage && (
+      {blockedMessage && note && (
         <GeneratedContentState
-          title="This saved item is still available, but its original source could not be reopened."
-          description="You can still use the saved content below."
+          title="This saved pack is still available, but its original source could not be reopened."
+          description={blockedMessage}
           tone="warning"
         />
       )}
@@ -98,6 +99,7 @@ export function DeepLearnWorkspace({
         <PinnedSourcePane
           resourceTitle={resource.title}
           sourceText={sourceText}
+          isImageOnly={isImageOnly}
           sourceHref={sourceHref}
           readerHref={readerHref}
           readerLabel={readerLabel}
@@ -358,12 +360,14 @@ function LegacyDraftWorkspace({
 function PinnedSourcePane({
   resourceTitle,
   sourceText,
+  isImageOnly = false,
   sourceHref,
   readerHref,
   readerLabel,
 }: {
   resourceTitle: string
   sourceText: string
+  isImageOnly?: boolean
   sourceHref: string | null
   readerHref: string
   readerLabel: string
@@ -416,7 +420,7 @@ function PinnedSourcePane({
         </div>
 
         <div className="deep-learn-source-content" style={{ marginTop: '0.7rem' }}>
-          <SourcePreview sourceText={sourceText} />
+          <SourcePreview sourceText={sourceText} isImageOnly={isImageOnly} />
         </div>
       </aside>
     )
@@ -443,7 +447,7 @@ function PinnedSourcePane({
 
         <div className="deep-learn-source-disclosure-body">
           <div className="deep-learn-source-content">
-            <SourcePreview sourceText={sourceText} />
+            <SourcePreview sourceText={sourceText} isImageOnly={isImageOnly} />
           </div>
           <SourceLinks sourceHref={sourceHref} readerHref={readerHref} readerLabel={readerLabel} />
         </div>
@@ -452,12 +456,21 @@ function PinnedSourcePane({
   )
 }
 
-function SourcePreview({ sourceText }: { sourceText: string }) {
+function SourcePreview({ sourceText, isImageOnly = false }: { sourceText: string; isImageOnly?: boolean }) {
   if (!sourceText) {
+    if (isImageOnly) {
+      return (
+        <GeneratedContentState
+          title="No selectable text."
+          description="This PDF appears scanned or image-based. OCR/visual extraction is required before text can be read here."
+          tone="warning"
+        />
+      )
+    }
     return (
       <GeneratedContentState
-        title="The original source is not available."
-        description="You can still use the saved content below."
+        title="No extracted text available."
+        description="Process or repair this source so Deep Learn can read it."
         tone="warning"
       />
     )

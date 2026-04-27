@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { adaptModuleResourceRow } from '@/lib/module-resource-row'
 import { reprocessStoredModuleResource, shouldReprocessWeakModuleResource } from '@/lib/module-resource-reprocess'
-import { supabase } from '@/lib/supabase'
+import { createAuthenticatedSupabaseServerClient } from '@/lib/auth-server'
 
 type ReprocessScope = 'all' | 'weak' | 'single'
 
@@ -16,6 +16,7 @@ export async function reprocessModuleResourcesAction(formData: FormData) {
   const scope = normalizeScope(getOptionalValue(formData, 'scope'))
   const triggeredBy = normalizeTriggeredBy(getOptionalValue(formData, 'triggeredBy'))
 
+  const supabase = await createAuthenticatedSupabaseServerClient()
   if (!supabase) {
     redirect(appendNotice(returnPath, {
       reprocess: 'error',

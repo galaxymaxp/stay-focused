@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { SyncFirstEmptyState } from '@/components/SyncFirstEmptyState'
+import { createAuthenticatedSupabaseServerClient } from '@/lib/auth-server'
 import { getClarityWorkspace } from '@/lib/clarity-workspace'
 import { buildCourseSummaries, type CourseSummary } from '@/lib/course-summary'
 
@@ -7,6 +8,7 @@ export const revalidate = 300
 
 export default async function CoursesPage() {
   const workspace = await getClarityWorkspace()
+  const supabase = await createAuthenticatedSupabaseServerClient()
 
   if (!workspace.hasSyncedData) {
     return (
@@ -16,7 +18,7 @@ export default async function CoursesPage() {
     )
   }
 
-  const summaries = await buildCourseSummaries(workspace)
+  const summaries = await buildCourseSummaries(workspace, supabase)
   const totalPendingTasks = summaries.reduce((sum, s) => sum + s.pendingTaskCount, 0)
   const totalReadyPacks = summaries.reduce((sum, s) => sum + s.readyPackCount, 0)
 

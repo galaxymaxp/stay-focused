@@ -2,13 +2,12 @@
 
 import { revalidatePath } from 'next/cache'
 import OpenAI from 'openai'
-import { getAuthenticatedUserServer } from '@/lib/auth-server'
+import { createAuthenticatedSupabaseServerClient, getAuthenticatedUserServer } from '@/lib/auth-server'
 import { buildLearnExperience, extractCourseName, getModuleWorkspace, resolveLearnResourceSelection } from '@/lib/module-workspace'
 import { DeepLearnGenerationBlockedError, generateDeepLearnNoteForResource } from '@/lib/deep-learn-generation'
 import { DEEP_LEARN_PROMPT_VERSION, buildDeepLearnNoteBody, computeDeepLearnQuizReady } from '@/lib/deep-learn'
 import { classifyDeepLearnResourceReadiness } from '@/lib/deep-learn-readiness'
 import { getDeepLearnNoteForResource, saveDeepLearnNote } from '@/lib/deep-learn-store'
-import { supabase } from '@/lib/supabase'
 import type { DeepLearnNoteSection } from '@/lib/types'
 
 export async function generateDeepLearnNoteAction(input: {
@@ -407,7 +406,12 @@ function normalizeLookup(value: string) {
 async function persistRefreshedResource(
   refreshedResource: Awaited<ReturnType<typeof generateDeepLearnNoteForResource>>['refreshedResource'] | null,
 ) {
-  if (!refreshedResource || !supabase) {
+  if (!refreshedResource) {
+    return
+  }
+
+  const supabase = await createAuthenticatedSupabaseServerClient()
+  if (!supabase) {
     return
   }
 

@@ -1,10 +1,31 @@
 'use server'
 
+import { cookies } from 'next/headers'
 import { revalidatePath } from 'next/cache'
-import { supabase } from '@/lib/supabase'
+import { createServerClient } from '@supabase/ssr'
+import { getRequiredSupabaseAuthEnv } from '@/lib/supabase-auth-config'
+
+async function createAuthenticatedClient() {
+  const cookieStore = await cookies()
+  const { supabaseUrl, supabaseAnonKey } = getRequiredSupabaseAuthEnv()
+  return createServerClient(supabaseUrl, supabaseAnonKey, {
+    cookies: {
+      getAll() {
+        return cookieStore.getAll()
+      },
+      setAll(cookiesToSet) {
+        try {
+          cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options))
+        } catch {
+          // setAll may fail in read-only server component contexts
+        }
+      },
+    },
+  })
+}
 
 export async function deleteModule(moduleId: string) {
-  if (!supabase) throw new Error('Supabase is not configured.')
+  const supabase = await createAuthenticatedClient()
 
   const { data: moduleRecord, error: moduleLookupError } = await supabase
     .from('modules')
@@ -15,6 +36,32 @@ export async function deleteModule(moduleId: string) {
   if (moduleLookupError) throw createSupabaseDeleteError('load module before delete', moduleLookupError, { moduleId })
 
   const courseId = moduleRecord?.course_id ?? null
+
+  const { error: deepLearnNotesError } = await supabase
+    .from('deep_learn_notes')
+    .delete()
+    .eq('module_id', moduleId)
+
+  if (deepLearnNotesError) {
+    if (isMissingSchemaObjectError(deepLearnNotesError)) {
+      logOptionalTableMismatch('deep_learn_notes', deepLearnNotesError, { moduleId })
+    } else {
+      throw createSupabaseDeleteError('delete deep learn notes', deepLearnNotesError, { moduleId })
+    }
+  }
+
+  const { error: studyStateError } = await supabase
+    .from('module_resource_study_state')
+    .delete()
+    .eq('module_id', moduleId)
+
+  if (studyStateError) {
+    if (isMissingSchemaObjectError(studyStateError)) {
+      logOptionalTableMismatch('module_resource_study_state', studyStateError, { moduleId })
+    } else {
+      throw createSupabaseDeleteError('delete module resource study state', studyStateError, { moduleId })
+    }
+  }
 
   const { error: learningItemsError } = await supabase
     .from('learning_items')
@@ -74,10 +121,14 @@ export async function deleteModule(moduleId: string) {
   revalidatePath('/learn')
   revalidatePath('/do')
   revalidatePath('/calendar')
+  revalidatePath(`/modules/${moduleId}`)
+  revalidatePath(`/modules/${moduleId}/learn`)
+  revalidatePath(`/modules/${moduleId}/source`)
+  revalidatePath(`/modules/${moduleId}/do`)
 }
 
 export async function setModuleLearnVisibility(input: { moduleId: string; showInLearn: boolean }) {
-  if (!supabase) throw new Error('Supabase is not configured.')
+  const supabase = await createAuthenticatedClient()
 
   const { error } = await supabase
     .from('modules')

@@ -41,7 +41,7 @@ import {
 import { dedupeAIResponseDeadlines } from '@/lib/course-work-dedupe'
 import { generateCoursePageSummaryForUserId } from '@/lib/course-page-summary'
 import { processModuleContent } from '@/lib/openai'
-import { getSupabaseLoggingContext, serializeErrorForLogging, supabase } from '@/lib/supabase'
+import { getSupabaseLoggingContext, serializeErrorForLogging } from '@/lib/supabase'
 import {
   adaptRepairableLearningItem,
   adaptRepairModuleResourceRow,
@@ -265,7 +265,8 @@ export async function refreshCourseInstructors(input: {
   canvasUrl: string
   accessToken: string
 }): Promise<{ success: true; updatedCount: number } | { error: string }> {
-  if (!supabase) {
+  const syncSupabase = await createAuthenticatedSupabaseServerClient()
+  if (!syncSupabase) {
     return { error: 'Supabase is not configured yet.' }
   }
 
@@ -292,7 +293,7 @@ export async function refreshCourseInstructors(input: {
     const instructor = resolveInstructorName(course)
     if (instructor === 'Canvas course staff') continue
 
-    const { error } = await supabase
+    const { error } = await syncSupabase
       .from('courses')
       .update({ instructor })
       .eq('user_id', user.id)

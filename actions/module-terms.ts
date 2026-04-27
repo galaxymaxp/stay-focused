@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { buildModuleLearnOverview } from '@/lib/module-learn-overview'
 import { buildModuleTermBank } from '@/lib/module-term-bank'
-import { supabase } from '@/lib/supabase'
+import { createAuthenticatedSupabaseServerClient } from '@/lib/auth-server'
 import { buildLearnExperience, getModuleWorkspace } from '@/lib/module-workspace'
 import type { ModuleTermOrigin, ModuleTermStatus } from '@/lib/types'
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -23,6 +23,7 @@ export async function saveModuleTerm(input: {
   origin?: ModuleTermOrigin
   status?: ModuleTermStatus
 }) {
+  const supabase = await createAuthenticatedSupabaseServerClient()
   if (!supabase) throw new Error('Supabase is not configured.')
 
   const term = input.term.trim()
@@ -64,6 +65,7 @@ export async function rejectModuleTerm(input: {
   sourceLabel?: string | null
   origin?: ModuleTermOrigin
 }) {
+  const supabase = await createAuthenticatedSupabaseServerClient()
   if (!supabase) throw new Error('Supabase is not configured.')
 
   const term = input.term.trim()
@@ -97,6 +99,7 @@ export async function resetModuleReviewer(input: {
   moduleId: string
   courseId?: string
 }) {
+  const supabase = await createAuthenticatedSupabaseServerClient()
   if (!supabase) throw new Error('Supabase is not configured.')
 
   const result = await supabase
@@ -114,7 +117,7 @@ export async function populateModuleTerms(input: {
   moduleId: string
   courseId?: string
 }, supabaseClient?: SupabaseClient) {
-  const db = supabaseClient ?? supabase
+  const db = supabaseClient ?? await createAuthenticatedSupabaseServerClient()
   if (!db) throw new Error('Supabase is not configured.')
 
   const workspace = await getModuleWorkspace(input.moduleId, db)

@@ -348,12 +348,14 @@ function describeDeepLearnBlockedReason(input: {
     }
   }
 
+  const isImageOnly = requiresVisualExtraction({ extractionError: sourceNote ?? undefined })
   return {
-    summary: requiresVisualExtraction({ extractionError: sourceNote ?? undefined })
+    summary: isImageOnly
       ? 'No selectable text'
       : 'This file has little or no readable text. It may be scanned or image-only.',
-    detail: sourceNote
-      ?? 'This PDF appears scanned or image-based. OCR/visual extraction is required before Deep Learn can use it.',
+    detail: isImageOnly
+      ? 'This PDF appears scanned or image-based. OCR/visual extraction is required before Deep Learn can use it.'
+      : sourceNote ?? 'This PDF appears scanned or image-based. OCR/visual extraction is required before Deep Learn can use it.',
   }
 }
 

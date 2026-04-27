@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ClarityWorkspace } from '@/lib/clarity-workspace'
 import type { Course } from '@/lib/types'
 
@@ -24,6 +24,7 @@ export interface CourseSummary {
  */
 export async function buildCourseSummaries(
   workspace: ClarityWorkspace,
+  supabase: SupabaseClient | null,
 ): Promise<CourseSummary[]> {
   const allModuleIds = workspace.modules.map((m) => m.id)
   const readyPacksByModuleId = new Map<string, number>()

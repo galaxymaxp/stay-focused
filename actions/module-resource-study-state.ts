@@ -1,7 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { supabase } from '@/lib/supabase'
+import { createAuthenticatedSupabaseServerClient } from '@/lib/auth-server'
 import type { ModuleResourceWorkflowOverride, StudyFileProgressStatus } from '@/lib/types'
 
 const TABLE_NAME = 'module_resource_study_state'
@@ -12,6 +12,7 @@ export async function setStudyFileProgress(input: {
   progressStatus: StudyFileProgressStatus
   courseId?: string
 }) {
+  const supabase = await createAuthenticatedSupabaseServerClient()
   if (!supabase) throw new Error('Supabase is not configured.')
 
   const { error } = await supabase
@@ -34,6 +35,7 @@ export async function setStudyFileWorkflowOverride(input: {
   workflowOverride: ModuleResourceWorkflowOverride
   courseId?: string
 }) {
+  const supabase = await createAuthenticatedSupabaseServerClient()
   if (!supabase) throw new Error('Supabase is not configured.')
 
   const { error } = await supabase
@@ -55,6 +57,7 @@ export async function markStudyFileOpened(input: {
   resourceId: string
   courseId?: string
 }) {
+  const supabase = await createAuthenticatedSupabaseServerClient()
   if (!supabase) throw new Error('Supabase is not configured.')
 
   const now = new Date().toISOString()

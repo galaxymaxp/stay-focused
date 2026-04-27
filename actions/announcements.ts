@@ -1,11 +1,10 @@
 'use server'
 
 import { randomUUID } from 'node:crypto'
-import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { revalidatePath } from 'next/cache'
-import { getRequiredSupabaseAuthEnv, isSupabaseAuthConfigured } from '@/lib/supabase-auth-config'
-import { serializeErrorForLogging, supabase } from '@/lib/supabase'
+import { createAuthenticatedSupabaseServerClient, getAuthenticatedUserServer } from '@/lib/auth-server'
+import { serializeErrorForLogging } from '@/lib/supabase'
 
 const ANNOUNCEMENT_READ_STATE_TABLE = 'announcement_read_state'
 const SHARED_VIEWER_COOKIE = 'stay-focused-user-key'
@@ -17,6 +16,7 @@ type AnnouncementReadStateIdentity = {
 }
 
 export async function loadAnnouncementReadStates(announcementKeys: string[]) {
+  const supabase = await createAuthenticatedSupabaseServerClient()
   if (!supabase || announcementKeys.length === 0) return []
 
   const identity = await resolveAnnouncementReadStateIdentity()
@@ -54,6 +54,7 @@ export async function markAnnouncementRead(input: {
   postedLabel: string | null
   href: string
 }) {
+  const supabase = await createAuthenticatedSupabaseServerClient()
   if (!supabase) throw new Error('Supabase is not configured.')
 
   const identity = await resolveAnnouncementReadStateIdentity()
@@ -103,6 +104,7 @@ export async function markAnnouncementViewed(input: {
 export async function markAnnouncementUnread(input: {
   announcementKey: string
 }) {
+  const supabase = await createAuthenticatedSupabaseServerClient()
   if (!supabase) throw new Error('Supabase is not configured.')
 
   const identity = await resolveAnnouncementReadStateIdentity()
@@ -140,35 +142,8 @@ async function resolveAnnouncementReadStateIdentity(): Promise<AnnouncementReadS
     })
   }
 
-  if (!isSupabaseAuthConfigured) {
-    return {
-      userId: null,
-      userKey: anonymousUserKey,
-    }
-  }
-
   try {
-    const { supabaseUrl, supabaseAnonKey } = getRequiredSupabaseAuthEnv()
-    const authClient = createServerClient(supabaseUrl, supabaseAnonKey, {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll().map((cookie) => ({
-            name: cookie.name,
-            value: cookie.value,
-          }))
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => {
-            cookieStore.set(name, value, options)
-          })
-        },
-      },
-    })
-
-    const {
-      data: { user },
-    } = await authClient.auth.getUser()
-
+    const user = await getAuthenticatedUserServer()
     if (user?.id) {
       return {
         userId: user.id,
