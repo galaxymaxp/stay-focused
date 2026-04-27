@@ -4,7 +4,6 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { createAuthenticatedSupabaseServerClient, getAuthenticatedUserServer } from '@/lib/auth-server'
 import { getModuleResourceQualityInfo, normalizeModuleResourceStudyText } from '@/lib/module-resource-quality'
 import { createSupabaseServiceRoleClient } from '@/lib/supabase-service'
-import { supabase } from '@/lib/supabase'
 import type { Module, ModuleResource } from '@/lib/types'
 
 export interface ResourceSummaryRow {
@@ -765,7 +764,7 @@ function getSummaryModel() {
 }
 
 async function getAuthenticatedSummaryClient() {
-  return await createAuthenticatedSupabaseServerClient() ?? supabase
+  return await createAuthenticatedSupabaseServerClient()
 }
 
 function normalizeExtractionStatus(value: unknown): ModuleResource['extractionStatus'] {

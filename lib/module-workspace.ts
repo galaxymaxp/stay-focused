@@ -1,5 +1,4 @@
-import { getAuthenticatedUserServer } from '@/lib/auth-server'
-import { supabase } from '@/lib/supabase'
+import { createAuthenticatedSupabaseServerClient, getAuthenticatedUserServer } from '@/lib/auth-server'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
   getModuleResourceCapabilityInfo,
@@ -160,7 +159,7 @@ export interface ResourceGrounding {
 }
 
 export async function getModuleWorkspace(id: string, client?: SupabaseClient): Promise<ModuleWorkspaceData | null> {
-  const db = client ?? supabase
+  const db = client ?? await createAuthenticatedSupabaseServerClient()
   if (!db) return null
   const user = await getAuthenticatedUserServer()
   if (!user) return null

@@ -1,5 +1,4 @@
-import { getAuthenticatedUserServer } from '@/lib/auth-server'
-import { supabase } from '@/lib/supabase'
+import { createAuthenticatedSupabaseServerClient, getAuthenticatedUserServer } from '@/lib/auth-server'
 
 export interface WorkspaceCourseRow {
   id: string
@@ -64,7 +63,9 @@ export interface WorkspaceQueryResult {
 }
 
 export async function fetchWorkspaceRows(): Promise<WorkspaceQueryResult | null> {
-  if (!supabase) return null
+  const db = await createAuthenticatedSupabaseServerClient()
+  if (!db) return null
+
   const user = await getAuthenticatedUserServer()
   if (!user) {
     return {
@@ -75,7 +76,7 @@ export async function fetchWorkspaceRows(): Promise<WorkspaceQueryResult | null>
     }
   }
 
-  const { data: courseRows, error: courseError } = await supabase
+  const { data: courseRows, error: courseError } = await db
     .from('courses')
     .select('*')
     .eq('user_id', user.id)
@@ -100,10 +101,20 @@ export async function fetchWorkspaceRows(): Promise<WorkspaceQueryResult | null>
     learningItemsResult,
     taskItemsResult,
   ] = await Promise.all([
-    supabase.from('modules').select('*').in('course_id', ownedCourseIds).order('order', { ascending: true }).order('created_at', { ascending: true }),
-    supabase.from('learning_items').select('*').in('course_id', ownedCourseIds).order('order', { ascending: true }),
-    supabase.from('task_items').select('*').in('course_id', ownedCourseIds).order('deadline', { ascending: true, nullsFirst: false }),
+    db.from('modules').select('*').in('course_id', ownedCourseIds).order('order', { ascending: true }).order('created_at', { ascending: true }),
+    db.from('learning_items').select('*').in('course_id', ownedCourseIds).order('order', { ascending: true }),
+    db.from('task_items').select('*').in('course_id', ownedCourseIds).order('deadline', { ascending: true, nullsFirst: false }),
   ])
+
+  if ((modulesResult.data?.length ?? 0) === 0) {
+    console.warn('[workspace-queries] modules query returned no rows', {
+      'user.id': user.id,
+      ownedCourseIds,
+      'courseRows.length': courseRows?.length ?? 0,
+      'modulesResult.data?.length': modulesResult.data?.length,
+      'modulesResult.error': modulesResult.error,
+    })
+  }
 
   if (modulesResult.error || learningItemsResult.error || taskItemsResult.error) {
     return null
