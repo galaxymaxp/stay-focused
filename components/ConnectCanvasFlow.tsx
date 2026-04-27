@@ -4,7 +4,7 @@ import type { CSSProperties, ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { refreshCourseInstructors, syncCourses, testCanvasConnection, type CanvasConnectionResult } from '@/actions/canvas'
+import { refreshCourseInstructors, syncCanvasCourse, testCanvasConnection, type CanvasConnectionResult } from '@/actions/canvas'
 import { CanvasSyncStatusCard } from '@/components/CanvasSyncStatusCard'
 import { UnsyncButton } from '@/components/UnsyncButton'
 import { useCanvasSyncStatus, type CanvasSyncPhase, type SyncActivitySnapshot } from '@/components/useCanvasSyncStatus'
@@ -29,6 +29,12 @@ interface SyncedCanvasModule {
 
 type FlowStep = 'connect' | 'courses'
 type SetupStage = 'guide' | 'credentials'
+type CourseSyncState = 'pending' | 'syncing' | 'synced' | 'failed'
+
+interface CourseSyncProgress {
+  state: CourseSyncState
+  message: string | null
+}
 
 export function ConnectCanvasFlow({
   initialConnectionUrl,
@@ -63,6 +69,7 @@ export function ConnectCanvasFlow({
   const [selectedCourseIds, setSelectedCourseIds] = useState<number[]>([])
   const [search, setSearch] = useState('')
   const [connectionError, setConnectionError] = useState<string | null>(null)
+  const [courseSyncProgress, setCourseSyncProgress] = useState<Record<number, CourseSyncProgress>>({})
   const [savedConnection, setSavedConnection] = useState<SavedCanvasConnection | null>(initialSavedConnection)
   const [isTesting, startTesting] = useTransition()
   const [isSyncing, startSyncing] = useTransition()
@@ -206,6 +213,7 @@ export function ConnectCanvasFlow({
     setStep('connect')
     setCourses([])
     setSelectedCourseIds([])
+    setCourseSyncProgress({})
     setSearch('')
     setConnectionError(null)
     resetSyncFeedback()
@@ -219,6 +227,7 @@ export function ConnectCanvasFlow({
     setToken('')
     setCourses([])
     setSelectedCourseIds([])
+    setCourseSyncProgress({})
     setSearch('')
     setStep('connect')
     setConnectionError(null)
@@ -227,6 +236,8 @@ export function ConnectCanvasFlow({
   }
 
   function toggleCourseSelection(courseId: number) {
+    if (isSyncActionPending) return
+
     setSelectedCourseIds((current) =>
       current.includes(courseId)
         ? current.filter((id) => id !== courseId)
@@ -237,42 +248,90 @@ export function ConnectCanvasFlow({
   function handleCourseSubmit() {
     if (selectedCourseIds.length === 0) return
 
-    const syncRun = beginSync(selectedCourseIds.length)
+    const selectedCourses = courses
+      .filter((course) =>
+        selectedCourseIds.includes(course.id) &&
+        !isCourseAlreadySynced(course)
+      )
+      .map((course) => ({
+        courseId: course.id,
+        courseName: course.name,
+        courseCode: course.course_code,
+        instructor: course.teachers?.[0]?.display_name ?? null,
+      }))
+
+    if (selectedCourses.length === 0) return
+
+    setCourseSyncProgress(Object.fromEntries(selectedCourses.map((course) => [
+      course.courseId,
+      { state: 'pending' as const, message: null },
+    ])))
+
+    const syncRun = beginSync(selectedCourses.length)
     startSyncing(async () => {
+      const syncedCourses: string[] = []
+      const failedCourses: string[] = []
+      const syncedCourseIds = new Set<number>()
+
       try {
-        const selectedCourses = courses
-          .filter((course) =>
-            selectedCourseIds.includes(course.id) &&
-            !isCourseAlreadySynced(course)
-          )
-          .map((course) => ({
-            courseId: course.id,
-            courseName: course.name,
-            courseCode: course.course_code,
-            instructor: course.teachers?.[0]?.display_name ?? null,
+        for (const course of selectedCourses) {
+          setCourseSyncProgress((current) => ({
+            ...current,
+            [course.courseId]: { state: 'syncing', message: 'Syncing now' },
           }))
 
-        const result = await syncCourses({
-          courses: selectedCourses,
-          canvasUrl,
-          accessToken: token,
-        })
+          try {
+            const result = await syncCanvasCourse({
+              course,
+              canvasUrl,
+              accessToken: token,
+            })
 
-        if ('error' in result) {
-          failSync(syncRun, result.error)
-          return
+            if ('error' in result) {
+              failedCourses.push(course.courseName)
+              setCourseSyncProgress((current) => ({
+                ...current,
+                [course.courseId]: { state: 'failed', message: normalizeSyncErrorText(result.error) },
+              }))
+              continue
+            }
+
+            syncedCourses.push(result.courseName)
+            syncedCourseIds.add(course.courseId)
+            setCourseSyncProgress((current) => ({
+              ...current,
+              [course.courseId]: { state: 'synced', message: 'Synced' },
+            }))
+          } catch (error) {
+            failedCourses.push(course.courseName)
+            setCourseSyncProgress((current) => ({
+              ...current,
+              [course.courseId]: {
+                state: 'failed',
+                message: normalizeSyncErrorText(error instanceof Error ? error.message : null),
+              },
+            }))
+          }
         }
 
-        await finishSync(
-          syncRun,
-          result.syncedCount === 1
-            ? `Synced ${result.syncedCourses[0]}.`
-            : `Synced ${result.syncedCount} courses successfully.`,
-        )
-        setSelectedCourseIds([])
+        if (failedCourses.length > 0) {
+          const message = syncedCourses.length > 0
+            ? `Synced ${syncedCourses.length} course${syncedCourses.length === 1 ? '' : 's'}. ${failedCourses.length} failed and can be retried.`
+            : `Sync failed for ${failedCourses.length} course${failedCourses.length === 1 ? '' : 's'}.`
+          failSync(syncRun, message)
+        } else {
+          await finishSync(
+            syncRun,
+            syncedCourses.length === 1
+              ? `Synced ${syncedCourses[0]}.`
+              : `Synced ${syncedCourses.length} courses successfully.`,
+          )
+        }
+
+        setSelectedCourseIds((current) => current.filter((id) => !syncedCourseIds.has(id)))
         router.refresh()
       } catch (error) {
-        failSync(syncRun, error instanceof Error ? error.message : 'We could not sync those courses.')
+        failSync(syncRun, normalizeSyncErrorText(error instanceof Error ? error.message : null))
       }
     })
   }
@@ -444,6 +503,7 @@ export function ConnectCanvasFlow({
                 ) : (
                   filteredCourses.map((course, index) => {
                     const isSelected = selectedCourseIds.includes(course.id)
+                    const progress = courseSyncProgress[course.id]
 
                     return (
                       <button
@@ -453,6 +513,7 @@ export function ConnectCanvasFlow({
                         aria-pressed={isSelected}
                         className="ui-interactive-card"
                         data-open={isSelected ? 'true' : 'false'}
+                        disabled={isSyncActionPending}
                         style={courseRowStyle(index < filteredCourses.length - 1, isSelected)}
                       >
                         <div style={{ minWidth: 0, flex: '1 1 220px' }}>
@@ -464,13 +525,32 @@ export function ConnectCanvasFlow({
                           </div>
                         </div>
                         <span style={selectionStateStyle(isSelected)}>
-                          {isSelected ? 'Selected' : 'Select'}
+                          {progress ? getCourseSyncStateLabel(progress.state) : isSelected ? 'Selected' : 'Select'}
                         </span>
                       </button>
                     )
                   })
                 )}
               </div>
+
+              {Object.keys(courseSyncProgress).length > 0 && (
+                <div style={courseProgressListStyle}>
+                  {courses
+                    .filter((course) => courseSyncProgress[course.id])
+                    .map((course) => {
+                      const progress = courseSyncProgress[course.id]
+                      return (
+                        <div key={course.id} style={courseProgressRowStyle}>
+                          <div style={{ minWidth: 0 }}>
+                            <p style={courseProgressTitleStyle}>{course.name}</p>
+                            {progress.message && <p style={courseProgressMessageStyle}>{progress.message}</p>}
+                          </div>
+                          <span style={courseProgressBadgeStyle(progress.state)}>{getCourseSyncStateLabel(progress.state)}</span>
+                        </div>
+                      )
+                    })}
+                </div>
+              )}
 
               {selectedCourseIds.length > 0 && (
                 <p style={helperTextStyle}>
@@ -788,6 +868,32 @@ function getSyncButtonLabel({
   return selectedCourseCount > 1 ? `Sync ${selectedCourseCount} courses` : 'Sync selected course'
 }
 
+function getCourseSyncStateLabel(state: CourseSyncState) {
+  if (state === 'pending') return 'Pending'
+  if (state === 'syncing') return 'Syncing'
+  if (state === 'synced') return 'Synced'
+  return 'Failed'
+}
+
+function normalizeSyncErrorText(message: string | null | undefined) {
+  const value = message?.trim()
+  if (!value) return 'The sync request ended unexpectedly. Retry this course; already synced courses were kept.'
+
+  if (/failed to fetch|networkerror|load failed|unexpected end|invalid json|json/i.test(value)) {
+    return 'The sync response was interrupted or could not be read. Retry this course; already synced courses were kept.'
+  }
+
+  if (/504|gateway timeout|timeout|timed out|function invocation timed out|300s|300 seconds|body exceeded/i.test(value)) {
+    return 'Canvas sync timed out before this course finished. Retry this course; already synced courses were kept.'
+  }
+
+  if (/An error occurred in the Server Components render|digest property is included/i.test(value)) {
+    return 'The server returned an unexpected sync response. Retry this course; already synced courses were kept.'
+  }
+
+  return value
+}
+
 function Field({
   label,
   hint,
@@ -924,6 +1030,69 @@ const moduleRowStyle: CSSProperties = {
   border: '1px solid color-mix(in srgb, var(--border-subtle) 88%, transparent)',
   background: 'var(--surface-elevated)',
   padding: '0.85rem 0.95rem',
+}
+
+const courseProgressListStyle: CSSProperties = {
+  display: 'grid',
+  gap: '0.5rem',
+}
+
+const courseProgressRowStyle: CSSProperties = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'flex-start',
+  gap: '0.75rem',
+  borderRadius: '10px',
+  border: '1px solid color-mix(in srgb, var(--border-subtle) 88%, transparent)',
+  background: 'var(--surface-elevated)',
+  padding: '0.72rem 0.82rem',
+}
+
+const courseProgressTitleStyle: CSSProperties = {
+  margin: 0,
+  fontSize: '13px',
+  fontWeight: 600,
+  lineHeight: 1.45,
+  color: 'var(--text-primary)',
+  overflowWrap: 'anywhere',
+}
+
+const courseProgressMessageStyle: CSSProperties = {
+  margin: '0.2rem 0 0',
+  fontSize: '12px',
+  lineHeight: 1.5,
+  color: 'var(--text-secondary)',
+  overflowWrap: 'anywhere',
+}
+
+function courseProgressBadgeStyle(state: CourseSyncState): CSSProperties {
+  const color = state === 'synced'
+    ? 'var(--green)'
+    : state === 'failed'
+      ? 'var(--red)'
+      : state === 'syncing'
+        ? 'var(--blue)'
+        : 'var(--text-muted)'
+
+  return {
+    flexShrink: 0,
+    borderRadius: '999px',
+    border: `1px solid ${state === 'pending' ? 'var(--border-subtle)' : color}`,
+    color,
+    background: state === 'synced'
+      ? 'color-mix(in srgb, var(--green-light) 42%, var(--surface-base) 58%)'
+      : state === 'failed'
+        ? 'color-mix(in srgb, var(--red-light) 42%, var(--surface-base) 58%)'
+        : state === 'syncing'
+          ? 'color-mix(in srgb, var(--blue-light) 42%, var(--surface-base) 58%)'
+          : 'color-mix(in srgb, var(--surface-soft) 92%, transparent)',
+    padding: '0.22rem 0.5rem',
+    fontSize: '11px',
+    fontWeight: 700,
+    textTransform: 'uppercase',
+    letterSpacing: '0.04em',
+    whiteSpace: 'nowrap',
+  }
 }
 
 const modalBackdropStyle: CSSProperties = {

@@ -1,9 +1,8 @@
 import type { CSSProperties } from 'react'
 import Link from 'next/link'
 import { ConnectCanvasFlowWrapper } from '@/components/ConnectCanvasFlowWrapper'
-import { getAuthenticatedUserServer } from '@/lib/auth-server'
+import { createAuthenticatedSupabaseServerClient, getAuthenticatedUserServer } from '@/lib/auth-server'
 import { buildCanvasCourseSyncKey } from '@/lib/canvas-sync'
-import { supabase } from '@/lib/supabase'
 
 type SyncTone = 'success' | 'neutral' | 'warning'
 
@@ -53,8 +52,10 @@ export default async function CanvasPage({ searchParams }: CanvasPageProps = {})
     )
   }
 
-  const ownedCourses = supabase
-    ? (await supabase
+  const db = await createAuthenticatedSupabaseServerClient()
+
+  const ownedCourses = db
+    ? (await db
         .from('courses')
         .select('id, canvas_instance_url, canvas_course_id, created_at')
         .eq('user_id', user.id)
@@ -64,11 +65,11 @@ export default async function CanvasPage({ searchParams }: CanvasPageProps = {})
     .map((course) => course.id)
     .filter((value): value is string => typeof value === 'string' && value.length > 0)
 
-  const syncedModules = supabase
+  const syncedModules = db
     ? ownedCourseIds.length > 0
-      ? (await supabase
+      ? (await db
         .from('modules')
-        .select('id, title, summary, status, created_at')
+        .select('id, course_id, title, summary, status, created_at')
         .in('course_id', ownedCourseIds)
         .order('created_at', { ascending: false })).data
       : []
@@ -77,9 +78,16 @@ export default async function CanvasPage({ searchParams }: CanvasPageProps = {})
   const latestModule = syncedModules?.[0]
   const latestCourseConnectionUrl = (ownedCourses ?? []).find((course) => typeof course.canvas_instance_url === 'string')?.canvas_instance_url ?? null
   const initialConnectionUrl = latestCourseConnectionUrl ?? extractCanvasUrl(latestModule?.summary ?? null)
+  const processedCourseIds = new Set(
+    (syncedModules ?? [])
+      .filter((module) => module.status === 'processed')
+      .map((module) => module.course_id)
+      .filter((value): value is string => typeof value === 'string' && value.length > 0)
+  )
   const syncedCourseKeys = Array.from(
     new Set(
       (ownedCourses ?? [])
+        .filter((course) => processedCourseIds.has(course.id))
         .map((course) => buildCanvasCourseSyncKey(course.canvas_instance_url, course.canvas_course_id))
         .filter((value): value is string => Boolean(value))
     )
@@ -95,12 +103,14 @@ export default async function CanvasPage({ searchParams }: CanvasPageProps = {})
         tone: getSyncTone(latestModule.status),
       }
     : null
-  const syncedModulesForFlow = (syncedModules ?? []).map((module) => ({
-    id: module.id,
-    title: module.title,
-    summary: module.summary,
-    createdAt: module.created_at,
-  }))
+  const syncedModulesForFlow = (syncedModules ?? [])
+    .filter((module) => module.status === 'processed')
+    .map((module) => ({
+      id: module.id,
+      title: module.title,
+      summary: module.summary,
+      createdAt: module.created_at,
+    }))
 
   return (
     <main className="page-shell page-shell-narrow page-stack">

@@ -74,16 +74,13 @@ interface SyncCourseInput {
 interface SyncCourseResult {
   moduleId: string
   courseName: string
-  summaryCounts?: {
-    resourceSummaries: number
-    moduleSummaries: number
-    skipped: number
-    failed: number
-  }
 }
 
 interface ExistingModuleMatch {
   id: string
+  title?: string | null
+  status?: string | null
+  created_at?: string | null
 }
 
 interface ExistingCourseMatch {
@@ -129,6 +126,8 @@ interface SyncedTaskDraft {
   status: 'pending' | 'completed'
   completionOrigin: 'canvas' | null
 }
+
+const STUCK_PROCESSING_MODULE_THRESHOLD_MS = 15 * 60 * 1000
 
 export async function fetchCourses(config?: Partial<CanvasConfig>): Promise<CanvasCourse[]> {
   await requireAuthenticatedUserServer()
@@ -205,12 +204,55 @@ export async function syncCourse(formData: FormData): Promise<{ error: string } 
     }
   }
 
-  revalidatePath('/')
-  revalidatePath('/canvas')
-  revalidatePath('/home')
-  revalidatePath('/courses')
-  revalidatePath('/calendar')
+  revalidateCanvasSyncPaths(result.moduleId)
   redirect(`/modules/${result.moduleId}`)
+}
+
+export async function syncCanvasCourse(input: {
+  course: SyncCourseInput
+  canvasUrl: string
+  accessToken: string
+}): Promise<{ success: true; courseName: string; moduleId: string } | { error: string }> {
+  const syncSupabase = await createAuthenticatedSupabaseServerClient()
+  if (!syncSupabase) {
+    return { error: 'Supabase is not configured yet.' }
+  }
+
+  const user = await requireAuthenticatedUserServer()
+
+  let config: CanvasConfig
+  try {
+    config = getRequiredCanvasConfig(input.canvasUrl, input.accessToken)
+  } catch (error) {
+    return { error: formatCanvasActionError(error, 'We could not connect to Canvas.') }
+  }
+
+  try {
+    const result = await syncSingleCourse({
+      id: input.course.courseId,
+      name: input.course.courseName,
+      course_code: input.course.courseCode,
+      enrollment_state: 'active',
+      teachers: input.course.instructor ? [{ display_name: input.course.instructor }] : undefined,
+    }, config, user.id, syncSupabase)
+
+    revalidateCanvasSyncPaths(result.moduleId)
+
+    return {
+      success: true,
+      courseName: result.courseName,
+      moduleId: result.moduleId,
+    }
+  } catch (error) {
+    logCanvasActionFailure('sync selected course', error, {
+      courseId: input.course.courseId,
+      courseName: input.course.courseName,
+      courseCode: input.course.courseCode,
+    })
+    return {
+      error: formatCanvasActionError(error, `We could not sync ${input.course.courseName}.`),
+    }
+  }
 }
 
 export async function refreshCourseInstructors(input: {
@@ -265,52 +307,26 @@ export async function syncCourses(input: {
   canvasUrl: string
   accessToken: string
 }): Promise<{ success: true; syncedCount: number; syncedCourses: string[] } | { error: string }> {
-  const syncSupabase = await createAuthenticatedSupabaseServerClient()
-  if (!syncSupabase) {
-    return { error: 'Supabase is not configured yet.' }
-  }
-  const user = await requireAuthenticatedUserServer()
-
-  const config = getRequiredCanvasConfig(input.canvasUrl, input.accessToken)
-
   if (input.courses.length === 0) {
     return { error: 'Choose at least one course to sync.' }
   }
 
-  const syncedCourses: string[] = []
-
-  for (const course of input.courses) {
-    try {
-      await syncSingleCourse({
-        id: course.courseId,
-        name: course.courseName,
-        course_code: course.courseCode,
-        enrollment_state: 'active',
-        teachers: course.instructor ? [{ display_name: course.instructor }] : undefined,
-      }, config, user.id, syncSupabase)
-    } catch (error) {
-      logCanvasActionFailure('sync selected courses', error, {
-        courseId: course.courseId,
-        courseName: course.courseName,
-        courseCode: course.courseCode,
-      })
-      return {
-        error: formatCanvasActionError(error, `We could not sync ${course.courseName}.`),
-      }
-    }
-    syncedCourses.push(course.courseName)
+  if (input.courses.length > 1) {
+    return { error: 'Selected courses now sync one at a time. Retry from the course picker so each course can finish independently.' }
   }
 
-  revalidatePath('/')
-  revalidatePath('/canvas')
-  revalidatePath('/home')
-  revalidatePath('/courses')
-  revalidatePath('/calendar')
+  const result = await syncCanvasCourse({
+    course: input.courses[0],
+    canvasUrl: input.canvasUrl,
+    accessToken: input.accessToken,
+  })
+
+  if ('error' in result) return result
 
   return {
     success: true,
-    syncedCount: syncedCourses.length,
-    syncedCourses,
+    syncedCount: 1,
+    syncedCourses: [result.courseName],
   }
 }
 
@@ -365,8 +381,15 @@ async function syncSingleCourse(
     courseName: databaseSafeCourse.name,
     courseCode: databaseSafeCourse.course_code,
   })
-  if (existingModule) {
+  if (existingModule?.status === 'processed') {
     throw new Error(`${databaseSafeCourse.name} is already synced. Unsync it first if you want to connect it again.`)
+  }
+
+  if (existingModule) {
+    await prepareExistingUnprocessedModuleForRetry(syncSupabase, existingModule, {
+      courseName: databaseSafeCourse.name,
+      courseCode: databaseSafeCourse.course_code,
+    })
   }
 
   if (process.env.NODE_ENV !== 'production') {
@@ -544,12 +567,18 @@ async function syncSingleCourse(
     }
   }
 
-  await populateModuleTerms({
+  void populateModuleTerms({
     moduleId,
     courseId: courseRecord.id,
-  }, syncSupabase)
+  }, syncSupabase).catch((error) => {
+    console.warn('[Canvas sync] term population skipped', {
+      moduleId,
+      courseId: courseRecord.id,
+      message: error instanceof Error ? error.message : String(error),
+    })
+  })
 
-  const summaryCounts = await generateSummariesAfterSync({
+  void generateSummariesAfterSync({
     moduleId,
     courseId: courseRecord.id,
     userId,
@@ -558,7 +587,6 @@ async function syncSingleCourse(
   return {
     moduleId,
     courseName: databaseSafeCourse.name,
-    summaryCounts,
   }
 }
 
@@ -670,22 +698,97 @@ async function findExistingSyncedModule(
   courseId: string,
   context?: { courseName?: string; courseCode?: string },
 ): Promise<ExistingModuleMatch | null> {
-  const { data, error } = await syncSupabase
+  const { data: processedModule, error: processedError } = await syncSupabase
     .from('modules')
-    .select('id')
+    .select('id,title,status,created_at')
     .eq('course_id', courseId)
+    .eq('status', 'processed')
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle()
 
-  if (error) {
-    throw createSupabaseStepError('check existing synced module', error, {
+  if (processedError) {
+    throw createSupabaseStepError('check existing synced module', processedError, {
       courseId,
       courseName: context?.courseName,
       courseCode: context?.courseCode,
     })
   }
-  return (data as ExistingModuleMatch | null) ?? null
+
+  if (processedModule) return processedModule as ExistingModuleMatch
+
+  const { data: unprocessedModule, error: unprocessedError } = await syncSupabase
+    .from('modules')
+    .select('id,title,status,created_at')
+    .eq('course_id', courseId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (unprocessedError) {
+    throw createSupabaseStepError('check existing unprocessed module', unprocessedError, {
+      courseId,
+      courseName: context?.courseName,
+      courseCode: context?.courseCode,
+    })
+  }
+
+  return (unprocessedModule as ExistingModuleMatch | null) ?? null
+}
+
+async function prepareExistingUnprocessedModuleForRetry(
+  syncSupabase: CanvasSyncSupabaseClient,
+  module: ExistingModuleMatch,
+  context: { courseName?: string; courseCode?: string },
+) {
+  if (module.status === 'pending' && module.title === 'Processing...' && !isStaleProcessingModule(module)) {
+    throw new Error(`${context.courseName ?? 'This course'} is still processing from a recent sync. Wait a few minutes, then retry if it does not finish.`)
+  }
+
+  const { error } = await syncSupabase
+    .from('modules')
+    .delete()
+    .eq('id', module.id)
+
+  if (error) {
+    throw createSupabaseStepError('replace unprocessed module before retry', error, {
+      moduleId: module.id,
+      moduleStatus: module.status,
+      moduleTitle: module.title,
+      courseName: context.courseName,
+      courseCode: context.courseCode,
+    })
+  }
+
+  console.info('[Canvas sync] replaced unprocessed module before retry', {
+    moduleId: module.id,
+    moduleStatus: module.status,
+    moduleTitle: module.title,
+    moduleCreatedAt: module.created_at ?? null,
+    courseName: context.courseName,
+    courseCode: context.courseCode,
+  })
+}
+
+function isStaleProcessingModule(module: ExistingModuleMatch) {
+  if (!module.created_at) return false
+
+  const createdAt = new Date(module.created_at).getTime()
+  if (Number.isNaN(createdAt)) return false
+
+  return Date.now() - createdAt >= STUCK_PROCESSING_MODULE_THRESHOLD_MS
+}
+
+function revalidateCanvasSyncPaths(moduleId?: string) {
+  revalidatePath('/')
+  revalidatePath('/canvas')
+  revalidatePath('/home')
+  revalidatePath('/courses')
+  revalidatePath('/calendar')
+  if (moduleId) {
+    revalidatePath(`/modules/${moduleId}`)
+    revalidatePath(`/modules/${moduleId}/learn`)
+  }
 }
 
 async function upsertCanvasCourseRecord(
@@ -1979,6 +2082,12 @@ function createSupabaseStepError(step: string, error: SupabaseLikeError | null |
 function formatCanvasActionError(error: unknown, fallback: string) {
   if (error instanceof Error) {
     const message = error.message.trim()
+    if (isTimeoutLikeError(message)) {
+      return 'Canvas sync timed out before this course finished. Already synced courses were kept; retry the failed course.'
+    }
+    if (isUnexpectedServerResponseError(message)) {
+      return 'The server returned an unexpected sync response. Already synced courses were kept; retry the failed course.'
+    }
     if (message && !isGenericProductionActionError(message)) {
       return message
     }
@@ -1990,6 +2099,15 @@ function formatCanvasActionError(error: unknown, fallback: string) {
 function isGenericProductionActionError(message: string) {
   return message.includes('An error occurred in the Server Components render')
     || message.includes('digest property is included')
+}
+
+function isTimeoutLikeError(message: string) {
+  return /504|gateway timeout|timed out|timeout|function invocation timed out|300s|300 seconds/i.test(message)
+}
+
+function isUnexpectedServerResponseError(message: string) {
+  return /unexpected end|invalid json|failed to fetch|networkerror|load failed|body exceeded/i.test(message)
+    || isGenericProductionActionError(message)
 }
 
 function logCanvasActionFailure(step: string, error: unknown, context?: Record<string, unknown>) {
