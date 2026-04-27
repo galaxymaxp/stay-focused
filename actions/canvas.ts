@@ -2,7 +2,7 @@
 
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
-import { requireAuthenticatedUserServer } from '@/lib/auth-server'
+import { createAuthenticatedSupabaseServerClient, requireAuthenticatedUserServer } from '@/lib/auth-server'
 import { resolveCanvasConfigFromUser } from '@/lib/canvas-user-config'
 import {
   compileCanvasContent,
@@ -166,7 +166,8 @@ export async function testCanvasConnection(input: {
 }
 
 export async function syncCourse(formData: FormData): Promise<{ error: string } | void> {
-  if (!supabase) {
+  const syncSupabase = await createAuthenticatedSupabaseServerClient()
+  if (!syncSupabase) {
     return { error: 'Supabase is not configured yet.' }
   }
   const user = await requireAuthenticatedUserServer()
@@ -192,7 +193,7 @@ export async function syncCourse(formData: FormData): Promise<{ error: string } 
       course_code: courseCode,
       enrollment_state: 'active',
       teachers: instructor ? [{ display_name: instructor }] : undefined,
-    }, config, user.id)
+    }, config, user.id, syncSupabase)
   } catch (error) {
     logCanvasActionFailure('sync single course', error, {
       courseId,
@@ -264,7 +265,8 @@ export async function syncCourses(input: {
   canvasUrl: string
   accessToken: string
 }): Promise<{ success: true; syncedCount: number; syncedCourses: string[] } | { error: string }> {
-  if (!supabase) {
+  const syncSupabase = await createAuthenticatedSupabaseServerClient()
+  if (!syncSupabase) {
     return { error: 'Supabase is not configured yet.' }
   }
   const user = await requireAuthenticatedUserServer()
@@ -285,7 +287,7 @@ export async function syncCourses(input: {
         course_code: course.courseCode,
         enrollment_state: 'active',
         teachers: course.instructor ? [{ display_name: course.instructor }] : undefined,
-      }, config, user.id)
+      }, config, user.id, syncSupabase)
     } catch (error) {
       logCanvasActionFailure('sync selected courses', error, {
         courseId: course.courseId,
@@ -312,8 +314,12 @@ export async function syncCourses(input: {
   }
 }
 
-async function syncSingleCourse(course: CanvasCourse, config: Partial<CanvasConfig>, userId: string): Promise<SyncCourseResult> {
-  if (!supabase) throw new Error('Supabase is not configured yet.')
+async function syncSingleCourse(
+  course: CanvasCourse,
+  config: Partial<CanvasConfig>,
+  userId: string,
+  syncSupabase: CanvasSyncSupabaseClient,
+): Promise<SyncCourseResult> {
   const resolvedConfig = await resolveCanvasConfigFromUser(config)
   const normalizedCourse = normalizeCanvasCourseForSync(course, resolvedConfig.url)
   const databaseSafeCourse: CanvasCourse = {
@@ -354,8 +360,8 @@ async function syncSingleCourse(course: CanvasCourse, config: Partial<CanvasConf
         extractedText: resource.extractedText!,
       }))
   ))
-  const courseRecord = await upsertCanvasCourseRecord(normalizedCourse, userId, resolveInstructorName(course))
-  const existingModule = await findExistingSyncedModule(courseRecord.id, {
+  const courseRecord = await upsertCanvasCourseRecord(syncSupabase, normalizedCourse, userId, resolveInstructorName(course))
+  const existingModule = await findExistingSyncedModule(syncSupabase, courseRecord.id, {
     courseName: databaseSafeCourse.name,
     courseCode: databaseSafeCourse.course_code,
   })
@@ -363,7 +369,18 @@ async function syncSingleCourse(course: CanvasCourse, config: Partial<CanvasConf
     throw new Error(`${databaseSafeCourse.name} is already synced. Unsync it first if you want to connect it again.`)
   }
 
-  const { data: moduleRecord, error: insertError } = await supabase
+  if (process.env.NODE_ENV !== 'production') {
+    const { data: authCheck, error: authCheckError } = await syncSupabase.auth.getUser()
+
+    console.info('[Canvas sync] auth check before module insert', {
+      requiredUserId: userId,
+      clientUserId: authCheck.user?.id ?? null,
+      authCheckError: authCheckError?.message ?? null,
+      matches: authCheck.user?.id === userId,
+    })
+  }
+
+  const { data: moduleRecord, error: insertError } = await syncSupabase
     .from('modules')
     .insert(sanitizeDatabaseValue({
       user_id: userId,
@@ -395,7 +412,7 @@ async function syncSingleCourse(course: CanvasCourse, config: Partial<CanvasConf
       userId,
     })
 
-    const { error: resourcesInsertError } = await supabase
+    const { error: resourcesInsertError } = await syncSupabase
       .from('module_resources')
       .insert(resourceRows)
 
@@ -411,7 +428,7 @@ async function syncSingleCourse(course: CanvasCourse, config: Partial<CanvasConf
   try {
     aiResult = await processModuleContent(rawContent)
   } catch (err) {
-    const { error: markError } = await supabase.from('modules').update({ status: 'error' }).eq('id', moduleId)
+    const { error: markError } = await syncSupabase.from('modules').update({ status: 'error' }).eq('id', moduleId)
     if (markError) {
       console.error(createSupabaseStepError('mark module as error', markError, { moduleId }).message)
     }
@@ -421,7 +438,7 @@ async function syncSingleCourse(course: CanvasCourse, config: Partial<CanvasConf
   const normalizedAiResult = normalizeAIResponseForSync(aiResult)
   const standaloneDeadlines = dedupeAIResponseDeadlines(normalizedAiResult.tasks, normalizedAiResult.deadlines)
 
-  const { error: moduleUpdateError } = await supabase
+  const { error: moduleUpdateError } = await syncSupabase
     .from('modules')
     .update(sanitizeDatabaseValue({
       title: normalizedAiResult.title,
@@ -441,7 +458,7 @@ async function syncSingleCourse(course: CanvasCourse, config: Partial<CanvasConf
 
   const learningItems = buildLearningItemsForSync(normalizedAiResult, courseRecord.id, moduleId, userId)
   if (learningItems.length > 0) {
-    const { error: learningItemsError } = await supabase
+    const { error: learningItemsError } = await syncSupabase
       .from('learning_items')
       .insert(learningItems)
 
@@ -453,7 +470,7 @@ async function syncSingleCourse(course: CanvasCourse, config: Partial<CanvasConf
     }
   }
 
-  const backfillResult = await backfillLearningItemSourceLinks(moduleId, courseRecord.id)
+  const backfillResult = await backfillLearningItemSourceLinks(syncSupabase, moduleId, courseRecord.id)
   console.info('[Canvas sync] source backfill', {
     moduleId,
     courseId: courseRecord.id,
@@ -472,7 +489,7 @@ async function syncSingleCourse(course: CanvasCourse, config: Partial<CanvasConf
   })
 
   if (clarityTaskItems.length > 0) {
-    const { error: taskItemsError } = await supabase
+    const { error: taskItemsError } = await syncSupabase
       .from('task_items')
       .insert(clarityTaskItems)
 
@@ -485,7 +502,7 @@ async function syncSingleCourse(course: CanvasCourse, config: Partial<CanvasConf
   }
 
   if (normalizedAiResult.tasks.length > 0) {
-    const { error: tasksInsertError } = await supabase.from('tasks').insert(
+    const { error: tasksInsertError } = await syncSupabase.from('tasks').insert(
       sanitizeDatabaseValue(syncedTaskDrafts.map((task) => ({
         user_id: userId,
         module_id: moduleId,
@@ -510,7 +527,7 @@ async function syncSingleCourse(course: CanvasCourse, config: Partial<CanvasConf
   }
 
   if (standaloneDeadlines.length > 0) {
-    const { error: deadlinesInsertError } = await supabase.from('deadlines').insert(
+    const { error: deadlinesInsertError } = await syncSupabase.from('deadlines').insert(
       sanitizeDatabaseValue(standaloneDeadlines.map((deadline) => ({
         user_id: userId,
         module_id: moduleId,
@@ -530,7 +547,7 @@ async function syncSingleCourse(course: CanvasCourse, config: Partial<CanvasConf
   await populateModuleTerms({
     moduleId,
     courseId: courseRecord.id,
-  })
+  }, syncSupabase)
 
   const summaryCounts = await generateSummariesAfterSync({
     moduleId,
@@ -576,11 +593,10 @@ async function generateSummariesAfterSync(input: {
   }
 }
 
-async function backfillLearningItemSourceLinks(moduleId: string, courseId: string) {
+async function backfillLearningItemSourceLinks(syncSupabase: CanvasSyncSupabaseClient, moduleId: string, courseId: string) {
   const counts: SourceRepairCounts = { repaired: 0, created: 0, classified: 0, skipped: 0, failed: 0 }
-  if (!supabase) return { counts }
 
-  const { data: itemRows, error: itemsError } = await supabase
+  const { data: itemRows, error: itemsError } = await syncSupabase
     .from('learning_items')
     .select('*')
     .eq('module_id', moduleId)
@@ -591,7 +607,7 @@ async function backfillLearningItemSourceLinks(moduleId: string, courseId: strin
     return { counts: { ...counts, failed: 1 } }
   }
 
-  const { data: resourceRows, error: resourcesError } = await supabase
+  const { data: resourceRows, error: resourcesError } = await syncSupabase
     .from('module_resources')
     .select('*')
     .eq('course_id', courseId)
@@ -624,7 +640,7 @@ async function backfillLearningItemSourceLinks(moduleId: string, courseId: strin
           source_repair_note: 'Try repair. If this still fails, open the item in Canvas.',
         }
 
-    const { error } = await supabase
+    const { error } = await syncSupabase
       .from('learning_items')
       .update(update)
       .eq('id', item.id)
@@ -650,12 +666,11 @@ function isOptionalSourceLinkSchemaError(error: { code?: string | null; message?
 }
 
 async function findExistingSyncedModule(
+  syncSupabase: CanvasSyncSupabaseClient,
   courseId: string,
   context?: { courseName?: string; courseCode?: string },
 ): Promise<ExistingModuleMatch | null> {
-  if (!supabase) return null
-
-  const { data, error } = await supabase
+  const { data, error } = await syncSupabase
     .from('modules')
     .select('id')
     .eq('course_id', courseId)
@@ -673,8 +688,12 @@ async function findExistingSyncedModule(
   return (data as ExistingModuleMatch | null) ?? null
 }
 
-async function upsertCanvasCourseRecord(course: NormalizedCanvasCourseForSync, userId: string, instructor = 'Canvas course staff'): Promise<ExistingCourseMatch> {
-  if (!supabase) throw new Error('Supabase is not configured yet.')
+async function upsertCanvasCourseRecord(
+  syncSupabase: CanvasSyncSupabaseClient,
+  course: NormalizedCanvasCourseForSync,
+  userId: string,
+  instructor = 'Canvas course staff',
+): Promise<ExistingCourseMatch> {
   const courseIdentityPayload = buildCanvasCourseIdentityPayload(course)
 
   logCanvasCourseUpsertEvent('start', {
@@ -682,13 +701,13 @@ async function upsertCanvasCourseRecord(course: NormalizedCanvasCourseForSync, u
     supabase: getSupabaseLoggingContext(),
   })
 
-  await probeSupabaseCoursesBeforeUpsert(course)
+  await probeSupabaseCoursesBeforeUpsert(syncSupabase, course)
 
   let courseRecord: ExistingCourseMatch | null = null
   let upsertCourseError: SupabaseLikeError | null = null
 
   try {
-    const response = await supabase
+    const response = await syncSupabase
       .from('courses')
       .upsert(
         sanitizeDatabaseValue({
@@ -906,9 +925,7 @@ function normalizeCanvasSyncTextList(values: string[]) {
     .filter((value): value is string => Boolean(value))
 }
 
-async function probeSupabaseCoursesBeforeUpsert(course: NormalizedCanvasCourseForSync) {
-  if (!supabase) throw new Error('Supabase is not configured yet.')
-
+async function probeSupabaseCoursesBeforeUpsert(syncSupabase: CanvasSyncSupabaseClient, course: NormalizedCanvasCourseForSync) {
   const courseIdentityPayload = buildCanvasCourseIdentityPayload(course)
 
   logCanvasCourseUpsertEvent('probe_start', {
@@ -917,7 +934,7 @@ async function probeSupabaseCoursesBeforeUpsert(course: NormalizedCanvasCourseFo
   })
 
   try {
-    const { error } = await supabase
+    const { error } = await syncSupabase
       .from('courses')
       .select('id', { head: true, count: 'exact' })
       .limit(1)
@@ -1934,6 +1951,8 @@ type SupabaseLikeError = {
   details?: string | null
   hint?: string | null
 }
+
+type CanvasSyncSupabaseClient = NonNullable<Awaited<ReturnType<typeof createAuthenticatedSupabaseServerClient>>>
 
 function createSupabaseStepError(step: string, error: SupabaseLikeError | null | undefined, context?: Record<string, unknown>) {
   const code = error?.code ?? null

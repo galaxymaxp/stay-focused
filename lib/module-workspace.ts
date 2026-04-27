@@ -1,5 +1,6 @@
 import { getAuthenticatedUserServer } from '@/lib/auth-server'
 import { supabase } from '@/lib/supabase'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import {
   getModuleResourceCapabilityInfo,
   type NormalizedModuleResourceSourceType,
@@ -158,17 +159,18 @@ export interface ResourceGrounding {
   message: string
 }
 
-export async function getModuleWorkspace(id: string): Promise<ModuleWorkspaceData | null> {
-  if (!supabase) return null
+export async function getModuleWorkspace(id: string, client?: SupabaseClient): Promise<ModuleWorkspaceData | null> {
+  const db = client ?? supabase
+  if (!db) return null
   const user = await getAuthenticatedUserServer()
   if (!user) return null
 
-  const { data: moduleRow } = await supabase.from('modules').select('*').eq('id', id).single()
+  const { data: moduleRow } = await db.from('modules').select('*').eq('id', id).single()
   if (!moduleRow) return null
   const courseId = typeof moduleRow.course_id === 'string' ? moduleRow.course_id : null
   if (!courseId) return null
 
-  const { data: courseRow, error: courseError } = await supabase
+  const { data: courseRow, error: courseError } = await db
     .from('courses')
     .select('id, instructor')
     .eq('id', courseId)
@@ -178,11 +180,11 @@ export async function getModuleWorkspace(id: string): Promise<ModuleWorkspaceDat
   if (courseError || !courseRow) return null
 
   const [tasksResult, deadlinesResult, resourcesResult, resourceStudyStateResult, termResult] = await Promise.all([
-    supabase.from('tasks').select('*').eq('module_id', id).order('created_at'),
-    supabase.from('deadlines').select('*').eq('module_id', id).order('date'),
-    supabase.from('module_resources').select('*').eq('module_id', id).order('created_at'),
-    supabase.from('module_resource_study_state').select('*').eq('module_id', id).order('updated_at', { ascending: false }),
-    supabase.from('module_terms').select('*').eq('module_id', id).order('updated_at', { ascending: false }),
+    db.from('tasks').select('*').eq('module_id', id).order('created_at'),
+    db.from('deadlines').select('*').eq('module_id', id).order('date'),
+    db.from('module_resources').select('*').eq('module_id', id).order('created_at'),
+    db.from('module_resource_study_state').select('*').eq('module_id', id).order('updated_at', { ascending: false }),
+    db.from('module_terms').select('*').eq('module_id', id).order('updated_at', { ascending: false }),
   ])
   const resourceStudyStates = isMissingSchemaObjectError(resourceStudyStateResult.error)
     ? []

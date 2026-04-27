@@ -6,6 +6,7 @@ import { buildModuleTermBank } from '@/lib/module-term-bank'
 import { supabase } from '@/lib/supabase'
 import { buildLearnExperience, getModuleWorkspace } from '@/lib/module-workspace'
 import type { ModuleTermOrigin, ModuleTermStatus } from '@/lib/types'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 const TABLE_NAME = 'module_terms'
 
@@ -112,10 +113,11 @@ export async function resetModuleReviewer(input: {
 export async function populateModuleTerms(input: {
   moduleId: string
   courseId?: string
-}) {
-  if (!supabase) throw new Error('Supabase is not configured.')
+}, supabaseClient?: SupabaseClient) {
+  const db = supabaseClient ?? supabase
+  if (!db) throw new Error('Supabase is not configured.')
 
-  const workspace = await getModuleWorkspace(input.moduleId)
+  const workspace = await getModuleWorkspace(input.moduleId, db)
   if (!workspace) {
     throw new Error('The module could not be loaded for term population.')
   }
@@ -148,7 +150,7 @@ export async function populateModuleTerms(input: {
   }
 
   const now = new Date().toISOString()
-  const result = await supabase
+  const result = await db
     .from(TABLE_NAME)
     .upsert(
       autoTerms.map((term) => ({
