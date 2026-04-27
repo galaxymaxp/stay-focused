@@ -349,9 +349,11 @@ function describeDeepLearnBlockedReason(input: {
   }
 
   return {
-    summary: 'This file has little or no readable text. It may be scanned or image-only.',
+    summary: requiresVisualExtraction({ extractionError: sourceNote ?? undefined })
+      ? 'No selectable text'
+      : 'This file has little or no readable text. It may be scanned or image-only.',
     detail: sourceNote
-      ?? 'The original source was available, but the recovery pass still did not surface enough readable material to build a trustworthy exam prep pack.',
+      ?? 'This PDF appears scanned or image-based. OCR/visual extraction is required before Deep Learn can use it.',
   }
 }
 

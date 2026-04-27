@@ -54,6 +54,7 @@ export interface StudyResourceAccordionItem {
   sourceReadinessMessage: string
   sourceReadinessActions: SourceReadinessAction[]
   sourceReadinessBucket: 'ready' | 'needs_action' | 'unsupported'
+  pageCount?: number | null
   sourceTypeLabel: string
   originLabel: string
   canonicalResourceId: string | null
@@ -242,6 +243,11 @@ export function StudyResourceAccordionList({
                   <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.62, color: 'var(--text-secondary)' }}>
                     {truncateText(item.sourceReadinessMessage || item.deepLearnSummary || item.note, expanded ? 260 : 180)}
                   </p>
+                  {item.sourceReadinessActions.includes('extract_text_from_images') && typeof item.pageCount === 'number' && item.pageCount > 0 && (
+                    <p style={{ margin: 0, fontSize: '12px', lineHeight: 1.5, color: 'var(--text-muted)' }}>
+                      {item.pageCount} pages detected
+                    </p>
+                  )}
                 </div>
 
                 <ResourcePill label={expanded ? 'Open' : item.sourceReadinessBucket === 'ready' ? 'Preview' : 'Details'} tone={expanded ? 'accent' : 'muted'} />
@@ -306,9 +312,14 @@ export function StudyResourceAccordionList({
                       <ProcessSourceButton item={item} />
                     ) : null}
                     {item.sourceReadinessActions.includes('extract_text_from_images') && (
-                      <button type="button" className="ui-button ui-button-secondary ui-button-xs" disabled title="OCR is not enabled yet for this project.">
-                        Extract text from images
-                      </button>
+                      <span style={{ display: 'inline-flex', flexDirection: 'column', gap: '0.25rem' }}>
+                        <button type="button" className="ui-button ui-button-secondary ui-button-xs" disabled title="Coming next: OCR for scanned PDFs.">
+                          Extract text from images
+                        </button>
+                        <span style={{ fontSize: '11px', lineHeight: 1.35, color: 'var(--text-muted)' }}>
+                          Coming next: OCR for scanned PDFs.
+                        </span>
+                      </span>
                     )}
                     {item.sourceReadinessActions.includes('add_notes') && (
                       <Link href={item.readerHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>

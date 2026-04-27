@@ -290,7 +290,8 @@ export default async function ResourceDetailPage({ params }: Props) {
                 <p className="ui-kicker">{visualExtractionAvailable ? 'No selectable text' : 'Extraction evidence'}</p>
                 {visualExtractionAvailable && (
                   <p style={{ margin: '0.55rem 0 0', fontSize: '14px', lineHeight: 1.7, color: 'var(--text-secondary)' }}>
-                    This PDF appears to be image-only. OCR is required before Deep Learn can use its page text.
+                    This PDF appears scanned or image-based. OCR/visual extraction is required before Deep Learn can use it.
+                    {typeof resource.pageCount === 'number' && resource.pageCount > 0 ? ` ${resource.pageCount} pages detected.` : ''}
                   </p>
                 )}
                 {resource.extractedTextPreview && (
@@ -304,9 +305,14 @@ export default async function ResourceDetailPage({ params }: Props) {
                   </p>
                 )}
                 {visualExtractionAvailable && (
-                  <button type="button" className="ui-button ui-button-secondary ui-button-xs" disabled style={{ marginTop: '0.75rem' }}>
-                    Extract text from images
-                  </button>
+                  <div style={{ display: 'grid', gap: '0.25rem', justifyItems: 'start', marginTop: '0.75rem' }}>
+                    <button type="button" className="ui-button ui-button-secondary ui-button-xs" disabled>
+                      Extract text from images
+                    </button>
+                    <span style={{ fontSize: '11px', lineHeight: 1.35, color: 'var(--text-muted)' }}>
+                      Coming next: OCR for scanned PDFs.
+                    </span>
+                  </div>
                 )}
               </div>
             )}

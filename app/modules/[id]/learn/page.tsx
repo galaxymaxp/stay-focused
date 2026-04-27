@@ -322,6 +322,7 @@ export default async function LearnPage({ params, searchParams }: Props) {
                     sourceReadinessMessage: sourceReadiness.message,
                     sourceReadinessActions: sourceReadiness.actions,
                     sourceReadinessBucket: getSourceReadinessBucket(sourceReadiness.state),
+                    pageCount: sourceReadiness.pageCount,
                     sourceTypeLabel: sourceReadiness.sourceTypeLabel,
                     originLabel: sourceReadiness.originLabel,
                     canonicalResourceId: sourceReadiness.canonicalResourceId,

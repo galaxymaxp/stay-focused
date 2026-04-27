@@ -128,8 +128,8 @@ export function getLearnResourceUiState(
         statusLabel: 'No selectable text',
         tone: 'warning',
         primaryAction: 'source',
-        summary: 'This PDF has no selectable text. Image text extraction is required before Deep Learn can use it.',
-        detail: `Stay Focused recognized this as an image-based ${sourceNoun}, not a broken file. Open the original ${sourceLabel} for now; OCR support is ready to be added as a separate action.`,
+        summary: 'This PDF appears scanned or image-based. OCR/visual extraction is required before Deep Learn can use it.',
+        detail: `${formatPageCount(resource.pageCount)}Open the original ${sourceLabel} for now. Coming next: OCR for scanned PDFs.`,
         sourceActionLabel,
         textAvailabilityLabel,
       }
@@ -248,6 +248,10 @@ export function getLearnResourceUiState(
     summary: 'Start with the original source for this item.',
     detail: `Open the original ${sourceLabel} first. The reader only keeps limited context here, so treat it as a fallback view.`,
   })
+}
+
+function formatPageCount(pageCount: number | null | undefined) {
+  return typeof pageCount === 'number' && pageCount > 0 ? `${pageCount} pages detected. ` : ''
 }
 
 function isExternalLinkResource(

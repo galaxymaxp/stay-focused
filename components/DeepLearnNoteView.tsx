@@ -80,9 +80,14 @@ export function DeepLearnNoteView({
             />
           ) : null}
           {visualExtractionAvailable && (
-            <button type="button" className="ui-button ui-button-secondary ui-button-xs" disabled title="OCR is not enabled yet for this project.">
-              Extract text from images
-            </button>
+            <span style={{ display: 'inline-flex', flexDirection: 'column', gap: '0.25rem' }}>
+              <button type="button" className="ui-button ui-button-secondary ui-button-xs" disabled title="Coming next: OCR for scanned PDFs.">
+                Extract text from images
+              </button>
+              <span style={{ fontSize: '11px', lineHeight: 1.35, color: 'var(--text-muted)' }}>
+                Coming next: OCR for scanned PDFs.
+              </span>
+            </span>
           )}
           {note?.status === 'ready' && note.quizReady && (
             <Link href={quizHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>

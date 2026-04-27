@@ -58,6 +58,7 @@ export interface NormalizedSourceReadiness {
   actions: SourceReadinessAction[]
   fileExtension: string | null
   mimeType: string | null
+  pageCount: number | null
   isReadable: boolean
   isUnsupported: boolean
   isRepairable: boolean
@@ -119,6 +120,7 @@ export function normalizeSourceReadiness(input: {
     actions: actionsForState(state, isSummarizable),
     fileExtension,
     mimeType: resource.contentType ?? input.resource.contentType ?? null,
+    pageCount: typeof resource.pageCount === 'number' ? resource.pageCount : input.resource.pageCount ?? null,
     isReadable,
     isUnsupported,
     isRepairable,
@@ -237,7 +239,7 @@ function messageForState(state: SourceReadinessState, isPacketTracer: boolean) {
   if (state === 'canvas_lesson_page') return 'This looks like a Canvas lesson page. Open it in Canvas or summarize it once page extraction is available.'
   if (state === 'external_link') return 'This source opens outside Canvas. Use the original link for now.'
   if (state === 'extraction_failed') return 'Deep Learn could not read this source. You can retry processing or open the original file.'
-  if (state === 'visual_ocr_available') return 'This PDF is image-based. OCR is required before Deep Learn can use it.'
+  if (state === 'visual_ocr_available') return 'This PDF appears scanned or image-based. OCR/visual extraction is required before Deep Learn can use it.'
   if (state === 'empty_or_metadata_only') return 'The file was processed, but Deep Learn could not find readable text.'
   return 'Deep Learn needs a little more source information before it can use this item well.'
 }
