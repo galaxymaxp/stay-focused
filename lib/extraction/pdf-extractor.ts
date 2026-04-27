@@ -193,13 +193,14 @@ function buildPdfResult(input: {
 }
 
 async function loadPdfParse(): Promise<PdfParse> {
-  const pdfParseModule = await import('pdf-parse/lib/pdf-parse.js')
-  const candidate = (pdfParseModule.default ?? pdfParseModule) as unknown
-  if (typeof candidate !== 'function') {
-    throw new Error('pdf-parse did not expose a callable parser.')
+  const { extractText } = await import('unpdf')
+  return async (buffer: Buffer) => {
+    const { text, totalPages } = await extractText(new Uint8Array(buffer), { mergePages: true })
+    return {
+      text: Array.isArray(text) ? text.join('\n') : (text ?? ''),
+      numpages: totalPages,
+    }
   }
-
-  return candidate as PdfParse
 }
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number) {
