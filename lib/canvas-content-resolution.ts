@@ -151,12 +151,22 @@ interface ResolvedAttachmentDiagnostic {
   extractedText: string
   warnings: string[]
   fallbackState: CanvasContentFallbackState
+  metadataPatch: Record<string, unknown>
 }
 
 interface DirectContentResolution {
   extractionStatus: NormalizedCanvasContentExtractionStatus
   textContent: string
   warnings: string[]
+}
+
+interface FileContentResolution {
+  mimeType: string | null
+  textContent: string
+  warnings: string[]
+  extractionStatus: NormalizedCanvasContentExtractionStatus
+  fallbackState: CanvasContentFallbackState
+  metadataPatch: Record<string, unknown>
 }
 
 export async function resolveCanvasContentForWorkspaceItem(
@@ -195,6 +205,7 @@ export async function resolveCanvasContentForWorkspaceItem(
       content,
       persisted: buildPersistedCanvasContentResult(content, {
         attachmentDiagnostics: [],
+        metadataPatch: fileResult.metadataPatch,
       }),
     }
   }
@@ -268,6 +279,7 @@ export async function resolveCanvasContentForWorkspaceItem(
     content,
     persisted: buildPersistedCanvasContentResult(content, {
       attachmentDiagnostics,
+      metadataPatch: {},
     }),
   }
 }
@@ -310,6 +322,7 @@ export function buildCanvasContentPlaceholderResult(input: {
     content,
     persisted: buildPersistedCanvasContentResult(content, {
       attachmentDiagnostics: [],
+      metadataPatch: {},
     }),
   }
 }
@@ -323,7 +336,7 @@ function normalizeOptionalIdentifier(value: string | number | null | undefined) 
 async function resolveFileContent(
   input: ResolveCanvasContentInput,
   dependencies: ResolveCanvasContentDependencies,
-) {
+): Promise<FileContentResolution> {
   const file = input.file
   if (!file) {
     return {
@@ -332,6 +345,7 @@ async function resolveFileContent(
       warnings: ['This Canvas file record is missing the file payload required for extraction.'],
       extractionStatus: 'failed' as const,
       fallbackState: 'extraction_failed' as const,
+      metadataPatch: {},
     }
   }
 
@@ -352,6 +366,7 @@ async function resolveFileContent(
         warnings: ['This Canvas file has no downloaded content yet, so Stay Focused cannot extract readable text from it.'],
         extractionStatus: 'failed' as const,
         fallbackState: 'extraction_failed' as const,
+        metadataPatch: {},
       }
     }
 
@@ -381,6 +396,7 @@ async function resolveFileContent(
     warnings: uniqueWarnings([extracted.extractionError]),
     extractionStatus: mapLowLevelExtractionStatus(extracted.extractionStatus),
     fallbackState: resolveLowLevelFallbackState(extracted.extractionStatus, 'file'),
+    metadataPatch: extracted.metadataPatch ?? {},
   }
 }
 
@@ -435,6 +451,7 @@ async function resolveAttachmentReadableContent(
       extractedText: '',
       warnings: [buildExternalLinkWarning(attachment)],
       fallbackState: 'external_link_only',
+      metadataPatch: {},
     }
   }
 
@@ -449,6 +466,7 @@ async function resolveAttachmentReadableContent(
       extractedText: '',
       warnings: ['A linked attachment was detected, but Canvas did not provide a usable URL for it.'],
       fallbackState: 'extraction_failed',
+      metadataPatch: {},
     }
   }
 
@@ -463,6 +481,7 @@ async function resolveAttachmentReadableContent(
       extractedText: '',
       warnings: [buildAttachmentDownloadUnavailableWarning(attachment)],
       fallbackState: 'extraction_failed',
+      metadataPatch: {},
     }
   }
 
@@ -493,6 +512,7 @@ async function resolveAttachmentReadableContent(
       extractedText: extracted.extractedText?.trim() ?? '',
       warnings: uniqueWarnings([extracted.extractionError]),
       fallbackState: resolveLowLevelFallbackState(extracted.extractionStatus, 'attachment'),
+      metadataPatch: extracted.metadataPatch ?? {},
     }
   } catch (error) {
     return {
@@ -505,6 +525,7 @@ async function resolveAttachmentReadableContent(
       extractedText: '',
       warnings: [error instanceof Error ? error.message : 'Attachment extraction failed.'],
       fallbackState: 'extraction_failed',
+      metadataPatch: {},
     }
   }
 }
@@ -513,12 +534,14 @@ function buildPersistedCanvasContentResult(
   content: NormalizedCanvasContent,
   context: {
     attachmentDiagnostics: ResolvedAttachmentDiagnostic[]
+    metadataPatch: Record<string, unknown>
   },
 ): PersistedCanvasContentResult {
   const extractedText = trimToNull(content.textContent)
   const extractedTextPreview = extractedText ? extractedText.slice(0, 420) : null
   const previewState = inferCanvasContentPreviewState(extractedText, extractedTextPreview)
   const metadataPatch = {
+    ...context.metadataPatch,
     normalizedContentStatus: content.extractionStatus,
     fallbackState: content.fallbackState,
     fallbackReason: content.fallbackState,
@@ -541,6 +564,7 @@ function buildPersistedCanvasContentResult(
       fallbackState: attachment.fallbackState,
       hasReadableText: Boolean(attachment.extractedText),
       canvasFileId: attachment.canvasFileId,
+      extractionMetadata: attachment.metadataPatch,
     })),
   }
 
