@@ -20,6 +20,19 @@ export interface DeepLearnResourceReadiness {
   detail: string
 }
 
+export function hasUsableDeepLearnText(resource: Pick<ModuleResourceCapabilityLike, 'extractedText' | 'extractedTextPreview'> & {
+  extractedCharCount?: number | null
+  visualExtractionStatus?: ModuleResource['visualExtractionStatus']
+  visualExtractedText?: string | null
+}) {
+  const text = selectDeepLearnGroundingText(resource)
+  const charCount = typeof resource.extractedCharCount === 'number' && resource.extractedCharCount > 0
+    ? resource.extractedCharCount
+    : text.length
+
+  return Boolean(text.trim()) && charCount >= 120
+}
+
 export function classifyDeepLearnResourceReadiness(input: {
   resource: ModuleSourceResource
   storedResource: ModuleResource | null
@@ -39,10 +52,11 @@ export function classifyDeepLearnResourceReadiness(input: {
 
   const quality = getModuleResourceQualityInfo(sourceRecord)
   const hasGroundingText = Boolean(selectDeepLearnGroundingText(sourceRecord))
+  const hasUsableText = hasUsableDeepLearnText(sourceRecord)
   const canFetchSource = canAttemptDeepLearnSourceFetch(storedResource)
   const explicitBlockedReason = detectExplicitDeepLearnBlockedReason(sourceRecord)
 
-  if ((quality.quality === 'strong' || quality.quality === 'usable') && hasGroundingText) {
+  if ((quality.quality === 'strong' || quality.quality === 'usable') && hasUsableText) {
     return {
       state: 'text_ready',
       canonicalResourceId,
@@ -56,7 +70,7 @@ export function classifyDeepLearnResourceReadiness(input: {
     }
   }
 
-  if (sourceRecord.visualExtractionStatus === 'completed' && hasGroundingText) {
+  if (sourceRecord.visualExtractionStatus === 'completed' && hasUsableText) {
     return {
       state: 'text_ready',
       canonicalResourceId,
@@ -88,43 +102,28 @@ export function classifyDeepLearnResourceReadiness(input: {
     })
   }
 
-  if (isDeepLearnScanFallbackCapable(sourceRecord)) {
-    return {
-      state: 'scan_fallback',
-      canonicalResourceId,
-      blockedReason: null,
-      canGenerate: true,
-      shouldAttemptSourceFetch: canFetchSource,
-      label: 'Scan fallback',
-      tone: 'warning',
-      summary: 'Parsed text is missing or thin, but scan fallback can still build an exam prep pack.',
-      detail: hasGroundingText
-        ? 'The stored extract is weak, so Deep Learn can keep the partial text and fall back to the original file if exact answers need scan-based recovery.'
-        : 'No dependable parsed text is stored yet, so Deep Learn will try the original file with scan-aware fallback instead of hard-blocking.',
-    }
-  }
-
-  if (hasGroundingText || canFetchSource) {
+  if (hasGroundingText) {
     return {
       state: 'partial_text',
       canonicalResourceId,
       blockedReason: null,
-      canGenerate: true,
+      canGenerate: hasUsableText,
       shouldAttemptSourceFetch: canFetchSource,
       label: 'Partial text',
       tone: 'warning',
-      summary: hasGroundingText
+      summary: hasUsableText
         ? 'Partial text is available, so Deep Learn can still extract answer-ready review items.'
-        : 'Stored text is missing, but the original source can still be retried before generation.',
-      detail: hasGroundingText
+        : 'No readable text found. Deep Learn cannot generate from this source.',
+      detail: hasUsableText
         ? 'The system will prefer compact, source-grounded answer units and may refetch the original source first if it can strengthen the extract.'
-        : 'Deep Learn will retry the original source first, then fall back to whatever stable text it can recover.',
+        : 'The stored source text is too short to ground a trustworthy Deep Learn pack.',
     }
   }
 
   return buildUnreadableReadiness({
     canonicalResourceId,
     blockedReason: explicitBlockedReason
+      ?? (canFetchSource ? 'extraction_unusable_after_fetch' : null)
       ?? (getModuleResourceCapabilityInfo(sourceRecord).capability === 'unsupported'
         ? 'unsupported_source_type'
         : 'no_source_path'),
@@ -352,10 +351,12 @@ function describeDeepLearnBlockedReason(input: {
   return {
     summary: isImageOnly
       ? 'Scanned PDF'
-      : 'This file has little or no readable text. It may be scanned or image-only.',
+      : 'No readable text found. Deep Learn cannot generate from this source.',
     detail: isImageOnly
       ? 'OCR is required before Deep Learn can use this scanned PDF.'
-      : sourceNote ?? 'OCR is required before Deep Learn can use this scanned or image-based PDF.',
+      : sourceNote
+        ? `No readable text found. ${sourceNote}`
+        : 'No readable text found. Deep Learn cannot generate from this source.',
   }
 }
 

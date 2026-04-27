@@ -27,16 +27,16 @@ test('classifyDeepLearnResourceReadiness marks grounded stored resources as text
   assert.equal(readiness.shouldAttemptSourceFetch, false)
 })
 
-test('classifyDeepLearnResourceReadiness marks weak but recoverable resources as partial text', () => {
+test('classifyDeepLearnResourceReadiness enables generation when usable text is already stored', () => {
   const resource = createLearnResource({
-    extractedText: null,
-    extractedTextPreview: 'Short preview only.',
+    extractedText: buildLongText('Short but usable preview text about consideration, bargain, exchange, promise, and enforcement.'),
+    extractedTextPreview: buildLongText('Short but usable preview text about consideration, bargain, exchange, promise, and enforcement.'),
     extractionStatus: 'metadata_only',
     qualityReason: 'The stored extract is still too thin for a trustworthy exam prep pack.',
   })
   const storedResource = createStoredResource({
     extractionStatus: 'metadata_only',
-    extractedText: null,
+    extractedText: resource.extractedText,
     extractedTextPreview: resource.extractedTextPreview,
     sourceUrl: 'https://canvas.example/api/v1/courses/1/pages/consideration',
   })
@@ -47,13 +47,13 @@ test('classifyDeepLearnResourceReadiness marks weak but recoverable resources as
     canonicalResourceId: storedResource.id,
   })
 
-  assert.equal(readiness.state, 'partial_text')
+  assert.equal(readiness.state, 'text_ready')
   assert.equal(readiness.canGenerate, true)
-  assert.equal(readiness.shouldAttemptSourceFetch, true)
-  assert.match(readiness.detail, /original source|partial text/i)
+  assert.equal(readiness.shouldAttemptSourceFetch, false)
+  assert.match(readiness.summary, /Text is ready/i)
 })
 
-test('classifyDeepLearnResourceReadiness uses scan fallback for scan-capable PDFs without dependable text', () => {
+test('classifyDeepLearnResourceReadiness blocks scanned PDFs until OCR provides text', () => {
   const resource = createLearnResource({
     type: 'File',
     contentType: 'application/pdf',
@@ -61,7 +61,9 @@ test('classifyDeepLearnResourceReadiness uses scan fallback for scan-capable PDF
     normalizedSourceType: 'pdf',
     extractedText: null,
     extractedTextPreview: null,
+    extractionError: 'pdf_image_only_possible: scanned PDF',
     extractionStatus: 'metadata_only',
+    visualExtractionStatus: 'available',
     previewState: 'no_text_available',
     fullTextAvailable: false,
     storedTextLength: 0,
@@ -76,6 +78,8 @@ test('classifyDeepLearnResourceReadiness uses scan fallback for scan-capable PDF
     extractionStatus: 'metadata_only',
     extractedText: null,
     extractedTextPreview: null,
+    extractionError: 'pdf_image_only_possible: scanned PDF',
+    visualExtractionStatus: 'available',
     metadata: {
       normalizedSourceType: 'pdf',
       previewState: 'no_text_available',
@@ -92,9 +96,54 @@ test('classifyDeepLearnResourceReadiness uses scan fallback for scan-capable PDF
     canonicalResourceId: storedResource.id,
   })
 
-  assert.equal(readiness.state, 'scan_fallback')
+  assert.equal(readiness.state, 'unreadable')
+  assert.equal(readiness.canGenerate, false)
+  assert.match(readiness.detail, /OCR is required/i)
+})
+
+test('classifyDeepLearnResourceReadiness marks OCR-completed scanned PDFs as ready', () => {
+  const text = buildLongText('OCR recovered the consideration notes with bargain, exchange, promises, defenses, and enforcement rules.')
+  const resource = createLearnResource({
+    type: 'File',
+    contentType: 'application/pdf',
+    extension: 'pdf',
+    normalizedSourceType: 'pdf',
+    extractionStatus: 'completed',
+    extractedText: text,
+    extractedTextPreview: text.slice(0, 420),
+    extractedCharCount: text.length,
+    visualExtractionStatus: 'completed',
+    visualExtractedText: text,
+    previewState: 'full_text_available',
+    fullTextAvailable: true,
+    storedTextLength: text.length,
+  })
+  const storedResource = createStoredResource({
+    resourceType: 'File',
+    contentType: 'application/pdf',
+    extension: 'pdf',
+    extractionStatus: 'completed',
+    extractedText: text,
+    extractedTextPreview: text.slice(0, 420),
+    extractedCharCount: text.length,
+    visualExtractionStatus: 'completed',
+    visualExtractedText: text,
+    metadata: {
+      normalizedSourceType: 'pdf',
+      previewState: 'full_text_available',
+      fullTextAvailable: true,
+      storedTextLength: text.length,
+    },
+  })
+
+  const readiness = classifyDeepLearnResourceReadiness({
+    resource,
+    storedResource,
+    canonicalResourceId: storedResource.id,
+  })
+
+  assert.equal(readiness.state, 'text_ready')
   assert.equal(readiness.canGenerate, true)
-  assert.match(readiness.summary, /scan fallback/i)
 })
 
 test('classifyDeepLearnResourceReadiness marks resources with no viable stored backing row as unreadable', () => {
@@ -139,6 +188,9 @@ function createLearnResource(overrides: Partial<ModuleSourceResource> = {}): Mod
       : buildLongText('Consideration distinguishes enforceable promises from gratuitous ones.'),
     extractedCharCount: overrides.extractedCharCount ?? 1400,
     extractionError: overrides.extractionError ?? null,
+    visualExtractionStatus: overrides.visualExtractionStatus ?? 'not_started',
+    visualExtractedText: overrides.visualExtractedText ?? null,
+    visualExtractionError: overrides.visualExtractionError ?? null,
     normalizedSourceType: overrides.normalizedSourceType ?? 'page',
     capability: overrides.capability ?? 'supported',
     capabilityReason: overrides.capabilityReason ?? null,
@@ -188,6 +240,12 @@ function createStoredResource(overrides: Partial<ModuleResource> = {}): ModuleRe
       : buildLongText('Consideration distinguishes enforceable promises from gratuitous ones.'),
     extractedCharCount: overrides.extractedCharCount ?? 1400,
     extractionError: overrides.extractionError ?? null,
+    visualExtractionStatus: overrides.visualExtractionStatus ?? 'not_started',
+    visualExtractedText: overrides.visualExtractedText ?? null,
+    visualExtractionError: overrides.visualExtractionError ?? null,
+    pageCount: overrides.pageCount ?? null,
+    pagesProcessed: overrides.pagesProcessed ?? 0,
+    extractionProvider: overrides.extractionProvider ?? null,
     required: overrides.required ?? true,
     metadata: overrides.metadata ?? {
       normalizedSourceType: 'page',

@@ -12,7 +12,7 @@ import { getDeepLearnResourceUiState } from '@/lib/deep-learn-ui'
 import { buildModuleLearnOverview } from '@/lib/module-learn-overview'
 import { buildModuleOverviewFallback, getModuleSummary, listResourceSummaries } from '@/lib/source-summaries'
 import { getSourceReadinessBucket, normalizeSourceReadiness } from '@/lib/source-readiness'
-import { buildModuleDoHref, buildModuleInspectHref, getSearchParamValue, getTaskElementId } from '@/lib/stay-focused-links'
+import { buildModuleDoHref, getSearchParamValue, getTaskElementId } from '@/lib/stay-focused-links'
 import {
   buildLearnExperience,
   extractCourseName,
@@ -99,7 +99,70 @@ export default async function LearnPage({ params, searchParams }: Props) {
       }
     })()
     : null
+  const studyResourceItems = overview.studyMaterials.map((material) => {
+    const selection = deepLearnSelectionByDisplayId.get(material.resource.id)
+      ?? resolveLearnResourceSelection(experience, storedResources, material.resource.id)
+    const deepLearnResourceId = selection?.canonicalResourceId ?? material.resource.id
+    const readiness = classifyDeepLearnResourceReadiness({
+      resource: material.resource,
+      storedResource: selection?.storedResource ?? null,
+      canonicalResourceId: selection?.canonicalResourceId ?? null,
+    })
+    const sourceReadiness = normalizeSourceReadiness({
+      resource: material.resource,
+      storedResource: selection?.storedResource ?? null,
+      canonicalResourceId: selection?.canonicalResourceId ?? null,
+      moduleId: module.id,
+      moduleTitle: module.title,
+      summary: toSourceSummarySnapshot(selection?.canonicalResourceId ? resourceSummaryById.get(selection.canonicalResourceId) : null),
+    })
 
+    return {
+      ...buildDeepLearnAccordionState(
+        module.id,
+        module.courseId ?? null,
+        deepLearnResourceId,
+        deepLearnNoteByResourceId.get(selection?.canonicalResourceId ?? material.resource.id) ?? null,
+        deepLearnNotesResult.availability,
+        deepLearnNotesResult.message,
+        readiness,
+      ),
+      moduleId: module.id,
+      courseId: module.courseId ?? null,
+      id: material.resource.id,
+      title: material.resource.title,
+      note: material.note,
+      detailNote: material.detailNote,
+      fileTypeLabel: material.fileTypeLabel,
+      readinessLabel: material.readinessLabel,
+      readinessTone: material.readinessTone,
+      statusKey: material.statusKey,
+      readerState: material.reader.state,
+      primaryAction: material.primaryAction,
+      sourceActionLabel: material.sourceActionLabel,
+      required: material.resource.required,
+      outlineSections: material.reader.outlineSections,
+      outlineHint: material.reader.outlineHint,
+      previewState: material.resource.previewState,
+      fallbackReason: material.resource.fallbackReason,
+      readerHref: getLearnResourceHref(module.id, material.resource.id),
+      canvasHref: getResourceCanvasHref(material.resource),
+      originalFileHref: getResourceOriginalFileHref(material.resource),
+      sourceReadinessState: sourceReadiness.state,
+      sourceReadinessStatusLabel: sourceReadiness.statusLabel,
+      sourceReadinessMessage: sourceReadiness.message,
+      sourceReadinessActions: sourceReadiness.actions,
+      sourceReadinessBucket: getSourceReadinessBucket(sourceReadiness.state),
+      pageCount: sourceReadiness.pageCount,
+      sourceTypeLabel: sourceReadiness.sourceTypeLabel,
+      originLabel: sourceReadiness.originLabel,
+      canonicalResourceId: sourceReadiness.canonicalResourceId,
+      isSummarizable: sourceReadiness.isSummarizable,
+      sourceSummary: sourceReadiness.summary,
+      deepLearnCanGenerate: readiness.canGenerate,
+      deepLearnDisabledReason: readiness.canGenerate ? null : describeGenerationBlock(sourceReadiness.state, readiness.detail),
+    }
+  })
   if (module.status === 'error') {
     return (
       <main className="page-shell page-shell-compact page-stack">
@@ -148,30 +211,14 @@ export default async function LearnPage({ params, searchParams }: Props) {
               title="Saved learning packs are unavailable right now."
               description="You can still open source material below and generate a new pack once the saved library is available again."
               tone="warning"
-              action={(
-                <Link href={buildModuleInspectHref(module.id)} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
-                  Inspect resources
-                </Link>
-              )}
             />
           )}
 
-          {deepLearnNotes.length === 0 && overview.studyMaterials.length > 0 && (
-            <GeneratedContentState
-              title="No learning packs yet."
-              description="Open a source below and generate one to save it here."
-              tone="accent"
-              action={(
-                <Link
-                  href={getLearnResourceHref(module.id, overview.studyMaterials[0].resource.id)}
-                  className="ui-button ui-button-secondary ui-button-xs"
-                  style={{ textDecoration: 'none' }}
-                >
-                  Open first source
-                </Link>
-              )}
-            />
-          )}
+          <StudyResourceAccordionList
+            items={studyResourceItems}
+            initialOpenResourceId={targetResourceId}
+            emptyMessage="No study sources are ready for Learn in this module yet."
+          />
 
           {overview.suggestedSteps.length > 0 && (
             <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.85rem 0.9rem' }}>
@@ -256,88 +303,12 @@ export default async function LearnPage({ params, searchParams }: Props) {
                   </Link>
                 )}
                 <ActionButton href={overview.resumeTarget.href} label={overview.resumeTarget.actionLabel} external={overview.resumeTarget.external} tone="ghost" />
-                <Link href={buildModuleInspectHref(module.id)} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-                  Inspect resources
-                </Link>
               </div>
             </div>
           )}
         </section>
 
-        <div className="command-workspace">
-          <section id="study-notes" className="motion-card motion-delay-2 section-shell section-shell-elevated" style={{ padding: '1rem 1.05rem', display: 'grid', gap: '0.9rem' }}>
-            <div>
-              <StudyResourceAccordionList
-                items={overview.studyMaterials.map((material) => {
-                  const selection = deepLearnSelectionByDisplayId.get(material.resource.id)
-                    ?? resolveLearnResourceSelection(experience, storedResources, material.resource.id)
-                  const deepLearnResourceId = selection?.canonicalResourceId ?? material.resource.id
-                  const readiness = classifyDeepLearnResourceReadiness({
-                    resource: material.resource,
-                    storedResource: selection?.storedResource ?? null,
-                    canonicalResourceId: selection?.canonicalResourceId ?? null,
-                  })
-                  const sourceReadiness = normalizeSourceReadiness({
-                    resource: material.resource,
-                    storedResource: selection?.storedResource ?? null,
-                    canonicalResourceId: selection?.canonicalResourceId ?? null,
-                    moduleId: module.id,
-                    moduleTitle: module.title,
-                    summary: toSourceSummarySnapshot(selection?.canonicalResourceId ? resourceSummaryById.get(selection.canonicalResourceId) : null),
-                  })
-
-                  return {
-                    ...buildDeepLearnAccordionState(
-                      module.id,
-                      module.courseId ?? null,
-                      deepLearnResourceId,
-                      deepLearnNoteByResourceId.get(selection?.canonicalResourceId ?? material.resource.id) ?? null,
-                      deepLearnNotesResult.availability,
-                      deepLearnNotesResult.message,
-                      readiness,
-                    ),
-                    moduleId: module.id,
-                    courseId: module.courseId ?? null,
-                    id: material.resource.id,
-                    title: material.resource.title,
-                    note: material.note,
-                    detailNote: material.detailNote,
-                    fileTypeLabel: material.fileTypeLabel,
-                    readinessLabel: material.readinessLabel,
-                    readinessTone: material.readinessTone,
-                    statusKey: material.statusKey,
-                    readerState: material.reader.state,
-                    primaryAction: material.primaryAction,
-                    sourceActionLabel: material.sourceActionLabel,
-                    required: material.resource.required,
-                    outlineSections: material.reader.outlineSections,
-                    outlineHint: material.reader.outlineHint,
-                    previewState: material.resource.previewState,
-                    fallbackReason: material.resource.fallbackReason,
-                    readerHref: getLearnResourceHref(module.id, material.resource.id),
-                    canvasHref: getResourceCanvasHref(material.resource),
-                    originalFileHref: getResourceOriginalFileHref(material.resource),
-                    sourceReadinessState: sourceReadiness.state,
-                    sourceReadinessStatusLabel: sourceReadiness.statusLabel,
-                    sourceReadinessMessage: sourceReadiness.message,
-                    sourceReadinessActions: sourceReadiness.actions,
-                    sourceReadinessBucket: getSourceReadinessBucket(sourceReadiness.state),
-                    pageCount: sourceReadiness.pageCount,
-                    sourceTypeLabel: sourceReadiness.sourceTypeLabel,
-                    originLabel: sourceReadiness.originLabel,
-                    canonicalResourceId: sourceReadiness.canonicalResourceId,
-                    isSummarizable: sourceReadiness.isSummarizable,
-                    sourceSummary: sourceReadiness.summary,
-                  }
-                })}
-                initialOpenResourceId={targetResourceId}
-                emptyMessage="No study sources are ready for Learn in this module yet."
-              />
-            </div>
-          </section>
-
-          <aside className="command-rail">
-            <section id="action-status" className="motion-card motion-delay-2 section-shell" style={{ padding: '1rem 1.05rem', display: 'grid', gap: '0.8rem' }}>
+        <section id="action-status" className="motion-card motion-delay-2 section-shell" style={{ padding: '1rem 1.05rem', display: 'grid', gap: '0.8rem' }}>
               <div>
                 <p className="ui-kicker">Action status</p>
                 <h3 style={{ margin: '0.42rem 0 0', fontSize: '1.02rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>Finished graded work already drops out of the way</h3>
@@ -433,10 +404,7 @@ export default async function LearnPage({ params, searchParams }: Props) {
                   </div>
                 </details>
               )}
-            </section>
-
-          </aside>
-        </div>
+        </section>
 
       </div>
     </ModuleLensShell>
@@ -618,6 +586,14 @@ function toSourceSummarySnapshot(summary: Awaited<ReturnType<typeof listResource
     status: summary.status,
     generatedAt: summary.generatedAt,
   }
+}
+
+function describeGenerationBlock(state: ReturnType<typeof normalizeSourceReadiness>['state'], fallback: string) {
+  if (state === 'visual_ocr_available') return 'This PDF is scanned and needs OCR before Deep Learn can use it.'
+  if (state === 'visual_ocr_running') return 'Reading scanned pages...'
+  if (state === 'visual_ocr_failed') return 'OCR failed. Open the original file or retry.'
+  if (state === 'empty_or_metadata_only') return 'No readable text found. Deep Learn cannot generate from this source.'
+  return fallback
 }
 
 function buildDeepLearnAccordionState(

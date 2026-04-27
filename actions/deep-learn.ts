@@ -83,6 +83,19 @@ export async function generateDeepLearnNoteAction(input: {
     throw new Error(readiness.detail)
   }
 
+  if (!readiness.canGenerate) {
+    console.error('[deep-learn-action] generation_blocked_before_start', {
+      moduleId: input.moduleId,
+      resourceId: input.resourceId,
+      userId: user?.id ?? null,
+      resolvedResourceId: canonicalResourceId,
+      readinessState: readiness.state,
+      blockedReason: readiness.blockedReason,
+      failureReason: readiness.detail,
+    })
+    throw new Error(readiness.detail)
+  }
+
   console.info('[deep-learn-action] resource_resolved', {
     moduleId: input.moduleId,
     resourceId: input.resourceId,
@@ -178,6 +191,17 @@ export async function generateDeepLearnNoteAction(input: {
       : null
 
     await persistRefreshedResource(refreshedResource)
+
+    console.error('[deep-learn-action] generation_failed', {
+      moduleId: input.moduleId,
+      resourceId: input.resourceId,
+      userId: user?.id ?? null,
+      resolvedResourceId: canonicalResourceId,
+      errorName: error instanceof Error ? error.name : typeof error,
+      message,
+      blockedReason: error instanceof DeepLearnGenerationBlockedError ? error.blockedReason : null,
+      stack: error instanceof Error ? error.stack : null,
+    })
 
     await saveDeepLearnNote({
       moduleId: workspace.module.id,

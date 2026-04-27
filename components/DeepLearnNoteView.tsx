@@ -44,6 +44,8 @@ export function DeepLearnNoteView({
   })
   const quizHref = buildModuleQuizHref(moduleId, { resourceId: resolvedDeepLearnResourceId })
   const visualExtractionAvailable = resource.visualExtractionStatus === 'available'
+  const visualExtractionRunning = resource.visualExtractionStatus === 'running' || resource.extractionStatus === 'processing'
+  const disabledReason = readiness && !readiness.canGenerate ? readiness.detail : null
 
   return (
     <div style={{ display: 'grid', gap: '0.9rem' }}>
@@ -68,9 +70,13 @@ export function DeepLearnNoteView({
         </div>
         <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', alignItems: 'flex-start' }}>
           {ui.status === 'unavailable' || ui.status === 'blocked' ? (
-            <Link href={readerHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
-              {ui.primaryLabel}
-            </Link>
+            visualExtractionAvailable ? (
+              <OcrSourceButton moduleId={moduleId} resourceId={resolvedDeepLearnResourceId} autoStart statusOnly />
+            ) : (
+              <span style={{ fontSize: '12px', lineHeight: 1.5, color: 'var(--text-secondary)', maxWidth: '24rem' }}>
+                {effectiveAvailabilityMessage}
+              </span>
+            )
           ) : note?.status !== 'ready' ? (
             <DeepLearnGenerateButton
               moduleId={moduleId}
@@ -78,19 +84,19 @@ export function DeepLearnNoteView({
               courseId={courseId}
               label={ui.primaryLabel}
               className="ui-button ui-button-secondary ui-button-xs"
+              disabledReason={disabledReason}
             />
           ) : null}
-          {visualExtractionAvailable && (
-            <OcrSourceButton moduleId={moduleId} resourceId={resolvedDeepLearnResourceId} />
+          {visualExtractionRunning && (
+            <span style={{ fontSize: '12px', lineHeight: 1.5, color: 'var(--text-secondary)' }}>
+              Reading scanned pages...
+            </span>
           )}
           {note?.status === 'ready' && note.quizReady && (
             <Link href={quizHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
               Quiz this
             </Link>
           )}
-          <Link href={readerHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-            Source fallback
-          </Link>
           {sourceHref && (
             <a href={sourceHref} target="_blank" rel="noreferrer" className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
               Open original source
@@ -126,6 +132,24 @@ export function DeepLearnNoteView({
           </WorkspacePanel>
         </div>
       )}
+      <details className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.72rem 0.78rem' }}>
+        <summary className="ui-interactive-summary" style={{ padding: 0, fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)' }}>
+          Advanced source tools
+        </summary>
+        <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', marginTop: '0.72rem' }}>
+          <Link href={readerHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+            Source details
+          </Link>
+          {visualExtractionAvailable && (
+            <OcrSourceButton
+              moduleId={moduleId}
+              resourceId={resolvedDeepLearnResourceId}
+              className="ui-button ui-button-ghost ui-button-xs"
+              idleLabel="Retry OCR"
+            />
+          )}
+        </div>
+      </details>
       </section>
     </div>
   )

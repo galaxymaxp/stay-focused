@@ -50,6 +50,8 @@ export interface StudyResourceAccordionItem {
   deepLearnTermCount?: number
   deepLearnFactCount?: number
   deepLearnAvailability?: DeepLearnNoteLoadAvailability
+  deepLearnCanGenerate?: boolean
+  deepLearnDisabledReason?: string | null
   sourceReadinessState: SourceReadinessState
   sourceReadinessStatusLabel: string
   sourceReadinessMessage: string
@@ -77,10 +79,7 @@ export function StudyResourceAccordionList({
   scrollDensity?: 'comfort' | 'dense'
 }) {
   const lastScrolledResourceId = useRef<string | null>(null)
-  const router = useRouter()
   const [filter, setFilter] = useState<SourceReadinessFilter>('all')
-  const [operationMessage, setOperationMessage] = useState<string | null>(null)
-  const [bulkBusy, setBulkBusy] = useState<'repair' | 'process' | null>(null)
   const itemIdKey = items.map((item) => item.id).join('|')
   const hasInitialOpenResource = Boolean(initialOpenResourceId && items.some((item) => item.id === initialOpenResourceId))
   const routeKey = `${itemIdKey}:${initialOpenResourceId ?? ''}`
@@ -135,44 +134,9 @@ export function StudyResourceAccordionList({
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.6rem', alignItems: 'center' }}>
               <p className="ui-kicker" style={{ margin: 0 }}>{group.title}</p>
               <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                {group.key === 'repair' && (
-                  <button
-                    type="button"
-                    disabled={bulkBusy !== null}
-                    onClick={() => runBulkSourceOperation({
-                      kind: 'repair',
-                      moduleId: group.items[0]?.moduleId,
-                      setBusy: setBulkBusy,
-                      setMessage: setOperationMessage,
-                      refresh: () => router.refresh(),
-                    })}
-                    className="ui-button ui-button-secondary ui-button-xs"
-                  >
-                    {bulkBusy === 'repair' ? 'Repairing...' : 'Repair all'}
-                  </button>
-                )}
-                {group.key === 'action' && group.items.some((item) => item.sourceReadinessActions.includes('process_source')) && (
-                  <button
-                    type="button"
-                    disabled={bulkBusy !== null}
-                    onClick={() => runBulkSourceOperation({
-                      kind: 'process',
-                      moduleId: group.items[0]?.moduleId,
-                      setBusy: setBulkBusy,
-                      setMessage: setOperationMessage,
-                      refresh: () => router.refresh(),
-                    })}
-                    className="ui-button ui-button-secondary ui-button-xs"
-                  >
-                    {bulkBusy === 'process' ? 'Processing...' : 'Process all readable sources'}
-                  </button>
-                )}
                 <ResourcePill label={`${group.items.length}`} tone={group.bucket === 'ready' ? 'accent' : group.bucket === 'needs_action' ? 'warning' : 'muted'} />
               </div>
             </div>
-            {operationMessage && group.key !== 'ready' && (
-              <p style={{ margin: 0, fontSize: '11px', lineHeight: 1.45, color: 'var(--text-muted)' }}>{operationMessage}</p>
-            )}
             {group.items.map((item) => {
           const expanded = resolvedOpenResourceId === item.id
           const sourceHref = item.originalFileHref ?? item.canvasHref
@@ -250,19 +214,41 @@ export function StudyResourceAccordionList({
                     </p>
                   )}
                 </div>
-
-                <ResourcePill label={expanded ? 'Open' : item.sourceReadinessBucket === 'ready' ? 'Preview' : 'Details'} tone={expanded ? 'accent' : 'muted'} />
+                <span className="ui-button ui-button-ghost ui-button-xs" style={{ pointerEvents: 'none' }}>
+                  {expanded ? 'Open' : item.sourceReadinessBucket === 'ready' ? 'Preview' : 'Open'}
+                </span>
               </button>
 
               {expanded && (
                 <div style={{ display: 'grid', gap: '0.75rem' }}>
                   <details className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.72rem 0.78rem' }}>
                     <summary className="ui-interactive-summary" style={{ padding: 0, fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                      Source details
+                      Advanced source tools
                     </summary>
                     <p style={{ margin: '0.42rem 0 0', fontSize: '12px', lineHeight: 1.55, color: 'var(--text-secondary)' }}>
                       {item.originLabel}
                     </p>
+                    <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', marginTop: '0.62rem' }}>
+                      {item.sourceReadinessActions.includes('repair_source_link') && (
+                        <SourceRepairButton item={item} />
+                      )}
+                      {item.sourceReadinessActions.includes('retry_extraction') || item.sourceReadinessActions.includes('process_source') ? (
+                        <ProcessSourceButton item={item} />
+                      ) : null}
+                      {item.sourceReadinessActions.includes('extract_text_from_images') && (
+                        <OcrSourceButton
+                          moduleId={item.moduleId}
+                          resourceId={item.canonicalResourceId ?? item.id}
+                          className="ui-button ui-button-ghost ui-button-xs"
+                          idleLabel="Retry OCR"
+                        />
+                      )}
+                      {item.sourceReadinessActions.includes('add_notes') && (
+                        <Link href={item.readerHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+                          Add notes
+                        </Link>
+                      )}
+                    </div>
                   </details>
 
                   <SourceSummaryBadge
@@ -270,6 +256,16 @@ export function StudyResourceAccordionList({
                     summary={item.sourceSummary}
                     canSummarize={item.isSummarizable}
                   />
+
+                  {item.sourceReadinessState === 'visual_ocr_available' && (
+                    <OcrSourceButton moduleId={item.moduleId} resourceId={item.canonicalResourceId ?? item.id} autoStart statusOnly />
+                  )}
+
+                  {item.sourceReadinessState === 'visual_ocr_running' && (
+                    <span style={{ fontSize: '12px', lineHeight: 1.5, color: 'var(--text-secondary)' }}>
+                      Reading scanned pages...
+                    </span>
+                  )}
 
                   {item.deepLearnNoteFailure && (
                     <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.9rem 0.95rem' }}>
@@ -285,19 +281,22 @@ export function StudyResourceAccordionList({
                       <Link href={item.deepLearnNoteHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
                         Open workspace
                       </Link>
-                    ) : item.sourceReadinessActions.includes('start_deep_learn') && item.deepLearnStatus !== 'unavailable' ? (
+                    ) : item.deepLearnStatus !== 'unavailable' ? (
                       <DeepLearnGenerateButton
                         moduleId={item.moduleId}
                         resourceId={item.canonicalResourceId ?? item.id}
                         courseId={item.courseId ?? null}
-                        label="Start Deep Learn"
+                        label="Generate Deep Learn pack"
+                        disabledReason={item.deepLearnDisabledReason}
                       />
-                    ) : item.sourceReadinessActions.includes('preview') ? (
-                      <Link href={item.readerHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
-                        Preview
-                      </Link>
                     ) : (
-                      <SourceRepairButton item={item} />
+                      <DeepLearnGenerateButton
+                        moduleId={item.moduleId}
+                        resourceId={item.canonicalResourceId ?? item.id}
+                        courseId={item.courseId ?? null}
+                        label="Generate Deep Learn pack"
+                        disabledReason={item.deepLearnDisabledReason ?? 'Saved Deep Learn packs are unavailable right now.'}
+                      />
                     )}
                     {item.deepLearnStatus === 'ready' && item.deepLearnQuizReady && (
                       <Link href={item.deepLearnQuizHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
@@ -308,17 +307,6 @@ export function StudyResourceAccordionList({
                       <a href={sourceHref} target="_blank" rel="noreferrer" className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
                         {labelForSourceAction(item)}
                       </a>
-                    )}
-                    {item.sourceReadinessActions.includes('retry_extraction') || item.sourceReadinessActions.includes('process_source') ? (
-                      <ProcessSourceButton item={item} />
-                    ) : null}
-                    {item.sourceReadinessActions.includes('extract_text_from_images') && (
-                      <OcrSourceButton moduleId={item.moduleId} resourceId={item.canonicalResourceId ?? item.id} />
-                    )}
-                    {item.sourceReadinessActions.includes('add_notes') && (
-                      <Link href={item.readerHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-                        Add notes
-                      </Link>
                     )}
                   </div>
                 </div>
@@ -367,36 +355,6 @@ function ResourcePill({
       {label}
     </span>
   )
-}
-
-async function runBulkSourceOperation({
-  kind,
-  moduleId,
-  setBusy,
-  setMessage,
-  refresh,
-}: {
-  kind: 'repair' | 'process'
-  moduleId: string | undefined
-  setBusy: (value: 'repair' | 'process' | null) => void
-  setMessage: (value: string | null) => void
-  refresh: () => void
-}) {
-  if (!moduleId) return
-  setBusy(kind)
-  setMessage(null)
-  try {
-    const response = await fetch(kind === 'repair' ? '/api/sources/repair' : '/api/sources/process', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ moduleId, bulk: true }),
-    })
-    const payload = await response.json().catch(() => null) as { message?: string; error?: string } | null
-    setMessage(payload?.message ?? payload?.error ?? (response.ok ? 'Done.' : 'Could not complete this action.'))
-    if (response.ok) refresh()
-  } finally {
-    setBusy(null)
-  }
 }
 
 function SourceRepairButton({ item }: { item: StudyResourceAccordionItem }) {

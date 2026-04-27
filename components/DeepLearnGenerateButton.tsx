@@ -40,6 +40,7 @@ export function DeepLearnGenerateButton({
   label = 'Generate pack',
   pendingLabel = 'Generating...',
   className = 'ui-button ui-button-secondary ui-button-xs',
+  disabledReason = null,
 }: {
   moduleId: string
   resourceId: string
@@ -47,6 +48,7 @@ export function DeepLearnGenerateButton({
   label?: string
   pendingLabel?: string
   className?: string
+  disabledReason?: string | null
 }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -79,8 +81,9 @@ export function DeepLearnGenerateButton({
     <div style={{ display: 'grid', gap: '0.35rem' }}>
       <button
         type="button"
-        disabled={isPending}
+        disabled={isPending || Boolean(disabledReason)}
         onClick={() => {
+          if (disabledReason) return
           setStageIndex(0)
           setProgressValue(PACK_PROGRESS_STAGES[0].progressValue)
           startTransition(async () => {
@@ -94,9 +97,10 @@ export function DeepLearnGenerateButton({
               })
 
               if (result.status === 'failed') {
+                console.error('Deep Learn generation failed:', result.error)
                 notifyCompletion(
                   'Pack generation failed',
-                  'Deep Learn could not build the exam prep pack. See the pack page for details.',
+                  result.error ?? 'Deep Learn could not build the exam prep pack from this source.',
                   { tag: 'exam-pack-generated', soundType: 'error', showBrowser: true, playSound: true },
                 )
               } else {
@@ -111,12 +115,15 @@ export function DeepLearnGenerateButton({
               router.refresh()
             } catch (error) {
               console.error('Deep Learn generation failed to start:', error)
+              const message = error instanceof Error && error.message.trim()
+                ? error.message
+                : 'Deep Learn failed to start the exam prep pack.'
               notifyCompletion(
                 'Pack generation failed',
-                'Deep Learn failed to start the exam prep pack.',
+                message,
                 { tag: 'exam-pack-generated', soundType: 'error', showBrowser: true, playSound: true },
               )
-              setErrorMessage("Couldn't generate this yet. Try again, or open the source and check that it has readable content.")
+              setErrorMessage(message)
             }
           })
         }}
@@ -124,6 +131,12 @@ export function DeepLearnGenerateButton({
       >
         {isPending ? `${pendingLabel} ${PACK_PROGRESS_STAGES[stageIndex]?.label ?? ''}`.trim() : label}
       </button>
+
+      {disabledReason && (
+        <span style={{ fontSize: '12px', lineHeight: 1.5, color: 'var(--text-muted)' }}>
+          {disabledReason}
+        </span>
+      )}
 
       {isPending && (
         <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.78rem 0.82rem', display: 'grid', gap: '0.6rem' }}>

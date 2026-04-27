@@ -163,13 +163,13 @@ function resolveSourceReadinessState(input: {
   if (input.isReadable) return 'ready'
   if (input.visualExtractionStatus === 'running' || input.extractionStatus === 'processing') return 'visual_ocr_running'
   if (input.visualExtractionStatus === 'failed') return 'visual_ocr_failed'
+  if (input.visualExtractionStatus === 'available' || /\bpdf_image_only_possible\b|\bimage-only\b|\bscanned\b/i.test(input.extractionError ?? '')) {
+    return 'visual_ocr_available'
+  }
   if (input.hasCompletedExtraction && input.readableTextLength < 120) return 'empty_or_metadata_only'
   if (!input.extractionStatus && input.hasSourceHref && isProcessableSourceType(input.sourceType)) return 'needs_processing'
   if (input.extractionStatus === 'pending') return 'needs_processing'
   if (input.extractionStatus === 'failed' || input.capability === 'failed') return 'extraction_failed'
-  if (input.visualExtractionStatus === 'available' || /\bpdf_image_only_possible\b|\bimage-only\b|\bscanned\b/i.test(input.extractionError ?? '')) {
-    return 'visual_ocr_available'
-  }
   if (input.sourceType === 'external_url' || input.sourceType === 'external_tool') return 'external_link'
   if (input.sourceType === 'page') return 'canvas_lesson_page'
   if (input.capability === 'unsupported') return 'unsupported_file_type'
