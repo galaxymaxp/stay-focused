@@ -48,7 +48,7 @@ export interface CourseLearnStudyMaterialRow {
   id: string
   title: string
   fileTypeLabel: string
-  readinessLabel: 'Ready' | 'Partial' | 'Source first' | 'Link only' | 'Unsupported' | 'No extract' | 'No selectable text' | 'Loading'
+  readinessLabel: 'Ready' | 'Partial' | 'Source first' | 'Link only' | 'Unsupported' | 'No extract' | 'Scanned PDF' | 'OCR required' | 'Extracting...' | 'OCR complete' | 'OCR failed' | 'Loading'
   readinessTone: 'accent' | 'warning' | 'muted'
   statusKey: LearnResourceStatusKey
   readerState: StudyFileReaderState
@@ -574,7 +574,7 @@ function buildDeepLearnRowState(
   >
 }
 
-function mapStudyMaterialReadiness(label: 'Ready' | 'Partial' | 'Source first' | 'Link only' | 'Unsupported' | 'No extract' | 'No selectable text' | 'Loading' | 'Unavailable') {
+function mapStudyMaterialReadiness(label: 'Ready' | 'Partial' | 'Source first' | 'Link only' | 'Unsupported' | 'No extract' | 'Scanned PDF' | 'OCR required' | 'Extracting...' | 'OCR complete' | 'OCR failed' | 'Loading' | 'Unavailable') {
   return label === 'Unavailable' ? 'Source first' : label
 }
 

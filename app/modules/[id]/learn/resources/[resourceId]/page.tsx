@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import { CopyTaskBundleActions } from '@/components/CopyTaskBundleActions'
 import { DeepLearnNoteView } from '@/components/DeepLearnNoteView'
 import { ModuleLensShell } from '@/components/ModuleLensShell'
+import { OcrSourceButton } from '@/components/OcrSourceButton'
 import { StudyFileReader } from '@/components/StudyFileReader'
 import { StudyModeSwitcher } from '@/components/StudyModeSwitcher'
 import { classifyDeepLearnResourceReadiness } from '@/lib/deep-learn-readiness'
@@ -287,10 +288,10 @@ export default async function ResourceDetailPage({ params }: Props) {
 
             {(resource.extractedTextPreview || resource.extractionError || grounding.evidenceSnippet || visualExtractionAvailable) && (
               <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem' }}>
-                <p className="ui-kicker">{visualExtractionAvailable ? 'No selectable text' : 'Extraction evidence'}</p>
+                <p className="ui-kicker">{visualExtractionAvailable ? 'Scanned PDF' : 'Extraction evidence'}</p>
                 {visualExtractionAvailable && (
                   <p style={{ margin: '0.55rem 0 0', fontSize: '14px', lineHeight: 1.7, color: 'var(--text-secondary)' }}>
-                    This PDF appears scanned or image-based. OCR/visual extraction is required before Deep Learn can use it.
+                    OCR is required before Deep Learn can use it.
                     {typeof resource.pageCount === 'number' && resource.pageCount > 0 ? ` ${resource.pageCount} pages detected.` : ''}
                   </p>
                 )}
@@ -306,12 +307,7 @@ export default async function ResourceDetailPage({ params }: Props) {
                 )}
                 {visualExtractionAvailable && (
                   <div style={{ display: 'grid', gap: '0.25rem', justifyItems: 'start', marginTop: '0.75rem' }}>
-                    <button type="button" className="ui-button ui-button-secondary ui-button-xs" disabled>
-                      Extract text from images
-                    </button>
-                    <span style={{ fontSize: '11px', lineHeight: 1.35, color: 'var(--text-muted)' }}>
-                      Coming next: OCR for scanned PDFs.
-                    </span>
+                    <OcrSourceButton moduleId={module.id} resourceId={deepLearnResourceId} />
                   </div>
                 )}
               </div>

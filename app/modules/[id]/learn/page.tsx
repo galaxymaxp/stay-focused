@@ -266,7 +266,7 @@ export default async function LearnPage({ params, searchParams }: Props) {
 
         <div className="command-workspace">
           <section id="study-notes" className="motion-card motion-delay-2 section-shell section-shell-elevated" style={{ padding: '1rem 1.05rem', display: 'grid', gap: '0.9rem' }}>
-            <div className="command-scroll-body" data-density="tall">
+            <div>
               <StudyResourceAccordionList
                 items={overview.studyMaterials.map((material) => {
                   const selection = deepLearnSelectionByDisplayId.get(material.resource.id)
@@ -332,7 +332,6 @@ export default async function LearnPage({ params, searchParams }: Props) {
                 })}
                 initialOpenResourceId={targetResourceId}
                 emptyMessage="No study sources are ready for Learn in this module yet."
-                scrollable
               />
             </div>
           </section>

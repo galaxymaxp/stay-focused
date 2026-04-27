@@ -181,7 +181,7 @@ function resolveModuleResourceCapability(input: {
   if (input.extractionStatus === 'unsupported') return 'unsupported'
   if ((input.extractionStatus === 'extracted' || input.extractionStatus === 'completed') && input.hasReadableText) return 'supported'
 
-  if (input.extractionStatus === 'metadata_only' || input.extractionStatus === 'empty' || input.extractionStatus === 'pending') {
+  if (input.extractionStatus === 'metadata_only' || input.extractionStatus === 'empty' || input.extractionStatus === 'pending' || input.extractionStatus === 'processing') {
     return LINK_ONLY_SOURCE_TYPES.has(input.normalizedSourceType) ? 'unsupported' : 'partial'
   }
 
@@ -218,6 +218,10 @@ function buildCapabilityReason(input: {
     return storedNote || `Extraction has not completed for this ${sourceNoun} yet.`
   }
 
+  if (input.extractionStatus === 'processing') {
+    return storedNote || `Text extraction is still running for this ${sourceNoun}.`
+  }
+
   if (input.capability === 'failed') {
     return storedNote || `Stay Focused could not prepare readable text for this ${sourceNoun} during the last extraction attempt.`
   }
@@ -250,6 +254,7 @@ function normalizeCapability(value: unknown): ModuleResourceCapability | null {
 
 function normalizeExtractionStatus(value: unknown): ModuleResourceExtractionStatus {
   return value === 'pending'
+    || value === 'processing'
     || value === 'extracted'
     || value === 'completed'
     || value === 'metadata_only'

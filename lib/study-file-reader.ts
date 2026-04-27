@@ -238,6 +238,7 @@ export function labelForExtractionStatus(
   if (previewState === 'preview_only') return 'Preview only'
   if (note.includes('no readable text') || note.includes('no usable text')) return 'No readable text found'
   if (status === 'pending') return 'Loading'
+  if (status === 'processing') return 'Extracting...'
   if (!status) return 'Not available'
   if (status === 'extracted') return 'Text extracted'
   if (status === 'metadata_only') return 'Metadata only'
@@ -250,7 +251,7 @@ export function labelForExtractionStatus(
 function resolveStudyFileReaderState(resource: ModuleSourceResource, quality: ModuleResourceQuality): StudyFileReaderState {
   if (resource.extractionStatus === 'metadata_only') return 'metadata_only'
   if (resource.extractionStatus === 'empty' || quality === 'empty') return 'empty'
-  if (resource.extractionStatus === 'failed' || resource.extractionStatus === 'unsupported' || resource.extractionStatus === 'pending') {
+  if (resource.extractionStatus === 'failed' || resource.extractionStatus === 'unsupported' || resource.extractionStatus === 'pending' || resource.extractionStatus === 'processing') {
     return 'failed'
   }
   if (quality === 'weak') return 'weak'

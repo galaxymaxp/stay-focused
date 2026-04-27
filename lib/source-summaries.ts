@@ -786,7 +786,7 @@ async function getAuthenticatedSummaryClient() {
 }
 
 function normalizeExtractionStatus(value: unknown): ModuleResource['extractionStatus'] {
-  return value === 'pending' || value === 'extracted' || value === 'completed' || value === 'metadata_only' || value === 'unsupported' || value === 'empty' || value === 'failed'
+  return value === 'pending' || value === 'processing' || value === 'extracted' || value === 'completed' || value === 'metadata_only' || value === 'unsupported' || value === 'empty' || value === 'failed'
     ? value
     : 'metadata_only'
 }

@@ -17,6 +17,8 @@ export type SourceReadinessState =
   | 'external_link'
   | 'extraction_failed'
   | 'visual_ocr_available'
+  | 'visual_ocr_running'
+  | 'visual_ocr_failed'
   | 'empty_or_metadata_only'
   | 'unknown'
 
@@ -159,6 +161,8 @@ function resolveSourceReadinessState(input: {
     return 'unknown'
   }
   if (input.isReadable) return 'ready'
+  if (input.visualExtractionStatus === 'running' || input.extractionStatus === 'processing') return 'visual_ocr_running'
+  if (input.visualExtractionStatus === 'failed') return 'visual_ocr_failed'
   if (input.hasCompletedExtraction && input.readableTextLength < 120) return 'empty_or_metadata_only'
   if (!input.extractionStatus && input.hasSourceHref && isProcessableSourceType(input.sourceType)) return 'needs_processing'
   if (input.extractionStatus === 'pending') return 'needs_processing'
@@ -222,9 +226,11 @@ function statusLabelForState(state: SourceReadinessState, isPacketTracer: boolea
   if (state === 'canvas_lesson_page') return 'Canvas lesson page'
   if (state === 'external_link') return 'External link'
   if (state === 'extraction_failed') return 'Retry needed'
-  if (state === 'visual_ocr_available') return 'No selectable text'
+  if (state === 'visual_ocr_available') return 'OCR required'
+  if (state === 'visual_ocr_running') return 'Extracting...'
+  if (state === 'visual_ocr_failed') return 'OCR failed'
   if (state === 'empty_or_metadata_only') return 'Little readable text'
-  return 'Needs review'
+  return 'Source needs attention'
 }
 
 function messageForState(state: SourceReadinessState, isPacketTracer: boolean) {
@@ -239,7 +245,9 @@ function messageForState(state: SourceReadinessState, isPacketTracer: boolean) {
   if (state === 'canvas_lesson_page') return 'This looks like a Canvas lesson page. Open it in Canvas or summarize it once page extraction is available.'
   if (state === 'external_link') return 'This source opens outside Canvas. Use the original link for now.'
   if (state === 'extraction_failed') return 'Deep Learn could not read this source. You can retry processing or open the original file.'
-  if (state === 'visual_ocr_available') return 'This PDF appears scanned or image-based. OCR/visual extraction is required before Deep Learn can use it.'
+  if (state === 'visual_ocr_available') return 'Scanned PDF. OCR is required before Deep Learn can use it.'
+  if (state === 'visual_ocr_running') return 'Extracting text from images. This source will become available when OCR completes.'
+  if (state === 'visual_ocr_failed') return 'OCR failed. Open the original file, or retry text extraction.'
   if (state === 'empty_or_metadata_only') return 'The file was processed, but Deep Learn could not find readable text.'
   return 'Deep Learn needs a little more source information before it can use this item well.'
 }
@@ -252,6 +260,8 @@ function actionsForState(state: SourceReadinessState, isSummarizable: boolean): 
   if (state === 'canvas_lesson_page') return ['open_lesson', 'summarize_page']
   if (state === 'extraction_failed') return ['retry_extraction', 'open_source']
   if (state === 'visual_ocr_available') return ['extract_text_from_images', 'open_source']
+  if (state === 'visual_ocr_running') return ['open_source']
+  if (state === 'visual_ocr_failed') return ['extract_text_from_images', 'open_source']
   if (state === 'empty_or_metadata_only') return ['open_source', 'add_notes']
   if (state === 'external_link') return ['open_link']
   return ['open_source']

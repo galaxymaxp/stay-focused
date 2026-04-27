@@ -461,8 +461,8 @@ function SourcePreview({ sourceText, isImageOnly = false }: { sourceText: string
     if (isImageOnly) {
       return (
         <GeneratedContentState
-          title="No selectable text."
-          description="This PDF appears scanned or image-based. OCR/visual extraction is required before text can be read here."
+          title="Scanned PDF."
+          description="OCR is required before text can be read here."
           tone="warning"
         />
       )

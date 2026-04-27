@@ -407,6 +407,7 @@ function normalizeLookup(value: string) {
 
 function normalizeExtractionStatus(value: unknown) {
   return value === 'pending'
+    || value === 'processing'
     || value === 'extracted'
     || value === 'completed'
     || value === 'metadata_only'

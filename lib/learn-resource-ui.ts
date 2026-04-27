@@ -12,13 +12,15 @@ export type LearnResourceStatusKey =
   | 'unsupported'
   | 'no_extract'
   | 'visual_ocr_required'
+  | 'visual_ocr_running'
+  | 'visual_ocr_failed'
   | 'loading'
 
 export type LearnResourceActionPriority = 'reader' | 'source'
 
 export interface LearnResourceUiState {
   statusKey: LearnResourceStatusKey
-  statusLabel: 'Ready' | 'Partial' | 'Source first' | 'Link only' | 'Unsupported' | 'No extract' | 'No selectable text' | 'Loading'
+  statusLabel: 'Ready' | 'Partial' | 'Source first' | 'Link only' | 'Unsupported' | 'No extract' | 'Scanned PDF' | 'OCR required' | 'Extracting...' | 'OCR complete' | 'OCR failed' | 'Loading'
   tone: 'accent' | 'warning' | 'muted'
   primaryAction: LearnResourceActionPriority
   summary: string
@@ -81,16 +83,42 @@ export function getLearnResourceUiState(
     }
   }
 
+  if (resource.extractionStatus === 'processing' || resource.visualExtractionStatus === 'running') {
+    return {
+      statusKey: 'visual_ocr_running',
+      statusLabel: 'Extracting...',
+      tone: 'warning',
+      primaryAction: 'source',
+      summary: 'Extracting text from images.',
+      detail: `${formatPageCount(resource.pageCount)}Deep Learn will use this PDF after OCR finishes. Open the original ${sourceLabel} if you need it right away.`,
+      sourceActionLabel,
+      textAvailabilityLabel,
+    }
+  }
+
   if (resource.visualExtractionStatus === 'completed' && resource.visualExtractedText?.trim()) {
     return {
       statusKey: 'ready',
-      statusLabel: 'Ready',
+      statusLabel: 'OCR complete',
       tone: 'accent',
       primaryAction: 'reader',
       summary: 'Readable text was recovered from the image-based PDF.',
       detail: 'Use Deep Learn for the main study pass. Open the original source when exact page layout matters.',
       sourceActionLabel,
       textAvailabilityLabel: 'Full text available',
+    }
+  }
+
+  if (resource.visualExtractionStatus === 'failed') {
+    return {
+      statusKey: 'visual_ocr_failed',
+      statusLabel: 'OCR failed',
+      tone: 'warning',
+      primaryAction: 'source',
+      summary: 'OCR failed. Open the original file.',
+      detail: resource.visualExtractionError?.trim() || resource.extractionError?.trim() || `Open the original ${sourceLabel}; Stay Focused will not invent text for this scanned PDF.`,
+      sourceActionLabel,
+      textAvailabilityLabel,
     }
   }
 
@@ -125,11 +153,11 @@ export function getLearnResourceUiState(
     if (likelyScanned || resource.visualExtractionStatus === 'available') {
       return {
         statusKey: 'visual_ocr_required',
-        statusLabel: 'No selectable text',
+        statusLabel: 'OCR required',
         tone: 'warning',
         primaryAction: 'source',
-        summary: 'This PDF appears scanned or image-based. OCR/visual extraction is required before Deep Learn can use it.',
-        detail: `${formatPageCount(resource.pageCount)}Open the original ${sourceLabel} for now. Coming next: OCR for scanned PDFs.`,
+        summary: 'Scanned PDF. OCR is required before Deep Learn can use it.',
+        detail: `${formatPageCount(resource.pageCount)}Use Extract text from images to recover visible text, or open the original ${sourceLabel}.`,
         sourceActionLabel,
         textAvailabilityLabel,
       }

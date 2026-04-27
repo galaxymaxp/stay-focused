@@ -615,20 +615,20 @@ function mapNormalizedToModuleResourceStatus(content: NormalizedCanvasContent): 
 }
 
 function mapLowLevelExtractionStatus(
-  extractionStatus: 'pending' | 'extracted' | 'completed' | 'metadata_only' | 'unsupported' | 'empty' | 'failed',
+  extractionStatus: 'pending' | 'processing' | 'extracted' | 'completed' | 'metadata_only' | 'unsupported' | 'empty' | 'failed',
 ): NormalizedCanvasContentExtractionStatus {
   if (extractionStatus === 'extracted' || extractionStatus === 'completed') return 'success'
   if (extractionStatus === 'unsupported') return 'unsupported'
   if (extractionStatus === 'failed') return 'failed'
-  if (extractionStatus === 'pending' || extractionStatus === 'metadata_only') return 'partial'
+  if (extractionStatus === 'pending' || extractionStatus === 'processing' || extractionStatus === 'metadata_only') return 'partial'
   return 'no_text'
 }
 
 function resolveLowLevelFallbackState(
-  extractionStatus: 'pending' | 'extracted' | 'completed' | 'metadata_only' | 'unsupported' | 'empty' | 'failed',
+  extractionStatus: 'pending' | 'processing' | 'extracted' | 'completed' | 'metadata_only' | 'unsupported' | 'empty' | 'failed',
   context: 'file' | 'attachment',
 ): CanvasContentFallbackState {
-  if (extractionStatus === 'pending') return 'loading'
+  if (extractionStatus === 'pending' || extractionStatus === 'processing') return 'loading'
   if (extractionStatus === 'unsupported') return 'unsupported_file_type'
   if (extractionStatus === 'failed') return 'extraction_failed'
   if (extractionStatus === 'empty') return context === 'file' || context === 'attachment'

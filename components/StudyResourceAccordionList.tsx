@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
 import { DeepLearnGenerateButton } from '@/components/DeepLearnGenerateButton'
+import { OcrSourceButton } from '@/components/OcrSourceButton'
 import { SourceReadinessFilters, type SourceReadinessFilter } from '@/components/SourceReadinessFilters'
 import { SourceSummaryBadge, type SourceSummaryBadgeModel } from '@/components/SourceSummaryBadge'
 import { getResourceElementId } from '@/lib/stay-focused-links'
@@ -312,14 +313,7 @@ export function StudyResourceAccordionList({
                       <ProcessSourceButton item={item} />
                     ) : null}
                     {item.sourceReadinessActions.includes('extract_text_from_images') && (
-                      <span style={{ display: 'inline-flex', flexDirection: 'column', gap: '0.25rem' }}>
-                        <button type="button" className="ui-button ui-button-secondary ui-button-xs" disabled title="Coming next: OCR for scanned PDFs.">
-                          Extract text from images
-                        </button>
-                        <span style={{ fontSize: '11px', lineHeight: 1.35, color: 'var(--text-muted)' }}>
-                          Coming next: OCR for scanned PDFs.
-                        </span>
-                      </span>
+                      <OcrSourceButton moduleId={item.moduleId} resourceId={item.canonicalResourceId ?? item.id} />
                     )}
                     {item.sourceReadinessActions.includes('add_notes') && (
                       <Link href={item.readerHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>

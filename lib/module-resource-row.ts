@@ -33,6 +33,7 @@ export function adaptModuleResourceRow(row: Record<string, unknown>): ModuleReso
 
 function normalizeExtractionStatus(value: unknown): ModuleResource['extractionStatus'] {
   return value === 'pending'
+    || value === 'processing'
     || value === 'extracted'
     || value === 'completed'
     || value === 'metadata_only'

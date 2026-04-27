@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { DeepLearnGenerateButton } from '@/components/DeepLearnGenerateButton'
 import { DeepLearnWorkspace } from '@/components/DeepLearnWorkspace'
+import { OcrSourceButton } from '@/components/OcrSourceButton'
 import { WorkspacePanel } from '@/components/ui/WorkspacePanel'
 import type { DeepLearnResourceReadiness } from '@/lib/deep-learn-readiness'
 import { getDeepLearnResourceUiState } from '@/lib/deep-learn-ui'
@@ -80,14 +81,7 @@ export function DeepLearnNoteView({
             />
           ) : null}
           {visualExtractionAvailable && (
-            <span style={{ display: 'inline-flex', flexDirection: 'column', gap: '0.25rem' }}>
-              <button type="button" className="ui-button ui-button-secondary ui-button-xs" disabled title="Coming next: OCR for scanned PDFs.">
-                Extract text from images
-              </button>
-              <span style={{ fontSize: '11px', lineHeight: 1.35, color: 'var(--text-muted)' }}>
-                Coming next: OCR for scanned PDFs.
-              </span>
-            </span>
+            <OcrSourceButton moduleId={moduleId} resourceId={resolvedDeepLearnResourceId} />
           )}
           {note?.status === 'ready' && note.quizReady && (
             <Link href={quizHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
