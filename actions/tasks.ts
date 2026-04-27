@@ -1,7 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { supabase } from '@/lib/supabase'
+import { createAuthenticatedSupabaseServerClient } from '@/lib/auth-server'
 import type { Task, TaskPlanningAnnotation } from '@/lib/types'
 
 type TaskCompletionInput = {
@@ -20,10 +20,57 @@ type TaskPlanningInput = {
   legacyTaskId?: string | null
 }
 
-export async function updateTaskStatus(taskId: string, status: 'pending' | 'completed') {
-  if (!supabase) throw new Error('Supabase is not configured.')
+type TaskActionTable = 'tasks' | 'task_items'
 
-  const { error } = await supabase
+function logTaskActionError(table: TaskActionTable, action: string, error: unknown) {
+  const details = error && typeof error === 'object'
+    ? {
+        code: 'code' in error ? String((error as { code?: unknown }).code ?? '') || null : null,
+        message: 'message' in error ? String((error as { message?: unknown }).message ?? '') || null : null,
+      }
+    : {
+        code: null,
+        message: error instanceof Error ? error.message : String(error),
+      }
+
+  console.error('[Task action failed]', {
+    table,
+    action,
+    code: details.code,
+    message: details.message,
+  })
+}
+
+async function getTaskActionContext() {
+  const client = await createAuthenticatedSupabaseServerClient()
+  if (!client) throw new Error('Supabase is not configured.')
+
+  const {
+    data: { user },
+    error,
+  } = await client.auth.getUser()
+
+  if (error) {
+    logTaskActionError('tasks', 'authenticate_user', error)
+    throw new Error('Failed to verify the signed-in user.')
+  }
+
+  if (!user?.id) {
+    throw new Error('You need to sign in before updating tasks.')
+  }
+
+  return { client, user }
+}
+
+function throwLoggedTaskError(table: TaskActionTable, action: string, error: unknown, message: string): never {
+  logTaskActionError(table, action, error)
+  throw new Error(message)
+}
+
+export async function updateTaskStatus(taskId: string, status: 'pending' | 'completed') {
+  const { client, user } = await getTaskActionContext()
+
+  const { error } = await client
     .from('tasks')
     .update({
       status,
@@ -31,20 +78,21 @@ export async function updateTaskStatus(taskId: string, status: 'pending' | 'comp
       planning_annotation: status === 'completed' ? null : undefined,
     })
     .eq('id', taskId)
+    .eq('user_id', user.id)
 
-  if (error) throw new Error('Failed to update task status.')
+  if (error) throwLoggedTaskError('tasks', 'update_task_status', error, 'Failed to update task status.')
 
   revalidatePath('/')
 }
 
 export async function updateTaskCompletion(input: TaskCompletionInput) {
-  if (!supabase) throw new Error('Supabase is not configured.')
+  const { client, user } = await getTaskActionContext()
 
   const updates: PromiseLike<unknown>[] = []
 
   if (input.taskItemId) {
     updates.push(
-      supabase
+      client
         .from('task_items')
         .update({
           status: input.status,
@@ -52,13 +100,14 @@ export async function updateTaskCompletion(input: TaskCompletionInput) {
           planning_annotation: input.status === 'completed' ? null : undefined,
         })
         .eq('id', input.taskItemId)
+        .eq('user_id', user.id)
         .then(({ error }) => {
-          if (error) throw new Error('Failed to update task item status.')
+          if (error) throwLoggedTaskError('task_items', 'update_task_item_status', error, 'Failed to update task item status.')
         })
     )
   } else {
     updates.push(
-      supabase
+      client
         .from('task_items')
         .update({
           status: input.status,
@@ -67,15 +116,16 @@ export async function updateTaskCompletion(input: TaskCompletionInput) {
         })
         .eq('module_id', input.moduleId)
         .eq('title', input.title)
+        .eq('user_id', user.id)
         .then(({ error }) => {
-          if (error) throw new Error('Failed to sync task item status.')
+          if (error) throwLoggedTaskError('task_items', 'sync_task_item_status', error, 'Failed to sync task item status.')
         })
     )
   }
 
   if (input.legacyTaskId) {
     updates.push(
-      supabase
+      client
         .from('tasks')
         .update({
           status: input.status,
@@ -83,13 +133,14 @@ export async function updateTaskCompletion(input: TaskCompletionInput) {
           planning_annotation: input.status === 'completed' ? null : undefined,
         })
         .eq('id', input.legacyTaskId)
+        .eq('user_id', user.id)
         .then(({ error }) => {
-          if (error) throw new Error('Failed to update module task status.')
+          if (error) throwLoggedTaskError('tasks', 'update_legacy_task_status', error, 'Failed to update module task status.')
         })
     )
   } else {
     updates.push(
-      supabase
+      client
         .from('tasks')
         .update({
           status: input.status,
@@ -98,8 +149,9 @@ export async function updateTaskCompletion(input: TaskCompletionInput) {
         })
         .eq('module_id', input.moduleId)
         .eq('title', input.title)
+        .eq('user_id', user.id)
         .then(({ error }) => {
-          if (error) throw new Error('Failed to sync module task status.')
+          if (error) throwLoggedTaskError('tasks', 'sync_legacy_task_status', error, 'Failed to sync module task status.')
         })
     )
   }
@@ -117,71 +169,76 @@ export async function updateTaskCompletion(input: TaskCompletionInput) {
 }
 
 export async function updateTaskPlanningAnnotation(input: TaskPlanningInput) {
-  if (!supabase) throw new Error('Supabase is not configured.')
+  const { client, user } = await getTaskActionContext()
 
   const value = input.annotation === 'none' ? null : input.annotation
 
   if (input.annotation === 'best_next_step') {
     const [taskItemsReset, tasksReset] = await Promise.all([
-      supabase
+      client
         .from('task_items')
         .update({ planning_annotation: null })
-        .eq('planning_annotation', 'best_next_step'),
-      supabase
+        .eq('planning_annotation', 'best_next_step')
+        .eq('user_id', user.id),
+      client
         .from('tasks')
         .update({ planning_annotation: null })
-        .eq('planning_annotation', 'best_next_step'),
+        .eq('planning_annotation', 'best_next_step')
+        .eq('user_id', user.id),
     ])
 
-    if (taskItemsReset.error || tasksReset.error) {
-      throw new Error('Failed to reset the existing best next step.')
-    }
+    if (taskItemsReset.error) throwLoggedTaskError('task_items', 'reset_best_next_step', taskItemsReset.error, 'Failed to reset the existing best next step.')
+    if (tasksReset.error) throwLoggedTaskError('tasks', 'reset_best_next_step', tasksReset.error, 'Failed to reset the existing best next step.')
   }
 
   const updates: PromiseLike<unknown>[] = []
 
   if (input.taskItemId) {
     updates.push(
-      supabase
+      client
         .from('task_items')
         .update({ planning_annotation: value })
         .eq('id', input.taskItemId)
+        .eq('user_id', user.id)
         .then(({ error }) => {
-          if (error) throw new Error('Failed to update task item planning state.')
+          if (error) throwLoggedTaskError('task_items', 'update_task_item_planning_state', error, 'Failed to update task item planning state.')
         })
     )
   } else {
     updates.push(
-      supabase
+      client
         .from('task_items')
         .update({ planning_annotation: value })
         .eq('module_id', input.moduleId)
         .eq('title', input.title)
+        .eq('user_id', user.id)
         .then(({ error }) => {
-          if (error) throw new Error('Failed to sync task item planning state.')
+          if (error) throwLoggedTaskError('task_items', 'sync_task_item_planning_state', error, 'Failed to sync task item planning state.')
         })
     )
   }
 
   if (input.legacyTaskId) {
     updates.push(
-      supabase
+      client
         .from('tasks')
         .update({ planning_annotation: value })
         .eq('id', input.legacyTaskId)
+        .eq('user_id', user.id)
         .then(({ error }) => {
-          if (error) throw new Error('Failed to update task planning state.')
+          if (error) throwLoggedTaskError('tasks', 'update_legacy_task_planning_state', error, 'Failed to update task planning state.')
         })
     )
   } else {
     updates.push(
-      supabase
+      client
         .from('tasks')
         .update({ planning_annotation: value })
         .eq('module_id', input.moduleId)
         .eq('title', input.title)
+        .eq('user_id', user.id)
         .then(({ error }) => {
-          if (error) throw new Error('Failed to sync task planning state.')
+          if (error) throwLoggedTaskError('tasks', 'sync_legacy_task_planning_state', error, 'Failed to sync task planning state.')
         })
     )
   }
@@ -199,13 +256,14 @@ export async function updateTaskPlanningAnnotation(input: TaskPlanningInput) {
 }
 
 export async function getAllTasks(): Promise<Task[]> {
-  if (!supabase) return []
+  const { client, user } = await getTaskActionContext()
 
-  const { data, error } = await supabase
+  const { data, error } = await client
     .from('tasks')
     .select('*')
+    .eq('user_id', user.id)
     .order('deadline', { ascending: true, nullsFirst: false })
 
-  if (error) throw new Error('Failed to fetch tasks.')
+  if (error) throwLoggedTaskError('tasks', 'get_all_tasks', error, 'Failed to fetch tasks.')
   return data ?? []
 }
