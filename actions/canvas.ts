@@ -76,6 +76,20 @@ interface SyncCourseResult {
   courseName: string
 }
 
+type CanvasSyncProgressStep =
+  | 'connecting'
+  | 'reading'
+  | 'importing'
+  | 'organizing'
+  | 'saving'
+  | 'extracting'
+  | 'finalizing'
+
+type CanvasSyncProgressCallback = (update: {
+  step: CanvasSyncProgressStep
+  message?: string
+}) => void | Promise<void>
+
 interface ExistingModuleMatch {
   id: string
   title?: string | null
@@ -218,6 +232,7 @@ export async function syncCanvasCourse(input: {
   course: SyncCourseInput
   canvasUrl: string
   accessToken: string
+  onProgress?: CanvasSyncProgressCallback
 }): Promise<{ success: true; courseName: string; moduleId: string } | { error: string }> {
   const syncSupabase = await createAuthenticatedSupabaseServerClient()
   if (!syncSupabase) {
@@ -228,6 +243,7 @@ export async function syncCanvasCourse(input: {
 
   let config: CanvasConfig
   try {
+    await input.onProgress?.({ step: 'connecting', message: 'Connecting to Canvas' })
     config = getRequiredCanvasConfig(input.canvasUrl, input.accessToken)
   } catch (error) {
     return { error: formatCanvasActionError(error, 'We could not connect to Canvas.') }
@@ -240,7 +256,7 @@ export async function syncCanvasCourse(input: {
       course_code: input.course.courseCode,
       enrollment_state: 'active',
       teachers: input.course.instructor ? [{ display_name: input.course.instructor }] : undefined,
-    }, config, user.id, syncSupabase)
+    }, config, user.id, syncSupabase, input.onProgress)
 
     revalidateCanvasSyncPaths(result.moduleId)
 
@@ -342,6 +358,7 @@ async function syncSingleCourse(
   config: Partial<CanvasConfig>,
   userId: string,
   syncSupabase: CanvasSyncSupabaseClient,
+  onProgress?: CanvasSyncProgressCallback,
 ): Promise<SyncCourseResult> {
   const resolvedConfig = await resolveCanvasConfigFromUser(config)
   const normalizedCourse = normalizeCanvasCourseForSync(course, resolvedConfig.url)
@@ -358,6 +375,7 @@ async function syncSingleCourse(
       : course.term,
   }
 
+  await onProgress?.({ step: 'reading', message: 'Reading selected courses' })
   const [assignments, announcements, modules] = await Promise.all([
     getAssignments(course.id, resolvedConfig),
     getAnnouncements(course.id, resolvedConfig),
@@ -368,8 +386,10 @@ async function syncSingleCourse(
     throw new Error(`Canvas did not return any assignments, announcements, or module content for ${databaseSafeCourse.name} yet.`)
   }
 
+  await onProgress?.({ step: 'importing', message: 'Importing module content' })
   const resourceIngestion = await ingestModuleResources(course.id, modules, resolvedConfig, assignments)
   const taskCanvasLinks = buildTaskCanvasLinks(assignments, resourceIngestion)
+  await onProgress?.({ step: 'organizing', message: 'Organizing data' })
   const rawContent = stripDatabaseNullCharacters(compileCanvasContent(
     databaseSafeCourse,
     assignments,
@@ -399,6 +419,7 @@ async function syncSingleCourse(
     })
   }
 
+  await onProgress?.({ step: 'saving', message: 'Saving to Stay Focused' })
   if (process.env.NODE_ENV !== 'production') {
     const { data: authCheck, error: authCheckError } = await syncSupabase.auth.getUser()
 
@@ -456,6 +477,7 @@ async function syncSingleCourse(
 
   let aiResult
   try {
+    await onProgress?.({ step: 'extracting', message: 'Extracting tasks/resources' })
     aiResult = await processModuleContent(rawContent)
   } catch (err) {
     const { error: markError } = await syncSupabase.from('modules').update({ status: 'error' }).eq('id', moduleId)
@@ -518,6 +540,7 @@ async function syncSingleCourse(
     userId,
   })
 
+  await onProgress?.({ step: 'finalizing', message: 'Finalizing sync' })
   if (clarityTaskItems.length > 0) {
     const { error: taskItemsError } = await syncSupabase
       .from('task_items')

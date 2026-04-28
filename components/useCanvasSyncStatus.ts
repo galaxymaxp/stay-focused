@@ -32,9 +32,9 @@ const PHASE_SEQUENCE: Array<{ delay: number; phase: Extract<CanvasSyncPhase, 'co
 ]
 
 export const SAVING_SUB_STEPS: Array<{ label: string; progressValue: number; delay: number }> = [
-  { label: 'Saving courses to database',  progressValue: 0.70, delay: 0    },
-  { label: 'Saving modules to database',  progressValue: 0.80, delay: 4000 },
-  { label: 'Extracting tasks with AI',    progressValue: 0.90, delay: 12000 },
+  { label: 'Saving to Stay Focused',      progressValue: 0.70, delay: 0    },
+  { label: 'Organizing synced resources', progressValue: 0.80, delay: 4000 },
+  { label: 'Extracting tasks/resources',  progressValue: 0.90, delay: 12000 },
   { label: 'Finalizing sync',             progressValue: 0.97, delay: 40000 },
 ]
 

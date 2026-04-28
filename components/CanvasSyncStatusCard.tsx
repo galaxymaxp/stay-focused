@@ -88,11 +88,7 @@ export function CanvasSyncStatusCard({
           </div>
           <div style={{ minWidth: 0 }}>
             <p style={titleStyle}>{isSyncing ? syncingTitle : title}</p>
-            <p style={detailStyle}>
-              {isSyncing
-                ? 'Importing content from Canvas into Stay Focused'
-                : detail}
-            </p>
+            <p style={detailStyle}>{detail}</p>
           </div>
         </div>
         <span style={phaseChipStyle(phase)}>
