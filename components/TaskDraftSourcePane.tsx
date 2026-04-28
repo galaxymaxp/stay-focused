@@ -77,7 +77,7 @@ export function TaskDraftSourcePane({
       ) : (
         <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.9rem 0.95rem' }}>
           <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.62, color: 'var(--text-secondary)' }}>
-            No extracted source text was surfaced for this task yet. Open the original task or course view if you need the live source page.
+            No readable source text is available yet. Open Learn to prepare the source.
           </p>
         </div>
       )}

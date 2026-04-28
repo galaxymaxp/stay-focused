@@ -38,7 +38,7 @@ export function TaskDraftButton({
   const [, setCacheVersion] = useState(0)
   const sessionKey = getTaskDraftSessionKey(context)
   const initialSnapshot = draftSessionCache.get(sessionKey) ?? null
-  const buttonLabel = initialSnapshot ? 'Open saved output' : 'Generate first output'
+  const buttonLabel = initialSnapshot ? 'Open saved output' : 'Open task'
 
   const openFromDefault = useEffectEvent(() => {
     setOpen(true)

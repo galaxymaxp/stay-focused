@@ -9,6 +9,8 @@ import { sortTasksByRecommendation } from '@/lib/task-ranking'
 import { TaskDraftButton } from '@/components/DoNowButton'
 import { buildTaskDraftContextText } from '@/lib/do-now'
 import { buildManualCopyBundle } from '@/lib/manual-copy-bundle'
+import { getAuthenticatedUserServer } from '@/lib/auth-server'
+import { getUserQueuedJobs, type QueuedJob } from '@/lib/queue'
 
 interface Props {
   params: Promise<{ id: string }>
@@ -21,6 +23,7 @@ export default async function DoPage({ params, searchParams }: Props) {
   const workspace = await getModuleWorkspace(id)
   if (!workspace) notFound()
   const { drafts } = await listDraftsForShelves()
+  const user = await getAuthenticatedUserServer()
 
   const { module, tasks, deadlines, resources: storedResources } = workspace
   const moduleDrafts = drafts.filter((draft) => draft.sourceModuleId === module.id)
@@ -34,6 +37,7 @@ export default async function DoPage({ params, searchParams }: Props) {
     resources: storedResources,
   })
   const suggestedSteps = findRecommendedStepTargets(module, learnExperience, tasks)
+  const taskOutputJobs = user ? await getUserQueuedJobs(user.id, { type: ['task_output', 'do_generation'], limit: 50 }) : []
   const targetTaskId = getSearchParamValue(resolvedSearchParams?.task)
   const targetTaskTitle = getSearchParamValue(resolvedSearchParams?.taskTitle)
   const targetResourceId = getSearchParamValue(resolvedSearchParams?.resource)
@@ -174,6 +178,7 @@ export default async function DoPage({ params, searchParams }: Props) {
                     taskDetails: task.details,
                     resource: matchedResource,
                   })
+                  const taskOutputJob = findLatestTaskOutputJob(taskOutputJobs, task.id)
 
                   return (
                     <article key={task.id} id={getTaskElementId(task.id)} className="glass-panel" style={{
@@ -227,6 +232,7 @@ export default async function DoPage({ params, searchParams }: Props) {
                       />
 
                       <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+                        {taskOutputJob && <TaskOutputQueuePill job={taskOutputJob} />}
                         <TaskDraftButton
                           defaultOpen={draftAutoOpen && highlightedTaskId === task.id}
                           copyBundle={manualCopy}
@@ -322,6 +328,7 @@ export default async function DoPage({ params, searchParams }: Props) {
                     const sourcePreview = matchedResource?.extractedText
                       ?? matchedResource?.extractedTextPreview
                       ?? null
+                    const taskOutputJob = findLatestTaskOutputJob(taskOutputJobs, task.id)
 
                     return (
                       <div
@@ -349,6 +356,7 @@ export default async function DoPage({ params, searchParams }: Props) {
                           sourceHref={sourceHref}
                         />
                         <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+                          {taskOutputJob && <TaskOutputQueuePill job={taskOutputJob} />}
                           <TaskDraftButton
                             defaultOpen={draftAutoOpen && highlightedTaskId === task.id}
                             copyBundle={manualCopy}
@@ -408,9 +416,74 @@ export default async function DoPage({ params, searchParams }: Props) {
                         </span>
                       </div>
                       <div>
-                        <Link href={step.href} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-                          {step.actionLabel}
-                        </Link>
+                        {step.type === 'task' ? (
+                          (() => {
+                            const task = allTasks.find((candidate) => candidate.id === step.id || candidate.title === step.label)
+                            if (!task) {
+                              return (
+                                <Link href={step.href} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+                                  Open task
+                                </Link>
+                              )
+                            }
+                            const matchedResource = matchTaskToResource(task.title, learnExperience.resources)
+                            const learnHref = buildModuleLearnHref(module.id, matchedResource
+                              ? { resourceId: matchedResource.id, panel: 'study-notes' }
+                              : { taskId: task.id, panel: 'action-status' })
+                            const canvasHref = task.canvasUrl ?? (matchedResource ? getResourceCanvasHref(matchedResource) : null)
+                            const sourceHref = matchedResource
+                              ? getResourceOriginalFileHref(matchedResource) ?? canvasHref
+                              : canvasHref
+                            const resourceSnippet = buildTaskDraftContextText(
+                              matchedResource?.extractedText
+                                ?? matchedResource?.extractedTextPreview
+                                ?? matchedResource?.linkedContext
+                                ?? matchedResource?.whyItMatters
+                                ?? null,
+                              1800,
+                            )
+                            const manualCopy = buildManualCopyBundle({
+                              taskTitle: task.title,
+                              courseName,
+                              moduleName: module.title,
+                              dueDate: task.deadline,
+                              taskDetails: task.details,
+                              resource: matchedResource,
+                            })
+
+                            return (
+                              <TaskDraftButton
+                                copyBundle={manualCopy}
+                                context={{
+                                  taskId: task.id,
+                                  moduleId: module.id,
+                                  courseId: module.courseId,
+                                  taskTitle: task.title,
+                                  taskDetails: task.details,
+                                  deadline: task.deadline,
+                                  priority: task.priority,
+                                  courseName,
+                                  moduleTitle: module.title,
+                                  studyPrompts: module.study_prompts,
+                                  concepts: module.concepts,
+                                  moduleSummary: module.summary,
+                                  resourceSnippet,
+                                  canvasUrl: task.canvasUrl,
+                                  learnHref,
+                                  sourceTitle: matchedResource?.title ?? task.title,
+                                  sourceType: matchedResource?.type ?? 'Task',
+                                  sourceHref,
+                                  sourceText: matchedResource?.extractedText ?? matchedResource?.extractedTextPreview ?? task.details ?? module.summary ?? null,
+                                  sourceNote: matchedResource?.linkedContext ?? matchedResource?.whyItMatters ?? task.details,
+                                }}
+                              />
+                            )
+                          })()
+                        ) : (
+                          <Link href={step.href} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+                            {step.actionLabel}
+                          </Link>
+                        )}
                       </div>
                     </div>
                   </li>
@@ -571,6 +644,41 @@ function suggestedOrderTypeLabel(type: 'task' | 'learn' | 'review' | 'quiz' | 'm
   if (type === 'quiz') return 'Quiz'
   if (type === 'announcement') return 'Announcement'
   return 'Module'
+}
+
+function findLatestTaskOutputJob(jobs: QueuedJob[], taskId: string) {
+  return jobs.find((job) => job.payload?.taskId === taskId || job.result?.taskId === taskId) ?? null
+}
+
+function TaskOutputQueuePill({ job }: { job: QueuedJob }) {
+  const isActive = job.status === 'pending' || job.status === 'running'
+  const label = isActive
+    ? job.status === 'pending'
+      ? 'Added to queue'
+      : `Generating ${Math.max(0, Math.min(job.progress, 100))}%`
+    : job.status === 'completed'
+      ? 'Output ready'
+      : job.status === 'failed'
+        ? 'Output failed'
+        : null
+  if (!label) return null
+
+  return (
+    <span className="ui-chip" style={{
+      padding: '0.25rem 0.55rem',
+      fontSize: '11px',
+      fontWeight: 700,
+      background: job.status === 'failed'
+        ? 'color-mix(in srgb, var(--red-light) 34%, var(--surface-soft) 66%)'
+        : job.status === 'completed'
+          ? 'color-mix(in srgb, var(--green-light) 34%, var(--surface-soft) 66%)'
+          : 'color-mix(in srgb, var(--accent-light) 44%, var(--surface-soft) 56%)',
+      color: job.status === 'failed' ? 'var(--red)' : 'var(--text-primary)',
+      border: '1px solid var(--border-subtle)',
+    }}>
+      {label}
+    </span>
+  )
 }
 
 function suggestedOrderTypeChipStyle(type: 'task' | 'learn' | 'review' | 'quiz' | 'module' | 'announcement') {
