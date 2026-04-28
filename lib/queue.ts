@@ -11,6 +11,7 @@ export type QueuedJobStatus = 'pending' | 'running' | 'completed' | 'failed' | '
 export type QueuedJobType =
   | 'canvas_sync'
   | 'learn_generation'
+  | 'task_output'
   | 'do_generation'
   | 'resource_extraction'
   | 'notification_scan'

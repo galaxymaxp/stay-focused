@@ -237,7 +237,7 @@ export function StudyResourceAccordionList({
                     canSummarize={item.isSummarizable}
                   />
 
-                  {item.sourceReadinessBucket === 'ready' && item.deepLearnStatus !== 'ready' && (
+                  {item.sourceReadinessBucket === 'ready' && item.deepLearnStatus !== 'ready' && item.deepLearnStatus !== 'pending' && (
                     <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.78rem 0.82rem', display: 'grid', gap: '0.35rem' }}>
                       <p className="ui-kicker" style={{ margin: 0 }}>Ready for Deep Learn</p>
                       <p style={{ margin: 0, fontSize: '12px', lineHeight: 1.58, color: 'var(--text-secondary)' }}>
@@ -246,20 +246,36 @@ export function StudyResourceAccordionList({
                     </div>
                   )}
 
+                  {item.deepLearnStatus === 'pending' && (
+                    <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.78rem 0.82rem', display: 'grid', gap: '0.35rem' }}>
+                      <p className="ui-kicker" style={{ margin: 0 }}>Generating study pack...</p>
+                      <p style={{ margin: 0, fontSize: '12px', lineHeight: 1.58, color: 'var(--text-secondary)' }}>
+                        {item.deepLearnSummary || 'Added to queue.'}
+                      </p>
+                    </div>
+                  )}
+
                   {item.deepLearnNoteFailure && (
                     <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.9rem 0.95rem' }}>
-                      <p className="ui-kicker" style={{ margin: 0 }}>Pack error</p>
+                      <p className="ui-kicker" style={{ margin: 0 }}>Study pack failed</p>
                       <p style={{ margin: '0.38rem 0 0', fontSize: '12px', lineHeight: 1.6, color: 'var(--red)' }}>
-                        Couldn&apos;t generate this yet. Try again, or open the source and check that it has readable content.
+                        {item.deepLearnNoteFailure}
+                      </p>
+                      <p style={{ margin: '0.35rem 0 0', fontSize: '12px', lineHeight: 1.55, color: 'var(--text-muted)' }}>
+                        Add more readable source text, prepare OCR if it is scanned, or retry after checking the source.
                       </p>
                     </div>
                   )}
 
                   {/* Primary actions */}
                   <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-                    {shouldShowDeepLearnWorkspaceAction(item) ? (
+                    {item.deepLearnStatus === 'pending' ? (
+                      <button type="button" disabled className="ui-button ui-button-secondary ui-button-xs" style={{ opacity: 0.7 }}>
+                        {item.deepLearnPrimaryLabel ?? 'Generating study pack...'}
+                      </button>
+                    ) : shouldShowDeepLearnWorkspaceAction(item) ? (
                       <Link href={item.deepLearnNoteHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
-                        Open workspace
+                        {item.deepLearnStatus === 'ready' ? 'Open study pack' : 'Open workspace'}
                       </Link>
                     ) : shouldShowPrepareScannedPdfAction(item) ? (
                       <OcrSourceButton
@@ -465,7 +481,7 @@ function ProcessSourceButton({ item }: { item: StudyResourceAccordionItem }) {
 }
 
 function shouldShowDeepLearnWorkspaceAction(item: StudyResourceAccordionItem) {
-  return item.deepLearnStatus === 'ready' || item.deepLearnStatus === 'pending'
+  return item.deepLearnStatus === 'ready'
 }
 
 function shouldShowPrepareScannedPdfAction(item: StudyResourceAccordionItem) {

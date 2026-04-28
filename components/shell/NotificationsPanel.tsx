@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { Bell, X, Check, CheckCheck, Info, AlertTriangle, AlertCircle, CheckCircle } from 'lucide-react'
 import { cn } from '@/lib/cn'
+import { dispatchInAppToast, showBrowserNotification } from '@/lib/notifications'
 import type { UserNotification, NotificationSeverity } from '@/lib/notifications-server'
 
 function SeverityIcon({ severity }: { severity: NotificationSeverity }) {
@@ -27,13 +28,29 @@ export function NotificationsPanel() {
   const [notifications, setNotifications] = useState<UserNotification[]>([])
   const ref = useRef<HTMLDivElement>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const seenNotificationIdsRef = useRef<Set<string> | null>(null)
 
   const fetchNotifications = useCallback(async () => {
     try {
       const res = await fetch('/api/notifications', { cache: 'no-store' })
       if (!res.ok) return
       const data = await res.json() as { notifications: UserNotification[] }
-      setNotifications(data.notifications ?? [])
+      const nextNotifications = data.notifications ?? []
+      const seen = seenNotificationIdsRef.current
+      if (seen) {
+        for (const notification of nextNotifications) {
+          if (seen.has(notification.id) || notification.readAt) continue
+          dispatchInAppToast({
+            title: notification.title,
+            description: notification.body ?? 'Open Updates for details.',
+            tone: notification.severity === 'error' ? 'error' : notification.severity === 'success' ? 'success' : 'info',
+            tag: notification.id,
+          })
+          showBrowserNotification(notification.title, notification.body ?? 'Open Stay Focused for details.', notification.id)
+        }
+      }
+      seenNotificationIdsRef.current = new Set(nextNotifications.map((notification) => notification.id))
+      setNotifications(nextNotifications)
     } catch {
       // silent
     }

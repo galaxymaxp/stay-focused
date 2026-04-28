@@ -427,6 +427,9 @@ function formatQueueTitle(job: QueuedJob) {
   if (job.type === 'learn_generation') {
     return `Generating study pack: ${getJobSourceName(job)}`
   }
+  if (job.type === 'task_output' || job.type === 'do_generation') {
+    return `Generating task output: ${getJobSourceName(job)}`
+  }
   if (job.type === 'canvas_sync') {
     const count = getNumber(job.payload, 'courseCount') ?? 1
     return `Syncing Canvas: ${count} course${count === 1 ? '' : 's'}`
@@ -444,6 +447,9 @@ function getJobSourceName(job: QueuedJob) {
 
   return getString(job.result, 'resourceTitle')
     ?? getString(job.payload, 'resourceTitle')
+    ?? getString(job.result, 'taskTitle')
+    ?? getString(job.payload, 'taskTitle')
+    ?? getTaskContextTitle(job)
     ?? stripKnownPrefix(cleanJobTitle(job.title))
     ?? 'Study source'
 }
@@ -469,6 +475,13 @@ function getStringArray(source: Record<string, unknown> | null, key: string) {
   return strings.length > 0 ? strings : null
 }
 
+function getTaskContextTitle(job: QueuedJob) {
+  const context = job.payload?.context
+  if (!context || typeof context !== 'object' || Array.isArray(context)) return null
+  const title = (context as Record<string, unknown>).taskTitle
+  return typeof title === 'string' && title.trim() ? title.trim() : null
+}
+
 function cleanJobTitle(title: string) {
   return title.replace(/^Deep Learn:\s*/i, 'Generating study pack: ').trim()
 }
@@ -476,6 +489,7 @@ function cleanJobTitle(title: string) {
 function stripKnownPrefix(title: string) {
   const stripped = title
     .replace(/^Generating study pack:\s*/i, '')
+    .replace(/^Generating task output:\s*/i, '')
     .replace(/^Deep Learn:\s*/i, '')
     .replace(/^Do Now:\s*/i, '')
     .trim()
@@ -494,6 +508,12 @@ function getActiveStatus(job: QueuedJob, progress: number) {
     if (progress < 96) return 'Extracting tasks/resources'
     return 'Finalizing sync'
   }
+  if (job.type === 'task_output' || job.type === 'do_generation') {
+    if (progress < 30) return 'Reading task details'
+    if (progress < 80) return 'Drafting the first output'
+    if (progress < 100) return 'Saving the task output'
+    return 'Finishing up'
+  }
   if (progress < 30) return 'Reading the source'
   if (progress < 75) return 'Building notes, key terms, and questions'
   if (progress < 100) return 'Saving the study pack'
@@ -503,12 +523,14 @@ function getActiveStatus(job: QueuedJob, progress: number) {
 function getCompletedTitle(job: QueuedJob) {
   if (job.type === 'canvas_sync') return 'Canvas sync complete'
   if (job.type === 'learn_generation') return 'Study pack ready'
+  if (job.type === 'task_output' || job.type === 'do_generation') return 'Task output ready'
   return 'Job complete'
 }
 
 function getFailedTitle(job: QueuedJob) {
   if (job.type === 'canvas_sync') return 'Canvas sync failed'
   if (job.type === 'learn_generation') return 'Study pack failed'
+  if (job.type === 'task_output' || job.type === 'do_generation') return 'Task output failed'
   return `Failed: ${getJobSourceName(job)}`
 }
 
@@ -520,7 +542,7 @@ function getQueuePillLabel(activeJobs: QueuedJob[], runningCount: number, active
 }
 
 function humanizeError(error: string | null) {
-  const fallback = 'Could not build a study pack from this source yet.'
+  const fallback = 'This background job could not finish yet.'
   if (!error) return fallback
   const trimmed = error.replace(/\s+/g, ' ').trim()
   if (!trimmed) return fallback

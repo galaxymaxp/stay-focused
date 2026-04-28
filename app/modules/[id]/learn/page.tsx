@@ -12,6 +12,8 @@ import { getDeepLearnResourceUiState } from '@/lib/deep-learn-ui'
 import { buildModuleLearnOverview } from '@/lib/module-learn-overview'
 import { buildModuleOverviewFallback, getModuleSummary, listResourceSummaries } from '@/lib/source-summaries'
 import { getSourceReadinessBucket, normalizeSourceReadiness } from '@/lib/source-readiness'
+import { getAuthenticatedUserServer } from '@/lib/auth-server'
+import { getUserQueuedJobs, type QueuedJob } from '@/lib/queue'
 import { buildModuleDoHref, getSearchParamValue, getTaskElementId } from '@/lib/stay-focused-links'
 import {
   buildLearnExperience,
@@ -50,6 +52,8 @@ export default async function LearnPage({ params, searchParams }: Props) {
     tasks,
   })
   const deepLearnNotesResult = await listDeepLearnNotesForModule(module.id)
+  const user = await getAuthenticatedUserServer()
+  const queuedJobs = user ? await getUserQueuedJobs(user.id, { type: 'learn_generation', limit: 50 }) : []
   const deepLearnNotes = deepLearnNotesResult.notes
   const deepLearnNoteByResourceId = new Map(deepLearnNotes.map((note) => [note.resourceId, note]))
   const [resourceSummaryById, moduleSummary] = await Promise.all([
@@ -116,6 +120,9 @@ export default async function LearnPage({ params, searchParams }: Props) {
       moduleTitle: module.title,
       summary: toSourceSummarySnapshot(selection?.canonicalResourceId ? resourceSummaryById.get(selection.canonicalResourceId) : null),
     })
+    const queueJob = findLatestResourceJob(queuedJobs, deepLearnResourceId, material.resource.id)
+    const queuedDeepLearn = buildDeepLearnQueueState(queueJob)
+    const generationBlockedReason = readiness.canGenerate ? null : describeGenerationBlock(sourceReadiness.state, readiness.detail)
 
     return {
       ...buildDeepLearnAccordionState(
@@ -126,6 +133,7 @@ export default async function LearnPage({ params, searchParams }: Props) {
         deepLearnNotesResult.availability,
         deepLearnNotesResult.message,
         readiness,
+        queuedDeepLearn,
       ),
       moduleId: module.id,
       courseId: module.courseId ?? null,
@@ -149,10 +157,10 @@ export default async function LearnPage({ params, searchParams }: Props) {
       canvasHref: getResourceCanvasHref(material.resource),
       originalFileHref: getResourceOriginalFileHref(material.resource),
       sourceReadinessState: sourceReadiness.state,
-      sourceReadinessStatusLabel: sourceReadiness.statusLabel,
-      sourceReadinessMessage: sourceReadiness.message,
+      sourceReadinessStatusLabel: getSourceGenerationStatusLabel(sourceReadiness.statusLabel, readiness, queuedDeepLearn),
+      sourceReadinessMessage: getSourceGenerationStatusMessage(sourceReadiness.message, readiness, queuedDeepLearn),
       sourceReadinessActions: sourceReadiness.actions,
-      sourceReadinessBucket: getSourceReadinessBucket(sourceReadiness.state),
+      sourceReadinessBucket: generationBlockedReason ? 'needs_action' : getSourceReadinessBucket(sourceReadiness.state),
       pageCount: sourceReadiness.pageCount,
       sourceTypeLabel: sourceReadiness.sourceTypeLabel,
       originLabel: sourceReadiness.originLabel,
@@ -160,7 +168,7 @@ export default async function LearnPage({ params, searchParams }: Props) {
       isSummarizable: sourceReadiness.isSummarizable,
       sourceSummary: sourceReadiness.summary,
       deepLearnCanGenerate: readiness.canGenerate,
-      deepLearnDisabledReason: readiness.canGenerate ? null : describeGenerationBlock(sourceReadiness.state, readiness.detail),
+      deepLearnDisabledReason: generationBlockedReason,
     }
   })
   if (module.status === 'error') {
@@ -592,7 +600,10 @@ function describeGenerationBlock(state: ReturnType<typeof normalizeSourceReadine
   if (state === 'visual_ocr_available') return 'This PDF is scanned and needs OCR before Deep Learn can use it.'
   if (state === 'visual_ocr_running') return 'Reading scanned pages...'
   if (state === 'visual_ocr_failed') return 'OCR failed. Open the original file or retry.'
-  if (state === 'empty_or_metadata_only') return 'Too little readable text was found. Prepare the scanned PDF if this file is image-heavy, or open the original source.'
+  if (fallback === 'The stored source text is too short to ground a trustworthy Deep Learn pack.') {
+    return 'This source does not have enough readable text to create a trustworthy study pack.'
+  }
+  if (state === 'empty_or_metadata_only') return 'This source does not have enough readable text to create a trustworthy study pack.'
   return fallback
 }
 
@@ -604,28 +615,93 @@ function buildDeepLearnAccordionState(
   notesAvailability: 'available' | 'unavailable',
   unavailableMessage: string | null,
   readiness: NonNullable<Parameters<typeof getDeepLearnResourceUiState>[3]>['readiness'],
+  queuedDeepLearn: ReturnType<typeof buildDeepLearnQueueState>,
 ) {
   const deepLearnUi = getDeepLearnResourceUiState(moduleId, resourceId, note, {
     notesAvailability,
     unavailableMessage,
     readiness,
   })
+  const status = queuedDeepLearn?.status ?? deepLearnUi.status
 
   return {
     moduleId,
     courseId,
-    deepLearnStatus: deepLearnUi.status,
+    deepLearnStatus: status,
     deepLearnStatusLabel: deepLearnUi.statusLabel,
     deepLearnTone: deepLearnUi.tone,
-    deepLearnSummary: deepLearnUi.summary,
+    deepLearnSummary: queuedDeepLearn?.summary ?? deepLearnUi.summary,
     deepLearnDetail: deepLearnUi.detail,
-    deepLearnPrimaryLabel: deepLearnUi.primaryLabel,
-    deepLearnNoteHref: deepLearnUi.noteHref,
+    deepLearnPrimaryLabel: queuedDeepLearn?.primaryLabel ?? deepLearnUi.primaryLabel,
+    deepLearnNoteHref: queuedDeepLearn?.href ?? deepLearnUi.noteHref,
     deepLearnQuizHref: deepLearnUi.quizHref,
     deepLearnQuizReady: deepLearnUi.quizReady,
     deepLearnTermCount: note?.identificationItems.length ?? 0,
     deepLearnFactCount: note?.answerBank.length ?? 0,
-    deepLearnNoteFailure: note?.errorMessage ?? null,
+    deepLearnNoteFailure: queuedDeepLearn?.error ?? note?.errorMessage ?? null,
     deepLearnAvailability: notesAvailability,
   }
+}
+
+function findLatestResourceJob(jobs: QueuedJob[], canonicalResourceId: string | null, displayResourceId: string) {
+  return jobs.find((job) => {
+    const payloadResourceId = typeof job.payload?.resourceId === 'string' ? job.payload.resourceId : null
+    const resultResourceId = typeof job.result?.resourceId === 'string' ? job.result.resourceId : null
+    return payloadResourceId === canonicalResourceId
+      || payloadResourceId === displayResourceId
+      || resultResourceId === canonicalResourceId
+      || resultResourceId === displayResourceId
+  }) ?? null
+}
+
+function buildDeepLearnQueueState(job: QueuedJob | null) {
+  if (!job) return null
+  const href = typeof job.result?.href === 'string' ? job.result.href : null
+  if (job.status === 'pending') {
+    return { status: 'pending' as const, summary: 'Added to queue.', primaryLabel: 'Added to queue', href: href ?? null, error: null }
+  }
+  if (job.status === 'running') {
+    return {
+      status: 'pending' as const,
+      summary: `Generating study pack... ${Math.max(0, Math.min(job.progress, 100))}%`,
+      primaryLabel: 'Generating study pack...',
+      href: href ?? null,
+      error: null,
+    }
+  }
+  if (job.status === 'completed') {
+    return { status: 'ready' as const, summary: 'Study pack ready.', primaryLabel: 'Open study pack', href, error: null }
+  }
+  if (job.status === 'failed') {
+    return { status: 'failed' as const, summary: job.error ?? 'Study pack failed.', primaryLabel: 'Retry study pack', href: null, error: job.error ?? 'Study pack failed.' }
+  }
+  return null
+}
+
+function getSourceGenerationStatusLabel(
+  fallback: string,
+  readiness: ReturnType<typeof classifyDeepLearnResourceReadiness>,
+  queuedDeepLearn: ReturnType<typeof buildDeepLearnQueueState>,
+) {
+  if (queuedDeepLearn?.status === 'pending') return queuedDeepLearn.primaryLabel === 'Added to queue' ? 'Preparing' : 'Preparing'
+  if (queuedDeepLearn?.status === 'failed') return 'Failed'
+  if (queuedDeepLearn?.status === 'ready') return 'Ready'
+  if (!readiness.canGenerate && readiness.state === 'partial_text') return 'Needs more source text'
+  if (!readiness.canGenerate) return fallback === 'Ready' ? 'Limited text' : fallback
+  return fallback
+}
+
+function getSourceGenerationStatusMessage(
+  fallback: string,
+  readiness: ReturnType<typeof classifyDeepLearnResourceReadiness>,
+  queuedDeepLearn: ReturnType<typeof buildDeepLearnQueueState>,
+) {
+  if (queuedDeepLearn?.summary) return queuedDeepLearn.summary
+  if (!readiness.canGenerate && readiness.state === 'partial_text') {
+    return 'This source does not have enough readable text to create a trustworthy study pack.'
+  }
+  if (!readiness.canGenerate && fallback === 'Readable text was recovered here and the reader should work for a first study pass.') {
+    return readiness.detail
+  }
+  return fallback
 }

@@ -3,7 +3,14 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { requestNotificationPermission, setNotificationVolume, setSoundEnabled, playNotificationSound } from '@/lib/notifications'
+import {
+  isBrowserNotificationsEnabled,
+  requestNotificationPermission,
+  setBrowserNotificationsEnabled,
+  setNotificationVolume,
+  setSoundEnabled,
+  playNotificationSound,
+} from '@/lib/notifications'
 import { getUserSettings, updateCanvasSettings, type UserSettings } from '@/actions/user-settings'
 import { NotificationSettings } from '@/components/settings/NotificationSettings'
 import { useResolvedUserAvatar } from '@/components/useResolvedUserAvatar'
@@ -572,7 +579,7 @@ function BrowserNotificationsSection() {
     getNotificationSettingsSnapshot,
     getNotificationSettingsServerSnapshot,
   )
-  const { permission, soundEnabled, volume } = settings
+  const { permission, soundEnabled, volume, browserEnabled } = settings
   const [browserTestResult, setBrowserTestResult] = useState<'idle' | 'sent' | 'denied'>('idle')
 
   async function handleRequestPermission() {
@@ -583,6 +590,11 @@ function BrowserNotificationsSection() {
   function handleSoundToggle() {
     const next = !soundEnabled
     setSoundEnabled(next)
+    emitNotificationSettingsChange()
+  }
+
+  function handleBrowserToggle() {
+    setBrowserNotificationsEnabled(!browserEnabled)
     emitNotificationSettingsChange()
   }
 
@@ -622,7 +634,7 @@ function BrowserNotificationsSection() {
             <p className="settings-card-title">Permission</p>
             <p className="settings-card-desc">
               {permission === 'unsupported' && 'Your browser does not support notifications.'}
-              {permission === 'granted' && 'Notifications are allowed.'}
+              {permission === 'granted' && 'Notifications are allowed. They work while Stay Focused is open in this browser session.'}
               {permission === 'denied' && 'Notifications are blocked. Open your browser site permissions, allow notifications, then return here.'}
               {permission === 'default' && 'Grant permission to receive background notifications.'}
             </p>
@@ -639,6 +651,25 @@ function BrowserNotificationsSection() {
             <span className="settings-option-label" data-selected="false">Blocked</span>
           )}
         </div>
+
+        <button
+          type="button"
+          onClick={handleBrowserToggle}
+          disabled={permission !== 'granted'}
+          aria-pressed={browserEnabled}
+          className="settings-option-row ui-interactive-card"
+          style={{ opacity: permission === 'granted' ? 1 : 0.55 }}
+        >
+          <div style={{ minWidth: 0 }}>
+            <p className="settings-card-title">Browser alerts for queue updates</p>
+            <p className="settings-card-desc">
+              Show local browser notifications when background jobs complete or fail. These require this browser session to stay active; true push notifications need a service worker push setup.
+            </p>
+          </div>
+          <span className="settings-option-label" data-selected={browserEnabled ? 'true' : 'false'}>
+            {browserEnabled ? 'On' : 'Off'}
+          </span>
+        </button>
 
         {/* Browser notification test */}
         <div className="settings-option-row ui-interactive-card" style={{ cursor: 'default' }}>
@@ -800,12 +831,14 @@ function getStoredVolume() {
 
 type NotificationSettingsSnapshot = {
   permission: NotificationPermission | 'unsupported'
+  browserEnabled: boolean
   soundEnabled: boolean
   volume: number
 }
 
 const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettingsSnapshot = {
   permission: 'default',
+  browserEnabled: true,
   soundEnabled: true,
   volume: 50,
 }
@@ -823,7 +856,7 @@ function subscribeNotificationSettings(listener: () => void) {
   }
 
   const handleStorage = (event: StorageEvent) => {
-    if (!event.key || event.key.startsWith('stay-focused.sound-')) {
+    if (!event.key || event.key.startsWith('stay-focused.sound-') || event.key === 'stay-focused.browser-notifications-enabled') {
       listener()
     }
   }
@@ -843,6 +876,7 @@ function emitNotificationSettingsChange() {
 function getNotificationSettingsSnapshot(): NotificationSettingsSnapshot {
   const nextSnapshot = {
     permission: getNotificationPermissionState(),
+    browserEnabled: isBrowserNotificationsEnabled(),
     soundEnabled: getStoredSoundEnabled(),
     volume: getStoredVolume(),
   }
@@ -850,6 +884,7 @@ function getNotificationSettingsSnapshot(): NotificationSettingsSnapshot {
   if (
     lastNotificationSnapshot &&
     lastNotificationSnapshot.permission === nextSnapshot.permission &&
+    lastNotificationSnapshot.browserEnabled === nextSnapshot.browserEnabled &&
     lastNotificationSnapshot.soundEnabled === nextSnapshot.soundEnabled &&
     lastNotificationSnapshot.volume === nextSnapshot.volume
   ) {

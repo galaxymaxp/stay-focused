@@ -20,6 +20,7 @@ export async function requestNotificationPermission(): Promise<boolean> {
 
 export function showBrowserNotification(title: string, body: string, tag?: string) {
   if (typeof window === 'undefined' || Notification.permission !== 'granted') return
+  if (!isBrowserNotificationsEnabled()) return
 
   new Notification(title, {
     body,
@@ -28,6 +29,15 @@ export function showBrowserNotification(title: string, body: string, tag?: strin
     badge: '/badge-96.svg',
     requireInteraction: false,
   })
+}
+
+export function isBrowserNotificationsEnabled(): boolean {
+  if (typeof window === 'undefined') return false
+  return localStorage.getItem('stay-focused.browser-notifications-enabled') !== 'false'
+}
+
+export function setBrowserNotificationsEnabled(enabled: boolean) {
+  localStorage.setItem('stay-focused.browser-notifications-enabled', String(enabled))
 }
 
 export function dispatchInAppToast(detail: StayFocusedToastDetail) {

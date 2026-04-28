@@ -1,25 +1,27 @@
 'use client'
 
 import type { CSSProperties } from 'react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { queueDoGenerationAction } from '@/actions/queue-jobs'
 import { saveDraftFromTaskOutput } from '@/actions/drafts'
 import { CopyTaskBundleActions } from '@/components/CopyTaskBundleActions'
-import { PromptBuildViewer } from '@/components/PromptBuildViewer'
 import { TaskDraftSourcePane } from '@/components/TaskDraftSourcePane'
-import { usePromptBuild, type PromptBuildSnapshot } from '@/components/usePromptBuild'
-import { notifyCompletion } from '@/lib/notifications'
+import type { PromptBuildSnapshot } from '@/components/usePromptBuild'
+import { dispatchInAppToast } from '@/lib/notifications'
 import {
   buildTaskDraftContextText,
   buildTaskDraftFallback,
   buildTaskDraftRequestPayload,
-  buildTaskDraftSourceKey,
   isTaskDraftApiResponse,
+  isTaskDraftResponse,
+  buildTaskDraftSourceKey,
   type TaskDraftApiRequest,
   type TaskDraftContext,
   type TaskDraftResponse,
 } from '@/lib/do-now'
+import type { QueuedJob } from '@/lib/queue'
 import type { ManualCopyBundleResult } from '@/lib/manual-copy-bundle'
 
 export function TaskDraftPanel({
@@ -46,19 +48,18 @@ export function TaskDraftPanel({
   const [reusableSnapshot] = useState<PromptBuildSnapshot | null>(() => (
     initialSnapshot?.requestBody === requestBody ? initialSnapshot : null
   ))
-  const promptBuild = usePromptBuild({
-    initialSnapshot: reusableSnapshot,
-    onSnapshotChange,
-    requestBody,
-    requestPayload,
-  })
-  const draft = promptBuild.generatedDraft ?? fallbackDraft
+  const [queueJob, setQueueJob] = useState<QueuedJob | null>(null)
+  const [queueError, setQueueError] = useState<string | null>(null)
+  const generatedDraft = reusableSnapshot?.draft ?? extractDraftFromJob(queueJob)
+  const draft = generatedDraft ?? fallbackDraft
   const [workingDraft, setWorkingDraft] = useState(draft)
   const [refinementPending, setRefinementPending] = useState<string | null>(null)
   const [refinementError, setRefinementError] = useState<string | null>(null)
   const [savePending, setSavePending] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
-  const prevBuildingRef = useRef(false)
+  const isQueuedOrRunning = queueJob?.status === 'pending' || queueJob?.status === 'running'
+  const completedHref = typeof queueJob?.result?.href === 'string' ? queueJob.result.href : null
+  const failedReason = queueJob?.status === 'failed' ? queueJob.error : null
 
   useEffect(() => {
     setWorkingDraft((current) => {
@@ -81,18 +82,63 @@ export function TaskDraftPanel({
   }, [draft, requestBody])
 
   useEffect(() => {
-    if (prevBuildingRef.current && !promptBuild.isBuilding && promptBuild.phase === 'done') {
-      notifyCompletion(
-        'Draft ready!',
-        `Your draft for "${context.taskTitle}" is ready.`,
-        { tag: 'draft-generated', soundType: 'success', showBrowser: true, playSound: true },
-      )
+    if (!context.taskId) return
+    let cancelled = false
+    let interval: ReturnType<typeof setInterval> | null = null
+
+    async function fetchJob() {
+      try {
+        const response = await fetch('/api/queue/jobs', { cache: 'no-store' })
+        if (!response.ok) return
+        const data = await response.json() as { jobs?: QueuedJob[] }
+        const nextJob = (data.jobs ?? []).find((job) =>
+          (job.type === 'task_output' || job.type === 'do_generation') &&
+          (job.payload?.taskId === context.taskId || job.result?.taskId === context.taskId)
+        ) ?? null
+        if (!cancelled) setQueueJob(nextJob)
+      } catch {
+        // Queue polling should not close the modal.
+      }
     }
-    prevBuildingRef.current = promptBuild.isBuilding
-  }, [promptBuild.isBuilding, promptBuild.phase, context.taskTitle])
+
+    void fetchJob()
+    interval = setInterval(fetchJob, 5000)
+    return () => {
+      cancelled = true
+      if (interval) clearInterval(interval)
+    }
+  }, [context.taskId])
+
+  useEffect(() => {
+    if (generatedDraft) {
+      onSnapshotChange?.({
+        draft: generatedDraft,
+        draftSource: reusableSnapshot ? reusableSnapshot.draftSource : 'saved',
+        requestBody,
+      })
+    }
+  }, [generatedDraft, onSnapshotChange, requestBody, reusableSnapshot])
+
+  async function queueGeneration() {
+    if (!context.taskId || !context.moduleId || isQueuedOrRunning) return
+    setQueueError(null)
+    const result = await queueDoGenerationAction({
+      taskId: context.taskId,
+      moduleId: context.moduleId,
+      context,
+    })
+    if (result.error || !result.jobId) {
+      setQueueError(result.error ?? 'Could not add this task output to the queue.')
+      dispatchInAppToast({ title: 'Could not queue task output', description: result.error ?? 'Try again in a moment.', tone: 'error' })
+      return
+    }
+    if (result.job) setQueueJob(result.job)
+    window.dispatchEvent(new CustomEvent('stay-focused:queue-refresh', { detail: { job: result.job ?? null } }))
+    dispatchInAppToast({ title: 'Task output added to queue.', description: 'The Study queue will track progress.', tone: 'success' })
+  }
 
   async function refineOutput(mode: 'shorter' | 'formal' | 'human' | 'expand' | 'improve' | 'retry') {
-    if (refinementPending || promptBuild.isBuilding) return
+    if (refinementPending || isQueuedOrRunning || !generatedDraft) return
 
     setRefinementPending(mode)
     setRefinementError(null)
@@ -138,11 +184,7 @@ export function TaskDraftPanel({
         context,
         draft: workingDraft,
       })
-      notifyCompletion(
-        'Draft saved!',
-        `"${context.taskTitle}" saved to your drafts.`,
-        { tag: 'draft-saved', soundType: 'success', showBrowser: true, playSound: true },
-      )
+      dispatchInAppToast({ title: 'Draft saved!', description: `"${context.taskTitle}" saved to your drafts.`, tone: 'success' })
       onClose()
       router.push(`/library/${result.draftId}`)
       router.refresh()
@@ -224,19 +266,20 @@ export function TaskDraftPanel({
 
         <div className="draft-workspace">
           <div className="draft-main-column">
-            {promptBuild.isBuilding ? (
-              <PromptBuildViewer
-                phase={promptBuild.phase}
-                progressValue={promptBuild.progressValue}
-                promptText={promptBuild.promptText}
-                taskTitle={context.taskTitle}
-              />
-            ) : (
-              <>
+            <>
+                <TaskQueueStatus
+                  job={queueJob}
+                  error={queueError ?? failedReason}
+                  hasOutput={Boolean(generatedDraft)}
+                  onGenerate={queueGeneration}
+                  canGenerate={Boolean(context.taskId && context.moduleId)}
+                />
+                {generatedDraft ? (
+                  <>
                 <StatusBanner
-                  phase={promptBuild.phase === 'error' ? 'error' : 'done'}
-                  draftSource={promptBuild.draftSource}
-                  reopenSource={promptBuild.reopenSource}
+                  phase={failedReason ? 'error' : 'done'}
+                  draftSource={reusableSnapshot ? reusableSnapshot.draftSource : 'saved'}
+                  reopenSource={reusableSnapshot ? 'session' : null}
                 />
 
                 <div style={sectionsStyle}>
@@ -266,12 +309,15 @@ export function TaskDraftPanel({
                     </div>
                   </details>
                 </div>
-              </>
-            )}
+                  </>
+                ) : (
+                  <TaskInspectionCard context={context} />
+                )}
+            </>
           </div>
 
           <div className="draft-source-column">
-            <TaskDraftSourcePane context={context} isBuilding={promptBuild.isBuilding} />
+            <TaskDraftSourcePane context={context} isBuilding={isQueuedOrRunning} />
           </div>
         </div>
 
@@ -295,7 +341,17 @@ export function TaskDraftPanel({
               fullTone="secondary"
             />
           )}
-          {context.moduleId && (
+          {completedHref && (
+            <Link
+              href={completedHref}
+              className="ui-button ui-button-primary"
+              style={footerButtonStyle}
+              onClick={onClose}
+            >
+              Open saved draft
+            </Link>
+          )}
+          {context.moduleId && generatedDraft && (
             <button
               type="button"
               onClick={saveToDraft}
@@ -352,6 +408,68 @@ function TextSection({
       <p style={sectionHeadingStyle}>{heading}</p>
       <div style={draftBodyStyle}>{body}</div>
     </section>
+  )
+}
+
+function TaskInspectionCard({ context }: { context: TaskDraftContext }) {
+  return (
+    <section style={sectionStyle}>
+      <p style={sectionHeadingStyle}>Task details</p>
+      <div style={{ marginTop: '0.55rem', display: 'grid', gap: '0.55rem' }}>
+        <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.65, color: 'var(--text-primary)', whiteSpace: 'pre-wrap' }}>
+          {context.taskDetails || 'No extra task instructions were surfaced.'}
+        </p>
+        <div className="ui-meta-list">
+          <span><strong>Course:</strong> {context.courseName}</span>
+          <span><strong>Module:</strong> {context.moduleTitle ?? 'Module not surfaced'}</span>
+          <span><strong>Source:</strong> {context.sourceTitle ?? 'No linked source surfaced'}</span>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function TaskQueueStatus({
+  job,
+  error,
+  hasOutput,
+  canGenerate,
+  onGenerate,
+}: {
+  job: QueuedJob | null
+  error: string | null
+  hasOutput: boolean
+  canGenerate: boolean
+  onGenerate: () => void
+}) {
+  const isActive = job?.status === 'pending' || job?.status === 'running'
+  const progress = Math.max(0, Math.min(job?.progress ?? 0, 100))
+
+  return (
+    <div style={statusBannerStyle(error ? 'error' : hasOutput ? 'done' : 'idle')}>
+      <p style={statusTitleStyle}>
+        {error ? 'Task output failed' : hasOutput ? 'Task output ready' : isActive ? 'Generating task output' : 'Review before drafting'}
+      </p>
+      <p style={statusBodyStyle}>
+        {error
+          ? error
+          : hasOutput
+            ? 'The generated output has been saved and is ready to open or edit here.'
+            : isActive
+              ? `The Study queue is drafting this task output${job?.status === 'running' ? ` (${progress}%)` : ''}.`
+              : 'Inspect the task and source context first, then generate the first output when you are ready.'}
+      </p>
+      {isActive && (
+        <div style={{ marginTop: '0.65rem', height: '0.45rem', borderRadius: '999px', overflow: 'hidden', background: 'var(--surface-soft)', border: '1px solid var(--border-subtle)' }}>
+          <div style={{ height: '100%', width: `${Math.max(4, progress)}%`, background: 'var(--accent)', transition: 'width 400ms ease' }} />
+        </div>
+      )}
+      {!hasOutput && !isActive && (
+        <button type="button" className="ui-button ui-button-secondary" onClick={onGenerate} disabled={!canGenerate} style={{ marginTop: '0.75rem' }}>
+          Generate first output
+        </button>
+      )}
+    </div>
   )
 }
 
@@ -491,6 +609,12 @@ export function getTaskDraftSessionKey(context: TaskDraftContext) {
   return buildTaskDraftSourceKey(context)
 }
 
+function extractDraftFromJob(job: QueuedJob | null): TaskDraftResponse | null {
+  if (job?.status !== 'completed') return null
+  const draft = job.result?.draft
+  return isTaskDraftResponse(draft) ? draft : null
+}
+
 function priorityChipStyle(priority: 'high' | 'medium' | 'low'): CSSProperties {
   if (priority === 'high') {
     return {
@@ -524,13 +648,22 @@ function priorityChipStyle(priority: 'high' | 'medium' | 'low'): CSSProperties {
   }
 }
 
-function statusBannerStyle(phase: 'done' | 'error'): CSSProperties {
+function statusBannerStyle(phase: 'done' | 'error' | 'idle'): CSSProperties {
   if (phase === 'done') {
     return {
       borderRadius: 'var(--radius-panel)',
       padding: '0.8rem 0.9rem',
       background: 'color-mix(in srgb, var(--blue-light) 44%, var(--surface-soft) 56%)',
       border: '1px solid color-mix(in srgb, var(--blue) 24%, var(--border-subtle) 76%)',
+    }
+  }
+
+  if (phase === 'idle') {
+    return {
+      borderRadius: 'var(--radius-panel)',
+      padding: '0.8rem 0.9rem',
+      background: 'color-mix(in srgb, var(--surface-soft) 82%, transparent)',
+      border: '1px solid var(--border-subtle)',
     }
   }
 

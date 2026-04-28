@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache'
 import { getAuthenticatedUserServer } from '@/lib/auth-server'
 import {
   createQueuedJob,
+  getUserQueuedJobs,
   markQueuedJobCompleted,
   markQueuedJobFailed,
   markQueuedJobRunning,
@@ -26,8 +27,9 @@ import {
 import { classifyDeepLearnResourceReadiness } from '@/lib/deep-learn-readiness'
 import { saveDeepLearnNote } from '@/lib/deep-learn-store'
 import { buildDeepLearnNoteHref } from '@/lib/stay-focused-links'
-import { buildTaskDraftRequestPayload, type TaskDraftContext } from '@/lib/do-now'
+import { buildTaskDraftRequestPayload, type TaskDraftContext, type TaskDraftResponse } from '@/lib/do-now'
 import { createNotification } from '@/lib/notifications-server'
+import { saveDraftFromTaskOutput } from '@/actions/drafts'
 
 export interface QueueJobResult {
   jobId: string
@@ -47,6 +49,9 @@ export async function queueLearnGenerationAction(input: {
 }): Promise<QueueJobResult> {
   const user = await getAuthenticatedUserServer()
   if (!user) return { jobId: '', error: 'Not authenticated.' }
+
+  const activeDuplicate = await findActiveJob(user.id, 'learn_generation', 'resourceId', input.resourceId)
+  if (activeDuplicate) return { jobId: activeDuplicate.id, job: activeDuplicate }
 
   const job = await createQueuedJob(
     user.id,
@@ -89,11 +94,15 @@ export async function queueDoGenerationAction(input: {
   if (!user) return { jobId: '', error: 'Not authenticated.' }
 
   const taskTitle = input.context.taskTitle
+  const activeDuplicate =
+    await findActiveJob(user.id, 'task_output', 'taskId', input.taskId)
+    ?? await findActiveJob(user.id, 'do_generation', 'taskId', input.taskId)
+  if (activeDuplicate) return { jobId: activeDuplicate.id, job: activeDuplicate }
 
   const job = await createQueuedJob(
     user.id,
-    'do_generation',
-    `Do Now: ${taskTitle}`,
+    'task_output',
+    `Generating task output: ${taskTitle}`,
     {
       taskId: input.taskId,
       moduleId: input.moduleId,
@@ -114,7 +123,7 @@ export async function queueDoGenerationAction(input: {
     revalidatePath(`/modules/${input.moduleId}/do`)
   })
 
-  return { jobId: job.id }
+  return { jobId: job.id, job }
 }
 
 // ---------------------------------------------------------------------------
@@ -130,10 +139,23 @@ async function processLearnGenerationJob(input: {
 }) {
   await markQueuedJobRunning(input.jobId, 10)
 
+  async function fail(message: string, href?: string | null) {
+    await markQueuedJobFailed(input.jobId, message)
+    await createNotification({
+      userId: input.userId,
+      type: 'queue_failed',
+      title: 'Study pack failed',
+      body: message,
+      href: href ?? (input.courseId ? `/modules/${input.moduleId}/learn` : undefined),
+      severity: 'error',
+      metadata: { jobId: input.jobId, jobType: 'learn_generation', resourceId: input.resourceId, dedupeKey: `learn-fail:${input.jobId}` },
+    })
+  }
+
   try {
     const workspace = await getModuleWorkspace(input.moduleId)
     if (!workspace) {
-      await markQueuedJobFailed(input.jobId, 'Module not found.')
+      await fail('Module not found.')
       return
     }
 
@@ -149,7 +171,7 @@ async function processLearnGenerationJob(input: {
     const selection = resolveLearnResourceSelection(experience, workspace.resources, input.resourceId)
 
     if (!selection) {
-      await markQueuedJobFailed(input.jobId, 'Resource not found in module.')
+      await fail('Resource not found in module.')
       return
     }
 
@@ -157,7 +179,7 @@ async function processLearnGenerationJob(input: {
     const readiness = classifyDeepLearnResourceReadiness({ resource, storedResource, canonicalResourceId })
 
     if (!storedResource || !canonicalResourceId || !readiness.canGenerate) {
-      await markQueuedJobFailed(input.jobId, readiness.detail ?? 'Resource not ready for Deep Learn.')
+      await fail(readiness.detail ?? 'Resource not ready for Deep Learn.', `/modules/${workspace.module.id}/learn?resource=${encodeURIComponent(input.resourceId)}`)
       return
     }
 
@@ -208,7 +230,7 @@ async function processLearnGenerationJob(input: {
       })
     } catch (err) {
       if (err instanceof DeepLearnGenerationBlockedError) {
-        await markQueuedJobFailed(input.jobId, err.message)
+        await fail(err.message, `/modules/${workspace.module.id}/learn?resource=${encodeURIComponent(canonicalResourceId)}`)
         await saveDeepLearnNote({
           moduleId: workspace.module.id,
           courseId: workspace.module.courseId ?? input.courseId ?? null,
@@ -332,34 +354,44 @@ async function processDoGenerationJob(input: {
 
     if (!resp.ok) {
       const body = await resp.json().catch(() => ({})) as { error?: string }
-      await markQueuedJobFailed(input.jobId, body.error ?? `Do Now API returned ${resp.status}.`)
+      const message = body.error ?? `Task output returned ${resp.status}.`
+      await markQueuedJobFailed(input.jobId, message)
+      await notifyTaskOutputFailed(input.userId, input.jobId, input.taskId, input.moduleId, input.context.taskTitle, message)
       return
     }
 
     const data = await resp.json() as { ok: boolean; draft?: unknown; error?: string }
 
     if (!data.ok || !data.draft) {
-      await markQueuedJobFailed(input.jobId, data.error ?? 'Do Now returned empty draft.')
+      const message = data.error ?? 'Task output returned an empty draft.'
+      await markQueuedJobFailed(input.jobId, message)
+      await notifyTaskOutputFailed(input.userId, input.jobId, input.taskId, input.moduleId, input.context.taskTitle, message)
       return
     }
 
-    const resultHref = `/modules/${input.moduleId}/do?task=${encodeURIComponent(input.taskId)}&donow=1`
+    const saved = await saveDraftFromTaskOutput({
+      context: input.context,
+      draft: data.draft as TaskDraftResponse,
+    })
+    const resultHref = `/library/${saved.draftId}`
 
     await markQueuedJobCompleted(input.jobId, {
       taskId: input.taskId,
       moduleId: input.moduleId,
+      taskTitle: input.context.taskTitle,
       href: resultHref,
+      draftId: saved.draftId,
       draft: data.draft as Record<string, unknown>,
     })
 
     await createNotification({
       userId: input.userId,
       type: 'queue_completed',
-      title: 'Do Now draft ready',
-      body: `Your task draft for "${input.context.taskTitle}" is ready.`,
+      title: 'Task output ready',
+      body: `Your task output for "${input.context.taskTitle}" is ready.`,
       href: resultHref,
       severity: 'success',
-      metadata: { jobId: input.jobId, dedupeKey: `do:${input.taskId}` },
+      metadata: { jobId: input.jobId, jobType: 'task_output', taskId: input.taskId, dedupeKey: `task:${input.taskId}` },
     })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error during Do Now generation.'
@@ -369,10 +401,40 @@ async function processDoGenerationJob(input: {
     await createNotification({
       userId: input.userId,
       type: 'queue_failed',
-      title: 'Do Now generation failed',
+      title: 'Task output failed',
       body: message,
+      href: `/modules/${input.moduleId}/do?task=${encodeURIComponent(input.taskId)}`,
       severity: 'error',
-      metadata: { jobId: input.jobId, dedupeKey: `do-fail:${input.jobId}` },
+      metadata: { jobId: input.jobId, jobType: 'task_output', taskId: input.taskId, dedupeKey: `task-fail:${input.jobId}` },
     })
   }
+}
+
+async function notifyTaskOutputFailed(
+  userId: string,
+  jobId: string,
+  taskId: string,
+  moduleId: string,
+  taskTitle: string,
+  message: string,
+) {
+  await createNotification({
+    userId,
+    type: 'queue_failed',
+    title: 'Task output failed',
+    body: `${taskTitle}: ${message}`,
+    href: `/modules/${moduleId}/do?task=${encodeURIComponent(taskId)}`,
+    severity: 'error',
+    metadata: { jobId, jobType: 'task_output', taskId, dedupeKey: `task-fail:${jobId}` },
+  })
+}
+
+async function findActiveJob(
+  userId: string,
+  type: QueuedJob['type'],
+  payloadKey: string,
+  payloadValue: string,
+) {
+  const jobs = await getUserQueuedJobs(userId, { status: ['pending', 'running'], type, limit: 50 })
+  return jobs.find((job) => job.payload?.[payloadKey] === payloadValue || job.result?.[payloadKey] === payloadValue) ?? null
 }
