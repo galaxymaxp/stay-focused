@@ -17,6 +17,7 @@ import { useResolvedUserAvatar } from '@/components/useResolvedUserAvatar'
 import { UserAvatar } from '@/components/UserAvatar'
 import { useThemeSettings } from '@/components/ThemeProvider'
 import { useAuthSummary } from '@/components/useAuthSummary'
+import { isCurrentUserCanvasConnected } from '@/lib/canvas-settings-state'
 import type { UserAvatarApiResponse } from '@/components/useUserAvatarProfile'
 import type { AvatarSource } from '@/lib/profile-avatar'
 import { ACCENT_OPTIONS, type AccentName, type ThemeMode } from '@/lib/theme'
@@ -66,6 +67,7 @@ export function SettingsPage() {
   const searchParams = useSearchParams()
   const { mode, accent, resolvedTheme, setMode, setAccent } = useThemeSettings()
   const authSummary = useAuthSummary()
+  const authUserId = authSummary.user?.id ?? null
   const resolvedAvatar = useResolvedUserAvatar(authSummary.user)
   const uploadInputRef = useRef<HTMLInputElement | null>(null)
   const [avatarActionPending, setAvatarActionPending] = useState<'source' | 'upload' | 'remove' | null>(null)
@@ -80,14 +82,26 @@ export function SettingsPage() {
   const availableSections = buildAvailableSections()
   const requestedSection = searchParams.get('section')
   const activeSection = resolveActiveSection(requestedSection, availableSections)
+  const canvasConnected = isCurrentUserCanvasConnected({
+    authUserId,
+    settingsUserId: userSettings?.userId ?? null,
+    settingsRowExists: userSettings?.settingsRowExists ?? false,
+    canvasApiUrl: userSettings?.canvasApiUrl ?? null,
+    canvasAccessToken: userSettings?.canvasAccessToken ?? null,
+  })
 
   useEffect(() => {
-    if (!authSummary.user) {
+    if (!authUserId) {
+      setUserSettings(null)
+      setSettingsError(null)
+      setCanvasSaveMessage(null)
       setSettingsLoading(false)
       return
     }
 
     let mounted = true
+    setUserSettings(null)
+    setCanvasSaveMessage(null)
 
     async function loadSettings() {
       setSettingsLoading(true)
@@ -111,7 +125,7 @@ export function SettingsPage() {
     return () => {
       mounted = false
     }
-  }, [authSummary.user])
+  }, [authUserId])
 
   useEffect(() => {
     if (!requestedSection) return
@@ -377,8 +391,8 @@ export function SettingsPage() {
                       <p className="settings-card-desc">
                         {settingsLoading
                           ? 'Loading your Canvas settings...'
-                          : userSettings?.canvasApiUrl && userSettings?.canvasAccessToken
-                            ? `Connected to ${new URL(userSettings.canvasApiUrl).hostname}. Your Canvas token is saved securely.`
+                          : canvasConnected
+                            ? `Connected to ${formatCanvasSettingsHost(userSettings)}. Your Canvas token is saved securely.`
                             : 'Add your Canvas URL and access token to enable course syncing.'}
                       </p>
                     </div>
@@ -467,7 +481,7 @@ export function SettingsPage() {
                     </p>
                   </div>
 
-                  {userSettings?.canvasApiUrl && userSettings?.canvasAccessToken && (
+                  {canvasConnected && (
                     <div className="settings-card-actions">
                       <Link href="/canvas" className="ui-button ui-button-secondary">
                         Go to Canvas Sync
@@ -805,6 +819,17 @@ function getAvatarSourceLabel(source: AvatarSource) {
   if (source === 'upload') return 'Custom photo'
   if (source === 'google') return 'Google photo'
   return 'Placeholder'
+}
+
+function formatCanvasSettingsHost(settings: UserSettings | null) {
+  const value = settings?.canvasApiUrl
+  if (!value) return 'Canvas'
+
+  try {
+    return new URL(value).hostname
+  } catch {
+    return value
+  }
 }
 
 function getNotificationPermissionState(): NotificationPermission | 'unsupported' {

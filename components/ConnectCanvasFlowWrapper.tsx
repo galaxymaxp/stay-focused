@@ -8,13 +8,17 @@ const ConnectCanvasFlow = dynamic(
 )
 
 export function ConnectCanvasFlowWrapper({
+  currentUserId,
   initialConnectionUrl,
+  initialAccessToken,
   lastSync,
   syncedCourseKeys,
   initialAction,
   syncedModules,
 }: {
+  currentUserId: string
   initialConnectionUrl: string | null
+  initialAccessToken: string | null
   lastSync: {
     label: string
     tone: 'success' | 'neutral' | 'warning'
@@ -30,7 +34,9 @@ export function ConnectCanvasFlowWrapper({
 }) {
   return (
     <ConnectCanvasFlow
+      currentUserId={currentUserId}
       initialConnectionUrl={initialConnectionUrl}
+      initialAccessToken={initialAccessToken}
       lastSync={lastSync}
       syncedCourseKeys={syncedCourseKeys}
       hasSyncedCourses={syncedModules.length > 0}
