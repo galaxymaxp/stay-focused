@@ -252,6 +252,13 @@ export function StudyResourceAccordionList({
                       <Link href={item.deepLearnNoteHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
                         Open workspace
                       </Link>
+                    ) : shouldShowPrepareScannedPdfAction(item) ? (
+                      <OcrSourceButton
+                        moduleId={item.moduleId}
+                        resourceId={item.canonicalResourceId ?? item.id}
+                        className="ui-button ui-button-secondary ui-button-xs"
+                        idleLabel="Prepare scanned PDF"
+                      />
                     ) : item.deepLearnStatus !== 'unavailable' ? (
                       <DeepLearnGenerateButton
                         moduleId={item.moduleId}
@@ -448,6 +455,11 @@ function ProcessSourceButton({ item }: { item: StudyResourceAccordionItem }) {
 
 function shouldShowDeepLearnWorkspaceAction(item: StudyResourceAccordionItem) {
   return item.deepLearnStatus === 'ready' || item.deepLearnStatus === 'pending'
+}
+
+function shouldShowPrepareScannedPdfAction(item: StudyResourceAccordionItem) {
+  return item.sourceReadinessState === 'empty_or_metadata_only'
+    && item.sourceReadinessActions.includes('extract_text_from_images')
 }
 
 function labelForSourceAction(item: StudyResourceAccordionItem) {

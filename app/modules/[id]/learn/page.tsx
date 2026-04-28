@@ -592,7 +592,7 @@ function describeGenerationBlock(state: ReturnType<typeof normalizeSourceReadine
   if (state === 'visual_ocr_available') return 'This PDF is scanned and needs OCR before Deep Learn can use it.'
   if (state === 'visual_ocr_running') return 'Reading scanned pages...'
   if (state === 'visual_ocr_failed') return 'OCR failed. Open the original file or retry.'
-  if (state === 'empty_or_metadata_only') return 'No readable text found. Deep Learn cannot generate from this source.'
+  if (state === 'empty_or_metadata_only') return 'Too little readable text was found. Prepare the scanned PDF if this file is image-heavy, or open the original source.'
   return fallback
 }
 

@@ -117,8 +117,8 @@ function JobGroup({ status, jobs }: { status: QueuedJobStatus; jobs: QueuedJob[]
 }
 
 // Pill trigger styles
-const PILL_BASE = 'relative inline-flex items-center gap-1.5 h-7 rounded-full px-2.5 transition-colors hover:opacity-80'
-const PILL_TEXT: React.CSSProperties = { fontSize: '11px', fontWeight: 700, whiteSpace: 'nowrap', cursor: 'pointer', lineHeight: 1 }
+const PILL_BASE = 'queue-panel-pill relative inline-flex items-center gap-1.5 h-8 rounded-full px-3 transition-colors hover:opacity-90'
+const PILL_TEXT: React.CSSProperties = { fontSize: '12px', fontWeight: 800, whiteSpace: 'nowrap', cursor: 'pointer', lineHeight: 1 }
 
 export function QueuePanel() {
   const [open, setOpen] = useState(false)
@@ -158,6 +158,15 @@ export function QueuePanel() {
   useEffect(() => {
     const id = setInterval(fetchJobs, 30000)
     return () => clearInterval(id)
+  }, [fetchJobs])
+
+  useEffect(() => {
+    function refreshQueue() {
+      void fetchJobs()
+    }
+
+    window.addEventListener('stay-focused:queue-refresh', refreshQueue)
+    return () => window.removeEventListener('stay-focused:queue-refresh', refreshQueue)
   }, [fetchJobs])
 
   // Start fast polling when open, stop when closed
@@ -205,7 +214,7 @@ export function QueuePanel() {
   const toggle = () => setOpen((p) => !p)
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className="queue-panel relative">
       {/* Trigger: contextual pill or icon */}
       {activeCount > 0 ? (
         <button
@@ -214,13 +223,14 @@ export function QueuePanel() {
           className={PILL_BASE}
           style={{
             ...PILL_TEXT,
-            background: 'color-mix(in srgb, var(--accent) 10%, var(--surface-elevated) 90%)',
-            border: '1px solid color-mix(in srgb, var(--accent) 30%, var(--border-subtle) 70%)',
-            color: 'var(--accent)',
+            background: 'color-mix(in srgb, var(--accent) 18%, var(--surface-elevated) 82%)',
+            border: '1px solid color-mix(in srgb, var(--accent) 48%, var(--border-subtle) 52%)',
+            color: 'var(--accent-foreground)',
+            boxShadow: '0 0 0 1px color-mix(in srgb, var(--accent) 10%, transparent), 0 8px 18px rgba(0, 0, 0, 0.08)',
           }}
         >
-          <Loader2 className="h-3 w-3 animate-spin flex-shrink-0" />
-          <span>{runningCount > 0 ? `${runningCount} running` : `${activeCount} queued`}</span>
+          <Loader2 className="h-3.5 w-3.5 animate-spin flex-shrink-0" />
+          <span>{runningCount > 0 ? `Processing ${activeCount}` : `Queue: ${activeCount}`}</span>
           {maxProgress > 0 && maxProgress < 100 && (
             <span
               className="absolute bottom-0 left-0 right-0 h-[2px] rounded-full overflow-hidden"
@@ -240,12 +250,12 @@ export function QueuePanel() {
           className={PILL_BASE}
           style={{
             ...PILL_TEXT,
-            background: 'color-mix(in srgb, var(--red) 10%, var(--surface-elevated) 90%)',
-            border: '1px solid color-mix(in srgb, var(--red) 30%, var(--border-subtle) 70%)',
+            background: 'color-mix(in srgb, var(--red) 14%, var(--surface-elevated) 86%)',
+            border: '1px solid color-mix(in srgb, var(--red) 44%, var(--border-subtle) 56%)',
             color: 'var(--red)',
           }}
         >
-          <AlertCircle className="h-3 w-3 flex-shrink-0" />
+          <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" />
           <span>Needs attention</span>
         </button>
       ) : recentlyCompleted ? (
@@ -260,7 +270,7 @@ export function QueuePanel() {
             color: 'var(--green, #16a34a)',
           }}
         >
-          <CheckCircle className="h-3 w-3 flex-shrink-0" />
+          <CheckCircle className="h-3.5 w-3.5 flex-shrink-0" />
           <span>Done</span>
         </button>
       ) : (
