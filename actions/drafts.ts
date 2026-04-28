@@ -274,6 +274,8 @@ function revalidateUnifiedDraftPaths(input: {
 }) {
   revalidatePath('/drafts')
   revalidatePath('/library')
+  revalidatePath('/courses')
+  revalidatePath('/')
 
   if (input.draftId) {
     revalidatePath(`/drafts/${input.draftId}`)
@@ -285,6 +287,7 @@ function revalidateUnifiedDraftPaths(input: {
   }
 
   if (input.moduleId) {
+    revalidatePath(`/modules/${input.moduleId}`)
     revalidatePath(`/modules/${input.moduleId}/learn`)
     revalidatePath(`/modules/${input.moduleId}/do`)
   }
@@ -359,6 +362,7 @@ export async function listDraftsForShelves(): Promise<{
     .select(
       'id, user_id, course_id, source_type, canonical_source_id, source_module_id, source_resource_id, source_title, draft_type, title, status, token_count, created_at, updated_at, modules!source_module_id ( course_id, title )'
     )
+    .eq('user_id', user.id)
     .order('updated_at', { ascending: false })
 
   const { data: noteRows, error: noteRowsError } = await client
@@ -366,6 +370,7 @@ export async function listDraftsForShelves(): Promise<{
     .select(
       'id, user_id, course_id, module_id, resource_id, status, title, overview, quiz_ready, created_at, updated_at, modules!module_id ( title ), module_resources!resource_id ( title )'
     )
+    .eq('user_id', user.id)
     .neq('status', 'failed')
     .order('updated_at', { ascending: false })
 
@@ -434,9 +439,15 @@ export async function listDrafts(): Promise<DraftSummary[]> {
   if (!isSupabaseAuthConfigured) return []
 
   const client = await createDraftsClient()
+  const {
+    data: { user },
+  } = await client.auth.getUser()
+  if (!user) return []
+
   const { data } = await client
     .from('drafts')
     .select('id, user_id, course_id, source_type, canonical_source_id, source_module_id, source_resource_id, source_title, draft_type, title, status, token_count, created_at, updated_at')
+    .eq('user_id', user.id)
     .order('updated_at', { ascending: false })
 
   return (data ?? []).map((row) => mapDraftSummaryRow(row as Record<string, unknown>))
@@ -446,10 +457,16 @@ export async function getDraft(draftId: string): Promise<Draft | null> {
   if (!isSupabaseAuthConfigured) return null
 
   const client = await createDraftsClient()
+  const {
+    data: { user },
+  } = await client.auth.getUser()
+  if (!user) return null
+
   const { data } = await client
     .from('drafts')
     .select('*')
     .eq('id', draftId)
+    .eq('user_id', user.id)
     .maybeSingle()
 
   if (!data) return null
@@ -460,10 +477,16 @@ export async function getDeepLearnNoteById(noteId: string): Promise<DeepLearnNot
   if (!isSupabaseAuthConfigured) return null
 
   const client = await createDraftsClient()
+  const {
+    data: { user },
+  } = await client.auth.getUser()
+  if (!user) return null
+
   const { data } = await client
     .from('deep_learn_notes')
     .select('*')
     .eq('id', noteId)
+    .eq('user_id', user.id)
     .maybeSingle()
 
   if (!data) return null

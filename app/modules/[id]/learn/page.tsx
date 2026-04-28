@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import type { CSSProperties, ReactNode } from 'react'
+import { listDraftsForShelves } from '@/actions/drafts'
 import { DeepLearnGenerateButton } from '@/components/DeepLearnGenerateButton'
 import { GeneratedContentState } from '@/components/generated-content/GeneratedContentState'
 import { ModuleLensShell } from '@/components/ModuleLensShell'
@@ -9,12 +10,14 @@ import { StudyResourceAccordionList } from '@/components/StudyResourceAccordionL
 import { classifyDeepLearnResourceReadiness } from '@/lib/deep-learn-readiness'
 import { listDeepLearnNotesForModule } from '@/lib/deep-learn-store'
 import { getDeepLearnResourceUiState } from '@/lib/deep-learn-ui'
+import { buildSavedLegacyPackState, findSavedLegacyStudyPack, isSavedLegacyStudyPackForModule, shouldTrustCompletedLearnQueueJob } from '@/lib/learn-card-state'
 import { buildModuleLearnOverview } from '@/lib/module-learn-overview'
 import { buildModuleOverviewFallback, getModuleSummary, listResourceSummaries } from '@/lib/source-summaries'
 import { getSourceReadinessBucket, normalizeSourceReadiness } from '@/lib/source-readiness'
 import { getAuthenticatedUserServer } from '@/lib/auth-server'
 import { getUserQueuedJobs, type QueuedJob } from '@/lib/queue'
 import { buildModuleDoHref, getSearchParamValue, getTaskElementId } from '@/lib/stay-focused-links'
+import { buildStudyLibraryDetailHref, type DraftShelfItem } from '@/lib/types'
 import {
   buildLearnExperience,
   extractCourseName,
@@ -52,10 +55,14 @@ export default async function LearnPage({ params, searchParams }: Props) {
     tasks,
   })
   const deepLearnNotesResult = await listDeepLearnNotesForModule(module.id)
+  const libraryResult = await listDraftsForShelves()
   const user = await getAuthenticatedUserServer()
   const queuedJobs = user ? await getUserQueuedJobs(user.id, { type: 'learn_generation', limit: 50 }) : []
   const deepLearnNotes = deepLearnNotesResult.notes
   const deepLearnNoteByResourceId = new Map(deepLearnNotes.map((note) => [note.resourceId, note]))
+  const savedLegacyDrafts = libraryResult.availability === 'available'
+    ? libraryResult.drafts.filter((draft) => isSavedLegacyStudyPackForModule(draft, module.id, module.courseId ?? null))
+    : []
   const [resourceSummaryById, moduleSummary] = await Promise.all([
     listResourceSummaries(storedResources.map((resource) => resource.id)),
     getModuleSummary(module.id),
@@ -120,8 +127,16 @@ export default async function LearnPage({ params, searchParams }: Props) {
       moduleTitle: module.title,
       summary: toSourceSummarySnapshot(selection?.canonicalResourceId ? resourceSummaryById.get(selection.canonicalResourceId) : null),
     })
+    const savedNote = deepLearnNoteByResourceId.get(selection?.canonicalResourceId ?? material.resource.id) ?? null
+    const savedLegacyDraft = savedNote
+      ? null
+      : findSavedLegacyStudyPack(savedLegacyDrafts, {
+          courseId: module.courseId ?? null,
+          resourceId: deepLearnResourceId,
+          canonicalSourceId: selection?.canonicalResourceId ?? null,
+        })
     const queueJob = findLatestResourceJob(queuedJobs, deepLearnResourceId, material.resource.id)
-    const queuedDeepLearn = buildDeepLearnQueueState(queueJob)
+    const queuedDeepLearn = buildDeepLearnQueueState(queueJob, Boolean(savedNote || savedLegacyDraft))
     const generationBlockedReason = readiness.canGenerate ? null : describeGenerationBlock(sourceReadiness.state, readiness.detail)
 
     return {
@@ -129,11 +144,12 @@ export default async function LearnPage({ params, searchParams }: Props) {
         module.id,
         module.courseId ?? null,
         deepLearnResourceId,
-        deepLearnNoteByResourceId.get(selection?.canonicalResourceId ?? material.resource.id) ?? null,
+        savedNote,
         deepLearnNotesResult.availability,
         deepLearnNotesResult.message,
         readiness,
         queuedDeepLearn,
+        savedLegacyDraft,
       ),
       moduleId: module.id,
       courseId: module.courseId ?? null,
@@ -616,13 +632,16 @@ function buildDeepLearnAccordionState(
   unavailableMessage: string | null,
   readiness: NonNullable<Parameters<typeof getDeepLearnResourceUiState>[3]>['readiness'],
   queuedDeepLearn: ReturnType<typeof buildDeepLearnQueueState>,
+  savedLegacyDraft: DraftShelfItem | null,
 ) {
   const deepLearnUi = getDeepLearnResourceUiState(moduleId, resourceId, note, {
     notesAvailability,
     unavailableMessage,
     readiness,
   })
-  const status = queuedDeepLearn?.status ?? deepLearnUi.status
+  const savedLegacyPack = buildSavedLegacyPackState(savedLegacyDraft)
+  const savedPackState = queuedDeepLearn ?? savedLegacyPack
+  const status = savedPackState?.status ?? deepLearnUi.status
 
   return {
     moduleId,
@@ -630,15 +649,15 @@ function buildDeepLearnAccordionState(
     deepLearnStatus: status,
     deepLearnStatusLabel: deepLearnUi.statusLabel,
     deepLearnTone: deepLearnUi.tone,
-    deepLearnSummary: queuedDeepLearn?.summary ?? deepLearnUi.summary,
+    deepLearnSummary: savedPackState?.summary ?? deepLearnUi.summary,
     deepLearnDetail: deepLearnUi.detail,
-    deepLearnPrimaryLabel: queuedDeepLearn?.primaryLabel ?? deepLearnUi.primaryLabel,
-    deepLearnNoteHref: queuedDeepLearn?.href ?? deepLearnUi.noteHref,
+    deepLearnPrimaryLabel: savedPackState?.primaryLabel ?? deepLearnUi.primaryLabel,
+    deepLearnNoteHref: savedPackState?.href ?? (note?.status === 'ready' ? buildStudyLibraryDetailHref(note.id) : deepLearnUi.noteHref),
     deepLearnQuizHref: deepLearnUi.quizHref,
     deepLearnQuizReady: deepLearnUi.quizReady,
     deepLearnTermCount: note?.identificationItems.length ?? 0,
     deepLearnFactCount: note?.answerBank.length ?? 0,
-    deepLearnNoteFailure: queuedDeepLearn?.error ?? note?.errorMessage ?? null,
+    deepLearnNoteFailure: savedPackState?.error ?? note?.errorMessage ?? null,
     deepLearnAvailability: notesAvailability,
   }
 }
@@ -654,7 +673,7 @@ function findLatestResourceJob(jobs: QueuedJob[], canonicalResourceId: string | 
   }) ?? null
 }
 
-function buildDeepLearnQueueState(job: QueuedJob | null) {
+function buildDeepLearnQueueState(job: QueuedJob | null, hasSavedPack: boolean) {
   if (!job) return null
   const href = typeof job.result?.href === 'string' ? job.result.href : null
   if (job.status === 'pending') {
@@ -670,6 +689,7 @@ function buildDeepLearnQueueState(job: QueuedJob | null) {
     }
   }
   if (job.status === 'completed') {
+    if (!shouldTrustCompletedLearnQueueJob(hasSavedPack)) return null
     return { status: 'ready' as const, summary: 'Study pack ready.', primaryLabel: 'Open study pack', href, error: null }
   }
   if (job.status === 'failed') {

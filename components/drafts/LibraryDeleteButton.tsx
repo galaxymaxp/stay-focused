@@ -44,6 +44,7 @@ export function LibraryDeleteButton({ id, entryKind, title, size = 'icon', redir
 
     if (result.ok) {
       dispatchInAppToast({ title: 'Deleted', description: `"${title}" was removed from your Study Library.`, tone: 'info' })
+      window.dispatchEvent(new CustomEvent('stay-focused:study-library-changed', { detail: { id, entryKind } }))
       if (redirectHref) router.push(redirectHref)
       else router.refresh()
     } else {
