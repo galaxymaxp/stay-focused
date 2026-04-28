@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ChevronDown, Trash2, Loader2 } from 'lucide-react'
 import { removeCourseAction } from '@/actions/courses'
@@ -21,12 +21,20 @@ function CourseRemoveRow({ course }: { course: CourseEntry }) {
   const router = useRouter()
   const [confirm, setConfirm] = useState(false)
   const [removing, setRemoving] = useState(false)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current)
+    }
+  }, [])
 
   async function handleClick() {
     if (removing) return
     if (!confirm) {
       setConfirm(true)
-      setTimeout(() => setConfirm(false), 4000)
+      if (timerRef.current) clearTimeout(timerRef.current)
+      timerRef.current = setTimeout(() => setConfirm(false), 4000)
       return
     }
 
@@ -57,7 +65,7 @@ function CourseRemoveRow({ course }: { course: CourseEntry }) {
         type="button"
         onClick={handleClick}
         disabled={removing}
-        title={confirm ? 'Click again to confirm removal' : 'Remove course from Stay Focused'}
+        title={confirm ? 'Click again to confirm removal' : 'Remove imported course from Stay Focused'}
         style={{
           flexShrink: 0,
           display: 'inline-flex',
@@ -82,7 +90,7 @@ function CourseRemoveRow({ course }: { course: CourseEntry }) {
         {removing
           ? <Loader2 style={{ width: '0.75rem', height: '0.75rem' }} className="animate-spin" />
           : <Trash2 style={{ width: '0.75rem', height: '0.75rem' }} />}
-        {confirm ? 'Confirm removal' : 'Remove'}
+        {confirm ? 'Confirm removal' : 'Remove imported course'}
       </button>
     </div>
   )
@@ -112,7 +120,7 @@ export function CourseDangerZone({ courses }: Props) {
           color: 'inherit',
         }}
       >
-        <span style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--red)' }}>Danger zone</span>
+        <span style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-muted)' }}>Course cleanup</span>
         <ChevronDown
           className={cn('h-4 w-4 text-sf-muted transition-transform', open && 'rotate-180')}
         />
@@ -121,7 +129,7 @@ export function CourseDangerZone({ courses }: Props) {
       {open && (
         <div style={{ padding: '0 1rem 1rem', borderTop: '1px solid color-mix(in srgb, var(--border-subtle) 60%, transparent)' }}>
           <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: '0.75rem 0 0.5rem' }}>
-            Removing a course deletes it from Stay Focused only — your Canvas data is unaffected.
+            Remove imported course records from Stay Focused. Your Canvas data and saved Study Library items are unaffected.
           </p>
           {courses.map((c) => (
             <CourseRemoveRow key={c.id} course={c} />
