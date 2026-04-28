@@ -1,7 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
-import { getRequiredSupabaseAuthEnv } from '@/lib/supabase-auth-config'
+import { type NextRequest, NextResponse } from 'next/server'
 import { createNotification, deduplicateNotification } from '@/lib/notifications-server'
+import { createSupabaseServiceRoleClient } from '@/lib/supabase-service'
 
 export const runtime = 'nodejs'
 export const maxDuration = 55
@@ -15,25 +14,17 @@ function validateCronSecret(req: NextRequest): boolean {
     return authHeader === `Bearer ${cronSecret}`
   }
 
+  if (process.env.NODE_ENV === 'production') return false
+
   const querySecret = req.nextUrl.searchParams.get('secret')
   return querySecret === cronSecret
 }
 
-function getServiceClient() {
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()
-  if (!serviceKey) return null
-  const { supabaseUrl } = getRequiredSupabaseAuthEnv()
-  return createClient(supabaseUrl, serviceKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  })
-}
-
-// ---------------------------------------------------------------------------
-// Due-soon detection (tasks with deadline within 48h)
-// ---------------------------------------------------------------------------
+// Vercel Hobby cron runs once daily. This is a cleanup and notification
+// safety net; normal queue progress is handled by app logic.
 
 async function scanDueSoon(): Promise<number> {
-  const client = getServiceClient()
+  const client = createSupabaseServiceRoleClient()
   if (!client) return 0
 
   const now = new Date()
@@ -73,7 +64,7 @@ async function scanDueSoon(): Promise<number> {
       userId,
       type: 'due_soon',
       title: `Due in ${timeLabel}: ${task.title as string}`,
-      body: `This task is due soon. Open it in Do Now to get a head start.`,
+      body: 'This task is due soon. Open it in Do Now to get a head start.',
       href: task.module_id ? `/modules/${task.module_id as string}/do` : null,
       severity: 'warning',
       metadata: { taskId: task.id as string, dedupeKey: `due-soon:${task.id as string}` },
@@ -84,12 +75,8 @@ async function scanDueSoon(): Promise<number> {
   return created
 }
 
-// ---------------------------------------------------------------------------
-// New announcements scan
-// ---------------------------------------------------------------------------
-
 async function scanNewAnnouncements(): Promise<number> {
-  const client = getServiceClient()
+  const client = createSupabaseServiceRoleClient()
   if (!client) return 0
 
   const since = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
@@ -110,7 +97,7 @@ async function scanNewAnnouncements(): Promise<number> {
 
     const isDupe = await deduplicateNotification({
       userId,
-      type: 'new_task',
+      type: 'new_module',
       dedupeKey: `ann:${ann.id as string}`,
       windowHours: 24,
     })
@@ -130,14 +117,12 @@ async function scanNewAnnouncements(): Promise<number> {
   return created
 }
 
-// ---------------------------------------------------------------------------
-// Stuck job cleanup (running jobs older than 10 min)
-// ---------------------------------------------------------------------------
-
 async function cleanStuckJobs(): Promise<number> {
-  const client = getServiceClient()
+  const client = createSupabaseServiceRoleClient()
   if (!client) return 0
 
+  // Jobs should time out through queue/app logic. This daily scan catches
+  // running jobs that slipped through.
   const stuckSince = new Date(Date.now() - 10 * 60 * 1000).toISOString()
 
   const { data: stuckJobs } = await client
@@ -183,10 +168,6 @@ async function cleanStuckJobs(): Promise<number> {
   return resolved
 }
 
-// ---------------------------------------------------------------------------
-// Main handler
-// ---------------------------------------------------------------------------
-
 export async function GET(req: NextRequest) {
   if (!validateCronSecret(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -202,7 +183,7 @@ export async function GET(req: NextRequest) {
     r.status === 'fulfilled' ? r.value : 0,
   )
 
-  console.info('[cron/hourly] scan complete', { dueSoon, announcements, stuckJobs })
+  console.info('[cron/hourly] daily scan complete', { dueSoon, announcements, stuckJobs })
 
   return NextResponse.json({
     ok: true,

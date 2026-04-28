@@ -1,6 +1,5 @@
 import { createAuthenticatedSupabaseServerClient } from '@/lib/auth-server'
-import { getRequiredSupabaseAuthEnv } from '@/lib/supabase-auth-config'
-import { createClient } from '@supabase/supabase-js'
+import { createSupabaseServiceRoleClient } from '@/lib/supabase-service'
 
 export type NotificationType =
   | 'queue_completed'
@@ -50,7 +49,7 @@ export async function createNotification(input: {
   severity?: NotificationSeverity
   metadata?: Record<string, unknown>
 }): Promise<UserNotification | null> {
-  const client = getServiceRoleClient()
+  const client = createSupabaseServiceRoleClient()
   if (!client) {
     // Fall back to authenticated client
     const supabase = await createAuthenticatedSupabaseServerClient()
@@ -161,7 +160,7 @@ export async function deduplicateNotification(opts: {
   dedupeKey: string
   windowHours?: number
 }): Promise<boolean> {
-  const supabase = await createAuthenticatedSupabaseServerClient()
+  const supabase = createSupabaseServiceRoleClient() ?? await createAuthenticatedSupabaseServerClient()
   if (!supabase) return false
 
   const windowHours = opts.windowHours ?? 24
@@ -177,14 +176,4 @@ export async function deduplicateNotification(opts: {
     .limit(1)
 
   return Boolean(data && data.length > 0)
-}
-
-function getServiceRoleClient() {
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()
-  if (!serviceKey) return null
-
-  const { supabaseUrl } = getRequiredSupabaseAuthEnv()
-  return createClient(supabaseUrl, serviceKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  })
 }
