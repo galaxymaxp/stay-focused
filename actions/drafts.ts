@@ -763,12 +763,20 @@ export async function deleteDraft(draftId: string): Promise<void> {
   if (!isSupabaseAuthConfigured) throw new Error('Supabase is not configured.')
 
   const client = await createDraftsClient()
+  const {
+    data: { user },
+  } = await client.auth.getUser()
+  if (!user) throw new Error('You must be signed in to delete a draft.')
+
   const { data: existing } = await client
     .from('drafts')
     .select('course_id, source_module_id, source_resource_id')
     .eq('id', draftId)
+    .eq('user_id', user.id)
     .maybeSingle()
-  await client.from('drafts').delete().eq('id', draftId)
+  if (!existing) throw new Error('Draft not found.')
+
+  await client.from('drafts').delete().eq('id', draftId).eq('user_id', user.id)
 
   revalidateUnifiedDraftPaths({
     courseId: (existing?.course_id as string | null) ?? null,
@@ -792,12 +800,40 @@ export async function deleteLibraryItemAction(
   if (!isSupabaseAuthConfigured) return { ok: false, error: 'Supabase not configured.' }
 
   const client = await createDraftsClient()
+  const {
+    data: { user },
+  } = await client.auth.getUser()
+  if (!user) return { ok: false, error: 'Not authenticated.' }
+
   const table = entryKind === 'draft' ? 'drafts' : 'deep_learn_notes'
-  const { error } = await client.from(table).delete().eq('id', id)
+  const selectFields = entryKind === 'draft'
+    ? 'id, user_id, course_id, source_module_id, source_resource_id'
+    : 'id, user_id, course_id, module_id, resource_id'
+  const { data: existing, error: lookupError } = await client
+    .from(table)
+    .select(selectFields)
+    .eq('id', id)
+    .eq('user_id', user.id)
+    .maybeSingle()
+
+  if (lookupError) return { ok: false, error: lookupError.message }
+  if (!existing) return { ok: false, error: 'Saved item not found.' }
+
+  const { error } = await client.from(table).delete().eq('id', id).eq('user_id', user.id)
 
   if (error) return { ok: false, error: error.message }
 
-  revalidatePath('/library')
+  const row = existing as Record<string, unknown>
+  revalidateUnifiedDraftPaths({
+    courseId: (row.course_id as string | null) ?? null,
+    moduleId: entryKind === 'draft'
+      ? (row.source_module_id as string | null) ?? null
+      : (row.module_id as string | null) ?? null,
+    resourceId: entryKind === 'draft'
+      ? (row.source_resource_id as string | null) ?? null
+      : (row.resource_id as string | null) ?? null,
+    draftId: id,
+  })
   revalidatePath('/')
   return { ok: true }
 }

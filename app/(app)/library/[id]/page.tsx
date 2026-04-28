@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { getDeepLearnNoteById, getDraft } from '@/actions/drafts'
 import { DeepLearnWorkspace } from '@/components/DeepLearnWorkspace'
+import { LibraryDeleteButton } from '@/components/drafts/LibraryDeleteButton'
 import { GeneratedContentState } from '@/components/generated-content/GeneratedContentState'
 import { ModuleLensShell } from '@/components/ModuleLensShell'
 import { getAuthenticatedUserServer } from '@/lib/auth-server'
@@ -105,6 +106,13 @@ export default async function LibraryItemPage({ params }: Props) {
                 Open source workspace
               </Link>
             )}
+            <LibraryDeleteButton
+              id={note.id}
+              entryKind="deep_learn_note"
+              title={note.title}
+              size="text"
+              redirectHref={courseLibraryHref}
+            />
           </div>
           {primaryAction.note && (
             <GeneratedContentState
@@ -213,6 +221,13 @@ export default async function LibraryItemPage({ params }: Props) {
               Open task source
             </a>
           )}
+          <LibraryDeleteButton
+            id={draft.id}
+            entryKind="draft"
+            title={draft.title}
+            size="text"
+            redirectHref={courseLibraryHref}
+          />
         </div>
         {detailAction.note && (
           <GeneratedContentState

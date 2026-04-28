@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Trash2 } from 'lucide-react'
 import { deleteLibraryItemAction } from '@/actions/drafts'
@@ -10,20 +10,31 @@ interface Props {
   id: string
   entryKind: 'draft' | 'deep_learn_note'
   title: string
+  size?: 'icon' | 'text'
+  redirectHref?: string
 }
 
-export function LibraryDeleteButton({ id, entryKind, title }: Props) {
+export function LibraryDeleteButton({ id, entryKind, title, size = 'icon', redirectHref }: Props) {
   const router = useRouter()
   const [confirm, setConfirm] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const noun = entryKind === 'deep_learn_note' ? 'saved study pack' : 'draft'
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  async function handleClick(e: React.MouseEvent) {
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current)
+    }
+  }, [])
+
+  async function handleClick(e: React.MouseEvent<HTMLButtonElement>) {
     e.preventDefault()
     e.stopPropagation()
 
     if (!confirm) {
       setConfirm(true)
-      setTimeout(() => setConfirm(false), 4000)
+      if (timerRef.current) clearTimeout(timerRef.current)
+      timerRef.current = setTimeout(() => setConfirm(false), 4000)
       return
     }
 
@@ -32,8 +43,9 @@ export function LibraryDeleteButton({ id, entryKind, title }: Props) {
     const result = await deleteLibraryItemAction(id, entryKind)
 
     if (result.ok) {
-      dispatchInAppToast({ title: 'Deleted', description: `"${title}" was removed.`, tone: 'info' })
-      router.refresh()
+      dispatchInAppToast({ title: 'Deleted', description: `"${title}" was removed from your Study Library.`, tone: 'info' })
+      if (redirectHref) router.push(redirectHref)
+      else router.refresh()
     } else {
       dispatchInAppToast({ title: 'Could not delete', description: result.error ?? 'Try again.', tone: 'error' })
       setDeleting(false)
@@ -45,15 +57,18 @@ export function LibraryDeleteButton({ id, entryKind, title }: Props) {
       type="button"
       onClick={handleClick}
       disabled={deleting}
-      title={confirm ? 'Click again to confirm' : 'Delete this item'}
+      aria-label={confirm ? `Delete this ${noun}?` : `Delete this ${noun}`}
+      title={confirm ? `Delete this ${noun}? Click again to confirm.` : `Delete this ${noun}`}
+      className="ui-button ui-button-ghost ui-button-xs"
       style={{
-        display: 'flex',
+        display: 'inline-flex',
         alignItems: 'center',
         justifyContent: 'center',
-        width: '1.6rem',
-        height: '1.6rem',
+        gap: '0.35rem',
+        width: size === 'icon' && !confirm ? '1.8rem' : undefined,
+        height: size === 'icon' ? '1.8rem' : undefined,
+        padding: size === 'icon' && !confirm ? 0 : undefined,
         flexShrink: 0,
-        borderRadius: 'var(--radius-control)',
         border: confirm
           ? '1px solid color-mix(in srgb, var(--red) 50%, var(--border-subtle) 50%)'
           : '1px solid transparent',
@@ -67,6 +82,7 @@ export function LibraryDeleteButton({ id, entryKind, title }: Props) {
       }}
     >
       <Trash2 style={{ width: '0.8rem', height: '0.8rem' }} />
+      {(size === 'text' || confirm) && (confirm ? 'Delete?' : 'Delete')}
     </button>
   )
 }

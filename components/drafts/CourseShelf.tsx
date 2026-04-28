@@ -4,7 +4,6 @@ import Link from 'next/link'
 import { ArrowRight, ChevronDown } from 'lucide-react'
 import { useId, useState } from 'react'
 import { DraftCard } from '@/components/drafts/DraftCard'
-import { LibraryDeleteButton } from '@/components/drafts/LibraryDeleteButton'
 import type { StudyLibraryItem } from '@/lib/types'
 
 interface CourseShelfProps {
@@ -121,10 +120,7 @@ export function CourseShelf({
       {isExpanded && (
         <div id={contentId} style={{ padding: '0.85rem 1rem', display: 'grid', gap: '0.6rem' }}>
           {items.map((item) => (
-            <div key={item.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto', alignItems: 'start', gap: '0.4rem' }}>
-              <DraftCard item={item} />
-              <LibraryDeleteButton id={item.id} entryKind={item.entryKind} title={item.title} />
-            </div>
+            <DraftCard key={item.id} item={item} />
           ))}
         </div>
       )}
