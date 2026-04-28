@@ -49,11 +49,12 @@ export async function queueLearnGenerationAction(input: {
   const job = await createQueuedJob(
     user.id,
     'learn_generation',
-    `Deep Learn: ${input.resourceTitle}`,
+    `Generating study pack: ${input.resourceTitle}`,
     {
       moduleId: input.moduleId,
       resourceId: input.resourceId,
       courseId: input.courseId ?? null,
+      resourceTitle: input.resourceTitle,
     },
   )
 
@@ -166,7 +167,7 @@ async function processLearnGenerationJob(input: {
       resourceId: canonicalResourceId,
       status: 'pending',
       title: resource.title,
-      overview: 'Deep Learn is preparing the exam prep pack.',
+      overview: 'Deep Learn is preparing the study pack.',
       sections: [],
       noteBody: '',
       answerBank: [],
@@ -268,14 +269,15 @@ async function processLearnGenerationJob(input: {
     await markQueuedJobCompleted(input.jobId, {
       resourceId: canonicalResourceId,
       moduleId: workspace.module.id,
+      resourceTitle: resource.title,
       href: resultHref,
     })
 
     await createNotification({
       userId: input.userId,
       type: 'queue_completed',
-      title: 'Deep Learn pack ready',
-      body: `Your exam prep pack for "${resource.title}" is ready to study.`,
+      title: 'Study pack ready',
+      body: `Your study pack for "${resource.title}" is ready.`,
       href: resultHref,
       severity: 'success',
       metadata: { jobId: input.jobId, dedupeKey: `learn:${canonicalResourceId}` },
@@ -288,7 +290,7 @@ async function processLearnGenerationJob(input: {
     await createNotification({
       userId: input.userId,
       type: 'queue_failed',
-      title: 'Deep Learn generation failed',
+      title: 'Study pack failed',
       body: message,
       severity: 'error',
       metadata: { jobId: input.jobId, dedupeKey: `learn-fail:${input.jobId}` },

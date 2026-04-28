@@ -72,8 +72,9 @@ export function DeepLearnWorkspace({
               moduleId={moduleId}
               resourceId={deepLearnResourceId}
               courseId={courseId}
-              label={note?.status === 'failed' ? 'Generate again' : 'Generate pack'}
+              label={note?.status === 'failed' ? 'Generate again' : 'Generate study pack'}
               className="ui-button ui-button-secondary ui-button-xs"
+              resourceTitle={resource.title}
             />
           ) : null}
           {sourceHref && (
@@ -109,12 +110,12 @@ export function DeepLearnWorkspace({
           {!note ? (
             <PackEmptyState
               title="No saved learning pack yet."
-              body="Generate this pack to save a reusable review workspace here."
+              body="Generate structured notes, key terms, review questions, and quiz-ready study material from this source."
             />
           ) : note.status === 'pending' ? (
             <PackEmptyState
-              title="Generating exam prep pack..."
-              body={note.overview || 'Deep Learn is building your saved review pack from the pinned source.'}
+              title="Generating study pack..."
+              body={note.overview || 'Deep Learn is building your saved study pack from the pinned source.'}
               loading
               tone="accent"
             />

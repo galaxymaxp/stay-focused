@@ -1,130 +1,165 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { ListTodo, X, CheckCircle, XCircle, Loader2, Clock, ChevronDown, RefreshCw, AlertCircle } from 'lucide-react'
+import { ListTodo, X, CheckCircle, XCircle, Loader2, Clock, RefreshCw, AlertCircle, ExternalLink, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import type { QueuedJob, QueuedJobStatus } from '@/lib/queue'
 
-const JOB_TYPE_LABELS: Record<string, string> = {
-  canvas_sync: 'Canvas Sync',
-  learn_generation: 'Deep Learn',
-  do_generation: 'Do Now',
-  resource_extraction: 'Resource Extraction',
-  notification_scan: 'Notification Scan',
-}
-
-const STATUS_ORDER: QueuedJobStatus[] = ['running', 'pending', 'completed', 'failed', 'cancelled']
-
-const GROUP_LABELS: Record<QueuedJobStatus, string> = {
-  running: 'Running',
-  pending: 'Pending',
-  completed: 'Completed',
-  failed: 'Failed',
-  cancelled: 'Cancelled',
-}
-
-function StatusIcon({ status }: { status: QueuedJobStatus }) {
-  if (status === 'running') return <Loader2 className="h-3.5 w-3.5 text-sf-accent animate-spin" />
-  if (status === 'pending') return <Clock className="h-3.5 w-3.5 text-sf-muted" />
-  if (status === 'completed') return <CheckCircle className="h-3.5 w-3.5 text-green-600" />
-  if (status === 'failed') return <XCircle className="h-3.5 w-3.5 text-red-500" />
-  return <X className="h-3.5 w-3.5 text-sf-subtle" />
-}
+const PILL_BASE = 'queue-panel-pill relative inline-flex items-center gap-1.5 h-8 rounded-full px-3 transition-colors hover:opacity-90'
+const PILL_TEXT: React.CSSProperties = { fontSize: '12px', fontWeight: 800, whiteSpace: 'nowrap', cursor: 'pointer', lineHeight: 1 }
 
 function ProgressBar({ progress, status }: { progress: number; status: QueuedJobStatus }) {
   if (status === 'pending' || status === 'cancelled') return null
-  const color = status === 'failed' ? 'bg-red-400' : status === 'completed' ? 'bg-green-500' : 'bg-sf-accent'
+
+  const color = status === 'failed'
+    ? 'var(--red)'
+    : status === 'completed'
+      ? 'var(--green, #16a34a)'
+      : 'var(--accent)'
+
   return (
-    <div className="mt-1.5 h-1 w-full rounded-full bg-sf-border overflow-hidden">
+    <div
+      style={{
+        marginTop: '0.52rem',
+        height: '0.42rem',
+        width: '100%',
+        borderRadius: '999px',
+        overflow: 'hidden',
+        background: 'color-mix(in srgb, var(--surface-soft) 88%, transparent)',
+        border: '1px solid color-mix(in srgb, var(--border-subtle) 72%, transparent)',
+      }}
+    >
       <div
-        className={cn('h-full rounded-full transition-all duration-500', color)}
-        style={{ width: `${progress}%` }}
+        style={{
+          height: '100%',
+          width: `${Math.max(4, Math.min(progress, 100))}%`,
+          borderRadius: '999px',
+          background: color,
+          boxShadow: `0 0 14px color-mix(in srgb, ${color} 20%, transparent)`,
+          transition: 'width 500ms ease',
+        }}
       />
     </div>
   )
 }
 
-function JobRow({ job }: { job: QueuedJob }) {
-  const resultHref = job.result?.href as string | undefined
-  const typeLabel = JOB_TYPE_LABELS[job.type] ?? job.type
+function QueueSection({
+  title,
+  count,
+  action,
+  children,
+}: {
+  title: string
+  count: number
+  action?: React.ReactNode
+  children: React.ReactNode
+}) {
+  if (count === 0) return null
 
   return (
-    <div className="px-4 py-3 hover:bg-sf-surface-2 transition-colors">
-      <div className="flex items-start gap-2.5">
-        <div className="mt-0.5 flex-shrink-0">
-          <StatusIcon status={job.status} />
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-sf-text leading-snug line-clamp-1">{job.title}</p>
-          <div className="flex items-center gap-1.5 mt-0.5">
-            <span className="text-[11px] text-sf-muted bg-sf-surface-2 rounded px-1.5 py-0.5 font-medium">
-              {typeLabel}
-            </span>
-            {job.status === 'running' && job.progress > 0 && (
-              <span className="text-[11px] text-sf-accent font-medium">{job.progress}%</span>
-            )}
+    <section style={{ display: 'grid', gap: '0.55rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.65rem', alignItems: 'center' }}>
+        <p className="ui-kicker" style={{ margin: 0 }}>
+          {title} - {count}
+        </p>
+        {action}
+      </div>
+      <div style={{ display: 'grid', gap: '0.52rem' }}>{children}</div>
+    </section>
+  )
+}
+
+function ActiveJobCard({ job }: { job: QueuedJob }) {
+  const fileName = getJobSourceName(job)
+  const progress = Math.max(0, Math.min(job.progress ?? 0, 100))
+  const isPending = job.status === 'pending'
+
+  return (
+    <article className="glass-panel glass-soft" style={jobCardStyle('active')}>
+      <div style={{ display: 'flex', gap: '0.65rem', alignItems: 'flex-start' }}>
+        <span style={iconShellStyle('active')}>
+          {isPending ? <Clock className="h-3.5 w-3.5" /> : <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+        </span>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <p style={titleStyle}>{formatQueueTitle(job)}</p>
+          <p style={sourceStyle}>{fileName}</p>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem', alignItems: 'center', marginTop: '0.35rem' }}>
+            <span style={statusTextStyle}>{isPending ? 'Waiting to start' : getActiveStatus(progress)}</span>
+            {!isPending && <span style={percentStyle}>{progress}%</span>}
           </div>
-          <ProgressBar progress={job.progress} status={job.status} />
-          {job.status === 'failed' && job.error && (
-            <p className="text-[11px] text-red-500 mt-1 line-clamp-2">{job.error}</p>
-          )}
-          {job.status === 'completed' && resultHref && (
-            <a
-              href={resultHref}
-              className="text-[11px] text-sf-accent hover:underline mt-1 inline-block font-medium"
-            >
-              Open result →
-            </a>
-          )}
+          <ProgressBar progress={progress} status={job.status} />
         </div>
       </div>
-    </div>
+    </article>
   )
 }
 
-function JobGroup({ status, jobs }: { status: QueuedJobStatus; jobs: QueuedJob[] }) {
-  const [collapsed, setCollapsed] = useState(
-    status === 'completed' || status === 'cancelled',
-  )
-
-  if (jobs.length === 0) return null
+function CompletedJobCard({ job, onDismiss }: { job: QueuedJob; onDismiss: (jobId: string) => void }) {
+  const resultHref = getResultHref(job)
 
   return (
-    <div>
-      <button
-        onClick={() => setCollapsed((p) => !p)}
-        className="w-full flex items-center justify-between px-4 py-2 border-b border-sf-border bg-sf-surface-2/60 hover:bg-sf-surface-2 transition-colors"
-      >
-        <span className="text-[11px] font-semibold text-sf-muted uppercase tracking-wide">
-          {GROUP_LABELS[status]} · {jobs.length}
-        </span>
-        <ChevronDown
-          className={cn(
-            'h-3 w-3 text-sf-muted transition-transform',
-            collapsed && '-rotate-90',
-          )}
-        />
-      </button>
-      {!collapsed && (
-        <div className="divide-y divide-sf-border-muted">
-          {jobs.map((job) => (
-            <JobRow key={job.id} job={job} />
-          ))}
+    <article className="glass-panel glass-soft" style={jobCardStyle('completed')}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.65rem', alignItems: 'flex-start' }}>
+        <div style={{ minWidth: 0, display: 'flex', gap: '0.65rem', alignItems: 'flex-start' }}>
+          <span style={iconShellStyle('completed')}>
+            <CheckCircle className="h-3.5 w-3.5" />
+          </span>
+          <div style={{ minWidth: 0 }}>
+            <p style={titleStyle}>Study pack ready</p>
+            <p style={sourceStyle}>{getJobSourceName(job)}</p>
+          </div>
         </div>
-      )}
-    </div>
+        <button type="button" onClick={() => onDismiss(job.id)} className="queue-action-icon" style={ghostIconStyle} aria-label="Dismiss completed job">
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+      <div style={{ display: 'flex', gap: '0.42rem', flexWrap: 'wrap', marginTop: '0.72rem' }}>
+        {resultHref && (
+          <a href={resultHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
+            <ExternalLink className="h-3.5 w-3.5" />
+            Open result
+          </a>
+        )}
+        <button type="button" onClick={() => onDismiss(job.id)} className="ui-button ui-button-ghost ui-button-xs">
+          Dismiss
+        </button>
+      </div>
+    </article>
   )
 }
 
-// Pill trigger styles
-const PILL_BASE = 'queue-panel-pill relative inline-flex items-center gap-1.5 h-8 rounded-full px-3 transition-colors hover:opacity-90'
-const PILL_TEXT: React.CSSProperties = { fontSize: '12px', fontWeight: 800, whiteSpace: 'nowrap', cursor: 'pointer', lineHeight: 1 }
+function FailedJobCard({ job, onDismiss }: { job: QueuedJob; onDismiss: (jobId: string) => void }) {
+  return (
+    <article className="glass-panel glass-soft" style={jobCardStyle('failed')}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.65rem', alignItems: 'flex-start' }}>
+        <div style={{ minWidth: 0, display: 'flex', gap: '0.65rem', alignItems: 'flex-start' }}>
+          <span style={iconShellStyle('failed')}>
+            <XCircle className="h-3.5 w-3.5" />
+          </span>
+          <div style={{ minWidth: 0 }}>
+            <p style={titleStyle}>Failed: {getJobSourceName(job)}</p>
+            <p style={{ ...statusTextStyle, color: 'var(--red)', marginTop: '0.22rem' }}>{humanizeError(job.error)}</p>
+          </div>
+        </div>
+        <button type="button" onClick={() => onDismiss(job.id)} className="queue-action-icon" style={ghostIconStyle} aria-label="Dismiss failed job">
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+      <div style={{ display: 'flex', gap: '0.42rem', flexWrap: 'wrap', marginTop: '0.72rem' }}>
+        <button type="button" onClick={() => onDismiss(job.id)} className="ui-button ui-button-ghost ui-button-xs">
+          Dismiss
+        </button>
+      </div>
+    </article>
+  )
+}
 
 export function QueuePanel() {
   const [open, setOpen] = useState(false)
   const [jobs, setJobs] = useState<QueuedJob[]>([])
   const [recentlyCompleted, setRecentlyCompleted] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [mutating, setMutating] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -136,7 +171,6 @@ export function QueuePanel() {
       const fetched = data.jobs ?? []
       setJobs(fetched)
 
-      // Derive recentlyCompleted here (in a callback, not during render) to avoid Date.now() purity violation
       const active = fetched.filter((j) => j.status === 'pending' || j.status === 'running').length
       const oneMinAgo = Date.now() - 60 * 1000
       setRecentlyCompleted(
@@ -144,17 +178,38 @@ export function QueuePanel() {
         fetched.some((j) => j.status === 'completed' && j.completedAt && new Date(j.completedAt).getTime() > oneMinAgo),
       )
     } catch {
-      // silent
+      // Keep the topbar quiet if polling fails.
     }
   }, [])
 
-  // Fetch once on mount so the badge count is populated before the panel is opened
+  const mutateQueue = useCallback(async (body: Record<string, string>) => {
+    setMutating(true)
+    try {
+      const res = await fetch('/api/queue/jobs', {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (res.ok) await fetchJobs()
+    } finally {
+      setMutating(false)
+    }
+  }, [fetchJobs])
+
+  const dismissJob = useCallback((jobId: string) => {
+    setJobs((current) => current.filter((job) => job.id !== jobId))
+    void mutateQueue({ action: 'dismiss', jobId })
+  }, [mutateQueue])
+
+  const clearCompleted = useCallback(() => {
+    setJobs((current) => current.filter((job) => job.status !== 'completed'))
+    void mutateQueue({ action: 'clear_completed' })
+  }, [mutateQueue])
+
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchJobs()
   }, [fetchJobs])
 
-  // Slow background poll keeps badge current even when panel is closed
   useEffect(() => {
     const id = setInterval(fetchJobs, 30000)
     return () => clearInterval(id)
@@ -169,14 +224,12 @@ export function QueuePanel() {
     return () => window.removeEventListener('stay-focused:queue-refresh', refreshQueue)
   }, [fetchJobs])
 
-  // Start fast polling when open, stop when closed
   useEffect(() => {
     if (!open) {
       if (pollRef.current) clearInterval(pollRef.current)
       return
     }
 
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true)
     fetchJobs().finally(() => setLoading(false))
 
@@ -186,7 +239,6 @@ export function QueuePanel() {
     }
   }, [open, fetchJobs])
 
-  // Outside click to close
   useEffect(() => {
     function handler(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
@@ -195,27 +247,19 @@ export function QueuePanel() {
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
-  // Derived queue state
-  const activeCount = jobs.filter((j) => j.status === 'pending' || j.status === 'running').length
+  const activeJobs = jobs.filter((j) => j.status === 'pending' || j.status === 'running')
+  const failedJobs = jobs.filter((j) => j.status === 'failed')
+  const completedJobs = jobs.filter((j) => j.status === 'completed').slice(0, 5)
   const runningJobs = jobs.filter((j) => j.status === 'running')
+  const activeCount = activeJobs.length
   const runningCount = runningJobs.length
   const maxProgress = runningJobs.length > 0 ? Math.max(...runningJobs.map((j) => j.progress)) : 0
-  const hasFailed = jobs.some((j) => j.status === 'failed')
-
-  const grouped = STATUS_ORDER.reduce<Record<QueuedJobStatus, QueuedJob[]>>(
-    (acc, s) => {
-      acc[s] = jobs.filter((j) => j.status === s)
-      return acc
-    },
-    { running: [], pending: [], completed: [], failed: [], cancelled: [] },
-  )
-
-  const hasAny = jobs.length > 0
+  const hasFailed = failedJobs.length > 0
+  const hasAny = activeJobs.length + failedJobs.length + completedJobs.length > 0
   const toggle = () => setOpen((p) => !p)
 
   return (
     <div ref={ref} className="queue-panel relative">
-      {/* Trigger: contextual pill or icon */}
       {activeCount > 0 ? (
         <button
           onClick={toggle}
@@ -285,64 +329,78 @@ export function QueuePanel() {
 
       {open && (
         <>
-          {/* Mobile backdrop */}
-          <div
-            className="fixed inset-0 z-40 bg-black/40 sm:hidden"
-            onClick={() => setOpen(false)}
-          />
+          <div className="fixed inset-0 z-40 bg-black/40 sm:hidden" onClick={() => setOpen(false)} />
 
           <div
             className={cn(
-              'absolute right-0 top-10 z-50 w-[360px] rounded-2xl border border-sf-border bg-sf-surface shadow-xl overflow-hidden',
+              'absolute right-0 top-10 z-50 w-[382px] rounded-2xl overflow-hidden',
               'max-sm:fixed max-sm:inset-x-3 max-sm:bottom-3 max-sm:top-auto max-sm:w-auto max-sm:rounded-2xl',
             )}
+            style={{
+              background: 'linear-gradient(180deg, color-mix(in srgb, var(--surface-elevated) 96%, var(--accent-light) 4%), color-mix(in srgb, var(--surface-soft) 92%, var(--surface-elevated) 8%))',
+              border: '1px solid color-mix(in srgb, var(--accent-border) 18%, var(--border-subtle) 82%)',
+              boxShadow: '0 18px 46px rgba(0, 0, 0, 0.16), 0 0 28px color-mix(in srgb, var(--accent-shadow) 70%, transparent)',
+            }}
           >
-            {/* Header */}
-            <div className="px-4 py-3.5 border-b border-sf-border flex items-center justify-between">
+            <div style={{ padding: '0.92rem 0.98rem 0.72rem', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '0.8rem' }}>
               <div>
-                <p className="text-sm font-semibold text-sf-text">Background Jobs</p>
-                {activeCount > 0 && (
-                  <p className="text-xs text-sf-accent mt-0.5 font-medium">
-                    {activeCount} active
-                  </p>
-                )}
+                <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.35, fontWeight: 750, color: 'var(--text-primary)' }}>Study queue</p>
+                <p style={{ margin: '0.18rem 0 0', fontSize: '12px', lineHeight: 1.45, color: 'var(--text-muted)' }}>
+                  {activeCount > 0 ? `${activeCount} study job${activeCount === 1 ? '' : 's'} in progress` : hasFailed ? 'A study job needs attention' : 'Recent study pack activity'}
+                </p>
               </div>
-              <div className="flex items-center gap-1">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                 <button
+                  type="button"
                   onClick={() => { setLoading(true); fetchJobs().finally(() => setLoading(false)) }}
-                  className="flex h-7 w-7 items-center justify-center rounded-lg text-sf-muted hover:bg-sf-surface-2 hover:text-sf-text transition-colors"
-                  aria-label="Refresh"
+                  className="queue-action-icon"
+                  style={ghostIconStyle}
+                  aria-label="Refresh queue"
                 >
-                  <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
+                  <RefreshCw className={cn('h-3.5 w-3.5', (loading || mutating) && 'animate-spin')} />
                 </button>
-                <button
-                  onClick={() => setOpen(false)}
-                  className="flex h-7 w-7 items-center justify-center rounded-lg text-sf-muted hover:bg-sf-surface-2 hover:text-sf-text transition-colors"
-                  aria-label="Close"
-                >
+                <button type="button" onClick={() => setOpen(false)} className="queue-action-icon" style={ghostIconStyle} aria-label="Close queue">
                   <X className="h-3.5 w-3.5" />
                 </button>
               </div>
             </div>
 
-            {/* Body */}
-            <div className="max-h-[420px] overflow-y-auto">
+            <div style={{ maxHeight: '430px', overflowY: 'auto', padding: '0 0.78rem 0.9rem', display: 'grid', gap: '0.85rem' }}>
               {loading && !hasAny ? (
-                <div className="flex items-center justify-center py-10 text-sf-muted">
+                <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1.4rem', display: 'grid', placeItems: 'center', color: 'var(--text-muted)' }}>
                   <Loader2 className="h-5 w-5 animate-spin" />
                 </div>
               ) : !hasAny ? (
-                <div className="px-4 py-8 text-center">
-                  <ListTodo className="h-8 w-8 text-sf-subtle mx-auto mb-2" />
-                  <p className="text-sm text-sf-muted">No jobs yet.</p>
-                  <p className="text-xs text-sf-subtle mt-0.5">
-                    Queue a sync, Deep Learn, or Do Now to see progress here.
+                <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1.2rem', textAlign: 'center' }}>
+                  <ListTodo className="h-7 w-7 mx-auto" style={{ color: 'var(--text-muted)' }} />
+                  <p style={{ margin: '0.55rem 0 0', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: 650 }}>Nothing in the queue.</p>
+                  <p style={{ margin: '0.22rem 0 0', fontSize: '12px', lineHeight: 1.5, color: 'var(--text-muted)' }}>
+                    Generate a study pack or sync Canvas to see progress here.
                   </p>
                 </div>
               ) : (
-                STATUS_ORDER.map((status) => (
-                  <JobGroup key={status} status={status} jobs={grouped[status]} />
-                ))
+                <>
+                  <QueueSection title="Active" count={activeJobs.length}>
+                    {activeJobs.map((job) => <ActiveJobCard key={job.id} job={job} />)}
+                  </QueueSection>
+
+                  <QueueSection title="Needs attention" count={failedJobs.length}>
+                    {failedJobs.map((job) => <FailedJobCard key={job.id} job={job} onDismiss={dismissJob} />)}
+                  </QueueSection>
+
+                  <QueueSection
+                    title="Recently completed"
+                    count={completedJobs.length}
+                    action={completedJobs.length > 1 ? (
+                      <button type="button" onClick={clearCompleted} className="ui-button ui-button-ghost ui-button-xs">
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Clear completed
+                      </button>
+                    ) : null}
+                  >
+                    {completedJobs.map((job) => <CompletedJobCard key={job.id} job={job} onDismiss={dismissJob} />)}
+                  </QueueSection>
+                </>
               )}
             </div>
           </div>
@@ -350,4 +408,135 @@ export function QueuePanel() {
       )}
     </div>
   )
+}
+
+function formatQueueTitle(job: QueuedJob) {
+  if (job.type === 'learn_generation') {
+    return job.status === 'pending' ? 'Queued study pack' : `Generating: ${getJobSourceName(job)}`
+  }
+  return cleanJobTitle(job.title)
+}
+
+function getJobSourceName(job: QueuedJob) {
+  return getString(job.result, 'resourceTitle')
+    ?? getString(job.payload, 'resourceTitle')
+    ?? stripKnownPrefix(cleanJobTitle(job.title))
+    ?? 'Study source'
+}
+
+function getResultHref(job: QueuedJob) {
+  return getString(job.result, 'href')
+}
+
+function getString(source: Record<string, unknown> | null, key: string) {
+  const value = source?.[key]
+  return typeof value === 'string' && value.trim() ? value.trim() : null
+}
+
+function cleanJobTitle(title: string) {
+  return title.replace(/^Deep Learn:\s*/i, 'Generating study pack: ').trim()
+}
+
+function stripKnownPrefix(title: string) {
+  const stripped = title
+    .replace(/^Generating study pack:\s*/i, '')
+    .replace(/^Deep Learn:\s*/i, '')
+    .replace(/^Do Now:\s*/i, '')
+    .trim()
+  return stripped || null
+}
+
+function getActiveStatus(progress: number) {
+  if (progress < 30) return 'Reading the source'
+  if (progress < 75) return 'Building notes, key terms, and questions'
+  if (progress < 100) return 'Saving the study pack'
+  return 'Finishing up'
+}
+
+function humanizeError(error: string | null) {
+  const fallback = 'Could not build a study pack from this source yet.'
+  if (!error) return fallback
+  const trimmed = error.replace(/\s+/g, ' ').trim()
+  if (!trimmed) return fallback
+  return trimmed.length > 150 ? `${trimmed.slice(0, 147).trim()}...` : trimmed
+}
+
+function jobCardStyle(tone: 'active' | 'completed' | 'failed'): React.CSSProperties {
+  return {
+    ['--glass-panel-bg' as string]: tone === 'active'
+      ? 'linear-gradient(180deg, color-mix(in srgb, var(--surface-selected) 44%, var(--surface-elevated) 56%), color-mix(in srgb, var(--surface-soft) 82%, var(--accent-light) 18%))'
+      : tone === 'failed'
+        ? 'linear-gradient(180deg, color-mix(in srgb, var(--red-light) 16%, var(--surface-elevated) 84%), color-mix(in srgb, var(--surface-soft) 90%, transparent))'
+        : 'linear-gradient(180deg, color-mix(in srgb, var(--green-light) 16%, var(--surface-elevated) 84%), color-mix(in srgb, var(--surface-soft) 92%, transparent))',
+    ['--glass-panel-border' as string]: tone === 'active'
+      ? 'color-mix(in srgb, var(--accent-border) 26%, var(--border-subtle) 74%)'
+      : tone === 'failed'
+        ? 'color-mix(in srgb, var(--red) 24%, var(--border-subtle) 76%)'
+        : 'color-mix(in srgb, var(--green, #16a34a) 18%, var(--border-subtle) 82%)',
+    borderRadius: 'var(--radius-panel)',
+    padding: '0.72rem 0.78rem',
+    boxShadow: tone === 'active' ? '0 8px 22px color-mix(in srgb, var(--accent-shadow) 70%, transparent)' : 'none',
+  }
+}
+
+function iconShellStyle(tone: 'active' | 'completed' | 'failed'): React.CSSProperties {
+  return {
+    width: '1.75rem',
+    height: '1.75rem',
+    borderRadius: '999px',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    background: tone === 'active'
+      ? 'color-mix(in srgb, var(--accent-light) 70%, var(--surface-elevated) 30%)'
+      : tone === 'failed'
+        ? 'color-mix(in srgb, var(--red-light) 36%, var(--surface-elevated) 64%)'
+        : 'color-mix(in srgb, var(--green-light) 36%, var(--surface-elevated) 64%)',
+    color: tone === 'failed' ? 'var(--red)' : tone === 'completed' ? 'var(--green, #16a34a)' : 'var(--accent-foreground)',
+  }
+}
+
+const titleStyle: React.CSSProperties = {
+  margin: 0,
+  fontSize: '13px',
+  lineHeight: 1.35,
+  fontWeight: 750,
+  color: 'var(--text-primary)',
+}
+
+const sourceStyle: React.CSSProperties = {
+  margin: '0.18rem 0 0',
+  fontSize: '12px',
+  lineHeight: 1.45,
+  color: 'var(--text-secondary)',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+}
+
+const statusTextStyle: React.CSSProperties = {
+  margin: 0,
+  fontSize: '11px',
+  lineHeight: 1.45,
+  color: 'var(--text-muted)',
+}
+
+const percentStyle: React.CSSProperties = {
+  fontSize: '11px',
+  fontWeight: 750,
+  color: 'var(--accent-foreground)',
+}
+
+const ghostIconStyle: React.CSSProperties = {
+  width: '1.8rem',
+  height: '1.8rem',
+  borderRadius: '999px',
+  border: '0',
+  background: 'color-mix(in srgb, var(--surface-soft) 72%, transparent)',
+  color: 'var(--text-muted)',
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  cursor: 'pointer',
 }

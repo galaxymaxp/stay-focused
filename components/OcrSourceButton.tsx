@@ -36,7 +36,7 @@ export function OcrSourceButton({
       const payload = await response.json().catch(() => null) as { message?: string; error?: string; status?: string } | null
       const nextMessage = payload?.message
         ?? payload?.error
-        ?? (response.ok ? 'Text is ready. Generate Deep Learn pack.' : 'OCR failed. Open the original file or retry.')
+        ?? (response.ok ? 'Text is ready. Generate a study pack.' : 'OCR failed. Open the original file or retry.')
       setMessage(nextMessage)
       router.refresh()
     } finally {
