@@ -553,6 +553,7 @@ export function SettingsPage() {
                     initialEmailNotifications={userSettings.emailNotifications}
                     initialEmailCategories={userSettings.emailCategories}
                     notificationEmail={userSettings.notificationEmail}
+                    emailProviderConfigured={userSettings.emailProviderConfigured}
                   />
                 </div>
               )}

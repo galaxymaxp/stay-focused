@@ -286,6 +286,7 @@ export default async function LearnPage({ params, searchParams }: Props) {
                     moduleId={module.id}
                     resourceId={resumeTargetDeepLearn.resourceId}
                     courseId={module.courseId ?? null}
+                    resourceTitle={overview.resumeTarget.resource.title}
                     label={resumeTargetDeepLearn.ui.primaryLabel}
                   />
                 ) : resumeTargetDeepLearn?.ui.status === 'unavailable' || resumeTargetDeepLearn?.ui.status === 'blocked' ? (

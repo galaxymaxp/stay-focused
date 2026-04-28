@@ -25,6 +25,7 @@ export interface UserSettings {
   aiProvider: 'openai' | 'gemini' | 'nemotron'
   emailNotifications: 'off' | 'instant' | 'daily_digest'
   emailCategories: EmailCategories
+  emailProviderConfigured: boolean
   createdAt: string
   updatedAt: string
 }
@@ -50,6 +51,13 @@ export async function getUserSettings() {
       return { ok: false as const, error: 'Could not load settings' }
     }
 
+    const emailProviderConfigured = Boolean(
+      process.env.RESEND_API_KEY ||
+      process.env.SENDGRID_API_KEY ||
+      process.env.SMTP_HOST ||
+      process.env.EMAIL_PROVIDER,
+    )
+
     if (!data) {
       return {
         ok: true as const,
@@ -61,6 +69,7 @@ export async function getUserSettings() {
           aiProvider: 'openai' as const,
           emailNotifications: 'off' as const,
           emailCategories: DEFAULT_EMAIL_CATEGORIES,
+          emailProviderConfigured,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         },
@@ -77,6 +86,7 @@ export async function getUserSettings() {
         aiProvider: (data.ai_provider ?? 'openai') as 'openai' | 'gemini' | 'nemotron',
         emailNotifications: (data.email_notifications ?? 'off') as 'off' | 'instant' | 'daily_digest',
         emailCategories: { ...DEFAULT_EMAIL_CATEGORIES, ...(data.email_categories as Partial<EmailCategories> ?? {}) },
+        emailProviderConfigured,
         createdAt: data.created_at,
         updatedAt: data.updated_at,
       },

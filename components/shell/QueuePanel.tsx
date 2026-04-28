@@ -122,6 +122,7 @@ export function QueuePanel() {
   const [loading, setLoading] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const bgPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const fetchJobs = useCallback(async () => {
     try {
@@ -134,7 +135,28 @@ export function QueuePanel() {
     }
   }, [])
 
-  // Start polling when open, stop when closed
+  // Initial fetch on mount so the badge is immediately correct
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchJobs()
+  }, [fetchJobs])
+
+  // Background poll every 30 s when panel is closed — keeps the pill visible
+  useEffect(() => {
+    if (open) {
+      if (bgPollRef.current) {
+        clearInterval(bgPollRef.current)
+        bgPollRef.current = null
+      }
+      return
+    }
+    bgPollRef.current = setInterval(fetchJobs, 30000)
+    return () => {
+      if (bgPollRef.current) clearInterval(bgPollRef.current)
+    }
+  }, [open, fetchJobs])
+
+  // Active panel poll at 12 s
   useEffect(() => {
     if (!open) {
       if (pollRef.current) clearInterval(pollRef.current)
@@ -160,7 +182,6 @@ export function QueuePanel() {
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
-  // Badge count: pending + running
   const activeCount = jobs.filter(
     (j) => j.status === 'pending' || j.status === 'running',
   ).length
@@ -177,18 +198,27 @@ export function QueuePanel() {
 
   return (
     <div ref={ref} className="relative">
-      <button
-        onClick={() => setOpen((p) => !p)}
-        aria-label="Queue"
-        className="relative flex h-8 w-8 items-center justify-center rounded-lg text-sf-muted hover:bg-sf-surface-2 hover:text-sf-text transition-colors"
-      >
-        <ListTodo className="h-4 w-4" />
-        {activeCount > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-sf-accent text-white text-[10px] font-bold">
-            {activeCount > 9 ? '9+' : activeCount}
+      {activeCount > 0 ? (
+        <button
+          onClick={() => setOpen((p) => !p)}
+          aria-label="Queue — jobs in progress"
+          className="relative flex items-center gap-1.5 h-8 px-2.5 rounded-lg border border-sf-accent-border bg-sf-accent-light text-sf-accent hover:bg-sf-accent hover:text-white transition-colors"
+        >
+          <Loader2 className="h-3.5 w-3.5 animate-spin flex-shrink-0" />
+          <span className="text-xs font-semibold whitespace-nowrap hidden sm:inline">
+            {activeCount === 1 ? 'Queue: 1 running' : `Processing ${activeCount} items`}
           </span>
-        )}
-      </button>
+          <span className="text-[11px] font-bold sm:hidden">{activeCount}</span>
+        </button>
+      ) : (
+        <button
+          onClick={() => setOpen((p) => !p)}
+          aria-label="Queue"
+          className="relative flex h-8 w-8 items-center justify-center rounded-lg text-sf-muted hover:bg-sf-surface-2 hover:text-sf-text transition-colors"
+        >
+          <ListTodo className="h-4 w-4" />
+        </button>
+      )}
 
       {open && (
         <>

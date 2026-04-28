@@ -82,6 +82,7 @@ export function DeepLearnNoteView({
               moduleId={moduleId}
               resourceId={resolvedDeepLearnResourceId}
               courseId={courseId}
+              resourceTitle={resource.title}
               label={ui.primaryLabel}
               className="ui-button ui-button-secondary ui-button-xs"
               disabledReason={disabledReason}

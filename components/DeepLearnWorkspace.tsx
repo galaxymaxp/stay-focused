@@ -72,6 +72,7 @@ export function DeepLearnWorkspace({
               moduleId={moduleId}
               resourceId={deepLearnResourceId}
               courseId={courseId}
+              resourceTitle={resource.title}
               label={note?.status === 'failed' ? 'Generate again' : 'Generate pack'}
               className="ui-button ui-button-secondary ui-button-xs"
             />

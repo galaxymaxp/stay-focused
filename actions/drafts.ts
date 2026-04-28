@@ -778,6 +778,54 @@ export async function deleteDraft(draftId: string): Promise<void> {
   redirect('/library')
 }
 
+export async function deleteLibraryItemAction(
+  id: string,
+  entryKind: 'draft' | 'deep_learn_note',
+): Promise<{ ok: boolean; error?: string }> {
+  if (!isSupabaseAuthConfigured) return { ok: false, error: 'Supabase is not configured.' }
+
+  const client = await createDraftsClient()
+
+  if (entryKind === 'draft') {
+    const { data: existing } = await client
+      .from('drafts')
+      .select('course_id, source_module_id, source_resource_id')
+      .eq('id', id)
+      .maybeSingle()
+
+    const { error } = await client.from('drafts').delete().eq('id', id)
+    if (error) return { ok: false, error: 'Could not delete draft.' }
+
+    revalidateUnifiedDraftPaths({
+      courseId: (existing?.course_id as string | null) ?? null,
+      moduleId: (existing?.source_module_id as string | null) ?? null,
+      resourceId: (existing?.source_resource_id as string | null) ?? null,
+      draftId: id,
+    })
+  } else {
+    const { data: existing } = await client
+      .from('deep_learn_notes')
+      .select('module_id, resource_id, course_id')
+      .eq('id', id)
+      .maybeSingle()
+
+    const { error } = await client.from('deep_learn_notes').delete().eq('id', id)
+    if (error) return { ok: false, error: 'Could not delete Deep Learn note.' }
+
+    if (existing) {
+      revalidateUnifiedDraftPaths({
+        courseId: (existing.course_id as string | null) ?? null,
+        moduleId: (existing.module_id as string | null) ?? null,
+        resourceId: (existing.resource_id as string | null) ?? null,
+        draftId: id,
+      })
+    }
+  }
+
+  revalidatePath('/library')
+  return { ok: true }
+}
+
 export async function makeQuizzable(draftId: string): Promise<void> {
   const draft = await getDraft(draftId)
   if (!draft) throw new Error('Draft not found.')
