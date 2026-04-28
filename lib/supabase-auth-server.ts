@@ -16,6 +16,10 @@ export function createSupabaseRouteClient(request: NextRequest, response?: NextR
       setAll(cookiesToSet, headers) {
         if (!response) return
 
+        cookiesToSet.forEach(({ name, value }) => {
+          request.cookies.set(name, value)
+        })
+
         cookiesToSet.forEach(({ name, value, options }) => {
           response.cookies.set(name, value, options)
         })

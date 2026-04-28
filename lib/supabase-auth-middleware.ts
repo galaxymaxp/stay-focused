@@ -43,6 +43,6 @@ export async function updateSupabaseAuthSession(request: NextRequest) {
     },
   })
 
-  await supabase.auth.getClaims()
+  await supabase.auth.getUser()
   return response
 }
