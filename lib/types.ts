@@ -69,6 +69,8 @@ export interface ModuleResource {
   id: string
   moduleId: string
   courseId: string | null
+  canvasInstanceUrl?: string | null
+  canvasCourseId?: number | null
   canvasModuleId: number | null
   canvasItemId: number | null
   canvasFileId: number | null

@@ -5,6 +5,8 @@ export function adaptModuleResourceRow(row: Record<string, unknown>): ModuleReso
     id: String(row.id ?? ''),
     moduleId: String(row.module_id ?? ''),
     courseId: typeof row.course_id === 'string' ? row.course_id : null,
+    canvasInstanceUrl: typeof row.canvas_instance_url === 'string' ? row.canvas_instance_url : null,
+    canvasCourseId: typeof row.canvas_course_id === 'number' ? row.canvas_course_id : null,
     canvasModuleId: typeof row.canvas_module_id === 'number' ? row.canvas_module_id : null,
     canvasItemId: typeof row.canvas_item_id === 'number' ? row.canvas_item_id : null,
     canvasFileId: typeof row.canvas_file_id === 'number' ? row.canvas_file_id : null,

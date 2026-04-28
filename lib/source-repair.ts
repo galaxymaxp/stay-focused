@@ -30,7 +30,7 @@ export interface SourceRepairCounts {
 
 export interface SourceRepairMatch {
   resource: ModuleResource
-  strategy: 'canvas_item_id' | 'canvas_file_id' | 'url' | 'module_title' | 'course_title'
+  strategy: 'canvas_item_id' | 'canvas_file_id' | 'url' | 'module_title' | 'course_title' | 'normalized_filename'
 }
 
 export function findSourceRepairMatch(
@@ -68,18 +68,28 @@ export function findSourceRepairMatch(
   }
 
   const normalizedTitle = normalizeSourceTitle(item.title)
+  const normalizedFilename = normalizeCanvasFileTitle(item.title)
   if (normalizedTitle && item.moduleId) {
     const moduleMatches = resources.filter((resource) => (
       resource.moduleId === item.moduleId
-      && normalizeSourceTitle(resource.title) === normalizedTitle
+      && (
+        normalizeSourceTitle(resource.title) === normalizedTitle
+        || (normalizedFilename && normalizeCanvasFileTitle(resource.title) === normalizedFilename)
+      )
     ))
-    if (moduleMatches.length === 1) return { resource: moduleMatches[0]!, strategy: 'module_title' }
+    if (moduleMatches.length === 1) {
+      const strategy = normalizeSourceTitle(moduleMatches[0]!.title) === normalizedTitle ? 'module_title' : 'normalized_filename'
+      return { resource: moduleMatches[0]!, strategy }
+    }
   }
 
   if (normalizedTitle && item.courseId) {
     const courseMatches = resources.filter((resource) => (
       resource.courseId === item.courseId
-      && normalizeSourceTitle(resource.title) === normalizedTitle
+      && (
+        normalizeSourceTitle(resource.title) === normalizedTitle
+        || (normalizedFilename && normalizeCanvasFileTitle(resource.title) === normalizedFilename)
+      )
     ))
     if (courseMatches.length === 1) return { resource: courseMatches[0]!, strategy: 'course_title' }
   }
@@ -154,6 +164,24 @@ export function normalizeSourceTitle(value: string) {
     .replace(/['’]/g, '')
     .replace(/&/g, ' and ')
     .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+}
+
+export function normalizeCanvasFileTitle(value: string | null | undefined) {
+  const cleaned = value?.trim()
+  if (!cleaned) return ''
+
+  return decodeURIComponent(cleaned)
+    .replace(/\.[a-z0-9]{1,8}$/i, '')
+    .toLowerCase()
+    .replace(/['’]/g, '')
+    .replace(/&/g, ' and ')
+    .replace(/\bcopy\s*\(\d+\)$/i, '')
+    .replace(/\s*\(\d+\)$/i, '')
+    .replace(/[_\-–—]+/g, ' ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\b(final|updated|revised|copy)\b/g, ' ')
+    .replace(/\s+/g, ' ')
     .trim()
 }
 

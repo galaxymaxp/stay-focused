@@ -102,6 +102,8 @@ interface ExistingCourseMatch {
 }
 
 interface ResourceIngestionRecord {
+  canvasInstanceUrl: string | null
+  canvasCourseId: number | null
   canvasModuleId: number | null
   canvasItemId: number | null
   canvasFileId: number | null
@@ -461,6 +463,8 @@ async function syncSingleCourse(
       moduleId,
       courseId: courseRecord.id,
       userId,
+      canvasInstanceUrl: normalizedCourse.canvasInstanceUrl,
+      canvasCourseId: normalizedCourse.canvasCourseId,
     })
 
     const { error: resourcesInsertError } = await syncSupabase
@@ -934,7 +938,7 @@ function buildLearningItemsForSync(aiResult: AIResponse, courseId: string, modul
 
 function buildModuleResourcesForSync(
   resources: ResourceIngestionRecord[],
-  context: { moduleId: string; courseId: string; userId: string },
+  context: { moduleId: string; courseId: string; userId: string; canvasInstanceUrl: string | null; canvasCourseId: number | null },
 ) {
   return sanitizeDatabaseValue(resources.map((resource) => {
     const assessmentMetadata = buildModuleResourceAssessmentMetadata({
@@ -953,6 +957,8 @@ function buildModuleResourcesForSync(
       user_id: context.userId,
       module_id: context.moduleId,
       course_id: context.courseId,
+      canvas_instance_url: resource.canvasInstanceUrl ?? context.canvasInstanceUrl,
+      canvas_course_id: resource.canvasCourseId ?? context.canvasCourseId,
       canvas_module_id: resource.canvasModuleId,
       canvas_item_id: resource.canvasItemId,
       canvas_file_id: resource.canvasFileId,
@@ -1170,10 +1176,15 @@ async function ingestModuleResources(
   for (const moduleItem of modules) {
     for (const item of moduleItem.items ?? []) {
       const required = Boolean(item.completion_requirement)
+      const fileContentId = item.type.toLowerCase() === 'file' && typeof item.content_id === 'number'
+        ? item.content_id
+        : null
       const baseRecord: ResourceIngestionRecord = {
+        canvasInstanceUrl: normalizeOptionalCanvasSyncText(config.url ?? null),
+        canvasCourseId: courseId,
         canvasModuleId: moduleItem.id,
         canvasItemId: item.id ?? null,
-        canvasFileId: typeof item.content_id === 'number' ? item.content_id : null,
+        canvasFileId: fileContentId,
         title: item.title,
         resourceType: item.type,
         contentType: item.content_details?.content_type ?? null,
@@ -1191,6 +1202,16 @@ async function ingestModuleResources(
           canvasModuleUrl: buildCanvasModuleUrl(config.url ?? null, courseId, moduleItem.id),
           completionRequirementType: item.completion_requirement?.type ?? null,
           normalizedSourceType: normalizeModuleItemSourceType(item),
+          canvasInstanceUrl: normalizeOptionalCanvasSyncText(config.url ?? null),
+          canvasCourseId: courseId,
+          canvasModuleId: moduleItem.id,
+          canvasModuleItemId: item.id ?? null,
+          canvasItemId: item.id ?? null,
+          canvasFileId: fileContentId,
+          contentId: typeof item.content_id === 'number' ? item.content_id : null,
+          canvasUrl: buildCanvasModuleItemHtmlUrl(config.url ?? null, courseId, item.id ?? null, item.html_url ?? null),
+          sourceUrl: resolveCanvasUrl(config.url ?? null, item.content_details?.url ?? item.url ?? null),
+          externalUrl: resolveCanvasUrl(config.url ?? null, item.content_details?.url ?? null),
         },
       }
 
@@ -1428,6 +1449,13 @@ async function ingestModuleResources(
           sourceUrl,
           htmlUrl: file?.preview_url ?? baseRecord.htmlUrl,
           metadataPatch: {
+            normalizedSourceType: 'file',
+            canvasFileId: file?.id ?? baseRecord.canvasFileId,
+            contentId: item.content_id ?? file?.id ?? baseRecord.canvasFileId,
+            filename: file?.filename ?? title,
+            displayName: file?.display_name ?? title,
+            sourceUrl,
+            htmlUrl: file?.preview_url ?? baseRecord.htmlUrl,
             fileSize: file?.size ?? item.content_details?.size ?? null,
             mimeClass: file?.mime_class ?? item.content_details?.mime_class ?? null,
             fileUpdatedAt: file?.updated_at ?? null,
@@ -1723,6 +1751,12 @@ async function tryResolveModuleItemTargetForSync(input: {
         metadataPatch: {
           ...resolutionMetadataPatch,
           normalizedSourceType: 'file',
+          canvasFileId: file?.id ?? target.fileId ?? input.baseRecord.canvasFileId,
+          contentId: input.item.content_id ?? file?.id ?? target.fileId ?? input.baseRecord.canvasFileId,
+          filename: file?.filename ?? title,
+          displayName: file?.display_name ?? title,
+          sourceUrl: file?.url ?? sourceUrl,
+          htmlUrl: file?.preview_url ?? target.resolvedUrl ?? input.baseRecord.htmlUrl,
           fileSize: file?.size ?? input.item.content_details?.size ?? null,
           mimeClass: file?.mime_class ?? input.item.content_details?.mime_class ?? null,
           fileUpdatedAt: file?.updated_at ?? null,
@@ -1947,6 +1981,18 @@ function isCanvasCompletableTaskType(taskType: TaskItem['taskType']) {
 function buildCanvasModuleUrl(baseUrl: string | null | undefined, courseId: number, moduleId: number) {
   if (!baseUrl) return null
   return `${normalizeCanvasUrl(baseUrl)}/courses/${courseId}/modules/${moduleId}`
+}
+
+function buildCanvasModuleItemHtmlUrl(
+  baseUrl: string | null | undefined,
+  courseId: number,
+  moduleItemId: number | null | undefined,
+  fallback: string | null | undefined,
+) {
+  if (baseUrl && moduleItemId) {
+    return `${normalizeCanvasUrl(baseUrl)}/courses/${courseId}/modules/items/${moduleItemId}`
+  }
+  return resolveCanvasUrl(baseUrl, fallback)
 }
 
 function buildCanvasPageApiUrl(

@@ -3,6 +3,7 @@ import test from 'node:test'
 import {
   classifyUnrepairedCanvasItem,
   findSourceRepairMatch,
+  normalizeCanvasFileTitle,
   summarizeSourceRepairCounts,
   type RepairableLearningItem,
 } from '../lib/source-repair'
@@ -38,6 +39,16 @@ test('source repair matches normalized title within the same module', () => {
 
   assert.equal(match?.resource.id, 'same-module')
   assert.equal(match?.strategy, 'module_title')
+})
+
+test('source repair matches normalized Canvas filenames with punctuation and extensions', () => {
+  const match = findSourceRepairMatch(createItem({ title: 'Unit_1--OSPF Configuration FINAL.pdf' }), [
+    createResource({ id: 'same-file', title: 'Unit 1 OSPF Configuration' }),
+  ])
+
+  assert.equal(match?.resource.id, 'same-file')
+  assert.equal(match?.strategy, 'normalized_filename')
+  assert.equal(normalizeCanvasFileTitle('Unit_1--OSPF Configuration FINAL.pdf'), 'unit 1 ospf configuration')
 })
 
 test('source repair does not create duplicate module resources when a match exists', () => {
