@@ -5,7 +5,7 @@ import { ListTodo, X, CheckCircle, XCircle, Loader2, Clock, RefreshCw, AlertCirc
 import { cn } from '@/lib/cn'
 import type { QueuedJob, QueuedJobStatus } from '@/lib/queue'
 
-const PILL_BASE = 'queue-panel-pill relative inline-flex items-center gap-1.5 h-8 rounded-full px-3 transition-colors hover:opacity-90'
+const PILL_BASE = 'queue-panel-pill relative isolate inline-flex items-center gap-1.5 h-8 rounded-full px-3 overflow-hidden transition-colors hover:opacity-90'
 const PILL_TEXT: React.CSSProperties = { fontSize: '12px', fontWeight: 800, whiteSpace: 'nowrap', cursor: 'pointer', lineHeight: 1 }
 
 function ProgressBar({ progress, status }: { progress: number; status: QueuedJobStatus }) {
@@ -84,7 +84,7 @@ function ActiveJobCard({ job }: { job: QueuedJob }) {
           <p style={titleStyle}>{formatQueueTitle(job)}</p>
           <p style={sourceStyle}>{fileName}</p>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem', alignItems: 'center', marginTop: '0.35rem' }}>
-            <span style={statusTextStyle}>{isPending ? 'Waiting to start' : getActiveStatus(progress)}</span>
+            <span style={statusTextStyle}>{isPending ? 'Waiting to start' : getActiveStatus(job, progress)}</span>
             {!isPending && <span style={percentStyle}>{progress}%</span>}
           </div>
           <ProgressBar progress={progress} status={job.status} />
@@ -105,7 +105,7 @@ function CompletedJobCard({ job, onDismiss }: { job: QueuedJob; onDismiss: (jobI
             <CheckCircle className="h-3.5 w-3.5" />
           </span>
           <div style={{ minWidth: 0 }}>
-            <p style={titleStyle}>Study pack ready</p>
+            <p style={titleStyle}>{getCompletedTitle(job)}</p>
             <p style={sourceStyle}>{getJobSourceName(job)}</p>
           </div>
         </div>
@@ -137,7 +137,7 @@ function FailedJobCard({ job, onDismiss }: { job: QueuedJob; onDismiss: (jobId: 
             <XCircle className="h-3.5 w-3.5" />
           </span>
           <div style={{ minWidth: 0 }}>
-            <p style={titleStyle}>Failed: {getJobSourceName(job)}</p>
+            <p style={titleStyle}>{getFailedTitle(job)}</p>
             <p style={{ ...statusTextStyle, color: 'var(--red)', marginTop: '0.22rem' }}>{humanizeError(job.error)}</p>
           </div>
         </div>
@@ -267,6 +267,7 @@ export function QueuePanel() {
   const activeCount = activeJobs.length
   const runningCount = runningJobs.length
   const maxProgress = runningJobs.length > 0 ? Math.max(...runningJobs.map((j) => j.progress)) : 0
+  const pillProgress = Math.max(0, Math.min(maxProgress, 100))
   const hasFailed = failedJobs.length > 0
   const hasAny = activeJobs.length + failedJobs.length + completedJobs.length > 0
   const toggle = () => setOpen((p) => !p)
@@ -286,19 +287,18 @@ export function QueuePanel() {
             boxShadow: '0 0 0 1px color-mix(in srgb, var(--accent) 10%, transparent), 0 8px 18px rgba(0, 0, 0, 0.08)',
           }}
         >
-          <Loader2 className="h-3.5 w-3.5 animate-spin flex-shrink-0" />
-          <span>{runningCount > 0 ? `Processing ${activeCount}` : `Queue: ${activeCount}`}</span>
-          {maxProgress > 0 && maxProgress < 100 && (
+          {pillProgress > 0 && pillProgress < 100 && (
             <span
-              className="absolute bottom-0 left-0 right-0 h-[2px] rounded-full overflow-hidden"
-              style={{ background: 'color-mix(in srgb, var(--accent) 20%, var(--border-subtle) 80%)' }}
-            >
-              <span
-                className="block h-full transition-all duration-500"
-                style={{ width: `${maxProgress}%`, background: 'var(--accent)' }}
-              />
-            </span>
+              aria-hidden="true"
+              className="absolute inset-y-0 left-0 -z-10 transition-all duration-500"
+              style={{
+                width: `${pillProgress}%`,
+                background: 'linear-gradient(90deg, color-mix(in srgb, var(--accent) 28%, transparent), color-mix(in srgb, var(--accent) 16%, transparent))',
+              }}
+            />
           )}
+          <Loader2 className="relative z-10 h-3.5 w-3.5 animate-spin flex-shrink-0" />
+          <span className="relative z-10">{getQueuePillLabel(activeJobs, runningCount, activeCount)}</span>
         </button>
       ) : hasFailed ? (
         <button
@@ -359,7 +359,7 @@ export function QueuePanel() {
               <div>
                 <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.35, fontWeight: 750, color: 'var(--text-primary)' }}>Study queue</p>
                 <p style={{ margin: '0.18rem 0 0', fontSize: '12px', lineHeight: 1.45, color: 'var(--text-muted)' }}>
-                  {activeCount > 0 ? `${activeCount} study job${activeCount === 1 ? '' : 's'} in progress` : hasFailed ? 'A study job needs attention' : 'Recent study pack activity'}
+                  {activeCount > 0 ? `${activeCount} background job${activeCount === 1 ? '' : 's'} in progress` : hasFailed ? 'A background job needs attention' : 'Recent background activity'}
                 </p>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
@@ -425,12 +425,23 @@ export function QueuePanel() {
 
 function formatQueueTitle(job: QueuedJob) {
   if (job.type === 'learn_generation') {
-    return job.status === 'pending' ? 'Queued study pack' : `Generating: ${getJobSourceName(job)}`
+    return `Generating study pack: ${getJobSourceName(job)}`
+  }
+  if (job.type === 'canvas_sync') {
+    const count = getNumber(job.payload, 'courseCount') ?? 1
+    return `Syncing Canvas: ${count} course${count === 1 ? '' : 's'}`
   }
   return cleanJobTitle(job.title)
 }
 
 function getJobSourceName(job: QueuedJob) {
+  if (job.type === 'canvas_sync') {
+    const courseNames = getStringArray(job.result, 'courseNames') ?? getStringArray(job.payload, 'courseNames')
+    if (courseNames?.length === 1) return courseNames[0]
+    if (courseNames && courseNames.length > 1) return `${courseNames.length} Canvas courses`
+    return 'Canvas'
+  }
+
   return getString(job.result, 'resourceTitle')
     ?? getString(job.payload, 'resourceTitle')
     ?? stripKnownPrefix(cleanJobTitle(job.title))
@@ -446,6 +457,18 @@ function getString(source: Record<string, unknown> | null, key: string) {
   return typeof value === 'string' && value.trim() ? value.trim() : null
 }
 
+function getNumber(source: Record<string, unknown> | null, key: string) {
+  const value = source?.[key]
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+function getStringArray(source: Record<string, unknown> | null, key: string) {
+  const value = source?.[key]
+  if (!Array.isArray(value)) return null
+  const strings = value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+  return strings.length > 0 ? strings : null
+}
+
 function cleanJobTitle(title: string) {
   return title.replace(/^Deep Learn:\s*/i, 'Generating study pack: ').trim()
 }
@@ -459,11 +482,41 @@ function stripKnownPrefix(title: string) {
   return stripped || null
 }
 
-function getActiveStatus(progress: number) {
+function getActiveStatus(job: QueuedJob, progress: number) {
+  const statusMessage = getString(job.result, 'statusMessage')
+  if (statusMessage) return statusMessage
+  if (job.type === 'canvas_sync') {
+    if (progress < 18) return 'Connecting to Canvas'
+    if (progress < 42) return 'Reading selected courses'
+    if (progress < 58) return 'Importing module content'
+    if (progress < 72) return 'Organizing data'
+    if (progress < 86) return 'Saving to Stay Focused'
+    if (progress < 96) return 'Extracting tasks/resources'
+    return 'Finalizing sync'
+  }
   if (progress < 30) return 'Reading the source'
   if (progress < 75) return 'Building notes, key terms, and questions'
   if (progress < 100) return 'Saving the study pack'
   return 'Finishing up'
+}
+
+function getCompletedTitle(job: QueuedJob) {
+  if (job.type === 'canvas_sync') return 'Canvas sync complete'
+  if (job.type === 'learn_generation') return 'Study pack ready'
+  return 'Job complete'
+}
+
+function getFailedTitle(job: QueuedJob) {
+  if (job.type === 'canvas_sync') return 'Canvas sync failed'
+  if (job.type === 'learn_generation') return 'Study pack failed'
+  return `Failed: ${getJobSourceName(job)}`
+}
+
+function getQueuePillLabel(activeJobs: QueuedJob[], runningCount: number, activeCount: number) {
+  const canvasCount = activeJobs.filter((job) => job.type === 'canvas_sync').length
+  if (canvasCount === activeCount) return `Syncing ${activeCount}`
+  if (runningCount > 0) return `Processing ${activeCount}`
+  return `Queue: ${activeCount}`
 }
 
 function humanizeError(error: string | null) {
@@ -488,6 +541,7 @@ function jobCardStyle(tone: 'active' | 'completed' | 'failed'): React.CSSPropert
         : 'color-mix(in srgb, var(--green, #16a34a) 18%, var(--border-subtle) 82%)',
     borderRadius: 'var(--radius-panel)',
     padding: '0.72rem 0.78rem',
+    overflow: 'hidden',
     boxShadow: tone === 'active' ? '0 8px 22px color-mix(in srgb, var(--accent-shadow) 70%, transparent)' : 'none',
   }
 }

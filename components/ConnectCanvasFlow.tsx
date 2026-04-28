@@ -4,12 +4,15 @@ import type { CSSProperties, ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { refreshCourseInstructors, syncCanvasCourse, testCanvasConnection, type CanvasConnectionResult } from '@/actions/canvas'
+import { refreshCourseInstructors, testCanvasConnection, type CanvasConnectionResult } from '@/actions/canvas'
+import { queueCanvasSyncAction } from '@/actions/queue-canvas'
 import { CanvasSyncStatusCard } from '@/components/CanvasSyncStatusCard'
 import { UnsyncButton } from '@/components/UnsyncButton'
-import { useCanvasSyncStatus, type CanvasSyncPhase, type SyncActivitySnapshot } from '@/components/useCanvasSyncStatus'
+import type { CanvasSyncPhase, SyncActivitySnapshot } from '@/components/useCanvasSyncStatus'
 import type { CanvasCourse } from '@/lib/canvas'
 import { buildCanvasCourseSyncKey } from '@/lib/canvas-sync'
+import { dispatchInAppToast } from '@/lib/notifications'
+import type { QueuedJob } from '@/lib/queue'
 
 const STORAGE_KEY = 'stay-focused.canvas-connection'
 
@@ -71,26 +74,20 @@ export function ConnectCanvasFlow({
   const [connectionError, setConnectionError] = useState<string | null>(null)
   const [courseSyncProgress, setCourseSyncProgress] = useState<Record<number, CourseSyncProgress>>({})
   const [savedConnection, setSavedConnection] = useState<SavedCanvasConnection | null>(initialSavedConnection)
+  const [activeCanvasJob, setActiveCanvasJob] = useState<QueuedJob | null>(null)
+  const [queueFeedback, setQueueFeedback] = useState<string | null>(null)
   const [isTesting, startTesting] = useTransition()
-  const [isSyncing, startSyncing] = useTransition()
+  const [isQueueingSync, startQueueingSync] = useTransition()
   const [isRefreshingInstructors, startRefreshingInstructors] = useTransition()
   const [instructorRefreshResult, setInstructorRefreshResult] = useState<{ message: string; tone: 'success' | 'error' } | null>(null)
   const initialActionHandledRef = useRef(false)
-  const syncStatus = useCanvasSyncStatus(lastSync)
-  const {
-    beginSync,
-    detail: syncDetail,
-    failSync,
-    finishSync,
-    isSyncing: isSyncStatusActive,
-    lastSync: latestSync,
-    phase: syncPhase,
-    progressValue: syncProgressValue,
-    resetSyncFeedback,
-    selectedCourseCount: syncCourseCount,
-    title: syncTitle,
-    savingSubStepIndex: syncSavingSubStepIndex,
-  } = syncStatus
+  const latestSync = buildLatestSyncFromJob(activeCanvasJob, lastSync)
+  const syncPhase = getCanvasJobPhase(activeCanvasJob)
+  const syncProgressValue = getCanvasJobProgressValue(activeCanvasJob)
+  const syncDetail = getCanvasJobDetail(activeCanvasJob)
+  const syncTitle = getCanvasJobTitle(activeCanvasJob)
+  const syncCourseCount = getCanvasJobCourseCount(activeCanvasJob)
+  const syncSavingSubStepIndex = getCanvasSavingSubStepIndex(activeCanvasJob)
   const connectionSummary = savedConnection ?? (initialConnectionUrl ? {
     url: initialConnectionUrl,
     token: '',
@@ -114,7 +111,8 @@ export function ConnectCanvasFlow({
 
   const canLoadCourses = Boolean(connectionSummary?.url && token.trim())
   const hasLoadedCourses = step === 'courses'
-  const isSyncActionPending = isSyncStatusActive || isSyncing
+  const isCanvasJobActive = activeCanvasJob?.status === 'pending' || activeCanvasJob?.status === 'running'
+  const isSyncActionPending = isQueueingSync || isCanvasJobActive
 
   function persistConnection(result: CanvasConnectionResult, nextToken: string) {
     const connection = {
@@ -159,7 +157,7 @@ export function ConnectCanvasFlow({
     const trimmedToken = token.trim()
 
     setConnectionError(null)
-    resetSyncFeedback()
+    setQueueFeedback(null)
 
     startTesting(async () => {
       try {
@@ -183,7 +181,44 @@ export function ConnectCanvasFlow({
         setConnectionError(error instanceof Error ? error.message : 'We could not connect to Canvas just yet.')
       }
     })
-  }, [canvasUrl, token, startTesting, resetSyncFeedback])
+  }, [canvasUrl, token, startTesting])
+
+  const refreshCanvasQueue = useCallback(async () => {
+    try {
+      const res = await fetch('/api/queue/jobs', { cache: 'no-store' })
+      if (!res.ok) return
+      const data = await res.json() as { jobs?: QueuedJob[] }
+      const canvasJobs = (data.jobs ?? []).filter((job) => job.type === 'canvas_sync')
+      const activeJob = canvasJobs.find((job) => job.status === 'pending' || job.status === 'running')
+      const latestCanvasJob = activeJob ?? canvasJobs[0] ?? null
+      setActiveCanvasJob(latestCanvasJob)
+      if (latestCanvasJob?.status === 'completed') {
+        router.refresh()
+      }
+    } catch {
+      // Queue polling should not block the Canvas page.
+    }
+  }, [router])
+
+  useEffect(() => {
+    const initialRefreshId = window.setTimeout(() => {
+      void refreshCanvasQueue()
+    }, 0)
+    const id = window.setInterval(refreshCanvasQueue, 6000)
+    return () => {
+      window.clearTimeout(initialRefreshId)
+      window.clearInterval(id)
+    }
+  }, [refreshCanvasQueue])
+
+  useEffect(() => {
+    function handleQueueRefresh() {
+      void refreshCanvasQueue()
+    }
+
+    window.addEventListener('stay-focused:queue-refresh', handleQueueRefresh)
+    return () => window.removeEventListener('stay-focused:queue-refresh', handleQueueRefresh)
+  }, [refreshCanvasQueue])
 
   function handleUseSavedConnection() {
     if (!canvasUrl.trim() || !token.trim()) {
@@ -216,7 +251,7 @@ export function ConnectCanvasFlow({
     setCourseSyncProgress({})
     setSearch('')
     setConnectionError(null)
-    resetSyncFeedback()
+    setQueueFeedback(null)
     openSetup('guide')
   }
 
@@ -231,7 +266,7 @@ export function ConnectCanvasFlow({
     setSearch('')
     setStep('connect')
     setConnectionError(null)
-    resetSyncFeedback()
+    setQueueFeedback(null)
     openSetup('guide')
   }
 
@@ -267,71 +302,46 @@ export function ConnectCanvasFlow({
       { state: 'pending' as const, message: null },
     ])))
 
-    const syncRun = beginSync(selectedCourses.length)
-    startSyncing(async () => {
-      const syncedCourses: string[] = []
-      const failedCourses: string[] = []
-      const syncedCourseIds = new Set<number>()
-
+    setQueueFeedback(null)
+    startQueueingSync(async () => {
       try {
-        for (const course of selectedCourses) {
-          setCourseSyncProgress((current) => ({
-            ...current,
-            [course.courseId]: { state: 'syncing', message: 'Syncing now' },
-          }))
+        const result = await queueCanvasSyncAction({
+          courses: selectedCourses,
+          canvasUrl,
+          accessToken: token,
+          mode: 'selected_courses',
+        })
 
-          try {
-            const result = await syncCanvasCourse({
-              course,
-              canvasUrl,
-              accessToken: token,
-            })
-
-            if ('error' in result) {
-              failedCourses.push(course.courseName)
-              setCourseSyncProgress((current) => ({
-                ...current,
-                [course.courseId]: { state: 'failed', message: normalizeSyncErrorText(result.error) },
-              }))
-              continue
-            }
-
-            syncedCourses.push(result.courseName)
-            syncedCourseIds.add(course.courseId)
-            setCourseSyncProgress((current) => ({
-              ...current,
-              [course.courseId]: { state: 'synced', message: 'Synced' },
-            }))
-          } catch (error) {
-            failedCourses.push(course.courseName)
-            setCourseSyncProgress((current) => ({
-              ...current,
-              [course.courseId]: {
-                state: 'failed',
-                message: normalizeSyncErrorText(error instanceof Error ? error.message : null),
-              },
-            }))
-          }
+        if (result.error) {
+          setQueueFeedback(result.error)
+          setCourseSyncProgress(Object.fromEntries(selectedCourses.map((course) => [
+            course.courseId,
+            { state: 'failed' as const, message: normalizeSyncErrorText(result.error) },
+          ])))
+          dispatchInAppToast({ title: 'Could not queue Canvas sync', description: result.error, tone: 'error' })
+          return
         }
 
-        if (failedCourses.length > 0) {
-          const message = syncedCourses.length > 0
-            ? `Synced ${syncedCourses.length} course${syncedCourses.length === 1 ? '' : 's'}. ${failedCourses.length} failed and can be retried.`
-            : `Sync failed for ${failedCourses.length} course${failedCourses.length === 1 ? '' : 's'}.`
-          failSync(syncRun, message)
-        } else {
-          await finishSync(
-            syncRun,
-            syncedCourses.length === 1
-              ? `Synced ${syncedCourses[0]}.`
-              : `Synced ${syncedCourses.length} courses successfully.`,
-          )
-        }
-
-        setSelectedCourseIds((current) => current.filter((id) => !syncedCourseIds.has(id)))
-        router.refresh()
+        if (result.job) setActiveCanvasJob(result.job)
+        setCourseSyncProgress(Object.fromEntries(selectedCourses.map((course) => [
+          course.courseId,
+          {
+            state: result.duplicate ? 'syncing' as const : 'pending' as const,
+            message: result.duplicate ? 'Already syncing in the background' : 'Added to queue',
+          },
+        ])))
+        setQueueFeedback(result.duplicate ? 'This Canvas sync is already running in the background.' : 'Syncing in background.')
+        window.dispatchEvent(new CustomEvent('stay-focused:queue-refresh', { detail: { job: result.job ?? null } }))
+        dispatchInAppToast({
+          title: result.duplicate ? 'Canvas sync already queued.' : 'Canvas sync added to queue.',
+          description: 'You can keep using Stay Focused while this runs.',
+          tone: 'success',
+        })
+        setSelectedCourseIds([])
       } catch (error) {
-        failSync(syncRun, normalizeSyncErrorText(error instanceof Error ? error.message : null))
+        const message = normalizeSyncErrorText(error instanceof Error ? error.message : null)
+        setQueueFeedback(message)
+        dispatchInAppToast({ title: 'Could not queue Canvas sync', description: message, tone: 'error' })
       }
     })
   }
@@ -555,6 +565,12 @@ export function ConnectCanvasFlow({
               {selectedCourseIds.length > 0 && (
                 <p style={helperTextStyle}>
                   {selectedCourseIds.length} course{selectedCourseIds.length === 1 ? '' : 's'} selected.
+                </p>
+              )}
+
+              {(queueFeedback || isCanvasJobActive) && (
+                <p style={helperTextStyle}>
+                  {queueFeedback ?? 'You can keep using Stay Focused while this runs.'}
                 </p>
               )}
 
@@ -842,6 +858,97 @@ function StatusRow({
   )
 }
 
+function buildLatestSyncFromJob(job: QueuedJob | null, fallback: SyncActivitySnapshot | null): SyncActivitySnapshot | null {
+  if (job?.status === 'completed') {
+    const completedAt = job.completedAt ? new Date(job.completedAt).toLocaleString() : null
+    return {
+      label: completedAt ? `Canvas sync complete on ${completedAt}` : 'Canvas sync complete',
+      tone: 'success',
+    }
+  }
+
+  if (job?.status === 'failed') {
+    const completedAt = job.completedAt ? new Date(job.completedAt).toLocaleString() : null
+    return {
+      label: completedAt ? `Canvas sync failed on ${completedAt}` : 'Canvas sync failed',
+      tone: 'warning',
+    }
+  }
+
+  return fallback
+}
+
+function getCanvasJobPhase(job: QueuedJob | null): CanvasSyncPhase {
+  if (!job) return 'idle'
+  if (job.status === 'completed') return 'done'
+  if (job.status === 'failed') return 'error'
+  if (job.status === 'pending') return 'starting'
+
+  const step = getStringFromRecord(job.result, 'currentStep')
+  if (step === 'connecting') return 'connecting'
+  if (step === 'reading') return 'fetchingCourses'
+  if (step === 'importing') return 'fetchingModules'
+  if (step === 'organizing') return 'merging'
+  if (step === 'saving' || step === 'extracting' || step === 'finalizing') return 'saving'
+  return progressToCanvasPhase(job.progress)
+}
+
+function getCanvasJobProgressValue(job: QueuedJob | null) {
+  if (!job) return 0
+  return Math.max(0, Math.min(1, (job.progress ?? 0) / 100))
+}
+
+function getCanvasJobDetail(job: QueuedJob | null) {
+  if (!job) return 'Select courses, then run sync when you are ready.'
+  if (job.status === 'failed') return job.error ?? 'Canvas sync failed.'
+  return getStringFromRecord(job.result, 'statusMessage')
+    ?? (job.status === 'completed' ? 'Canvas sync complete' : 'You can keep using Stay Focused while this runs.')
+}
+
+function getCanvasJobTitle(job: QueuedJob | null) {
+  if (!job) return 'Ready to sync'
+  if (job.status === 'completed') return 'Canvas sync complete'
+  if (job.status === 'failed') return 'Canvas sync failed'
+  return cleanCanvasJobTitle(job)
+}
+
+function getCanvasJobCourseCount(job: QueuedJob | null) {
+  const count = getNumberFromRecord(job?.payload ?? null, 'courseCount')
+  return count ?? 0
+}
+
+function getCanvasSavingSubStepIndex(job: QueuedJob | null) {
+  const step = getStringFromRecord(job?.result ?? null, 'currentStep')
+  if (step === 'saving') return 0
+  if (step === 'extracting') return 2
+  if (step === 'finalizing') return 3
+  return 0
+}
+
+function cleanCanvasJobTitle(job: QueuedJob) {
+  const count = getCanvasJobCourseCount(job)
+  if (count > 0) return `Syncing ${count === 1 ? '1 course' : `${count} courses`}`
+  return job.title
+}
+
+function progressToCanvasPhase(progress: number): CanvasSyncPhase {
+  if (progress < 12) return 'connecting'
+  if (progress < 30) return 'fetchingCourses'
+  if (progress < 55) return 'fetchingModules'
+  if (progress < 70) return 'merging'
+  return 'saving'
+}
+
+function getStringFromRecord(source: Record<string, unknown> | null, key: string) {
+  const value = source?.[key]
+  return typeof value === 'string' && value.trim() ? value.trim() : null
+}
+
+function getNumberFromRecord(source: Record<string, unknown> | null, key: string) {
+  const value = source?.[key]
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
 function getSyncButtonLabel({
   isSyncing,
   phase,
@@ -858,7 +965,7 @@ function getSyncButtonLabel({
     if (phase === 'fetchingModules') return 'Fetching modules...'
     if (phase === 'merging') return 'Merging data...'
     if (phase === 'saving') return 'Saving...'
-    return 'Syncing...'
+    return 'Syncing in background'
   }
 
   if (phase === 'error') {
