@@ -366,6 +366,7 @@ export async function listDraftsForShelves(): Promise<{
     .select(
       'id, user_id, course_id, module_id, resource_id, status, title, overview, quiz_ready, created_at, updated_at, modules!module_id ( title ), module_resources!resource_id ( title )'
     )
+    .neq('status', 'failed')
     .order('updated_at', { ascending: false })
 
   if (draftRowsError || noteRowsError) {
