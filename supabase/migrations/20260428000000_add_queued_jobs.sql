@@ -74,4 +74,14 @@ create trigger queued_jobs_updated_at_trigger
   before update on public.queued_jobs
   for each row execute function public.touch_queued_jobs_updated_at();
 
+-- Atomic attempts increment used by background workers
+create or replace function public.increment_queued_job_attempts(job_id uuid)
+returns void language plpgsql security definer as $$
+begin
+  update public.queued_jobs
+  set attempts = attempts + 1
+  where id = job_id;
+end;
+$$;
+
 notify pgrst, 'reload schema';

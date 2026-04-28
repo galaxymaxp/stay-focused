@@ -134,6 +134,11 @@ export function QueuePanel() {
     }
   }, [])
 
+  // Fetch once on mount so the badge count is populated before the panel is opened
+  useEffect(() => {
+    fetchJobs()
+  }, [fetchJobs])
+
   // Start polling when open, stop when closed
   useEffect(() => {
     if (!open) {
