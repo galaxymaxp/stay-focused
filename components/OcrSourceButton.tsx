@@ -38,6 +38,10 @@ export function OcrSourceButton({
         ?? payload?.error
         ?? (response.ok ? 'Text is ready. Generate a study pack.' : 'OCR failed. Open the original file or retry.')
       setMessage(nextMessage)
+      if (response.ok) {
+        window.dispatchEvent(new CustomEvent('stay-focused:canvas-sync-complete', { detail: { moduleId, resourceId } }))
+        window.dispatchEvent(new CustomEvent('stay-focused:notifications-refresh'))
+      }
       router.refresh()
     } finally {
       setBusy(false)

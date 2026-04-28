@@ -296,6 +296,7 @@ async function processLearnGenerationJob(input: {
       resourceTitle: resource.title,
       href: resultHref,
     })
+    revalidateLearnQueuePaths(workspace.module.id, workspace.module.courseId ?? input.courseId ?? null, canonicalResourceId)
 
     await createNotification({
       userId: input.userId,
@@ -310,6 +311,7 @@ async function processLearnGenerationJob(input: {
     const message = err instanceof Error ? err.message : 'Unknown error during Deep Learn generation.'
     console.error('[queue-jobs] processLearnGenerationJob failed', { jobId: input.jobId, message })
     await markQueuedJobFailed(input.jobId, message)
+    revalidateLearnQueuePaths(input.moduleId, input.courseId ?? null, input.resourceId)
 
     await createNotification({
       userId: input.userId,
@@ -319,6 +321,23 @@ async function processLearnGenerationJob(input: {
       severity: 'error',
       metadata: { jobId: input.jobId, dedupeKey: `learn-fail:${input.jobId}` },
     })
+  }
+}
+
+function revalidateLearnQueuePaths(moduleId: string, courseId: string | null, resourceId?: string | null) {
+  revalidatePath('/')
+  revalidatePath('/home')
+  revalidatePath('/learn')
+  revalidatePath('/courses')
+  revalidatePath('/library')
+  if (courseId) revalidatePath(`/courses/${courseId}`)
+  revalidatePath(`/modules/${moduleId}`)
+  revalidatePath(`/modules/${moduleId}/learn`)
+  revalidatePath(`/modules/${moduleId}/review`)
+  revalidatePath(`/modules/${moduleId}/quiz`)
+  if (resourceId) {
+    revalidatePath(`/modules/${moduleId}/learn/resources/${encodeURIComponent(resourceId)}`)
+    revalidatePath(`/modules/${moduleId}/learn/notes/${encodeURIComponent(resourceId)}`)
   }
 }
 

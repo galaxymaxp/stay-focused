@@ -78,6 +78,21 @@ export function NotificationsPanel() {
   }, [fetchNotifications])
 
   useEffect(() => {
+    function refreshNotifications() {
+      void fetchNotifications()
+    }
+
+    window.addEventListener('stay-focused:notifications-refresh', refreshNotifications)
+    window.addEventListener('stay-focused:canvas-sync-complete', refreshNotifications)
+    window.addEventListener('stay-focused:queue-refresh', refreshNotifications)
+    return () => {
+      window.removeEventListener('stay-focused:notifications-refresh', refreshNotifications)
+      window.removeEventListener('stay-focused:canvas-sync-complete', refreshNotifications)
+      window.removeEventListener('stay-focused:queue-refresh', refreshNotifications)
+    }
+  }, [fetchNotifications])
+
+  useEffect(() => {
     function handler(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
     }

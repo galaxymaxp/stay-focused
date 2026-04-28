@@ -434,6 +434,9 @@ function SourceRepairButton({ item }: { item: StudyResourceAccordionItem }) {
             const payload = await response.json().catch(() => null) as { message?: string; error?: string } | null
             setMessage(payload?.message ?? payload?.error ?? (response.ok ? 'Repair attempted.' : 'Could not repair this source.'))
             if (response.ok) {
+              window.dispatchEvent(new CustomEvent('stay-focused:canvas-sync-complete', { detail: { moduleId: item.moduleId, courseId: item.courseId ?? null } }))
+              window.dispatchEvent(new CustomEvent('stay-focused:notifications-refresh'))
+              window.dispatchEvent(new CustomEvent('stay-focused:queue-refresh'))
               router.refresh()
             }
           } finally {
@@ -470,7 +473,11 @@ function ProcessSourceButton({ item }: { item: StudyResourceAccordionItem }) {
             })
             const payload = await response.json().catch(() => null) as { message?: string; error?: string } | null
             setMessage(payload?.message ?? payload?.error ?? (response.ok ? 'Processed.' : 'Could not process this source.'))
-            if (response.ok) router.refresh()
+            if (response.ok) {
+              window.dispatchEvent(new CustomEvent('stay-focused:canvas-sync-complete', { detail: { moduleId: item.moduleId, courseId: item.courseId ?? null } }))
+              window.dispatchEvent(new CustomEvent('stay-focused:notifications-refresh'))
+              router.refresh()
+            }
           } finally {
             setBusy(false)
           }
