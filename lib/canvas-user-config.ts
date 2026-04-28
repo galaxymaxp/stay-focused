@@ -4,6 +4,10 @@ import { normalizeCanvasUrl } from '@/lib/canvas'
 
 export async function resolveCanvasConfigFromUser(override?: Partial<CanvasConfig>): Promise<CanvasConfig> {
   if (override?.url && override?.token) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('Canvas must be connected for this account before syncing.')
+    }
+
     try {
       return {
         url: normalizeCanvasUrl(override.url.trim()),

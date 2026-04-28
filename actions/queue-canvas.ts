@@ -25,8 +25,8 @@ interface SyncCourseInput {
 export interface QueueCanvasSyncInput {
   course?: SyncCourseInput
   courses?: SyncCourseInput[]
-  canvasUrl: string
-  accessToken: string
+  canvasUrl?: string
+  accessToken?: string
   mode?: string
 }
 
@@ -57,7 +57,7 @@ export async function queueCanvasSyncAction(
     return { jobId: '', error: 'Choose at least one course to sync.' }
   }
 
-  const activeDuplicate = await findDuplicateCanvasSyncJob(user.id, input.canvasUrl, courses)
+  const activeDuplicate = await findDuplicateCanvasSyncJob(user.id, input.canvasUrl ?? '', courses)
   if (activeDuplicate) {
     return { jobId: activeDuplicate.id, job: activeDuplicate, duplicate: true }
   }
@@ -68,7 +68,7 @@ export async function queueCanvasSyncAction(
     'canvas_sync',
     `Syncing Canvas: ${courseCountLabel}`,
     {
-      canvasUrl: input.canvasUrl,
+      canvasUrl: input.canvasUrl ?? '',
       courseIds: courses.map((course) => course.courseId),
       courseNames: courses.map((course) => course.courseName),
       courseCount: courses.length,
@@ -85,8 +85,8 @@ export async function queueCanvasSyncAction(
       jobId: job.id,
       userId: user.id,
       courses,
-      canvasUrl: input.canvasUrl,
-      accessToken: input.accessToken,
+      canvasUrl: input.canvasUrl ?? '',
+      accessToken: input.accessToken ?? '',
     })
 
     revalidatePath('/canvas')

@@ -1,5 +1,8 @@
-const DEFAULT_CANVAS_URL = process.env.CANVAS_API_URL ?? process.env.CANVAS_API_BASE_URL
-const DEFAULT_CANVAS_TOKEN = process.env.CANVAS_API_TOKEN
+import { canUseCanvasEnvFallback } from '@/lib/canvas-settings-state'
+
+const ALLOW_ENV_CANVAS_CONFIG = canUseCanvasEnvFallback()
+const DEFAULT_CANVAS_URL = ALLOW_ENV_CANVAS_CONFIG ? process.env.CANVAS_API_URL ?? process.env.CANVAS_API_BASE_URL : undefined
+const DEFAULT_CANVAS_TOKEN = ALLOW_ENV_CANVAS_CONFIG ? process.env.CANVAS_API_TOKEN : undefined
 
 const NON_ACADEMIC = [
   'library',
@@ -173,6 +176,10 @@ export function resolveCanvasConfig(override?: Partial<CanvasConfig>): CanvasCon
 
   if (!url || !token) {
     throw new Error('Add your Canvas URL and access token to continue.')
+  }
+
+  if (!override?.url && !override?.token && DEFAULT_CANVAS_URL && DEFAULT_CANVAS_TOKEN) {
+    console.warn('[Canvas] Using development Canvas credentials from environment variables.')
   }
 
   try {

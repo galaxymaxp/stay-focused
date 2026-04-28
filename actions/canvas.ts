@@ -155,9 +155,23 @@ interface SyncedTaskDraft {
 
 const STUCK_PROCESSING_MODULE_THRESHOLD_MS = 15 * 60 * 1000
 
-export async function fetchCourses(config?: Partial<CanvasConfig>): Promise<CanvasCourse[]> {
+export async function fetchCourses(): Promise<CanvasCourse[]> {
   await requireAuthenticatedUserServer()
-  return getCourses(config)
+  const resolvedConfig = await resolveCanvasConfigFromUser()
+  return getCourses(resolvedConfig)
+}
+
+export async function fetchCurrentUserCanvasCourses(): Promise<{ courses: CanvasCourse[] } | { error: string }> {
+  try {
+    await requireAuthenticatedUserServer()
+    const config = await resolveCanvasConfigFromUser()
+    const courses = await getCourses(config)
+    return { courses }
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : 'Canvas is not connected for this account.',
+    }
+  }
 }
 
 export async function testCanvasConnection(input: {
@@ -201,10 +215,7 @@ export async function syncCourse(formData: FormData): Promise<{ error: string } 
   const courseName = formData.get('courseName') as string
   const courseCode = (formData.get('courseCode') as string | null)?.trim() ?? ''
   const instructor = (formData.get('instructor') as string | null)?.trim() || null
-  const config = getCanvasConfig(
-    formData.get('canvasUrl') as string | null,
-    formData.get('accessToken') as string | null
-  )
+  const config: Partial<CanvasConfig> = {}
 
   if (!courseId) {
     return { error: 'Choose a course before syncing.' }
@@ -236,8 +247,8 @@ export async function syncCourse(formData: FormData): Promise<{ error: string } 
 
 export async function syncCanvasCourse(input: {
   course: SyncCourseInput
-  canvasUrl: string
-  accessToken: string
+  canvasUrl?: string
+  accessToken?: string
   onProgress?: CanvasSyncProgressCallback
 }): Promise<{ success: true; courseName: string; moduleId: string } | { error: string }> {
   const syncSupabase = await createAuthenticatedSupabaseServerClient()
@@ -250,7 +261,7 @@ export async function syncCanvasCourse(input: {
   let config: CanvasConfig
   try {
     await input.onProgress?.({ step: 'connecting', message: 'Connecting to Canvas' })
-    config = getRequiredCanvasConfig(input.canvasUrl, input.accessToken)
+    config = await resolveCanvasConfigFromUser()
   } catch (error) {
     return { error: formatCanvasActionError(error, 'We could not connect to Canvas.') }
   }
@@ -283,10 +294,7 @@ export async function syncCanvasCourse(input: {
   }
 }
 
-export async function refreshCourseInstructors(input: {
-  canvasUrl: string
-  accessToken: string
-}): Promise<{ success: true; updatedCount: number } | { error: string }> {
+export async function refreshCourseInstructors(): Promise<{ success: true; updatedCount: number } | { error: string }> {
   const syncSupabase = await createAuthenticatedSupabaseServerClient()
   if (!syncSupabase) {
     return { error: 'Supabase is not configured yet.' }
@@ -294,9 +302,9 @@ export async function refreshCourseInstructors(input: {
 
   const user = await requireAuthenticatedUserServer()
 
-  let config: ReturnType<typeof getRequiredCanvasConfig>
+  let config: CanvasConfig
   try {
-    config = getRequiredCanvasConfig(input.canvasUrl, input.accessToken)
+    config = await resolveCanvasConfigFromUser()
   } catch (error) {
     return { error: formatCanvasActionError(error, 'We could not connect to Canvas.') }
   }
@@ -346,8 +354,6 @@ export async function syncCourses(input: {
 
   const result = await syncCanvasCourse({
     course: input.courses[0],
-    canvasUrl: input.canvasUrl,
-    accessToken: input.accessToken,
   })
 
   if ('error' in result) return result
@@ -366,7 +372,7 @@ async function syncSingleCourse(
   syncSupabase: CanvasSyncSupabaseClient,
   onProgress?: CanvasSyncProgressCallback,
 ): Promise<SyncCourseResult> {
-  const resolvedConfig = await resolveCanvasConfigFromUser(config)
+  const resolvedConfig = await resolveCanvasConfigFromUser()
   const normalizedCourse = normalizeCanvasCourseForSync(course, resolvedConfig.url)
   const databaseSafeCourse: CanvasCourse = {
     ...course,

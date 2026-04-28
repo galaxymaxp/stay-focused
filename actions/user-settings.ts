@@ -19,6 +19,7 @@ const DEFAULT_EMAIL_CATEGORIES: EmailCategories = {
 
 export interface UserSettings {
   userId: string
+  settingsRowExists: boolean
   canvasApiUrl: string | null
   canvasAccessToken: string | null
   notificationEmail: string | null
@@ -63,6 +64,7 @@ export async function getUserSettings() {
         ok: true as const,
         settings: {
           userId: user.id,
+          settingsRowExists: false,
           canvasApiUrl: null,
           canvasAccessToken: null,
           notificationEmail: user.email ?? null,
@@ -80,6 +82,7 @@ export async function getUserSettings() {
       ok: true as const,
       settings: {
         userId: data.user_id,
+        settingsRowExists: true,
         canvasApiUrl: data.canvas_api_url,
         canvasAccessToken: data.canvas_access_token,
         notificationEmail: data.notification_email,
@@ -184,6 +187,35 @@ export async function updateCanvasSettings(input: { canvasApiUrl: string; canvas
   }
 }
 
+export async function forgetCanvasSettings() {
+  const user = await getAuthenticatedUserServer()
+  if (!user) {
+    return { ok: false as const, error: 'Not authenticated' }
+  }
+
+  try {
+    const client = await createAuthenticatedSupabaseServerClient()
+    if (!client) return { ok: false as const, error: 'Supabase is not configured' }
+
+    const { error } = await client
+      .from('user_settings')
+      .delete()
+      .eq('user_id', user.id)
+
+    if (error) {
+      console.error('[forgetCanvasSettings] Supabase error:', error)
+      return { ok: false as const, error: 'Could not forget Canvas settings' }
+    }
+
+    revalidatePath('/settings')
+    revalidatePath('/canvas')
+    return { ok: true as const }
+  } catch (err) {
+    console.error('[forgetCanvasSettings] Unexpected error:', err)
+    return { ok: false as const, error: 'Unexpected error forgetting Canvas settings' }
+  }
+}
+
 export async function getCanvasCredentials() {
   const user = await getAuthenticatedUserServer()
   if (!user) {
@@ -199,6 +231,13 @@ export async function getCanvasCredentials() {
       .select('canvas_api_url, canvas_access_token')
       .eq('user_id', user.id)
       .maybeSingle()
+
+    console.info('[getCanvasCredentials] current-user settings lookup', {
+      userId: user.id,
+      rowExists: Boolean(data),
+      canvasApiUrlPresent: Boolean(data?.canvas_api_url),
+      canvasAccessTokenPresent: Boolean(data?.canvas_access_token),
+    })
 
     if (error || !data || !data.canvas_api_url || !data.canvas_access_token) {
       return null

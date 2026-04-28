@@ -54,6 +54,15 @@ export default async function CanvasPage({ searchParams }: CanvasPageProps = {})
 
   const db = await createAuthenticatedSupabaseServerClient()
 
+  const userSettings = db
+    ? (await db
+        .from('user_settings')
+        .select('canvas_api_url, canvas_access_token')
+        .eq('user_id', user.id)
+        .maybeSingle()).data
+    : null
+  const hasCurrentUserCanvasSettings = Boolean(userSettings?.canvas_api_url && userSettings?.canvas_access_token)
+
   const ownedCourses = db
     ? (await db
         .from('courses')
@@ -76,8 +85,8 @@ export default async function CanvasPage({ searchParams }: CanvasPageProps = {})
     : []
 
   const latestModule = syncedModules?.[0]
-  const latestCourseConnectionUrl = (ownedCourses ?? []).find((course) => typeof course.canvas_instance_url === 'string')?.canvas_instance_url ?? null
-  const initialConnectionUrl = latestCourseConnectionUrl ?? extractCanvasUrl(latestModule?.summary ?? null)
+  const initialConnectionUrl = hasCurrentUserCanvasSettings ? userSettings?.canvas_api_url ?? null : null
+  const initialAccessToken = hasCurrentUserCanvasSettings ? userSettings?.canvas_access_token ?? null : null
   const processedCourseIds = new Set(
     (syncedModules ?? [])
       .filter((module) => module.status === 'processed')
@@ -115,7 +124,9 @@ export default async function CanvasPage({ searchParams }: CanvasPageProps = {})
   return (
     <main className="page-shell page-shell-narrow page-stack">
       <ConnectCanvasFlowWrapper
+        currentUserId={user.id}
         initialConnectionUrl={initialConnectionUrl}
+        initialAccessToken={initialAccessToken}
         lastSync={lastSync}
         syncedCourseKeys={syncedCourseKeys}
         initialAction={initialAction}
@@ -139,13 +150,6 @@ const messageCardStyle: CSSProperties = {
   border: '1px solid color-mix(in srgb, var(--border-subtle) 88%, transparent)',
   background: 'var(--surface-elevated)',
   padding: '0.95rem',
-}
-
-function extractCanvasUrl(summary: string | null) {
-  if (!summary) return null
-
-  const match = summary.match(/https?:\/\/[^\s)]+/i)
-  return match?.[0] ?? null
 }
 
 function getSyncTone(status: string): SyncTone {

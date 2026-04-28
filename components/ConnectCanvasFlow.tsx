@@ -4,24 +4,17 @@ import type { CSSProperties, ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { refreshCourseInstructors, testCanvasConnection, type CanvasConnectionResult } from '@/actions/canvas'
+import { fetchCurrentUserCanvasCourses, refreshCourseInstructors, testCanvasConnection } from '@/actions/canvas'
 import { queueCanvasSyncAction } from '@/actions/queue-canvas'
+import { forgetCanvasSettings, updateCanvasSettings } from '@/actions/user-settings'
 import { CanvasSyncStatusCard } from '@/components/CanvasSyncStatusCard'
 import { UnsyncButton } from '@/components/UnsyncButton'
+import { useAuthSummary } from '@/components/useAuthSummary'
 import type { CanvasSyncPhase, SyncActivitySnapshot } from '@/components/useCanvasSyncStatus'
 import type { CanvasCourse } from '@/lib/canvas'
 import { buildCanvasCourseSyncKey } from '@/lib/canvas-sync'
 import { dispatchInAppToast } from '@/lib/notifications'
 import type { QueuedJob } from '@/lib/queue'
-
-const STORAGE_KEY = 'stay-focused.canvas-connection'
-
-interface SavedCanvasConnection {
-  url: string
-  token: string
-  testedAt: string
-  courseCount?: number
-}
 
 interface SyncedCanvasModule {
   id: string
@@ -40,14 +33,18 @@ interface CourseSyncProgress {
 }
 
 export function ConnectCanvasFlow({
+  currentUserId,
   initialConnectionUrl,
+  initialAccessToken,
   lastSync,
   syncedCourseKeys,
   hasSyncedCourses,
   initialAction,
   syncedModules,
 }: {
+  currentUserId: string
   initialConnectionUrl: string | null
+  initialAccessToken: string | null
   lastSync: SyncActivitySnapshot | null
   syncedCourseKeys: string[]
   hasSyncedCourses: boolean
@@ -55,13 +52,13 @@ export function ConnectCanvasFlow({
   syncedModules: SyncedCanvasModule[]
 }) {
   const router = useRouter()
-  const initialSavedConnection = readSavedConnection()
-  const initialCanvasUrl = initialSavedConnection?.url ?? initialConnectionUrl ?? ''
-  const initialToken = initialSavedConnection?.token ?? ''
+  const authSummary = useAuthSummary()
+  const initialCanvasUrl = initialConnectionUrl ?? ''
+  const initialToken = initialAccessToken ?? ''
   const shouldStartReconnect = initialAction === 'reconnect'
   const shouldStartSync = initialAction === 'sync'
-  const shouldAutoTestSavedConnection = shouldStartSync && Boolean(initialCanvasUrl.trim() && initialToken.trim())
-  const shouldOpenGuideOnLoad = shouldStartReconnect || (shouldStartSync && !shouldAutoTestSavedConnection)
+  const shouldAutoLoadCourses = shouldStartSync && Boolean(initialConnectionUrl && initialAccessToken)
+  const shouldOpenGuideOnLoad = shouldStartReconnect || (shouldStartSync && !shouldAutoLoadCourses)
 
   const [step, setStep] = useState<FlowStep>('connect')
   const [setupStage, setSetupStage] = useState<SetupStage>(shouldStartReconnect ? 'credentials' : 'guide')
@@ -73,7 +70,7 @@ export function ConnectCanvasFlow({
   const [search, setSearch] = useState('')
   const [connectionError, setConnectionError] = useState<string | null>(null)
   const [courseSyncProgress, setCourseSyncProgress] = useState<Record<number, CourseSyncProgress>>({})
-  const [savedConnection, setSavedConnection] = useState<SavedCanvasConnection | null>(initialSavedConnection)
+  const [currentConnectionUrl, setCurrentConnectionUrl] = useState<string | null>(initialConnectionUrl)
   const [activeCanvasJob, setActiveCanvasJob] = useState<QueuedJob | null>(null)
   const [queueFeedback, setQueueFeedback] = useState<string | null>(null)
   const [isTesting, startTesting] = useTransition()
@@ -81,6 +78,7 @@ export function ConnectCanvasFlow({
   const [isRefreshingInstructors, startRefreshingInstructors] = useTransition()
   const [instructorRefreshResult, setInstructorRefreshResult] = useState<{ message: string; tone: 'success' | 'error' } | null>(null)
   const initialActionHandledRef = useRef(false)
+  const observedAuthUserRef = useRef<string | null>(null)
   const latestSync = buildLatestSyncFromJob(activeCanvasJob, lastSync)
   const syncPhase = getCanvasJobPhase(activeCanvasJob)
   const syncProgressValue = getCanvasJobProgressValue(activeCanvasJob)
@@ -88,11 +86,7 @@ export function ConnectCanvasFlow({
   const syncTitle = getCanvasJobTitle(activeCanvasJob)
   const syncCourseCount = getCanvasJobCourseCount(activeCanvasJob)
   const syncSavingSubStepIndex = getCanvasSavingSubStepIndex(activeCanvasJob)
-  const connectionSummary = savedConnection ?? (initialConnectionUrl ? {
-    url: initialConnectionUrl,
-    token: '',
-    testedAt: '',
-  } : null)
+  const connectionSummary = currentConnectionUrl ? { url: currentConnectionUrl } : null
   const activeCanvasUrl = (canvasUrl || connectionSummary?.url) ?? ''
   const syncedCourseKeySet = useMemo(() => new Set(syncedCourseKeys), [syncedCourseKeys])
   const isCourseAlreadySynced = useCallback((course: CanvasCourse) => {
@@ -109,24 +103,39 @@ export function ConnectCanvasFlow({
     )
   }, [courses, isCourseAlreadySynced, search])
 
-  const canLoadCourses = Boolean(connectionSummary?.url && token.trim())
+  const canLoadCourses = Boolean(connectionSummary?.url)
   const hasLoadedCourses = step === 'courses'
   const isCanvasJobActive = activeCanvasJob?.status === 'pending' || activeCanvasJob?.status === 'running'
   const isSyncActionPending = isQueueingSync || isCanvasJobActive
 
-  function persistConnection(result: CanvasConnectionResult, nextToken: string) {
-    const connection = {
-      url: result.normalizedUrl,
-      token: nextToken,
-      testedAt: new Date().toISOString(),
-      courseCount: result.courses.length,
+  const clearCanvasUiState = useCallback(() => {
+    setCurrentConnectionUrl(null)
+    setCanvasUrl('')
+    setToken('')
+    setCourses([])
+    setSelectedCourseIds([])
+    setCourseSyncProgress({})
+    setSearch('')
+    setStep('connect')
+    setConnectionError(null)
+    setQueueFeedback(null)
+    setInstructorRefreshResult(null)
+  }, [])
+
+  useEffect(() => {
+    const authUserId = authSummary.user?.id ?? null
+    if (!authUserId && !observedAuthUserRef.current) return
+    if (authUserId === currentUserId) {
+      observedAuthUserRef.current = authUserId
+      return
     }
 
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(connection))
-    setSavedConnection(connection)
-    setCanvasUrl(result.normalizedUrl)
-    setToken(nextToken)
-  }
+    const timeoutId = window.setTimeout(() => {
+      clearCanvasUiState()
+      router.refresh()
+    }, 0)
+    return () => window.clearTimeout(timeoutId)
+  }, [authSummary.user?.id, clearCanvasUiState, currentUserId, router])
 
   function openSetup(stage: SetupStage) {
     setSetupStage(stage)
@@ -168,6 +177,20 @@ export function ConnectCanvasFlow({
 
         if ('error' in result) {
           setConnectionError(result.error)
+          setCourses([])
+          setSelectedCourseIds([])
+          return
+        }
+
+        const saveResult = await updateCanvasSettings({
+          canvasApiUrl: result.normalizedUrl,
+          canvasAccessToken: trimmedToken,
+        })
+
+        if (!saveResult.ok) {
+          setConnectionError(saveResult.error)
+          setCourses([])
+          setSelectedCourseIds([])
           return
         }
 
@@ -176,12 +199,17 @@ export function ConnectCanvasFlow({
         setSelectedCourseIds([])
         setStep('courses')
         setIsSetupOpen(false)
-        persistConnection(result, trimmedToken)
+        setCurrentConnectionUrl(result.normalizedUrl)
+        setCanvasUrl(result.normalizedUrl)
+        setToken(trimmedToken)
+        router.refresh()
       } catch (error) {
         setConnectionError(error instanceof Error ? error.message : 'We could not connect to Canvas just yet.')
+        setCourses([])
+        setSelectedCourseIds([])
       }
     })
-  }, [canvasUrl, token, startTesting])
+  }, [canvasUrl, router, startTesting, token])
 
   const refreshCanvasQueue = useCallback(async () => {
     try {
@@ -221,28 +249,55 @@ export function ConnectCanvasFlow({
   }, [refreshCanvasQueue])
 
   function handleUseSavedConnection() {
-    if (!canvasUrl.trim() || !token.trim()) {
+    if (!connectionSummary?.url) {
       setStep('connect')
       openSetup('credentials')
-      setConnectionError('Reconnect to Canvas so the saved setup can be refreshed.')
+      setConnectionError('Canvas is not connected for this account.')
       return
     }
 
-    handleTestConnection()
+    setConnectionError(null)
+    setQueueFeedback(null)
+
+    startTesting(async () => {
+      const result = await fetchCurrentUserCanvasCourses()
+      if ('error' in result) {
+        clearCanvasUiState()
+        setConnectionError(result.error)
+        return
+      }
+
+      setCourses(result.courses)
+      setSearch('')
+      setSelectedCourseIds([])
+      setStep('courses')
+    })
   }
 
   useEffect(() => {
     if (initialActionHandledRef.current) return
-    if (!shouldAutoTestSavedConnection) return
+    if (!shouldAutoLoadCourses) return
 
     initialActionHandledRef.current = true
 
     const timeoutId = window.setTimeout(() => {
-      handleTestConnection()
+      startTesting(async () => {
+        const result = await fetchCurrentUserCanvasCourses()
+        if ('error' in result) {
+          clearCanvasUiState()
+          setConnectionError(result.error)
+          return
+        }
+
+        setCourses(result.courses)
+        setSearch('')
+        setSelectedCourseIds([])
+        setStep('courses')
+      })
     }, 0)
 
     return () => window.clearTimeout(timeoutId)
-  }, [handleTestConnection, shouldAutoTestSavedConnection])
+  }, [clearCanvasUiState, shouldAutoLoadCourses, startTesting])
 
   function handleReconnect() {
     setStep('connect')
@@ -256,18 +311,15 @@ export function ConnectCanvasFlow({
   }
 
   function handleForgetConnection() {
-    window.localStorage.removeItem(STORAGE_KEY)
-    setSavedConnection(null)
-    setCanvasUrl(initialConnectionUrl ?? '')
-    setToken('')
-    setCourses([])
-    setSelectedCourseIds([])
-    setCourseSyncProgress({})
-    setSearch('')
-    setStep('connect')
-    setConnectionError(null)
-    setQueueFeedback(null)
-    openSetup('guide')
+    clearCanvasUiState()
+    startTesting(async () => {
+      const result = await forgetCanvasSettings()
+      if (!result.ok) {
+        setConnectionError(result.error)
+      }
+      router.refresh()
+      openSetup('guide')
+    })
   }
 
   function toggleCourseSelection(courseId: number) {
@@ -307,8 +359,6 @@ export function ConnectCanvasFlow({
       try {
         const result = await queueCanvasSyncAction({
           courses: selectedCourses,
-          canvasUrl,
-          accessToken: token,
           mode: 'selected_courses',
         })
 
@@ -347,9 +397,7 @@ export function ConnectCanvasFlow({
   }
 
   function handleRefreshInstructors() {
-    const url = canvasUrl || connectionSummary?.url || ''
-    const tok = token || savedConnection?.token || ''
-    if (!url || !tok) {
+    if (!connectionSummary?.url) {
       setInstructorRefreshResult({ message: 'Reconnect to Canvas first so instructor names can be refreshed.', tone: 'error' })
       return
     }
@@ -357,7 +405,7 @@ export function ConnectCanvasFlow({
     setInstructorRefreshResult(null)
     startRefreshingInstructors(async () => {
       try {
-        const result = await refreshCourseInstructors({ canvasUrl: url, accessToken: tok })
+        const result = await refreshCourseInstructors()
         if ('error' in result) {
           setInstructorRefreshResult({ message: result.error, tone: 'error' })
           return
@@ -396,11 +444,10 @@ export function ConnectCanvasFlow({
           <div style={{ display: 'grid', gap: '0.85rem' }}>
             <StatusRow
               title="Saved connection"
-              detail={`Connected to ${connectionSummary.url}${savedConnection?.courseCount ? ` with ${savedConnection.courseCount} available courses from the last check.` : '.'}`}
+              detail={`Connected to ${connectionSummary.url}.`}
               tone="success"
             />
             <div className="ui-meta-list">
-              {savedConnection?.testedAt && <span><strong>Last checked:</strong> {new Date(savedConnection.testedAt).toLocaleString()}</span>}
               {latestSync && <span><strong>Latest sync:</strong> {latestSync.label}</span>}
             </div>
             <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
@@ -431,7 +478,7 @@ export function ConnectCanvasFlow({
         ) : (
           <div style={{ display: 'grid', gap: '0.85rem' }}>
             <p style={bodyCopyStyle}>
-              No Canvas connection is saved on this device yet.
+              Canvas is not connected for this account.
             </p>
             {connectionError && <Message>{connectionError}</Message>}
             <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
@@ -456,7 +503,7 @@ export function ConnectCanvasFlow({
             <div style={{ display: 'grid', gap: '0.85rem' }}>
               <p style={bodyCopyStyle}>
                 {canLoadCourses
-                  ? 'The saved connection is ready. Load your available courses when you want to sync more.'
+                  ? 'The account connection is ready. Load your available courses when you want to sync more.'
                   : 'Connect Canvas first. After the connection check succeeds, this section becomes your course picker.'}
               </p>
               {connectionError && connectionSummary && <Message>{connectionError}</Message>}
@@ -1062,20 +1109,6 @@ function getCanvasTokenPageUrl(canvasUrl: string) {
     const url = new URL(normalizedInput)
     return `${url.origin}/profile/settings`
   } catch {
-    return null
-  }
-}
-
-function readSavedConnection(): SavedCanvasConnection | null {
-  if (typeof window === 'undefined') return null
-
-  const raw = window.localStorage.getItem(STORAGE_KEY)
-  if (!raw) return null
-
-  try {
-    return JSON.parse(raw) as SavedCanvasConnection
-  } catch {
-    window.localStorage.removeItem(STORAGE_KEY)
     return null
   }
 }
