@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { requestNotificationPermission, setNotificationVolume, setSoundEnabled, playNotificationSound } from '@/lib/notifications'
 import { getUserSettings, updateCanvasSettings, type UserSettings } from '@/actions/user-settings'
+import { NotificationSettings } from '@/components/settings/NotificationSettings'
 import { useResolvedUserAvatar } from '@/components/useResolvedUserAvatar'
 import { UserAvatar } from '@/components/UserAvatar'
 import { useThemeSettings } from '@/components/ThemeProvider'
@@ -545,7 +546,19 @@ export function SettingsPage() {
           ) : null}
 
           {activeSection === 'notifications' ? (
-            <BrowserNotificationsSection />
+            <>
+              {userSettings && (
+                <div className="mb-6">
+                  <NotificationSettings
+                    initialEmailNotifications={userSettings.emailNotifications}
+                    initialEmailCategories={userSettings.emailCategories}
+                    notificationEmail={userSettings.notificationEmail}
+                    emailProviderConfigured={userSettings.emailProviderConfigured}
+                  />
+                </div>
+              )}
+              <BrowserNotificationsSection />
+            </>
           ) : null}
         </div>
       </div>

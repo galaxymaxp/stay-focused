@@ -783,3 +783,20 @@ export async function makeQuizzable(draftId: string): Promise<void> {
   if (!draft) throw new Error('Draft not found.')
   redirect(`/modules/${draft.sourceModuleId ?? ''}/quiz?from_draft=${draftId}`)
 }
+
+export async function deleteLibraryItemAction(
+  id: string,
+  entryKind: 'draft' | 'deep_learn_note',
+): Promise<{ ok: boolean; error?: string }> {
+  if (!isSupabaseAuthConfigured) return { ok: false, error: 'Supabase not configured.' }
+
+  const client = await createDraftsClient()
+  const table = entryKind === 'draft' ? 'drafts' : 'deep_learn_notes'
+  const { error } = await client.from(table).delete().eq('id', id)
+
+  if (error) return { ok: false, error: error.message }
+
+  revalidatePath('/library')
+  revalidatePath('/')
+  return { ok: true }
+}

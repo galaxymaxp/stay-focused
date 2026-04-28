@@ -1,132 +1,111 @@
 'use client'
 
-import { useState } from 'react'
-import { Mail, Check, Pencil } from 'lucide-react'
+import { useState, useTransition } from 'react'
+import { Mail, Check, Loader2, FlaskConical, Send } from 'lucide-react'
 import { Toggle } from '@/components/ui/Toggle'
 import { SettingsSection, SettingsRow } from './SettingsSection'
 import { cn } from '@/lib/cn'
+import { updateEmailPreferences, type EmailCategories } from '@/actions/user-settings'
+import { createTestNotificationAction } from '@/actions/notifications'
+import { dispatchInAppToast } from '@/lib/notifications'
 
-type Frequency = 'instant' | 'daily' | 'important'
+type FrequencyOption = 'off' | 'instant' | 'daily_digest'
 
-const frequencyOptions: { id: Frequency; label: string; description: string }[] = [
+const frequencyOptions: { id: FrequencyOption; label: string; description: string }[] = [
+  { id: 'off', label: 'Off', description: 'No email notifications' },
   { id: 'instant', label: 'Instant', description: 'As soon as it happens' },
-  { id: 'daily', label: 'Daily digest', description: 'One email per day' },
-  { id: 'important', label: 'Important only', description: 'High-priority items only' },
+  { id: 'daily_digest', label: 'Daily digest', description: 'One email per day' },
 ]
 
-export function NotificationSettings() {
-  const [masterEnabled, setMasterEnabled] = useState(true)
-  const [newTasks, setNewTasks] = useState(true)
-  const [newMaterials, setNewMaterials] = useState(true)
-  const [nearingDeadlines, setNearingDeadlines] = useState(true)
-  const [frequency, setFrequency] = useState<Frequency>('daily')
-  const [editingEmail, setEditingEmail] = useState(false)
-  const [email, setEmail] = useState('alex@university.edu')
+const testNotificationTypes: { key: string; label: string }[] = [
+  { key: 'queue_completed', label: 'Queue completed' },
+  { key: 'due_soon', label: 'Due soon task' },
+  { key: 'new_upload', label: 'New upload' },
+  { key: 'announcement', label: 'Announcement' },
+  { key: 'sync_completed', label: 'Sync completed' },
+]
+
+const SHOW_TEST_TOOLS =
+  process.env.NEXT_PUBLIC_ENABLE_NOTIFICATION_TESTS === 'true' ||
+  process.env.NODE_ENV === 'development'
+
+interface Props {
+  initialEmailNotifications: FrequencyOption
+  initialEmailCategories: EmailCategories
+  notificationEmail: string | null
+  emailProviderConfigured?: boolean
+}
+
+export function NotificationSettings({
+  initialEmailNotifications,
+  initialEmailCategories,
+  notificationEmail,
+  emailProviderConfigured = false,
+}: Props) {
+  const [frequency, setFrequency] = useState<FrequencyOption>(initialEmailNotifications)
+  const [categories, setCategories] = useState<EmailCategories>(initialEmailCategories)
+  const [saveState, setSaveState] = useState<'idle' | 'saved' | 'error'>('idle')
+  const [isPending, startTransition] = useTransition()
+  const [testingKey, setTestingKey] = useState<string | null>(null)
+
+  const masterEnabled = frequency !== 'off'
+
+  function toggleCategory(key: keyof EmailCategories) {
+    setCategories((prev) => ({ ...prev, [key]: !prev[key] }))
+  }
+
+  function handleSave() {
+    startTransition(async () => {
+      const result = await updateEmailPreferences({ emailNotifications: frequency, emailCategories: categories })
+      setSaveState(result.ok ? 'saved' : 'error')
+      setTimeout(() => setSaveState('idle'), 3000)
+    })
+  }
+
+  async function handleTestNotification(key: string) {
+    if (testingKey) return
+    setTestingKey(key)
+    try {
+      const result = await createTestNotificationAction(key)
+      if (result.ok) {
+        dispatchInAppToast({ title: 'Test notification created', description: 'Check the notifications panel.', tone: 'success' })
+      } else {
+        dispatchInAppToast({ title: 'Test failed', description: result.error ?? 'Unknown error', tone: 'error' })
+      }
+    } finally {
+      setTestingKey(null)
+    }
+  }
 
   return (
     <div className="space-y-6">
-      {/* Master toggle */}
-      <SettingsSection
-        title="Email Notifications"
-        description="Receive updates about your courses and deadlines by email."
-      >
-        <SettingsRow
-          label="Email notifications"
-          description="Enable or disable all email notifications from Stay Focused."
-        >
-          <Toggle checked={masterEnabled} onChange={setMasterEnabled} />
-        </SettingsRow>
-
-        {/* Email address */}
-        <div className={cn('px-6 py-4 border-b border-sf-border transition-opacity', !masterEnabled && 'opacity-40 pointer-events-none')}>
-          <div className="flex items-start justify-between gap-4">
-            <div className="min-w-0">
-              <p className="text-sm font-medium text-sf-text">Destination email</p>
-              <p className="text-xs text-sf-muted mt-0.5">Notifications will be sent to this address.</p>
-            </div>
-            <div className="flex items-center gap-2 flex-shrink-0">
-              {!editingEmail ? (
-                <>
-                  <div className="flex items-center gap-2 rounded-lg bg-sf-surface-2 px-3 py-1.5 border border-sf-border">
-                    <Mail className="h-3.5 w-3.5 text-sf-muted" />
-                    <span className="text-sm text-sf-text">{email}</span>
-                  </div>
-                  <button
-                    onClick={() => setEditingEmail(true)}
-                    className="flex h-8 w-8 items-center justify-center rounded-lg text-sf-muted hover:bg-sf-surface-2 hover:text-sf-text transition-colors border border-sf-border"
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                  </button>
-                </>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="rounded-lg border border-sf-accent px-3 py-1.5 text-sm text-sf-text bg-sf-surface focus:outline-none focus:ring-2 focus:ring-sf-accent/30 w-56"
-                    autoFocus
-                  />
-                  <button
-                    onClick={() => setEditingEmail(false)}
-                    className="flex h-8 w-8 items-center justify-center rounded-lg bg-sf-accent text-white hover:bg-sf-accent-hover transition-colors"
-                  >
-                    <Check className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              )}
-            </div>
+      {/* Email address display */}
+      {notificationEmail && (
+        <div className="rounded-xl border border-sf-border bg-sf-surface-2 px-4 py-3 flex items-center gap-2.5">
+          <Mail className="h-4 w-4 text-sf-muted flex-shrink-0" />
+          <div>
+            <p className="text-xs text-sf-muted">Notifications sent to</p>
+            <p className="text-sm font-medium text-sf-text">{notificationEmail}</p>
           </div>
         </div>
-      </SettingsSection>
+      )}
 
-      {/* Per-type toggles */}
+      {/* Delivery frequency */}
       <SettingsSection
-        title="Notification Types"
-        description="Choose what you want to be notified about."
+        title="Email Notifications"
+        description="Choose how often Stay Focused emails you about activity."
       >
-        <div className={cn('transition-opacity', !masterEnabled && 'opacity-40 pointer-events-none')}>
-          <SettingsRow
-            label="New tasks"
-            description="When new assignments or labs are posted to your courses."
-          >
-            <Toggle checked={newTasks} onChange={setNewTasks} disabled={!masterEnabled} />
-          </SettingsRow>
-
-          <SettingsRow
-            label="New learning material"
-            description="When new modules, lessons, or readings are available."
-          >
-            <Toggle checked={newMaterials} onChange={setNewMaterials} disabled={!masterEnabled} />
-          </SettingsRow>
-
-          <SettingsRow
-            label="Nearing deadlines"
-            description="Reminders when assignments are due within 48 hours."
-            border={false}
-          >
-            <Toggle checked={nearingDeadlines} onChange={setNearingDeadlines} disabled={!masterEnabled} />
-          </SettingsRow>
-        </div>
-      </SettingsSection>
-
-      {/* Frequency */}
-      <SettingsSection
-        title="Delivery Style"
-        description="How often should we send you notification emails?"
-      >
-        <div className={cn('p-4 transition-opacity', !masterEnabled && 'opacity-40 pointer-events-none')}>
+        <div className="p-4">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {frequencyOptions.map((opt) => (
               <button
                 key={opt.id}
-                onClick={() => !masterEnabled || setFrequency(opt.id)}
-                disabled={!masterEnabled}
+                onClick={() => setFrequency(opt.id)}
                 className={cn(
                   'flex flex-col items-start rounded-xl border p-4 text-left transition-all',
                   frequency === opt.id
                     ? 'border-sf-accent bg-sf-accent-light'
-                    : 'border-sf-border bg-sf-surface hover:border-sf-border hover:bg-sf-surface-2',
+                    : 'border-sf-border bg-sf-surface hover:bg-sf-surface-2',
                 )}
               >
                 <div className="flex items-center justify-between w-full mb-1.5">
@@ -146,30 +125,93 @@ export function NotificationSettings() {
         </div>
       </SettingsSection>
 
-      {/* Status preview */}
-      {masterEnabled && (
-        <div className="rounded-2xl border border-sf-success-bg bg-sf-success-bg/40 p-5">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="h-7 w-7 rounded-full bg-sf-success flex items-center justify-center">
-              <Check className="h-3.5 w-3.5 text-white" />
-            </div>
-            <p className="text-sm font-semibold text-sf-success">Notifications active</p>
-          </div>
-          <p className="text-xs text-sf-muted ml-10">
-            Sending to <strong className="text-sf-text">{email}</strong> ·{' '}
-            {[newTasks && 'new tasks', newMaterials && 'new materials', nearingDeadlines && 'deadlines']
-              .filter(Boolean)
-              .join(', ')}{' '}
-            · {frequencyOptions.find((o) => o.id === frequency)?.label}
-          </p>
+      {/* Per-category toggles */}
+      <SettingsSection
+        title="Notification Types"
+        description="Choose what triggers an email."
+      >
+        <div className={cn('transition-opacity', !masterEnabled && 'opacity-40 pointer-events-none')}>
+          <SettingsRow label="Due soon" description="Tasks and deadlines due within 48 hours.">
+            <Toggle checked={categories.due_soon} onChange={() => toggleCategory('due_soon')} disabled={!masterEnabled} />
+          </SettingsRow>
+          <SettingsRow label="New uploads" description="New modules, resources, or study materials.">
+            <Toggle checked={categories.new_uploads} onChange={() => toggleCategory('new_uploads')} disabled={!masterEnabled} />
+          </SettingsRow>
+          <SettingsRow label="Announcements" description="New Canvas announcements from your courses.">
+            <Toggle checked={categories.announcements} onChange={() => toggleCategory('announcements')} disabled={!masterEnabled} />
+          </SettingsRow>
+          <SettingsRow label="Queue completed" description="When a background job finishes." border={false}>
+            <Toggle checked={categories.queue_completed} onChange={() => toggleCategory('queue_completed')} disabled={!masterEnabled} />
+          </SettingsRow>
         </div>
-      )}
 
-      {!masterEnabled && (
-        <div className="rounded-2xl border border-sf-border bg-sf-surface-2 p-5">
-          <p className="text-sm font-medium text-sf-muted">Email notifications are disabled.</p>
-          <p className="text-xs text-sf-subtle mt-1">Enable the toggle above to start receiving updates.</p>
-        </div>
+        {!masterEnabled && (
+          <div className="px-6 py-3 border-t border-sf-border">
+            <p className="text-xs text-sf-muted">Select Instant or Daily digest above to enable email categories.</p>
+          </div>
+        )}
+      </SettingsSection>
+
+      {/* Save */}
+      <div className="flex items-center gap-3">
+        <button
+          onClick={handleSave}
+          disabled={isPending}
+          className={cn('inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium bg-sf-accent text-white hover:bg-sf-accent-hover transition-colors', isPending && 'opacity-70 cursor-not-allowed')}
+        >
+          {isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+          Save preferences
+        </button>
+        {saveState === 'saved' && <span className="text-sm text-green-600 font-medium flex items-center gap-1.5"><Check className="h-4 w-4" /> Saved</span>}
+        {saveState === 'error' && <span className="text-sm text-red-500">Failed to save — try again.</span>}
+      </div>
+
+      {/* Test notification tools — dev / flag only */}
+      {SHOW_TEST_TOOLS && (
+        <SettingsSection
+          title="Test Notifications"
+          description={`Create sample in-app notifications. Visible because NODE_ENV=development or NEXT_PUBLIC_ENABLE_NOTIFICATION_TESTS=true.`}
+        >
+          <div className={cn('transition-opacity')}>
+            {testNotificationTypes.map((t, i) => (
+              <SettingsRow
+                key={t.key}
+                label={t.label}
+                description={`Create a sample ${t.label.toLowerCase()} notification.`}
+                border={i < testNotificationTypes.length - 1}
+              >
+                <button
+                  onClick={() => handleTestNotification(t.key)}
+                  disabled={testingKey === t.key}
+                  className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium border border-sf-border bg-sf-surface hover:bg-sf-surface-2 transition-colors disabled:opacity-60"
+                >
+                  {testingKey === t.key
+                    ? <Loader2 className="h-3 w-3 animate-spin" />
+                    : <FlaskConical className="h-3 w-3" />}
+                  Send
+                </button>
+              </SettingsRow>
+            ))}
+          </div>
+
+          <div className="px-6 py-4 border-t border-sf-border flex items-center justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-sf-text flex items-center gap-1.5">
+                <Send className="h-3.5 w-3.5 text-sf-muted" /> Test email
+              </p>
+              <p className="text-xs text-sf-muted mt-0.5">
+                {emailProviderConfigured ? 'Send a test email to your notification address.' : 'Email provider not configured.'}
+              </p>
+            </div>
+            <button
+              disabled={!emailProviderConfigured}
+              className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium border border-sf-border bg-sf-surface hover:bg-sf-surface-2 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
+              title={emailProviderConfigured ? undefined : 'Email provider not configured'}
+            >
+              Send email
+            </button>
+          </div>
+        </SettingsSection>
       )}
     </div>
   )
