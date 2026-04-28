@@ -426,6 +426,7 @@ export interface StudyLibraryItem {
   id: string
   title: string
   kind: 'learning' | 'task'
+  entryKind: 'draft' | 'deep_learn_note'
   subtitle?: string
   courseTitle?: string
   moduleTitle?: string

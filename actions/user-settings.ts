@@ -3,12 +3,29 @@
 import { createAuthenticatedSupabaseServerClient, getAuthenticatedUserServer } from '@/lib/auth-server'
 import { revalidatePath } from 'next/cache'
 
+export interface EmailCategories {
+  due_soon: boolean
+  new_uploads: boolean
+  announcements: boolean
+  queue_completed: boolean
+}
+
+const DEFAULT_EMAIL_CATEGORIES: EmailCategories = {
+  due_soon: true,
+  new_uploads: true,
+  announcements: false,
+  queue_completed: true,
+}
+
 export interface UserSettings {
   userId: string
   canvasApiUrl: string | null
   canvasAccessToken: string | null
   notificationEmail: string | null
   aiProvider: 'openai' | 'gemini' | 'nemotron'
+  emailNotifications: 'off' | 'instant' | 'daily_digest'
+  emailCategories: EmailCategories
+  emailProviderConfigured: boolean
   createdAt: string
   updatedAt: string
 }
@@ -18,6 +35,13 @@ export async function getUserSettings() {
   if (!user) {
     return { ok: false as const, error: 'Not authenticated' }
   }
+
+  const emailProviderConfigured = Boolean(
+    process.env.RESEND_API_KEY ||
+    process.env.SENDGRID_API_KEY ||
+    process.env.SMTP_HOST ||
+    process.env.EMAIL_PROVIDER,
+  )
 
   try {
     const client = await createAuthenticatedSupabaseServerClient()
@@ -43,6 +67,9 @@ export async function getUserSettings() {
           canvasAccessToken: null,
           notificationEmail: user.email ?? null,
           aiProvider: 'openai' as const,
+          emailNotifications: 'off' as const,
+          emailCategories: DEFAULT_EMAIL_CATEGORIES,
+          emailProviderConfigured,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         },
@@ -57,6 +84,9 @@ export async function getUserSettings() {
         canvasAccessToken: data.canvas_access_token,
         notificationEmail: data.notification_email,
         aiProvider: (data.ai_provider ?? 'openai') as 'openai' | 'gemini' | 'nemotron',
+        emailNotifications: (data.email_notifications ?? 'off') as 'off' | 'instant' | 'daily_digest',
+        emailCategories: { ...DEFAULT_EMAIL_CATEGORIES, ...(data.email_categories as Partial<EmailCategories> ?? {}) },
+        emailProviderConfigured,
         createdAt: data.created_at,
         updatedAt: data.updated_at,
       },
@@ -64,6 +94,42 @@ export async function getUserSettings() {
   } catch (err) {
     console.error('[getUserSettings] Unexpected error:', err)
     return { ok: false as const, error: 'Unexpected error loading settings' }
+  }
+}
+
+export async function updateEmailPreferences(input: {
+  emailNotifications: 'off' | 'instant' | 'daily_digest'
+  emailCategories: EmailCategories
+}) {
+  const user = await getAuthenticatedUserServer()
+  if (!user) return { ok: false as const, error: 'Not authenticated' }
+
+  try {
+    const client = await createAuthenticatedSupabaseServerClient()
+    if (!client) return { ok: false as const, error: 'Supabase is not configured' }
+
+    const { error } = await client
+      .from('user_settings')
+      .upsert(
+        {
+          user_id: user.id,
+          email_notifications: input.emailNotifications,
+          email_categories: input.emailCategories,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'user_id' },
+      )
+
+    if (error) {
+      console.error('[updateEmailPreferences] Supabase error:', error)
+      return { ok: false as const, error: 'Could not save notification preferences' }
+    }
+
+    revalidatePath('/settings')
+    return { ok: true as const }
+  } catch (err) {
+    console.error('[updateEmailPreferences] Unexpected error:', err)
+    return { ok: false as const, error: 'Unexpected error' }
   }
 }
 

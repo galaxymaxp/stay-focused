@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { SyncFirstEmptyState } from '@/components/SyncFirstEmptyState'
+import { CourseDangerZone } from '@/components/courses/CourseDangerZone'
 import { createAuthenticatedSupabaseServerClient } from '@/lib/auth-server'
 import { getClarityWorkspace } from '@/lib/clarity-workspace'
 import { buildCourseSummaries, type CourseSummary } from '@/lib/course-summary'
@@ -46,6 +47,8 @@ export default async function CoursesPage() {
           <CourseCard key={summary.course.id} summary={summary} index={index} />
         ))}
       </div>
+
+      <CourseDangerZone courses={summaries.map((s) => ({ id: s.course.id, name: s.course.name, code: s.course.code ?? '' }))} />
     </main>
   )
 }

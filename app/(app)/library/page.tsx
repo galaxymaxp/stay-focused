@@ -160,6 +160,7 @@ function toStudyLibraryItem(
     id: draft.id,
     title: draft.title,
     kind,
+    entryKind: draft.entryKind,
     subtitle: getLibrarySubtitle(draft),
     courseTitle,
     moduleTitle: draft.moduleTitle ?? undefined,
