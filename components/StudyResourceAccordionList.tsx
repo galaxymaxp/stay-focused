@@ -401,6 +401,7 @@ function ResourcePill({
 }
 
 function SourceRepairButton({ item }: { item: StudyResourceAccordionItem }) {
+  const router = useRouter()
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
 
@@ -432,13 +433,16 @@ function SourceRepairButton({ item }: { item: StudyResourceAccordionItem }) {
             })
             const payload = await response.json().catch(() => null) as { message?: string; error?: string } | null
             setMessage(payload?.message ?? payload?.error ?? (response.ok ? 'Repair attempted.' : 'Could not repair this source.'))
+            if (response.ok) {
+              router.refresh()
+            }
           } finally {
             setBusy(false)
           }
         }}
         className="ui-button ui-button-secondary ui-button-xs"
       >
-        {busy ? 'Repairing...' : 'Repair source link'}
+        {busy ? 'Repairing from Canvas...' : 'Reconnect source'}
       </button>
       {message && <span style={{ fontSize: '11px', lineHeight: 1.45, color: 'var(--text-muted)', alignSelf: 'center' }}>{message}</span>}
     </>

@@ -246,7 +246,7 @@ function messageForState(
 ) {
   if (state === 'ready') return 'Deep Learn can read this source and use it for notes, quizzes, and review.'
   if (state === 'needs_processing') return 'This source can be processed from its original Canvas file. Use Process source or Process all readable sources.'
-  if (state === 'missing_resource_link') return 'Missing Canvas source. Try repair, or open the original item in Canvas.'
+  if (state === 'missing_resource_link') return 'Source link missing. Try reconnecting from Canvas.'
   if (state === 'unsupported_file_type') {
     return isPacketTracer
       ? 'Packet Tracer files cannot be read directly. Open the lab file or add notes/screenshots for Deep Learn.'
