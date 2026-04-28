@@ -54,6 +54,10 @@ export interface ModuleSourceResource {
   id: string
   title: string
   originalTitle?: string | null
+  canvasModuleId?: number | null
+  canvasItemId?: number | null
+  canvasFileId?: number | null
+  metadata?: Record<string, unknown> | null
   type: string
   contentType?: string | null
   extension?: string | null
@@ -133,6 +137,9 @@ export interface LearnExperience {
 
 export type LearnResourceSelectionMatchStrategy =
   | 'resource_id'
+  | 'canvas_item_id'
+  | 'canvas_file_id'
+  | 'url'
   | 'parsed_exact_match'
   | 'parsed_compatible_match'
   | 'parsed_title_type_match'
@@ -390,7 +397,15 @@ interface ParsedCanvasAnnouncement {
 
 interface ParsedCanvasModuleGroup {
   name: string
-  items: Array<{ title: string; type: string; required: boolean }>
+  items: Array<{
+    title: string
+    type: string
+    required: boolean
+    canvasModuleId: number | null
+    canvasItemId: number | null
+    canvasFileId: number | null
+    metadata: Record<string, unknown>
+  }>
 }
 
 interface ParsedCanvasContent {
@@ -500,12 +515,18 @@ function parseCompiledCanvasContent(rawContent: string): ParsedCanvasContent {
 }
 
 function parseModuleItem(value: string) {
-  const match = value.match(/^(.*)\s+\(([^)]+)\)(\s+\[required\])?$/)
+  const metadata = parseModuleItemMetadata(value)
+  const displayValue = value.replace(/\s*<!--[\s\S]*?-->\s*$/g, '').trim()
+  const match = displayValue.match(/^(.*)\s+\(([^)]+)\)(\s+\[required\])?$/)
   if (!match) {
     return {
-      title: value,
+      title: displayValue,
       type: 'Resource',
       required: false,
+      canvasModuleId: readNumberMetadata(metadata.canvasModuleId, metadata.canvas_module_id),
+      canvasItemId: readNumberMetadata(metadata.canvasItemId, metadata.canvasModuleItemId, metadata.canvas_item_id, metadata.canvas_module_item_id),
+      canvasFileId: readNumberMetadata(metadata.canvasFileId, metadata.contentId, metadata.canvas_file_id, metadata.content_id),
+      metadata,
     }
   }
 
@@ -513,7 +534,28 @@ function parseModuleItem(value: string) {
     title: match[1].trim(),
     type: match[2].trim(),
     required: Boolean(match[3]),
+    canvasModuleId: readNumberMetadata(metadata.canvasModuleId, metadata.canvas_module_id),
+    canvasItemId: readNumberMetadata(metadata.canvasItemId, metadata.canvasModuleItemId, metadata.canvas_item_id, metadata.canvas_module_item_id),
+    canvasFileId: readNumberMetadata(metadata.canvasFileId, metadata.contentId, metadata.canvas_file_id, metadata.content_id),
+    metadata,
   }
+}
+
+function parseModuleItemMetadata(value: string): Record<string, unknown> {
+  const match = value.match(/<!--\s*([\s\S]*?)\s*-->\s*$/)
+  if (!match?.[1]) return {}
+
+  const metadata: Record<string, unknown> = {}
+  for (const part of match[1].split(/\s+/)) {
+    const separatorIndex = part.indexOf('=')
+    if (separatorIndex <= 0) continue
+    const key = part.slice(0, separatorIndex).trim()
+    const rawValue = part.slice(separatorIndex + 1).trim()
+    if (!key || !rawValue) continue
+    const numericValue = Number(rawValue)
+    metadata[key] = Number.isFinite(numericValue) ? numericValue : rawValue
+  }
+  return metadata
 }
 
 function normalizeParsedAnnouncementTitle(value: string) {
@@ -559,6 +601,10 @@ function buildSourceResources(parsed: ParsedCanvasContent): ModuleSourceResource
         id: `resource-${moduleIndex + 1}-${itemIndex + 1}`,
         title: item.title,
         originalTitle: item.title,
+        canvasModuleId: item.canvasModuleId,
+        canvasItemId: item.canvasItemId,
+        canvasFileId: item.canvasFileId,
+        metadata: item.metadata,
         type: item.type,
         required: item.required,
         moduleName: moduleGroup.name,
@@ -608,6 +654,10 @@ function adaptStoredResourceForLearn(resource: ModuleResource): ModuleSourceReso
     id: resource.id,
     title: resource.title,
     originalTitle: resource.title,
+    canvasModuleId: resource.canvasModuleId,
+    canvasItemId: resource.canvasItemId,
+    canvasFileId: resource.canvasFileId,
+    metadata,
     type: resource.resourceType,
     contentType: resource.contentType,
     extension: resource.extension,
@@ -659,6 +709,17 @@ function adaptStoredResourceForLearn(resource: ModuleResource): ModuleSourceReso
 
 function readStringMetadata(value: unknown) {
   return typeof value === 'string' && value.trim() ? value.trim() : null
+}
+
+function readNumberMetadata(...values: unknown[]) {
+  for (const value of values) {
+    if (typeof value === 'number' && Number.isFinite(value)) return value
+    if (typeof value === 'string' && value.trim()) {
+      const numericValue = Number(value)
+      if (Number.isFinite(numericValue)) return numericValue
+    }
+  }
+  return null
 }
 
 function asPlainRecord(value: unknown): Record<string, unknown> {
@@ -910,28 +971,197 @@ function mergeLearnResources(parsedResources: ModuleSourceResource[], storedReso
   const nonStored = parsedResources.filter((resource) => resource.category !== 'resource')
   const merged = [...nonStored]
   const consumedStoredIds = new Set<string>()
+  const unmatchedParsedResources: ModuleSourceResource[] = []
+  const parsedCanvasResources = parsedResources.filter((entry) => entry.category === 'resource')
 
-  for (const resource of storedResources) {
-    merged.push(resource)
-  }
+  for (const resource of parsedCanvasResources) {
+    const identityMatch = findStoredResourceIdentityMatch(resource, storedResources, consumedStoredIds)
+    if (identityMatch) {
+      merged.push(mergeParsedDisplayWithStoredResource(resource, identityMatch))
+      consumedStoredIds.add(identityMatch.id)
+      continue
+    }
 
-  for (const resource of parsedResources.filter((entry) => entry.category === 'resource')) {
+    const positionalMatch = findStoredResourcePositionalCanvasMatch(resource, parsedCanvasResources, storedResources, consumedStoredIds)
+    if (positionalMatch) {
+      merged.push(mergeParsedDisplayWithStoredResource(resource, positionalMatch))
+      consumedStoredIds.add(positionalMatch.id)
+      continue
+    }
+
     const exactMatch = findStoredResourceMatch(resource, storedResources, consumedStoredIds, 'exact')
     if (exactMatch) {
+      merged.push(exactMatch)
       consumedStoredIds.add(exactMatch.id)
       continue
     }
 
     const compatibleMatch = findStoredResourceMatch(resource, storedResources, consumedStoredIds, 'compatible')
     if (compatibleMatch) {
+      merged.push(compatibleMatch)
       consumedStoredIds.add(compatibleMatch.id)
       continue
     }
 
-    merged.push(resource)
+    unmatchedParsedResources.push(resource)
   }
 
+  for (const resource of storedResources) {
+    if (!consumedStoredIds.has(resource.id)) merged.push(resource)
+  }
+  merged.push(...unmatchedParsedResources)
+
   return merged
+}
+
+function mergeParsedDisplayWithStoredResource(
+  parsedResource: ModuleSourceResource,
+  storedResource: ModuleSourceResource,
+): ModuleSourceResource {
+  return {
+    ...storedResource,
+    title: parsedResource.title,
+    originalTitle: parsedResource.originalTitle ?? parsedResource.title,
+    required: parsedResource.required,
+    moduleName: parsedResource.moduleName ?? storedResource.moduleName,
+    canvasModuleId: storedResource.canvasModuleId ?? parsedResource.canvasModuleId ?? null,
+    canvasItemId: storedResource.canvasItemId ?? parsedResource.canvasItemId ?? null,
+    canvasFileId: storedResource.canvasFileId ?? parsedResource.canvasFileId ?? null,
+    metadata: {
+      ...(storedResource.metadata ?? {}),
+      learnDisplayTitle: parsedResource.title,
+      canvasModuleItemTitle: parsedResource.title,
+      parsedCanvasModuleId: parsedResource.canvasModuleId ?? null,
+      parsedCanvasItemId: parsedResource.canvasItemId ?? null,
+      parsedCanvasFileId: parsedResource.canvasFileId ?? null,
+    },
+  }
+}
+
+function findStoredResourceIdentityMatch(
+  parsedResource: ModuleSourceResource,
+  storedResources: ModuleSourceResource[],
+  consumedStoredIds: Set<string>,
+) {
+  const candidates = storedResources.filter((storedResource) => !consumedStoredIds.has(storedResource.id))
+  const canvasItemId = getResourceCanvasItemId(parsedResource)
+  if (canvasItemId != null) {
+    const match = candidates.find((storedResource) => getResourceCanvasItemId(storedResource) === canvasItemId)
+    if (match) return match
+  }
+
+  const canvasFileId = getResourceCanvasFileId(parsedResource)
+  if (canvasFileId != null) {
+    const match = candidates.find((storedResource) => getResourceCanvasFileId(storedResource) === canvasFileId)
+    if (match) return match
+  }
+
+  const parsedUrls = getResourceStableUrls(parsedResource)
+  if (parsedUrls.size > 0) {
+    const urlMatches = candidates.filter((storedResource) => {
+      const storedUrls = getResourceStableUrls(storedResource)
+      for (const url of parsedUrls) {
+        if (storedUrls.has(url)) return true
+      }
+      return false
+    })
+    if (urlMatches.length === 1) return urlMatches[0]
+  }
+
+  return null
+}
+
+function findStoredResourcePositionalCanvasMatch(
+  parsedResource: ModuleSourceResource,
+  parsedResources: ModuleSourceResource[],
+  storedResources: ModuleSourceResource[],
+  consumedStoredIds: Set<string>,
+) {
+  if (getResourceCanvasItemId(parsedResource) != null || getResourceCanvasFileId(parsedResource) != null) {
+    return null
+  }
+
+  const parsedGroup = parsedResources.filter((resource) => isSameCanvasResourceGroup(resource, parsedResource))
+  if (parsedGroup.length <= 1) return null
+
+  const parsedIndex = parsedGroup.findIndex((resource) => resource.id === parsedResource.id)
+  if (parsedIndex < 0) return null
+
+  const storedGroup = storedResources
+    .filter((resource) => isSameCanvasResourceGroup(resource, parsedResource))
+    .filter((resource) => getResourceCanvasItemId(resource) != null || getResourceCanvasFileId(resource) != null)
+    .sort(compareCanvasResourceIdentity)
+
+  if (storedGroup.length !== parsedGroup.length) return null
+  const match = storedGroup[parsedIndex] ?? null
+  return match && !consumedStoredIds.has(match.id) ? match : null
+}
+
+function isSameCanvasResourceGroup(left: ModuleSourceResource, right: ModuleSourceResource) {
+  return left.category === 'resource'
+    && right.category === 'resource'
+    && normalizeLookup(left.moduleName ?? '') === normalizeLookup(right.moduleName ?? '')
+    && normalizeLookup(left.type) === normalizeLookup(right.type)
+    && left.required === right.required
+}
+
+function compareCanvasResourceIdentity(left: ModuleSourceResource, right: ModuleSourceResource) {
+  return (getResourceCanvasItemId(left) ?? Number.MAX_SAFE_INTEGER) - (getResourceCanvasItemId(right) ?? Number.MAX_SAFE_INTEGER)
+    || (getResourceCanvasFileId(left) ?? Number.MAX_SAFE_INTEGER) - (getResourceCanvasFileId(right) ?? Number.MAX_SAFE_INTEGER)
+    || left.title.localeCompare(right.title)
+}
+
+function getResourceCanvasItemId(resource: ModuleSourceResource) {
+  return readNumberMetadata(
+    resource.canvasItemId,
+    resource.metadata?.canvasItemId,
+    resource.metadata?.canvasModuleItemId,
+    resource.metadata?.canvas_item_id,
+    resource.metadata?.canvas_module_item_id,
+  )
+}
+
+function getResourceCanvasFileId(resource: ModuleSourceResource) {
+  return readNumberMetadata(
+    resource.canvasFileId,
+    resource.metadata?.canvasFileId,
+    resource.metadata?.contentId,
+    resource.metadata?.canvas_file_id,
+    resource.metadata?.content_id,
+  )
+}
+
+function getResourceStableUrls(resource: ModuleSourceResource) {
+  const urls = new Set<string>()
+  for (const value of [
+    resource.htmlUrl,
+    resource.sourceUrl,
+    resource.canvasUrl,
+    resource.resolvedUrl,
+    resource.metadata?.htmlUrl,
+    resource.metadata?.sourceUrl,
+    resource.metadata?.canvasUrl,
+    resource.metadata?.resolvedUrl,
+  ]) {
+    if (typeof value !== 'string') continue
+    const normalized = normalizeStableUrl(value)
+    if (normalized) urls.add(normalized)
+  }
+  return urls
+}
+
+function normalizeStableUrl(value: string) {
+  const trimmed = value.trim()
+  if (!trimmed) return null
+
+  try {
+    const url = new URL(trimmed)
+    url.hash = ''
+    url.search = ''
+    return url.toString().replace(/\/$/, '').toLowerCase()
+  } catch {
+    return trimmed.replace(/\/$/, '').toLowerCase()
+  }
 }
 
 function findStoredResourceMatch(
@@ -1398,6 +1628,16 @@ export function resolveLearnResourceSelection(
 
   const storedLearnResources = storedResources.map(adaptStoredResourceForLearn)
   const storedResourceById = new Map(storedResources.map((entry) => [entry.id, entry]))
+  const identityMatch = findStoredResourceIdentityMatch(resource, storedLearnResources, new Set<string>())
+  if (identityMatch) {
+    const strategy = getResourceCanvasItemId(resource) != null && getResourceCanvasItemId(identityMatch) === getResourceCanvasItemId(resource)
+      ? 'canvas_item_id'
+      : getResourceCanvasFileId(resource) != null && getResourceCanvasFileId(identityMatch) === getResourceCanvasFileId(resource)
+        ? 'canvas_file_id'
+        : 'url'
+    return buildLearnResourceSelection(resource, storedResourceById.get(identityMatch.id) ?? null, strategy)
+  }
+
   const exactMatch = findStoredResourceMatch(resource, storedLearnResources, new Set<string>(), 'exact')
   if (exactMatch) {
     return buildLearnResourceSelection(resource, storedResourceById.get(exactMatch.id) ?? null, 'parsed_exact_match')

@@ -486,7 +486,7 @@ async function syncSingleCourse(
   let aiResult
   try {
     await onProgress?.({ step: 'extracting', message: 'Extracting tasks/resources' })
-    aiResult = await processModuleContent(rawContent)
+    aiResult = await processModuleContent(stripCanvasIdentityComments(rawContent))
   } catch (err) {
     const { error: markError } = await syncSupabase.from('modules').update({ status: 'error' }).eq('id', moduleId)
     if (markError) {
@@ -1181,6 +1181,10 @@ function deriveModulePrioritySignal(aiResult: AIResponse): Priority {
   if (aiResult.tasks.some((task) => task.priority === 'high')) return 'high'
   if (aiResult.tasks.some((task) => task.priority === 'medium')) return 'medium'
   return 'low'
+}
+
+function stripCanvasIdentityComments(value: string) {
+  return value.replace(/\s*<!--\s*(?:canvasModuleId|canvasModuleItemId|canvasItemId|canvasFileId|contentId)=[\s\S]*?-->/g, '')
 }
 
 function normalizeTaskTypeForSync(

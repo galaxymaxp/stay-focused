@@ -985,7 +985,7 @@ export function compileCanvasContent(
       if (canvasModule.items?.length > 0) {
         for (const item of canvasModule.items) {
           const required = item.completion_requirement ? ' [required]' : ''
-          lines.push(`  * ${item.title} (${item.type})${required}`)
+          lines.push(`  * ${item.title} (${item.type})${required}${formatModuleItemIdentityComment(canvasModule.id, item)}`)
         }
       }
     }
@@ -1011,4 +1011,17 @@ export function compileCanvasContent(
   }
 
   return lines.join('\n')
+}
+
+function formatModuleItemIdentityComment(
+  canvasModuleId: number,
+  item: { id?: number | null; type?: string | null; content_id?: number | null },
+) {
+  const parts = [`canvasModuleId=${canvasModuleId}`]
+  if (typeof item.id === 'number') parts.push(`canvasModuleItemId=${item.id}`, `canvasItemId=${item.id}`)
+  if (typeof item.content_id === 'number') parts.push(`contentId=${item.content_id}`)
+  if (item.type?.toLowerCase() === 'file' && typeof item.content_id === 'number') {
+    parts.push(`canvasFileId=${item.content_id}`)
+  }
+  return ` <!-- ${parts.join(' ')} -->`
 }
