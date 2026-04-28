@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { listDraftsForShelves } from '@/actions/drafts'
 import { GeneratedContentState } from '@/components/generated-content/GeneratedContentState'
 import { ModuleLensShell } from '@/components/ModuleLensShell'
-import { buildLearnExperience, extractCourseName, findRecommendedStepTargets, getModuleWorkspace, getResourceCanvasHref, getResourceOriginalFileHref, matchTaskToResource } from '@/lib/module-workspace'
+import { buildLearnExperience, extractCourseName, findRecommendedStepTargets, getModuleWorkspace, getResourceCanvasHref, getResourceOriginalFileHref, matchTaskToResource, type ModuleSourceResource } from '@/lib/module-workspace'
 import { buildModuleLearnHref, getSearchParamValue, getTaskElementId } from '@/lib/stay-focused-links'
 import { sortTasksByRecommendation } from '@/lib/task-ranking'
 import { TaskDraftButton } from '@/components/DoNowButton'
@@ -151,8 +151,10 @@ export default async function DoPage({ params, searchParams }: Props) {
                   const sourceHref = matchedResource
                     ? getResourceOriginalFileHref(matchedResource) ?? canvasHref
                     : canvasHref
-                  const sourceText = matchedResource?.extractedText
+                  const sourcePreview = matchedResource?.extractedText
                     ?? matchedResource?.extractedTextPreview
+                    ?? null
+                  const sourceText = sourcePreview
                     ?? task.details
                     ?? module.summary
                     ?? null
@@ -214,6 +216,15 @@ export default async function DoPage({ params, searchParams }: Props) {
                         <span><strong>Source:</strong> {module.title}</span>
                         <span><strong>Timing:</strong> {task.deadline ? `Due ${formatDate(task.deadline)}` : 'No due date found'}</span>
                       </div>
+
+                      <TaskSourceContextPanel
+                        moduleTitle={module.title}
+                        matchedResource={matchedResource ?? null}
+                        sourcePreview={sourcePreview}
+                        sourceNote={matchedResource?.linkedContext ?? matchedResource?.whyItMatters ?? null}
+                        learnHref={learnHref}
+                        sourceHref={sourceHref}
+                      />
 
                       <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
                         <TaskDraftButton
@@ -308,6 +319,9 @@ export default async function DoPage({ params, searchParams }: Props) {
                       ?? task.details
                       ?? module.summary
                       ?? null
+                    const sourcePreview = matchedResource?.extractedText
+                      ?? matchedResource?.extractedTextPreview
+                      ?? null
 
                     return (
                       <div
@@ -326,6 +340,14 @@ export default async function DoPage({ params, searchParams }: Props) {
                         }}
                       >
                         <p style={{ margin: 0, fontSize: '14px', color: 'var(--text-muted)', textDecoration: 'line-through' }}>{task.title}</p>
+                        <TaskSourceContextPanel
+                          moduleTitle={module.title}
+                          matchedResource={matchedResource ?? null}
+                          sourcePreview={sourcePreview}
+                          sourceNote={matchedResource?.linkedContext ?? matchedResource?.whyItMatters ?? null}
+                          learnHref={learnHref}
+                          sourceHref={sourceHref}
+                        />
                         <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
                           <TaskDraftButton
                             defaultOpen={draftAutoOpen && highlightedTaskId === task.id}
@@ -453,6 +475,61 @@ function priorityChipStyle(priority: 'high' | 'medium' | 'low') {
     color: 'var(--text-secondary)',
     border: '1px solid var(--border-subtle)',
   }
+}
+
+function TaskSourceContextPanel({
+  moduleTitle,
+  matchedResource,
+  sourcePreview,
+  sourceNote,
+  learnHref,
+  sourceHref,
+}: {
+  moduleTitle: string
+  matchedResource: ModuleSourceResource | null
+  sourcePreview: string | null
+  sourceNote: string | null
+  learnHref: string
+  sourceHref: string | null
+}) {
+  const preview = buildTaskDraftContextText(sourcePreview, 520)
+  const summary = buildTaskDraftContextText(sourceNote, 260)
+  const sourceTitle = matchedResource?.title ?? moduleTitle
+  const sourceType = matchedResource?.type ?? 'Module'
+
+  return (
+    <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.78rem 0.84rem', display: 'grid', gap: '0.55rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.65rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+        <div style={{ minWidth: 0 }}>
+          <p className="ui-kicker" style={{ margin: 0 }}>Source context</p>
+          <p style={{ margin: '0.3rem 0 0', fontSize: '13px', lineHeight: 1.45, color: 'var(--text-primary)', fontWeight: 650, overflowWrap: 'anywhere' }}>
+            {sourceTitle}
+          </p>
+          <p style={{ margin: '0.18rem 0 0', fontSize: '12px', lineHeight: 1.45, color: 'var(--text-muted)' }}>
+            {moduleTitle}{sourceType ? ` / ${sourceType}` : ''}
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <Link href={learnHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+            Open Learn
+          </Link>
+          {sourceHref && (
+            <a href={sourceHref} target="_blank" rel="noreferrer" className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+              Open source
+            </a>
+          )}
+        </div>
+      </div>
+      {summary && (
+        <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.58, color: 'var(--text-secondary)' }}>
+          {summary}
+        </p>
+      )}
+      <p style={{ margin: 0, fontSize: '12px', lineHeight: 1.6, color: preview ? 'var(--text-secondary)' : 'var(--text-muted)', whiteSpace: 'pre-wrap' }}>
+        {preview ?? 'No readable source text yet. Open Learn to prepare this source.'}
+      </p>
+    </div>
+  )
 }
 
 function deadlineChipStyle(deadline: string) {

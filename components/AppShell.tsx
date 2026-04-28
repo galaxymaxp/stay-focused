@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation'
 import { AnnouncementsMenu } from '@/components/AnnouncementsMenu'
 import { AuthStatus } from '@/components/AuthStatus'
 import { StayFocusedIcon } from '@/components/StayFocusedIcon'
+import { QueuePanel } from '@/components/shell/QueuePanel'
 import type { ParsedAnnouncement } from '@/lib/announcements'
 
 const NAV_ITEMS = [
@@ -243,6 +244,7 @@ export function AppShell({
           </div>
 
           <div className="app-topbar-actions">
+            <QueuePanel />
             <AnnouncementsMenu announcements={recentAnnouncements} />
             <AuthStatus />
           </div>
