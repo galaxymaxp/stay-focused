@@ -327,6 +327,7 @@ async function defaultExecuteListModuleQuery(auth: AuthenticatedSupabaseServerCo
   return auth.client
     .from(TABLE_NAME)
     .select('*')
+    .eq('user_id', auth.user.id)
     .eq('module_id', moduleId)
     .order('updated_at', { ascending: false })
 }
@@ -335,6 +336,7 @@ async function defaultExecuteResourceNoteQuery(auth: AuthenticatedSupabaseServer
   return auth.client
     .from(TABLE_NAME)
     .select('*')
+    .eq('user_id', auth.user.id)
     .eq('module_id', moduleId)
     .eq('resource_id', resourceId)
     .maybeSingle()
