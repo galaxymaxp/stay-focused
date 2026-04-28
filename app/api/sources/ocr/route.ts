@@ -232,8 +232,11 @@ function getOptionalCanvasConfig() {
 
 function revalidateOcrPaths(resource: ModuleResource, requestedModuleId: string | null) {
   const moduleId = requestedModuleId ?? resource.moduleId
+  revalidatePath('/')
+  revalidatePath('/home')
   revalidatePath('/learn')
   revalidatePath('/courses')
+  revalidatePath('/library')
   if (resource.courseId) revalidatePath(`/courses/${resource.courseId}`)
   if (!moduleId) return
   revalidatePath(`/modules/${moduleId}`)

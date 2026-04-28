@@ -84,6 +84,7 @@ export function normalizeSourceReadiness(input: {
   const fileExtension = normalizeExtension(resource.extension ?? input.resource.extension)
   const isPacketTracer = fileExtension === 'pkt' || /packet\s*tracer/i.test(input.resource.title)
   const hasSourceHref = Boolean(getSourceHref(input.resource) || input.storedResource?.sourceUrl || input.storedResource?.htmlUrl)
+  const hasStoredResource = Boolean(input.storedResource && input.canonicalResourceId)
   const readableTextLength = getReadableTextLength(resource)
   const visualExtractionCandidate = isVisualExtractionCandidate({
     sourceType,
@@ -96,7 +97,7 @@ export function normalizeSourceReadiness(input: {
     || resource.visualExtractionStatus === 'completed'
   const isReadable = hasCompletedExtraction && readableTextLength >= 120
   const state = resolveSourceReadinessState({
-    hasStoredResource: Boolean(input.storedResource && input.canonicalResourceId),
+    hasStoredResource,
     extractionStatus: resource.extractionStatus,
     sourceType,
     capability: capability.capability,
@@ -163,7 +164,7 @@ function resolveSourceReadinessState(input: {
   if (!input.hasStoredResource) {
     if (input.sourceType === 'page') return 'canvas_lesson_page'
     if (input.sourceType === 'external_url' || input.sourceType === 'external_tool') return 'external_link'
-    return 'missing_resource_link'
+    return 'unknown'
   }
   if (input.isReadable) return 'ready'
   if (input.visualExtractionStatus === 'running' || input.extractionStatus === 'processing') return 'visual_ocr_running'

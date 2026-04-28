@@ -9,6 +9,8 @@ export interface RepairableLearningItem {
   title: string
   type: string | null
   body?: string | null
+  sourceType?: string | null
+  sourceLabel?: string | null
   canvasItemId?: number | null
   canvasFileId?: number | null
   canvasUrl?: string | null
@@ -33,10 +35,17 @@ export interface SourceRepairMatch {
   strategy: 'canvas_item_id' | 'canvas_file_id' | 'url' | 'module_title' | 'course_title' | 'normalized_filename'
 }
 
+export interface GeneratedLearningItemSourceMatch {
+  resource: ModuleResource
+  strategy: 'generated_body_title'
+}
+
 export function findSourceRepairMatch(
   item: RepairableLearningItem,
   resources: ModuleResource[],
 ): SourceRepairMatch | null {
+  if (isSourceLessGeneratedLearningItem(item)) return null
+
   const canvasItemId = firstNumber(item.canvasItemId, item.metadata?.canvasItemId, item.metadata?.canvas_module_item_id)
   if (canvasItemId != null) {
     const match = resources.find((resource) => resource.canvasItemId === canvasItemId)
@@ -97,6 +106,57 @@ export function findSourceRepairMatch(
   return null
 }
 
+export function findGeneratedLearningItemSourceMatch(
+  item: RepairableLearningItem,
+  resources: ModuleResource[],
+): GeneratedLearningItemSourceMatch | null {
+  if (!isSourceLessGeneratedLearningItem(item)) return null
+
+  const sameModuleResources = item.moduleId
+    ? resources.filter((resource) => resource.moduleId === item.moduleId)
+    : []
+  const candidates = sameModuleResources.length > 0
+    ? sameModuleResources
+    : item.courseId
+      ? resources.filter((resource) => resource.courseId === item.courseId)
+      : []
+  const itemText = normalizeSourceTitle([
+    item.title,
+    item.body,
+    item.sourceLabel,
+  ].filter(Boolean).join(' '))
+
+  if (!itemText) return null
+
+  const matches = candidates.filter((resource) => {
+    const resourceTitle = normalizeSourceTitle(resource.title)
+    if (!isConservativeTitleNeedle(resourceTitle)) return false
+    return itemText.includes(resourceTitle)
+  })
+
+  return matches.length === 1 ? { resource: matches[0]!, strategy: 'generated_body_title' } : null
+}
+
+export function shouldAttemptLearningItemSourceRepair(item: RepairableLearningItem) {
+  if (item.sourceResourceId || item.canonicalSourceId?.startsWith('module_resource:')) return false
+  return !isSourceLessGeneratedLearningItem(item)
+}
+
+export function isSourceLessGeneratedLearningItem(item: RepairableLearningItem) {
+  if (item.sourceResourceId || item.canonicalSourceId) return false
+  if (hasCanvasSourceEvidence(item)) return false
+
+  const type = item.type?.toLowerCase().trim() ?? ''
+  const title = item.title.toLowerCase().trim()
+  return type === 'summary'
+    || type === 'concept'
+    || type === 'connection'
+    || type === 'review'
+    || title === 'what this module is trying to teach'
+    || /^key idea \d+$/i.test(title)
+    || /^check your understanding \d+$/i.test(title)
+}
+
 export function buildLearningItemSourcePatch(resource: ModuleResource) {
   return {
     source_type: 'module_resource',
@@ -141,6 +201,8 @@ export function adaptRepairableLearningItem(row: Record<string, unknown>): Repai
     title: typeof row.title === 'string' ? row.title : 'Canvas item',
     type: typeof row.type === 'string' ? row.type : null,
     body: typeof row.body === 'string' ? row.body : null,
+    sourceType: readString(row.source_type),
+    sourceLabel: readString(row.source_label),
     canvasItemId: firstNumber(row.canvas_item_id, row.canvas_module_item_id),
     canvasFileId: firstNumber(row.canvas_file_id),
     canvasUrl: readString(row.canvas_url),
@@ -210,6 +272,26 @@ function inferExtension(title: string, extension: string | null, contentType: st
   if (contentType?.includes('word')) return 'docx'
   const match = title.match(/\.([a-z0-9]{2,5})$/i)
   return match?.[1]?.toLowerCase() ?? null
+}
+
+function hasCanvasSourceEvidence(item: RepairableLearningItem) {
+  return firstNumber(item.canvasItemId, item.canvasFileId, item.metadata?.canvasItemId, item.metadata?.canvasFileId, item.metadata?.canvas_module_item_id, item.metadata?.canvas_file_id) != null
+    || Boolean(
+      item.canvasUrl
+      || item.htmlUrl
+      || item.externalUrl
+      || item.sourceUrl
+      || readString(item.metadata?.canvasUrl)
+      || readString(item.metadata?.htmlUrl)
+      || readString(item.metadata?.externalUrl)
+      || readString(item.metadata?.sourceUrl)
+      || readString(item.metadata?.url),
+    )
+}
+
+function isConservativeTitleNeedle(normalizedTitle: string) {
+  if (normalizedTitle.length < 12) return false
+  return normalizedTitle.split(/\s+/).filter(Boolean).length >= 3
 }
 
 function isLikelyCanvasUrl(value: string) {

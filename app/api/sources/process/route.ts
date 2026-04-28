@@ -151,8 +151,11 @@ function revalidateSourceProcessingPaths(input: {
   courseId: string | null
   resourceIds: string[]
 }) {
+  revalidatePath('/')
+  revalidatePath('/home')
   revalidatePath('/learn')
   revalidatePath('/courses')
+  revalidatePath('/library')
   if (input.courseId) revalidatePath(`/courses/${input.courseId}`)
   if (input.moduleId) {
     revalidatePath(`/modules/${input.moduleId}/learn`)

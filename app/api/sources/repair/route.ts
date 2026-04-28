@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { revalidatePath } from 'next/cache'
 import { createSupabaseRouteClient } from '@/lib/supabase-auth-server'
 import { resolveCanvasConfigFromUser } from '@/lib/canvas-user-config'
 import { getCanvasFile, getModules, normalizeCanvasUrl, type CanvasFile, type CanvasModuleItem } from '@/lib/canvas'
@@ -9,8 +10,11 @@ import {
   adaptRepairModuleResourceRow,
   buildLearningItemSourcePatch,
   classifyUnrepairedCanvasItem,
+  findGeneratedLearningItemSourceMatch,
   findSourceRepairMatch,
+  isSourceLessGeneratedLearningItem,
   normalizeCanvasFileTitle,
+  shouldAttemptLearningItemSourceRepair,
   summarizeSourceRepairCounts,
   type SourceRepairCounts,
 } from '@/lib/source-repair'
@@ -65,6 +69,7 @@ export async function POST(request: NextRequest) {
 
   if (bulk) {
     const result = await repairLearningItemsForModule(supabase, moduleId, moduleRow.course_id)
+    revalidateLearnDataPaths(moduleId, moduleRow.course_id)
     return NextResponse.json({
       ok: true,
       ...result,
@@ -95,6 +100,7 @@ export async function POST(request: NextRequest) {
 
   if (match) {
     await patchLearningItemsAfterRepair(supabase, item, match.resource, `Matched by ${match.strategy}.`)
+    revalidateLearnDataPaths(moduleId, moduleRow.course_id)
     return NextResponse.json({
       ok: true,
       repaired: true,
@@ -125,6 +131,7 @@ export async function POST(request: NextRequest) {
     } else if (savedResource) {
       const repairedResource = adaptRepairModuleResourceRow(savedResource)
       await patchLearningItemsAfterRepair(supabase, item, repairedResource, canvasRepair.note)
+      revalidateLearnDataPaths(moduleId, moduleRow.course_id, repairedResource.id)
       return NextResponse.json({
         ok: true,
         repaired: true,
@@ -150,6 +157,23 @@ export async function POST(request: NextRequest) {
     sourceLabel: classifyUnrepairedCanvasItem(item),
     message: item.title ? 'Source link missing. Try reconnecting from Canvas.' : 'Stay Focused could not reconnect this item automatically. Try opening the item in Canvas.',
   })
+}
+
+function revalidateLearnDataPaths(moduleId: string, courseId: string, resourceId?: string | null) {
+  revalidatePath('/')
+  revalidatePath('/home')
+  revalidatePath('/learn')
+  revalidatePath('/courses')
+  revalidatePath('/library')
+  revalidatePath(`/courses/${courseId}`)
+  revalidatePath(`/modules/${moduleId}`)
+  revalidatePath(`/modules/${moduleId}/learn`)
+  revalidatePath(`/modules/${moduleId}/review`)
+  revalidatePath(`/modules/${moduleId}/quiz`)
+  if (resourceId) {
+    revalidatePath(`/modules/${moduleId}/learn/resources/${encodeURIComponent(resourceId)}`)
+    revalidatePath(`/modules/${moduleId}/learn/notes/${encodeURIComponent(resourceId)}`)
+  }
 }
 
 interface CourseIdentityRow {
@@ -363,6 +387,41 @@ async function repairLearningItemsForModule(
   for (const item of items) {
     if (item.sourceResourceId || item.canonicalSourceId?.startsWith('module_resource:')) {
       counts.skipped += 1
+      continue
+    }
+
+    const generatedMatch = findGeneratedLearningItemSourceMatch(item, resources)
+    if (generatedMatch) {
+      const { error } = await supabase
+        .from('learning_items')
+        .update({
+          ...buildLearningItemSourcePatch(generatedMatch.resource),
+          source_label: generatedMatch.resource.title,
+          source_repair_status: 'repaired',
+          source_repair_note: `Matched by ${generatedMatch.strategy}.`,
+        })
+        .eq('id', item.id)
+      if (error) counts.failed += 1
+      else counts.repaired += 1
+      continue
+    }
+
+    if (!shouldAttemptLearningItemSourceRepair(item)) {
+      const { error } = await supabase
+        .from('learning_items')
+        .update(isSourceLessGeneratedLearningItem(item)
+          ? {
+              source_label: 'Legacy generated item',
+              source_repair_status: null,
+              source_repair_note: null,
+            }
+          : {
+              source_repair_status: null,
+              source_repair_note: null,
+            })
+        .eq('id', item.id)
+      if (error) counts.failed += 1
+      else counts.skipped += 1
       continue
     }
 

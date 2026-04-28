@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { ListTodo, X, CheckCircle, XCircle, Loader2, Clock, RefreshCw, AlertCircle, ExternalLink, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import type { QueuedJob, QueuedJobStatus } from '@/lib/queue'
@@ -155,6 +156,7 @@ function FailedJobCard({ job, onDismiss }: { job: QueuedJob; onDismiss: (jobId: 
 }
 
 export function QueuePanel() {
+  const router = useRouter()
   const [open, setOpen] = useState(false)
   const [jobs, setJobs] = useState<QueuedJob[]>([])
   const [recentlyCompleted, setRecentlyCompleted] = useState(false)
@@ -162,6 +164,8 @@ export function QueuePanel() {
   const [mutating, setMutating] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const completedJobIdsRef = useRef<Set<string>>(new Set())
+  const completedJobsInitializedRef = useRef(false)
 
   const fetchJobs = useCallback(async () => {
     try {
@@ -170,6 +174,20 @@ export function QueuePanel() {
       const data = await res.json() as { jobs: QueuedJob[] }
       const fetched = data.jobs ?? []
       setJobs(fetched)
+
+      if (!completedJobsInitializedRef.current) {
+        completedJobIdsRef.current = new Set(fetched.filter((job) => job.status === 'completed').map((job) => job.id))
+        completedJobsInitializedRef.current = true
+      }
+      const completedNow = fetched.filter((job) => job.status === 'completed' && !completedJobIdsRef.current.has(job.id))
+      if (completedNow.length > 0) {
+        for (const job of completedNow) completedJobIdsRef.current.add(job.id)
+        window.dispatchEvent(new CustomEvent('stay-focused:notifications-refresh'))
+        if (completedNow.some((job) => job.type === 'canvas_sync')) {
+          window.dispatchEvent(new CustomEvent('stay-focused:canvas-sync-complete', { detail: { jobs: completedNow } }))
+        }
+        router.refresh()
+      }
 
       const active = fetched.filter((j) => j.status === 'pending' || j.status === 'running').length
       const oneMinAgo = Date.now() - 60 * 1000
@@ -180,7 +198,7 @@ export function QueuePanel() {
     } catch {
       // Keep the topbar quiet if polling fails.
     }
-  }, [])
+  }, [router])
 
   const mutateQueue = useCallback(async (body: Record<string, string>) => {
     setMutating(true)

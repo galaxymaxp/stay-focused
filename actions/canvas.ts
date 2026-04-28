@@ -47,7 +47,10 @@ import {
   adaptRepairModuleResourceRow,
   buildLearningItemSourcePatch,
   classifyUnrepairedCanvasItem,
+  findGeneratedLearningItemSourceMatch,
   findSourceRepairMatch,
+  isSourceLessGeneratedLearningItem,
+  shouldAttemptLearningItemSourceRepair,
   summarizeSourceRepairCounts,
   type SourceRepairCounts,
 } from '@/lib/source-repair'
@@ -73,6 +76,7 @@ interface SyncCourseInput {
 
 interface SyncCourseResult {
   moduleId: string
+  courseId: string
   courseName: string
 }
 
@@ -226,7 +230,7 @@ export async function syncCourse(formData: FormData): Promise<{ error: string } 
     }
   }
 
-  revalidateCanvasSyncPaths(result.moduleId)
+  revalidateCanvasSyncPaths(result.moduleId, result.courseId)
   redirect(`/modules/${result.moduleId}`)
 }
 
@@ -260,7 +264,7 @@ export async function syncCanvasCourse(input: {
       teachers: input.course.instructor ? [{ display_name: input.course.instructor }] : undefined,
     }, config, user.id, syncSupabase, input.onProgress)
 
-    revalidateCanvasSyncPaths(result.moduleId)
+    revalidateCanvasSyncPaths(result.moduleId, result.courseId)
 
     return {
       success: true,
@@ -620,6 +624,7 @@ async function syncSingleCourse(
 
   return {
     moduleId,
+    courseId: courseRecord.id,
     courseName: databaseSafeCourse.name,
   }
 }
@@ -685,6 +690,46 @@ async function backfillLearningItemSourceLinks(syncSupabase: CanvasSyncSupabaseC
   for (const item of items) {
     if (item.sourceResourceId || item.canonicalSourceId?.startsWith('module_resource:')) {
       counts.skipped += 1
+      continue
+    }
+
+    const generatedMatch = findGeneratedLearningItemSourceMatch(item, resources)
+    if (generatedMatch) {
+      const { error } = await syncSupabase
+        .from('learning_items')
+        .update({
+          ...buildLearningItemSourcePatch(generatedMatch.resource),
+          source_label: generatedMatch.resource.title,
+          source_repair_status: 'repaired',
+          source_repair_note: `Matched by ${generatedMatch.strategy}.`,
+        })
+        .eq('id', item.id)
+
+      if (isOptionalSourceLinkSchemaError(error)) return { counts }
+      if (error) counts.failed += 1
+      else counts.repaired += 1
+      continue
+    }
+
+    if (!shouldAttemptLearningItemSourceRepair(item)) {
+      const update = isSourceLessGeneratedLearningItem(item)
+        ? {
+            source_label: 'Legacy generated item',
+            source_repair_status: null,
+            source_repair_note: null,
+          }
+        : {
+            source_repair_status: null,
+            source_repair_note: null,
+          }
+      const { error } = await syncSupabase
+        .from('learning_items')
+        .update(update)
+        .eq('id', item.id)
+
+      if (isOptionalSourceLinkSchemaError(error)) return { counts }
+      if (error) counts.failed += 1
+      else counts.skipped += 1
       continue
     }
 
@@ -813,12 +858,15 @@ function isStaleProcessingModule(module: ExistingModuleMatch) {
   return Date.now() - createdAt >= STUCK_PROCESSING_MODULE_THRESHOLD_MS
 }
 
-function revalidateCanvasSyncPaths(moduleId?: string) {
+function revalidateCanvasSyncPaths(moduleId?: string, courseId?: string) {
   revalidatePath('/')
   revalidatePath('/canvas')
   revalidatePath('/home')
   revalidatePath('/courses')
+  revalidatePath('/learn')
+  revalidatePath('/library')
   revalidatePath('/calendar')
+  if (courseId) revalidatePath(`/courses/${courseId}`)
   if (moduleId) {
     revalidatePath(`/modules/${moduleId}`)
     revalidatePath(`/modules/${moduleId}/learn`)

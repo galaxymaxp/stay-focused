@@ -2,11 +2,15 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   classifyUnrepairedCanvasItem,
+  findGeneratedLearningItemSourceMatch,
   findSourceRepairMatch,
+  isSourceLessGeneratedLearningItem,
   normalizeCanvasFileTitle,
+  shouldAttemptLearningItemSourceRepair,
   summarizeSourceRepairCounts,
   type RepairableLearningItem,
 } from '../lib/source-repair'
+import { getSourceReadinessBucket } from '../lib/source-readiness'
 import { normalizeSourceReadiness } from '../lib/source-readiness'
 import { formatSourceProcessingSummary, isProcessableReadableSource, normalizeSourceProcessingResult } from '../lib/source-processing'
 import type { ModuleResource } from '../lib/types'
@@ -146,6 +150,93 @@ test('extracted resource with readable text is source-readiness ready', () => {
   assert.equal(readiness.state, 'ready')
   assert.equal(readiness.statusLabel, 'Ready')
   assert.equal(readiness.actions.includes('process_source'), false)
+})
+
+test('healthy extracted module resource is ready and not a repair source', () => {
+  const text = 'Intro to Web Development explains HTML structure, browser rendering, and document semantics for building reliable pages.'.repeat(3)
+  const readiness = normalizeSourceReadiness({
+    resource: createLearnResource({
+      id: 'resource-healthy',
+      title: '2. Intro to Web Development and Intermediate HTML.pdf',
+      type: 'File',
+      extension: 'pdf',
+      contentType: 'application/pdf',
+      extractionStatus: 'extracted',
+      extractedText: text,
+      extractedCharCount: text.length,
+      sourceUrl: 'https://canvas.example/files/10459869/download',
+      htmlUrl: 'https://canvas.example/courses/1/modules/items/2485610',
+    }),
+    storedResource: createResource({
+      id: 'resource-healthy',
+      title: '2. Intro to Web Development and Intermediate HTML.pdf',
+      resourceType: 'File',
+      extension: 'pdf',
+      contentType: 'application/pdf',
+      extractionStatus: 'extracted',
+      extractedText: text,
+      extractedTextPreview: text.slice(0, 160),
+      extractedCharCount: text.length,
+      sourceUrl: 'https://canvas.example/files/10459869/download',
+      htmlUrl: 'https://canvas.example/courses/1/modules/items/2485610',
+      canvasItemId: 2485610,
+      canvasFileId: 10459869,
+    }),
+    canonicalResourceId: 'resource-healthy',
+    moduleId: 'module-1',
+    moduleTitle: 'Web Dev',
+  })
+
+  assert.equal(readiness.state, 'ready')
+  assert.equal(getSourceReadinessBucket(readiness.state), 'ready')
+  assert.equal(readiness.actions.includes('repair_source_link'), false)
+})
+
+test('source-less generated learning items are legacy notes, not repair candidates', () => {
+  const item = createItem({
+    title: 'Key idea 1',
+    type: 'concept',
+    sourceLabel: 'Unknown Canvas source',
+  })
+
+  assert.equal(isSourceLessGeneratedLearningItem(item), true)
+  assert.equal(shouldAttemptLearningItemSourceRepair(item), false)
+  assert.equal(findSourceRepairMatch(item, [createResource({ title: 'Key idea 1' })]), null)
+})
+
+test('generated learning item can reconcile to one named module resource conservatively', () => {
+  const match = findGeneratedLearningItemSourceMatch(createItem({
+    title: 'Key idea 1',
+    type: 'concept',
+    body: 'Review 2. Intro to Web Development and Intermediate HTML before attempting the lab.',
+  }), [
+    createResource({ id: 'resource-web', title: '2. Intro to Web Development and Intermediate HTML.pdf' }),
+    createResource({ id: 'resource-other', title: 'Short.pdf' }),
+  ])
+
+  assert.equal(match?.resource.id, 'resource-web')
+  assert.equal(match?.strategy, 'generated_body_title')
+})
+
+test('display-only file entries without a backing module_resource do not request source repair', () => {
+  const readiness = normalizeSourceReadiness({
+    resource: createLearnResource({
+      id: 'generated-file-like',
+      title: 'Key idea 2',
+      type: 'File',
+      extension: 'pdf',
+      sourceUrl: null,
+      htmlUrl: null,
+      canvasUrl: null,
+    }),
+    storedResource: null,
+    canonicalResourceId: null,
+    moduleId: 'module-1',
+    moduleTitle: 'Web Dev',
+  })
+
+  assert.notEqual(readiness.state, 'missing_resource_link')
+  assert.equal(readiness.actions.includes('repair_source_link'), false)
 })
 
 test('extracted resource with only char count loaded is source-readiness ready', () => {
