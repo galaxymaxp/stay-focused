@@ -41,3 +41,17 @@ export async function isEmailProviderConfigured(): Promise<boolean> {
     process.env.EMAIL_PROVIDER,
   )
 }
+
+export async function sendTestEmailAction(): Promise<{ ok: boolean; error?: string }> {
+  const configured = await isEmailProviderConfigured()
+  if (!configured) {
+    return { ok: false, error: 'Email provider not configured in environment variables.' }
+  }
+
+  const user = await getAuthenticatedUserServer()
+  if (!user) return { ok: false, error: 'Not authenticated.' }
+
+  // Email sending is provider-specific; configure RESEND_API_KEY, SENDGRID_API_KEY,
+  // SMTP_HOST, or EMAIL_PROVIDER in Vercel environment variables to enable this.
+  return { ok: false, error: 'Email provider detected but sending is not yet implemented for this provider.' }
+}

@@ -1,19 +1,17 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { Mail, Check, Loader2, FlaskConical, Send } from 'lucide-react'
+import { Check, Loader2, Send } from 'lucide-react'
 import { Toggle } from '@/components/ui/Toggle'
-import { SettingsSection, SettingsRow } from './SettingsSection'
-import { cn } from '@/lib/cn'
 import { updateEmailPreferences, type EmailCategories } from '@/actions/user-settings'
-import { createTestNotificationAction } from '@/actions/notifications'
+import { createTestNotificationAction, sendTestEmailAction } from '@/actions/notifications'
 import { dispatchInAppToast } from '@/lib/notifications'
 
 type FrequencyOption = 'off' | 'instant' | 'daily_digest'
 
 const frequencyOptions: { id: FrequencyOption; label: string; description: string }[] = [
   { id: 'off', label: 'Off', description: 'No email notifications' },
-  { id: 'instant', label: 'Instant', description: 'As soon as it happens' },
+  { id: 'instant', label: 'Instant', description: 'As events happen' },
   { id: 'daily_digest', label: 'Daily digest', description: 'One email per day' },
 ]
 
@@ -25,7 +23,7 @@ const testNotificationTypes: { key: string; label: string }[] = [
   { key: 'sync_completed', label: 'Sync completed' },
 ]
 
-const SHOW_TEST_TOOLS =
+const SHOW_IN_APP_TESTS =
   process.env.NEXT_PUBLIC_ENABLE_NOTIFICATION_TESTS === 'true' ||
   process.env.NODE_ENV === 'development'
 
@@ -47,6 +45,10 @@ export function NotificationSettings({
   const [saveState, setSaveState] = useState<'idle' | 'saved' | 'error'>('idle')
   const [isPending, startTransition] = useTransition()
   const [testingKey, setTestingKey] = useState<string | null>(null)
+  const [emailTestState, setEmailTestState] = useState<{ pending: boolean; result: { ok: boolean; message: string } | null }>({
+    pending: false,
+    result: null,
+  })
 
   const masterEnabled = frequency !== 'off'
 
@@ -77,141 +79,252 @@ export function NotificationSettings({
     }
   }
 
+  async function handleEmailTest() {
+    if (emailTestState.pending || !emailProviderConfigured) return
+    setEmailTestState({ pending: true, result: null })
+    try {
+      const result = await sendTestEmailAction()
+      setEmailTestState({
+        pending: false,
+        result: { ok: result.ok, message: result.ok ? 'Test email sent.' : (result.error ?? 'Failed to send.') },
+      })
+    } catch {
+      setEmailTestState({ pending: false, result: { ok: false, message: 'Unexpected error.' } })
+    }
+  }
+
   return (
-    <div className="space-y-6">
-      {/* Email address display */}
+    <div style={{ display: 'grid', gap: '1.5rem' }}>
+
+      {/* Email address */}
       {notificationEmail && (
-        <div className="rounded-xl border border-sf-border bg-sf-surface-2 px-4 py-3 flex items-center gap-2.5">
-          <Mail className="h-4 w-4 text-sf-muted flex-shrink-0" />
-          <div>
-            <p className="text-xs text-sf-muted">Notifications sent to</p>
-            <p className="text-sm font-medium text-sf-text">{notificationEmail}</p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', padding: '0.7rem 0.85rem', borderRadius: 'var(--radius-panel)', border: '1px solid var(--border-subtle)', background: 'var(--surface-soft)' }}>
+          <div style={{ minWidth: 0 }}>
+            <p style={{ margin: 0, fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Notifications sent to</p>
+            <p style={{ margin: '0.15rem 0 0', fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {notificationEmail}
+            </p>
           </div>
         </div>
       )}
 
       {/* Delivery frequency */}
-      <SettingsSection
-        title="Email Notifications"
-        description="Choose how often Stay Focused emails you about activity."
-      >
-        <div className="p-4">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {frequencyOptions.map((opt) => (
-              <button
-                key={opt.id}
-                onClick={() => setFrequency(opt.id)}
-                className={cn(
-                  'flex flex-col items-start rounded-xl border p-4 text-left transition-all',
-                  frequency === opt.id
-                    ? 'border-sf-accent bg-sf-accent-light'
-                    : 'border-sf-border bg-sf-surface hover:bg-sf-surface-2',
-                )}
-              >
-                <div className="flex items-center justify-between w-full mb-1.5">
-                  <p className={cn('text-sm font-medium', frequency === opt.id ? 'text-sf-accent' : 'text-sf-text')}>
-                    {opt.label}
-                  </p>
-                  {frequency === opt.id && (
-                    <div className="h-4 w-4 rounded-full bg-sf-accent flex items-center justify-center">
-                      <Check className="h-2.5 w-2.5 text-white" />
-                    </div>
-                  )}
-                </div>
-                <p className="text-xs text-sf-muted">{opt.description}</p>
-              </button>
-            ))}
-          </div>
+      <section>
+        <div style={{ marginBottom: '0.65rem' }}>
+          <h3 style={{ margin: 0, fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>Email Notifications</h3>
+          <p style={{ margin: '0.2rem 0 0', fontSize: '12px', color: 'var(--text-muted)' }}>Choose how often Stay Focused emails you about activity.</p>
         </div>
-      </SettingsSection>
-
-      {/* Per-category toggles */}
-      <SettingsSection
-        title="Notification Types"
-        description="Choose what triggers an email."
-      >
-        <div className={cn('transition-opacity', !masterEnabled && 'opacity-40 pointer-events-none')}>
-          <SettingsRow label="Due soon" description="Tasks and deadlines due within 48 hours.">
-            <Toggle checked={categories.due_soon} onChange={() => toggleCategory('due_soon')} disabled={!masterEnabled} />
-          </SettingsRow>
-          <SettingsRow label="New uploads" description="New modules, resources, or study materials.">
-            <Toggle checked={categories.new_uploads} onChange={() => toggleCategory('new_uploads')} disabled={!masterEnabled} />
-          </SettingsRow>
-          <SettingsRow label="Announcements" description="New Canvas announcements from your courses.">
-            <Toggle checked={categories.announcements} onChange={() => toggleCategory('announcements')} disabled={!masterEnabled} />
-          </SettingsRow>
-          <SettingsRow label="Queue completed" description="When a background job finishes." border={false}>
-            <Toggle checked={categories.queue_completed} onChange={() => toggleCategory('queue_completed')} disabled={!masterEnabled} />
-          </SettingsRow>
+        <div style={{ borderRadius: 'var(--radius-panel)', border: '1px solid var(--border-subtle)', background: 'var(--surface-base)', overflow: 'hidden' }}>
+          {frequencyOptions.map((opt, i) => (
+            <button
+              key={opt.id}
+              type="button"
+              onClick={() => setFrequency(opt.id)}
+              aria-pressed={frequency === opt.id}
+              className="ui-interactive-card"
+              data-hover="flat"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '1.5rem',
+                width: '100%',
+                padding: '0.85rem 1rem',
+                textAlign: 'left',
+                background: 'transparent',
+                cursor: 'pointer',
+                borderBottom: i < frequencyOptions.length - 1 ? '1px solid var(--border-subtle)' : 'none',
+              }}
+            >
+              <div style={{ minWidth: 0 }}>
+                <p style={{ margin: 0, fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>{opt.label}</p>
+                <p style={{ margin: '0.12rem 0 0', fontSize: '12px', color: 'var(--text-muted)' }}>{opt.description}</p>
+              </div>
+              <span style={{
+                flexShrink: 0,
+                fontSize: '11px',
+                fontWeight: 700,
+                padding: '0.2rem 0.6rem',
+                borderRadius: '999px',
+                border: `1px solid ${frequency === opt.id ? 'color-mix(in srgb, var(--accent) 40%, var(--border-subtle) 60%)' : 'var(--border-subtle)'}`,
+                background: frequency === opt.id ? 'color-mix(in srgb, var(--accent) 12%, var(--surface-elevated) 88%)' : 'var(--surface-soft)',
+                color: frequency === opt.id ? 'var(--accent)' : 'var(--text-muted)',
+                transition: 'all 0.15s',
+              }}>
+                {frequency === opt.id ? 'Active' : 'Select'}
+              </span>
+            </button>
+          ))}
         </div>
+      </section>
 
+      {/* Category toggles */}
+      <section>
+        <div style={{ marginBottom: '0.65rem' }}>
+          <h3 style={{ margin: 0, fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>Notification Types</h3>
+          <p style={{ margin: '0.2rem 0 0', fontSize: '12px', color: 'var(--text-muted)' }}>Choose what triggers an email.</p>
+        </div>
+        <div
+          style={{
+            borderRadius: 'var(--radius-panel)',
+            border: '1px solid var(--border-subtle)',
+            background: 'var(--surface-base)',
+            overflow: 'hidden',
+            opacity: masterEnabled ? 1 : 0.45,
+            pointerEvents: masterEnabled ? 'auto' : 'none',
+            transition: 'opacity 0.2s',
+          }}
+        >
+          {([
+            { key: 'due_soon' as const, label: 'Due soon', desc: 'Tasks and deadlines due within 48 hours.' },
+            { key: 'new_uploads' as const, label: 'New uploads', desc: 'New modules, resources, or study materials.' },
+            { key: 'announcements' as const, label: 'Announcements', desc: 'New Canvas announcements from your courses.' },
+            { key: 'queue_completed' as const, label: 'Queue completed', desc: 'When a background job finishes.' },
+          ] as const).map(({ key, label, desc }, i, arr) => (
+            <div
+              key={key}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '1.5rem',
+                padding: '0.85rem 1rem',
+                borderBottom: i < arr.length - 1 ? '1px solid var(--border-subtle)' : 'none',
+              }}
+            >
+              <div style={{ minWidth: 0 }}>
+                <p style={{ margin: 0, fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>{label}</p>
+                <p style={{ margin: '0.12rem 0 0', fontSize: '12px', color: 'var(--text-muted)' }}>{desc}</p>
+              </div>
+              <Toggle checked={categories[key]} onChange={() => toggleCategory(key)} disabled={!masterEnabled} />
+            </div>
+          ))}
+        </div>
         {!masterEnabled && (
-          <div className="px-6 py-3 border-t border-sf-border">
-            <p className="text-xs text-sf-muted">Select Instant or Daily digest above to enable email categories.</p>
-          </div>
+          <p style={{ margin: '0.5rem 0 0', fontSize: '12px', color: 'var(--text-muted)', paddingLeft: '0.1rem' }}>
+            Select Instant or Daily digest above to enable email categories.
+          </p>
         )}
-      </SettingsSection>
+      </section>
 
       {/* Save */}
-      <div className="flex items-center gap-3">
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
         <button
           onClick={handleSave}
           disabled={isPending}
-          className={cn('inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium bg-sf-accent text-white hover:bg-sf-accent-hover transition-colors', isPending && 'opacity-70 cursor-not-allowed')}
+          className="ui-button ui-button-primary"
+          style={{ opacity: isPending ? 0.7 : 1, display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
         >
-          {isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+          {isPending && <Loader2 style={{ width: '14px', height: '14px', animation: 'spin 1s linear infinite' }} />}
           Save preferences
         </button>
-        {saveState === 'saved' && <span className="text-sm text-green-600 font-medium flex items-center gap-1.5"><Check className="h-4 w-4" /> Saved</span>}
-        {saveState === 'error' && <span className="text-sm text-red-500">Failed to save — try again.</span>}
+        {saveState === 'saved' && (
+          <span style={{ fontSize: '13px', color: 'var(--green, #16a34a)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+            <Check style={{ width: '14px', height: '14px' }} /> Saved
+          </span>
+        )}
+        {saveState === 'error' && (
+          <span style={{ fontSize: '13px', color: 'var(--red)' }}>Failed to save — try again.</span>
+        )}
       </div>
 
-      {/* Test notification tools — dev / flag only */}
-      {SHOW_TEST_TOOLS && (
-        <SettingsSection
-          title="Test Notifications"
-          description={`Create sample in-app notifications. Visible because NODE_ENV=development or NEXT_PUBLIC_ENABLE_NOTIFICATION_TESTS=true.`}
-        >
-          <div className={cn('transition-opacity')}>
-            {testNotificationTypes.map((t, i) => (
-              <SettingsRow
-                key={t.key}
-                label={t.label}
-                description={`Create a sample ${t.label.toLowerCase()} notification.`}
-                border={i < testNotificationTypes.length - 1}
-              >
-                <button
-                  onClick={() => handleTestNotification(t.key)}
-                  disabled={testingKey === t.key}
-                  className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium border border-sf-border bg-sf-surface hover:bg-sf-surface-2 transition-colors disabled:opacity-60"
-                >
-                  {testingKey === t.key
-                    ? <Loader2 className="h-3 w-3 animate-spin" />
-                    : <FlaskConical className="h-3 w-3" />}
-                  Send
-                </button>
-              </SettingsRow>
-            ))}
-          </div>
-
-          <div className="px-6 py-4 border-t border-sf-border flex items-center justify-between gap-4">
-            <div className="min-w-0">
-              <p className="text-sm font-medium text-sf-text flex items-center gap-1.5">
-                <Send className="h-3.5 w-3.5 text-sf-muted" /> Test email
+      {/* Email test — always visible, disabled when provider not configured */}
+      <section>
+        <div style={{ marginBottom: '0.65rem' }}>
+          <h3 style={{ margin: 0, fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>Test email</h3>
+        </div>
+        <div style={{ borderRadius: 'var(--radius-panel)', border: '1px solid var(--border-subtle)', background: 'var(--surface-base)', overflow: 'hidden' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1.5rem', padding: '0.85rem 1rem' }}>
+            <div style={{ minWidth: 0 }}>
+              <p style={{ margin: 0, fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>Send test email</p>
+              <p style={{ margin: '0.12rem 0 0', fontSize: '12px', color: 'var(--text-muted)' }}>
+                {emailProviderConfigured
+                  ? `Send a test to ${notificationEmail ?? 'your notification address'}.`
+                  : 'Email notifications require a provider configured in Vercel environment variables.'}
               </p>
-              <p className="text-xs text-sf-muted mt-0.5">
-                {emailProviderConfigured ? 'Send a test email to your notification address.' : 'Email provider not configured.'}
-              </p>
+              {emailTestState.result && (
+                <p style={{ margin: '0.3rem 0 0', fontSize: '11px', color: emailTestState.result.ok ? 'var(--green, #16a34a)' : 'var(--red)', fontWeight: 600 }}>
+                  {emailTestState.result.message}
+                </p>
+              )}
             </div>
             <button
-              disabled={!emailProviderConfigured}
-              className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium border border-sf-border bg-sf-surface hover:bg-sf-surface-2 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
-              title={emailProviderConfigured ? undefined : 'Email provider not configured'}
+              type="button"
+              disabled={!emailProviderConfigured || emailTestState.pending}
+              onClick={handleEmailTest}
+              style={{
+                flexShrink: 0,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.35rem',
+                padding: '0.35rem 0.8rem',
+                borderRadius: 'var(--radius-control)',
+                border: '1px solid var(--border-subtle)',
+                background: 'var(--surface-soft)',
+                fontSize: '12px',
+                fontWeight: 600,
+                color: emailProviderConfigured ? 'var(--text-primary)' : 'var(--text-muted)',
+                cursor: emailProviderConfigured && !emailTestState.pending ? 'pointer' : 'not-allowed',
+                opacity: emailProviderConfigured ? 1 : 0.5,
+              }}
             >
-              Send email
+              {emailTestState.pending
+                ? <Loader2 style={{ width: '12px', height: '12px', animation: 'spin 1s linear infinite' }} />
+                : <Send style={{ width: '12px', height: '12px' }} />}
+              Send test
             </button>
           </div>
-        </SettingsSection>
+        </div>
+      </section>
+
+      {/* In-app notification tests — dev mode only */}
+      {SHOW_IN_APP_TESTS && (
+        <section>
+          <div style={{ marginBottom: '0.65rem' }}>
+            <h3 style={{ margin: 0, fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>In-app notification tests</h3>
+            <p style={{ margin: '0.2rem 0 0', fontSize: '12px', color: 'var(--text-muted)' }}>Dev/staging only — creates sample in-app notifications.</p>
+          </div>
+          <div style={{ borderRadius: 'var(--radius-panel)', border: '1px solid var(--border-subtle)', background: 'var(--surface-base)', overflow: 'hidden' }}>
+            {testNotificationTypes.map((t, i) => (
+              <div
+                key={t.key}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '1.5rem',
+                  padding: '0.75rem 1rem',
+                  borderBottom: i < testNotificationTypes.length - 1 ? '1px solid var(--border-subtle)' : 'none',
+                }}
+              >
+                <p style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>{t.label}</p>
+                <button
+                  type="button"
+                  onClick={() => handleTestNotification(t.key)}
+                  disabled={testingKey === t.key}
+                  style={{
+                    flexShrink: 0,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.3rem',
+                    padding: '0.28rem 0.65rem',
+                    borderRadius: 'var(--radius-control)',
+                    border: '1px solid var(--border-subtle)',
+                    background: 'var(--surface-soft)',
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    color: 'var(--text-muted)',
+                    cursor: testingKey === t.key ? 'not-allowed' : 'pointer',
+                    opacity: testingKey === t.key ? 0.6 : 1,
+                  }}
+                >
+                  {testingKey === t.key && <Loader2 style={{ width: '11px', height: '11px', animation: 'spin 1s linear infinite' }} />}
+                  Send
+                </button>
+              </div>
+            ))}
+          </div>
+        </section>
       )}
     </div>
   )
