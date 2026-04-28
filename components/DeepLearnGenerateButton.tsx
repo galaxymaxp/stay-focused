@@ -42,7 +42,9 @@ export function DeepLearnGenerateButton({
       setTimeout(() => setState('idle'), 3000)
     } else {
       setState('queued')
-      window.dispatchEvent(new CustomEvent('stay-focused:queue-refresh'))
+      window.dispatchEvent(new CustomEvent('stay-focused:queue-refresh', {
+        detail: { job: result.job ?? null },
+      }))
       dispatchInAppToast({ title: 'Study pack added to queue.', description: 'Check the queue indicator above to track progress.', tone: 'success' })
       setTimeout(() => setState('idle'), 4000)
     }

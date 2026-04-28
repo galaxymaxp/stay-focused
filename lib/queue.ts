@@ -2,6 +2,11 @@ import { createAuthenticatedSupabaseServerClient } from '@/lib/auth-server'
 import { getRequiredSupabaseAuthEnv } from '@/lib/supabase-auth-config'
 import { createClient } from '@supabase/supabase-js'
 
+interface QueueQueryResult {
+  data: Record<string, unknown>[] | null
+  error: unknown | null
+}
+
 export type QueuedJobStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
 export type QueuedJobType =
   | 'canvas_sync'
@@ -86,12 +91,13 @@ export async function getUserQueuedJobs(
   const supabase = await createAuthenticatedSupabaseServerClient()
   if (!supabase) return []
 
-  let query = supabase
+  const baseQuery = () => supabase
     .from('queued_jobs')
     .select('*')
     .eq('user_id', userId)
-    .is('dismissed_at', null)
     .order('created_at', { ascending: false })
+
+  let query = baseQuery().is('dismissed_at', null)
 
   if (filters?.status) {
     const statuses = Array.isArray(filters.status) ? filters.status : [filters.status]
@@ -107,7 +113,29 @@ export async function getUserQueuedJobs(
     query = query.limit(filters.limit)
   }
 
-  const { data, error } = await query
+  let { data, error } = await query as QueueQueryResult
+
+  if (error && isMissingDismissedAtColumnError(error)) {
+    let fallbackQuery = baseQuery()
+
+    if (filters?.status) {
+      const statuses = Array.isArray(filters.status) ? filters.status : [filters.status]
+      fallbackQuery = fallbackQuery.in('status', statuses)
+    }
+
+    if (filters?.type) {
+      const types = Array.isArray(filters.type) ? filters.type : [filters.type]
+      fallbackQuery = fallbackQuery.in('type', types)
+    }
+
+    if (filters?.limit) {
+      fallbackQuery = fallbackQuery.limit(filters.limit)
+    }
+
+    const fallbackResult = await fallbackQuery as QueueQueryResult
+    data = fallbackResult.data
+    error = fallbackResult.error
+  }
 
   if (error) {
     console.error('[queue] getUserQueuedJobs failed', { userId, error })
@@ -279,6 +307,15 @@ function getJobResourceId(job: QueuedJob) {
 function getStringFromRecord(source: Record<string, unknown> | null, key: string) {
   const value = source?.[key]
   return typeof value === 'string' && value.trim() ? value.trim() : null
+}
+
+function isMissingDismissedAtColumnError(error: unknown) {
+  const value = error as { code?: unknown; message?: unknown } | null
+  const code = typeof value?.code === 'string' ? value.code : ''
+  const message = typeof value?.message === 'string' ? value.message.toLowerCase() : ''
+  return code === '42703'
+    || code === 'PGRST204'
+    || message.includes('dismissed_at')
 }
 
 export async function claimNextPendingJob(type?: QueuedJobType): Promise<QueuedJob | null> {

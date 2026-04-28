@@ -9,6 +9,7 @@ import {
   markQueuedJobFailed,
   markQueuedJobRunning,
   updateQueuedJobStatus,
+  type QueuedJob,
 } from '@/lib/queue'
 import {
   buildLearnExperience,
@@ -30,6 +31,7 @@ import { createNotification } from '@/lib/notifications-server'
 
 export interface QueueJobResult {
   jobId: string
+  job?: QueuedJob
   error?: string
 }
 
@@ -71,7 +73,7 @@ export async function queueLearnGenerationAction(input: {
     revalidatePath(`/modules/${input.moduleId}/learn`)
   })
 
-  return { jobId: job.id }
+  return { jobId: job.id, job }
 }
 
 // ---------------------------------------------------------------------------

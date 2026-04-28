@@ -206,6 +206,17 @@ export function QueuePanel() {
     void mutateQueue({ action: 'clear_completed' })
   }, [mutateQueue])
 
+  const addOptimisticJob = useCallback((job: QueuedJob) => {
+    if (job.dismissedAt) return
+    setJobs((current) => {
+      const next = current.filter((existing) => existing.id !== job.id)
+      return [job, ...next]
+    })
+    if (job.status === 'pending' || job.status === 'running') {
+      setRecentlyCompleted(false)
+    }
+  }, [])
+
   useEffect(() => {
     fetchJobs()
   }, [fetchJobs])
@@ -216,13 +227,15 @@ export function QueuePanel() {
   }, [fetchJobs])
 
   useEffect(() => {
-    function refreshQueue() {
+    function refreshQueue(event: Event) {
+      const maybeJob = (event as CustomEvent<{ job?: QueuedJob | null }>).detail?.job
+      if (maybeJob) addOptimisticJob(maybeJob)
       void fetchJobs()
     }
 
     window.addEventListener('stay-focused:queue-refresh', refreshQueue)
     return () => window.removeEventListener('stay-focused:queue-refresh', refreshQueue)
-  }, [fetchJobs])
+  }, [addOptimisticJob, fetchJobs])
 
   useEffect(() => {
     if (!open) {
