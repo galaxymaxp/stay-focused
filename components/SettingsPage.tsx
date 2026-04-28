@@ -573,6 +573,7 @@ function BrowserNotificationsSection() {
     getNotificationSettingsServerSnapshot,
   )
   const { permission, soundEnabled, volume } = settings
+  const [browserTestResult, setBrowserTestResult] = useState<'idle' | 'sent' | 'denied'>('idle')
 
   async function handleRequestPermission() {
     await requestNotificationPermission()
@@ -592,6 +593,20 @@ function BrowserNotificationsSection() {
 
   function handleTestSound() {
     playNotificationSound('success')
+  }
+
+  function handleTestBrowserNotification() {
+    if (typeof window === 'undefined' || !('Notification' in window)) return
+    if (Notification.permission !== 'granted') {
+      setBrowserTestResult('denied')
+      return
+    }
+    new Notification('Stay Focused', {
+      body: 'Browser notifications are working correctly.',
+      icon: '/favicon.ico',
+    })
+    setBrowserTestResult('sent')
+    setTimeout(() => setBrowserTestResult('idle'), 4000)
   }
 
   return (
@@ -623,6 +638,38 @@ function BrowserNotificationsSection() {
           {permission === 'denied' && (
             <span className="settings-option-label" data-selected="false">Blocked</span>
           )}
+        </div>
+
+        {/* Browser notification test */}
+        <div className="settings-option-row ui-interactive-card" style={{ cursor: 'default' }}>
+          <div style={{ minWidth: 0 }}>
+            <p className="settings-card-title">Test browser notification</p>
+            <p className="settings-card-desc">
+              {permission === 'granted' && 'Send a sample notification to confirm your browser is set up correctly.'}
+              {permission === 'denied' && 'Notifications are blocked in your browser. Open site permissions to allow them.'}
+              {permission === 'default' && 'Allow notifications above, then use this to confirm they work.'}
+              {permission === 'unsupported' && 'Your browser does not support desktop notifications.'}
+            </p>
+            {browserTestResult === 'sent' && (
+              <p style={{ margin: '0.3rem 0 0', fontSize: '11px', color: 'var(--green, #16a34a)', fontWeight: 600 }}>
+                Notification sent — check your browser.
+              </p>
+            )}
+            {browserTestResult === 'denied' && (
+              <p style={{ margin: '0.3rem 0 0', fontSize: '11px', color: 'var(--red)', fontWeight: 600 }}>
+                Permission denied. Allow notifications in browser site settings first.
+              </p>
+            )}
+          </div>
+          <button
+            type="button"
+            disabled={permission !== 'granted'}
+            onClick={handleTestBrowserNotification}
+            className="ui-button ui-button-secondary"
+            style={{ flexShrink: 0, fontSize: '12px', padding: '0.32rem 0.8rem', opacity: permission === 'granted' ? 1 : 0.45 }}
+          >
+            Send test
+          </button>
         </div>
 
         <button

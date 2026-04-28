@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { ListTodo, X, CheckCircle, XCircle, Loader2, Clock, ChevronDown, RefreshCw } from 'lucide-react'
+import { ListTodo, X, CheckCircle, XCircle, Loader2, Clock, ChevronDown, RefreshCw, AlertCircle } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import type { QueuedJob, QueuedJobStatus } from '@/lib/queue'
 
@@ -116,9 +116,14 @@ function JobGroup({ status, jobs }: { status: QueuedJobStatus; jobs: QueuedJob[]
   )
 }
 
+// Pill trigger styles
+const PILL_BASE = 'relative inline-flex items-center gap-1.5 h-7 rounded-full px-2.5 transition-colors hover:opacity-80'
+const PILL_TEXT: React.CSSProperties = { fontSize: '11px', fontWeight: 700, whiteSpace: 'nowrap', cursor: 'pointer', lineHeight: 1 }
+
 export function QueuePanel() {
   const [open, setOpen] = useState(false)
   const [jobs, setJobs] = useState<QueuedJob[]>([])
+  const [recentlyCompleted, setRecentlyCompleted] = useState(false)
   const [loading, setLoading] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -128,7 +133,16 @@ export function QueuePanel() {
       const res = await fetch('/api/queue/jobs', { cache: 'no-store' })
       if (!res.ok) return
       const data = await res.json() as { jobs: QueuedJob[] }
-      setJobs(data.jobs ?? [])
+      const fetched = data.jobs ?? []
+      setJobs(fetched)
+
+      // Derive recentlyCompleted here (in a callback, not during render) to avoid Date.now() purity violation
+      const active = fetched.filter((j) => j.status === 'pending' || j.status === 'running').length
+      const oneMinAgo = Date.now() - 60 * 1000
+      setRecentlyCompleted(
+        active === 0 &&
+        fetched.some((j) => j.status === 'completed' && j.completedAt && new Date(j.completedAt).getTime() > oneMinAgo),
+      )
     } catch {
       // silent
     }
@@ -172,10 +186,12 @@ export function QueuePanel() {
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
-  // Badge count: pending + running
-  const activeCount = jobs.filter(
-    (j) => j.status === 'pending' || j.status === 'running',
-  ).length
+  // Derived queue state
+  const activeCount = jobs.filter((j) => j.status === 'pending' || j.status === 'running').length
+  const runningJobs = jobs.filter((j) => j.status === 'running')
+  const runningCount = runningJobs.length
+  const maxProgress = runningJobs.length > 0 ? Math.max(...runningJobs.map((j) => j.progress)) : 0
+  const hasFailed = jobs.some((j) => j.status === 'failed')
 
   const grouped = STATUS_ORDER.reduce<Record<QueuedJobStatus, QueuedJob[]>>(
     (acc, s) => {
@@ -186,21 +202,76 @@ export function QueuePanel() {
   )
 
   const hasAny = jobs.length > 0
+  const toggle = () => setOpen((p) => !p)
 
   return (
     <div ref={ref} className="relative">
-      <button
-        onClick={() => setOpen((p) => !p)}
-        aria-label="Queue"
-        className="relative flex h-8 w-8 items-center justify-center rounded-lg text-sf-muted hover:bg-sf-surface-2 hover:text-sf-text transition-colors"
-      >
-        <ListTodo className="h-4 w-4" />
-        {activeCount > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-sf-accent text-white text-[10px] font-bold">
-            {activeCount > 9 ? '9+' : activeCount}
-          </span>
-        )}
-      </button>
+      {/* Trigger: contextual pill or icon */}
+      {activeCount > 0 ? (
+        <button
+          onClick={toggle}
+          aria-label={`Queue: ${runningCount > 0 ? `${runningCount} running` : `${activeCount} queued`}`}
+          className={PILL_BASE}
+          style={{
+            ...PILL_TEXT,
+            background: 'color-mix(in srgb, var(--accent) 10%, var(--surface-elevated) 90%)',
+            border: '1px solid color-mix(in srgb, var(--accent) 30%, var(--border-subtle) 70%)',
+            color: 'var(--accent)',
+          }}
+        >
+          <Loader2 className="h-3 w-3 animate-spin flex-shrink-0" />
+          <span>{runningCount > 0 ? `${runningCount} running` : `${activeCount} queued`}</span>
+          {maxProgress > 0 && maxProgress < 100 && (
+            <span
+              className="absolute bottom-0 left-0 right-0 h-[2px] rounded-full overflow-hidden"
+              style={{ background: 'color-mix(in srgb, var(--accent) 20%, var(--border-subtle) 80%)' }}
+            >
+              <span
+                className="block h-full transition-all duration-500"
+                style={{ width: `${maxProgress}%`, background: 'var(--accent)' }}
+              />
+            </span>
+          )}
+        </button>
+      ) : hasFailed ? (
+        <button
+          onClick={toggle}
+          aria-label="Queue: needs attention"
+          className={PILL_BASE}
+          style={{
+            ...PILL_TEXT,
+            background: 'color-mix(in srgb, var(--red) 10%, var(--surface-elevated) 90%)',
+            border: '1px solid color-mix(in srgb, var(--red) 30%, var(--border-subtle) 70%)',
+            color: 'var(--red)',
+          }}
+        >
+          <AlertCircle className="h-3 w-3 flex-shrink-0" />
+          <span>Needs attention</span>
+        </button>
+      ) : recentlyCompleted ? (
+        <button
+          onClick={toggle}
+          aria-label="Queue: done"
+          className={PILL_BASE}
+          style={{
+            ...PILL_TEXT,
+            background: 'color-mix(in srgb, var(--green, #16a34a) 10%, var(--surface-elevated) 90%)',
+            border: '1px solid color-mix(in srgb, var(--green, #16a34a) 30%, var(--border-subtle) 70%)',
+            color: 'var(--green, #16a34a)',
+          }}
+        >
+          <CheckCircle className="h-3 w-3 flex-shrink-0" />
+          <span>Done</span>
+        </button>
+      ) : (
+        <button
+          onClick={toggle}
+          aria-label="Queue"
+          className="relative flex h-8 w-8 items-center justify-center rounded-lg text-sf-muted hover:bg-sf-surface-2 hover:text-sf-text transition-colors"
+        >
+          <ListTodo className="h-4 w-4" />
+        </button>
+      )}
 
       {open && (
         <>
@@ -213,7 +284,6 @@ export function QueuePanel() {
           <div
             className={cn(
               'absolute right-0 top-10 z-50 w-[360px] rounded-2xl border border-sf-border bg-sf-surface shadow-xl overflow-hidden',
-              // Mobile: full-width sheet from bottom
               'max-sm:fixed max-sm:inset-x-3 max-sm:bottom-3 max-sm:top-auto max-sm:w-auto max-sm:rounded-2xl',
             )}
           >

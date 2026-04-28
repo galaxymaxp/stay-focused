@@ -221,51 +221,21 @@ export function StudyResourceAccordionList({
 
               {expanded && (
                 <div style={{ display: 'grid', gap: '0.75rem' }}>
-                  <details className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.72rem 0.78rem' }}>
-                    <summary className="ui-interactive-summary" style={{ padding: 0, fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                      Advanced source tools
-                    </summary>
-                    <p style={{ margin: '0.42rem 0 0', fontSize: '12px', lineHeight: 1.55, color: 'var(--text-secondary)' }}>
-                      {item.originLabel}
-                    </p>
-                    <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', marginTop: '0.62rem' }}>
-                      {item.sourceReadinessActions.includes('repair_source_link') && (
-                        <SourceRepairButton item={item} />
-                      )}
-                      {item.sourceReadinessActions.includes('retry_extraction') || item.sourceReadinessActions.includes('process_source') ? (
-                        <ProcessSourceButton item={item} />
-                      ) : null}
-                      {item.sourceReadinessActions.includes('extract_text_from_images') && (
-                        <OcrSourceButton
-                          moduleId={item.moduleId}
-                          resourceId={item.canonicalResourceId ?? item.id}
-                          className="ui-button ui-button-ghost ui-button-xs"
-                          idleLabel="Retry OCR"
-                        />
-                      )}
-                      {item.sourceReadinessActions.includes('add_notes') && (
-                        <Link href={item.readerHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-                          Add notes
-                        </Link>
-                      )}
-                    </div>
-                  </details>
+                  {/* OCR status — inline, no technical controls needed */}
+                  {item.sourceReadinessState === 'visual_ocr_available' && (
+                    <OcrSourceButton moduleId={item.moduleId} resourceId={item.canonicalResourceId ?? item.id} autoStart statusOnly />
+                  )}
+                  {item.sourceReadinessState === 'visual_ocr_running' && (
+                    <span style={{ fontSize: '12px', lineHeight: 1.5, color: 'var(--text-secondary)' }}>
+                      Reading scanned pages...
+                    </span>
+                  )}
 
                   <SourceSummaryBadge
                     resourceId={item.canonicalResourceId}
                     summary={item.sourceSummary}
                     canSummarize={item.isSummarizable}
                   />
-
-                  {item.sourceReadinessState === 'visual_ocr_available' && (
-                    <OcrSourceButton moduleId={item.moduleId} resourceId={item.canonicalResourceId ?? item.id} autoStart statusOnly />
-                  )}
-
-                  {item.sourceReadinessState === 'visual_ocr_running' && (
-                    <span style={{ fontSize: '12px', lineHeight: 1.5, color: 'var(--text-secondary)' }}>
-                      Reading scanned pages...
-                    </span>
-                  )}
 
                   {item.deepLearnNoteFailure && (
                     <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.9rem 0.95rem' }}>
@@ -276,6 +246,7 @@ export function StudyResourceAccordionList({
                     </div>
                   )}
 
+                  {/* Primary actions */}
                   <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
                     {shouldShowDeepLearnWorkspaceAction(item) ? (
                       <Link href={item.deepLearnNoteHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
@@ -298,9 +269,23 @@ export function StudyResourceAccordionList({
                         disabledReason={item.deepLearnDisabledReason ?? 'Saved Deep Learn packs are unavailable right now.'}
                       />
                     )}
+                    {/* OCR retry — shown inline when extraction previously failed */}
+                    {item.sourceReadinessState === 'visual_ocr_failed' && (
+                      <OcrSourceButton
+                        moduleId={item.moduleId}
+                        resourceId={item.canonicalResourceId ?? item.id}
+                        className="ui-button ui-button-ghost ui-button-xs"
+                        idleLabel="Retry OCR"
+                      />
+                    )}
                     {item.deepLearnStatus === 'ready' && item.deepLearnQuizReady && (
                       <Link href={item.deepLearnQuizHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
                         Quiz
+                      </Link>
+                    )}
+                    {item.sourceReadinessActions.includes('add_notes') && (
+                      <Link href={item.readerHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+                        Add notes
                       </Link>
                     )}
                     {sourceHref && (
@@ -309,6 +294,30 @@ export function StudyResourceAccordionList({
                       </a>
                     )}
                   </div>
+
+                  {/* Source details — only for repair/re-extraction, never shown by default */}
+                  {(item.sourceReadinessActions.includes('repair_source_link') ||
+                    item.sourceReadinessActions.includes('retry_extraction') ||
+                    item.sourceReadinessActions.includes('process_source')) && (
+                    <details>
+                      <summary style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', cursor: 'pointer', listStyle: 'none', display: 'inline-flex', alignItems: 'center', gap: '0.25rem', userSelect: 'none' }}>
+                        More source details
+                      </summary>
+                      <div style={{ marginTop: '0.55rem', padding: '0.65rem 0.72rem', borderRadius: 'var(--radius-tight)', background: 'var(--surface-soft)', border: '1px solid var(--border-subtle)' }}>
+                        <p style={{ margin: '0 0 0.5rem', fontSize: '11px', lineHeight: 1.5, color: 'var(--text-muted)' }}>
+                          {item.originLabel}
+                        </p>
+                        <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+                          {item.sourceReadinessActions.includes('repair_source_link') && (
+                            <SourceRepairButton item={item} />
+                          )}
+                          {(item.sourceReadinessActions.includes('retry_extraction') || item.sourceReadinessActions.includes('process_source')) && (
+                            <ProcessSourceButton item={item} />
+                          )}
+                        </div>
+                      </div>
+                    </details>
+                  )}
                 </div>
               )}
             </article>
