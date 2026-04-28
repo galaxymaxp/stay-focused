@@ -136,10 +136,17 @@ export function QueuePanel() {
 
   // Fetch once on mount so the badge count is populated before the panel is opened
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchJobs()
   }, [fetchJobs])
 
-  // Start polling when open, stop when closed
+  // Slow background poll keeps badge current even when panel is closed
+  useEffect(() => {
+    const id = setInterval(fetchJobs, 30000)
+    return () => clearInterval(id)
+  }, [fetchJobs])
+
+  // Start fast polling when open, stop when closed
   useEffect(() => {
     if (!open) {
       if (pollRef.current) clearInterval(pollRef.current)
