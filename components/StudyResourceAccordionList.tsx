@@ -237,6 +237,15 @@ export function StudyResourceAccordionList({
                     canSummarize={item.isSummarizable}
                   />
 
+                  {item.sourceReadinessBucket === 'ready' && item.deepLearnStatus !== 'ready' && (
+                    <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.78rem 0.82rem', display: 'grid', gap: '0.35rem' }}>
+                      <p className="ui-kicker" style={{ margin: 0 }}>Ready for Deep Learn</p>
+                      <p style={{ margin: 0, fontSize: '12px', lineHeight: 1.58, color: 'var(--text-secondary)' }}>
+                        Creates structured notes, key terms, review questions, and quiz-ready study material from this source.
+                      </p>
+                    </div>
+                  )}
+
                   {item.deepLearnNoteFailure && (
                     <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.9rem 0.95rem' }}>
                       <p className="ui-kicker" style={{ margin: 0 }}>Pack error</p>
@@ -264,16 +273,18 @@ export function StudyResourceAccordionList({
                         moduleId={item.moduleId}
                         resourceId={item.canonicalResourceId ?? item.id}
                         courseId={item.courseId ?? null}
-                        label="Generate Deep Learn pack"
+                        label="Generate study pack"
                         disabledReason={item.deepLearnDisabledReason}
+                        resourceTitle={item.title}
                       />
                     ) : (
                       <DeepLearnGenerateButton
                         moduleId={item.moduleId}
                         resourceId={item.canonicalResourceId ?? item.id}
                         courseId={item.courseId ?? null}
-                        label="Generate Deep Learn pack"
-                        disabledReason={item.deepLearnDisabledReason ?? 'Saved Deep Learn packs are unavailable right now.'}
+                        label="Generate study pack"
+                        disabledReason={item.deepLearnDisabledReason ?? 'Saved study packs are unavailable right now.'}
+                        resourceTitle={item.title}
                       />
                     )}
                     {/* OCR retry — shown inline when extraction previously failed */}
@@ -463,6 +474,7 @@ function shouldShowPrepareScannedPdfAction(item: StudyResourceAccordionItem) {
 }
 
 function labelForSourceAction(item: StudyResourceAccordionItem) {
+  if (item.originalFileHref) return 'Open original file'
   if (item.sourceReadinessActions.includes('open_link')) return 'Open link'
   if (item.sourceReadinessActions.includes('open_lesson')) return 'Open lesson'
   if (item.sourceReadinessActions.includes('open_canvas')) return 'Open in Canvas'

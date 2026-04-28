@@ -5,7 +5,7 @@ import { createNotification } from '@/lib/notifications-server'
 import type { NotificationType, NotificationSeverity } from '@/lib/notifications-server'
 
 const TEST_TEMPLATES: Record<string, { type: NotificationType; title: string; body: string; severity: NotificationSeverity }> = {
-  queue_completed: { type: 'queue_completed', title: 'Queue completed', body: 'Your Deep Learn pack is ready.', severity: 'success' },
+  queue_completed: { type: 'queue_completed', title: 'Queue completed', body: 'Your study pack is ready.', severity: 'success' },
   due_soon: { type: 'due_soon', title: 'Due soon', body: 'You have a task due within 48 hours.', severity: 'warning' },
   new_upload: { type: 'new_resource', title: 'New upload', body: 'A new resource was added to your course.', severity: 'info' },
   announcement: { type: 'new_task', title: 'Announcement', body: 'Your instructor posted a new announcement.', severity: 'info' },

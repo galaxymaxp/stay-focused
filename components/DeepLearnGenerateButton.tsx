@@ -11,7 +11,7 @@ export function DeepLearnGenerateButton({
   resourceId,
   courseId = null,
   resourceTitle = '',
-  label = 'Generate pack',
+  label = 'Generate study pack',
   className = 'ui-button ui-button-secondary ui-button-xs',
   disabledReason = null,
 }: {
@@ -43,7 +43,7 @@ export function DeepLearnGenerateButton({
     } else {
       setState('queued')
       window.dispatchEvent(new CustomEvent('stay-focused:queue-refresh'))
-      dispatchInAppToast({ title: 'Deep Learn added to queue.', description: 'Check the queue indicator above to track progress.', tone: 'success' })
+      dispatchInAppToast({ title: 'Study pack added to queue.', description: 'Check the queue indicator above to track progress.', tone: 'success' })
       setTimeout(() => setState('idle'), 4000)
     }
   }
@@ -57,7 +57,7 @@ export function DeepLearnGenerateButton({
         className={cn(className, (state === 'loading' || state === 'queued') && 'opacity-70 cursor-default')}
       >
         {state === 'loading' && <Loader2 className="h-3.5 w-3.5 animate-spin inline-block mr-1.5 align-middle" />}
-        {state === 'queued' ? '✓ Added to queue' : state === 'error' ? 'Failed — retry?' : label}
+        {state === 'queued' ? 'Added to queue' : state === 'error' ? 'Failed - retry?' : label}
       </button>
 
       {disabledReason && (

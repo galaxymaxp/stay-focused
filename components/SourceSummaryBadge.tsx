@@ -76,9 +76,15 @@ export function SourceSummaryBadge({
   if (!canSummarize) return null
 
   return (
-    <div style={{ display: 'grid', gap: '0.35rem', justifyItems: 'start' }}>
+    <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.72rem 0.78rem', display: 'grid', gap: '0.45rem', justifyItems: 'start' }}>
+      <div>
+        <p className="ui-kicker" style={{ margin: 0 }}>Source summary</p>
+        <p style={{ margin: '0.28rem 0 0', fontSize: '12px', lineHeight: 1.55, color: 'var(--text-secondary)' }}>
+          Create a quick source summary before building the study pack.
+        </p>
+      </div>
       <button type="button" onClick={summarize} disabled={busy || !resourceId} className="ui-button ui-button-ghost ui-button-xs">
-        {busy ? 'Summarizing...' : 'Summarize source'}
+        {busy ? 'Creating source summary...' : 'Create source summary'}
       </button>
       {error && <p style={{ margin: 0, fontSize: '11px', lineHeight: 1.45, color: 'var(--red)' }}>{error}</p>}
     </div>

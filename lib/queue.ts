@@ -26,6 +26,7 @@ export interface QueuedJob {
   updatedAt: string
   startedAt: string | null
   completedAt: string | null
+  dismissedAt: string | null
 }
 
 export interface QueuedJobFilters {
@@ -51,6 +52,7 @@ function rowToJob(row: Record<string, unknown>): QueuedJob {
     updatedAt: row.updated_at as string,
     startedAt: (row.started_at as string | null) ?? null,
     completedAt: (row.completed_at as string | null) ?? null,
+    dismissedAt: (row.dismissed_at as string | null) ?? null,
   }
 }
 
@@ -88,6 +90,7 @@ export async function getUserQueuedJobs(
     .from('queued_jobs')
     .select('*')
     .eq('user_id', userId)
+    .is('dismissed_at', null)
     .order('created_at', { ascending: false })
 
   if (filters?.status) {
@@ -111,7 +114,8 @@ export async function getUserQueuedJobs(
     return []
   }
 
-  return (data as Record<string, unknown>[]).map(rowToJob)
+  const jobs = (data as Record<string, unknown>[]).map(rowToJob)
+  return enrichQueuedJobsWithResourceTitles(supabase, jobs)
 }
 
 export async function updateQueuedJobStatus(
@@ -192,6 +196,89 @@ export async function getQueuedJobById(jobId: string): Promise<QueuedJob | null>
 
   if (error || !data) return null
   return rowToJob(data as Record<string, unknown>)
+}
+
+export async function dismissQueuedJob(userId: string, jobId: string): Promise<boolean> {
+  const supabase = await createAuthenticatedSupabaseServerClient()
+  if (!supabase) return false
+
+  const { error } = await supabase
+    .from('queued_jobs')
+    .update({ dismissed_at: new Date().toISOString() })
+    .eq('id', jobId)
+    .eq('user_id', userId)
+    .in('status', ['completed', 'failed', 'cancelled'])
+
+  if (error) {
+    console.error('[queue] dismissQueuedJob failed', { userId, jobId, error })
+    return false
+  }
+
+  return true
+}
+
+export async function dismissCompletedQueuedJobs(userId: string): Promise<boolean> {
+  const supabase = await createAuthenticatedSupabaseServerClient()
+  if (!supabase) return false
+
+  const { error } = await supabase
+    .from('queued_jobs')
+    .update({ dismissed_at: new Date().toISOString() })
+    .eq('user_id', userId)
+    .eq('status', 'completed')
+    .is('dismissed_at', null)
+
+  if (error) {
+    console.error('[queue] dismissCompletedQueuedJobs failed', { userId, error })
+    return false
+  }
+
+  return true
+}
+
+async function enrichQueuedJobsWithResourceTitles(
+  supabase: Awaited<ReturnType<typeof createAuthenticatedSupabaseServerClient>>,
+  jobs: QueuedJob[],
+): Promise<QueuedJob[]> {
+  if (!supabase || jobs.length === 0) return jobs
+
+  const resourceIds = Array.from(new Set(jobs
+    .map((job) => getJobResourceId(job))
+    .filter((value): value is string => Boolean(value))))
+
+  if (resourceIds.length === 0) return jobs
+
+  const { data, error } = await supabase
+    .from('module_resources')
+    .select('id,title')
+    .in('id', resourceIds)
+
+  if (error || !data) return jobs
+
+  const titleById = new Map((data as { id: string; title: string }[]).map((row) => [row.id, row.title]))
+
+  return jobs.map((job) => {
+    if (getStringFromRecord(job.payload, 'resourceTitle') || getStringFromRecord(job.result, 'resourceTitle')) return job
+    const resourceId = getJobResourceId(job)
+    const resourceTitle = resourceId ? titleById.get(resourceId) : null
+    if (!resourceTitle) return job
+    return {
+      ...job,
+      payload: {
+        ...(job.payload ?? {}),
+        resourceTitle,
+      },
+    }
+  })
+}
+
+function getJobResourceId(job: QueuedJob) {
+  return getStringFromRecord(job.result, 'resourceId') ?? getStringFromRecord(job.payload, 'resourceId')
+}
+
+function getStringFromRecord(source: Record<string, unknown> | null, key: string) {
+  const value = source?.[key]
+  return typeof value === 'string' && value.trim() ? value.trim() : null
 }
 
 export async function claimNextPendingJob(type?: QueuedJobType): Promise<QueuedJob | null> {
