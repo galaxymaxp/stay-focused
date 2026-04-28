@@ -102,6 +102,7 @@
   --app-mobile-nav-clearance: calc(var(--app-mobile-nav-height) + var(--app-safe-bottom) + 1.1rem);
   --app-mobile-content-inset: max(0.65rem, calc(var(--app-safe-top) + 0.35rem));
   --app-mobile-scroll-end-space: max(1rem, calc(var(--app-mobile-nav-clearance) - 2.35rem));
+  --app-mobile-header-height: calc(var(--app-safe-top) + 3.35rem);
 
   color-scheme: light;
 }
@@ -526,6 +527,7 @@ select:focus-visible {
   align-items: center;
   gap: 0.55rem;
   min-width: 0;
+  flex: 1 1 auto;
 }
 
 .app-topbar-breadcrumb {
@@ -563,6 +565,10 @@ select:focus-visible {
   letter-spacing: -0.02em;
   font-weight: 700;
   color: var(--text-primary);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .app-topbar-sep {
@@ -2900,16 +2906,55 @@ details[open] > .ui-interactive-summary,
 
   .app-main {
     padding: 0 0.9rem calc(var(--app-mobile-nav-clearance) + 0.65rem);
+    --app-header-height: var(--app-mobile-header-height);
   }
 
   .app-topbar {
     top: 0;
     margin: 0 -0.15rem;
-    min-height: 3.4rem;
+    height: var(--app-mobile-header-height);
+    min-height: var(--app-mobile-header-height);
     padding: var(--app-mobile-content-inset) 0.15rem 0.72rem;
     background: linear-gradient(180deg, color-mix(in srgb, var(--app-bg) 96%, rgba(255, 255, 255, 0.7)) 0%, color-mix(in srgb, var(--app-bg) 90%, transparent) 82%, transparent 100%);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
+  }
+
+  .app-topbar-leading {
+    overflow: hidden;
+  }
+
+  .app-topbar-breadcrumb {
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  .app-topbar-actions {
+    flex: 0 0 auto;
+    flex-wrap: nowrap;
+    gap: 0.35rem;
+    overflow: visible;
+  }
+
+  .app-topbar-actions > * {
+    flex: 0 0 auto;
+  }
+
+  .app-topbar-actions .ui-button,
+  .app-topbar-actions .queue-panel-pill {
+    height: 2.25rem;
+    min-height: 2.25rem !important;
+    padding-top: 0.2rem !important;
+    padding-bottom: 0.2rem !important;
+    gap: 0.34rem !important;
+    white-space: nowrap;
+  }
+
+  .app-topbar-actions .ui-button > img:first-child,
+  .app-topbar-actions .ui-button > span:first-child:not([aria-hidden='true']) {
+    width: 1.55rem !important;
+    height: 1.55rem !important;
+    font-size: 11px !important;
   }
 
   .app-topbar-mobile-mark {
