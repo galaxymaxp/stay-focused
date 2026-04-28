@@ -95,7 +95,7 @@ export function normalizeSourceReadiness(input: {
   const hasCompletedExtraction = resource.extractionStatus === 'completed'
     || resource.extractionStatus === 'extracted'
     || resource.visualExtractionStatus === 'completed'
-  const isReadable = hasCompletedExtraction && readableTextLength >= 120
+  const isReadable = hasCompletedExtraction && readableTextLength > 0
   const state = resolveSourceReadinessState({
     hasStoredResource,
     extractionStatus: resource.extractionStatus,
