@@ -3,40 +3,60 @@
 Author: galaxymaxp omgraythekid@gmail.com
 Last Updated: 2026-04-29
 
-## Session Summary
+## Session Type
 
-Created initial AI context documentation set under `/docs/ai` and aligned product memory to a schedule-first direction.
+Documentation-only session (no runtime behavior changes, no schema changes, no route renames).
 
-## What Changed in This Session
+## What Changed This Session
 
-- Added `/docs/ai/project_context.md`.
-- Added `/docs/ai/current_sprint.md`.
-- Added `/docs/ai/design_system.md`.
-- Added `/docs/ai/future_roadmap.md`.
-- Added `/docs/ai/handoff.md`.
+- Added `docs/ai/implementation_plan.md` with an implementation-ready schedule-first rollout plan.
+- Rewrote `AGENTS.md` into an operational manual for AI coding sessions.
+- Updated `README.md` overview and product framing to reflect schedule-first command-center direction.
+- Updated this handoff with canonical direction, rationale, and next steps.
 
-## Product Direction Now (Canonical)
+## Why It Changed
 
-Stay Focused is a schedule-first student workflow app over Canvas.
+The repository needed implementation-ready context for the new schedule-first direction, plus stronger process discipline to prevent stale docs, context drift, and unfocused implementation passes.
 
-The main experience centers on auto-generated study scheduling from free-time windows, Canvas modules, tasks, deadlines, priority, and estimated time.
+## Canonical Product Direction (Current)
 
-Calendar is a feeder for events/deadlines into scheduling, not the primary “what do I do now?” experience.
+Stay Focused is a **schedule-first student productivity app over Canvas**.
 
-Reviewers, Deep Learn, quizzes, and Do drafts should activate in support of scheduled study blocks.
+The primary product question is: **“What should I do next with the time I have available?”**
 
-## Constraints to Preserve
+Priority hierarchy:
 
-- Documentation-only session: no app behavior changes were introduced.
-- Keep UI direction aligned to clutter reduction, urgent visibility, progressive disclosure, and the existing soft-glow yellow / modern full-width 2026 style.
+1. Schedule / Today Plan
+2. Calendar (deadline/event feeder)
+3. Tasks
+4. Deep Learn / Review / Quiz
+5. Do Draft / Outputs
 
-## Next Session Starting Point
+Additional direction:
 
-1. Use these `/docs/ai` files as system memory before implementation planning.
-2. Propose schedule page IA and interaction model updates.
-3. Map current pages/components to the new schedule-first command center.
-4. Define phased implementation plan with low-risk migration steps.
+- Calendar is not the main command center.
+- Deep Learn/Review/Quiz/Do Draft should activate from scheduled blocks.
+- Study Library remains the persistent output repository.
+- AI should reduce overwhelm and speed execution.
+
+## Next Recommended Coding Steps
+
+1. Implement Phase 1 from `docs/ai/implementation_plan.md`: reframe `/` into a Today Plan-first command center using existing components.
+2. Add explicit “Next Block” + available-time framing on the home surface with minimal architecture disruption.
+3. Validate hierarchy in UI copy and layout so calendar remains secondary.
+4. Run lint/typecheck and document outcomes in the next handoff.
+
+## Risks / Blockers
+
+- Existing home composition may still bias toward dashboard-style scanning over direct next-action execution.
+- Calendar-first legacy patterns may persist in labels/content order without intentional cleanup.
+- Scheduler trust depends on visible logic around priority/time-fit and reliable Canvas-fed deadlines.
+
+## Verification Status for This Session
+
+- Planned to run `npm run lint` and `npm run typecheck` for documentation touch validation.
+- If either check fails due to unrelated pre-existing issues, record details in the next implementation handoff.
 
 ## Maintenance Rule
 
-Update this file after every AI coding session so current state, decisions, and next actions remain explicit.
+After every coding session, update this file before final handoff so current direction, changes, and risks remain explicit.
