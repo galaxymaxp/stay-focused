@@ -3007,11 +3007,6 @@ details[open] > .ui-interactive-summary,
 }
 
 
-  .queue-panel-popover {
-    bottom: calc(var(--app-mobile-nav-clearance) + 0.55rem) !important;
-    max-height: min(70vh, calc(100dvh - var(--app-mobile-header-height) - var(--app-mobile-nav-clearance) - 1rem));
-  }
-
   .app-bottom-nav-link[data-active='true'] {
     background: color-mix(in srgb, var(--surface-selected) 90%, var(--accent) 10%);
     color: var(--text-primary);
@@ -3933,7 +3928,42 @@ details[open] > .ui-interactive-summary,
   display: none;
 }
 
+.queue-panel-backdrop {
+  display: none;
+}
+
 @media (max-width: 767px) {
+  .queue-panel-anchor {
+    position: static !important;
+  }
+
+  .queue-panel-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 45;
+    display: block;
+    background: rgba(0, 0, 0, 0.34);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+  }
+
+  .queue-panel-popover {
+    position: fixed !important;
+    top: calc(var(--app-mobile-header-height) + 0.35rem) !important;
+    right: max(1rem, calc(env(safe-area-inset-right) + 0.5rem)) !important;
+    left: max(1rem, calc(env(safe-area-inset-left) + 0.5rem)) !important;
+    width: auto !important;
+    max-width: none !important;
+    z-index: 50 !important;
+    max-height: min(74dvh, calc(100dvh - var(--app-mobile-header-height) - var(--app-mobile-nav-clearance) - 0.9rem));
+    overflow: hidden;
+    animation: announcements-sheet-in 180ms ease-out;
+  }
+
+  .queue-panel-scroll {
+    max-height: min(66dvh, calc(100dvh - var(--app-mobile-header-height) - var(--app-mobile-nav-clearance) - 4.5rem)) !important;
+  }
+
   .announcements-menu-backdrop {
     position: fixed;
     inset: 0;
