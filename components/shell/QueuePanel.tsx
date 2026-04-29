@@ -291,7 +291,7 @@ export function QueuePanel() {
   const toggle = () => setOpen((p) => !p)
 
   return (
-    <div ref={ref} className="queue-panel relative">
+    <div ref={ref} className="queue-panel queue-panel-anchor relative">
       {activeCount > 0 ? (
         <button
           onClick={toggle}
@@ -360,17 +360,17 @@ export function QueuePanel() {
 
       {open && (
         <>
-          <div className="fixed inset-0 z-40 bg-black/40 sm:hidden" onClick={() => setOpen(false)} />
+          <div className="queue-panel-backdrop" onClick={() => setOpen(false)} />
 
           <div
             className={cn(
-              'queue-panel-popover absolute right-0 top-10 z-50 w-[382px] rounded-2xl overflow-hidden',
-              'max-sm:fixed max-sm:inset-x-3 max-sm:bottom-3 max-sm:top-auto max-sm:w-auto max-sm:rounded-2xl',
+              'queue-panel-popover ui-floating absolute right-0 top-[calc(100%+0.5rem)] z-50 w-[min(25.5rem,calc(100vw-2rem))] overflow-hidden',
             )}
             style={{
               background: 'linear-gradient(180deg, color-mix(in srgb, var(--surface-elevated) 96%, var(--accent-light) 4%), color-mix(in srgb, var(--surface-soft) 92%, var(--surface-elevated) 8%))',
               border: '1px solid color-mix(in srgb, var(--accent-border) 18%, var(--border-subtle) 82%)',
               boxShadow: '0 18px 46px rgba(0, 0, 0, 0.16), 0 0 28px color-mix(in srgb, var(--accent-shadow) 70%, transparent)',
+              borderRadius: 'var(--radius-panel)',
             }}
           >
             <div style={{ padding: '0.92rem 0.98rem 0.72rem', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '0.8rem' }}>
@@ -396,7 +396,7 @@ export function QueuePanel() {
               </div>
             </div>
 
-            <div style={{ maxHeight: '430px', overflowY: 'auto', padding: '0 0.78rem 0.9rem', display: 'grid', gap: '0.85rem' }}>
+            <div className="queue-panel-scroll" style={{ maxHeight: '430px', overflowY: 'auto', padding: '0 0.78rem 0.9rem', display: 'grid', gap: '0.85rem' }}>
               {loading && !hasAny ? (
                 <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1.4rem', display: 'grid', placeItems: 'center', color: 'var(--text-muted)' }}>
                   <Loader2 className="h-5 w-5 animate-spin" />
