@@ -42,7 +42,7 @@ export function AnnouncementsMenu({
   }, [open])
 
   return (
-    <div ref={rootRef} style={{ position: 'relative' }}>
+    <div ref={rootRef} className="announcements-menu" style={{ position: 'relative' }}>
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
@@ -65,10 +65,12 @@ export function AnnouncementsMenu({
       </button>
 
       {open && (
-        <div
+        <>
+          <div className="announcements-menu-backdrop" onClick={() => setOpen(false)} aria-hidden="true" />
+          <div
           role="dialog"
           aria-label="Recent announcements"
-          className="ui-floating"
+          className="ui-floating announcements-menu-panel"
           style={{
             position: 'absolute',
             top: 'calc(100% + 0.5rem)',
@@ -119,6 +121,7 @@ export function AnnouncementsMenu({
             </div>
           )}
         </div>
+        </>
       )}
     </div>
   )

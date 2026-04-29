@@ -3928,3 +3928,43 @@ details[open] > .ui-interactive-summary,
     width: auto;
   }
 }
+
+.announcements-menu-backdrop {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .announcements-menu-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 45;
+    display: block;
+    background: rgba(0, 0, 0, 0.34);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+  }
+
+  .announcements-menu-panel {
+    position: fixed !important;
+    top: calc(var(--app-mobile-header-height) + 0.35rem) !important;
+    right: max(0.75rem, calc(env(safe-area-inset-right) + 0.5rem)) !important;
+    left: max(0.75rem, calc(env(safe-area-inset-left) + 0.5rem)) !important;
+    width: auto !important;
+    max-width: none !important;
+    z-index: 50 !important;
+    max-height: min(72dvh, calc(100dvh - var(--app-mobile-header-height) - var(--app-mobile-nav-clearance) - 1rem));
+    overflow: hidden;
+    animation: announcements-sheet-in 180ms ease-out;
+  }
+}
+
+@keyframes announcements-sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
