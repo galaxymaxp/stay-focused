@@ -3006,6 +3006,12 @@ details[open] > .ui-interactive-summary,
   text-wrap: balance;
 }
 
+
+  .queue-panel-popover {
+    bottom: calc(var(--app-mobile-nav-clearance) + 0.55rem) !important;
+    max-height: min(70vh, calc(100dvh - var(--app-mobile-header-height) - var(--app-mobile-nav-clearance) - 1rem));
+  }
+
   .app-bottom-nav-link[data-active='true'] {
     background: color-mix(in srgb, var(--surface-selected) 90%, var(--accent) 10%);
     color: var(--text-primary);
