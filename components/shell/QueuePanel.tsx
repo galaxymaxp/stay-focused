@@ -364,7 +364,7 @@ export function QueuePanel() {
 
           <div
             className={cn(
-              'absolute right-0 top-10 z-50 w-[382px] rounded-2xl overflow-hidden',
+              'queue-panel-popover absolute right-0 top-10 z-50 w-[382px] rounded-2xl overflow-hidden',
               'max-sm:fixed max-sm:inset-x-3 max-sm:bottom-3 max-sm:top-auto max-sm:w-auto max-sm:rounded-2xl',
             )}
             style={{
