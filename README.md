@@ -1,14 +1,22 @@
 # Stay Focused
 
-Stay Focused is a Next.js study workspace that syncs Canvas data into Supabase, reduces school work into the clearest next move, and saves generated outputs into one persistent Study Library.
+Stay Focused is a **schedule-first student productivity app over Canvas**. The main experience is the **Today Plan / Schedule command center**, built to answer: **“What should I do next with the time I have available?”**
 
-## App Overview
+## Product Overview
 
-- Main pages: Home, Courses, Study Library, Calendar, Settings
-- `Study Library` is the permanent generated-content hub for both Learning outputs and Task drafts
-- Drafts are no longer a standalone primary navigation destination
-- `/drafts` routes remain as compatibility entry points and may redirect into Study Library views
-- Product direction stays action-first: one purpose per page, lower cognitive load, persistent outputs, and soft-glow responsive UI with a user-configurable accent color
+- **Today Plan / Schedule is the primary surface** for day-to-day execution.
+- **Calendar supports planning** by feeding deadlines/events into scheduling.
+- **Canvas sync feeds the scheduler** with coursework context and due signals.
+- **Study Library** is the persistent home for generated outputs (learning artifacts + drafts).
+- **AI tools support execution, not distraction**: Deep Learn, Review, Quiz, and drafting should activate in context of scheduled study blocks.
+
+## Current Surface Priorities
+
+1. Schedule / Today Plan
+2. Calendar (feeder)
+3. Tasks
+4. Deep Learn / Review / Quiz
+5. Do Draft / Outputs
 
 ## Setup
 
@@ -61,18 +69,6 @@ npx tsx scripts/verify-canvas-flow.ts
 ```
 
 `ui-runtime-check.ts` covers runtime UI routes with Playwright. `verify-canvas-flow.ts` checks the lower-level sync and persistence path.
-
-## Latest Scan Snapshot
-
-Current focus after the April 24, 2026 roadmap-alignment pass:
-
-- Study Library remains the main saved-content destination
-- `/drafts` is treated as a compatibility surface, not a returned primary page
-- `notifyCompletion()` now emits in-app toasts for active tabs while preserving hidden-tab browser notifications and sound preferences
-- course page summaries are now persisted on `public.courses` instead of calling OpenAI on every render
-- the repository includes a migration for cached course-summary fields
-- `npm run lint`, `npm run typecheck`, and `npm run build` all succeeded after this pass
-- local production route checks returned `200` for `/`, `/courses`, `/library`, `/settings`, and `/canvas`
 
 ## Stack Snapshot
 
