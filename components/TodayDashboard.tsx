@@ -1,9 +1,10 @@
 'use client'
 
-import { useMemo, useRef, useState, useTransition } from 'react'
+import { useMemo, useRef, useState, useTransition, type CSSProperties } from 'react'
 import Link from 'next/link'
 import { generateUserSchedule, rescheduleBlock, updateBlockStatus } from '@/actions/scheduler'
 import type { HomeCourseSnapshot, HomeDueSoonItem } from '@/lib/home-overview'
+import { formatDuration, formatTime, isBlockInsideWindow, timeInputToTodayIso, timeToMinutes } from '@/lib/scheduler/time'
 
 type ScheduleBlock = {
   id: string
@@ -14,6 +15,11 @@ type ScheduleBlock = {
   sourceTable: 'task_items' | 'modules' | 'module_resources'
   context?: string
   urgencyNote?: string
+}
+
+type ClockStyle = CSSProperties & {
+  '--free-arc': string
+  '--schedule-arc': string
 }
 
 const SHOW_DEMO_PREVIEW = process.env.NODE_ENV !== 'production' || process.env.NEXT_PUBLIC_ENABLE_DEMO_SCHEDULE === 'true'
@@ -31,10 +37,14 @@ export function TodayDashboard({ scheduledBlocks, dueSoon, courseSnapshots }: {
   const currentBlockRef = useRef<HTMLDivElement | null>(null)
 
   const scheduleForDisplay = useMemo(() => useDemoSchedule ? buildDemoScheduleBlocks() : scheduledBlocks, [scheduledBlocks, useDemoSchedule])
+  const visibleSchedule = useMemo(
+    () => scheduleForDisplay.filter((block) => isBlockInsideWindow(block, availableStart, availableEnd)),
+    [scheduleForDisplay, availableStart, availableEnd],
+  )
 
   const { currentBlock, timelineBlocks, needsAttention, completedCount, totalScheduledCount, hasAnySourceData } = useMemo(() => {
     const now = new Date()
-    const sorted = [...scheduleForDisplay].sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())
+    const sorted = [...visibleSchedule].sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())
     const active = sorted.find((block) => block.status === 'opened' || (block.status === 'scheduled' && new Date(block.startAt) <= now && new Date(block.endAt) > now)) ?? null
 
     const missed = sorted.filter((block) => block.status === 'scheduled' && new Date(block.endAt) <= now)
@@ -54,7 +64,7 @@ export function TodayDashboard({ scheduledBlocks, dueSoon, courseSnapshots }: {
       totalScheduledCount: sorted.length,
       hasAnySourceData: dueSoon.length > 0 || courseSnapshots.length > 0,
     }
-  }, [scheduleForDisplay, dueSoon.length, courseSnapshots.length])
+  }, [visibleSchedule, dueSoon.length, courseSnapshots.length])
 
   const hasSchedule = totalScheduledCount > 0
   const completedAll = hasSchedule && completedCount === totalScheduledCount
@@ -65,7 +75,7 @@ export function TodayDashboard({ scheduledBlocks, dueSoon, courseSnapshots }: {
   async function handleGenerate() {
     setIsGenerating(true)
     try {
-      await generateUserSchedule(availableStart, availableEnd)
+      await generateUserSchedule(timeInputToTodayIso(availableStart), timeInputToTodayIso(availableEnd))
       setUseDemoSchedule(false)
       requestAnimationFrame(() => currentBlockRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
     } finally {
@@ -98,7 +108,7 @@ export function TodayDashboard({ scheduledBlocks, dueSoon, courseSnapshots }: {
 
       <section className="planner-shell home-sheet">
         <div className="planner-clock-column">
-          <PlannerClock availableStart={availableStart} availableEnd={availableEnd} currentBlock={currentBlock} />
+          <PlannerClock availableStart={availableStart} availableEnd={availableEnd} currentBlock={currentBlock} scheduleBlocks={visibleSchedule} />
 
           <section className="planner-controls">
             <div className="command-time-grid">
@@ -145,8 +155,11 @@ export function TodayDashboard({ scheduledBlocks, dueSoon, courseSnapshots }: {
   )
 }
 
-function PlannerClock({ availableStart, availableEnd, currentBlock }: { availableStart: string, availableEnd: string, currentBlock: ScheduleBlock | null }) {
-  return <div className="planner-clock-face" role="img" aria-label="Planner clock visual"><span className="clock-marker m12">12</span><span className="clock-marker m3">3</span><span className="clock-marker m6">6</span><span className="clock-marker m9">9</span><div className="clock-core" /><div className="clock-free-window">Free: {formatClockTime(availableStart)} – {formatClockTime(availableEnd)}</div>{currentBlock ? <div className="clock-now-chip">NOW · {formatTimeRange(currentBlock.startAt, currentBlock.endAt)}</div> : null}</div>
+function PlannerClock({ availableStart, availableEnd, currentBlock, scheduleBlocks }: { availableStart: string, availableEnd: string, currentBlock: ScheduleBlock | null, scheduleBlocks: ScheduleBlock[] }) {
+  const freeArc = buildFreeArc(availableStart, availableEnd)
+  const scheduleArc = buildScheduleArc(scheduleBlocks)
+
+  return <div className="planner-clock-face" role="img" aria-label="Planner clock visual" style={{ '--free-arc': freeArc, '--schedule-arc': scheduleArc } as ClockStyle}><div className="clock-free-arc" /><div className="clock-schedule-ring" /><span className="clock-marker m12">12</span><span className="clock-marker m3">3</span><span className="clock-marker m6">6</span><span className="clock-marker m9">9</span><div className="clock-core" /><div className="clock-free-window">Free: {formatTime(availableStart)} – {formatTime(availableEnd)}</div>{currentBlock ? <div className="clock-now-chip">NOW · {formatTimeRange(currentBlock.startAt, currentBlock.endAt)}</div> : null}</div>
 }
 
 function TimelineRow({ block, nowId, onStatus, onReschedule, compact = false }: { block: ScheduleBlock; nowId: string | null; onStatus: (id: string, status: 'opened' | 'completed' | 'skipped') => void; onReschedule?: (id: string, startAt: string, endAt: string) => void; compact?: boolean }) {
@@ -157,8 +170,49 @@ function TimelineRow({ block, nowId, onStatus, onReschedule, compact = false }: 
 
 function buildDemoScheduleBlocks(): ScheduleBlock[] { const now = new Date(); const block = (o:number,d:number)=>{const s=new Date(now.getTime()+o*60000);const e=new Date(s.getTime()+d*60000);return {startAt:s.toISOString(),endAt:e.toISOString()}}; const missed=block(-180,45), completed=block(-90,35), current=block(-10,55), next=block(55,45), upcomingOne=block(110,40), upcomingTwo=block(160,50); return [{ id:'demo-missed', title:'Catch up on missed reviewer', context:'English 102', urgencyNote:'Overdue by 2h · professor follow-up tomorrow', ...missed, status:'scheduled', sourceTable:'task_items' },{ id:'demo-completed', title:'Read Canvas announcement', context:'Student Success Seminar', urgencyNote:'Done this morning', ...completed, status:'completed', sourceTable:'module_resources' },{ id:'demo-current', title:'Review Web App Development module', context:'CIS 310', urgencyNote:'Due tonight 11:59 PM', ...current, status:'opened', sourceTable:'modules' },{ id:'demo-next', title:'Draft activity answer', context:'CIS 310', urgencyNote:'Deadline basis: due in 5h', ...next, status:'scheduled', sourceTable:'task_items' },{ id:'demo-upcoming-one', title:'Quiz prep: JavaScript basics', context:'CIS 302', urgencyNote:'Prep target: quiz tomorrow', ...upcomingOne, status:'scheduled', sourceTable:'task_items' },{ id:'demo-upcoming-two', title:'Finish database assignment', context:'DBMS 201', urgencyNote:'Est. 50 min from prior workload', ...upcomingTwo, status:'skipped', sourceTable:'task_items' }] }
 
-const getAvailableMinutes = (start: string, end: string) => { const [sh, sm] = start.split(':').map(Number); const [eh, em] = end.split(':').map(Number); return (eh * 60 + em) - (sh * 60 + sm) }
-const formatDuration = (minutes: number) => { const h=Math.floor(minutes/60), r=minutes%60; if(!h) return `${r}m`; if(!r) return `${h}h`; return `${h}h ${r}m` }
+const getAvailableMinutes = (start: string, end: string) => timeToMinutes(end) - timeToMinutes(start)
 function getConfidenceLabel(source: ScheduleBlock['sourceTable']) { if (source === 'module_resources') return 'Estimated from content length'; if (source === 'modules') return 'Based on deadline urgency'; return 'Estimated from workload and urgency' }
 function formatTimeRange(startAt: string, endAt: string) { const start = new Date(startAt); const end = new Date(endAt); return `${start.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} – ${end.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` }
-function formatClockTime(time: string) { const [h,m]=time.split(':').map(Number); const date=new Date(); date.setHours(h,m,0,0); return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) }
+function buildFreeArc(start: string, end: string) {
+  const startMinutes = timeToMinutes(start)
+  const endMinutes = timeToMinutes(end)
+  if (!Number.isFinite(startMinutes) || !Number.isFinite(endMinutes) || endMinutes <= startMinutes) return 'transparent 0deg 360deg'
+
+  return `transparent 0deg ${minutesToDegrees(startMinutes)}deg, var(--amber) ${minutesToDegrees(startMinutes)}deg ${minutesToDegrees(endMinutes)}deg, transparent ${minutesToDegrees(endMinutes)}deg 360deg`
+}
+
+function buildScheduleArc(blocks: ScheduleBlock[]) {
+  if (!blocks.length) return 'transparent 0deg 360deg'
+
+  const segments = blocks
+    .map((block) => {
+      const start = new Date(block.startAt)
+      const end = new Date(block.endAt)
+
+      return {
+        start: minutesToDegrees(start.getHours() * 60 + start.getMinutes()),
+        end: minutesToDegrees(end.getHours() * 60 + end.getMinutes()),
+      }
+    })
+    .filter((segment) => segment.end > segment.start)
+    .sort((a, b) => a.start - b.start)
+
+  if (!segments.length) return 'transparent 0deg 360deg'
+
+  const stops: string[] = []
+  let cursor = 0
+
+  for (const segment of segments) {
+    if (segment.start > cursor) stops.push(`transparent ${cursor}deg ${segment.start}deg`)
+    stops.push(`var(--accent) ${segment.start}deg ${segment.end}deg`)
+    cursor = segment.end
+  }
+
+  if (cursor < 360) stops.push(`transparent ${cursor}deg 360deg`)
+
+  return stops.join(', ')
+}
+
+function minutesToDegrees(minutes: number) {
+  return (minutes / 1440) * 360
+}

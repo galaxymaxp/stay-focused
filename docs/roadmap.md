@@ -27,10 +27,11 @@ Stay Focused remains an action-first study workspace. The app should help a stud
 ## Current Priorities
 
 1. Keep Study Library coherent as the single saved-output destination.
-2. Preserve compatibility for old Drafts links without restoring Drafts navigation.
-3. Make notifications visible in active tabs through native in-app toasts.
-4. Persist AI-derived course summaries so course pages do not trigger OpenAI on every render.
-5. Keep docs, schema, and implementation aligned with the shipped product direction.
+2. Keep the schedule-first Today Plan logically synchronized: selected free-time window, clock rings, current block, and schedule list must all describe the same blocks.
+3. Preserve compatibility for old Drafts links without restoring Drafts navigation.
+4. Make notifications visible in active tabs through native in-app toasts.
+5. Persist AI-derived course summaries so course pages do not trigger OpenAI on every render.
+6. Keep docs, schema, and implementation aligned with the shipped product direction.
 
 ## Future Features
 

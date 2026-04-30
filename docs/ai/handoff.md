@@ -281,8 +281,6 @@ Implementation session (runtime UI changes, no schema changes).
 ### Session type
 - Implementation session (runtime UI changes, no schema changes).
 
----
-
 ## Session Update — 2026-04-30 (Today planner-surface redesign)
 
 ### What changed
@@ -309,6 +307,43 @@ Implementation session (runtime UI changes, no schema changes).
 - No browser automation screenshot verification was executed in this session for exact 390px and 430px widths.
 - Clock remains static visual (intentional for this phase); no drag/drop or real arc scheduling interactions were introduced.
 - “Later” action remains placeholder wiring to existing reschedule action with unchanged times.
+
+### Session type
+- Implementation session (runtime UI changes, no schema changes).
+
+---
+
+## Session Update — 2026-04-30 (Clock Command Center schedule-window sync)
+
+### What changed
+- Added shared scheduler time helpers in `lib/scheduler/time.ts`:
+  - `timeToMinutes`
+  - `minutesToTime`
+  - `formatTime`
+  - `formatDuration`
+  - `isBlockInsideWindow`
+- Updated `TodayDashboard` to derive `visibleSchedule` by filtering schedule blocks against the selected free-time start/end window before calculating:
+  - current block
+  - timeline blocks
+  - Need Attention blocks
+  - completed/all counts
+  - inner clock schedule ring segments
+- Updated the clock visual so the outer free-time arc and inner planned-block ring are generated from the same selected window and filtered blocks.
+- Normalized `HH:mm` time input into same-day ISO timestamps before schedule generation, with the server action also accepting either `HH:mm` or ISO input defensively.
+- Added focused scheduler tests for time helpers and window filtering.
+
+### Why it changed
+The selected free-time window and visible schedule had drifted apart. A user could choose a morning window such as 5:45 AM to 8:45 AM while the Today schedule still displayed afternoon or evening blocks. The command center now hides blocks that do not fit inside the selected window for this pass.
+
+### Verification results
+- `npm run typecheck` passed.
+- `npm run lint` passed.
+- `npx tsx --test tests/scheduler.test.ts` passed.
+
+### Remaining risks / blockers
+- This pass filters out-of-window blocks instead of automatically rescheduling them.
+- Cross-midnight free-time windows are still treated as invalid.
+- Full browser screenshot verification at exact mobile widths was not run in this session.
 
 ### Session type
 - Implementation session (runtime UI changes, no schema changes).

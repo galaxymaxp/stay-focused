@@ -4020,6 +4020,27 @@ details[open] > .ui-interactive-summary,
   display: grid;
   place-items: center;
 }
+.clock-free-arc,
+.clock-schedule-ring {
+  position: absolute;
+  border-radius: 999px;
+  pointer-events: none;
+}
+.clock-free-arc {
+  width: min(172px, 72%);
+  aspect-ratio: 1;
+  background: conic-gradient(var(--free-arc));
+  -webkit-mask: radial-gradient(circle, transparent 58%, #000 59% 68%, transparent 69%);
+  mask: radial-gradient(circle, transparent 58%, #000 59% 68%, transparent 69%);
+}
+.clock-schedule-ring {
+  width: min(128px, 54%);
+  aspect-ratio: 1;
+  background: conic-gradient(var(--schedule-arc));
+  -webkit-mask: radial-gradient(circle, transparent 56%, #000 57% 70%, transparent 71%);
+  mask: radial-gradient(circle, transparent 56%, #000 57% 70%, transparent 71%);
+  opacity: 0.9;
+}
 .clock-marker { position: absolute; font-size: 12px; color: var(--text-muted); font-weight: 600; }
 .m12 { top: 10px; }
 .m3 { right: 14px; }
