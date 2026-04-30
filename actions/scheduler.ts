@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { createAuthenticatedSupabaseServerClient } from '@/lib/auth-server'
 import { generateSchedule } from '@/lib/scheduler/algorithm'
 import { scoreSchedulerItem } from '@/lib/scheduler/priority'
+import { timeInputToTodayIso } from '@/lib/scheduler/time'
 import type { SchedulerItem } from '@/lib/scheduler/types'
 
 async function getSchedulerContext() {
@@ -65,7 +66,7 @@ export async function generateUserSchedule(freeTimeStart: string, freeTimeEnd: s
   ]
 
   const scored = sourceItems.map(scoreSchedulerItem)
-  const generatedBlocks = generateSchedule(scored, { start: freeTimeStart, end: freeTimeEnd })
+  const generatedBlocks = generateSchedule(scored, { start: timeInputToTodayIso(freeTimeStart), end: timeInputToTodayIso(freeTimeEnd) })
 
   const nowIso = new Date().toISOString()
   const { error: cleanupError } = await client
