@@ -4064,6 +4064,25 @@ details[open] > .ui-interactive-summary,
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-shadow) 34%, transparent);
 }
 .compact-clock-empty { margin-top: 0.75rem; }
+
+.command-subtle-demo-control {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+.command-subtle-demo-control .ui-section-copy { margin: 0; }
+.command-start-here .schedule-actions { margin-top: 0.2rem; }
+.schedule-context {
+  margin-top: 0.25rem !important;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.schedule-urgency {
+  margin-top: 0.2rem !important;
+  font-size: 11px;
+  color: color-mix(in srgb, var(--amber) 62%, var(--text-secondary) 38%);
+}
 .schedule-row-urgent {
   border-left: 3px solid color-mix(in srgb, var(--accent) 58%, transparent);
   padding-left: 0.75rem;
