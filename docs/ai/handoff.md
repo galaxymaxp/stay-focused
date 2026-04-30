@@ -280,3 +280,35 @@ Implementation session (runtime UI changes, no schema changes).
 
 ### Session type
 - Implementation session (runtime UI changes, no schema changes).
+
+---
+
+## Session Update — 2026-04-30 (Today planner-surface redesign)
+
+### What changed
+- Refactored `TodayDashboard` into a unified planner surface (`today-command-center` + `planner-shell`) instead of stacked cards.
+- Reordered mobile flow so the clock/planner visual is first after title, followed by time controls/generate buttons, then timeline.
+- Moved generate/regenerate control into the planner clock column and removed standalone header CTA.
+- Implemented a cleaner clock-face visual with 12/3/6/9 markers, free-time label, and NOW chip when active block exists.
+- Reworked right column into a vertical timeline with explicit row time labels, block state styling (`is-now`, `is-missed`, `is-completed`, `is-skipped`), and inline actions (Start/Complete/Skip/Later).
+- Added no-block timeline empty state copy: “No blocks yet” + “Set your time, then generate your plan.”
+- Kept Need Attention below the timeline in a compact panel and moved Start Here fallback below planner surface.
+- Preserved dev/demo preview guard (`NODE_ENV !== production || NEXT_PUBLIC_ENABLE_DEMO_SCHEDULE === 'true'`) and added in-UI note for Vercel preview env flag usage.
+- Added extra Today page bottom padding through planner container to avoid mobile bottom-nav overlap with generate/setup controls.
+
+### Responsive behavior
+- Desktop/wide: two-column planner shell with sticky left clock/control column and right timeline column.
+- Mobile: single unified stack ordered as title → clock → free-time controls/buttons → timeline → need attention → start here fallback.
+- Time inputs remain in a constrained 2-column grid with full-width input controls to avoid overflow.
+
+### Verification results
+- `npm run typecheck` passed.
+- `npm run lint` passed.
+
+### Remaining risks / blockers
+- No browser automation screenshot verification was executed in this session for exact 390px and 430px widths.
+- Clock remains static visual (intentional for this phase); no drag/drop or real arc scheduling interactions were introduced.
+- “Later” action remains placeholder wiring to existing reschedule action with unchanged times.
+
+### Session type
+- Implementation session (runtime UI changes, no schema changes).
