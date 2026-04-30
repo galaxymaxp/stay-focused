@@ -347,3 +347,54 @@ The selected free-time window and visible schedule had drifted apart. A user cou
 
 ### Session type
 - Implementation session (runtime UI changes, no schema changes).
+
+---
+
+## Session Update — 2026-04-30 (Clock Command Center layout restoration)
+
+### What changed
+- Restored the Clock Command Center as a polished two-column planner card:
+  - left column for clock visual, legend, time controls, duration, and plan actions
+  - right column for Today's Schedule, Need Attention, and Start Here
+- Replaced fragile literal clock marker text with a fixed-size SVG clock visual so marker text cannot collapse into debug-looking output such as `12369`.
+- Preserved the schedule/free-time synchronization logic from the previous pass:
+  - `visibleSchedule`
+  - shared scheduler time helpers
+  - filtering blocks inside the selected free-time window
+  - filtered inner clock ring data
+- Added stale-window UI behavior when start/end controls change.
+- Updated schedule cards with dot, title, formatted time range, duration, and compact actions.
+- Updated the empty state to explain when no blocks fit the selected time window.
+
+### Files touched
+- `components/TodayDashboard.tsx`
+- `app/globals.css`
+- `docs/ai/handoff.md`
+
+### Verification results
+- `npm run typecheck` passed.
+- `npm run lint` passed.
+- `npx tsx --test tests/scheduler.test.ts` passed.
+
+### Browser verification notes
+- The local home route currently shows the sync-first empty state because this environment has no synced workspace data.
+- Used a temporary local verification route with fixture schedule data, then removed it before finalizing.
+- Desktop verification confirmed:
+  - clock visible with non-zero dimensions (`391x280`)
+  - two-column layout (`420px` left column plus remaining right column)
+  - no `12369` text
+  - out-of-window fixture block hidden
+  - no framework error overlay or console errors
+- Mobile verification at `390px` confirmed:
+  - clock stacks above schedule
+  - no horizontal overflow
+  - clock remains visible with non-zero dimensions
+- Changing the window to `05:45`-`08:45` showed the expected empty state and no schedule cards.
+
+### Remaining risks
+- Browser verification used fixture data because the local signed-out/sync-empty state cannot mount the real Today dashboard.
+- Automatic rescheduling is still out of scope; out-of-window blocks are filtered.
+- Cross-midnight free-time windows are still invalid.
+
+### Next recommended step
+Run the same browser checks against an authenticated/synced workspace or seeded local data, then add a small regression test harness for the Today dashboard states.

@@ -4005,70 +4005,288 @@ details[open] > .ui-interactive-summary,
   gap: 1rem;
   padding-bottom: calc(var(--app-mobile-nav-clearance) + 2.5rem);
 }
-.command-center-header { display: flex; align-items: center; justify-content: space-between; gap: .75rem; }
+.command-center-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+}
 
-.planner-shell { display: grid; gap: 1rem; }
-.planner-clock-column { display: grid; gap: .75rem; align-content: start; }
-.planner-timeline-column { display: grid; gap: .75rem; }
+.planner-shell {
+  display: grid;
+  gap: 1rem;
+  align-items: start;
+  padding: 1rem;
+}
+.planner-clock-column {
+  display: grid;
+  gap: .85rem;
+  align-content: start;
+}
+.planner-timeline-column {
+  display: grid;
+  gap: .85rem;
+  min-width: 0;
+}
 
+.planner-clock-panel,
+.planner-controls,
+.planner-schedule-panel,
+.planner-attention-panel,
+.planner-start-panel {
+  border: 1px solid color-mix(in srgb, var(--accent-border) 14%, var(--border-subtle) 86%);
+  border-radius: 14px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-elevated) 94%, var(--amber-light) 6%), color-mix(in srgb, var(--surface-soft) 88%, transparent));
+}
+
+.planner-clock-panel {
+  display: grid;
+  gap: .75rem;
+  padding: .85rem;
+}
 .planner-clock-face {
-  border: 1px solid var(--border-subtle);
-  border-radius: 18px;
-  min-height: 220px;
+  min-height: 280px;
   position: relative;
-  background: radial-gradient(circle at center, color-mix(in srgb, var(--surface-focus) 88%, var(--accent) 12%) 0%, var(--surface-soft) 68%);
   display: grid;
   place-items: center;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--accent-border) 18%, var(--border-subtle) 82%);
+  border-radius: 12px;
+  background:
+    radial-gradient(circle at center, color-mix(in srgb, var(--surface-focus) 86%, var(--accent) 14%) 0 30%, transparent 31%),
+    radial-gradient(circle at center, color-mix(in srgb, var(--surface-soft) 92%, var(--amber-light) 8%) 0%, color-mix(in srgb, var(--surface-elevated) 78%, transparent) 72%);
 }
-.clock-free-arc,
-.clock-schedule-ring {
+.planner-clock-svg {
+  width: min(248px, 88%);
+  height: auto;
+  aspect-ratio: 1;
+  display: block;
+  overflow: visible;
+}
+.clock-ring-track {
+  fill: none;
+  stroke: color-mix(in srgb, var(--border-subtle) 78%, var(--surface-focus) 22%);
+}
+.clock-ring-track.outer {
+  stroke-width: 16;
+}
+.clock-ring-track.inner {
+  stroke-width: 14;
+}
+.clock-ring-arc {
+  fill: none;
+  stroke-linecap: round;
+}
+.clock-ring-arc.free {
+  stroke: var(--amber);
+  stroke-width: 16;
+  filter: drop-shadow(0 0 8px color-mix(in srgb, var(--amber) 26%, transparent));
+}
+.clock-ring-arc.plan {
+  stroke: var(--accent);
+  stroke-width: 14;
+  filter: drop-shadow(0 0 7px color-mix(in srgb, var(--accent) 22%, transparent));
+}
+.clock-center-dot {
+  fill: var(--accent);
+  filter: drop-shadow(0 0 8px color-mix(in srgb, var(--accent) 40%, transparent));
+}
+.clock-free-window {
   position: absolute;
+  left: 50%;
+  bottom: .85rem;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(100% - 2rem);
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-align: center;
+}
+.clock-now-chip {
+  position: absolute;
+  top: .85rem;
+  left: .85rem;
+  font-size: 11px;
+  padding: .24rem .5rem;
+  border: 1px solid color-mix(in srgb, var(--accent-border) 24%, transparent);
   border-radius: 999px;
-  pointer-events: none;
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--accent) 20%, var(--surface-elevated));
 }
-.clock-free-arc {
-  width: min(172px, 72%);
-  aspect-ratio: 1;
-  background: conic-gradient(var(--free-arc));
-  -webkit-mask: radial-gradient(circle, transparent 58%, #000 59% 68%, transparent 69%);
-  mask: radial-gradient(circle, transparent 58%, #000 59% 68%, transparent 69%);
+.clock-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem .85rem;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  font-size: 12px;
 }
-.clock-schedule-ring {
-  width: min(128px, 54%);
-  aspect-ratio: 1;
-  background: conic-gradient(var(--schedule-arc));
-  -webkit-mask: radial-gradient(circle, transparent 56%, #000 57% 70%, transparent 71%);
-  mask: radial-gradient(circle, transparent 56%, #000 57% 70%, transparent 71%);
-  opacity: 0.9;
+.clock-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
 }
-.clock-marker { position: absolute; font-size: 12px; color: var(--text-muted); font-weight: 600; }
-.m12 { top: 10px; }
-.m3 { right: 14px; }
-.m6 { bottom: 10px; }
-.m9 { left: 14px; }
-.clock-core { width: 12px; height: 12px; border-radius: 999px; background: var(--accent); box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 30%, transparent); }
-.clock-free-window { position: absolute; bottom: 1rem; font-size: 12px; color: var(--text-secondary); }
-.clock-now-chip { position: absolute; top: 1rem; left: 1rem; font-size: 11px; padding: .2rem .45rem; border-radius: 999px; background: color-mix(in srgb, var(--accent) 24%, var(--surface-elevated)); }
+.clock-legend-swatch {
+  width: .6rem;
+  height: .6rem;
+  border-radius: 999px;
+  display: inline-block;
+}
+.clock-legend-swatch.free { background: var(--amber); }
+.clock-legend-swatch.plan { background: var(--accent); }
 
-.planner-controls { display: grid; gap: .65rem; }
-.command-time-grid { display: grid; gap: .6rem; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.command-time-field { display: grid; gap: .35rem; font-size: 12px; color: var(--text-muted); }
-.command-time-field input { width: 100%; border: 1px solid var(--border-subtle); border-radius: 10px; background: var(--surface-soft); color: var(--text-primary); padding: .55rem .65rem; }
+.planner-controls {
+  display: grid;
+  gap: .7rem;
+  padding: .85rem;
+}
+.command-time-grid {
+  display: grid;
+  gap: .65rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.command-time-field {
+  display: grid;
+  gap: .4rem;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.command-time-field span {
+  font-weight: 700;
+}
+.command-time-field input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid color-mix(in srgb, var(--accent-border) 16%, var(--border-subtle) 84%);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface-soft) 92%, transparent);
+  color: var(--text-primary);
+  padding: .58rem .65rem;
+}
+.planner-duration-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  padding: .6rem .7rem;
+  border: 1px solid color-mix(in srgb, var(--border-subtle) 82%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface-soft) 70%, transparent);
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.planner-duration-row strong {
+  color: var(--text-primary);
+}
+.planner-stale-note {
+  margin: 0;
+  font-size: 12px;
+  color: color-mix(in srgb, var(--amber) 74%, var(--text-secondary) 26%);
+}
 
-.planner-timeline { display: grid; gap: .75rem; }
-.planner-timeline-row { display: grid; grid-template-columns: 84px minmax(0,1fr); gap: .65rem; align-items: start; }
-.planner-time-label { font-size: 12px; color: var(--text-muted); margin: .4rem 0 0 !important; }
-.planner-block-card { border: 1px solid var(--border-subtle); border-radius: 12px; padding: .7rem; background: var(--surface-elevated); }
-.planner-block-card.is-now { border-color: color-mix(in srgb, var(--accent-border) 48%, var(--border-subtle)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-shadow) 45%, transparent); }
-.planner-block-card.is-missed { border-color: color-mix(in srgb, var(--red) 35%, var(--border-subtle)); }
-.planner-block-card.is-completed { border-color: color-mix(in srgb, var(--green) 35%, var(--border-subtle)); opacity: .92; }
-.planner-block-card.is-skipped { border-style: dashed; opacity: .9; }
-.planner-block-header { display: flex; justify-content: space-between; gap: .5rem; }
-.planner-block-header h3 { margin: 0; font-size: .98rem; }
-.now-pill { font-size: 11px; background: color-mix(in srgb, var(--accent) 26%, var(--surface-focus)); border-radius: 999px; padding: .2rem .45rem; }
-.planner-empty-state { border: 1px dashed var(--border-subtle); border-radius: 12px; padding: 1rem; }
-.planner-empty-state h2 { margin: 0; font-size: 1.05rem; }
-.planner-attention-panel { border-style: solid; }
+.planner-schedule-panel,
+.planner-attention-panel,
+.planner-start-panel {
+  padding: .9rem;
+}
+.planner-panel-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: .75rem;
+  align-items: start;
+  margin-bottom: .75rem;
+}
+.planner-panel-heading h2,
+.planner-start-panel h2 {
+  margin: .15rem 0 0;
+  font-size: clamp(1rem, 1.8vw, 1.18rem);
+}
+.planner-window-chip {
+  flex-shrink: 0;
+  border: 1px solid color-mix(in srgb, var(--accent-border) 18%, var(--border-subtle) 82%);
+  border-radius: 999px;
+  padding: .28rem .55rem;
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--surface-soft) 78%, transparent);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.planner-schedule-list,
+.planner-compact-list {
+  display: grid;
+  gap: .65rem;
+}
+.planner-block-card {
+  border: 1px solid color-mix(in srgb, var(--border-subtle) 84%, transparent);
+  border-radius: 12px;
+  padding: .72rem;
+  background: color-mix(in srgb, var(--surface-elevated) 92%, transparent);
+}
+.planner-block-card.compact {
+  padding: .65rem;
+}
+.planner-block-card.is-now {
+  border-color: color-mix(in srgb, var(--accent-border) 54%, var(--border-subtle));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-shadow) 50%, transparent), 0 10px 28px color-mix(in srgb, var(--accent-shadow) 18%, transparent);
+}
+.planner-block-card.is-now .planner-status-dot { background: var(--accent); }
+.planner-block-card.is-missed {
+  border-color: color-mix(in srgb, var(--red) 35%, var(--border-subtle));
+}
+.planner-block-card.is-completed {
+  border-color: color-mix(in srgb, var(--green) 35%, var(--border-subtle));
+  opacity: .92;
+}
+.planner-block-card.is-skipped {
+  border-style: dashed;
+  opacity: .9;
+}
+.planner-block-header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: .55rem;
+  align-items: start;
+}
+.planner-block-header h3 {
+  margin: 0;
+  font-size: .96rem;
+  line-height: 1.25;
+}
+.planner-status-dot {
+  width: .62rem;
+  height: .62rem;
+  margin-top: .27rem;
+  border-radius: 999px;
+  background: var(--amber);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--amber) 14%, transparent);
+}
+.planner-block-time {
+  margin: .22rem 0 0 !important;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.planner-block-time span {
+  color: var(--text-secondary);
+}
+.now-pill {
+  font-size: 11px;
+  background: color-mix(in srgb, var(--accent) 26%, var(--surface-focus));
+  border-radius: 999px;
+  padding: .2rem .45rem;
+}
+.planner-empty-state {
+  border: 1px dashed color-mix(in srgb, var(--accent-border) 20%, var(--border-subtle) 80%);
+  border-radius: 12px;
+  padding: 1rem;
+  background: color-mix(in srgb, var(--surface-soft) 66%, transparent);
+}
+.planner-empty-state h3 {
+  margin: 0;
+  font-size: 1.02rem;
+}
 
 .schedule-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.2rem; }
 .schedule-context { margin-top: 0.25rem !important; font-size: 12px; color: var(--text-secondary); }
@@ -4079,10 +4297,22 @@ details[open] > .ui-interactive-summary,
 .command-empty-state-success { border-color: color-mix(in srgb, var(--green) 35%, var(--border-subtle)); background: color-mix(in srgb, var(--green-light) 32%, var(--surface-elevated)); }
 
 @media (min-width: 960px) {
-  .planner-shell { grid-template-columns: minmax(300px, 400px) minmax(0,1fr); align-items: start; }
+  .planner-shell { grid-template-columns: minmax(300px, 420px) minmax(0, 1fr); }
   .planner-clock-column { position: sticky; top: calc(var(--app-safe-top) + 5rem); }
 }
 @media (max-width: 640px) {
+  .planner-shell {
+    padding: .75rem;
+  }
+  .planner-clock-face {
+    min-height: 245px;
+  }
+  .planner-panel-heading {
+    display: grid;
+  }
+  .planner-window-chip {
+    width: fit-content;
+  }
   .command-center,
   .command-center-layout,
   .command-center-details {
