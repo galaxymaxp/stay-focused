@@ -17,7 +17,7 @@ type ScheduleBlock = {
 }
 
 const MIN_MEANINGFUL_MINUTES = 30
-const IS_DEV_MODE = process.env.NODE_ENV !== 'production'
+const SHOW_DEMO_PREVIEW = process.env.NODE_ENV !== 'production' || process.env.NEXT_PUBLIC_ENABLE_DEMO_SCHEDULE === 'true'
 
 export function TodayDashboard({ scheduledBlocks, dueSoon, courseSnapshots }: {
   scheduledBlocks: ScheduleBlock[]
@@ -27,6 +27,8 @@ export function TodayDashboard({ scheduledBlocks, dueSoon, courseSnapshots }: {
   const [isPending, startTransition] = useTransition()
   const [isGenerating, setIsGenerating] = useState(false)
   const [useDemoSchedule, setUseDemoSchedule] = useState(false)
+  const [availableStart, setAvailableStart] = useState('18:30')
+  const [availableEnd, setAvailableEnd] = useState('21:30')
   const currentBlockRef = useRef<HTMLElement | null>(null)
 
   const scheduleForDisplay = useMemo(() => {
@@ -66,7 +68,7 @@ export function TodayDashboard({ scheduledBlocks, dueSoon, courseSnapshots }: {
   async function handleGenerate() {
     setIsGenerating(true)
     try {
-      await generateUserSchedule('08:00', '22:00')
+      await generateUserSchedule(availableStart, availableEnd)
       setUseDemoSchedule(false)
       requestAnimationFrame(() => {
         currentBlockRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -92,7 +94,9 @@ export function TodayDashboard({ scheduledBlocks, dueSoon, courseSnapshots }: {
 
   const hasSchedule = totalScheduledCount > 0
   const completedAll = hasSchedule && completedCount === totalScheduledCount
-  const showDemoControl = IS_DEV_MODE && (!hasSchedule || !currentBlock)
+  const showDemoControl = SHOW_DEMO_PREVIEW && (!hasSchedule || !currentBlock)
+  const availableMinutes = getAvailableMinutes(availableStart, availableEnd)
+  const availableLabel = availableMinutes > 0 ? formatDuration(availableMinutes) : 'Invalid window'
 
   return (
     <section className="command-center">
@@ -101,26 +105,12 @@ export function TodayDashboard({ scheduledBlocks, dueSoon, courseSnapshots }: {
           <p className="ui-kicker">Today Plan</p>
           <h1 className="ui-page-title">Clock Command Center</h1>
         </div>
-        <button type="button" className="ui-button ui-button-primary" onClick={handleGenerate} disabled={isGenerating || isPending}>
-          {isGenerating ? 'Building your plan…' : hasSchedule ? 'Regenerate Today Plan' : 'Generate Today Plan'}
-        </button>
-      </header>
-
-      {showDemoControl ? (
-        <section className="home-sheet command-subtle-demo-control">
-          <p className="ui-section-copy">Need a quick visual check?</p>
-          <button type="button" className="ui-button ui-button-ghost ui-button-xs" onClick={() => setUseDemoSchedule((value) => !value)}>
-            {useDemoSchedule ? 'Use real schedule' : 'Preview demo schedule'}
+        {hasSchedule ? (
+          <button type="button" className="ui-button ui-button-primary" onClick={handleGenerate} disabled={isGenerating || isPending}>
+            {isGenerating ? 'Building your plan…' : 'Regenerate Today Plan'}
           </button>
-        </section>
-      ) : null}
-
-      {!hasSchedule ? (
-        <section className="home-sheet command-empty-state">
-          <h2>Set your available time to generate your plan</h2>
-          <p className="ui-section-copy">We’ll fill your time based on deadlines and workload.</p>
-        </section>
-      ) : null}
+        ) : null}
+      </header>
 
       {!hasSchedule && !hasAnySourceData ? (
         <section className="home-sheet command-empty-state">
@@ -156,10 +146,38 @@ export function TodayDashboard({ scheduledBlocks, dueSoon, courseSnapshots }: {
       <div className="command-center-layout">
         <section className="clock-shell home-sheet">
           <p className="ui-kicker">Clock</p>
-          <CompactClock currentBlock={currentBlock} comingUp={comingUp} />
+          <CompactClock currentBlock={currentBlock} nextBlock={nextBlock} comingUp={comingUp} />
         </section>
 
         <div className="command-center-details">
+          {!hasSchedule ? (
+            <section className="home-sheet command-empty-state command-time-setup">
+              <h2>Set your available time to generate your plan</h2>
+              <p className="ui-section-copy">We’ll fill your time based on deadlines and workload.</p>
+              <div className="command-time-grid">
+                <label className="command-time-field">
+                  <span>Start</span>
+                  <input type="time" value={availableStart} onChange={(event) => setAvailableStart(event.target.value)} />
+                </label>
+                <label className="command-time-field">
+                  <span>End</span>
+                  <input type="time" value={availableEnd} onChange={(event) => setAvailableEnd(event.target.value)} />
+                </label>
+              </div>
+              <p className="ui-section-copy">Available: {availableLabel}</p>
+              <div className="schedule-actions">
+                <button type="button" className="ui-button ui-button-primary" onClick={handleGenerate} disabled={isGenerating || isPending || availableMinutes <= 0}>
+                  {isGenerating ? 'Building your plan…' : 'Generate Today Plan'}
+                </button>
+                {showDemoControl ? (
+                  <button type="button" className="ui-button ui-button-ghost ui-button-xs" onClick={() => setUseDemoSchedule((value) => !value)}>
+                    {useDemoSchedule ? 'Use real schedule' : 'Preview demo schedule'}
+                  </button>
+                ) : null}
+              </div>
+            </section>
+          ) : null}
+
           <section className="home-sheet command-current-block" ref={currentBlockRef}>
             <p className="ui-kicker">Current Block</p>
             {currentBlock ? <BlockCard block={currentBlock} onStatus={updateStatus} onReschedule={placeholderReschedule} isUrgent /> : null}
@@ -171,6 +189,9 @@ export function TodayDashboard({ scheduledBlocks, dueSoon, courseSnapshots }: {
             ) : null}
             {!currentBlock && !nextBlock && hasSchedule ? (
               <p className="ui-section-copy">Not enough time to create a meaningful plan. Try at least 30–45 minutes.</p>
+            ) : null}
+            {!currentBlock && !nextBlock && !hasSchedule ? (
+              <p className="ui-section-copy">No current block yet. Set your available time to build today’s plan.</p>
             ) : null}
           </section>
 
@@ -192,12 +213,12 @@ export function TodayDashboard({ scheduledBlocks, dueSoon, courseSnapshots }: {
               <p className="ui-kicker">Coming Up</p>
               {comingUp.map((block) => <BlockRow key={block.id} block={block} onStatus={updateStatus} compact />)}
             </section>
-          ) : (
+          ) : hasSchedule ? (
             <section className="home-sheet">
               <p className="ui-kicker">Coming Up</p>
               <p className="ui-section-copy">Generate your plan to see upcoming blocks.</p>
             </section>
-          )}
+          ) : null}
 
           <section className="home-sheet">
             <p className="ui-kicker">Supporting links</p>
@@ -240,10 +261,16 @@ function buildDemoScheduleBlocks(): ScheduleBlock[] {
   ]
 }
 
-function CompactClock({ currentBlock, comingUp }: { currentBlock: ScheduleBlock | null; comingUp: ScheduleBlock[] }) {
-  const arcItems = [currentBlock, ...comingUp].filter(Boolean).slice(0, 4) as ScheduleBlock[]
+function CompactClock({ currentBlock, nextBlock, comingUp }: { currentBlock: ScheduleBlock | null; nextBlock: ScheduleBlock | null; comingUp: ScheduleBlock[] }) {
+  const arcItems = [currentBlock, nextBlock, ...comingUp].filter(Boolean).slice(0, 4) as ScheduleBlock[]
   if (!arcItems.length) {
-    return <p className="ui-section-copy compact-clock-empty">Your upcoming schedule will appear here.</p>
+    return (
+      <div className="compact-clock-ring compact-clock-ring-empty">
+        <p className="ui-section-copy compact-clock-empty">Available time</p>
+        <p className="ui-section-copy compact-clock-empty">No blocks yet</p>
+        <p className="ui-section-copy compact-clock-empty">Set your time, then generate</p>
+      </div>
+    )
   }
 
   return (
@@ -256,6 +283,22 @@ function CompactClock({ currentBlock, comingUp }: { currentBlock: ScheduleBlock 
       ))}
     </div>
   )
+}
+
+function getAvailableMinutes(start: string, end: string) {
+  const [startHour, startMinute] = start.split(':').map(Number)
+  const [endHour, endMinute] = end.split(':').map(Number)
+  const startTotal = startHour * 60 + startMinute
+  const endTotal = endHour * 60 + endMinute
+  return endTotal - startTotal
+}
+
+function formatDuration(minutes: number) {
+  const hours = Math.floor(minutes / 60)
+  const remainder = minutes % 60
+  if (!hours) return `${remainder}m`
+  if (!remainder) return `${hours}h`
+  return `${hours}h ${remainder}m`
 }
 
 function BlockCard({ block, onStatus, onReschedule, isUrgent = false }: { block: ScheduleBlock; onStatus: (id: string, status: 'opened' | 'completed' | 'skipped') => void; onReschedule: (id: string, startAt: string, endAt: string) => void; isUrgent?: boolean }) {

@@ -241,3 +241,42 @@ The command center looked visually polished but functionally dead when no blocks
 
 ### Session type
 Implementation session (runtime UI changes, no schema changes).
+
+---
+
+## Session Update — 2026-04-30 (Today empty-state shell + mobile setup controls)
+
+### What changed
+- Updated `TodayDashboard` empty-state flow so the Clock Command Center shell always renders first after title, including when there are zero schedule blocks.
+- Replaced the prior empty-state generate placement with an in-card setup section that includes visible start/end time inputs plus an available-duration summary.
+- Wired generate action to selected local time window (`generateUserSchedule(availableStart, availableEnd)`) instead of fixed `08:00–22:00`.
+- Moved primary “Generate Today Plan” button into setup card when no schedule exists; retained “Building your plan…” pending copy.
+- Added guarded demo preview control directly in setup card and expanded guard behavior to allow explicit enablement in production-like previews.
+- Prevented broken empty current-block presentation by showing meaningful guidance when no current/next block exists.
+- Kept Need Attention empty message calm and removed Coming Up section in no-schedule state.
+- Updated compact clock empty shell copy to: “Available time”, “No blocks yet”, “Set your time, then generate”.
+- Added styling for mobile-first order and setup controls.
+
+### Demo preview env guard
+- Demo preview is shown when either:
+  - `process.env.NODE_ENV !== 'production'`, **or**
+  - `process.env.NEXT_PUBLIC_ENABLE_DEMO_SCHEDULE === 'true'`.
+- This keeps it visible for local dev/test and optionally for Vercel preview/manual QA via explicit opt-in flag.
+
+### Free-time control wiring status
+- Start/end controls are currently **local client state** in `TodayDashboard`.
+- They are now directly passed into the server generation action on submit.
+- Persistence of preferred window beyond current page lifecycle is not yet implemented.
+
+### Verification results
+- `npm run typecheck` passed.
+- `npm run lint` passed.
+- Manual browser viewport verification at exact 390px/430px was **not automated** in this session.
+
+### Remaining risks / blockers
+- Available-time selections are not persisted per user yet.
+- No hard validation message beyond disabling generate on invalid range.
+- Exact mobile rendering at 390px and 430px still needs explicit visual QA/screenshot validation.
+
+### Session type
+- Implementation session (runtime UI changes, no schema changes).
