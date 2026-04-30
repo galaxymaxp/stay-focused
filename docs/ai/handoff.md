@@ -112,3 +112,45 @@ Build the Clock Command Center UI shell on top of persisted `scheduled_blocks` (
 
 ### Session type
 Implementation session (runtime + schema changes).
+
+---
+
+## Session Update — 2026-04-30 (Clock Command Center UI shell)
+
+### What changed
+- Replaced the legacy Today dashboard shell with a schedule-first Clock Command Center structure in `TodayDashboard`.
+- Added required sections in the approved hierarchy:
+  - Current / Next Block hero
+  - Need Attention (lazy missed scheduled blocks)
+  - Compact Clock visual shell (ring/list hybrid)
+  - Coming Up list
+  - Supporting links
+- Wired Generate/Regenerate schedule action through the existing `generateUserSchedule` server action.
+- Added block status actions for Start/Open, Complete, Skip, plus a placeholder reschedule trigger using existing action wiring.
+- Updated home entry points (`app/page.tsx` and `app/(app)/page.tsx`) to fetch persisted `scheduled_blocks` and feed the new dashboard shell while preserving existing due-soon/course data flows.
+- Added new UI-only styles in `app/globals.css` for command-center layout, mobile-first ordering, and desktop two-column shell (clock left, details right).
+
+### Why it changed
+To implement Phase 1’s schedule-first home shell quickly and safely without overbuilding interactions (no drag handles, no cron, no complex animation), while keeping existing data pipelines intact.
+
+### Current product direction
+Home now prioritizes schedule execution flow first (what to do now, what was missed, what is next), with calendar/tasks/courses as supporting pathways.
+
+### Next recommended steps
+1. Add source-aware deep links per scheduled block (task/module/resource destination routing).
+2. Improve clock shell fidelity (optional true arc rendering with tested math) only after UX validation.
+3. Add explicit missed badge/status derivation in server query layer for consistency across surfaces.
+4. Add lightweight user-configurable schedule window for generation (instead of fixed 08:00–22:00).
+
+### Risks / blockers
+- Current reschedule button is intentionally placeholder-level (passes through existing action with unchanged times).
+- Some scheduled block source types still need richer contextual drill-through.
+- Full test suite currently has unrelated pre-existing PDF extraction test failures (`Promise.try` / extraction expectations).
+
+### Verification status
+- `npm run typecheck` passed.
+- `npm run lint` passed.
+- `npm test` ran; 5 pre-existing PDF extraction-related tests failed (details in terminal output).
+
+### Session type
+Implementation session (runtime UI changes, no schema changes).
