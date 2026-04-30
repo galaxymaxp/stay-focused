@@ -4011,7 +4011,7 @@ details[open] > .ui-interactive-summary,
   flex-wrap: wrap;
 }
 .command-center-layout { display: grid; gap: 1rem; }
-.clock-shell { order: 3; }
+.clock-shell { order: 0; }
 .command-center-details { display: grid; gap: 1rem; }
 .compact-clock-ring {
   margin-top: 0.75rem;
@@ -4029,6 +4029,9 @@ details[open] > .ui-interactive-summary,
   font-size: 12px;
 }
 .compact-clock-segment strong { font-weight: 600; }
+.compact-clock-ring-empty {
+  border-style: dashed;
+}
 .schedule-row { border-top: 1px solid var(--border-subtle); padding-top: 0.65rem; margin-top: 0.65rem; }
 .schedule-row h3, .schedule-row p { margin: 0; }
 .schedule-time { font-size: 12px; color: var(--text-muted); margin-bottom: 0.3rem !important; }
@@ -4073,6 +4076,29 @@ details[open] > .ui-interactive-summary,
 }
 .command-subtle-demo-control .ui-section-copy { margin: 0; }
 .command-start-here .schedule-actions { margin-top: 0.2rem; }
+.command-time-setup {
+  min-height: auto;
+  align-content: start;
+}
+.command-time-grid {
+  display: grid;
+  gap: 0.6rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.command-time-field {
+  display: grid;
+  gap: 0.35rem;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.command-time-field input {
+  width: 100%;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  background: var(--surface-soft);
+  color: var(--text-primary);
+  padding: 0.55rem 0.65rem;
+}
 .schedule-context {
   margin-top: 0.25rem !important;
   font-size: 12px;
