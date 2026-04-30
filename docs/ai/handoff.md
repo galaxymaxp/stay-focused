@@ -199,3 +199,45 @@ Add source-aware deep links from each schedule block into its exact task/module/
 
 ### Session type
 Implementation session (runtime UI changes, no schema changes).
+
+---
+
+## Session Update — 2026-04-30 (Dev demo schedule preview for Today)
+
+### What changed
+- Added a temporary **dev-only** demo schedule toggle in `TodayDashboard` that appears as a subtle control (`Preview demo schedule`) when there is no meaningful active plan context.
+- Implemented local in-memory demo blocks (no database writes) to populate Clock Command Center states:
+  - active/current block
+  - next up
+  - coming up items
+  - missed item for Need Attention
+  - completed item
+  - skipped item (supported status)
+- Enriched block rendering for preview realism with optional context + urgency/deadline-basis notes.
+- Refined empty-state behavior:
+  - removed duplicate generate CTA from the empty card
+  - added “Start here” fallback with three secondary placeholder actions
+  - updated passive empty copy to stronger guidance
+  - kept Coming Up guidance aligned with generation flow
+
+### Why it changed
+The command center looked visually polished but functionally dead when no blocks existed. This adds a safe preview path for UI validation and mobile checks without requiring Canvas sync timing or generated persisted blocks.
+
+### Guarding details
+- Demo control is guarded by `process.env.NODE_ENV !== 'production'` and only shown in low-schedule contexts.
+- Demo data is local component state only; it does not write to Supabase.
+- Status/reschedule server actions are disabled while demo mode is active.
+
+### Verification results
+- `npm run typecheck` passed.
+- `npm run lint` passed.
+
+### Risks / blockers
+- Demo toggle is intentionally temporary and local to `TodayDashboard`; future refactors should remove or replace it once command-center confidence testing is complete.
+- Visual verification at exact 390px / 430px widths was not run with browser automation in this session (tooling not invoked).
+
+### Next recommended step
+- Add lightweight Playwright viewport checks (390px and 430px) for both no-schedule and demo-schedule states, then remove the temporary demo control after design sign-off.
+
+### Session type
+Implementation session (runtime UI changes, no schema changes).
