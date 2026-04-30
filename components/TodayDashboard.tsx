@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useRef, useState, useTransition, type CSSProperties } from 'react'
+import { useMemo, useRef, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { generateUserSchedule, rescheduleBlock, updateBlockStatus } from '@/actions/scheduler'
 import type { HomeCourseSnapshot, HomeDueSoonItem } from '@/lib/home-overview'
@@ -16,7 +16,6 @@ type ScheduleBlock = {
   urgencyNote?: string
 }
 
-const MIN_MEANINGFUL_MINUTES = 30
 const SHOW_DEMO_PREVIEW = process.env.NODE_ENV !== 'production' || process.env.NEXT_PUBLIC_ENABLE_DEMO_SCHEDULE === 'true'
 
 export function TodayDashboard({ scheduledBlocks, dueSoon, courseSnapshots }: {
@@ -29,50 +28,46 @@ export function TodayDashboard({ scheduledBlocks, dueSoon, courseSnapshots }: {
   const [useDemoSchedule, setUseDemoSchedule] = useState(false)
   const [availableStart, setAvailableStart] = useState('18:30')
   const [availableEnd, setAvailableEnd] = useState('21:30')
-  const currentBlockRef = useRef<HTMLElement | null>(null)
+  const currentBlockRef = useRef<HTMLDivElement | null>(null)
 
-  const scheduleForDisplay = useMemo(() => {
-    if (!useDemoSchedule) return scheduledBlocks
-    return buildDemoScheduleBlocks()
-  }, [scheduledBlocks, useDemoSchedule])
+  const scheduleForDisplay = useMemo(() => useDemoSchedule ? buildDemoScheduleBlocks() : scheduledBlocks, [scheduledBlocks, useDemoSchedule])
 
-  const {
-    currentBlock,
-    nextBlock,
-    comingUp,
-    needsAttention,
-    completedCount,
-    totalScheduledCount,
-    hasAnySourceData,
-  } = useMemo(() => {
+  const { currentBlock, timelineBlocks, needsAttention, completedCount, totalScheduledCount, hasAnySourceData } = useMemo(() => {
     const now = new Date()
     const sorted = [...scheduleForDisplay].sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())
     const active = sorted.find((block) => block.status === 'opened' || (block.status === 'scheduled' && new Date(block.startAt) <= now && new Date(block.endAt) > now)) ?? null
-    const upcoming = sorted.filter((block) => block.status === 'scheduled' && new Date(block.endAt) > now)
-    const attention = sorted
-      .filter((block) => block.status === 'scheduled' && new Date(block.endAt) <= now)
-      .sort((a, b) => new Date(a.endAt).getTime() - new Date(b.endAt).getTime())
-    const completed = sorted.filter((block) => block.status === 'completed').length
+
+    const missed = sorted.filter((block) => block.status === 'scheduled' && new Date(block.endAt) <= now)
+    const future = sorted.filter((block) => new Date(block.endAt) > now)
+    const completedOrSkipped = sorted.filter((block) => block.status === 'completed' || block.status === 'skipped')
+
+    const timelinePool = active
+      ? [active, ...future.filter((block) => block.id !== active.id)]
+      : [...future]
+    const timeline = [...timelinePool.slice(0, 4), ...completedOrSkipped.slice(0, 2)]
 
     return {
       currentBlock: active,
-      nextBlock: active ? upcoming[0] ?? null : (upcoming[0] ?? null),
-      comingUp: upcoming.filter((block) => block.id !== (active?.id ?? upcoming[0]?.id)).slice(0, 3),
-      needsAttention: attention.slice(0, 4),
-      completedCount: completed,
+      timelineBlocks: timeline,
+      needsAttention: missed.slice(0, 4),
+      completedCount: sorted.filter((block) => block.status === 'completed').length,
       totalScheduledCount: sorted.length,
       hasAnySourceData: dueSoon.length > 0 || courseSnapshots.length > 0,
     }
   }, [scheduleForDisplay, dueSoon.length, courseSnapshots.length])
+
+  const hasSchedule = totalScheduledCount > 0
+  const completedAll = hasSchedule && completedCount === totalScheduledCount
+  const showDemoControl = SHOW_DEMO_PREVIEW
+  const availableMinutes = getAvailableMinutes(availableStart, availableEnd)
+  const availableLabel = availableMinutes > 0 ? formatDuration(availableMinutes) : 'Invalid window'
 
   async function handleGenerate() {
     setIsGenerating(true)
     try {
       await generateUserSchedule(availableStart, availableEnd)
       setUseDemoSchedule(false)
-      requestAnimationFrame(() => {
-        currentBlockRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      })
+      requestAnimationFrame(() => currentBlockRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
     } finally {
       setIsGenerating(false)
     }
@@ -92,270 +87,78 @@ export function TodayDashboard({ scheduledBlocks, dueSoon, courseSnapshots }: {
     })
   }
 
-  const hasSchedule = totalScheduledCount > 0
-  const completedAll = hasSchedule && completedCount === totalScheduledCount
-  const showDemoControl = SHOW_DEMO_PREVIEW && (!hasSchedule || !currentBlock)
-  const availableMinutes = getAvailableMinutes(availableStart, availableEnd)
-  const availableLabel = availableMinutes > 0 ? formatDuration(availableMinutes) : 'Invalid window'
-
   return (
-    <section className="command-center">
+    <section className="today-command-center">
       <header className="command-center-header">
         <div>
           <p className="ui-kicker">Today Plan</p>
           <h1 className="ui-page-title">Clock Command Center</h1>
         </div>
-        {hasSchedule ? (
-          <button type="button" className="ui-button ui-button-primary" onClick={handleGenerate} disabled={isGenerating || isPending}>
-            {isGenerating ? 'Building your plan…' : 'Regenerate Today Plan'}
-          </button>
-        ) : null}
       </header>
 
-      {!hasSchedule && !hasAnySourceData ? (
-        <section className="home-sheet command-empty-state">
-          <h2>No tasks found. Sync with Canvas to start planning.</h2>
-          <div className="schedule-actions">
-            <Link href="/settings" className="ui-button ui-button-secondary">Go to Settings / Sync</Link>
-          </div>
-        </section>
-      ) : null}
+      <section className="planner-shell home-sheet">
+        <div className="planner-clock-column">
+          <PlannerClock availableStart={availableStart} availableEnd={availableEnd} currentBlock={currentBlock} />
 
-      {!hasSchedule ? (
-        <section className="home-sheet command-empty-state command-start-here">
-          <p className="ui-kicker">Start here</p>
-          <h2>No plan yet — pick something to start.</h2>
-          <div className="schedule-actions">
-            <button type="button" className="ui-button ui-button-secondary ui-button-xs">Review latest module</button>
-            <button type="button" className="ui-button ui-button-secondary ui-button-xs">Work on nearest deadline</button>
-            <button type="button" className="ui-button ui-button-secondary ui-button-xs">Continue last session</button>
-          </div>
-        </section>
-      ) : null}
-
-      {hasSchedule && !currentBlock && !nextBlock && !comingUp.length && !needsAttention.length && completedAll ? (
-        <section className="home-sheet command-empty-state command-empty-state-success">
-          <h2>You’ve completed all scheduled work</h2>
-          <div className="schedule-actions">
-            <button type="button" className="ui-button ui-button-primary" onClick={handleGenerate} disabled={isGenerating || isPending}>Regenerate Plan</button>
-            <p className="ui-section-copy">Take a break.</p>
-          </div>
-        </section>
-      ) : null}
-
-      <div className="command-center-layout">
-        <section className="clock-shell home-sheet">
-          <p className="ui-kicker">Clock</p>
-          <CompactClock currentBlock={currentBlock} nextBlock={nextBlock} comingUp={comingUp} />
-        </section>
-
-        <div className="command-center-details">
-          {!hasSchedule ? (
-            <section className="home-sheet command-empty-state command-time-setup">
-              <h2>Set your available time to generate your plan</h2>
-              <p className="ui-section-copy">We’ll fill your time based on deadlines and workload.</p>
-              <div className="command-time-grid">
-                <label className="command-time-field">
-                  <span>Start</span>
-                  <input type="time" value={availableStart} onChange={(event) => setAvailableStart(event.target.value)} />
-                </label>
-                <label className="command-time-field">
-                  <span>End</span>
-                  <input type="time" value={availableEnd} onChange={(event) => setAvailableEnd(event.target.value)} />
-                </label>
-              </div>
-              <p className="ui-section-copy">Available: {availableLabel}</p>
-              <div className="schedule-actions">
-                <button type="button" className="ui-button ui-button-primary" onClick={handleGenerate} disabled={isGenerating || isPending || availableMinutes <= 0}>
-                  {isGenerating ? 'Building your plan…' : 'Generate Today Plan'}
-                </button>
-                {showDemoControl ? (
-                  <button type="button" className="ui-button ui-button-ghost ui-button-xs" onClick={() => setUseDemoSchedule((value) => !value)}>
-                    {useDemoSchedule ? 'Use real schedule' : 'Preview demo schedule'}
-                  </button>
-                ) : null}
-              </div>
-            </section>
-          ) : null}
-
-          <section className="home-sheet command-current-block" ref={currentBlockRef}>
-            <p className="ui-kicker">Current Block</p>
-            {currentBlock ? <BlockCard block={currentBlock} onStatus={updateStatus} onReschedule={placeholderReschedule} isUrgent /> : null}
-            {!currentBlock && nextBlock ? (
-              <>
-                <p className="ui-section-copy">Next up</p>
-                <BlockCard block={nextBlock} onStatus={updateStatus} onReschedule={placeholderReschedule} />
-              </>
-            ) : null}
-            {!currentBlock && !nextBlock && hasSchedule ? (
-              <p className="ui-section-copy">Not enough time to create a meaningful plan. Try at least 30–45 minutes.</p>
-            ) : null}
-            {!currentBlock && !nextBlock && !hasSchedule ? (
-              <p className="ui-section-copy">No current block yet. Set your available time to build today’s plan.</p>
-            ) : null}
+          <section className="planner-controls">
+            <div className="command-time-grid">
+              <label className="command-time-field"><span>Start</span><input type="time" value={availableStart} onChange={(event) => setAvailableStart(event.target.value)} /></label>
+              <label className="command-time-field"><span>End</span><input type="time" value={availableEnd} onChange={(event) => setAvailableEnd(event.target.value)} /></label>
+            </div>
+            <p className="ui-section-copy">Available duration: {availableLabel}</p>
+            <div className="schedule-actions">
+              <button type="button" className="ui-button ui-button-secondary" onClick={() => currentBlockRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>Adjust time</button>
+              <button type="button" className="ui-button ui-button-primary" onClick={handleGenerate} disabled={isGenerating || isPending || availableMinutes <= 0}>
+                {isGenerating ? 'Building your plan…' : hasSchedule ? 'Regenerate Today Plan' : 'Generate Today Plan'}
+              </button>
+              {showDemoControl ? <button type="button" className="ui-button ui-button-ghost ui-button-xs" onClick={() => setUseDemoSchedule((v) => !v)}>{useDemoSchedule ? 'Use real schedule' : 'Preview demo schedule'}</button> : null}
+            </div>
+            {SHOW_DEMO_PREVIEW ? <p className="ui-section-copy">For Vercel previews, set <code>NEXT_PUBLIC_ENABLE_DEMO_SCHEDULE=true</code> to force this demo control.</p> : null}
           </section>
+        </div>
 
-          {needsAttention.length > 0 ? (
-            <section className="home-sheet">
-              <p className="ui-kicker">Need Attention</p>
-              <p className="ui-section-copy">These were missed and need your decision.</p>
-              {needsAttention.map((block) => <BlockRow key={block.id} block={block} onStatus={updateStatus} />)}
+        <div className="planner-timeline-column" ref={currentBlockRef}>
+          {timelineBlocks.length > 0 ? (
+            <section className="planner-timeline">
+              {timelineBlocks.map((block) => <TimelineRow key={block.id} block={block} nowId={currentBlock?.id ?? null} onStatus={updateStatus} onReschedule={placeholderReschedule} />)}
             </section>
           ) : (
-            <section className="home-sheet">
-              <p className="ui-kicker">Need Attention</p>
-              <p className="ui-section-copy">Nothing needs attention right now.</p>
+            <section className="planner-empty-state">
+              <h2>No blocks yet</h2>
+              <p className="ui-section-copy">Set your time, then generate your plan.</p>
             </section>
           )}
 
-          {comingUp.length > 0 ? (
-            <section className="home-sheet">
-              <p className="ui-kicker">Coming Up</p>
-              {comingUp.map((block) => <BlockRow key={block.id} block={block} onStatus={updateStatus} compact />)}
-            </section>
-          ) : hasSchedule ? (
-            <section className="home-sheet">
-              <p className="ui-kicker">Coming Up</p>
-              <p className="ui-section-copy">Generate your plan to see upcoming blocks.</p>
-            </section>
-          ) : null}
-
-          <section className="home-sheet">
-            <p className="ui-kicker">Supporting links</p>
-            <div className="supporting-links">
-              <Link href="/tasks">Tasks</Link>
-              <Link href="/calendar">Calendar</Link>
-              <Link href="/courses">Courses</Link>
-              {dueSoon[0] ? <Link href={dueSoon[0].href}>Most urgent due item</Link> : null}
-              {courseSnapshots[0] ? <Link href={courseSnapshots[0].href}>Top course workspace</Link> : null}
-            </div>
+          <section className="home-sheet planner-attention-panel">
+            <p className="ui-kicker">Need Attention</p>
+            {needsAttention.length > 0 ? needsAttention.map((block) => <TimelineRow key={block.id} block={block} nowId={null} onStatus={updateStatus} compact />) : <p className="ui-section-copy">Nothing needs attention right now.</p>}
           </section>
         </div>
-      </div>
+      </section>
+
+      {!hasAnySourceData ? <section className="home-sheet command-empty-state"><h2>No tasks found. Sync with Canvas to start planning.</h2><div className="schedule-actions"><Link href="/settings" className="ui-button ui-button-secondary">Go to Settings / Sync</Link></div></section> : null}
+
+      {!hasSchedule ? <section className="home-sheet command-empty-state command-start-here"><p className="ui-kicker">Start here</p><h2>No plan yet — pick something to start.</h2><div className="schedule-actions"><button type="button" className="ui-button ui-button-secondary ui-button-xs">Review latest module</button><button type="button" className="ui-button ui-button-secondary ui-button-xs">Work on nearest deadline</button><button type="button" className="ui-button ui-button-secondary ui-button-xs">Continue last session</button></div></section> : null}
+
+      {hasSchedule && completedAll ? <section className="home-sheet command-empty-state command-empty-state-success"><h2>You’ve completed all scheduled work</h2><p className="ui-section-copy">Take a break, then regenerate when you’re ready.</p></section> : null}
     </section>
   )
 }
 
-function buildDemoScheduleBlocks(): ScheduleBlock[] {
-  const now = new Date()
-  const block = (offsetMinutes: number, durationMinutes: number) => {
-    const start = new Date(now.getTime() + offsetMinutes * 60000)
-    const end = new Date(start.getTime() + durationMinutes * 60000)
-    return { startAt: start.toISOString(), endAt: end.toISOString() }
-  }
-
-  const missed = block(-180, 45)
-  const completed = block(-90, 35)
-  const current = block(-10, 55)
-  const next = block(55, 45)
-  const upcomingOne = block(110, 40)
-  const upcomingTwo = block(160, 50)
-
-  return [
-    { id: 'demo-missed', title: 'Catch up on missed reviewer', context: 'English 102', urgencyNote: 'Overdue by 2h · professor follow-up tomorrow', ...missed, status: 'scheduled', sourceTable: 'task_items' },
-    { id: 'demo-completed', title: 'Read Canvas announcement', context: 'Student Success Seminar', urgencyNote: 'Done this morning', ...completed, status: 'completed', sourceTable: 'module_resources' },
-    { id: 'demo-current', title: 'Review Web App Development module', context: 'CIS 310', urgencyNote: 'Due tonight 11:59 PM', ...current, status: 'opened', sourceTable: 'modules' },
-    { id: 'demo-next', title: 'Draft activity answer', context: 'CIS 310', urgencyNote: 'Deadline basis: due in 5h', ...next, status: 'scheduled', sourceTable: 'task_items' },
-    { id: 'demo-upcoming-one', title: 'Quiz prep: JavaScript basics', context: 'CIS 302', urgencyNote: 'Prep target: quiz tomorrow', ...upcomingOne, status: 'scheduled', sourceTable: 'task_items' },
-    { id: 'demo-upcoming-two', title: 'Finish database assignment', context: 'DBMS 201', urgencyNote: 'Est. 50 min from prior workload', ...upcomingTwo, status: 'skipped', sourceTable: 'task_items' },
-  ]
+function PlannerClock({ availableStart, availableEnd, currentBlock }: { availableStart: string, availableEnd: string, currentBlock: ScheduleBlock | null }) {
+  return <div className="planner-clock-face" role="img" aria-label="Planner clock visual"><span className="clock-marker m12">12</span><span className="clock-marker m3">3</span><span className="clock-marker m6">6</span><span className="clock-marker m9">9</span><div className="clock-core" /><div className="clock-free-window">Free: {formatClockTime(availableStart)} – {formatClockTime(availableEnd)}</div>{currentBlock ? <div className="clock-now-chip">NOW · {formatTimeRange(currentBlock.startAt, currentBlock.endAt)}</div> : null}</div>
 }
 
-function CompactClock({ currentBlock, nextBlock, comingUp }: { currentBlock: ScheduleBlock | null; nextBlock: ScheduleBlock | null; comingUp: ScheduleBlock[] }) {
-  const arcItems = [currentBlock, nextBlock, ...comingUp].filter(Boolean).slice(0, 4) as ScheduleBlock[]
-  if (!arcItems.length) {
-    return (
-      <div className="compact-clock-ring compact-clock-ring-empty">
-        <p className="ui-section-copy compact-clock-empty">Available time</p>
-        <p className="ui-section-copy compact-clock-empty">No blocks yet</p>
-        <p className="ui-section-copy compact-clock-empty">Set your time, then generate</p>
-      </div>
-    )
-  }
-
-  return (
-    <div className="compact-clock-ring" role="img" aria-label="Schedule ring preview">
-      {arcItems.map((block, index) => (
-        <div key={block.id} className="compact-clock-segment" style={{ '--segment-order': index } as CSSProperties}>
-          <span>{formatTimeRange(block.startAt, block.endAt)}</span>
-          <strong>{block.title}</strong>
-        </div>
-      ))}
-    </div>
-  )
+function TimelineRow({ block, nowId, onStatus, onReschedule, compact = false }: { block: ScheduleBlock; nowId: string | null; onStatus: (id: string, status: 'opened' | 'completed' | 'skipped') => void; onReschedule?: (id: string, startAt: string, endAt: string) => void; compact?: boolean }) {
+  const isNow = nowId === block.id
+  const stateClass = block.status === 'completed' ? ' is-completed' : block.status === 'skipped' ? ' is-skipped' : (!isNow && block.status === 'scheduled' && new Date(block.endAt) <= new Date()) ? ' is-missed' : ''
+  return <article className={`planner-timeline-row${compact ? ' compact' : ''}`}><p className="planner-time-label">{formatTimeRange(block.startAt, block.endAt)}</p><div className={`planner-block-card${isNow ? ' is-now' : ''}${stateClass}`}><div className="planner-block-header"><h3>{block.title}</h3>{isNow ? <span className="now-pill">NOW</span> : null}</div>{block.context ? <p className="schedule-context">{block.context}</p> : null}{block.urgencyNote ? <p className="schedule-urgency">{block.urgencyNote}</p> : null}<p className="schedule-meta-note">{getConfidenceLabel(block.sourceTable)}</p><div className="schedule-actions"><button type="button" className="ui-button ui-button-secondary ui-button-xs" onClick={() => onStatus(block.id, 'opened')}>Start</button><button type="button" className="ui-button ui-button-secondary ui-button-xs" onClick={() => onStatus(block.id, 'completed')}>Complete</button><button type="button" className="ui-button ui-button-secondary ui-button-xs" onClick={() => onStatus(block.id, 'skipped')}>Skip</button>{onReschedule ? <button type="button" className="ui-button ui-button-ghost ui-button-xs" onClick={() => onReschedule(block.id, block.startAt, block.endAt)}>Later</button> : null}</div></div></article>
 }
 
-function getAvailableMinutes(start: string, end: string) {
-  const [startHour, startMinute] = start.split(':').map(Number)
-  const [endHour, endMinute] = end.split(':').map(Number)
-  const startTotal = startHour * 60 + startMinute
-  const endTotal = endHour * 60 + endMinute
-  return endTotal - startTotal
-}
+function buildDemoScheduleBlocks(): ScheduleBlock[] { const now = new Date(); const block = (o:number,d:number)=>{const s=new Date(now.getTime()+o*60000);const e=new Date(s.getTime()+d*60000);return {startAt:s.toISOString(),endAt:e.toISOString()}}; const missed=block(-180,45), completed=block(-90,35), current=block(-10,55), next=block(55,45), upcomingOne=block(110,40), upcomingTwo=block(160,50); return [{ id:'demo-missed', title:'Catch up on missed reviewer', context:'English 102', urgencyNote:'Overdue by 2h · professor follow-up tomorrow', ...missed, status:'scheduled', sourceTable:'task_items' },{ id:'demo-completed', title:'Read Canvas announcement', context:'Student Success Seminar', urgencyNote:'Done this morning', ...completed, status:'completed', sourceTable:'module_resources' },{ id:'demo-current', title:'Review Web App Development module', context:'CIS 310', urgencyNote:'Due tonight 11:59 PM', ...current, status:'opened', sourceTable:'modules' },{ id:'demo-next', title:'Draft activity answer', context:'CIS 310', urgencyNote:'Deadline basis: due in 5h', ...next, status:'scheduled', sourceTable:'task_items' },{ id:'demo-upcoming-one', title:'Quiz prep: JavaScript basics', context:'CIS 302', urgencyNote:'Prep target: quiz tomorrow', ...upcomingOne, status:'scheduled', sourceTable:'task_items' },{ id:'demo-upcoming-two', title:'Finish database assignment', context:'DBMS 201', urgencyNote:'Est. 50 min from prior workload', ...upcomingTwo, status:'skipped', sourceTable:'task_items' }] }
 
-function formatDuration(minutes: number) {
-  const hours = Math.floor(minutes / 60)
-  const remainder = minutes % 60
-  if (!hours) return `${remainder}m`
-  if (!remainder) return `${hours}h`
-  return `${hours}h ${remainder}m`
-}
-
-function BlockCard({ block, onStatus, onReschedule, isUrgent = false }: { block: ScheduleBlock; onStatus: (id: string, status: 'opened' | 'completed' | 'skipped') => void; onReschedule: (id: string, startAt: string, endAt: string) => void; isUrgent?: boolean }) {
-  return (
-    <article className={`schedule-row${isUrgent ? ' schedule-row-urgent' : ''}`}>
-      <p className="schedule-time">{formatTimeRange(block.startAt, block.endAt)} · {getRemainingLabel(block.endAt)}</p>
-      <h3>{block.title}</h3>
-      {block.context ? <p className="schedule-context">{block.context}</p> : null}
-      {block.urgencyNote ? <p className="schedule-urgency">{block.urgencyNote}</p> : null}
-      <p className="schedule-meta-note">{getConfidenceLabel(block.sourceTable)}</p>
-      <div className="schedule-actions">
-        <button type="button" className="ui-button ui-button-secondary ui-button-xs" onClick={() => onStatus(block.id, 'opened')}>Start block</button>
-        <button type="button" className="ui-button ui-button-secondary ui-button-xs" onClick={() => onStatus(block.id, 'completed')}>Complete block</button>
-        <button type="button" className="ui-button ui-button-secondary ui-button-xs" onClick={() => onStatus(block.id, 'skipped')}>Skip block</button>
-        <button type="button" className="ui-button ui-button-ghost ui-button-xs" onClick={() => onReschedule(block.id, block.startAt, block.endAt)}>Reschedule</button>
-      </div>
-    </article>
-  )
-}
-
-function BlockRow({ block, onStatus, compact = false }: { block: ScheduleBlock; onStatus: (id: string, status: 'opened' | 'completed' | 'skipped') => void; compact?: boolean }) {
-  return (
-    <article className={`schedule-row schedule-row-compact${compact ? ' schedule-row-toned' : ''}`}>
-      <p className="schedule-time">{formatTimeRange(block.startAt, block.endAt)}</p>
-      <p className="schedule-title-inline"><span className="priority-dot" aria-hidden="true" />{block.title}</p>
-      {block.context ? <p className="schedule-context">{block.context}</p> : null}
-      {block.urgencyNote ? <p className="schedule-urgency">{block.urgencyNote}</p> : null}
-      <p className="schedule-meta-note">{getConfidenceLabel(block.sourceTable)}</p>
-      <div className="schedule-actions">
-        <button type="button" className="ui-button ui-button-secondary ui-button-xs" onClick={() => onStatus(block.id, 'opened')}>Start</button>
-        <button type="button" className="ui-button ui-button-secondary ui-button-xs" onClick={() => onStatus(block.id, 'completed')}>Complete</button>
-        <button type="button" className="ui-button ui-button-secondary ui-button-xs" onClick={() => onStatus(block.id, 'skipped')}>Skip</button>
-      </div>
-    </article>
-  )
-}
-
-function getConfidenceLabel(source: ScheduleBlock['sourceTable']) {
-  if (source === 'module_resources') return 'Estimated from content length'
-  if (source === 'modules') return 'Based on deadline urgency'
-  return 'Estimated from workload and urgency'
-}
-
-function getRemainingLabel(endAt: string) {
-  const end = new Date(endAt)
-  const now = new Date()
-  const remainingMinutes = Math.max(0, Math.round((end.getTime() - now.getTime()) / 60000))
-  if (remainingMinutes <= 0) return 'Ends now'
-  if (remainingMinutes < MIN_MEANINGFUL_MINUTES) return `${remainingMinutes} min left`
-  const hours = Math.floor(remainingMinutes / 60)
-  const minutes = remainingMinutes % 60
-  if (!hours) return `${minutes} min left`
-  return `${hours}h ${minutes}m left`
-}
-
-function formatTimeRange(startAt: string, endAt: string) {
-  const start = new Date(startAt)
-  const end = new Date(endAt)
-  return `${start.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} – ${end.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
-}
+const getAvailableMinutes = (start: string, end: string) => { const [sh, sm] = start.split(':').map(Number); const [eh, em] = end.split(':').map(Number); return (eh * 60 + em) - (sh * 60 + sm) }
+const formatDuration = (minutes: number) => { const h=Math.floor(minutes/60), r=minutes%60; if(!h) return `${r}m`; if(!r) return `${h}h`; return `${h}h ${r}m` }
+function getConfidenceLabel(source: ScheduleBlock['sourceTable']) { if (source === 'module_resources') return 'Estimated from content length'; if (source === 'modules') return 'Based on deadline urgency'; return 'Estimated from workload and urgency' }
+function formatTimeRange(startAt: string, endAt: string) { const start = new Date(startAt); const end = new Date(endAt); return `${start.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} – ${end.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` }
+function formatClockTime(time: string) { const [h,m]=time.split(':').map(Number); const date=new Date(); date.setHours(h,m,0,0); return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) }
