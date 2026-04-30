@@ -154,3 +154,48 @@ Home now prioritizes schedule execution flow first (what to do now, what was mis
 
 ### Session type
 Implementation session (runtime UI changes, no schema changes).
+
+---
+
+## Session Update — 2026-04-30 (Clock Command Center polish + empty states)
+
+### What changed
+- Added critical schedule empty states in `TodayDashboard`:
+  - no schedule generated yet
+  - no Canvas/task source data available
+  - short-time/no-meaningful-plan guidance
+  - all scheduled blocks completed success state
+- Added trust microcopy layer on block rows/cards with small muted estimate-origin labels.
+- Improved current-block clarity:
+  - explicit “Current Block” vs “Next up” labeling
+  - remaining-time indicator
+  - urgency emphasis styling on active block
+- Improved Need Attention and Coming Up usability:
+  - missed blocks sorted by urgency/time
+  - “missed and need your decision” framing copy
+  - Coming Up capped to 3 with subtle priority dot/tone
+- Improved generation UX:
+  - generation button disables while running
+  - loading state copy now “Building your plan…”
+  - post-generation scroll to current block section
+- Added CSS refinements to reduce layout shift, improve mobile spacing, and keep visual hierarchy clear between high-priority and supporting cards.
+
+### Why it changed
+To improve clarity, trust, and execution confidence in the Clock Command Center without introducing major feature scope (no drag clock, no cron, no route changes).
+
+### Current product direction
+Continue iterating the schedule-first command center so students can quickly decide and act on the next best block with minimal overwhelm.
+
+### Next recommended step
+Add source-aware deep links from each schedule block into its exact task/module/resource destination while keeping command-center visual hierarchy stable.
+
+### Risks / blockers
+- “Free-time too short” currently appears when a schedule exists but no active/next actionable block remains; true free-window inference still depends on future schedule-window settings.
+- Post-generation scroll depends on client-side state update timing and may feel subtle when schedule is unchanged.
+
+### Verification status
+- `npm run typecheck` passed.
+- `npm run lint` passed.
+
+### Session type
+Implementation session (runtime UI changes, no schema changes).
