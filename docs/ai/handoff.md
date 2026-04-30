@@ -60,3 +60,55 @@ Additional direction:
 ## Maintenance Rule
 
 After every coding session, update this file before final handoff so current direction, changes, and risks remain explicit.
+
+---
+
+## Session Update — 2026-04-30 (Phase 1 scheduler foundation)
+
+### What changed
+- Added Supabase migration for `scheduled_blocks` plus schedule/scoring fields across `tasks`, `task_items`, `deadlines`, `modules`, `module_resources`, and `learning_items`.
+- Added scheduler foundation modules:
+  - `lib/scheduler/types.ts`
+  - `lib/scheduler/priority.ts`
+  - `lib/scheduler/estimation.ts`
+  - `lib/scheduler/algorithm.ts`
+- Added scheduler server actions:
+  - `generateUserSchedule(freeTimeStart, freeTimeEnd)`
+  - `updateBlockStatus(blockId, status)`
+  - `rescheduleBlock(blockId, start, end)`
+- Added scheduler-focused tests for scoring, estimation, generation, status transitions, preservation behavior, and metadata-only confidence behavior.
+
+### Why it changed
+To implement the Phase 1 backend foundation for schedule-first planning while preserving existing Today UI and keeping block state user-controlled.
+
+### Scoring formula summary
+- `schedule_priority_score = importance*0.35 + urgency*0.45 + difficulty*0.10 + freshness*0.10`.
+- Urgency strongly boosts overdue and near-due work.
+- Announcements/references are intentionally down-weighted versus deliverables.
+
+### Estimation rules summary
+- Reuse existing estimates when present (high confidence).
+- Overdue work gets catch-up estimate.
+- Quizzes/exams due soon get larger prep allocation.
+- Coding/report style tasks get larger workload baseline.
+- Long readable resources estimate from extracted text length.
+- Metadata-only/unreadable resources get low-confidence short estimates.
+- Modules with no due date get a moderate default review block.
+
+### Scheduler limitations (current)
+- Regeneration only replaces future `scheduled` blocks (`start_at >= now`); opened/completed/skipped and past scheduled blocks are preserved.
+- No auto-skip behavior.
+- Missed status is lazy/on-read logic (utility-based), no cron required.
+- No drag clock UI yet and no full Today UI replacement.
+- Scoring failures are isolated from Canvas sync/page load path (scheduler logs/returns safely on fetch issues).
+
+### Next recommended step
+Build the Clock Command Center UI shell on top of persisted `scheduled_blocks` (still without draggable interactions).
+
+### Risks / blockers
+- Current schedule source set is intentionally narrow (task items/modules/resources) to keep rollout low-risk.
+- No background missed-state sweep (by design due to Vercel Hobby cron constraints).
+- Tuning weights may need calibration after real user data.
+
+### Session type
+Implementation session (runtime + schema changes).
