@@ -3999,143 +3999,68 @@ details[open] > .ui-interactive-summary,
   }
 }
 
-.command-center {
+
+.today-command-center {
   display: grid;
   gap: 1rem;
+  padding-bottom: calc(var(--app-mobile-nav-clearance) + 2.5rem);
 }
-.command-center-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-}
-.command-center-layout { display: grid; gap: 1rem; }
-.clock-shell { order: 0; }
-.command-center-details { display: grid; gap: 1rem; }
-.compact-clock-ring {
-  margin-top: 0.75rem;
+.command-center-header { display: flex; align-items: center; justify-content: space-between; gap: .75rem; }
+
+.planner-shell { display: grid; gap: 1rem; }
+.planner-clock-column { display: grid; gap: .75rem; align-content: start; }
+.planner-timeline-column { display: grid; gap: .75rem; }
+
+.planner-clock-face {
   border: 1px solid var(--border-subtle);
-  border-radius: 999px;
-  padding: 1rem;
+  border-radius: 18px;
+  min-height: 220px;
+  position: relative;
+  background: radial-gradient(circle at center, color-mix(in srgb, var(--surface-focus) 88%, var(--accent) 12%) 0%, var(--surface-soft) 68%);
   display: grid;
-  gap: 0.45rem;
-  background: var(--surface-soft);
+  place-items: center;
 }
-.compact-clock-segment {
-  display: grid;
-  grid-template-columns: 6.75rem 1fr;
-  gap: 0.5rem;
-  font-size: 12px;
-}
-.compact-clock-segment strong { font-weight: 600; }
-.compact-clock-ring-empty {
-  border-style: dashed;
-}
-.schedule-row { border-top: 1px solid var(--border-subtle); padding-top: 0.65rem; margin-top: 0.65rem; }
-.schedule-row h3, .schedule-row p { margin: 0; }
-.schedule-time { font-size: 12px; color: var(--text-muted); margin-bottom: 0.3rem !important; }
-.schedule-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.6rem; }
-.supporting-links { display: grid; gap: 0.45rem; margin-top: 0.6rem; }
-.supporting-links a { font-size: 14px; color: var(--text-secondary); text-decoration: none; }
-.supporting-links a:hover { color: var(--text-primary); }
+.clock-marker { position: absolute; font-size: 12px; color: var(--text-muted); font-weight: 600; }
+.m12 { top: 10px; }
+.m3 { right: 14px; }
+.m6 { bottom: 10px; }
+.m9 { left: 14px; }
+.clock-core { width: 12px; height: 12px; border-radius: 999px; background: var(--accent); box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 30%, transparent); }
+.clock-free-window { position: absolute; bottom: 1rem; font-size: 12px; color: var(--text-secondary); }
+.clock-now-chip { position: absolute; top: 1rem; left: 1rem; font-size: 11px; padding: .2rem .45rem; border-radius: 999px; background: color-mix(in srgb, var(--accent) 24%, var(--surface-elevated)); }
+
+.planner-controls { display: grid; gap: .65rem; }
+.command-time-grid { display: grid; gap: .6rem; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.command-time-field { display: grid; gap: .35rem; font-size: 12px; color: var(--text-muted); }
+.command-time-field input { width: 100%; border: 1px solid var(--border-subtle); border-radius: 10px; background: var(--surface-soft); color: var(--text-primary); padding: .55rem .65rem; }
+
+.planner-timeline { display: grid; gap: .75rem; }
+.planner-timeline-row { display: grid; grid-template-columns: 84px minmax(0,1fr); gap: .65rem; align-items: start; }
+.planner-time-label { font-size: 12px; color: var(--text-muted); margin: .4rem 0 0 !important; }
+.planner-block-card { border: 1px solid var(--border-subtle); border-radius: 12px; padding: .7rem; background: var(--surface-elevated); }
+.planner-block-card.is-now { border-color: color-mix(in srgb, var(--accent-border) 48%, var(--border-subtle)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-shadow) 45%, transparent); }
+.planner-block-card.is-missed { border-color: color-mix(in srgb, var(--red) 35%, var(--border-subtle)); }
+.planner-block-card.is-completed { border-color: color-mix(in srgb, var(--green) 35%, var(--border-subtle)); opacity: .92; }
+.planner-block-card.is-skipped { border-style: dashed; opacity: .9; }
+.planner-block-header { display: flex; justify-content: space-between; gap: .5rem; }
+.planner-block-header h3 { margin: 0; font-size: .98rem; }
+.now-pill { font-size: 11px; background: color-mix(in srgb, var(--accent) 26%, var(--surface-focus)); border-radius: 999px; padding: .2rem .45rem; }
+.planner-empty-state { border: 1px dashed var(--border-subtle); border-radius: 12px; padding: 1rem; }
+.planner-empty-state h2 { margin: 0; font-size: 1.05rem; }
+.planner-attention-panel { border-style: solid; }
+
+.schedule-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.2rem; }
+.schedule-context { margin-top: 0.25rem !important; font-size: 12px; color: var(--text-secondary); }
+.schedule-urgency { margin-top: 0.2rem !important; font-size: 11px; color: color-mix(in srgb, var(--amber) 62%, var(--text-secondary) 38%); }
+.schedule-meta-note { margin: 0.3rem 0 0; font-size: 11px; color: var(--text-muted); }
+.command-empty-state { min-height: 9rem; display: grid; align-content: center; gap: 0.55rem; }
+.command-empty-state h2 { margin: 0; font-size: 1.1rem; }
+.command-empty-state-success { border-color: color-mix(in srgb, var(--green) 35%, var(--border-subtle)); background: color-mix(in srgb, var(--green-light) 32%, var(--surface-elevated)); }
 
 @media (min-width: 960px) {
-  .command-center-layout {
-    grid-template-columns: minmax(280px, 380px) minmax(0, 1fr);
-    align-items: start;
-  }
-  .clock-shell { order: 0; position: sticky; top: calc(var(--app-safe-top) + 5rem); }
+  .planner-shell { grid-template-columns: minmax(300px, 400px) minmax(0,1fr); align-items: start; }
+  .planner-clock-column { position: sticky; top: calc(var(--app-safe-top) + 5rem); }
 }
-
-.command-empty-state {
-  min-height: 11rem;
-  display: grid;
-  align-content: center;
-  gap: 0.55rem;
-}
-.command-empty-state h2 {
-  margin: 0;
-  font-size: 1.1rem;
-}
-.command-empty-state-success {
-  border-color: color-mix(in srgb, var(--green) 35%, var(--border-subtle));
-  background: color-mix(in srgb, var(--green-light) 32%, var(--surface-elevated));
-}
-.command-current-block {
-  border-color: color-mix(in srgb, var(--accent-border) 26%, var(--border-subtle));
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-shadow) 34%, transparent);
-}
-.compact-clock-empty { margin-top: 0.75rem; }
-
-.command-subtle-demo-control {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.6rem;
-}
-.command-subtle-demo-control .ui-section-copy { margin: 0; }
-.command-start-here .schedule-actions { margin-top: 0.2rem; }
-.command-time-setup {
-  min-height: auto;
-  align-content: start;
-}
-.command-time-grid {
-  display: grid;
-  gap: 0.6rem;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-.command-time-field {
-  display: grid;
-  gap: 0.35rem;
-  font-size: 12px;
-  color: var(--text-muted);
-}
-.command-time-field input {
-  width: 100%;
-  border: 1px solid var(--border-subtle);
-  border-radius: 10px;
-  background: var(--surface-soft);
-  color: var(--text-primary);
-  padding: 0.55rem 0.65rem;
-}
-.schedule-context {
-  margin-top: 0.25rem !important;
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-.schedule-urgency {
-  margin-top: 0.2rem !important;
-  font-size: 11px;
-  color: color-mix(in srgb, var(--amber) 62%, var(--text-secondary) 38%);
-}
-.schedule-row-urgent {
-  border-left: 3px solid color-mix(in srgb, var(--accent) 58%, transparent);
-  padding-left: 0.75rem;
-}
-.schedule-row-toned {
-  background: color-mix(in srgb, var(--surface-soft) 50%, transparent);
-  border-radius: 10px;
-  padding: 0.6rem;
-}
-.schedule-title-inline {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-}
-.priority-dot {
-  width: 0.45rem;
-  height: 0.45rem;
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--accent) 55%, var(--text-muted) 45%);
-  display: inline-block;
-}
-.schedule-meta-note {
-  margin: 0.3rem 0 0;
-  font-size: 11px;
-  color: var(--text-muted);
-}
-
 @media (max-width: 640px) {
   .command-center,
   .command-center-layout,
