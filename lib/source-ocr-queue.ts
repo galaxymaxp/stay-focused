@@ -3,6 +3,7 @@ import type { QueuedJob } from '@/lib/queue'
 export const SOURCE_OCR_JOB_TYPE = 'source_ocr' as const
 export const SOURCE_OCR_RECENT_FAILURE_WINDOW_MS = 10 * 60 * 1000
 export const SOURCE_OCR_STALE_RUNNING_THRESHOLD_MS = 15 * 60 * 1000
+export const CANVAS_SYNC_STALE_RUNNING_THRESHOLD_MS = 20 * 60 * 1000
 
 export function buildSourceOcrQueueTitle(resourceTitle: string) {
   return `Preparing scanned PDF: ${resourceTitle.trim() || 'Study source'}`
@@ -92,6 +93,24 @@ export function findStaleRunningSourceOcrJobs(
   thresholdMs = SOURCE_OCR_STALE_RUNNING_THRESHOLD_MS,
 ) {
   return jobs.filter((job) => isStaleRunningSourceOcrJob(job, now, thresholdMs))
+}
+
+export function isStaleRunningCanvasSyncJob(
+  job: Pick<QueuedJob, 'type' | 'status' | 'updatedAt'>,
+  now = new Date(),
+  thresholdMs = CANVAS_SYNC_STALE_RUNNING_THRESHOLD_MS,
+) {
+  if (job.type !== 'canvas_sync' || job.status !== 'running') return false
+  const updatedAt = new Date(job.updatedAt).getTime()
+  return Number.isFinite(updatedAt) && now.getTime() - updatedAt > thresholdMs
+}
+
+export function findStaleRunningCanvasSyncJobs(
+  jobs: QueuedJob[],
+  now = new Date(),
+  thresholdMs = CANVAS_SYNC_STALE_RUNNING_THRESHOLD_MS,
+) {
+  return jobs.filter((job) => isStaleRunningCanvasSyncJob(job, now, thresholdMs))
 }
 
 function getString(source: Record<string, unknown> | null, key: string) {

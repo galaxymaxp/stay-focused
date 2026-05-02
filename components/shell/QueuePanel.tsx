@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { ListTodo, X, CheckCircle, XCircle, Loader2, Clock, RefreshCw, AlertCircle, ExternalLink, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import type { QueuedJob, QueuedJobStatus } from '@/lib/queue'
+import { groupQueueJobsForPanel } from '@/lib/queue-view'
 import { buildSourceOcrStatusMessage, SOURCE_OCR_JOB_TYPE } from '@/lib/source-ocr-queue'
 
 const PILL_BASE = 'queue-panel-pill relative isolate inline-flex items-center gap-1.5 h-8 rounded-full px-3 overflow-hidden transition-colors hover:opacity-90'
@@ -288,9 +289,7 @@ export function QueuePanel() {
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
-  const activeJobs = jobs.filter((j) => j.status === 'pending' || j.status === 'running')
-  const failedJobs = jobs.filter((j) => j.status === 'failed')
-  const completedJobs = jobs.filter((j) => j.status === 'completed').slice(0, 5)
+  const { activeJobs, failedJobs, completedJobs } = groupQueueJobsForPanel(jobs)
   const runningJobs = jobs.filter((j) => j.status === 'running')
   const activeCount = activeJobs.length
   const runningCount = runningJobs.length

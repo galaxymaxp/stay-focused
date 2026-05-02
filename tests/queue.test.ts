@@ -1,16 +1,21 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  CANVAS_SYNC_STALE_RUNNING_THRESHOLD_MS,
   buildSourceOcrQueueTitle,
   buildSourceOcrStatusMessage,
   calculateSourceOcrProgress,
   countActiveSourceOcrJobs,
   countRunningSourceOcrJobs,
+  findStaleRunningCanvasSyncJobs,
   findActiveSourceOcrJob,
   findRecentFailedSourceOcrJob,
   findStaleRunningSourceOcrJobs,
+  isStaleRunningCanvasSyncJob,
   isStaleRunningSourceOcrJob,
 } from '../lib/source-ocr-queue'
+import { groupQueueJobsForPanel } from '../lib/queue-view'
+import { buildCanvasSyncCompletionResult } from '../lib/canvas-sync-queue'
 import type { QueuedJob } from '../lib/queue'
 
 test('source OCR queue helpers format labels and page progress', () => {
@@ -111,6 +116,68 @@ test('findStaleRunningSourceOcrJobs returns only stale running ocr jobs', () => 
   assert.equal(stale.length, 2)
   assert.ok(stale.some((j) => j.id === 'ocr-stale-1'))
   assert.ok(stale.some((j) => j.id === 'ocr-stale-2'))
+})
+
+test('stale running canvas_sync job is detected after safe threshold', () => {
+  const staleJob = createJob({
+    id: 'canvas-stale',
+    type: 'canvas_sync',
+    status: 'running',
+    resourceId: 'canvas',
+    updatedAt: '2026-05-02T09:00:00.000Z',
+  })
+
+  assert.equal(isStaleRunningCanvasSyncJob(staleJob, new Date('2026-05-02T09:21:00.000Z')), true)
+  assert.equal(isStaleRunningCanvasSyncJob(staleJob, new Date('2026-05-02T09:19:00.000Z')), false)
+  assert.equal(CANVAS_SYNC_STALE_RUNNING_THRESHOLD_MS, 20 * 60 * 1000)
+})
+
+test('findStaleRunningCanvasSyncJobs ignores OCR and completed sync jobs', () => {
+  const farFuture = new Date('2026-05-02T11:00:00.000Z')
+  const jobs = [
+    createJob({ id: 'canvas-stale', type: 'canvas_sync', status: 'running', resourceId: 'canvas', updatedAt: '2026-05-02T09:00:00.000Z' }),
+    createJob({ id: 'canvas-done', type: 'canvas_sync', status: 'completed', resourceId: 'canvas', updatedAt: '2026-05-02T09:00:00.000Z' }),
+    createJob({ id: 'ocr-stale', type: 'source_ocr', status: 'running', resourceId: 'r1', updatedAt: '2026-05-02T09:00:00.000Z' }),
+  ]
+
+  const stale = findStaleRunningCanvasSyncJobs(jobs, farFuture)
+  assert.equal(stale.length, 1)
+  assert.equal(stale[0].id, 'canvas-stale')
+})
+
+test('queue panel groups completed canvas_sync separately from active source_ocr', () => {
+  const canvasCompleted = createJob({ id: 'canvas-done', type: 'canvas_sync', status: 'completed', resourceId: 'canvas' })
+  const ocrRunning = createJob({ id: 'ocr-running', type: 'source_ocr', status: 'running', resourceId: 'resource-1' })
+
+  const grouped = groupQueueJobsForPanel([ocrRunning, canvasCompleted])
+
+  assert.deepEqual(grouped.activeJobs.map((job) => job.id), ['ocr-running'])
+  assert.deepEqual(grouped.completedJobs.map((job) => job.id), ['canvas-done'])
+  assert.equal(grouped.failedJobs.length, 0)
+})
+
+test('canvas_sync completion records queued OCR without waiting for OCR completion', () => {
+  const result = buildCanvasSyncCompletionResult({
+    syncedCourses: [{ courseName: 'Data 101', moduleId: 'module-1', href: '/modules/module-1' }],
+    queuedOcrJobIds: ['ocr-1', 'ocr-2'],
+  })
+
+  assert.equal(result.statusMessage, 'Sync complete. Preparing scanned PDFs in the background.')
+  assert.equal(result.currentStep, 'done')
+  assert.equal(result.queuedOcrJobCount, 2)
+  assert.deepEqual(result.queuedOcrJobIds, ['ocr-1', 'ocr-2'])
+  assert.equal(result.href, '/modules/module-1')
+})
+
+test('canvas_sync completion remains successful even when OCR jobs later fail separately', () => {
+  const grouped = groupQueueJobsForPanel([
+    createJob({ id: 'canvas-done', type: 'canvas_sync', status: 'completed', resourceId: 'canvas' }),
+    createJob({ id: 'ocr-fail', type: 'source_ocr', status: 'failed', resourceId: 'resource-1' }),
+  ])
+
+  assert.deepEqual(grouped.completedJobs.map((job) => job.id), ['canvas-done'])
+  assert.deepEqual(grouped.failedJobs.map((job) => job.id), ['ocr-fail'])
+  assert.equal(grouped.activeJobs.length, 0)
 })
 
 function createJob(input: {

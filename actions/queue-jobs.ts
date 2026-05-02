@@ -60,6 +60,7 @@ import {
   countRunningSourceOcrJobs,
   findActiveSourceOcrJob,
   findRecentFailedSourceOcrJob,
+  findStaleRunningCanvasSyncJobs,
   findStaleRunningSourceOcrJobs,
   getSourceOcrJobResourceId,
 } from '@/lib/source-ocr-queue'
@@ -364,10 +365,17 @@ export async function recoverStaleSourceOcrJobs(userId: string): Promise<void> {
   const staleJobs = findStaleRunningSourceOcrJobs(jobs)
   if (staleJobs.length === 0) return
 
-  const STALE_ERROR = 'Text extraction stalled. Retry extraction.'
+  const STALE_ERROR = 'Preparing this PDF took too long. Retry extraction.'
   const now = new Date().toISOString()
 
   for (const job of staleJobs) {
+    console.warn('[queue-recovery] stale source_ocr job recovered', {
+      jobId: job.id,
+      status: job.status,
+      progress: job.progress,
+      updatedAt: job.updatedAt,
+      resourceId: getSourceOcrJobResourceId(job),
+    })
     await markQueuedJobFailed(job.id, STALE_ERROR)
 
     const resourceId = getSourceOcrJobResourceId(job)
@@ -405,6 +413,66 @@ export async function recoverStaleSourceOcrJobs(userId: string): Promise<void> {
 
     const moduleId = getStringFromJobField(job, 'moduleId') ?? resource.moduleId
     revalidateLearnQueuePaths(moduleId, resource.courseId ?? null, resourceId)
+  }
+}
+
+export async function recoverStaleCanvasSyncJobs(userId: string): Promise<void> {
+  const supabase = createSupabaseServiceRoleClient()
+  if (!supabase) return
+
+  const { data, error } = await supabase
+    .from('queued_jobs')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('type', 'canvas_sync')
+    .eq('status', 'running')
+
+  if (error || !data || data.length === 0) return
+
+  const jobs = (data as Record<string, unknown>[]).map(rowToQueuedJobForAutoOcr)
+  const staleJobs = findStaleRunningCanvasSyncJobs(jobs)
+  if (staleJobs.length === 0) return
+
+  const staleMessage = 'Sync took too long. Some extraction may continue in the queue.'
+
+  for (const job of staleJobs) {
+    const importedCourses = await findImportedCanvasCoursesForJob(supabase, userId, job)
+    const importedCourseIds = importedCourses.map((course) => course.id)
+    const importedCourseNames = importedCourses.map((course) => course.name)
+
+    console.warn('[queue-recovery] stale canvas_sync job recovered', {
+      jobId: job.id,
+      status: job.status,
+      progress: job.progress,
+      updatedAt: job.updatedAt,
+      currentStep: getStringFromJobField(job, 'currentStep'),
+      importedCourseCount: importedCourses.length,
+      recoveryStatus: importedCourses.length > 0 ? 'completed_with_warning' : 'failed',
+    })
+
+    if (importedCourses.length > 0) {
+      await markQueuedJobCompleted(job.id, {
+        ...(job.result ?? {}),
+        courseCount: importedCourses.length,
+        courseNames: importedCourseNames,
+        courseIds: importedCourseIds,
+        href: importedCourseIds[0] ? `/courses/${importedCourseIds[0]}` : '/courses',
+        statusMessage: staleMessage,
+        currentStep: 'done',
+        recoveredFromStaleSync: true,
+      })
+    } else {
+      await markQueuedJobFailed(job.id, staleMessage)
+    }
+
+    revalidatePath('/')
+    revalidatePath('/home')
+    revalidatePath('/canvas')
+    revalidatePath('/courses')
+    revalidatePath('/learn')
+    for (const courseId of importedCourseIds) {
+      revalidatePath(`/courses/${courseId}`)
+    }
   }
 }
 
@@ -456,6 +524,48 @@ function getStringFromJobField(job: QueuedJob, key: string) {
   const fromPayload = job.payload?.[key]
   const value = fromResult ?? fromPayload
   return typeof value === 'string' && value.trim() ? value.trim() : null
+}
+
+function getNumberArrayFromJobPayload(job: QueuedJob, key: string) {
+  const value = job.payload?.[key]
+  if (!Array.isArray(value)) return []
+  return value.filter((item): item is number => typeof item === 'number' && Number.isFinite(item))
+}
+
+function getStringFromJobPayload(job: QueuedJob, key: string) {
+  const value = job.payload?.[key]
+  return typeof value === 'string' && value.trim() ? value.trim() : null
+}
+
+async function findImportedCanvasCoursesForJob(
+  supabase: NonNullable<ReturnType<typeof createSupabaseServiceRoleClient>>,
+  userId: string,
+  job: QueuedJob,
+) {
+  const canvasCourseIds = getNumberArrayFromJobPayload(job, 'courseIds')
+  if (canvasCourseIds.length === 0) return []
+
+  let query = supabase
+    .from('courses')
+    .select('id,name')
+    .eq('user_id', userId)
+    .in('canvas_course_id', canvasCourseIds)
+
+  const canvasUrl = getStringFromJobPayload(job, 'canvasUrl')
+  if (canvasUrl) query = query.eq('canvas_instance_url', canvasUrl)
+
+  const { data, error } = await query
+  if (error || !data) {
+    console.error('[queue-recovery] imported Canvas course lookup failed', {
+      jobId: job.id,
+      userId,
+      courseIds: canvasCourseIds,
+      error: error ? getErrorField(error, 'message') : null,
+    })
+    return []
+  }
+
+  return (data as Array<{ id: string; name: string }>).filter((course) => course.id && course.name)
 }
 
 function applyOcrUpdateToResource(resource: ModuleResource, update: Partial<{
