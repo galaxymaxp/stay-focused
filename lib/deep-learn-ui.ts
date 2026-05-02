@@ -1,7 +1,7 @@
 import type { DeepLearnNote, DeepLearnNoteLoadAvailability } from '@/lib/types'
 import type { DeepLearnResourceReadiness } from '@/lib/deep-learn-readiness'
 import { buildDeepLearnNoteHref, buildModuleQuizHref } from '@/lib/stay-focused-links'
-import { MIN_MEANINGFUL_SOURCE_CHARS } from '@/lib/extracted-text-quality'
+import { BAD_OCR_BLOCKED_MESSAGE, MIN_MEANINGFUL_SOURCE_CHARS } from '@/lib/extracted-text-quality'
 
 export type DeepLearnUiStatus = 'not_started' | 'pending' | 'ready' | 'failed' | 'blocked' | 'unavailable'
 
@@ -68,7 +68,7 @@ export function getDeepLearnResourceUiState(
       quizHref,
       primaryLabel: 'Open Source',
       summary: readiness?.summary ?? 'This saved exam prep pack is blocked because its source text is not trustworthy enough for review.',
-      detail: readiness?.detail ?? 'Visual extraction did not find enough usable study text. Try OCR again or open the original source.',
+      detail: readiness?.detail ?? BAD_OCR_BLOCKED_MESSAGE,
       quizReady: false,
     }
   }
@@ -136,6 +136,10 @@ export function getDeepLearnResourceUiState(
 }
 
 function isBadSourceGrounding(note: DeepLearnNote) {
+  if (packLooksMetadataGrounded(note)) {
+    return true
+  }
+
   const sourceTextQuality = note.sourceGrounding.sourceTextQuality
   if (sourceTextQuality && sourceTextQuality !== 'meaningful') {
     return true
@@ -154,4 +158,23 @@ function isBadSourceGrounding(note: DeepLearnNote) {
   }
 
   return false
+}
+
+function packLooksMetadataGrounded(note: DeepLearnNote) {
+  const debugLabelPattern = /\b(?:file title|source type of the file|module name|course name|extraction quality reported|source text quality reported|grounding strategy used|ai fallback|transcribed from scanned images|resource context|grounding status|best available source grounding)\b/i
+  const refusalPattern = /\bi(?:'m| am)\s+unable\s+to\s+transcribe\b|\bi\s+can(?:not|'t)\s+transcribe\b/i
+
+  const candidates = [
+    ...note.answerBank.flatMap((item) => [item.cue, item.answer.examSafe, item.compactAnswer.examSafe, item.reviewText, item.sourceSnippet]),
+    ...note.identificationItems.flatMap((item) => [item.prompt, item.answer.examSafe, item.reviewText, item.sourceSnippet]),
+    ...note.likelyQuizTargets.flatMap((item) => [item.target, item.reason, item.reviewText, item.sourceSnippet]),
+    ...note.distinctions.flatMap((item) => [item.conceptA, item.conceptB, item.difference, item.reviewText, item.sourceSnippet]),
+    note.overview,
+    ...note.cautionNotes,
+  ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+
+  if (candidates.length === 0) return false
+
+  const flagged = candidates.filter((value) => debugLabelPattern.test(value) || refusalPattern.test(value))
+  return flagged.length >= Math.max(2, Math.ceil(candidates.length * 0.2))
 }

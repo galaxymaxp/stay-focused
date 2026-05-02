@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  buildDeepLearnPrompt,
   buildDeepLearnGroundingWithDependencies,
   DeepLearnGenerationBlockedError,
 } from '../lib/deep-learn-generation'
@@ -337,6 +338,89 @@ test('buildDeepLearnGroundingWithDependencies blocks refusal text instead of gen
       return true
     },
   )
+})
+
+test('buildDeepLearnGroundingWithDependencies blocks refusal text even when surrounded by metadata labels', async () => {
+  const refusalWithMetadata = [
+    "I'm unable to transcribe text from images or scanned documents at this time. If there's something specific you'd like to know or discuss from the content, feel free to ask!",
+    'File title',
+    'Source type of the file',
+    'Module name',
+    'Course name',
+    'Extraction quality reported',
+    'Source text quality reported',
+    'Grounding strategy used',
+    'Was an AI fallback used to supply text?',
+    'Was the PDF text transcribed from scanned images?',
+  ].join('\n')
+  const resource = createLearnResource({
+    title: '1.1-Data Organization.pdf',
+    type: 'File',
+    contentType: 'application/pdf',
+    extension: 'pdf',
+    normalizedSourceType: 'pdf',
+    extractionStatus: 'completed',
+    extractedText: refusalWithMetadata,
+    extractedTextPreview: refusalWithMetadata,
+    extractedCharCount: refusalWithMetadata.length,
+    visualExtractionStatus: 'failed',
+    previewState: 'no_text_available',
+    fullTextAvailable: false,
+    storedTextLength: refusalWithMetadata.length,
+  })
+  const storedResource = createStoredResource({
+    title: '1.1-Data Organization.pdf',
+    resourceType: 'File',
+    contentType: 'application/pdf',
+    extension: 'pdf',
+    extractionStatus: 'completed',
+    extractedText: refusalWithMetadata,
+    extractedTextPreview: refusalWithMetadata,
+    extractedCharCount: refusalWithMetadata.length,
+    visualExtractionStatus: 'failed',
+  })
+
+  await assert.rejects(
+    () => buildDeepLearnGroundingWithDependencies(createContext(resource, storedResource)),
+    (error: unknown) => {
+      assert.ok(error instanceof DeepLearnGenerationBlockedError)
+      assert.equal(error.blockedReason, 'extraction_unusable_after_fetch')
+      return true
+    },
+  )
+})
+
+test('buildDeepLearnPrompt does not inject metadata or debug labels into model grounding', () => {
+  const prompt = buildDeepLearnPrompt({
+    ...createContext(createLearnResource({
+      title: '1.1-Data Organization.pdf',
+      extractedText: buildLongText('DATA ORGANIZATION covers OLTP, Online Transaction Processing, ODS, and Operational Data Store.'),
+      extractedTextPreview: buildLongText('DATA ORGANIZATION covers OLTP, Online Transaction Processing, ODS, and Operational Data Store.'),
+      extractedCharCount: buildLongText('DATA ORGANIZATION covers OLTP, Online Transaction Processing, ODS, and Operational Data Store.').length,
+      extractionStatus: 'completed',
+    }), createStoredResource()),
+    promptGrounding: 'DATA ORGANIZATION covers OLTP, Online Transaction Processing, ODS, and Operational Data Store.',
+    sourceGrounding: {
+      sourceType: 'PDF',
+      extractionQuality: 'usable',
+      sourceTextQuality: 'meaningful',
+      groundingStrategy: 'stored_extract',
+      usedAiFallback: false,
+      qualityReason: null,
+      warning: null,
+      charCount: 200,
+    },
+    generationMode: 'text',
+  })
+
+  assert.doesNotMatch(prompt, /\bResource context\b/i)
+  assert.doesNotMatch(prompt, /\bGrounding status\b/i)
+  assert.doesNotMatch(prompt, /\bSource text quality\b/i)
+  assert.doesNotMatch(prompt, /\bGrounding strategy\b/i)
+  assert.doesNotMatch(prompt, /\bUsed AI fallback\b/i)
+  assert.doesNotMatch(prompt, /\bCourse:\s*Contracts\b/i)
+  assert.doesNotMatch(prompt, /\bModule:\s*Week 1\b/i)
+  assert.match(prompt, /DATA ORGANIZATION covers OLTP/i)
 })
 
 test('buildDeepLearnGroundingWithDependencies blocks when source fetch still yields unusable text', async () => {

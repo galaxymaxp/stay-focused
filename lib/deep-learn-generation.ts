@@ -13,7 +13,7 @@ import {
   isDeepLearnScanFallbackCapable,
   selectDeepLearnGroundingText,
 } from '@/lib/deep-learn-readiness'
-import { classifyExtractedTextQuality } from '@/lib/extracted-text-quality'
+import { classifyExtractedTextQuality, isMeaningfulDeepLearnSourceText, BAD_OCR_BLOCKED_MESSAGE } from '@/lib/extracted-text-quality'
 import { reprocessStoredModuleResource } from '@/lib/module-resource-reprocess'
 import { getModuleResourceQualityInfo, normalizeModuleResourceStudyText } from '@/lib/module-resource-quality'
 import type { ModuleSourceResource } from '@/lib/module-workspace'
@@ -204,6 +204,17 @@ export async function generateDeepLearnNoteForResource(
   input: DeepLearnGenerationContext,
 ): Promise<DeepLearnGenerationResult> {
   const grounding = await buildDeepLearnGrounding(input)
+  if (grounding.generationMode === 'text' && !isMeaningfulDeepLearnSourceText({
+    text: grounding.promptGrounding,
+    title: input.resource.title,
+  })) {
+    throw new DeepLearnGenerationBlockedError({
+      message: BAD_OCR_BLOCKED_MESSAGE,
+      blockedReason: 'extraction_unusable_after_fetch',
+      refreshedResource: grounding.refreshedResource,
+      sourceGrounding: grounding.sourceGrounding,
+    })
+  }
   const promptText = buildDeepLearnPrompt({
     ...input,
     sourceGrounding: grounding.sourceGrounding,
@@ -458,7 +469,7 @@ export async function buildDeepLearnGroundingWithDependencies(
   })
 }
 
-function buildDeepLearnPrompt(input: DeepLearnGenerationContext & {
+export function buildDeepLearnPrompt(input: DeepLearnGenerationContext & {
   promptGrounding: string
   sourceGrounding: DeepLearnSourceGrounding
   generationMode: 'text' | 'scan_fallback'
@@ -468,20 +479,7 @@ function buildDeepLearnPrompt(input: DeepLearnGenerationContext & {
     'Build a saved Deep Learn exam prep pack for a single study resource.',
     'Use only the selected resource extracted text as factual grounding. Do not use module summaries, course context, assignment metadata, deadlines, prior packs, or surrounding Canvas/module context as study facts.',
     '',
-    'Resource context:',
-    `- Title: ${input.resource.title}`,
-    `- Source type: ${input.sourceGrounding.sourceType ?? input.resource.type}`,
-    `- Module: ${input.module.title}`,
-    `- Course: ${input.courseName}`,
-    '',
-    'Grounding status:',
-    `- Extraction quality: ${input.sourceGrounding.extractionQuality ?? 'unknown'}`,
-    `- Source text quality: ${input.sourceGrounding.sourceTextQuality ?? 'unknown'}`,
-    `- Grounding strategy: ${input.sourceGrounding.groundingStrategy}`,
-    `- Generation mode: ${input.generationMode}`,
-    `- Used AI fallback path: ${input.sourceGrounding.usedAiFallback ? 'yes' : 'no'}`,
-    '',
-    'Best available source grounding:',
+    'Selected resource source text:',
     input.promptGrounding,
     '',
     'Output requirements:',
@@ -510,9 +508,7 @@ function buildPromptGrounding(input: {
     ? truncateForModel(input.bestText, MAX_GROUNDING_CHARS)
     : 'The original file will be provided directly because dependable parsed text was not stored.'
 
-  return input.scanFallback
-    ? ['Scan fallback is active because dependable parsed text was not available.', sourceBlock].join('\n\n')
-    : sourceBlock
+  return sourceBlock
 }
 
 function selectBestGroundingText(resource: ModuleSourceResource) {

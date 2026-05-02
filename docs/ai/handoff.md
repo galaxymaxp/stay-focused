@@ -586,3 +586,60 @@ Scanned PDFs with no parsed text could still trigger Deep Learn output from stal
 
 ### Next step
 - Add resumable page-range OCR so long scanned PDFs can accumulate meaningful text across multiple runs without reprocessing already successful pages.
+
+---
+
+## Session Update - 2026-05-02 (Deep Learn preview regression: metadata/debug grounding removal)
+
+### What changed
+- Removed metadata/debug fields from the actual model grounding prompt in [lib/deep-learn-generation.ts](/c:/Users/omgra/OneDrive/Documents/Projects/stay-focused/lib/deep-learn-generation.ts). The model no longer receives these as study content:
+  - file title
+  - source type
+  - module name
+  - course name
+  - extraction quality
+  - source text quality
+  - grounding strategy
+  - AI fallback status
+  - scanned-image transcription status
+  - resource id / UUID-like identifiers
+- The prompt now sends only the selected resource source text after it passes the meaningful-text gate.
+- Strengthened [lib/extracted-text-quality.ts](/c:/Users/omgra/OneDrive/Documents/Projects/stay-focused/lib/extracted-text-quality.ts) so refusal/fallback text is rejected even when mixed with metadata/debug labels.
+- Added a harder server-side generation gate:
+  - blocks when source text quality is not `meaningful`
+  - blocks refusal phrases
+  - blocks metadata-heavy label/debug text
+  - blocks low academic-keyword-density text
+- Saved Deep Learn packs are now treated as invalid in [lib/deep-learn-ui.ts](/c:/Users/omgra/OneDrive/Documents/Projects/stay-focused/lib/deep-learn-ui.ts) if either:
+  - their persisted source grounding is bad, or
+  - their generated answers/prompts are visibly metadata/debug-grounded
+
+### Preview regression fixed
+- Failing preview input:
+  - refusal sentence like:
+    `I'm unable to transcribe text from images or scanned documents at this time...`
+  - plus labels like:
+    `File title`, `Source type of the file`, `Module name`, `Course name`, `Extraction quality reported`, `Source text quality reported`, `Grounding strategy used`, `Was an AI fallback used to supply text?`, `Was the PDF text transcribed from scanned images?`
+- New behavior:
+  - `sourceTextQuality` is not `meaningful`
+  - resource is not ready
+  - Deep Learn generation is blocked
+  - saved pack is blocked as invalid if it already exists
+  - UI uses:
+    `Visual extraction did not find enough usable study text. Try OCR again or open the original source.`
+
+### Tests added/updated
+- Refusal text mixed with metadata labels is not Deep Learn-ready.
+- Prompt assembly does not inject metadata/debug labels into model grounding.
+- Metadata/debug grounded saved packs are blocked in the UI.
+- Metadata-heavy refusal previews do not show ready.
+- Positive OCR grounding still passes for Data Organization / OLTP / ODS / Subject-Oriented / Integrated / Current Valued / Volatile.
+
+### Verification results
+- `npm run typecheck` passed.
+- `npm run lint` passed.
+- `npm test -- pdf-extractor source-ocr-updates deep-learn-readiness deep-learn-generation canvas-content-resolution learn-resource-ui` passed.
+- `npx tsx scripts/validate-scanned-pdf.ts --pdf "C:\Users\omgra\Downloads\1.1-Data Organization.pdf"` passed.
+
+### Remaining risk
+- The academic-keyword-density gate is heuristic. It correctly blocks the known refusal/metadata preview regression and still accepts the real Data Organization deck, but very short legitimate slides may still need neighboring-page OCR text to clear the threshold.
