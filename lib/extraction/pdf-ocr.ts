@@ -5,6 +5,7 @@ export type PdfOcrResult =
     status: 'completed'
     text: string
     charCount: number
+    pages: PdfOcrPage[]
     provider: string
     error: null
     metadata: Record<string, unknown>
@@ -13,13 +14,21 @@ export type PdfOcrResult =
     status: 'failed'
     text: ''
     charCount: 0
+    pages: []
     provider: string
     error: string
     metadata: Record<string, unknown>
   }
 
+export interface PdfOcrPage {
+  pageNumber: number
+  text: string
+  charCount: number
+}
+
 const MAX_PDF_BYTES = 50 * 1024 * 1024
 const DEFAULT_MAX_OUTPUT_TOKENS = 12000
+const MIN_USEFUL_OCR_CHARS = 120
 
 export async function extractScannedPdfTextWithOpenAI(input: {
   buffer: Buffer
@@ -65,15 +74,29 @@ export async function extractScannedPdfTextWithOpenAI(input: {
     })
     const rawText = typeof response.output_text === 'string' ? response.output_text : ''
     const text = normalizeOcrText(rawText)
+    const pages = parsePageLevelOcrText(text)
 
     if (!text) {
       return {
         status: 'failed',
         text: '',
         charCount: 0,
+        pages: [],
         provider,
         error: 'OCR finished, but no legible text was returned. Open the original file.',
-        metadata: buildOcrMetadata(provider, input, response.id, rawText.length, 'no_text'),
+        metadata: buildOcrMetadata(provider, input, response.id, rawText.length, 'no_text', []),
+      }
+    }
+
+    if (text.length < MIN_USEFUL_OCR_CHARS) {
+      return {
+        status: 'failed',
+        text: '',
+        charCount: 0,
+        pages: [],
+        provider,
+        error: 'OCR finished, but the recovered text was too short to ground Deep Learn. Open the original file.',
+        metadata: buildOcrMetadata(provider, input, response.id, rawText.length, 'no_text', pages),
       }
     }
 
@@ -81,9 +104,10 @@ export async function extractScannedPdfTextWithOpenAI(input: {
       status: 'completed',
       text,
       charCount: text.length,
+      pages,
       provider,
       error: null,
-      metadata: buildOcrMetadata(provider, input, response.id, rawText.length, 'completed'),
+      metadata: buildOcrMetadata(provider, input, response.id, rawText.length, 'completed', pages),
     }
   } catch (error) {
     return buildFailedResult(provider, `OCR failed: ${normalizeErrorMessage(error)}`)
@@ -137,6 +161,7 @@ function buildFailedResult(provider: string, error: string): PdfOcrResult {
     status: 'failed',
     text: '',
     charCount: 0,
+    pages: [],
     provider,
     error,
     metadata: {
@@ -156,6 +181,7 @@ function buildOcrMetadata(
   responseId: string,
   rawOutputLength: number,
   status: 'completed' | 'no_text',
+  pages: PdfOcrPage[],
 ) {
   return {
     pdfOcr: {
@@ -165,9 +191,33 @@ function buildOcrMetadata(
       pageCount: input.pageCount ?? null,
       inputBytes: input.buffer.length,
       rawOutputLength,
+      pages,
       completedAt: new Date().toISOString(),
     },
   }
+}
+
+function parsePageLevelOcrText(text: string): PdfOcrPage[] {
+  const cleaned = text.trim()
+  if (!cleaned) return []
+
+  const matches = [...cleaned.matchAll(/(?:^|\n)\s*Page\s+(\d+)\s*:\s*/gi)]
+  if (matches.length === 0) {
+    return [{ pageNumber: 1, text: cleaned, charCount: cleaned.length }]
+  }
+
+  const pages: PdfOcrPage[] = []
+  for (let index = 0; index < matches.length; index += 1) {
+    const match = matches[index]
+    const pageNumber = Number.parseInt(match[1] ?? '', 10)
+    const start = match.index === undefined ? 0 : match.index + match[0].length
+    const end = matches[index + 1]?.index ?? cleaned.length
+    const pageText = cleaned.slice(start, end).trim()
+    if (!Number.isFinite(pageNumber) || pageNumber <= 0 || !pageText) continue
+    pages.push({ pageNumber, text: pageText, charCount: pageText.length })
+  }
+
+  return pages
 }
 
 function normalizeErrorMessage(error: unknown) {

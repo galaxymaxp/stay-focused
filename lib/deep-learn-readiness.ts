@@ -167,22 +167,8 @@ export function isDeepLearnScanFallbackCapable(resource: ModuleResourceCapabilit
   visualExtractionStatus?: ModuleResource['visualExtractionStatus']
   metadata?: Record<string, unknown> | null
 }) {
-  if (requiresVisualExtraction(resource) && resource.visualExtractionStatus !== 'completed') {
-    return false
-  }
-
-  const sourceType = getNormalizedModuleResourceSourceType(resource)
-  const contentType = resource.contentType?.toLowerCase() ?? ''
-  const extension = resource.extension?.toLowerCase() ?? ''
-  const hasSourcePath = Boolean(resource.sourceUrl?.trim())
-  const isPdf = sourceType === 'pdf' || extension === 'pdf' || contentType.includes('pdf')
-  const isImage = contentType.startsWith('image/')
-    || extension === 'png'
-    || extension === 'jpg'
-    || extension === 'jpeg'
-    || extension === 'webp'
-
-  return hasSourcePath && (isPdf || isImage)
+  void resource
+  return false
 }
 
 export function selectDeepLearnGroundingText(
@@ -194,12 +180,12 @@ export function selectDeepLearnGroundingText(
   const extractedText = resource.extractedText?.trim() ?? ''
   if (extractedText) return extractedText
 
-  const extractedPreview = resource.extractedTextPreview?.trim() ?? ''
-  if (extractedPreview) return extractedPreview
-
   if (resource.visualExtractionStatus === 'completed') {
     return resource.visualExtractedText?.trim() ?? ''
   }
+
+  const extractedPreview = resource.extractedTextPreview?.trim() ?? ''
+  if (extractedPreview) return extractedPreview
 
   return ''
 }
@@ -353,7 +339,7 @@ function describeDeepLearnBlockedReason(input: {
       ? 'Scanned PDF'
       : 'No readable text found. Deep Learn cannot generate from this source.',
     detail: isImageOnly
-      ? 'OCR is required before Deep Learn can use this scanned PDF.'
+      ? 'This PDF appears to be image-based. Run visual extraction first.'
       : sourceNote
         ? `No readable text found. ${sourceNote}`
         : 'No readable text found. Deep Learn cannot generate from this source.',

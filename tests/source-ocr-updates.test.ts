@@ -50,6 +50,10 @@ test('completed OCR mirrors text into normal extraction fields for Deep Learn', 
       status: 'completed',
       text,
       charCount: text.length,
+      pages: [
+        { pageNumber: 1, text: 'OCR recovered visible text about contracts, acceptance, and consideration.', charCount: 74 },
+        { pageNumber: 2, text: 'The student can use this text to build grounded review notes after OCR completes.', charCount: 81 },
+      ],
       provider: 'test_ocr',
       error: null,
       metadata: {
@@ -73,6 +77,10 @@ test('completed OCR mirrors text into normal extraction fields for Deep Learn', 
   assert.equal(update.extraction_provider, 'test_ocr')
   assert.equal(update.metadata.fullTextAvailable, true)
   assert.equal(update.metadata.previewState, 'full_text_available')
+  assert.deepEqual(update.metadata.visualExtractionPages, [
+    { pageNumber: 1, text: 'OCR recovered visible text about contracts, acceptance, and consideration.', charCount: 74 },
+    { pageNumber: 2, text: 'The student can use this text to build grounded review notes after OCR completes.', charCount: 81 },
+  ])
 })
 
 test('failed OCR clears extracted text and records an honest error', () => {
@@ -83,7 +91,7 @@ test('failed OCR clears extracted text and records an honest error', () => {
     now: '2026-04-27T12:10:00.000Z',
   })
 
-  assert.equal(update.extraction_status, 'failed')
+  assert.equal(update.extraction_status, 'empty')
   assert.equal(update.extracted_text, null)
   assert.equal(update.extracted_text_preview, null)
   assert.equal(update.extracted_char_count, 0)

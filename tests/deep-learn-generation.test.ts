@@ -156,7 +156,7 @@ test('buildDeepLearnGroundingWithDependencies blocks image-only PDFs until visua
     (error: unknown) => {
       assert.ok(error instanceof DeepLearnGenerationBlockedError)
       assert.equal(error.blockedReason, 'extraction_unusable_after_fetch')
-      assert.match(error.message, /image-only|scanned|readable text/i)
+      assert.equal(error.message, 'This PDF appears to be image-based. Run visual extraction first.')
       return true
     },
   )
@@ -212,6 +212,89 @@ test('buildDeepLearnGroundingWithDependencies can use completed visual extracted
   assert.equal(grounding.scanFallbackInput, null)
   assert.match(grounding.promptGrounding, /Visual OCR recovered the data organization lesson/i)
   assert.ok(grounding.sourceGrounding.charCount > 0)
+})
+
+test('buildDeepLearnGroundingWithDependencies grounds prompts only in the selected resource text', async () => {
+  const selectedText = buildLongText('Data Organization explains OLTP, Online Transaction Processing, ODS, Operational Data Store, Subject-Oriented, Integrated, Current Valued, and Volatile data.')
+  const resource = createLearnResource({
+    id: 'data-org-resource',
+    title: '1.1-Data Organization.pdf',
+    type: 'File',
+    contentType: 'application/pdf',
+    extension: 'pdf',
+    normalizedSourceType: 'pdf',
+    extractedText: selectedText,
+    extractedTextPreview: selectedText.slice(0, 420),
+    extractedCharCount: selectedText.length,
+    extractionStatus: 'completed',
+    whyItMatters: 'ERP SAP Learning Hub Gym Badge assignment date stale context.',
+    linkedContext: 'ERP SAP Learning Hub Gym Badge unrelated assignment dates.',
+  })
+  const storedResource = createStoredResource({
+    id: 'data-org-resource',
+    resourceType: 'File',
+    contentType: 'application/pdf',
+    extension: 'pdf',
+    extractedText: selectedText,
+    extractedTextPreview: selectedText.slice(0, 420),
+    extractedCharCount: selectedText.length,
+    extractionStatus: 'completed',
+  })
+
+  const grounding = await buildDeepLearnGroundingWithDependencies(createContext(resource, storedResource))
+
+  assert.match(grounding.promptGrounding, /Data Organization explains OLTP/i)
+  assert.doesNotMatch(grounding.promptGrounding, /ERP|SAP Learning Hub|Gym Badge|assignment date/i)
+})
+
+test('buildDeepLearnGroundingWithDependencies blocks empty sources without using stale module context', async () => {
+  const resource = createLearnResource({
+    title: '1.1-Data Organization.pdf',
+    type: 'File',
+    contentType: 'application/pdf',
+    extension: 'pdf',
+    normalizedSourceType: 'pdf',
+    extractionStatus: 'metadata_only',
+    extractedText: null,
+    extractedTextPreview: null,
+    extractedCharCount: 0,
+    extractionError: null,
+    visualExtractionStatus: 'not_started',
+    whyItMatters: 'ERP SAP Learning Hub Gym Badge assignment date stale context.',
+    linkedContext: 'ERP SAP Learning Hub Gym Badge unrelated assignment dates.',
+    previewState: 'no_text_available',
+    fullTextAvailable: false,
+    storedTextLength: 0,
+    storedPreviewLength: 0,
+    storedWordCount: 0,
+  })
+  const storedResource = createStoredResource({
+    resourceType: 'File',
+    contentType: 'application/pdf',
+    extension: 'pdf',
+    extractionStatus: 'metadata_only',
+    extractedText: null,
+    extractedTextPreview: null,
+    extractedCharCount: 0,
+    visualExtractionStatus: 'not_started',
+  })
+
+  await assert.rejects(
+    () => buildDeepLearnGroundingWithDependencies(createContext(resource, storedResource), {
+      reprocessStoredModuleResource: async () => {
+        throw new Error('No stale module/course context fallback should be used when selected source text is empty.')
+      },
+      downloadScanFallbackSource: async () => {
+        throw new Error('Scan fallback should not run when selected source text is empty.')
+      },
+    }),
+    (error: unknown) => {
+      assert.ok(error instanceof DeepLearnGenerationBlockedError)
+      assert.equal(error.blockedReason, 'extraction_unusable_after_fetch')
+      assert.doesNotMatch(error.message, /ERP|SAP Learning Hub|Gym Badge|assignment date/i)
+      return true
+    },
+  )
 })
 
 test('buildDeepLearnGroundingWithDependencies blocks when source fetch still yields unusable text', async () => {

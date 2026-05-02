@@ -291,7 +291,7 @@ export default async function ResourceDetailPage({ params }: Props) {
                 <p className="ui-kicker">{visualExtractionAvailable ? 'Scanned PDF' : 'Extraction evidence'}</p>
                 {visualExtractionAvailable && (
                   <p style={{ margin: '0.55rem 0 0', fontSize: '14px', lineHeight: 1.7, color: 'var(--text-secondary)' }}>
-                    OCR is required before Deep Learn can use it.
+                    This PDF appears to be image-based. Run visual extraction first.
                     {typeof resource.pageCount === 'number' && resource.pageCount > 0 ? ` ${resource.pageCount} pages detected.` : ''}
                   </p>
                 )}

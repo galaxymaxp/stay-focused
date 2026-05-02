@@ -256,7 +256,7 @@ function messageForState(
   if (state === 'canvas_lesson_page') return 'This looks like a Canvas lesson page. Open it in Canvas or summarize it once page extraction is available.'
   if (state === 'external_link') return 'This source opens outside Canvas. Use the original link for now.'
   if (state === 'extraction_failed') return 'Extraction failed. Retry processing, or open the original file.'
-  if (state === 'visual_ocr_available') return 'Scanned PDF. OCR is required before Deep Learn can use it.'
+  if (state === 'visual_ocr_available') return 'This PDF appears to be image-based. Run visual extraction first.'
   if (state === 'visual_ocr_running') return 'Extracting text from images. This source will become available when OCR completes.'
   if (state === 'visual_ocr_failed') return 'OCR failed. Open the original file, or retry text extraction.'
   if (state === 'empty_or_metadata_only') {

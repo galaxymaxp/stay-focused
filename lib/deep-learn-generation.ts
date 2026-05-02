@@ -477,23 +477,16 @@ function buildDeepLearnPrompt(input: DeepLearnGenerationContext & {
   sourceGrounding: DeepLearnSourceGrounding
   generationMode: 'text' | 'scan_fallback'
 }) {
-  const moduleSummary = input.module.summary?.trim() || 'No module summary was stored.'
-  const linkedTaskSummary = input.linkedTask
-    ? `${input.linkedTask.title}${input.linkedTask.deadline ? ` (deadline: ${input.linkedTask.deadline})` : ''}${input.linkedTask.details ? ` - ${input.linkedTask.details}` : ''}`
-    : 'No directly matched task.'
-
   return [
     `Prompt version: ${DEEP_LEARN_PROMPT_VERSION}`,
     'Build a saved Deep Learn exam prep pack for a single study resource.',
+    'Use only the selected resource extracted text as factual grounding. Do not use module summaries, course context, assignment metadata, deadlines, prior packs, or surrounding Canvas/module context as study facts.',
     '',
     'Resource context:',
     `- Title: ${input.resource.title}`,
     `- Source type: ${input.sourceGrounding.sourceType ?? input.resource.type}`,
     `- Module: ${input.module.title}`,
     `- Course: ${input.courseName}`,
-    `- Why it matters: ${input.resource.whyItMatters ?? 'Not explicitly stored.'}`,
-    `- Linked context: ${input.resource.linkedContext ?? 'None stored.'}`,
-    `- Matched task: ${linkedTaskSummary}`,
     '',
     'Grounding status:',
     `- Extraction quality: ${input.sourceGrounding.extractionQuality ?? 'unknown'}`,
@@ -502,9 +495,6 @@ function buildDeepLearnPrompt(input: DeepLearnGenerationContext & {
     `- Used AI fallback path: ${input.sourceGrounding.usedAiFallback ? 'yes' : 'no'}`,
     `- Source note: ${input.sourceGrounding.qualityReason ?? 'No quality note.'}`,
     `- Source warning: ${input.sourceGrounding.warning ?? 'None.'}`,
-    '',
-    'Module summary:',
-    moduleSummary,
     '',
     'Best available source grounding:',
     input.promptGrounding,
@@ -538,11 +528,7 @@ function buildPromptGrounding(input: {
 }) {
   const contextBlock = [
     `Resource title: ${input.resource.title}`,
-    `Module: ${input.module.title}`,
-    `Course: ${input.courseName}`,
-    input.resource.whyItMatters ? `Why it matters: ${input.resource.whyItMatters}` : null,
-    input.resource.linkedContext ? `Linked context: ${input.resource.linkedContext}` : null,
-    input.linkedTask?.title ? `Matched task: ${input.linkedTask.title}` : null,
+    `Resource id: ${input.resource.id}`,
     `Quality note: ${input.quality.reason}`,
     input.scanFallback ? 'Scan fallback is active because dependable parsed text was not available.' : null,
   ].filter(Boolean).join('\n')

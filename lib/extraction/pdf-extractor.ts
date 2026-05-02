@@ -146,6 +146,18 @@ export async function extractPdfTextFromBuffer(
     || quality.meaningfulTextRatio < 0.25
     || quality.sentenceCount === 0
   ) {
+    if (quality.imageOnlyPossible) {
+      return {
+        status: 'empty',
+        text: '',
+        pageCount,
+        charCount: 0,
+        errorCode: 'pdf_image_only_possible',
+        message: 'PDF text was empty or below the useful threshold, and the file appears to be image-only or scanned.',
+        quality: assessPdfTextQuality('', buffer),
+      }
+    }
+
     return {
       status: 'needs_review',
       text,
