@@ -54,6 +54,17 @@ export function countRunningSourceOcrJobs(jobs: QueuedJob[]) {
   )).length
 }
 
+export function canStartNextSourceOcrJob(jobs: QueuedJob[], concurrencyLimit = 1) {
+  return countRunningSourceOcrJobs(jobs) < concurrencyLimit
+}
+
+export function findNextPendingSourceOcrJob(jobs: QueuedJob[], concurrencyLimit = 1) {
+  if (!canStartNextSourceOcrJob(jobs, concurrencyLimit)) return null
+  return jobs
+    .filter((job) => job.type === SOURCE_OCR_JOB_TYPE && job.status === 'pending')
+    .sort((left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime())[0] ?? null
+}
+
 export function findRecentFailedSourceOcrJob(
   jobs: QueuedJob[],
   resourceId: string,

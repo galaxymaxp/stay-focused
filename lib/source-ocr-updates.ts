@@ -146,6 +146,16 @@ export function buildOcrCompletedUpdate(input: {
   const isPartial = hasUsableText && totalPagesInDocument > pages.length
   const completedPageNumbers = pages.filter((p) => p.status === 'completed').map((p) => p.pageNumber)
   const failedPageNumbers = pages.filter((p) => p.status === 'failed' || p.status === 'empty').map((p) => p.pageNumber)
+  const diagnostics = buildOcrDiagnostics({
+    provider: input.ocr.provider,
+    pages,
+    rawText: input.ocr.text,
+    acceptedText: hasUsableText ? mergedQuality.candidateText : '',
+    quality: mergedQuality,
+    finalExtractionStatus: hasUsableText ? 'completed' : 'empty',
+    finalVisualExtractionStatus: hasUsableText ? 'completed' : 'failed',
+    finalReason: hasUsableText ? mergedQuality.reason : BAD_OCR_BLOCKED_MESSAGE,
+  })
   return {
     extraction_status: hasUsableText ? 'completed' : 'empty',
     extracted_text: hasUsableText ? mergedQuality.candidateText : null,
@@ -173,6 +183,7 @@ export function buildOcrCompletedUpdate(input: {
       pdfOcr: {
         ...asPlainRecord(metadata.pdfOcr),
         ...asPlainRecord(input.ocr.metadata.pdfOcr),
+        diagnostics,
         status: hasUsableText ? 'completed' : 'failed',
         provider: input.ocr.provider,
         completedAt: input.now,
@@ -180,6 +191,9 @@ export function buildOcrCompletedUpdate(input: {
         totalMergedCharCount: hasUsableText ? mergedQuality.candidateCharCount : 0,
         refusalDetected: mergedQualityLabel === 'refusal',
         error: hasUsableText ? null : BAD_OCR_BLOCKED_MESSAGE,
+        sourceTextQuality: diagnostics.sourceTextQuality,
+        rawProviderCharCount: diagnostics.totalRawOcrChars,
+        acceptedUsefulCharCount: diagnostics.totalAcceptedUsefulChars,
         isPartial,
         completedPageNumbers,
         failedPageNumbers,
@@ -203,6 +217,16 @@ export function buildOcrPageProgressUpdate(input: {
   const mergedQuality = classifyMergedPageText(classifiedPages, input.resource.title)
   const hasUsableText = mergedQuality.quality.usable
   const totalPagesInDocument = input.totalPagesInDocument ?? input.resource.pageCount ?? input.pages.length
+  const diagnostics = buildOcrDiagnostics({
+    provider: input.provider,
+    pages: input.pages,
+    rawText: classifiedPages.map((page) => page.text).join('\n\n'),
+    acceptedText: hasUsableText ? mergedQuality.quality.candidateText : '',
+    quality: mergedQuality.quality,
+    finalExtractionStatus: hasUsableText ? 'completed' : 'processing',
+    finalVisualExtractionStatus: 'running',
+    finalReason: hasUsableText ? mergedQuality.quality.reason : 'OCR is extracting text from images.',
+  })
 
   return {
     extraction_status: hasUsableText ? 'completed' : 'processing',
@@ -227,9 +251,13 @@ export function buildOcrPageProgressUpdate(input: {
       extractedTextQuality: hasUsableText ? mergedQuality.label : asPlainRecord(metadata).extractedTextQuality ?? null,
       pdfOcr: {
         ...asPlainRecord(metadata.pdfOcr),
+        diagnostics,
         status: 'running',
         provider: input.provider,
         usefulCharCount: hasUsableText ? mergedQuality.quality.candidateCharCount : 0,
+        rawProviderCharCount: diagnostics.totalRawOcrChars,
+        acceptedUsefulCharCount: diagnostics.totalAcceptedUsefulChars,
+        sourceTextQuality: diagnostics.sourceTextQuality,
         totalMergedCharCount: hasUsableText ? mergedQuality.quality.candidateCharCount : 0,
         successfulPages: input.pages.filter((page) => page.status === 'completed').length,
         failedPages: input.pages.filter((page) => page.status === 'failed').length,
@@ -292,6 +320,16 @@ export function buildOcrFailedUpdate(input: {
         pdfOcr: {
           ...asPlainRecord(metadata.pdfOcr),
           ...asPlainRecord(ocrMetadata.pdfOcr),
+          diagnostics: buildOcrDiagnostics({
+            provider: input.provider ?? input.resource.extractionProvider ?? null,
+            pages,
+            rawText: input.resource.extractedText ?? input.resource.visualExtractedText ?? '',
+            acceptedText: preservedQuality.candidateText,
+            quality: preservedQuality,
+            finalExtractionStatus: 'completed',
+            finalVisualExtractionStatus: 'completed',
+            finalReason: preservedQuality.reason,
+          }),
           status: 'completed',
           error: null,
           recoveredFromFailure: true,
@@ -333,6 +371,16 @@ export function buildOcrFailedUpdate(input: {
       pdfOcr: {
         ...asPlainRecord(metadata.pdfOcr),
         ...asPlainRecord(ocrMetadata.pdfOcr),
+        diagnostics: buildOcrDiagnostics({
+          provider: input.provider ?? input.resource.extractionProvider ?? null,
+          pages: loadStoredOcrPages(metadata, ocrMetadata),
+          rawText: '',
+          acceptedText: '',
+          quality: classifyExtractedTextQuality({ text: '', title: input.resource.title }),
+          finalExtractionStatus: 'empty',
+          finalVisualExtractionStatus: 'failed',
+          finalReason: input.message,
+        }),
         status: 'failed',
         error: input.message,
         completedAt: input.now,
@@ -381,6 +429,48 @@ function classifyMergedPageText(classifiedPages: Array<PdfOcrPage & {
           ? 'metadata_only'
           : quality.quality
   return { quality, label }
+}
+
+function buildOcrDiagnostics(input: {
+  provider: string | null
+  pages: PdfOcrPage[]
+  rawText: string
+  acceptedText: string
+  quality: ReturnType<typeof classifyExtractedTextQuality>
+  finalExtractionStatus: ModuleResource['extractionStatus']
+  finalVisualExtractionStatus: NonNullable<ModuleResource['visualExtractionStatus']>
+  finalReason: string
+}) {
+  const nonSecretAcademicPreview = input.quality.usable && input.acceptedText.trim()
+    ? input.acceptedText.trim().slice(0, 200)
+    : null
+
+  return {
+    provider: input.provider,
+    pageCount: input.pages.length,
+    pagesAttempted: input.pages.length,
+    pagesSucceeded: input.pages.filter((page) => page.status === 'completed').length,
+    pagesEmpty: input.pages.filter((page) => page.status === 'empty').length,
+    pagesFailed: input.pages.filter((page) => page.status === 'failed').length,
+    totalRawOcrChars: input.pages.reduce((sum, page) => sum + page.charCount, 0) || input.rawText.length,
+    totalAcceptedUsefulChars: input.quality.usable ? input.quality.candidateCharCount : 0,
+    ocrTextPreview: nonSecretAcademicPreview,
+    sourceTextQuality: {
+      quality: input.quality.quality,
+      usable: input.quality.usable,
+      reason: input.quality.reason,
+      candidateCharCount: input.quality.candidateCharCount,
+      alphaWordCount: input.quality.alphaWordCount,
+      academicKeywordCount: input.quality.academicKeywordCount,
+      academicKeywordDensity: input.quality.academicKeywordDensity,
+      metadataLikeLineCount: input.quality.metadataLikeLineCount,
+      metadataLineRatio: input.quality.metadataLineRatio,
+      refusalDetected: input.quality.refusalDetected,
+    },
+    finalExtractionStatus: input.finalExtractionStatus,
+    finalVisualExtractionStatus: input.finalVisualExtractionStatus,
+    finalReason: input.finalReason,
+  }
 }
 
 function loadStoredOcrPages(...sources: Record<string, unknown>[]) {

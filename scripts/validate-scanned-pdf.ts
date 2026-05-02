@@ -4,6 +4,7 @@ import path from 'node:path'
 import { createClient } from '@supabase/supabase-js'
 import { extractPdfTextFromBuffer } from '../lib/extraction/pdf-extractor'
 import { extractScannedPdfTextWithOpenAI, type PdfOcrResult } from '../lib/extraction/pdf-ocr'
+import { getSourceOcrProvider } from '../lib/extraction/source-ocr-provider'
 import { classifyExtractedTextQuality, classifyModuleResourceTextQuality } from '../lib/extracted-text-quality'
 import { buildOcrCompletedUpdate } from '../lib/source-ocr-updates'
 import { classifyDeepLearnResourceReadiness } from '../lib/deep-learn-readiness'
@@ -17,6 +18,8 @@ interface ParsedArgs {
   pdfPath: string | null
   resourceId: string | null
   simulatePageFailure: number | null
+  provider: 'openai' | 'google_vision' | 'google_document_ai'
+  debugImages: boolean
 }
 
 const REQUIRED_TERMS = [
@@ -53,7 +56,7 @@ async function main() {
 
   if (!args.pdfPath) {
     if (args.resourceId) return
-    throw new Error('Usage: npx tsx scripts/validate-scanned-pdf.ts --pdf "C:\\path\\to\\file.pdf" [--resource-id uuid]')
+    throw new Error('Usage: npx tsx scripts/validate-scanned-pdf.ts --pdf "C:\\path\\to\\file.pdf" [--resource-id uuid] [--provider google_vision] [--debug-images]')
   }
 
   const pdfPath = path.resolve(args.pdfPath)
@@ -115,24 +118,42 @@ async function main() {
   console.log(`Pre-OCR readiness: ${preReadiness.state}`)
   console.log(`Pre-OCR UI copy: ${preUi.summary}`)
 
-  assert.ok(process.env.OPENAI_API_KEY?.trim(), 'OPENAI_API_KEY is required to run the production OCR validation script.')
-  const ocr = await extractScannedPdfTextWithOpenAI({
-    buffer,
-    filename: path.basename(pdfPath),
-    pageCount: parsed.pageCount,
-  })
+  if (args.provider === 'openai') {
+    assert.ok(process.env.OPENAI_API_KEY?.trim(), 'OPENAI_API_KEY is required to run the OpenAI OCR validation mode.')
+  }
+  const ocr = args.provider === 'openai'
+    ? await extractScannedPdfTextWithOpenAI({
+      buffer,
+      filename: path.basename(pdfPath),
+      pageCount: parsed.pageCount,
+    })
+    : await getSourceOcrProvider(args.provider).run({
+      buffer,
+      filename: path.basename(pdfPath),
+      pageCount: parsed.pageCount,
+      debugImages: args.debugImages,
+      debugImagesDir: path.join(process.cwd(), 'tmp', 'ocr-debug'),
+    })
+  if (ocr.status !== 'completed') {
+    printProviderOcrDiagnostics(ocr, classifyExtractedTextQuality({
+      text: ocr.pages.map((page) => page.text).join('\n\n'),
+      title: path.basename(pdfPath),
+    }))
+  }
   assert.equal(ocr.status, 'completed', ocr.error ?? 'OCR did not complete.')
+  const providerRawText = ocr.pages.map((page) => page.text).filter(Boolean).join('\n\n') || ocr.text
   const rawOcrQuality = classifyExtractedTextQuality({
-    text: ocr.text,
+    text: providerRawText,
     title: path.basename(pdfPath),
   })
   assert.equal(rawOcrQuality.quality, 'meaningful', `Expected production OCR to return meaningful text, got ${rawOcrQuality.quality}`)
+  printProviderOcrDiagnostics(ocr, rawOcrQuality)
 
   for (const term of REQUIRED_TERMS) {
     assert.match(ocr.text, new RegExp(escapeRegExp(term), 'i'), `Expected OCR text to contain "${term}"`)
   }
 
-  console.log(`OCR completed with ${ocr.charCount} characters across ${ocr.pages.length || 1} rendered pages`)
+  console.log(`OCR completed with ${ocr.charCount} characters across ${ocr.pages.length || 1} rendered pages using ${args.provider}`)
   console.log(`OCR term check passed for ${REQUIRED_TERMS.length} expected terms`)
 
   const finalOcr = args.simulatePageFailure && ocr.status === 'completed'
@@ -243,6 +264,8 @@ function parseArgs(argv: string[]): ParsedArgs {
   let pdfPath: string | null = null
   let resourceId: string | null = null
   let simulatePageFailure: number | null = null
+  let provider: ParsedArgs['provider'] = 'openai'
+  let debugImages = false
   for (let index = 0; index < argv.length; index += 1) {
     if (argv[index] === '--pdf') {
       const nextValue = argv[index + 1]
@@ -265,10 +288,23 @@ function parseArgs(argv: string[]): ParsedArgs {
       if (!Number.isFinite(parsedPage) || parsedPage < 1) throw new Error('--simulate-page-failure must be a positive page number')
       simulatePageFailure = parsedPage
       index += 1
+      continue
+    }
+    if (argv[index] === '--provider') {
+      const nextValue = argv[index + 1]
+      if (nextValue !== 'openai' && nextValue !== 'google_vision' && nextValue !== 'google_document_ai') {
+        throw new Error('--provider must be one of: openai, google_vision, google_document_ai')
+      }
+      provider = nextValue
+      index += 1
+      continue
+    }
+    if (argv[index] === '--debug-images') {
+      debugImages = true
     }
   }
 
-  return { pdfPath, resourceId, simulatePageFailure }
+  return { pdfPath, resourceId, simulatePageFailure, provider, debugImages }
 }
 
 async function validateDbResource(resourceId: string) {
@@ -544,6 +580,28 @@ function printOcrPersistenceDiagnostics(input: {
     console.log('- OCR queue job: none')
   }
   console.log(`- auto-enqueue decision: ${input.autoEnqueueDecision ?? 'not evaluated in this local-only check'}`)
+}
+
+function printProviderOcrDiagnostics(
+  ocr: PdfOcrResult,
+  quality: ReturnType<typeof classifyExtractedTextQuality>,
+) {
+  const rawChars = ocr.pages.reduce((sum, page) => sum + page.charCount, 0) || ocr.charCount
+  const firstNonEmpty = ocr.pages.find((page) => page.text.trim())
+  console.log('Provider OCR diagnostics')
+  console.log(`- provider: ${ocr.provider}`)
+  console.log(`- raw provider chars: ${rawChars}`)
+  console.log(`- accepted useful chars: ${quality.candidateCharCount}`)
+  console.log(`- sourceTextQuality: ${quality.quality} (${quality.reason})`)
+  console.log(`- page status summary: completed=${ocr.pages.filter((page) => page.status === 'completed').length}, empty=${ocr.pages.filter((page) => page.status === 'empty').length}, failed=${ocr.pages.filter((page) => page.status === 'failed').length}`)
+  if (firstNonEmpty) {
+    console.log(`- first non-empty page: ${firstNonEmpty.pageNumber}`)
+    console.log(`- first non-empty page preview: ${firstNonEmpty.text.trim().slice(0, 200)}`)
+  }
+  for (const page of ocr.pages.slice(0, 6)) {
+    console.log(`- page ${page.pageNumber}: status=${page.status}, chars=${page.charCount}, image=${page.imageWidth ?? '?'}x${page.imageHeight ?? '?'}, bytes=${page.imageByteSize ?? '?'}, blank=${page.imageBlank ?? '?'}, error=${page.error ?? 'none'}`)
+  }
+  if (ocr.pages.length > 6) console.log(`- page diagnostics truncated: ${ocr.pages.length - 6} more pages`)
 }
 
 async function loadLatestOcrQueueJob(
