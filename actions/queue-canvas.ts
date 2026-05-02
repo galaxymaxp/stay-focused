@@ -4,7 +4,8 @@ import { after } from 'next/server'
 import { revalidatePath } from 'next/cache'
 import { requireAuthenticatedUserServer } from '@/lib/auth-server'
 import { syncCanvasCourse } from '@/actions/canvas'
-import { processSourceOcrJob } from '@/actions/queue-jobs'
+import { processNextPendingSourceOcrJobForUser } from '@/actions/queue-jobs'
+import { buildCanvasSyncCompletionResult } from '@/lib/canvas-sync-queue'
 import {
   createQueuedJob,
   getUserQueuedJobs,
@@ -110,6 +111,7 @@ async function runCanvasSyncJob(input: {
   await markQueuedJobRunning(input.jobId, 4)
 
   const syncedCourses: Array<{ courseName: string; moduleId: string; href: string }> = []
+  const queuedOcrJobIds: string[] = []
 
   try {
     await updateCanvasJobStep(input.jobId, 6, 'Connecting to Canvas', 'connecting')
@@ -159,31 +161,22 @@ async function runCanvasSyncJob(input: {
       })
 
       for (const ocrJob of result.autoOcrJobs ?? []) {
-        const resourceId = typeof ocrJob.payload?.resourceId === 'string' ? ocrJob.payload.resourceId : null
-        const resourceTitle = typeof ocrJob.payload?.resourceTitle === 'string' ? ocrJob.payload.resourceTitle : 'Study source'
-        if (!resourceId) continue
-
-        await processSourceOcrJob({
-          jobId: ocrJob.id,
-          userId: input.userId,
-          moduleId: result.moduleId,
-          resourceId,
-          courseId: typeof ocrJob.payload?.courseId === 'string' ? ocrJob.payload.courseId : null,
-          resourceTitle,
-        })
+        queuedOcrJobIds.push(ocrJob.id)
       }
     }
 
-    await updateCanvasJobStep(input.jobId, 98, 'Finalizing sync', 'finalizing')
+    await updateCanvasJobStep(input.jobId, 98, queuedOcrJobIds.length > 0
+      ? 'Sync complete. Preparing scanned PDFs in the background.'
+      : 'Finalizing sync', 'finalizing')
 
-    const firstResult = syncedCourses[0]
-    await markQueuedJobCompleted(input.jobId, {
+    const completionResult = buildCanvasSyncCompletionResult({ syncedCourses, queuedOcrJobIds })
+    await markQueuedJobCompleted(input.jobId, completionResult)
+
+    console.info('[queue-canvas] completed Canvas sync without waiting for OCR', {
+      jobId: input.jobId,
       courseCount: syncedCourses.length,
-      courseNames: syncedCourses.map((course) => course.courseName),
-      moduleIds: syncedCourses.map((course) => course.moduleId),
-      href: firstResult?.href ?? '/courses',
-      statusMessage: 'Canvas sync complete',
-      currentStep: 'done',
+      queuedOcrJobIds,
+      waitsForOcr: false,
     })
 
     await createNotification({
@@ -193,10 +186,20 @@ async function runCanvasSyncJob(input: {
       body: syncedCourses.length === 1
         ? `${syncedCourses[0].courseName} is ready to study.`
         : `${syncedCourses.length} courses are ready to study.`,
-      href: firstResult?.href ?? '/courses',
+      href: completionResult.href,
       severity: 'success',
       metadata: { jobId: input.jobId, dedupeKey: `sync:${input.jobId}` },
     })
+
+    if (queuedOcrJobIds.length > 0) {
+      void processNextPendingSourceOcrJobForUser(input.userId).catch((error) => {
+        console.error('[queue-canvas] failed to start queued OCR after Canvas sync completion', {
+          jobId: input.jobId,
+          queuedOcrJobIds,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      })
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Canvas sync failed.'
     console.error('[queue-canvas] runCanvasSyncJob failed', { jobId: input.jobId, message })
@@ -221,6 +224,15 @@ async function updateCanvasJobStep(
   currentStep: string,
   activeCourseName?: string,
 ) {
+  console.info('[queue-canvas] canvas_sync progress', {
+    jobId,
+    status: 'running',
+    progress: Math.max(0, Math.min(99, progress)),
+    currentStep,
+    statusMessage,
+    activeCourseName: activeCourseName ?? null,
+    updatedAt: new Date().toISOString(),
+  })
   await updateQueuedJobStatus(jobId, 'running', {
     progress: Math.max(0, Math.min(99, progress)),
     result: {

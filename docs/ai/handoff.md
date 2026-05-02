@@ -1267,3 +1267,70 @@ Configure `OCR_PROVIDER=google_vision`, `OCR_MAX_PAGES_PER_JOB=24`, and Google c
 ```
 add Google OCR provider path
 ```
+
+---
+
+## Session Update - 2026-05-02 (Decouple Canvas sync from OCR queue)
+
+### What changed
+
+- Removed the blocking OCR loop from Canvas sync completion. `canvas_sync` now finishes after Canvas import and OCR job enqueueing, then starts the next pending OCR job independently.
+- Added `buildCanvasSyncCompletionResult` so sync completion explicitly records queued OCR job IDs/counts and student-facing copy: `Sync complete. Preparing scanned PDFs in the background.`
+- Added route-safe stale recovery on `/api/queue/jobs` for:
+  - stale running `canvas_sync` jobs older than 20 minutes
+  - stale running `source_ocr` jobs older than the existing OCR threshold
+- Stale `canvas_sync` recovery now marks the job completed-with-warning when imported Canvas courses can be found, otherwise failed with: `Sync took too long. Some extraction may continue in the queue.`
+- Stale `source_ocr` recovery now uses less technical copy: `Preparing this PDF took too long. Retry extraction.`
+- Added queue grouping helper so the Study Queue keeps completed Canvas sync jobs in Recently completed while active/failed OCR jobs remain separate.
+- Added diagnostics for Canvas sync progress/completion and stale job recovery.
+
+### Files touched
+
+- `actions/queue-canvas.ts`
+- `actions/queue-jobs.ts`
+- `app/api/queue/jobs/route.ts`
+- `components/shell/QueuePanel.tsx`
+- `lib/canvas-sync-queue.ts`
+- `lib/queue-view.ts`
+- `lib/source-ocr-queue.ts`
+- `tests/queue.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Canvas sync was awaiting `processSourceOcrJob` for auto-created scanned-PDF OCR jobs before marking the `canvas_sync` job completed. That allowed long/stuck OCR to hold the Canvas UI at finalizing/96-97%. Sync now ends after import/enqueue, and OCR continues through the Study Queue.
+
+### Tests run
+
+- `npm run typecheck` - passed.
+- `npm run lint` - passed.
+- `npm test -- queue` - passed; repo test script ran all `tests/*.test.ts`, 199 tests.
+- `npm test -- pdf-extractor source-ocr-updates deep-learn-readiness deep-learn-generation canvas-content-resolution learn-resource-ui queue` - passed; repo test script ran all `tests/*.test.ts`, 199 tests.
+
+### Verification result
+
+- Canvas sync completion records queued OCR jobs without waiting for OCR completion.
+- OCR failure/stale recovery remains independent from completed Canvas sync jobs.
+- Queue grouping keeps active `source_ocr` separate from completed `canvas_sync`.
+- Stale running `canvas_sync` and `source_ocr` detection is covered by focused tests.
+
+### Known risks
+
+- `processNextPendingSourceOcrJobForUser` is still app-triggered through `after()` and queue polling, not a durable external worker. If the platform interrupts immediately after completion, OCR may wait until the next queue poll/page load.
+- Stale Canvas recovery considers imported data present when matching `courses` rows exist for the queued Canvas course IDs and Canvas URL. A partially imported state without a matching course row is marked failed with the non-technical timeout copy.
+- The 20-minute Canvas stale threshold is conservative; very large legitimate syncs longer than that may be recovered on the next queue poll.
+
+### Blockers
+
+- No local blocker.
+- Live preview should still be checked against a redeploy/interrupted sync to confirm old stuck rows heal as expected.
+
+### Next recommended step
+
+Run a preview Canvas resync with at least one scanned PDF and confirm the Course Sync panel reaches Sync complete while scanned PDF OCR appears separately as Scanning/Processing in the Study Queue.
+
+### Suggested commit message
+
+```
+decouple OCR jobs from Canvas sync completion
+```
