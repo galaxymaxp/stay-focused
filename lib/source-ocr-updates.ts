@@ -24,8 +24,16 @@ export function isScannedPdfOcrCandidate(resource: ModuleResource) {
   const extension = resource.extension?.toLowerCase() ?? ''
   const contentType = resource.contentType?.toLowerCase() ?? ''
   const isPdf = extension === 'pdf' || contentType.includes('pdf')
+  const textQuality = classifyExtractedTextQuality({
+    text: resource.extractedText ?? resource.extractedTextPreview ?? null,
+    title: resource.title,
+  })
   const hasNoSelectableTextSignal = resource.visualExtractionStatus === 'available'
     || resource.visualExtractionStatus === 'failed'
+    || resource.extractionStatus === 'empty'
+    || resource.extractionStatus === 'metadata_only'
+    || (typeof resource.extractedCharCount === 'number' && resource.extractedCharCount > 0 && resource.extractedCharCount < 120)
+    || (Boolean(resource.extractedText?.trim() || resource.extractedTextPreview?.trim()) && !textQuality.usable)
     || /\bpdf_image_only_possible\b|\bimage-only\b|\bimage based\b|\bimage-based\b|\bscanned\b/i.test(resource.extractionError ?? '')
 
   return isPdf && hasNoSelectableTextSignal
@@ -38,8 +46,12 @@ export function isOcrAlreadyRunning(resource: ModuleResource) {
 }
 
 export function isOcrAlreadyCompleted(resource: ModuleResource) {
+  const quality = classifyExtractedTextQuality({
+    text: resource.extractedText ?? (resource.visualExtractionStatus === 'completed' ? resource.visualExtractedText : null),
+    title: resource.title,
+  })
   return resource.visualExtractionStatus === 'completed'
-    && Boolean(resource.extractedText?.trim() || resource.visualExtractedText?.trim())
+    && quality.usable
 }
 
 export function buildOcrProcessingUpdate(input: {

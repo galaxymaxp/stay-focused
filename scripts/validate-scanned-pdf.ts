@@ -106,11 +106,11 @@ async function main() {
   })
   assert.equal(preReadiness.state, 'unreadable')
   assert.equal(preReadiness.canGenerate, false)
-  assert.equal(preReadiness.detail, 'This PDF appears to be image-based. Run visual extraction first.')
+  assert.equal(preReadiness.detail, 'Preparing scanned PDF for Deep Learn...')
 
   const preUi = getLearnResourceUiState(preLearn, { hasOriginalFile: true, hasCanvasLink: true })
   assert.equal(preUi.statusKey, 'visual_ocr_required')
-  assert.equal(preUi.summary, 'This PDF appears to be image-based. Run visual extraction first.')
+  assert.equal(preUi.summary, 'Preparing scanned PDF for Deep Learn...')
   console.log(`Pre-OCR readiness: ${preReadiness.state}`)
   console.log(`Pre-OCR UI copy: ${preUi.summary}`)
 
@@ -282,6 +282,8 @@ async function validateDbResource(resourceId: string) {
     extractedCharCount: resource.extractedCharCount,
     sourceTextQuality: sourceTextQuality.quality,
     readiness,
+    ocrQueueJob: await loadLatestOcrQueueJob(supabase, resource.id),
+    autoEnqueueDecision: explainAutoEnqueueDecision(resource, readiness),
   })
 }
 
@@ -408,6 +410,8 @@ function printOcrPersistenceDiagnostics(input: {
   extractedCharCount: number
   sourceTextQuality: string
   readiness: ReturnType<typeof classifyDeepLearnResourceReadiness> | null
+  ocrQueueJob?: { id: string; status: string } | null
+  autoEnqueueDecision?: string | null
 }) {
   console.log(input.label)
   console.log(`- resource id: ${input.resource.id}`)
@@ -416,6 +420,8 @@ function printOcrPersistenceDiagnostics(input: {
   console.log(`- canvas module id: ${input.resource.canvasModuleId ?? 'null'}`)
   console.log(`- canvas item id: ${input.resource.canvasItemId ?? 'null'}`)
   console.log(`- page count detected: ${input.pageCountDetected ?? 'null'}`)
+  console.log(`- extraction_status: ${input.resource.extractionStatus}`)
+  console.log(`- visual_extraction_status: ${input.resource.visualExtractionStatus ?? 'null'}`)
   console.log(`- OCR pages processed: ${input.ocrPagesProcessed}`)
   console.log(`- total OCR characters: ${input.totalOcrCharacters}`)
   console.log(`- extracted_text length: ${input.extractedTextLength}`)
@@ -426,6 +432,42 @@ function printOcrPersistenceDiagnostics(input: {
     console.log(`- readiness: ${input.readiness.state}`)
     console.log(`- canGenerate: ${input.readiness.canGenerate}`)
   }
+  console.log(`- OCR queue job id/status: ${input.ocrQueueJob ? `${input.ocrQueueJob.id}/${input.ocrQueueJob.status}` : 'none'}`)
+  console.log(`- auto-enqueue decision: ${input.autoEnqueueDecision ?? 'not evaluated in this local-only check'}`)
+}
+
+async function loadLatestOcrQueueJob(
+  supabase: { from: (table: string) => ReturnType<ReturnType<typeof createClient>['from']> },
+  resourceId: string,
+) {
+  const { data, error } = await supabase
+    .from('queued_jobs')
+    .select('id,status,payload,result,created_at')
+    .eq('type', 'source_ocr')
+    .order('created_at', { ascending: false })
+    .limit(25)
+
+  if (error || !data) return null
+  const row = (data as Record<string, unknown>[]).find((job) => {
+    const payload = asPlainRecord(job.payload)
+    const result = asPlainRecord(job.result)
+    return payload.resourceId === resourceId || result.resourceId === resourceId
+  })
+  return row ? { id: String(row.id), status: String(row.status) } : null
+}
+
+function explainAutoEnqueueDecision(resource: ModuleResource, readiness: ReturnType<typeof classifyDeepLearnResourceReadiness>) {
+  if (readiness.canGenerate) return 'not queued because source text is already meaningful'
+  if (resource.visualExtractionStatus === 'queued' || resource.visualExtractionStatus === 'running') return 'not queued because OCR is already active'
+  if (resource.visualExtractionStatus === 'failed') return 'not queued automatically if a recent failed source_ocr job exists; retry is manual'
+  if (resource.extension?.toLowerCase() === 'pdf' || resource.contentType?.toLowerCase().includes('pdf')) return 'auto-enqueue expected when normal extraction reports image-only/empty/thin PDF text'
+  return 'not queued because the resource does not look like a PDF OCR candidate'
+}
+
+function asPlainRecord(value: unknown): Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
 }
 
 function createGenerationContext(resource: ModuleSourceResource, storedResource: ModuleResource) {

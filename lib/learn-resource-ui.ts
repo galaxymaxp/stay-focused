@@ -24,7 +24,7 @@ export type LearnResourceActionPriority = 'reader' | 'source'
 
 export interface LearnResourceUiState {
   statusKey: LearnResourceStatusKey
-  statusLabel: 'Ready' | 'Partial' | 'Source first' | 'Link only' | 'Unsupported' | 'No extract' | 'Scanned PDF' | 'OCR required' | 'OCR queued' | 'Extracting...' | 'OCR complete' | 'OCR finished' | 'OCR partial' | 'OCR failed' | 'Loading'
+  statusLabel: 'Ready' | 'Partial' | 'Source first' | 'Link only' | 'Unsupported' | 'No extract' | 'Scanned PDF' | 'Preparing' | 'OCR queued' | 'Extracting...' | 'OCR complete' | 'OCR finished' | 'OCR partial' | 'OCR failed' | 'Loading'
   tone: 'accent' | 'warning' | 'muted'
   primaryAction: LearnResourceActionPriority
   summary: string
@@ -101,7 +101,7 @@ export function getLearnResourceUiState(
       statusLabel: 'OCR queued',
       tone: 'warning',
       primaryAction: 'source',
-      summary: 'Scanned PDF preparation is queued. Deep Learn will unlock after readable text is found.',
+      summary: 'Scanned PDF is queued for text extraction.',
       detail: `${formatPageCount(resource.pageCount)}Open the original ${sourceLabel} if you need it right away.`,
       sourceActionLabel,
       textAvailabilityLabel,
@@ -114,7 +114,7 @@ export function getLearnResourceUiState(
       statusLabel: 'Extracting...',
       tone: 'warning',
       primaryAction: 'source',
-      summary: 'Extracting text from images.',
+      summary: 'Scanning pages for readable text...',
       detail: `${formatOcrProgress(resource.pagesProcessed, resource.pageCount)}Deep Learn will use this PDF after OCR finishes. Open the original ${sourceLabel} if you need it right away.`,
       sourceActionLabel,
       textAvailabilityLabel,
@@ -140,7 +140,7 @@ export function getLearnResourceUiState(
       statusLabel: 'OCR finished',
       tone: 'warning',
       primaryAction: 'source',
-      summary: 'Visual extraction finished, but did not find enough usable study text. Try OCR again or open the original source.',
+      summary: 'We could not find enough readable study text in this PDF. You can open the original source.',
       detail: resource.visualExtractionError?.trim() || resource.extractionError?.trim() || BAD_OCR_BLOCKED_MESSAGE,
       sourceActionLabel,
       textAvailabilityLabel,
@@ -172,7 +172,7 @@ export function getLearnResourceUiState(
       statusLabel: 'OCR failed',
       tone: 'warning',
       primaryAction: 'source',
-      summary: 'OCR failed. Open the original file.',
+      summary: 'Text extraction failed for this PDF. You can open the original source.',
       detail: resource.visualExtractionError?.trim() || resource.extractionError?.trim() || BAD_OCR_BLOCKED_MESSAGE,
       sourceActionLabel,
       textAvailabilityLabel,
@@ -210,11 +210,11 @@ export function getLearnResourceUiState(
     if (likelyScanned || resource.visualExtractionStatus === 'available') {
       return {
         statusKey: 'visual_ocr_required',
-        statusLabel: 'OCR required',
+        statusLabel: 'Preparing',
         tone: 'warning',
         primaryAction: 'source',
-        summary: 'This PDF appears to be image-based. Run visual extraction first.',
-        detail: `${formatPageCount(resource.pageCount)}Use Extract text from images to recover visible text, or open the original ${sourceLabel}.`,
+        summary: 'Preparing scanned PDF for Deep Learn...',
+        detail: `${formatPageCount(resource.pageCount)}Text extraction should start automatically. Open the original ${sourceLabel} if you need it right away.`,
         sourceActionLabel,
         textAvailabilityLabel,
       }

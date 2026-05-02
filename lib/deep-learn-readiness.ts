@@ -355,7 +355,7 @@ function describeDeepLearnBlockedReason(input: {
       ? 'Scanned PDF'
       : 'No readable text found. Deep Learn cannot generate from this source.',
     detail: isImageOnly
-      ? 'This PDF appears to be image-based. Run visual extraction first.'
+      ? 'Preparing scanned PDF for Deep Learn...'
       : sourceNote
         ? `No readable text found. ${sourceNote}`
         : 'No readable text found. Deep Learn cannot generate from this source.',

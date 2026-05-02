@@ -157,7 +157,7 @@ test('buildDeepLearnGroundingWithDependencies blocks image-only PDFs until visua
     (error: unknown) => {
       assert.ok(error instanceof DeepLearnGenerationBlockedError)
       assert.equal(error.blockedReason, 'extraction_unusable_after_fetch')
-      assert.equal(error.message, 'This PDF appears to be image-based. Run visual extraction first.')
+      assert.equal(error.message, 'Preparing scanned PDF for Deep Learn...')
       return true
     },
   )

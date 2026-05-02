@@ -616,9 +616,10 @@ function toSourceSummarySnapshot(summary: Awaited<ReturnType<typeof listResource
 }
 
 function describeGenerationBlock(state: ReturnType<typeof normalizeSourceReadiness>['state'], fallback: string) {
-  if (state === 'visual_ocr_available') return 'This PDF appears to be image-based. Run visual extraction first.'
+  if (state === 'visual_ocr_available') return 'Preparing scanned PDF for Deep Learn...'
+  if (state === 'visual_ocr_queued') return 'Scanned PDF is queued for text extraction.'
   if (state === 'visual_ocr_running') return 'Reading scanned pages...'
-  if (state === 'visual_ocr_failed') return 'OCR failed. Open the original file or retry.'
+  if (state === 'visual_ocr_failed') return 'Text extraction failed for this PDF. You can open the original source.'
   if (fallback === 'The stored source text is too short to ground a trustworthy Deep Learn pack.') {
     return 'This source does not have enough readable text to create a trustworthy study pack.'
   }
@@ -710,7 +711,7 @@ function buildSourceOcrQueueState(job: QueuedJob | null) {
     return {
       status: 'queued' as const,
       label: 'OCR queued',
-      summary: 'Scanned PDF preparation is queued. Deep Learn will unlock after readable text is found.',
+      summary: 'Scanned PDF is queued for text extraction.',
     }
   }
   if (job.status === 'running') {
@@ -724,7 +725,7 @@ function buildSourceOcrQueueState(job: QueuedJob | null) {
     return {
       status: 'failed' as const,
       label: 'OCR failed',
-      summary: job.error ?? 'Visual extraction failed or returned non-usable text. Try OCR again or open the original source.',
+      summary: job.error ?? 'Text extraction failed for this PDF. You can open the original source.',
     }
   }
   return null

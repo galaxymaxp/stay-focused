@@ -7,6 +7,7 @@ import { resolveCanvasConfig, type CanvasConfig } from '@/lib/canvas'
 import { adaptModuleResourceRow } from '@/lib/module-resource-row'
 import {
   createQueuedJob,
+  createQueuedJobAsService,
   getUserQueuedJobs,
   markQueuedJobCompleted,
   markQueuedJobFailed,
@@ -14,6 +15,7 @@ import {
   updateQueuedJobStatus,
   type QueuedJob,
 } from '@/lib/queue'
+import { createSupabaseServiceRoleClient } from '@/lib/supabase-service'
 import {
   buildLearnExperience,
   extractCourseName,
@@ -46,6 +48,7 @@ import {
   buildSourceOcrQueueTitle,
   buildSourceOcrStatusMessage,
   calculateSourceOcrProgress,
+  findActiveSourceOcrJob,
   findRecentFailedSourceOcrJob,
 } from '@/lib/source-ocr-queue'
 import type { ModuleResource } from '@/lib/types'
@@ -54,6 +57,14 @@ export interface QueueJobResult {
   jobId: string
   job?: QueuedJob
   error?: string
+}
+
+export interface AutoSourceOcrJobInput {
+  userId: string
+  moduleId: string
+  courseId: string | null
+  resource: ModuleResource
+  manualRetry?: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -151,19 +162,14 @@ export async function queueSourceOcrAction(input: {
     return { jobId: '', error: 'OCR is only available for scanned PDFs with no selectable text.' }
   }
 
-  const job = await createQueuedJob(
-    user.id,
-    'source_ocr',
-    buildSourceOcrQueueTitle(input.resourceTitle),
-    {
-      moduleId: input.moduleId,
-      resourceId: input.resourceId,
-      courseId: input.courseId ?? resource.courseId ?? null,
-      resourceTitle: input.resourceTitle,
-      pageCount: resource.pageCount ?? null,
-      manualRetry: Boolean(input.manualRetry),
-    },
-  )
+  const job = await createSourceOcrQueueJob({
+    userId: user.id,
+    moduleId: input.moduleId,
+    courseId: input.courseId ?? resource.courseId ?? null,
+    resource,
+    manualRetry: input.manualRetry,
+    useServiceRole: false,
+  })
 
   if (!job) return { jobId: '', error: 'Failed to create OCR queue job.' }
 
@@ -185,6 +191,95 @@ export async function queueSourceOcrAction(input: {
   })
 
   return { jobId: job.id, job }
+}
+
+export async function autoEnqueueSourceOcrJobs(input: {
+  userId: string
+  moduleId: string
+  courseId: string | null
+  resources: ModuleResource[]
+}): Promise<QueuedJob[]> {
+  const candidates = input.resources.filter((resource) => isScannedPdfOcrCandidate(resource))
+  if (candidates.length === 0) return []
+
+  const supabase = createSupabaseServiceRoleClient()
+  if (!supabase) {
+    console.error('[source-ocr:auto-enqueue] service role client unavailable', {
+      userId: input.userId,
+      moduleId: input.moduleId,
+      candidateCount: candidates.length,
+    })
+    return []
+  }
+
+  const { data: existingRows, error: existingError } = await supabase
+    .from('queued_jobs')
+    .select('*')
+    .eq('user_id', input.userId)
+    .eq('type', 'source_ocr')
+    .order('created_at', { ascending: false })
+    .limit(150)
+
+  if (existingError) {
+    console.error('[source-ocr:auto-enqueue] queued_jobs lookup failed', {
+      userId: input.userId,
+      moduleId: input.moduleId,
+      code: getErrorField(existingError, 'code'),
+      message: getErrorField(existingError, 'message'),
+    })
+    return []
+  }
+
+  const existingJobs = ((existingRows ?? []) as Record<string, unknown>[]).map(rowToQueuedJobForAutoOcr)
+  const jobs: QueuedJob[] = []
+
+  for (const resource of candidates) {
+    const diagnosticBase = buildAutoOcrDiagnosticBase(resource)
+    if (findActiveSourceOcrJob(existingJobs, resource.id)) {
+      logAutoOcrDecision('skip_active_duplicate', diagnosticBase)
+      continue
+    }
+
+    if (findRecentFailedSourceOcrJob(existingJobs, resource.id)) {
+      logAutoOcrDecision('skip_recent_failure', diagnosticBase)
+      continue
+    }
+
+    const job = await createSourceOcrQueueJob({
+      userId: input.userId,
+      moduleId: input.moduleId,
+      courseId: input.courseId ?? resource.courseId ?? null,
+      resource,
+      useServiceRole: true,
+    })
+
+    if (!job) {
+      logAutoOcrDecision('queue_create_failed', diagnosticBase)
+      continue
+    }
+
+    const update = buildOcrQueuedUpdate({ resource, now: new Date().toISOString() })
+    const { error: updateError } = await supabase
+      .from('module_resources')
+      .update(update)
+      .eq('id', resource.id)
+
+    if (updateError) {
+      console.error('[source-ocr:auto-enqueue] resource queued-state update failed', {
+        ...diagnosticBase,
+        jobId: job.id,
+        jobStatus: job.status,
+        code: getErrorField(updateError, 'code'),
+        message: getErrorField(updateError, 'message'),
+      })
+    }
+
+    jobs.push(job)
+    existingJobs.unshift(job)
+    logAutoOcrDecision('queued', { ...diagnosticBase, ocrQueueJobId: job.id, ocrQueueJobStatus: job.status })
+  }
+
+  return jobs
 }
 
 // ---------------------------------------------------------------------------
@@ -447,7 +542,7 @@ function revalidateLearnQueuePaths(moduleId: string, courseId: string | null, re
   }
 }
 
-async function processSourceOcrJob(input: {
+export async function processSourceOcrJob(input: {
   jobId: string
   userId: string
   moduleId: string
@@ -456,7 +551,7 @@ async function processSourceOcrJob(input: {
   resourceTitle: string
 }) {
   await markQueuedJobRunning(input.jobId, 8)
-  const supabase = await createAuthenticatedSupabaseServerClient()
+  const supabase = createSupabaseServiceRoleClient() ?? await createAuthenticatedSupabaseServerClient()
   if (!supabase) {
     await markQueuedJobFailed(input.jobId, 'Database connection is unavailable.')
     return
@@ -712,7 +807,7 @@ async function findActiveJob(
 }
 
 async function getOwnedModuleResource(
-  supabase: NonNullable<Awaited<ReturnType<typeof createAuthenticatedSupabaseServerClient>>>,
+  supabase: NonNullable<Awaited<ReturnType<typeof createAuthenticatedSupabaseServerClient>>> | NonNullable<ReturnType<typeof createSupabaseServiceRoleClient>>,
   resourceId: string,
   userId: string,
 ) {
@@ -725,6 +820,104 @@ async function getOwnedModuleResource(
 
   if (error || !data) return null
   return adaptModuleResourceRow(data as Record<string, unknown>)
+}
+
+async function createSourceOcrQueueJob(input: AutoSourceOcrJobInput & { useServiceRole: boolean }) {
+  const payload = {
+    moduleId: input.moduleId,
+    resourceId: input.resource.id,
+    courseId: input.courseId ?? input.resource.courseId ?? null,
+    resourceTitle: input.resource.title,
+    pageCount: input.resource.pageCount ?? null,
+    manualRetry: Boolean(input.manualRetry),
+  }
+
+  return input.useServiceRole
+    ? createQueuedJobAsService(input.userId, 'source_ocr', buildSourceOcrQueueTitle(input.resource.title), payload)
+    : createQueuedJob(input.userId, 'source_ocr', buildSourceOcrQueueTitle(input.resource.title), payload)
+}
+
+function rowToQueuedJobForAutoOcr(row: Record<string, unknown>): QueuedJob {
+  return {
+    id: row.id as string,
+    userId: row.user_id as string,
+    type: row.type as QueuedJob['type'],
+    title: row.title as string,
+    status: row.status as QueuedJob['status'],
+    progress: (row.progress as number) ?? 0,
+    payload: (row.payload as Record<string, unknown> | null) ?? null,
+    result: (row.result as Record<string, unknown> | null) ?? null,
+    error: (row.error as string | null) ?? null,
+    attempts: (row.attempts as number) ?? 0,
+    maxAttempts: (row.max_attempts as number) ?? 3,
+    createdAt: row.created_at as string,
+    updatedAt: row.updated_at as string,
+    startedAt: (row.started_at as string | null) ?? null,
+    completedAt: (row.completed_at as string | null) ?? null,
+    dismissedAt: (row.dismissed_at as string | null) ?? null,
+  }
+}
+
+function buildAutoOcrDiagnosticBase(resource: ModuleResource) {
+  const readiness = classifyDeepLearnResourceReadiness({
+    resource: {
+      id: resource.id,
+      title: resource.title,
+      originalTitle: resource.title,
+      type: resource.resourceType,
+      contentType: resource.contentType,
+      extension: resource.extension,
+      required: resource.required,
+      moduleName: '',
+      category: 'resource',
+      kind: 'study_file',
+      lane: 'learn',
+      sourceUrl: resource.sourceUrl,
+      htmlUrl: resource.htmlUrl,
+      extractionStatus: resource.extractionStatus,
+      extractedText: resource.extractedText,
+      extractedTextPreview: resource.extractedTextPreview,
+      extractedCharCount: resource.extractedCharCount,
+      extractionError: resource.extractionError,
+      visualExtractionStatus: resource.visualExtractionStatus,
+      visualExtractedText: resource.visualExtractedText,
+      visualExtractionError: resource.visualExtractionError,
+      pageCount: resource.pageCount,
+      pagesProcessed: resource.pagesProcessed,
+      extractionProvider: resource.extractionProvider,
+      metadata: resource.metadata,
+    },
+    storedResource: resource,
+    canonicalResourceId: resource.id,
+  })
+
+  return {
+    resourceId: resource.id,
+    title: resource.title,
+    extractionStatus: resource.extractionStatus,
+    visualExtractionStatus: resource.visualExtractionStatus ?? null,
+    extractedTextLength: resource.extractedText?.length ?? 0,
+    visualExtractedTextLength: resource.visualExtractedText?.length ?? 0,
+    extractedCharCount: resource.extractedCharCount,
+    pageCount: resource.pageCount ?? null,
+    ocrQueueJobId: null,
+    ocrQueueJobStatus: null,
+    readinessResult: readiness.state,
+    readinessCanGenerate: readiness.canGenerate,
+  }
+}
+
+function logAutoOcrDecision(reason: string, fields: Record<string, unknown>) {
+  if (process.env.NODE_ENV === 'production') return
+  console.info('[source-ocr:auto-enqueue]', {
+    ...fields,
+    autoEnqueueReason: reason,
+  })
+}
+
+function getErrorField(error: unknown, key: 'code' | 'message' | 'details' | 'hint') {
+  const value = (error as Record<string, unknown> | null)?.[key]
+  return typeof value === 'string' ? value : null
 }
 
 async function downloadStoredPdfForOcr(url: string, canvasConfig: CanvasConfig | null) {

@@ -11,7 +11,7 @@ import type { QueuedJob } from '../lib/queue'
 
 test('source OCR queue helpers format labels and page progress', () => {
   assert.equal(buildSourceOcrQueueTitle('1-Data Organization.pdf'), 'Preparing scanned PDF: 1-Data Organization.pdf')
-  assert.equal(buildSourceOcrStatusMessage({ queued: true, pageCount: 51 }), 'Scanned PDF preparation is queued.')
+  assert.equal(buildSourceOcrStatusMessage({ queued: true, pageCount: 51 }), 'Scanned PDF is queued for text extraction.')
   assert.equal(buildSourceOcrStatusMessage({ pagesProcessed: 8, pageCount: 51 }), 'Scanning page 8 of 51')
   assert.equal(buildSourceOcrStatusMessage({}), 'Extracting readable text from scanned PDF')
   assert.equal(calculateSourceOcrProgress(8, 51), 16)

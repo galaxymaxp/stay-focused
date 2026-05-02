@@ -769,3 +769,51 @@ Scanned PDFs with no parsed text could still trigger Deep Learn output from stal
 
 ### Remaining risks
 - If the live app already has rows with stale failed OCR status plus good text in only one field, those rows may need a retry or a one-time repair script to recompute `extracted_char_count`, metadata quality, and statuses from the stored visual text.
+
+---
+
+## Session Update - 2026-05-02 (Automatic scanned PDF OCR during Canvas sync)
+
+### What changed
+- Canvas sync now auto-enqueues `source_ocr` jobs after inserting `module_resources` for scanned/image-heavy PDF candidates.
+  - Candidate detection covers image-only PDF signals, `pdf_image_only_possible`, empty/metadata-only PDF extraction, and thin readable text.
+  - Duplicate prevention keys by exact `resourceId` and active `pending`/`running` jobs.
+  - Recent failed OCR jobs suppress automatic retries so resync does not spam the queue.
+- Queue creation now has a service-role path for server-side sync/background work with structured, non-secret error logging.
+- Added migration `20260502010000_add_source_ocr_queue_type.sql` for the missing `source_ocr` queued job enum value.
+- The queued OCR worker is exported and started from the Canvas sync queue path immediately after a course sync creates OCR jobs.
+- Student-facing scanned PDF copy now treats OCR as automatic:
+  - `Preparing scanned PDF for Deep Learn...`
+  - `Scanned PDF is queued for text extraction.`
+  - `Scanning pages for readable text...`
+  - failed/thin states tell the student to open the original source, with retry kept as a secondary action.
+- Removed the hidden client-side auto-click OCR path from the Learn accordion.
+- Validator diagnostics now print queue job id/status and the auto-enqueue decision reason when validating a DB resource.
+
+### Queue behavior
+- `source_ocr` jobs appear in Study Queue with titles like `Preparing scanned PDF: 1-Data Organization.pdf`.
+- Running queue status uses page progress when available, for example `Scanning page 8 of 51`.
+- Completion/failure revalidates the module Learn, Review, Quiz, course, library, and resource detail paths.
+
+### Remaining risks
+- Direct non-queued sync still creates OCR jobs, but the immediate worker start is wired through the queued Canvas sync path.
+- OCR still processes from the first rendered page batch; true page-range resume remains future work.
+- Existing production databases need the new enum migration before `source_ocr` inserts can succeed.
+
+### Manual validation steps
+- Sync a course with an image-only PDF and confirm the resource moves to `Preparing`/`OCR queued` without a primary `Prepare scanned PDF` action.
+- Open Study Queue and confirm the `source_ocr` job appears with the scanned PDF title and page progress.
+- After OCR completes, refresh the Learn page and confirm the resource moves to Ready with `Generate study pack`.
+- Run DB diagnostics when needed:
+  `npx tsx scripts/validate-scanned-pdf.ts --resource-id <module_resource_id>`
+
+### Verification results
+- `npm run typecheck` passed.
+- `npm run lint` passed.
+- `npm test -- pdf-extractor source-ocr-updates deep-learn-readiness deep-learn-generation canvas-content-resolution learn-resource-ui queue` passed.
+- `npx tsx scripts/validate-scanned-pdf.ts --pdf "C:\Users\omgra\Downloads\1.1-Data Organization.pdf"` passed:
+  - pre-OCR UI copy was `Preparing scanned PDF for Deep Learn...`
+  - OCR completed with `3395` characters across `24` rendered pages
+  - persisted extracted text length was `3117`
+  - readiness became `text_ready`
+  - Deep Learn generation check passed
