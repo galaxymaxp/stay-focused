@@ -14,6 +14,7 @@ export type QueuedJobType =
   | 'task_output'
   | 'do_generation'
   | 'resource_extraction'
+  | 'source_ocr'
   | 'notification_scan'
 
 export interface QueuedJob {

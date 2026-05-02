@@ -13,7 +13,10 @@ export type LearnResourceStatusKey =
   | 'unsupported'
   | 'no_extract'
   | 'visual_ocr_required'
+  | 'visual_ocr_queued'
   | 'visual_ocr_running'
+  | 'visual_ocr_partial'
+  | 'visual_ocr_completed_empty'
   | 'visual_ocr_failed'
   | 'loading'
 
@@ -21,7 +24,7 @@ export type LearnResourceActionPriority = 'reader' | 'source'
 
 export interface LearnResourceUiState {
   statusKey: LearnResourceStatusKey
-  statusLabel: 'Ready' | 'Partial' | 'Source first' | 'Link only' | 'Unsupported' | 'No extract' | 'Scanned PDF' | 'OCR required' | 'Extracting...' | 'OCR complete' | 'OCR failed' | 'Loading'
+  statusLabel: 'Ready' | 'Partial' | 'Source first' | 'Link only' | 'Unsupported' | 'No extract' | 'Scanned PDF' | 'OCR required' | 'OCR queued' | 'Extracting...' | 'OCR complete' | 'OCR finished' | 'OCR partial' | 'OCR failed' | 'Loading'
   tone: 'accent' | 'warning' | 'muted'
   primaryAction: LearnResourceActionPriority
   summary: string
@@ -92,6 +95,19 @@ export function getLearnResourceUiState(
     }
   }
 
+  if (resource.visualExtractionStatus === 'queued') {
+    return {
+      statusKey: 'visual_ocr_queued',
+      statusLabel: 'OCR queued',
+      tone: 'warning',
+      primaryAction: 'source',
+      summary: 'Scanned PDF preparation is queued. Deep Learn will unlock after readable text is found.',
+      detail: `${formatPageCount(resource.pageCount)}Open the original ${sourceLabel} if you need it right away.`,
+      sourceActionLabel,
+      textAvailabilityLabel,
+    }
+  }
+
   if (resource.extractionStatus === 'processing' || resource.visualExtractionStatus === 'running') {
     return {
       statusKey: 'visual_ocr_running',
@@ -99,7 +115,7 @@ export function getLearnResourceUiState(
       tone: 'warning',
       primaryAction: 'source',
       summary: 'Extracting text from images.',
-      detail: `${formatPageCount(resource.pageCount)}Deep Learn will use this PDF after OCR finishes. Open the original ${sourceLabel} if you need it right away.`,
+      detail: `${formatOcrProgress(resource.pagesProcessed, resource.pageCount)}Deep Learn will use this PDF after OCR finishes. Open the original ${sourceLabel} if you need it right away.`,
       sourceActionLabel,
       textAvailabilityLabel,
     }
@@ -115,6 +131,38 @@ export function getLearnResourceUiState(
       detail: 'Use Deep Learn for the main study pass. Open the original source when exact page layout matters.',
       sourceActionLabel,
       textAvailabilityLabel: 'Full text available',
+    }
+  }
+
+  if (resource.visualExtractionStatus === 'completed' && !textQuality.usable) {
+    return {
+      statusKey: 'visual_ocr_completed_empty',
+      statusLabel: 'OCR finished',
+      tone: 'warning',
+      primaryAction: 'source',
+      summary: 'Visual extraction finished, but did not find enough usable study text. Try OCR again or open the original source.',
+      detail: resource.visualExtractionError?.trim() || resource.extractionError?.trim() || BAD_OCR_BLOCKED_MESSAGE,
+      sourceActionLabel,
+      textAvailabilityLabel,
+    }
+  }
+
+  if (
+    resource.visualExtractionStatus === 'failed'
+    && typeof resource.pagesProcessed === 'number'
+    && typeof resource.pageCount === 'number'
+    && resource.pagesProcessed > 0
+    && resource.pagesProcessed < resource.pageCount
+  ) {
+    return {
+      statusKey: 'visual_ocr_partial',
+      statusLabel: 'OCR partial',
+      tone: 'warning',
+      primaryAction: 'source',
+      summary: `Scanned PDF partially prepared: ${resource.pagesProcessed} of ${resource.pageCount} pages processed. Continue OCR to scan the remaining pages.`,
+      detail: resource.visualExtractionError?.trim() || resource.extractionError?.trim() || BAD_OCR_BLOCKED_MESSAGE,
+      sourceActionLabel,
+      textAvailabilityLabel,
     }
   }
 
@@ -289,6 +337,13 @@ export function getLearnResourceUiState(
 
 function formatPageCount(pageCount: number | null | undefined) {
   return typeof pageCount === 'number' && pageCount > 0 ? `${pageCount} pages detected. ` : ''
+}
+
+function formatOcrProgress(pagesProcessed: number | null | undefined, pageCount: number | null | undefined) {
+  if (typeof pagesProcessed === 'number' && typeof pageCount === 'number' && pageCount > 0) {
+    return `Scanning pages for readable text... ${Math.min(pagesProcessed, pageCount)} of ${pageCount} pages processed. `
+  }
+  return formatPageCount(pageCount)
 }
 
 function isExternalLinkResource(

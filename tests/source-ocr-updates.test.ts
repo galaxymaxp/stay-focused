@@ -4,6 +4,7 @@ import {
   buildOcrCompletedUpdate,
   buildOcrFailedUpdate,
   buildOcrProcessingUpdate,
+  buildOcrQueuedUpdate,
   isOcrAlreadyCompleted,
   isOcrAlreadyRunning,
   isScannedPdfOcrCandidate,
@@ -39,6 +40,20 @@ test('OCR processing update preserves existing metadata and marks progress', () 
   assert.deepEqual(update.metadata.pdfOcr, {
     status: 'running',
     startedAt: '2026-04-27T12:00:00.000Z',
+  })
+})
+
+test('OCR queued update marks source without claiming OCR is complete', () => {
+  const update = buildOcrQueuedUpdate({
+    resource: createResource({ metadata: { pdfExtraction: { pageCount: 51 } } }),
+    now: '2026-04-27T12:00:00.000Z',
+  })
+
+  assert.equal(update.visual_extraction_status, 'queued')
+  assert.equal(update.extraction_error, 'OCR is queued for this scanned PDF.')
+  assert.deepEqual(update.metadata.pdfOcr, {
+    status: 'queued',
+    queuedAt: '2026-04-27T12:00:00.000Z',
   })
 })
 
@@ -102,7 +117,7 @@ test('completed OCR mirrors text into normal extraction fields for Deep Learn', 
   assert.equal(update.extraction_error, null)
   assert.equal(update.visual_extraction_status, 'completed')
   assert.equal(update.visual_extracted_text, text)
-  assert.equal(update.pages_processed, 3)
+  assert.equal(update.pages_processed, 2)
   assert.equal(update.extraction_provider, 'test_ocr')
   assert.equal(update.metadata.fullTextAvailable, true)
   assert.equal(update.metadata.previewState, 'full_text_available')

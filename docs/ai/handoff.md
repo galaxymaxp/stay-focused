@@ -643,3 +643,74 @@ Scanned PDFs with no parsed text could still trigger Deep Learn output from stal
 
 ### Remaining risk
 - The academic-keyword-density gate is heuristic. It correctly blocks the known refusal/metadata preview regression and still accepts the real Data Organization deck, but very short legitimate slides may still need neighboring-page OCR text to clear the threshold.
+
+---
+
+## Session Update - 2026-05-02 (Scanned PDF OCR queue UX)
+
+### What changed
+- Added `source_ocr` as a first-class queued job type in [lib/queue.ts](/c:/Users/omgra/OneDrive/Documents/Projects/stay-focused/lib/queue.ts).
+- Added source OCR queue helpers in [lib/source-ocr-queue.ts](/c:/Users/omgra/OneDrive/Documents/Projects/stay-focused/lib/source-ocr-queue.ts) for:
+  - queue title: `Preparing scanned PDF: ...`
+  - progress from processed pages / total pages
+  - status messages like `Scanning page 8 of 51`
+  - active duplicate detection
+  - recent failed-job guard for automatic retries
+- Reworked [components/OcrSourceButton.tsx](/c:/Users/omgra/OneDrive/Documents/Projects/stay-focused/components/OcrSourceButton.tsx) to enqueue OCR via `queueSourceOcrAction` instead of calling the synchronous OCR route directly.
+- Added `queueSourceOcrAction` and queued OCR processing in [actions/queue-jobs.ts](/c:/Users/omgra/OneDrive/Documents/Projects/stay-focused/actions/queue-jobs.ts):
+  - duplicate active OCR jobs are blocked server-side
+  - recent failed OCR jobs are not auto-enqueued again unless the user manually retries
+  - resources are marked `visual_extraction_status = queued` before processing
+  - rendered-page OCR updates queue progress after each page
+  - successful OCR mirrors meaningful text into normal extraction fields
+  - failed/thin/refusal OCR keeps Deep Learn blocked
+- [components/shell/QueuePanel.tsx](/c:/Users/omgra/OneDrive/Documents/Projects/stay-focused/components/shell/QueuePanel.tsx) now displays OCR jobs in the Study Queue with OCR-specific titles, progress, completion, and failure wording.
+- Learn resource readiness now has clearer OCR states:
+  - `visual_ocr_queued`
+  - `visual_ocr_running`
+  - `visual_ocr_partial`
+  - `visual_ocr_completed_empty`
+  - `visual_ocr_failed`
+- The Learn accordion auto-enqueues OCR for image-only/OCR-required resources and no longer shows `Prepare scanned PDF` next to `OCR is already complete.`
+- OCR button labels now map to state:
+  - needed: `Prepare scanned PDF`
+  - running/queued: queue/status copy instead of a conflicting button
+  - partial: `Continue OCR`
+  - failed/thin: `Retry OCR`
+  - meaningful OCR text: normal Deep Learn generation
+
+### UX behavior
+- OCR queued:
+  `Scanned PDF preparation is queued. Deep Learn will unlock after readable text is found.`
+- OCR running:
+  `Scanning page 8 of 51`
+- OCR completed but thin:
+  `Visual extraction finished, but did not find enough usable study text. Try OCR again or open the original source.`
+- OCR failed/refused:
+  `Visual extraction failed or returned non-usable text. Try OCR again or open the original source.`
+
+### Tests added/updated
+- OCR queued state does not claim OCR is complete.
+- OCR running state shows page progress.
+- OCR completed with thin text stays blocked with retry guidance.
+- OCR queue helpers cover titles, progress, duplicate active jobs, and recent failed auto-retry suppression.
+- OCR completed update now records actual pages processed from OCR results instead of assuming the full PDF page count.
+
+### Verification results
+- `npm run typecheck` passed.
+- `npm run lint` passed.
+- `npm test -- pdf-extractor source-ocr-updates deep-learn-readiness deep-learn-generation canvas-content-resolution learn-resource-ui queue` passed.
+- `npx tsx scripts/validate-scanned-pdf.ts --pdf "C:\Users\omgra\Downloads\1.1-Data Organization.pdf"` passed:
+  - pre-OCR parse was `empty` / `pdf_image_only_possible`
+  - pre-OCR readiness was `unreadable`
+  - pre-OCR UI copy was `This PDF appears to be image-based. Run visual extraction first.`
+  - production rendered-page OCR recovered `3400` characters across `24` pages
+  - expected Data Organization / OLTP / ODS terms passed
+  - Deep Learn generation check passed
+
+### Remaining risks
+- The queued OCR worker currently runs through the app's existing `after(...)` queue pattern. It is integrated with the queue UI, but it is still bounded by the hosting/runtime limits of that background execution path.
+- Resume/continue OCR is represented in the UI state, but the OCR engine still processes from page 1 up to the configured max pages. True page-range resume remains a follow-up.
+
+### Next step
+- Add resumable page-range OCR so `Continue OCR` can scan only unprocessed pages and append usable text instead of rerunning the first page batch.

@@ -48,6 +48,12 @@ export async function extractScannedPdfTextWithOpenAI(input: {
   buffer: Buffer
   filename: string
   pageCount?: number | null
+  onPageResult?: (progress: {
+    page: PdfOcrPage
+    pageNumber: number
+    pagesProcessed: number
+    totalPages: number
+  }) => void | Promise<void>
 }): Promise<PdfOcrResult> {
   const apiKey = process.env.OPENAI_API_KEY
   const model = process.env.OPENAI_OCR_MODEL?.trim() || 'gpt-4o-mini'
@@ -87,6 +93,12 @@ export async function extractScannedPdfTextWithOpenAI(input: {
         widths: [renderWidth, retryRenderWidth],
       })
       pageResults.push(page)
+      await input.onPageResult?.({
+        page,
+        pageNumber,
+        pagesProcessed: pageResults.length,
+        totalPages,
+      })
     }
 
     const successfulPages = pageResults.filter((page) => page.status === 'completed' && page.text.trim())

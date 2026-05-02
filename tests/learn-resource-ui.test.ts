@@ -165,6 +165,56 @@ test('image-only PDFs map to no selectable text and OCR-required copy', () => {
   assert.equal(state.summary, 'This PDF appears to be image-based. Run visual extraction first.')
 })
 
+test('queued OCR shows queued copy instead of prepare/complete contradiction', () => {
+  const state = getLearnResourceUiState(createResource({
+    extractionStatus: 'empty',
+    extractedText: null,
+    extractedTextPreview: null,
+    extractionError: 'OCR is queued for this scanned PDF.',
+    visualExtractionStatus: 'queued',
+    pageCount: 51,
+    previewState: 'no_text_available',
+  }), {
+    hasOriginalFile: true,
+    hasCanvasLink: true,
+  })
+
+  assert.equal(state.statusKey, 'visual_ocr_queued')
+  assert.equal(state.statusLabel, 'OCR queued')
+  assert.equal(state.summary, 'Scanned PDF preparation is queued. Deep Learn will unlock after readable text is found.')
+  assert.doesNotMatch(`${state.summary} ${state.detail}`, /OCR is already complete/i)
+})
+
+test('running OCR shows page progress', () => {
+  const state = getLearnResourceUiState(createResource({
+    extractionStatus: 'processing',
+    visualExtractionStatus: 'running',
+    pageCount: 51,
+    pagesProcessed: 8,
+  }), {
+    hasOriginalFile: true,
+  })
+
+  assert.equal(state.statusKey, 'visual_ocr_running')
+  assert.match(state.detail, /8 of 51 pages processed/)
+})
+
+test('completed OCR with thin text remains blocked with retry guidance', () => {
+  const state = getLearnResourceUiState(createResource({
+    extractionStatus: 'empty',
+    visualExtractionStatus: 'completed',
+    visualExtractedText: null,
+    visualExtractionError: 'Visual extraction finished, but did not find enough usable study text. Try OCR again or open the original source.',
+    pageCount: 51,
+    pagesProcessed: 51,
+  }), {
+    hasOriginalFile: true,
+  })
+
+  assert.equal(state.statusKey, 'visual_ocr_completed_empty')
+  assert.match(state.summary, /did not find enough usable study text/i)
+})
+
 test('visual OCR refusal text does not surface as ready reader content', () => {
   const refusalText = "I'm unable to transcribe text from images or scanned documents at this time."
   const state = getLearnResourceUiState(createResource({
