@@ -188,27 +188,22 @@ export function selectDeepLearnGroundingText(
     visualExtractedText?: string | null
   },
 ) {
-  const extracted = classifyExtractedTextQuality({
-    text: resource.extractedText,
-    title: resource.title ?? null,
-  })
-  if (extracted.quality === 'meaningful') return extracted.candidateText
-
-  if (resource.visualExtractionStatus === 'completed') {
-    const visual = classifyExtractedTextQuality({
-      text: resource.visualExtractedText,
+  const candidates = [
+    resource.extractedText,
+    resource.visualExtractionStatus === 'completed' ? resource.visualExtractedText : null,
+    resource.extractedTextPreview,
+  ]
+    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    .map((text) => classifyExtractedTextQuality({
+      text,
       title: resource.title ?? null,
-    })
-    if (visual.quality === 'meaningful') return visual.candidateText
-  }
+    }))
 
-  const preview = classifyExtractedTextQuality({
-    text: resource.extractedTextPreview,
-    title: resource.title ?? null,
-  })
-  if (preview.quality === 'meaningful') return preview.candidateText
+  const meaningful = candidates
+    .filter((quality) => quality.quality === 'meaningful')
+    .sort((left, right) => right.candidateCharCount - left.candidateCharCount)[0]
 
-  return ''
+  return meaningful?.candidateText ?? ''
 }
 
 export function detectDeepLearnBlockedReasonAfterSourceFetch(resource: ModuleResource): DeepLearnBlockedReason {

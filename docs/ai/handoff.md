@@ -714,3 +714,58 @@ Scanned PDFs with no parsed text could still trigger Deep Learn output from stal
 
 ### Next step
 - Add resumable page-range OCR so `Continue OCR` can scan only unprocessed pages and append usable text instead of rerunning the first page batch.
+
+---
+
+## Session Update - 2026-05-02 (OCR persistence/readiness identity fix)
+
+### What changed
+- Fixed source text selection so stale or thin `extracted_text` no longer masks richer completed `visual_extracted_text`.
+  - [lib/extracted-text-quality.ts](/c:/Users/omgra/OneDrive/Documents/Projects/stay-focused/lib/extracted-text-quality.ts) now evaluates extracted text, visual OCR text, and preview text, then chooses meaningful text when any candidate is meaningful.
+  - [lib/deep-learn-readiness.ts](/c:/Users/omgra/OneDrive/Documents/Projects/stay-focused/lib/deep-learn-readiness.ts) now selects the longest meaningful grounding text from those same candidates.
+  - [lib/module-resource-quality.ts](/c:/Users/omgra/OneDrive/Documents/Projects/stay-focused/lib/module-resource-quality.ts) now includes completed visual OCR text when computing resource quality and "meaningful characters."
+- OCR completion in [lib/source-ocr-updates.ts](/c:/Users/omgra/OneDrive/Documents/Projects/stay-focused/lib/source-ocr-updates.ts) now persists:
+  - full merged useful OCR text into `extracted_text`
+  - the same useful text into `visual_extracted_text`
+  - full merged OCR length into `extracted_char_count`
+  - actual PDF page count from rendered-page OCR metadata into `page_count`
+  - `pdfOcr.totalMergedCharCount` for diagnostics
+- [scripts/validate-scanned-pdf.ts](/c:/Users/omgra/OneDrive/Documents/Projects/stay-focused/scripts/validate-scanned-pdf.ts) now prints persistence/readiness diagnostics and supports optional DB row inspection with `--resource-id`.
+- Same-title duplicate protection was covered at the queue identity layer: OCR duplicate detection keys by resource id, not title.
+
+### Regression covered
+- A resource with stale/thin `extracted_text` such as `DATA ORGANIZATION OLTP ODS.` and meaningful completed `visual_extracted_text` now becomes Deep Learn-ready.
+- Data Organization OCR text with OLTP / ODS / Operational Data Store persists thousands of characters and becomes `sourceTextQuality = meaningful`.
+- Same-title PDF queue jobs do not block or target another resource id.
+
+### Real-file validation
+- Ran:
+  `npx tsx scripts/validate-scanned-pdf.ts --pdf "C:\Users\omgra\Downloads\1.1-Data Organization.pdf"`
+- Result:
+  - OCR completed with `3404` characters across `24` rendered pages
+  - merged persisted text length: `3137`
+  - `extracted_char_count`: `3137`
+  - `sourceTextQuality`: `meaningful`
+  - readiness: `text_ready`
+  - `canGenerate`: `true`
+  - Deep Learn generation check passed
+- Also ran the mentioned fixture:
+  `npx tsx scripts/validate-scanned-pdf.ts --pdf "C:\Users\omgra\Downloads\1.1-Data Organization (2).pdf"`
+- Result:
+  - OCR completed with `3415` characters across `24` rendered pages
+  - merged persisted text length: `3137`
+  - `extracted_char_count`: `3137`
+  - `sourceTextQuality`: `meaningful`
+  - readiness: `text_ready`
+  - `canGenerate`: `true`
+
+### Note on page count
+- The validator detected `51` PDF pages for both local files through the production PDF renderer, while OCR processed the configured first `24` pages. That means the app's `51 pages detected` value matches the actual PDF object as seen by the renderer, even though the deck may visually appear to have fewer slide pages.
+
+### Verification results
+- `npm run typecheck` passed.
+- `npm run lint` passed.
+- `npm test -- pdf-extractor source-ocr-updates deep-learn-readiness deep-learn-generation canvas-content-resolution learn-resource-ui queue` passed.
+
+### Remaining risks
+- If the live app already has rows with stale failed OCR status plus good text in only one field, those rows may need a retry or a one-time repair script to recompute `extracted_char_count`, metadata quality, and statuses from the stored visual text.

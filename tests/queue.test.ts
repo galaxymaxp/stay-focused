@@ -27,6 +27,21 @@ test('source OCR duplicate guard finds active resource jobs only', () => {
   assert.equal(findActiveSourceOcrJob(jobs, 'resource-2'), null)
 })
 
+test('source OCR duplicate guard ignores same-title jobs for different resource ids', () => {
+  const jobs = [
+    createJob({
+      id: 'ocr-other',
+      type: 'source_ocr',
+      status: 'running',
+      resourceId: 'resource-other',
+      resourceTitle: '1.1-Data Organization.pdf',
+    }),
+  ]
+
+  assert.equal(findActiveSourceOcrJob(jobs, 'resource-selected'), null)
+  assert.equal(findActiveSourceOcrJob(jobs, 'resource-other')?.id, 'ocr-other')
+})
+
 test('source OCR recent failure guard blocks auto retry briefly', () => {
   const recent = createJob({
     id: 'ocr-failed',
@@ -48,6 +63,7 @@ function createJob(input: {
   type: QueuedJob['type']
   status: QueuedJob['status']
   resourceId: string
+  resourceTitle?: string
   completedAt?: string | null
 }): QueuedJob {
   return {
@@ -57,7 +73,7 @@ function createJob(input: {
     title: input.id,
     status: input.status,
     progress: 0,
-    payload: { resourceId: input.resourceId },
+    payload: { resourceId: input.resourceId, resourceTitle: input.resourceTitle ?? 'Study source' },
     result: null,
     error: null,
     attempts: 0,

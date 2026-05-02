@@ -42,7 +42,7 @@ const SCANNED_NOTE_PATTERN = /scanned|image-only|image based|image-based/i
 
 export function getModuleResourceQualityInfo(resource: ModuleResourceQualityLike): ModuleResourceQualityInfo {
   const capability = getModuleResourceCapabilityInfo(resource)
-  const normalizedText = normalizeModuleResourceStudyText(resource.extractedText ?? resource.extractedTextPreview ?? '')
+  const normalizedText = normalizeModuleResourceStudyText(selectBestQualityText(resource))
   const lines = normalizedText.split('\n').map((line) => line.trim()).filter(Boolean)
   const baseMetadata = asPlainRecord(resource.metadata)
   const repeatedLineCount = countRepeatedLines(lines)
@@ -446,4 +446,16 @@ function asPlainRecord(value: unknown): Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
     ? { ...value as Record<string, unknown> }
     : {}
+}
+
+function selectBestQualityText(resource: ModuleResourceQualityLike) {
+  const candidates = [
+    resource.extractedText,
+    resource.visualExtractionStatus === 'completed' ? resource.visualExtractedText : null,
+    resource.extractedTextPreview,
+  ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+
+  return candidates
+    .sort((left, right) => right.trim().length - left.trim().length)[0]
+    ?? ''
 }
