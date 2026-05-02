@@ -48,6 +48,43 @@ test('packs generated from bad source grounding are blocked in the UI', () => {
   assert.match(state.detail, /usable study text/i)
 })
 
+test('packs generated from metadata/debug answer content are blocked in the UI', () => {
+  const state = getDeepLearnResourceUiState('module-1', 'resource-1', createNote({
+    status: 'ready',
+    sourceGrounding: {
+      sourceType: 'PDF',
+      extractionQuality: 'usable',
+      sourceTextQuality: 'meaningful',
+      groundingStrategy: 'stored_extract',
+      usedAiFallback: false,
+      qualityReason: null,
+      warning: null,
+      charCount: 400,
+    },
+    answerBank: [{
+      cue: 'File title',
+      kind: 'fact',
+      answer: { exact: null, examSafe: 'Course name', simplified: null },
+      compactAnswer: { exact: null, examSafe: 'Grounding strategy used', simplified: null },
+      importance: 'high',
+      sortKey: null,
+      distractors: ['Source type of the file', 'Module name', 'Extraction quality reported'],
+      reviewText: 'Was the PDF text transcribed from scanned images?',
+      draftExplanation: null,
+      sourceSnippet: 'Was an AI fallback used to supply text?',
+      linkedDraftSectionId: null,
+      supportingContext: null,
+      compareContext: null,
+      simplifiedWording: null,
+      confusionNotes: [],
+      relatedConcepts: [],
+    }],
+  }))
+
+  assert.equal(state.status, 'blocked')
+  assert.equal(state.primaryLabel, 'Open Source')
+})
+
 test('failed packs shift the action to rebuild', () => {
   const state = getDeepLearnResourceUiState('module-1', 'resource-1', createNote({
     status: 'failed',

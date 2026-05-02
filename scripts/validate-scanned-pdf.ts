@@ -31,6 +31,13 @@ const FORBIDDEN_TERMS = [
   'ERP',
   'SAP Learning Hub',
   'Gym Badge',
+  'File title',
+  'Source type of the file',
+  'Module name',
+  'Course name',
+  'Extraction quality reported',
+  'Source text quality reported',
+  'Grounding strategy used',
 ]
 
 async function main() {

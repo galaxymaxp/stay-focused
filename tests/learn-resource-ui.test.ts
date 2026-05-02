@@ -184,6 +184,38 @@ test('visual OCR refusal text does not surface as ready reader content', () => {
   assert.match(state.detail, /usable study text/i)
 })
 
+test('metadata-heavy refusal preview does not show ready', () => {
+  const refusalWithMetadata = [
+    "I'm unable to transcribe text from images or scanned documents at this time. If there's something specific you'd like to know or discuss from the content, feel free to ask!",
+    'File title',
+    'Source type of the file',
+    'Module name',
+    'Course name',
+    'Extraction quality reported',
+    'Source text quality reported',
+    'Grounding strategy used',
+    'Was an AI fallback used to supply text?',
+    'Was the PDF text transcribed from scanned images?',
+  ].join('\n')
+  const state = getLearnResourceUiState(createResource({
+    title: '1.1-Data Organization.pdf',
+    extractionStatus: 'completed',
+    extractedText: refusalWithMetadata,
+    extractedTextPreview: refusalWithMetadata,
+    extractionError: 'Visual extraction did not find enough usable study text. Try OCR again or open the original source.',
+    visualExtractionStatus: 'failed',
+    visualExtractionError: 'Visual extraction did not find enough usable study text. Try OCR again or open the original source.',
+    previewState: 'no_text_available',
+  }), {
+    hasOriginalFile: true,
+    hasCanvasLink: true,
+  })
+
+  assert.equal(state.statusKey, 'visual_ocr_failed')
+  assert.equal(state.statusLabel, 'OCR failed')
+  assert.match(state.detail, /usable study text/i)
+})
+
 function createResource(overrides: Partial<LearnResourceUiLike> = {}): LearnResourceUiLike {
   return {
     type: 'File',

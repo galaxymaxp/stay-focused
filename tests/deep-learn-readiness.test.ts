@@ -186,6 +186,49 @@ test('classifyDeepLearnResourceReadiness blocks OCR refusal text', () => {
   assert.equal(readiness.canGenerate, false)
 })
 
+test('classifyDeepLearnResourceReadiness blocks refusal text mixed with metadata labels', () => {
+  const refusalWithMetadata = [
+    "I'm unable to transcribe text from images or scanned documents at this time. If there's something specific you'd like to know or discuss from the content, feel free to ask!",
+    'File title',
+    'Source type of the file',
+    'Module name',
+    'Course name',
+    'Extraction quality reported',
+    'Source text quality reported',
+    'Grounding strategy used',
+    'Was an AI fallback used to supply text?',
+    'Was the PDF text transcribed from scanned images?',
+  ].join('\n')
+
+  const readiness = classifyDeepLearnResourceReadiness({
+    resource: createLearnResource({
+      title: '1.1-Data Organization.pdf',
+      extractionStatus: 'completed',
+      extractedText: refusalWithMetadata,
+      extractedTextPreview: refusalWithMetadata,
+      extractedCharCount: refusalWithMetadata.length,
+      visualExtractionStatus: 'failed',
+      visualExtractionError: 'Visual extraction did not find enough usable study text. Try OCR again or open the original source.',
+      previewState: 'no_text_available',
+      fullTextAvailable: false,
+      storedTextLength: refusalWithMetadata.length,
+    }),
+    storedResource: createStoredResource({
+      title: '1.1-Data Organization.pdf',
+      extractionStatus: 'completed',
+      extractedText: refusalWithMetadata,
+      extractedTextPreview: refusalWithMetadata,
+      extractedCharCount: refusalWithMetadata.length,
+      visualExtractionStatus: 'failed',
+      visualExtractionError: 'Visual extraction did not find enough usable study text. Try OCR again or open the original source.',
+    }),
+    canonicalResourceId: 'stored-resource-1',
+  })
+
+  assert.equal(readiness.state, 'unreadable')
+  assert.equal(readiness.canGenerate, false)
+})
+
 test('classifyDeepLearnResourceReadiness blocks metadata-only OCR text', () => {
   const metadataText = [
     'Document Title: 1.1-Data Organization.pdf',
