@@ -1334,3 +1334,58 @@ Run a preview Canvas resync with at least one scanned PDF and confirm the Course
 ```
 decouple OCR jobs from Canvas sync completion
 ```
+
+---
+
+## Session Update - 2026-05-03 (Stale queue recovery script)
+
+### What changed
+
+- Added `scripts/recover-stale-queue-jobs.ts`, a one-time dev recovery tool for stale running queue jobs.
+- The script defaults to dry run and prints affected stale `canvas_sync` and `source_ocr` jobs.
+- With `--apply`, stale `canvas_sync` jobs are marked completed-with-warning when imported Canvas course rows exist, otherwise failed with student-safe timeout copy.
+- With `--apply`, stale `source_ocr` jobs are marked failed/retryable and their OCR resource state is recovered with the same preservation logic used by app recovery.
+- The script does not delete resources, extracted text, visual OCR text, files, or generated study content.
+
+### Files touched
+
+- `scripts/recover-stale-queue-jobs.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+The runtime Canvas sync decoupling was already committed, but the requested safe one-time recovery script was missing. Stuck production or preview queue rows need an explicit operator tool that can report stale jobs first and only mutate state with `--apply`.
+
+### Tests run
+
+- `npm run typecheck` - passed.
+- `npm run lint` - passed.
+- `npm test -- queue` - passed; repo test script ran all `tests/*.test.ts`, 199 tests.
+- `npm test -- pdf-extractor source-ocr-updates deep-learn-readiness deep-learn-generation canvas-content-resolution learn-resource-ui queue` - passed; repo test script ran all `tests/*.test.ts`, 199 tests.
+- `npx tsx scripts/recover-stale-queue-jobs.ts --help` - passed.
+
+### Verification result
+
+- TypeScript and ESLint accept the new standalone recovery script.
+- Existing queue tests continue to verify Canvas sync completion after OCR enqueue, source OCR failure separation, stale `canvas_sync` detection, stale `source_ocr` detection, and completed sync grouping apart from active OCR.
+- The script help output confirms dry-run default and `--apply` behavior.
+
+### Known risks
+
+- The script requires `SUPABASE_SERVICE_ROLE_KEY` because it may need to recover jobs across users and update protected queue/resource rows.
+- Script recovery was type/lint/help verified locally; it was not run against live Supabase data in this session.
+- Like route recovery, stale Canvas sync completion-with-warning depends on matching imported `courses` rows by Canvas course ID and Canvas instance URL.
+
+### Blockers
+
+- No local blocker.
+
+### Next recommended step
+
+Run `npx tsx scripts/recover-stale-queue-jobs.ts` against preview to inspect stale jobs, then rerun with `--apply` if the printed rows match the stuck sync/OCR jobs.
+
+### Suggested commit message
+
+```
+add stale queue recovery script
+```
