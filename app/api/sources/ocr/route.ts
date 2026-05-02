@@ -4,7 +4,7 @@ import { createSupabaseRouteClient } from '@/lib/supabase-auth-server'
 import { resolveCanvasConfig, type CanvasConfig } from '@/lib/canvas'
 import { adaptModuleResourceRow } from '@/lib/module-resource-row'
 import { getSourceOcrProvider } from '@/lib/extraction/source-ocr-provider'
-import { canRunManualSourceOcr, getSourceOcrConfig } from '@/lib/source-ocr-config'
+import { canRunManualSourceOcr, getOcrMaxPagesForProvider, getSourceOcrConfig } from '@/lib/source-ocr-config'
 import {
   buildOcrCompletedUpdate,
   buildOcrFailedUpdate,
@@ -108,7 +108,7 @@ export async function POST(request: NextRequest) {
       buffer,
       filename: resource.title || 'scanned-pdf.pdf',
       pageCount: resource.pageCount ?? null,
-      maxPages: ocrConfig.provider === 'openai' ? ocrConfig.openaiMaxPages : undefined,
+      maxPages: getOcrMaxPagesForProvider(ocrConfig),
     })
 
     if (ocr.status === 'completed') {

@@ -1196,3 +1196,74 @@ Implement the first non-OpenAI OCR adapter, preferably Google Vision or Azure Do
 ```
 limit OpenAI OCR automatic usage
 ```
+
+---
+
+## Session Update - 2026-05-02 (Google OCR provider path)
+
+### What changed
+
+- Replaced the scanned-PDF OCR provider enum with `disabled`, `openai`, `google_vision`, and `google_document_ai`; legacy `OCR_PROVIDER=google` now maps to `google_vision`.
+- Added a shared `OCR_MAX_PAGES_PER_JOB` cap (default `24`) and applied it to every provider. OpenAI now uses the stricter of `OPENAI_OCR_MAX_PAGES` and `OCR_MAX_PAGES_PER_JOB`.
+- Added a Google OCR adapter at `lib/extraction/google-ocr.ts`:
+  - `google_vision` sends rendered PDF pages to Cloud Vision `DOCUMENT_TEXT_DETECTION`.
+  - `google_document_ai` sends rendered page images to a configured Document AI OCR processor.
+  - Both paths preserve per-page status, text, provider, confidence when available, error, image dimensions, timeouts, resume behavior, and queue progress callbacks.
+- Wired Google OCR through the existing provider abstraction used by queued OCR and the direct OCR API route.
+- Updated `.env.example`, `README.md`, and new `docs/extraction.md` with config, caps, and cost rationale.
+- Updated OCR config tests for provider names, legacy normalization, Document AI, and shared page caps.
+
+### Files touched
+
+- `.env.example`
+- `README.md`
+- `actions/queue-jobs.ts`
+- `app/api/sources/ocr/route.ts`
+- `docs/ai/handoff.md`
+- `docs/extraction.md`
+- `lib/extraction/google-ocr.ts`
+- `lib/extraction/source-ocr-provider.ts`
+- `lib/source-ocr-config.ts`
+- `scripts/validate-scanned-pdf.ts`
+- `tests/source-ocr-config.test.ts`
+
+### Why it changed
+
+OpenAI vision OCR should not be the automatic scanned-PDF production engine because rendered-page OCR can create unpredictable usage through many page calls, retries, and stalled jobs. Google OCR gives a more predictable page/image-billed path while preserving the app rule that OpenAI is used after grounded text exists for Deep Learn/study generation.
+
+### Tests run
+
+- `npm run typecheck` - passed.
+- `npm run lint` - passed.
+- `npm test -- source-ocr-config source-ocr-updates queue` - passed; due the repo script pattern this executed the full `tests/*.test.ts` suite, 194 tests.
+- `npm test -- pdf-extractor source-ocr-updates deep-learn-readiness deep-learn-generation canvas-content-resolution learn-resource-ui queue` - passed; due the repo script pattern this executed the full `tests/*.test.ts` suite, 194 tests.
+
+### Verification result
+
+- Default OCR remains disabled.
+- OpenAI OCR still cannot auto-run unless `OCR_PROVIDER=openai` and `OPENAI_OCR_AUTO_RUN=true`.
+- `OCR_PROVIDER=google_vision` and `OCR_PROVIDER=google_document_ai` can auto-run behind existing queue guards.
+- OCR text persistence still flows through `buildOcrCompletedUpdate`, so meaningful Google OCR text is mirrored into `extracted_text`, `visual_extracted_text`, `extracted_text_preview`, and `extracted_char_count`.
+- Deep Learn readiness tests still block image-only PDFs until meaningful source text exists and still reject refusal/metadata-only text.
+
+### Known risks
+
+- Google OCR was unit/type verified locally, but not exercised against live Google credentials in this session.
+- `google_document_ai` currently processes rendered page images one at a time through the configured processor, not whole-PDF batch processing.
+- Cloud Vision direct PDF/TIFF async batch OCR requires Cloud Storage and service-account bucket permissions; this implementation intentionally uses rendered page images to keep the current queue, resume, and page-progress model.
+- Pricing can change; docs reference the official Google Cloud pricing pages as of 2026-05-02.
+
+### Blockers
+
+- No local code/test blocker.
+- Live verification needs Google OCR credentials and a scanned PDF in the target environment.
+
+### Next recommended step
+
+Configure `OCR_PROVIDER=google_vision`, `OCR_MAX_PAGES_PER_JOB=24`, and Google credentials in preview, then resync a scanned Canvas PDF and confirm the Study Queue scans one job at a time and transitions to Ready/Partial Ready with meaningful source text.
+
+### Suggested commit message
+
+```
+add Google OCR provider path
+```
