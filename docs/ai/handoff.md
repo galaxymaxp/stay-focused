@@ -1389,3 +1389,68 @@ Run `npx tsx scripts/recover-stale-queue-jobs.ts` against preview to inspect sta
 ```
 add stale queue recovery script
 ```
+
+---
+
+## Session Update - 2026-05-03 (Show ended Canvas courses during sync)
+
+### What changed
+
+- Added an optional `Show ended courses` checkbox to the Canvas sync course loader, default off.
+- Kept current active-course loading unchanged unless the checkbox is enabled.
+- Added Canvas course status derivation for `active`, `past`, and `unavailable` from Canvas fields including `enrollment_state`, `workflow_state`, `end_at`, `term.end_at`, `concluded`, `access_restricted_by_date`, and `enrollments`.
+- Updated Canvas course fetching to load `enrollment_state=completed` courses only when ended courses are requested.
+- Grouped the picker into `Current courses` and `Past courses`, with `Ended` and `Restricted` badges.
+- Allowed visible ended courses to be selected for sync.
+- Hardened queued multi-course sync so one inaccessible ended course records a warning while accessible selected courses can still finish.
+- Added tests for active default loading, ended-course opt-in loading, status classification, restricted-course access messages, and sync completion warnings.
+
+### Files touched
+
+- `actions/canvas.ts`
+- `actions/queue-canvas.ts`
+- `components/ConnectCanvasFlow.tsx`
+- `lib/canvas.ts`
+- `lib/canvas-course-status.ts`
+- `lib/canvas-sync-queue.ts`
+- `tests/canvas-courses.test.ts`
+- `tests/queue.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Students may need to sync older Canvas material, but past courses can contain stale modules/files and some institutions restrict access after term end. The picker now keeps current courses as the default path while making older courses an explicit opt-in.
+
+### Tests run
+
+- `npm run typecheck` - passed.
+- `npm run lint` - passed.
+- `npm test -- canvas queue` - passed; repo test script ran all `tests/*.test.ts`, 205 tests.
+
+### Verification result
+
+- Active courses are fetched by default through the existing active enrollment path.
+- Ended courses are hidden unless `Show ended courses` is enabled.
+- Enabling the option requests completed Canvas enrollments and labels/group courses in the picker.
+- Restricted course module fetches use student-facing copy instead of token/debug language.
+- Partial Canvas sync completion can report restricted ended-course warnings without hiding successful course imports.
+
+### Known risks
+
+- Canvas institutions vary in how they expose concluded courses; some may report ended access through dates while others report completed enrollment state.
+- The completed-course fetch is additive and may still omit old courses that Canvas no longer exposes to the user's token.
+- The course picker was not browser-screenshot verified in this session.
+
+### Blockers
+
+- No local blocker.
+
+### Next recommended step
+
+Manually verify against a real Canvas account with at least one past enrollment and one restricted old course to confirm Canvas's returned fields match the local status derivation.
+
+### Suggested commit message
+
+```
+show ended Canvas courses during sync
+```

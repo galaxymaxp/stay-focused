@@ -169,6 +169,19 @@ test('canvas_sync completion records queued OCR without waiting for OCR completi
   assert.equal(result.href, '/modules/module-1')
 })
 
+test('canvas_sync completion can record restricted ended course warnings', () => {
+  const result = buildCanvasSyncCompletionResult({
+    syncedCourses: [{ courseName: 'Current Biology', moduleId: 'module-1', href: '/modules/module-1' }],
+    queuedOcrJobIds: [],
+    failedCourses: [{ courseName: 'Old Statistics', error: 'Canvas says this course is no longer available to your account.' }],
+  })
+
+  assert.equal(result.currentStep, 'done_with_warnings')
+  assert.equal(result.failedCourseCount, 1)
+  assert.match(result.statusMessage, /1 course synced\. 1 course could not be loaded from Canvas\./)
+  assert.equal(result.href, '/modules/module-1')
+})
+
 test('canvas_sync completion remains successful even when OCR jobs later fail separately', () => {
   const grouped = groupQueueJobsForPanel([
     createJob({ id: 'canvas-done', type: 'canvas_sync', status: 'completed', resourceId: 'canvas' }),

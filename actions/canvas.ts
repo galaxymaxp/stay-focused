@@ -159,17 +159,17 @@ interface SyncedTaskDraft {
 
 const STUCK_PROCESSING_MODULE_THRESHOLD_MS = 15 * 60 * 1000
 
-export async function fetchCourses(): Promise<CanvasCourse[]> {
+export async function fetchCourses(input: { includeEnded?: boolean } = {}): Promise<CanvasCourse[]> {
   await requireAuthenticatedUserServer()
   const resolvedConfig = await resolveCanvasConfigFromUser()
-  return getCourses(resolvedConfig)
+  return getCourses(resolvedConfig, { includeEnded: input.includeEnded })
 }
 
-export async function fetchCurrentUserCanvasCourses(): Promise<{ courses: CanvasCourse[] } | { error: string }> {
+export async function fetchCurrentUserCanvasCourses(input: { includeEnded?: boolean } = {}): Promise<{ courses: CanvasCourse[] } | { error: string }> {
   try {
     await requireAuthenticatedUserServer()
     const config = await resolveCanvasConfigFromUser()
-    const courses = await getCourses(config)
+    const courses = await getCourses(config, { includeEnded: input.includeEnded })
     return { courses }
   } catch (error) {
     return {
@@ -181,6 +181,7 @@ export async function fetchCurrentUserCanvasCourses(): Promise<{ courses: Canvas
 export async function testCanvasConnection(input: {
   canvasUrl: string
   accessToken: string
+  includeEnded?: boolean
 }): Promise<CanvasConnectionResult | CanvasConnectionErrorResult> {
   try {
     await requireAuthenticatedUserServer()
@@ -192,7 +193,7 @@ export async function testCanvasConnection(input: {
 
   try {
     const config = getRequiredCanvasConfig(input.canvasUrl, input.accessToken)
-    const courses = await getCourses(config)
+    const courses = await getCourses(config, { includeEnded: input.includeEnded })
 
     return {
       normalizedUrl: config.url,

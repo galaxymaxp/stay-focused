@@ -1,4 +1,7 @@
 import { canUseCanvasEnvFallback } from '@/lib/canvas-settings-state'
+import { deriveCanvasCourseStatus } from '@/lib/canvas-course-status'
+
+export { deriveCanvasCourseStatus, type CanvasCourseStatus } from '@/lib/canvas-course-status'
 
 const ALLOW_ENV_CANVAS_CONFIG = canUseCanvasEnvFallback()
 const DEFAULT_CANVAS_URL = ALLOW_ENV_CANVAS_CONFIG ? process.env.CANVAS_API_URL ?? process.env.CANVAS_API_BASE_URL : undefined
@@ -30,12 +33,25 @@ export interface CanvasCourse {
   name: string
   course_code: string
   enrollment_state: string
+  workflow_state?: string | null
+  end_at?: string | null
+  access_restricted_by_date?: boolean | null
+  concluded?: boolean | null
   term?: {
     id: number
     name: string
     end_at: string | null
   }
   teachers?: Array<{ display_name: string }>
+  enrollments?: Array<{
+    enrollment_state?: string | null
+    workflow_state?: string | null
+    type?: string | null
+  }>
+}
+
+export interface CanvasCourseListOptions {
+  includeEnded?: boolean
 }
 
 export interface CanvasAssignment {
@@ -221,8 +237,12 @@ async function canvasFetch<T>(path: string, configOverride?: Partial<CanvasConfi
   })
 
   if (!res.ok) {
-    if (res.status === 401 || res.status === 403) {
+    if (res.status === 401 || (res.status === 403 && isCanvasCourseListPath(path))) {
       throw new Error('Canvas could not verify that access token. Double-check it and try again.')
+    }
+
+    if (res.status === 403) {
+      throw new Error('Canvas says this course is no longer available to your account. It may be an ended course with restricted access.')
     }
 
     if (res.status === 404) {
@@ -304,26 +324,51 @@ export async function downloadCanvasBinary(url: string, configOverride?: Partial
   return downloaded.buffer
 }
 
-export async function getCourses(configOverride?: Partial<CanvasConfig>): Promise<CanvasCourse[]> {
-  const courses = await canvasFetch<CanvasCourse[]>(
-    '/courses?enrollment_state=active&enrollment_type=student&state[]=available&include[]=term&include[]=teachers',
-    configOverride
+export async function getCourses(
+  configOverride?: Partial<CanvasConfig>,
+  options: CanvasCourseListOptions = {},
+): Promise<CanvasCourse[]> {
+  const activeCourses = await canvasFetch<CanvasCourse[]>(
+    '/courses?enrollment_state=active&enrollment_type=student&state[]=available&include[]=term&include[]=teachers&include[]=concluded',
+    configOverride,
   )
 
-  const now = new Date()
+  const endedCourses = options.includeEnded
+    ? await canvasFetch<CanvasCourse[]>(
+        '/courses?enrollment_state=completed&enrollment_type=student&state[]=available&state[]=completed&include[]=term&include[]=teachers&include[]=concluded',
+        configOverride,
+      )
+    : []
 
-  return courses.filter((course) => {
-    if (!course.name) return false
+  return dedupeCanvasCourses([...activeCourses, ...endedCourses])
+    .filter(isSyncableCanvasCourseListItem)
+    .filter((course) => options.includeEnded || deriveCanvasCourseStatus(course) === 'active')
+}
 
-    if (course.term?.end_at && new Date(course.term.end_at) <= now) return false
+function isSyncableCanvasCourseListItem(course: CanvasCourse) {
+  if (!course.name) return false
 
-    const nameLower = course.name.toLowerCase()
-    if (NON_ACADEMIC.some((keyword) => nameLower.includes(keyword))) return false
+  const nameLower = course.name.toLowerCase()
+  if (NON_ACADEMIC.some((keyword) => nameLower.includes(keyword))) return false
 
-    if (!course.course_code || course.course_code.trim() === '') return false
+  if (!course.course_code || course.course_code.trim() === '') return false
 
-    return true
-  })
+  return true
+}
+
+function dedupeCanvasCourses(courses: CanvasCourse[]) {
+  const byId = new Map<number, CanvasCourse>()
+  for (const course of courses) {
+    const current = byId.get(course.id)
+    if (!current || deriveCanvasCourseStatus(current) !== 'active') {
+      byId.set(course.id, course)
+    }
+  }
+  return Array.from(byId.values())
+}
+
+function isCanvasCourseListPath(path: string) {
+  return path.startsWith('/courses?') || path === '/courses'
 }
 
 export async function getAssignments(courseId: number, configOverride?: Partial<CanvasConfig>): Promise<CanvasAssignment[]> {
