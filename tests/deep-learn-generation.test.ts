@@ -297,6 +297,48 @@ test('buildDeepLearnGroundingWithDependencies blocks empty sources without using
   )
 })
 
+test('buildDeepLearnGroundingWithDependencies blocks refusal text instead of generating from it', async () => {
+  const refusalText = "I'm unable to transcribe text from images or scanned documents at this time."
+  const resource = createLearnResource({
+    title: '1.1-Data Organization.pdf',
+    type: 'File',
+    contentType: 'application/pdf',
+    extension: 'pdf',
+    normalizedSourceType: 'pdf',
+    extractionStatus: 'completed',
+    extractedText: refusalText,
+    extractedTextPreview: refusalText,
+    extractedCharCount: refusalText.length,
+    visualExtractionStatus: 'failed',
+    whyItMatters: 'ERP SAP Learning Hub Gym Badge assignment date stale context.',
+    linkedContext: 'ERP SAP Learning Hub Gym Badge unrelated assignment dates.',
+    previewState: 'no_text_available',
+    fullTextAvailable: false,
+    storedTextLength: refusalText.length,
+  })
+  const storedResource = createStoredResource({
+    title: '1.1-Data Organization.pdf',
+    resourceType: 'File',
+    contentType: 'application/pdf',
+    extension: 'pdf',
+    extractionStatus: 'completed',
+    extractedText: refusalText,
+    extractedTextPreview: refusalText,
+    extractedCharCount: refusalText.length,
+    visualExtractionStatus: 'failed',
+  })
+
+  await assert.rejects(
+    () => buildDeepLearnGroundingWithDependencies(createContext(resource, storedResource)),
+    (error: unknown) => {
+      assert.ok(error instanceof DeepLearnGenerationBlockedError)
+      assert.equal(error.blockedReason, 'extraction_unusable_after_fetch')
+      assert.doesNotMatch(error.message, /ERP|SAP Learning Hub|Gym Badge/i)
+      return true
+    },
+  )
+})
+
 test('buildDeepLearnGroundingWithDependencies blocks when source fetch still yields unusable text', async () => {
   const resource = createLearnResource({
     extractionStatus: 'metadata_only',

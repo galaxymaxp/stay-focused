@@ -15,6 +15,7 @@ import type {
   DeepLearnTimelineItem,
   DeepLearnWordingSet,
 } from '@/lib/types'
+import type { ExtractedTextQuality } from '@/lib/types'
 
 export const DEEP_LEARN_PROMPT_VERSION = 'v2-exam-prep'
 
@@ -74,6 +75,7 @@ export function createEmptyDeepLearnSourceGrounding(
   return {
     sourceType: null,
     extractionQuality: null,
+    sourceTextQuality: null,
     groundingStrategy: 'insufficient',
     usedAiFallback: false,
     qualityReason: null,
@@ -142,12 +144,24 @@ export function normalizeDeepLearnSourceGrounding(value: unknown): DeepLearnSour
   return {
     sourceType: cleanShortText(record.sourceType),
     extractionQuality: cleanShortText(record.extractionQuality),
+    sourceTextQuality: normalizeExtractedTextQuality(record.sourceTextQuality),
     groundingStrategy: normalizeDeepLearnGroundingStrategy(record.groundingStrategy),
     usedAiFallback: Boolean(record.usedAiFallback),
     qualityReason: cleanParagraph(record.qualityReason),
     warning: cleanParagraph(record.warning),
     charCount: normalizePositiveNumber(record.charCount),
   }
+}
+
+function normalizeExtractedTextQuality(value: unknown): ExtractedTextQuality | null {
+  return value === 'meaningful'
+    || value === 'too_short'
+    || value === 'refusal'
+    || value === 'metadata_only'
+    || value === 'boilerplate'
+    || value === 'empty'
+    ? value
+    : null
 }
 
 export function buildDeepLearnNoteRecord(input: {

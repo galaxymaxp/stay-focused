@@ -13,6 +13,7 @@ import {
   isDeepLearnScanFallbackCapable,
   selectDeepLearnGroundingText,
 } from '@/lib/deep-learn-readiness'
+import { classifyExtractedTextQuality } from '@/lib/extracted-text-quality'
 import { reprocessStoredModuleResource } from '@/lib/module-resource-reprocess'
 import { getModuleResourceQualityInfo, normalizeModuleResourceStudyText } from '@/lib/module-resource-quality'
 import type { ModuleSourceResource } from '@/lib/module-workspace'
@@ -376,11 +377,6 @@ export async function buildDeepLearnGroundingWithDependencies(
   const bestText = selectBestGroundingText(surfaceResource)
   if (bestText) {
     const promptGrounding = buildPromptGrounding({
-      module: input.module,
-      courseName: input.courseName,
-      resource: surfaceResource,
-      linkedTask: input.linkedTask,
-      quality: finalQuality,
       bestText,
       scanFallback: false,
     })
@@ -402,11 +398,6 @@ export async function buildDeepLearnGroundingWithDependencies(
     try {
       const scanFallbackInput = await downloadScanFallbackSourceImpl(scanFallbackResource)
       const promptGrounding = buildPromptGrounding({
-        module: input.module,
-        courseName: input.courseName,
-        resource: surfaceResource,
-        linkedTask: input.linkedTask,
-        quality: finalQuality,
         bestText: '',
         scanFallback: true,
       })
@@ -429,11 +420,6 @@ export async function buildDeepLearnGroundingWithDependencies(
   if (recoveryWarning && selectDeepLearnGroundingText(input.resource)) {
     const fallbackText = selectBestGroundingText(input.resource)
     const promptGrounding = buildPromptGrounding({
-      module: input.module,
-      courseName: input.courseName,
-      resource: input.resource,
-      linkedTask: input.linkedTask,
-      quality: currentQuality,
       bestText: fallbackText,
       scanFallback: false,
     })
@@ -490,11 +476,10 @@ function buildDeepLearnPrompt(input: DeepLearnGenerationContext & {
     '',
     'Grounding status:',
     `- Extraction quality: ${input.sourceGrounding.extractionQuality ?? 'unknown'}`,
+    `- Source text quality: ${input.sourceGrounding.sourceTextQuality ?? 'unknown'}`,
     `- Grounding strategy: ${input.sourceGrounding.groundingStrategy}`,
     `- Generation mode: ${input.generationMode}`,
     `- Used AI fallback path: ${input.sourceGrounding.usedAiFallback ? 'yes' : 'no'}`,
-    `- Source note: ${input.sourceGrounding.qualityReason ?? 'No quality note.'}`,
-    `- Source warning: ${input.sourceGrounding.warning ?? 'None.'}`,
     '',
     'Best available source grounding:',
     input.promptGrounding,
@@ -518,26 +503,16 @@ function buildDeepLearnPrompt(input: DeepLearnGenerationContext & {
 }
 
 function buildPromptGrounding(input: {
-  module: Module
-  courseName: string
-  resource: ModuleSourceResource
-  linkedTask: Task | null
-  quality: ReturnType<typeof getModuleResourceQualityInfo>
   bestText: string
   scanFallback: boolean
 }) {
-  const contextBlock = [
-    `Resource title: ${input.resource.title}`,
-    `Resource id: ${input.resource.id}`,
-    `Quality note: ${input.quality.reason}`,
-    input.scanFallback ? 'Scan fallback is active because dependable parsed text was not available.' : null,
-  ].filter(Boolean).join('\n')
-
   const sourceBlock = input.bestText
     ? truncateForModel(input.bestText, MAX_GROUNDING_CHARS)
     : 'The original file will be provided directly because dependable parsed text was not stored.'
 
-  return [contextBlock, sourceBlock].filter(Boolean).join('\n\n')
+  return input.scanFallback
+    ? ['Scan fallback is active because dependable parsed text was not available.', sourceBlock].join('\n\n')
+    : sourceBlock
 }
 
 function selectBestGroundingText(resource: ModuleSourceResource) {
@@ -588,6 +563,10 @@ function buildDeepLearnSourceGrounding(
       contentType: resource.contentType,
     }),
     extractionQuality: quality.quality,
+    sourceTextQuality: classifyExtractedTextQuality({
+      text: selectDeepLearnGroundingText(resource),
+      title: resource.title,
+    }).quality,
     groundingStrategy,
     usedAiFallback: groundingStrategy === 'scan_fallback' || (quality.quality !== 'strong' && quality.quality !== 'usable'),
     qualityReason: quality.reason,

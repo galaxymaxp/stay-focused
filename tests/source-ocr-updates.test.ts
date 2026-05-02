@@ -43,7 +43,10 @@ test('OCR processing update preserves existing metadata and marks progress', () 
 })
 
 test('completed OCR mirrors text into normal extraction fields for Deep Learn', () => {
-  const text = buildText()
+  const text = [
+    'OCR recovered visible text about contracts, acceptance, and consideration.',
+    'The student can use this text to build grounded review notes after OCR completes.',
+  ].join('\n')
   const update = buildOcrCompletedUpdate({
     resource: createResource({ pageCount: 3 }),
     ocr: {
@@ -51,8 +54,34 @@ test('completed OCR mirrors text into normal extraction fields for Deep Learn', 
       text,
       charCount: text.length,
       pages: [
-        { pageNumber: 1, text: 'OCR recovered visible text about contracts, acceptance, and consideration.', charCount: 74 },
-        { pageNumber: 2, text: 'The student can use this text to build grounded review notes after OCR completes.', charCount: 81 },
+        {
+          pageNumber: 1,
+          text: 'OCR recovered visible text about contracts, acceptance, and consideration.',
+          charCount: 74,
+          status: 'completed',
+          confidence: null,
+          provider: 'openai:test_ocr',
+          model: 'test_ocr',
+          error: null,
+          refusal: false,
+          attempts: 1,
+          imageWidth: 1800,
+          imageHeight: 1200,
+        },
+        {
+          pageNumber: 2,
+          text: 'The student can use this text to build grounded review notes after OCR completes.',
+          charCount: 81,
+          status: 'completed',
+          confidence: null,
+          provider: 'openai:test_ocr',
+          model: 'test_ocr',
+          error: null,
+          refusal: false,
+          attempts: 1,
+          imageWidth: 1800,
+          imageHeight: 1200,
+        },
       ],
       provider: 'test_ocr',
       error: null,
@@ -77,10 +106,61 @@ test('completed OCR mirrors text into normal extraction fields for Deep Learn', 
   assert.equal(update.extraction_provider, 'test_ocr')
   assert.equal(update.metadata.fullTextAvailable, true)
   assert.equal(update.metadata.previewState, 'full_text_available')
-  assert.deepEqual(update.metadata.visualExtractionPages, [
-    { pageNumber: 1, text: 'OCR recovered visible text about contracts, acceptance, and consideration.', charCount: 74 },
-    { pageNumber: 2, text: 'The student can use this text to build grounded review notes after OCR completes.', charCount: 81 },
-  ])
+  assert.equal(update.metadata.extractedTextQuality, 'meaningful')
+  const pages = update.metadata.visualExtractionPages as Array<Record<string, unknown>>
+  assert.equal(pages.length, 2)
+  assert.equal(pages[0]?.pageNumber, 1)
+  assert.equal(pages[0]?.textQuality, 'too_short')
+  assert.equal(pages[0]?.usableCharCount, 74)
+  assert.equal(pages[1]?.pageNumber, 2)
+  assert.equal(pages[1]?.textQuality, 'too_short')
+  assert.equal(pages[1]?.usableCharCount, 81)
+})
+
+test('OCR refusal text is stored as metadata and not mirrored into extracted text', () => {
+  const update = buildOcrCompletedUpdate({
+    resource: createResource({ pageCount: 1 }),
+    ocr: {
+      status: 'completed',
+      text: "I'm unable to transcribe text from images or scanned documents at this time.",
+      charCount: 73,
+      pages: [
+        {
+          pageNumber: 1,
+          text: "I'm unable to transcribe text from images or scanned documents at this time.",
+          charCount: 73,
+          status: 'failed',
+          confidence: null,
+          provider: 'openai:test_ocr',
+          model: 'test_ocr',
+          error: 'refusal',
+          refusal: true,
+          attempts: 1,
+          imageWidth: 1800,
+          imageHeight: 1200,
+        },
+      ],
+      provider: 'test_ocr',
+      error: null,
+      metadata: {
+        pdfOcr: {
+          status: 'completed',
+          provider: 'test_ocr',
+        },
+      },
+    },
+    now: '2026-04-27T12:06:00.000Z',
+  })
+
+  assert.equal(update.extraction_status, 'empty')
+  assert.equal(update.extracted_text, null)
+  assert.equal(update.extracted_text_preview, null)
+  assert.equal(update.extracted_char_count, 0)
+  assert.equal(update.visual_extraction_status, 'failed')
+  assert.equal(update.visual_extracted_text, null)
+  assert.match(update.visual_extraction_error ?? '', /usable study text/i)
+  assert.equal(update.metadata.extractedTextQuality, 'refusal')
+  assert.equal((update.metadata.pdfOcr as { refusalDetected?: boolean }).refusalDetected, true)
 })
 
 test('failed OCR clears extracted text and records an honest error', () => {

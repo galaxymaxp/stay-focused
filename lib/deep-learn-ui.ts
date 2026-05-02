@@ -1,6 +1,7 @@
 import type { DeepLearnNote, DeepLearnNoteLoadAvailability } from '@/lib/types'
 import type { DeepLearnResourceReadiness } from '@/lib/deep-learn-readiness'
 import { buildDeepLearnNoteHref, buildModuleQuizHref } from '@/lib/stay-focused-links'
+import { MIN_MEANINGFUL_SOURCE_CHARS } from '@/lib/extracted-text-quality'
 
 export type DeepLearnUiStatus = 'not_started' | 'pending' | 'ready' | 'failed' | 'blocked' | 'unavailable'
 
@@ -54,6 +55,20 @@ export function getDeepLearnResourceUiState(
       primaryLabel: 'Open Source',
       summary: readiness.summary,
       detail: readiness.detail,
+      quizReady: false,
+    }
+  }
+
+  if (note && (readiness?.state === 'unreadable' || isBadSourceGrounding(note))) {
+    return {
+      status: 'blocked',
+      statusLabel: 'Needs action',
+      tone: 'warning',
+      noteHref,
+      quizHref,
+      primaryLabel: 'Open Source',
+      summary: readiness?.summary ?? 'This saved exam prep pack is blocked because its source text is not trustworthy enough for review.',
+      detail: readiness?.detail ?? 'Visual extraction did not find enough usable study text. Try OCR again or open the original source.',
       quizReady: false,
     }
   }
@@ -118,4 +133,25 @@ export function getDeepLearnResourceUiState(
       : 'This saved exam prep pack is ready for review, but the current answer coverage is still thin for the full quiz lane.',
     quizReady: note.quizReady,
   }
+}
+
+function isBadSourceGrounding(note: DeepLearnNote) {
+  const sourceTextQuality = note.sourceGrounding.sourceTextQuality
+  if (sourceTextQuality && sourceTextQuality !== 'meaningful') {
+    return true
+  }
+
+  if (note.sourceGrounding.charCount > 0 && note.sourceGrounding.charCount >= MIN_MEANINGFUL_SOURCE_CHARS) {
+    return false
+  }
+
+  if (note.sourceGrounding.groundingStrategy === 'insufficient') {
+    return true
+  }
+
+  if (note.sourceGrounding.extractionQuality === 'empty' || note.sourceGrounding.extractionQuality === 'failed') {
+    return true
+  }
+
+  return false
 }

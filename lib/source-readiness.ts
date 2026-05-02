@@ -3,6 +3,7 @@ import {
   getModuleResourceCapabilityInfo,
   getNormalizedModuleResourceSourceType,
 } from '@/lib/module-resource-capability'
+import { classifyExtractedTextQuality } from '@/lib/extracted-text-quality'
 import { getModuleResourceQualityInfo } from '@/lib/module-resource-quality'
 import { getResourceCanvasHref, getResourceOriginalFileHref, type ModuleSourceResource } from '@/lib/module-workspace'
 import { classifyUnrepairedCanvasItem } from '@/lib/source-repair'
@@ -316,11 +317,35 @@ function isVisualExtractionCandidate(input: {
 }
 
 function getReadableTextLength(resource: Pick<ModuleResource, 'extractedText' | 'extractedTextPreview' | 'extractedCharCount' | 'visualExtractionStatus' | 'visualExtractedText'> | ModuleSourceResource) {
-  if (typeof resource.extractedCharCount === 'number' && resource.extractedCharCount > 0) return resource.extractedCharCount
-  if (resource.visualExtractionStatus === 'completed' && resource.visualExtractedText?.trim()) {
-    return resource.visualExtractedText.trim().length
+  const hasAnyStoredText = Boolean(
+    resource.extractedText?.trim()
+    || resource.extractedTextPreview?.trim()
+    || resource.visualExtractedText?.trim(),
+  )
+  if (!hasAnyStoredText && typeof resource.extractedCharCount === 'number' && resource.extractedCharCount > 0) {
+    return resource.extractedCharCount
   }
-  return (resource.extractedText?.trim() ?? resource.extractedTextPreview?.trim() ?? '').length
+
+  const directQuality = classifyExtractedTextQuality({
+    text: resource.extractedText,
+    title: 'title' in resource ? resource.title : null,
+  })
+  if (directQuality.usable) return directQuality.candidateCharCount
+
+  if (resource.visualExtractionStatus === 'completed') {
+    const visualQuality = classifyExtractedTextQuality({
+      text: resource.visualExtractedText,
+      title: 'title' in resource ? resource.title : null,
+    })
+    if (visualQuality.usable) return visualQuality.candidateCharCount
+  }
+
+  const previewQuality = classifyExtractedTextQuality({
+    text: resource.extractedTextPreview,
+    title: 'title' in resource ? resource.title : null,
+  })
+
+  return previewQuality.usable ? previewQuality.candidateCharCount : 0
 }
 
 function isProcessableSourceType(value: string) {

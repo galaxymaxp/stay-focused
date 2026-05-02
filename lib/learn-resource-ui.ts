@@ -1,4 +1,5 @@
 import type { ModuleResourceCapabilityLike, NormalizedModuleResourceSourceType } from '@/lib/module-resource-capability'
+import { BAD_OCR_BLOCKED_MESSAGE, classifyModuleResourceTextQuality } from '@/lib/extracted-text-quality'
 import { getModuleResourceQualityInfo } from '@/lib/module-resource-quality'
 import type { ModuleSourceResource } from '@/lib/module-workspace'
 import type { StudyFileReaderState } from '@/lib/study-file-reader'
@@ -30,6 +31,7 @@ export interface LearnResourceUiState {
 }
 
 export interface LearnResourceUiLike extends ModuleResourceCapabilityLike {
+  title?: string | null
   fallbackReason?: string | null
   previewState?: ModuleSourceResource['previewState']
   sourceUrlCategory?: string | null
@@ -52,6 +54,13 @@ export function getLearnResourceUiState(
   },
 ): LearnResourceUiState {
   const quality = getModuleResourceQualityInfo(resource)
+  const textQuality = classifyModuleResourceTextQuality({
+    title: 'title' in resource ? resource.title : null,
+    extractedText: resource.extractedText ?? null,
+    extractedTextPreview: resource.extractedTextPreview ?? null,
+    visualExtractionStatus: resource.visualExtractionStatus,
+    visualExtractedText: resource.visualExtractedText ?? null,
+  })
   const fallbackReason = resource.fallbackReason ?? quality.fallbackReason ?? null
   const readerState = options?.readerState
   const sourceNoun = getStudySourceNoun({ type: resource.type ?? 'Resource' })
@@ -96,7 +105,7 @@ export function getLearnResourceUiState(
     }
   }
 
-  if (resource.visualExtractionStatus === 'completed' && resource.visualExtractedText?.trim()) {
+  if (resource.visualExtractionStatus === 'completed' && textQuality.usable) {
     return {
       statusKey: 'ready',
       statusLabel: 'OCR complete',
@@ -116,7 +125,7 @@ export function getLearnResourceUiState(
       tone: 'warning',
       primaryAction: 'source',
       summary: 'OCR failed. Open the original file.',
-      detail: resource.visualExtractionError?.trim() || resource.extractionError?.trim() || `Open the original ${sourceLabel}; Stay Focused will not invent text for this scanned PDF.`,
+      detail: resource.visualExtractionError?.trim() || resource.extractionError?.trim() || BAD_OCR_BLOCKED_MESSAGE,
       sourceActionLabel,
       textAvailabilityLabel,
     }

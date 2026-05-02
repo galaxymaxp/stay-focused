@@ -12,6 +12,7 @@
     "reprocess:resources": "tsx scripts/reprocess-module-resources.ts"
   },
   "dependencies": {
+    "@napi-rs/canvas": "^0.1.100",
     "@supabase/ssr": "^0.10.0",
     "@supabase/supabase-js": "^2.101.1",
     "clsx": "^2.1.1",

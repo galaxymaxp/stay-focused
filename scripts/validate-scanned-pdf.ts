@@ -1,10 +1,9 @@
 import assert from 'node:assert/strict'
-import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
-import os from 'node:os'
 import path from 'node:path'
 import { extractPdfTextFromBuffer } from '../lib/extraction/pdf-extractor'
-import { extractScannedPdfTextWithOpenAI, type PdfOcrResult } from '../lib/extraction/pdf-ocr'
+import { extractScannedPdfTextWithOpenAI } from '../lib/extraction/pdf-ocr'
+import { classifyExtractedTextQuality } from '../lib/extracted-text-quality'
 import { buildOcrCompletedUpdate } from '../lib/source-ocr-updates'
 import { classifyDeepLearnResourceReadiness } from '../lib/deep-learn-readiness'
 import { buildDeepLearnGroundingWithDependencies, generateDeepLearnNoteForResource } from '../lib/deep-learn-generation'
@@ -15,8 +14,6 @@ import type { Module, ModuleResource } from '../lib/types'
 interface ParsedArgs {
   pdfPath: string
 }
-
-type CompletedOcrResult = Extract<PdfOcrResult, { status: 'completed' }>
 
 const REQUIRED_TERMS = [
   'DATA ORGANIZATION',
@@ -98,47 +95,32 @@ async function main() {
   console.log(`Pre-OCR readiness: ${preReadiness.state}`)
   console.log(`Pre-OCR UI copy: ${preUi.summary}`)
 
-  const openAiOcrAvailable = Boolean(process.env.OPENAI_API_KEY?.trim())
-  const openAiOcr = openAiOcrAvailable
-    ? await extractScannedPdfTextWithOpenAI({
-        buffer,
-        filename: path.basename(pdfPath),
-        pageCount: parsed.pageCount,
-      })
-    : null
-
-  const openAiOcrSatisfiesTerms = openAiOcr?.status === 'completed'
-    ? hasAllRequiredTerms(openAiOcr.text)
-    : false
-  const effectiveOcr: CompletedOcrResult = openAiOcr?.status === 'completed' && openAiOcrSatisfiesTerms
-    ? openAiOcr
-    : runOfflineOcr(pdfPath)
-
-  if (openAiOcr?.status === 'completed' && openAiOcrSatisfiesTerms) {
-    console.log(`OpenAI OCR completed with ${openAiOcr.charCount} characters`)
-  } else if (openAiOcr?.status === 'completed') {
-    console.log(`OpenAI OCR completed with ${openAiOcr.charCount} characters but missed expected slide terms`)
-    console.log(`OpenAI OCR preview: ${truncate(openAiOcr.text, 220)}`)
-    console.log('Falling back to offline OCR for validation only')
-  } else if (openAiOcrAvailable) {
-    console.log(`OpenAI OCR did not complete cleanly: ${openAiOcr?.error ?? 'unknown error'}`)
-    console.log('Falling back to offline OCR for validation only')
-  } else {
-    console.log('OPENAI_API_KEY was not loaded; using offline OCR for validation')
-  }
+  assert.ok(process.env.OPENAI_API_KEY?.trim(), 'OPENAI_API_KEY is required to run the production OCR validation script.')
+  const ocr = await extractScannedPdfTextWithOpenAI({
+    buffer,
+    filename: path.basename(pdfPath),
+    pageCount: parsed.pageCount,
+  })
+  assert.equal(ocr.status, 'completed', ocr.error ?? 'OCR did not complete.')
+  const rawOcrQuality = classifyExtractedTextQuality({
+    text: ocr.text,
+    title: path.basename(pdfPath),
+  })
+  assert.equal(rawOcrQuality.quality, 'meaningful', `Expected production OCR to return meaningful text, got ${rawOcrQuality.quality}`)
 
   for (const term of REQUIRED_TERMS) {
-    assert.match(effectiveOcr.text, new RegExp(escapeRegExp(term), 'i'), `Expected OCR text to contain "${term}"`)
+    assert.match(ocr.text, new RegExp(escapeRegExp(term), 'i'), `Expected OCR text to contain "${term}"`)
   }
 
-  console.log(`Effective OCR completed with ${effectiveOcr.charCount} characters across ${effectiveOcr.pages.length || 1} pages`)
+  console.log(`OCR completed with ${ocr.charCount} characters across ${ocr.pages.length || 1} rendered pages`)
   console.log(`OCR term check passed for ${REQUIRED_TERMS.length} expected terms`)
 
   const ocrUpdate = buildOcrCompletedUpdate({
     resource: preStored,
-    ocr: effectiveOcr,
+    ocr,
     now: new Date().toISOString(),
   })
+  assert.equal(ocrUpdate.extraction_status, 'completed', `OCR update should keep the resource blocked when text is bad; got ${ocrUpdate.extraction_status}`)
   const postStored = applyOcrUpdate(preStored, ocrUpdate)
   const postLearn = createLearnResourceFromStored(postStored)
 
@@ -170,7 +152,6 @@ async function main() {
   assert.match(generatedText, /ods|operational data store/i, 'Deep Learn output should mention ODS')
 
   console.log('Deep Learn generation check passed')
-  console.log(`OpenAI OCR status: ${openAiOcr?.status ?? 'not_run'}`)
   console.log('Validation succeeded')
 }
 
@@ -367,14 +348,6 @@ function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
-function hasAllRequiredTerms(text: string) {
-  return REQUIRED_TERMS.every((term) => new RegExp(escapeRegExp(term), 'i').test(text))
-}
-
-function truncate(value: string, maxLength: number) {
-  return value.length <= maxLength ? value : `${value.slice(0, maxLength)}...`
-}
-
 function getForbiddenPatterns() {
   return FORBIDDEN_TERMS.map((label) => ({
     label,
@@ -382,122 +355,6 @@ function getForbiddenPatterns() {
       ? /\berp\b/i
       : new RegExp(escapeRegExp(label), 'i'),
   }))
-}
-
-function runOfflineOcr(pdfPath: string): CompletedOcrResult {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'stay-focused-ocr-'))
-  const pythonScript = `
-import json
-import fitz
-import os
-from rapidocr_onnxruntime import RapidOCR
-
-pdf_path = r"""${pdfPath.replace(/\\/g, '\\\\')}"""
-temp_dir = r"""${tempDir.replace(/\\/g, '\\\\')}"""
-doc = fitz.open(pdf_path)
-ocr = RapidOCR()
-pages = []
-
-def extract_page_text(page, scale):
-    pix = page.get_pixmap(matrix=fitz.Matrix(scale, scale), alpha=False)
-    image_path = os.path.join(temp_dir, f"page-{page.number + 1}-scale-{scale}.png")
-    pix.save(image_path)
-    result, _ = ocr(image_path, use_det=True, use_cls=True, use_rec=True)
-    entries = []
-    if result:
-        for item in result:
-            text = item[1] if len(item) > 1 else ''
-            if text:
-                box = item[0]
-                xs = [point[0] for point in box]
-                ys = [point[1] for point in box]
-                entries.append({
-                    "text": text.strip(),
-                    "x": min(xs),
-                    "y": sum(ys) / len(ys),
-                })
-
-    entries.sort(key=lambda entry: (entry["y"], entry["x"]))
-    rows = []
-    for entry in entries:
-        if not rows or abs(rows[-1]["y"] - entry["y"]) > 45 * scale / 2:
-            rows.append({"y": entry["y"], "items": [entry]})
-        else:
-            rows[-1]["items"].append(entry)
-
-    ordered_lines = []
-    for row in rows:
-        row["items"].sort(key=lambda entry: entry["x"])
-        line = " ".join([entry["text"] for entry in row["items"] if entry["text"]]).strip()
-        if line:
-            ordered_lines.append(line)
-
-    return ordered_lines
-
-for page_index in range(len(doc)):
-    page = doc.load_page(page_index)
-    merged_lines = []
-    seen = set()
-    for scale in (2, 4):
-        for line in extract_page_text(page, scale):
-            key = line.lower()
-            if key in seen:
-                continue
-            seen.add(key)
-            merged_lines.append(line)
-
-    page_text = "\\n".join([line for line in merged_lines if line]).strip()
-    if page_text:
-        pages.append({
-            "pageNumber": page_index + 1,
-            "text": page_text,
-            "charCount": len(page_text),
-        })
-
-text = "\\n\\n".join([f"Page {page['pageNumber']}:\\n{page['text']}" for page in pages]).strip()
-print(json.dumps({
-    "status": "completed" if text else "failed",
-    "text": text,
-    "charCount": len(text),
-    "pages": pages,
-    "provider": "offline_rapidocr_validation",
-    "error": None if text else "Offline OCR returned no text.",
-    "metadata": {
-        "pdfOcr": {
-            "status": "completed" if text else "failed",
-            "provider": "offline_rapidocr_validation",
-            "pageCount": len(doc),
-            "pages": pages,
-        }
-    }
-}))
-`
-
-  const run = spawnSync('python', ['-c', pythonScript], {
-    cwd: process.cwd(),
-    encoding: 'utf8',
-    maxBuffer: 1024 * 1024 * 20,
-  })
-
-  fs.rmSync(tempDir, { recursive: true, force: true })
-
-  if (run.status !== 0) {
-    throw new Error(`Offline OCR failed: ${(run.stderr || run.stdout || '').trim()}`)
-  }
-
-  const parsed = JSON.parse(run.stdout.trim()) as {
-    status: 'completed'
-    text: string
-    charCount: number
-    pages: Array<{ pageNumber: number; text: string; charCount: number }>
-    provider: string
-    error: null
-    metadata: Record<string, unknown>
-  }
-
-  assert.equal(parsed.status, 'completed', parsed.error ?? 'Offline OCR returned no text.')
-
-  return parsed
 }
 
 main().catch((error) => {

@@ -146,6 +146,132 @@ test('classifyDeepLearnResourceReadiness marks OCR-completed scanned PDFs as rea
   assert.equal(readiness.canGenerate, true)
 })
 
+test('classifyDeepLearnResourceReadiness blocks OCR refusal text', () => {
+  const refusalText = "I'm unable to transcribe text from images or scanned documents at this time."
+  const resource = createLearnResource({
+    title: '1.1-Data Organization.pdf',
+    extractionStatus: 'completed',
+    extractedText: refusalText,
+    extractedTextPreview: refusalText,
+    extractedCharCount: refusalText.length,
+    visualExtractionStatus: 'completed',
+    visualExtractedText: refusalText,
+    previewState: 'no_text_available',
+    fullTextAvailable: false,
+    storedTextLength: refusalText.length,
+  })
+  const storedResource = createStoredResource({
+    title: '1.1-Data Organization.pdf',
+    extractionStatus: 'completed',
+    extractedText: refusalText,
+    extractedTextPreview: refusalText,
+    extractedCharCount: refusalText.length,
+    visualExtractionStatus: 'completed',
+    visualExtractedText: refusalText,
+    metadata: {
+      normalizedSourceType: 'pdf',
+      previewState: 'no_text_available',
+      fullTextAvailable: false,
+      storedTextLength: refusalText.length,
+    },
+  })
+
+  const readiness = classifyDeepLearnResourceReadiness({
+    resource,
+    storedResource,
+    canonicalResourceId: storedResource.id,
+  })
+
+  assert.equal(readiness.state, 'unreadable')
+  assert.equal(readiness.canGenerate, false)
+})
+
+test('classifyDeepLearnResourceReadiness blocks metadata-only OCR text', () => {
+  const metadataText = [
+    'Document Title: 1.1-Data Organization.pdf',
+    'Resource ID: 550e8400-e29b-41d4-a716-446655440000',
+    'Extraction Quality: too short',
+    'Quality Note: OCR confidence low',
+  ].join('\n')
+  const readiness = classifyDeepLearnResourceReadiness({
+    resource: createLearnResource({
+      title: '1.1-Data Organization.pdf',
+      extractionStatus: 'completed',
+      extractedText: metadataText,
+      extractedTextPreview: metadataText,
+      extractedCharCount: metadataText.length,
+    }),
+    storedResource: createStoredResource({
+      title: '1.1-Data Organization.pdf',
+      extractionStatus: 'completed',
+      extractedText: metadataText,
+      extractedTextPreview: metadataText,
+      extractedCharCount: metadataText.length,
+    }),
+    canonicalResourceId: 'stored-resource-1',
+  })
+
+  assert.equal(readiness.state, 'unreadable')
+  assert.equal(readiness.canGenerate, false)
+})
+
+test('classifyDeepLearnResourceReadiness blocks UUID and title-only content', () => {
+  const titleOnlyText = [
+    '1.1-Data Organization.pdf',
+    '550e8400-e29b-41d4-a716-446655440000',
+    '550e8400-e29b-41d4-a716-446655440001',
+  ].join('\n')
+  const readiness = classifyDeepLearnResourceReadiness({
+    resource: createLearnResource({
+      title: '1.1-Data Organization.pdf',
+      extractionStatus: 'completed',
+      extractedText: titleOnlyText,
+      extractedTextPreview: titleOnlyText,
+      extractedCharCount: titleOnlyText.length,
+    }),
+    storedResource: createStoredResource({
+      title: '1.1-Data Organization.pdf',
+      extractionStatus: 'completed',
+      extractedText: titleOnlyText,
+      extractedTextPreview: titleOnlyText,
+      extractedCharCount: titleOnlyText.length,
+    }),
+    canonicalResourceId: 'stored-resource-1',
+  })
+
+  assert.equal(readiness.state, 'unreadable')
+  assert.equal(readiness.canGenerate, false)
+})
+
+test('classifyDeepLearnResourceReadiness accepts valid Data Organization OCR text', () => {
+  const text = [
+    'DATA ORGANIZATION',
+    'OLTP means Online Transaction Processing.',
+    'ODS stands for Operational Data Store.',
+    'A data warehouse is Subject-Oriented, Integrated, Current Valued, and Volatile in this lesson.',
+  ].join('\n\n')
+  const readiness = classifyDeepLearnResourceReadiness({
+    resource: createLearnResource({
+      title: '1.1-Data Organization.pdf',
+      extractionStatus: 'completed',
+      extractedText: `${text}\n${text}`,
+      extractedTextPreview: `${text}\n${text}`.slice(0, 420),
+      extractedCharCount: `${text}\n${text}`.length,
+    }),
+    storedResource: createStoredResource({
+      title: '1.1-Data Organization.pdf',
+      extractionStatus: 'completed',
+      extractedText: `${text}\n${text}`,
+      extractedTextPreview: `${text}\n${text}`.slice(0, 420),
+      extractedCharCount: `${text}\n${text}`.length,
+    }),
+    canonicalResourceId: 'stored-resource-1',
+  })
+
+  assert.equal(readiness.state, 'text_ready')
+  assert.equal(readiness.canGenerate, true)
+})
+
 test('classifyDeepLearnResourceReadiness marks resources with no viable stored backing row as unreadable', () => {
   const readiness = classifyDeepLearnResourceReadiness({
     resource: createLearnResource(),
