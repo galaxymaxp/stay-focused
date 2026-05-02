@@ -582,7 +582,7 @@ function explainAutoEnqueueDecision(resource: ModuleResource, readiness: ReturnT
   if (readiness.canGenerate) return 'not queued because source text is already meaningful'
   if (resource.visualExtractionStatus === 'queued' || resource.visualExtractionStatus === 'running') return 'not queued because OCR is already active'
   if (resource.visualExtractionStatus === 'failed') return 'not queued automatically if a recent failed source_ocr job exists; retry is manual'
-  if (resource.extension?.toLowerCase() === 'pdf' || resource.contentType?.toLowerCase().includes('pdf')) return 'OCR needed; auto-enqueue depends on OCR_PROVIDER and OPENAI_OCR_AUTO_RUN'
+  if (resource.extension?.toLowerCase() === 'pdf' || resource.contentType?.toLowerCase().includes('pdf')) return 'OCR needed; auto-enqueue depends on OCR_PROVIDER, OCR_MAX_PAGES_PER_JOB, and OPENAI_OCR_AUTO_RUN when provider is openai'
   return 'not queued because the resource does not look like a PDF OCR candidate'
 }
 

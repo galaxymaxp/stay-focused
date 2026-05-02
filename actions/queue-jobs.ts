@@ -63,7 +63,7 @@ import {
   findStaleRunningSourceOcrJobs,
   getSourceOcrJobResourceId,
 } from '@/lib/source-ocr-queue'
-import { canAutoRunSourceOcr, canRunManualSourceOcr, getSourceOcrConfig } from '@/lib/source-ocr-config'
+import { canAutoRunSourceOcr, canRunManualSourceOcr, getOcrMaxPagesForProvider, getSourceOcrConfig } from '@/lib/source-ocr-config'
 import type { ModuleResource } from '@/lib/types'
 
 export interface QueueJobResult {
@@ -864,12 +864,13 @@ export async function processSourceOcrJob(input: {
     }
 
     const providerAdapter = getSourceOcrProvider(ocrConfig.provider)
+    const runningProviderLabel = `${ocrConfig.provider}:running`
     const buffer = await downloadStoredPdfForOcr(sourceUrl, getOptionalCanvasConfig())
     const ocr = await providerAdapter.run({
       buffer,
       filename: resource.title || 'scanned-pdf.pdf',
       pageCount: resource.pageCount ?? null,
-      maxPages: ocrConfig.provider === 'openai' ? ocrConfig.openaiMaxPages : undefined,
+      maxPages: getOcrMaxPagesForProvider(ocrConfig),
       ...(isResuming ? { pagesToProcess: resume.pagesToProcess } : {}),
       onPageStart: async ({ pageNumber, pagesProcessed, totalPages }) => {
         const pageCount = resource?.pageCount ?? totalPages
@@ -879,7 +880,7 @@ export async function processSourceOcrJob(input: {
           .update(buildOcrPageProgressUpdate({
             resource: resource as ModuleResource,
             pages: persistedPages,
-            provider: 'openai:running',
+            provider: runningProviderLabel,
             totalPagesInDocument: pageCount,
             now: new Date().toISOString(),
           }))

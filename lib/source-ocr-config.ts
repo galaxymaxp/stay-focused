@@ -1,8 +1,9 @@
-export const OCR_PROVIDERS = ['disabled', 'openai', 'google', 'aws', 'azure', 'tesseract'] as const
+export const OCR_PROVIDERS = ['disabled', 'openai', 'google_vision', 'google_document_ai'] as const
 
 export type OcrProvider = typeof OCR_PROVIDERS[number]
 
 export const DEFAULT_OPENAI_OCR_MAX_PAGES = 5
+export const DEFAULT_OCR_MAX_PAGES_PER_JOB = 24
 export const DEFAULT_OCR_MAX_JOBS_PER_SYNC = 1
 export const DEFAULT_OCR_MAX_RETRIES_PER_RESOURCE = 1
 
@@ -10,6 +11,7 @@ export interface SourceOcrConfig {
   provider: OcrProvider
   openaiAutoRun: boolean
   openaiMaxPages: number
+  maxPagesPerJob: number
   maxJobsPerSync: number
   maxRetriesPerResource: number
 }
@@ -21,6 +23,7 @@ export function getSourceOcrConfig(env: Partial<Record<string, string | undefine
     provider,
     openaiAutoRun,
     openaiMaxPages: getConfiguredPositiveInt(env.OPENAI_OCR_MAX_PAGES, DEFAULT_OPENAI_OCR_MAX_PAGES),
+    maxPagesPerJob: getConfiguredPositiveInt(env.OCR_MAX_PAGES_PER_JOB, DEFAULT_OCR_MAX_PAGES_PER_JOB),
     maxJobsPerSync: getConfiguredNonNegativeInt(env.OCR_MAX_JOBS_PER_SYNC, DEFAULT_OCR_MAX_JOBS_PER_SYNC),
     maxRetriesPerResource: getConfiguredNonNegativeInt(env.OCR_MAX_RETRIES_PER_RESOURCE, DEFAULT_OCR_MAX_RETRIES_PER_RESOURCE),
   }
@@ -38,7 +41,13 @@ export function canRunManualSourceOcr(config: SourceOcrConfig = getSourceOcrConf
 
 export function normalizeOcrProvider(value: string | undefined): OcrProvider {
   const normalized = value?.trim().toLowerCase()
+  if (normalized === 'google') return 'google_vision'
   return OCR_PROVIDERS.includes(normalized as OcrProvider) ? normalized as OcrProvider : 'disabled'
+}
+
+export function getOcrMaxPagesForProvider(config: SourceOcrConfig) {
+  if (config.provider === 'openai') return Math.min(config.openaiMaxPages, config.maxPagesPerJob)
+  return config.maxPagesPerJob
 }
 
 export function parseBoolean(value: string | undefined, fallback: boolean) {

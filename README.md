@@ -34,8 +34,11 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=
 OPENAI_API_KEY=
 OPENAI_DO_NOW_MODEL=gpt-5-mini
 OCR_PROVIDER=disabled
+OCR_MAX_PAGES_PER_JOB=24
 OPENAI_OCR_AUTO_RUN=false
 OPENAI_OCR_MAX_PAGES=5
+GOOGLE_VISION_API_KEY=
+GOOGLE_DOCUMENT_AI_PROCESSOR_NAME=
 CANVAS_API_URL=
 CANVAS_API_TOKEN=
 ```
@@ -58,9 +61,12 @@ npm run dev
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`: client-facing anon key for that project
 - `OPENAI_API_KEY`: required for AI-backed module processing, task outputs, Deep Learn, and cached course summaries
 - `OPENAI_DO_NOW_MODEL`: optional override for the task-output model
-- `OCR_PROVIDER`: scanned-PDF OCR provider; defaults to `disabled` (`openai`, `google`, `aws`, `azure`, and `tesseract` are reserved provider values)
+- `OCR_PROVIDER`: scanned-PDF OCR provider; defaults to `disabled` (`openai`, `google_vision`, and `google_document_ai` are supported provider values; legacy `google` maps to `google_vision`)
+- `OCR_MAX_PAGES_PER_JOB`: shared scanned-PDF OCR page cap per job; defaults to `24`
 - `OPENAI_OCR_AUTO_RUN`: must be explicitly set to `true` before OpenAI vision OCR can run automatically during sync
 - `OPENAI_OCR_MAX_PAGES`: safety cap for OpenAI OCR pages per job; defaults to `5`
+- `GOOGLE_VISION_API_KEY`: optional API key for `OCR_PROVIDER=google_vision`; service account credentials also work
+- `GOOGLE_DOCUMENT_AI_PROCESSOR_NAME`: processor resource for `OCR_PROVIDER=google_document_ai`; use `projects/<project>/locations/<location>/processors/<processor>`
 - `CANVAS_API_URL`: Canvas base URL used for sync
 - `CANVAS_API_TOKEN`: Canvas personal access token for sync
 

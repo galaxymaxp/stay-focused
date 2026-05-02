@@ -1,4 +1,5 @@
 import { extractScannedPdfTextWithOpenAI, type PdfOcrResult } from '@/lib/extraction/pdf-ocr'
+import { extractScannedPdfTextWithGoogle } from '@/lib/extraction/google-ocr'
 import { getSourceOcrConfig, type OcrProvider } from '@/lib/source-ocr-config'
 
 export interface SourceOcrRunInput {
@@ -21,6 +22,13 @@ export function getSourceOcrProvider(provider = getSourceOcrConfig().provider): 
     return {
       provider,
       run: (input) => extractScannedPdfTextWithOpenAI(input),
+    }
+  }
+
+  if (provider === 'google_vision' || provider === 'google_document_ai') {
+    return {
+      provider,
+      run: (input) => extractScannedPdfTextWithGoogle({ ...input, provider }),
     }
   }
 
@@ -50,10 +58,8 @@ export function getSourceOcrProvider(provider = getSourceOcrConfig().provider): 
 }
 
 function formatProviderName(provider: OcrProvider) {
-  if (provider === 'aws') return 'AWS Textract'
-  if (provider === 'azure') return 'Azure Document Intelligence'
-  if (provider === 'google') return 'Google Vision'
-  if (provider === 'tesseract') return 'Tesseract'
+  if (provider === 'google_vision') return 'Google Vision'
+  if (provider === 'google_document_ai') return 'Google Document AI'
   if (provider === 'openai') return 'OpenAI'
   return 'Disabled'
 }
