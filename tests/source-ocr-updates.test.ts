@@ -246,6 +246,76 @@ test('failed OCR clears extracted text and records an honest error', () => {
   assert.equal(update.metadata.pdfOcr instanceof Object, true)
 })
 
+test('partial OCR text from earlier pages is preserved when a later page fails or times out', () => {
+  const goodText = buildDataOrganizationText()
+  const pages = Array.from({ length: 18 }, (_, index) => ({
+    pageNumber: index + 1,
+    text: goodText,
+    charCount: goodText.length,
+    status: 'completed' as const,
+    confidence: null,
+    provider: 'openai:test_ocr',
+    model: 'test_ocr',
+    error: null,
+    refusal: false,
+    attempts: 1,
+    imageWidth: 1800,
+    imageHeight: 1200,
+  }))
+  const timedOutPage = {
+    pageNumber: 19,
+    text: '',
+    charCount: 0,
+    status: 'failed' as const,
+    confidence: null,
+    provider: 'openai:test_ocr',
+    model: 'test_ocr',
+    error: 'Page 19 OCR timed out after 30s.',
+    refusal: false,
+    attempts: 1,
+    imageWidth: null,
+    imageHeight: null,
+  }
+  const mergedText = pages.map((p) => `Page ${p.pageNumber}:\n${goodText.trim()}`).join('\n\n').trim()
+  const update = buildOcrCompletedUpdate({
+    resource: createResource({ pageCount: 51 }),
+    ocr: {
+      status: 'completed',
+      text: mergedText,
+      charCount: mergedText.length,
+      pages: [...pages, timedOutPage],
+      provider: 'test_ocr',
+      error: null,
+      metadata: {
+        pdfOcr: { status: 'completed', provider: 'test_ocr', totalPagesInDocument: 51, pagesProcessed: 19 },
+      },
+    },
+    now: '2026-05-02T12:00:00.000Z',
+  })
+
+  assert.equal(update.extraction_status, 'completed')
+  assert.ok(update.extracted_char_count > 0, 'text from pages 1-18 should be preserved')
+  const allPages = update.metadata.visualExtractionPages as Array<Record<string, unknown>>
+  assert.equal(allPages.length, 19)
+  assert.equal(allPages[17]?.status, 'completed')
+  assert.equal(allPages[18]?.status, 'failed')
+  assert.equal(allPages[18]?.pageNumber, 19)
+})
+
+test('worker exception with no pages produces failed OCR update', () => {
+  const update = buildOcrFailedUpdate({
+    resource: createResource({ extractedText: null, extractedCharCount: 0 }),
+    message: 'Text extraction stalled. Retry extraction.',
+    now: '2026-05-02T12:10:00.000Z',
+  })
+
+  assert.equal(update.extraction_status, 'empty')
+  assert.equal(update.extracted_text, null)
+  assert.equal(update.extracted_char_count, 0)
+  assert.equal(update.visual_extraction_status, 'failed')
+  assert.match(update.visual_extraction_error ?? '', /Retry extraction/)
+})
+
 test('OCR duplicate guards distinguish running and completed rows', () => {
   assert.equal(isOcrAlreadyRunning(createResource({
     extractionStatus: 'processing',

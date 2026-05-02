@@ -44,6 +44,8 @@ const MIN_USEFUL_OCR_CHARS = 120
 const MAX_OUTPUT_TOKENS_PER_PAGE = 1200
 const CANVAS_IMPORT = () => import('@napi-rs/canvas')
 
+export const PER_PAGE_OCR_TIMEOUT_MS = 30_000
+
 export async function extractScannedPdfTextWithOpenAI(input: {
   buffer: Buffer
   filename: string
@@ -84,14 +86,28 @@ export async function extractScannedPdfTextWithOpenAI(input: {
     const pageResults: PdfOcrPage[] = []
 
     for (let pageNumber = 1; pageNumber <= pagesToProcess; pageNumber += 1) {
-      const page = await runPageOcr({
-        client,
-        pdf,
-        pageNumber,
-        model,
-        provider,
-        widths: [renderWidth, retryRenderWidth],
-      })
+      let page: PdfOcrPage
+      try {
+        page = await withPageTimeout(
+          () => runPageOcr({ client, pdf, pageNumber, model, provider, widths: [renderWidth, retryRenderWidth] }),
+          PER_PAGE_OCR_TIMEOUT_MS,
+        )
+      } catch {
+        page = {
+          pageNumber,
+          text: '',
+          charCount: 0,
+          status: 'failed',
+          confidence: null,
+          provider,
+          model,
+          error: `Page ${pageNumber} OCR timed out after ${PER_PAGE_OCR_TIMEOUT_MS / 1000}s.`,
+          refusal: false,
+          attempts: 1,
+          imageWidth: null,
+          imageHeight: null,
+        }
+      }
       pageResults.push(page)
       await input.onPageResult?.({
         page,
@@ -364,6 +380,34 @@ function getConfiguredPositiveInt(value: string | undefined, fallback: number) {
   if (!value) return fallback
   const parsed = Number.parseInt(value, 10)
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
+}
+
+function withPageTimeout<T>(fn: () => Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    let settled = false
+    const timer = setTimeout(() => {
+      if (!settled) {
+        settled = true
+        reject(new Error(`OCR timed out after ${ms}ms.`))
+      }
+    }, ms)
+    fn().then(
+      (value) => {
+        if (!settled) {
+          settled = true
+          clearTimeout(timer)
+          resolve(value)
+        }
+      },
+      (err: unknown) => {
+        if (!settled) {
+          settled = true
+          clearTimeout(timer)
+          reject(err)
+        }
+      },
+    )
+  })
 }
 
 function normalizeErrorMessage(error: unknown) {
