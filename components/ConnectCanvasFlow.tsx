@@ -12,6 +12,7 @@ import { UnsyncButton } from '@/components/UnsyncButton'
 import { useAuthSummary } from '@/components/useAuthSummary'
 import type { CanvasSyncPhase, SyncActivitySnapshot } from '@/components/useCanvasSyncStatus'
 import type { CanvasCourse } from '@/lib/canvas'
+import { deriveCanvasCourseStatus } from '@/lib/canvas-course-status'
 import { buildCanvasCourseSyncKey } from '@/lib/canvas-sync'
 import { dispatchInAppToast } from '@/lib/notifications'
 import type { QueuedJob } from '@/lib/queue'
@@ -67,6 +68,7 @@ export function ConnectCanvasFlow({
   const [token, setToken] = useState(initialToken)
   const [courses, setCourses] = useState<CanvasCourse[]>([])
   const [selectedCourseIds, setSelectedCourseIds] = useState<number[]>([])
+  const [includeEndedCourses, setIncludeEndedCourses] = useState(false)
   const [search, setSearch] = useState('')
   const [connectionError, setConnectionError] = useState<string | null>(null)
   const [courseSyncProgress, setCourseSyncProgress] = useState<Record<number, CourseSyncProgress>>({})
@@ -102,6 +104,7 @@ export function ConnectCanvasFlow({
       course.course_code?.toLowerCase().includes(search.toLowerCase())
     )
   }, [courses, isCourseAlreadySynced, search])
+  const groupedCourses = useMemo(() => groupCoursesForPicker(filteredCourses), [filteredCourses])
 
   const canLoadCourses = Boolean(connectionSummary?.url)
   const hasLoadedCourses = step === 'courses'
@@ -114,6 +117,7 @@ export function ConnectCanvasFlow({
     setToken('')
     setCourses([])
     setSelectedCourseIds([])
+    setIncludeEndedCourses(false)
     setCourseSyncProgress({})
     setSearch('')
     setStep('connect')
@@ -173,6 +177,7 @@ export function ConnectCanvasFlow({
         const result = await testCanvasConnection({
           canvasUrl: trimmedUrl,
           accessToken: trimmedToken,
+          includeEnded: includeEndedCourses,
         })
 
         if ('error' in result) {
@@ -209,7 +214,7 @@ export function ConnectCanvasFlow({
         setSelectedCourseIds([])
       }
     })
-  }, [canvasUrl, router, startTesting, token])
+  }, [canvasUrl, includeEndedCourses, router, startTesting, token])
 
   const refreshCanvasQueue = useCallback(async () => {
     try {
@@ -248,7 +253,7 @@ export function ConnectCanvasFlow({
     return () => window.removeEventListener('stay-focused:queue-refresh', handleQueueRefresh)
   }, [refreshCanvasQueue])
 
-  function handleUseSavedConnection() {
+  function handleUseSavedConnection(nextIncludeEnded = includeEndedCourses) {
     if (!connectionSummary?.url) {
       setStep('connect')
       openSetup('credentials')
@@ -260,7 +265,7 @@ export function ConnectCanvasFlow({
     setQueueFeedback(null)
 
     startTesting(async () => {
-      const result = await fetchCurrentUserCanvasCourses()
+      const result = await fetchCurrentUserCanvasCourses({ includeEnded: nextIncludeEnded })
       if ('error' in result) {
         clearCanvasUiState()
         setConnectionError(result.error)
@@ -270,8 +275,17 @@ export function ConnectCanvasFlow({
       setCourses(result.courses)
       setSearch('')
       setSelectedCourseIds([])
+      setIncludeEndedCourses(nextIncludeEnded)
       setStep('courses')
     })
+  }
+
+  function handleToggleEndedCourses(value: boolean) {
+    setIncludeEndedCourses(value)
+    setSelectedCourseIds([])
+    if (step === 'courses') {
+      handleUseSavedConnection(value)
+    }
   }
 
   useEffect(() => {
@@ -282,7 +296,7 @@ export function ConnectCanvasFlow({
 
     const timeoutId = window.setTimeout(() => {
       startTesting(async () => {
-        const result = await fetchCurrentUserCanvasCourses()
+        const result = await fetchCurrentUserCanvasCourses({ includeEnded: includeEndedCourses })
         if ('error' in result) {
           clearCanvasUiState()
           setConnectionError(result.error)
@@ -297,12 +311,13 @@ export function ConnectCanvasFlow({
     }, 0)
 
     return () => window.clearTimeout(timeoutId)
-  }, [clearCanvasUiState, shouldAutoLoadCourses, startTesting])
+  }, [clearCanvasUiState, includeEndedCourses, shouldAutoLoadCourses, startTesting])
 
   function handleReconnect() {
     setStep('connect')
     setCourses([])
     setSelectedCourseIds([])
+    setIncludeEndedCourses(false)
     setCourseSyncProgress({})
     setSearch('')
     setConnectionError(null)
@@ -506,10 +521,15 @@ export function ConnectCanvasFlow({
                   ? 'The account connection is ready. Load your available courses when you want to sync more.'
                   : 'Connect Canvas first. After the connection check succeeds, this section becomes your course picker.'}
               </p>
+              <EndedCoursesToggle
+                checked={includeEndedCourses}
+                disabled={isTesting}
+                onChange={setIncludeEndedCourses}
+              />
               {connectionError && connectionSummary && <Message>{connectionError}</Message>}
               <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
                 {canLoadCourses ? (
-                  <button type="button" onClick={handleUseSavedConnection} disabled={isTesting} className="ui-button ui-button-primary ui-button-sm">
+                  <button type="button" onClick={() => handleUseSavedConnection()} disabled={isTesting} className="ui-button ui-button-primary ui-button-sm">
                     {isTesting ? 'Loading courses...' : hasSyncedCourses ? 'Load more courses' : 'Load courses'}
                   </button>
                 ) : (
@@ -529,6 +549,11 @@ export function ConnectCanvasFlow({
                 detail="Choose one or more courses below. Courses already synced into the app are excluded from this list."
                 tone="success"
               />
+              <EndedCoursesToggle
+                checked={includeEndedCourses}
+                disabled={isTesting || isSyncActionPending}
+                onChange={handleToggleEndedCourses}
+              />
 
               <div style={{ display: 'grid', gap: '0.4rem' }}>
                 <label style={labelStyle}>Search courses</label>
@@ -543,7 +568,7 @@ export function ConnectCanvasFlow({
                 />
                 <p style={helperTextStyle}>
                   {courses.length === 0
-                    ? 'No active courses were found for this account.'
+                    ? includeEndedCourses ? 'No current or past courses were found for this account.' : 'No active courses were found for this account.'
                     : filteredCourses.length === 0
                       ? 'Everything available from this Canvas account is already synced.'
                       : 'Select one or more courses to sync.'}
@@ -558,35 +583,46 @@ export function ConnectCanvasFlow({
                       : 'All available courses from this Canvas account are already synced.'}
                   </div>
                 ) : (
-                  filteredCourses.map((course, index) => {
-                    const isSelected = selectedCourseIds.includes(course.id)
-                    const progress = courseSyncProgress[course.id]
+                  groupedCourses.map((group) => (
+                    <div key={group.title}>
+                      <div style={courseGroupHeaderStyle}>{group.title}</div>
+                      {group.courses.map((course, index) => {
+                        const isSelected = selectedCourseIds.includes(course.id)
+                        const progress = courseSyncProgress[course.id]
+                        const status = deriveCanvasCourseStatus(course)
+                        const isLastInGroup = index === group.courses.length - 1
 
-                    return (
-                      <button
-                        key={course.id}
-                        type="button"
-                        onClick={() => toggleCourseSelection(course.id)}
-                        aria-pressed={isSelected}
-                        className="ui-interactive-card"
-                        data-open={isSelected ? 'true' : 'false'}
-                        disabled={isSyncActionPending}
-                        style={courseRowStyle(index < filteredCourses.length - 1, isSelected)}
-                      >
-                        <div style={{ minWidth: 0, flex: '1 1 220px' }}>
-                          <div style={{ fontSize: '14px', fontWeight: 600, lineHeight: 1.45, color: 'var(--text-primary)', overflowWrap: 'anywhere' }}>
-                            {course.name}
-                          </div>
-                          <div style={{ marginTop: '0.22rem', fontSize: '12px', color: 'var(--text-muted)', overflowWrap: 'anywhere' }}>
-                            {course.course_code}
-                          </div>
-                        </div>
-                        <span style={selectionStateStyle(isSelected)}>
-                          {progress ? getCourseSyncStateLabel(progress.state) : isSelected ? 'Selected' : 'Select'}
-                        </span>
-                      </button>
-                    )
-                  })
+                        return (
+                          <button
+                            key={course.id}
+                            type="button"
+                            onClick={() => toggleCourseSelection(course.id)}
+                            aria-pressed={isSelected}
+                            className="ui-interactive-card"
+                            data-open={isSelected ? 'true' : 'false'}
+                            disabled={isSyncActionPending}
+                            style={courseRowStyle(!(isLastInGroup && group.isLast), isSelected)}
+                          >
+                            <div style={{ minWidth: 0, flex: '1 1 220px' }}>
+                              <div style={{ display: 'flex', gap: '0.45rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                                <span style={{ fontSize: '14px', fontWeight: 600, lineHeight: 1.45, color: 'var(--text-primary)', overflowWrap: 'anywhere' }}>
+                                  {course.name}
+                                </span>
+                                {status === 'past' && <span style={endedBadgeStyle}>Ended</span>}
+                                {status === 'unavailable' && <span style={restrictedBadgeStyle}>Restricted</span>}
+                              </div>
+                              <div style={{ marginTop: '0.22rem', fontSize: '12px', color: 'var(--text-muted)', overflowWrap: 'anywhere' }}>
+                                {course.course_code}{course.term?.name ? ` · ${course.term.name}` : ''}
+                              </div>
+                            </div>
+                            <span style={selectionStateStyle(isSelected)}>
+                              {progress ? getCourseSyncStateLabel(progress.state) : isSelected ? 'Selected' : 'Select'}
+                            </span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  ))
                 )}
               </div>
 
@@ -746,6 +782,31 @@ function PlainSection({
         {children}
       </div>
     </section>
+  )
+}
+
+function EndedCoursesToggle({
+  checked,
+  disabled,
+  onChange,
+}: {
+  checked: boolean
+  disabled: boolean
+  onChange: (value: boolean) => void
+}) {
+  return (
+    <label style={toggleShellStyle}>
+      <input
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.checked)}
+      />
+      <span style={{ display: 'grid', gap: '0.15rem' }}>
+        <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>Show ended courses</span>
+        <span style={helperTextStyle}>Past courses may include old modules and files.</span>
+      </span>
+    </label>
   )
 }
 
@@ -1113,6 +1174,20 @@ function getCanvasTokenPageUrl(canvasUrl: string) {
   }
 }
 
+function groupCoursesForPicker(courses: CanvasCourse[]) {
+  const current = courses.filter((course) => deriveCanvasCourseStatus(course) === 'active')
+  const past = courses.filter((course) => deriveCanvasCourseStatus(course) !== 'active')
+  const groups = [
+    { title: 'Current courses', courses: current },
+    { title: 'Past courses', courses: past },
+  ].filter((group) => group.courses.length > 0)
+
+  return groups.map((group, index) => ({
+    ...group,
+    isLast: index === groups.length - 1,
+  }))
+}
+
 function courseRowStyle(showDivider: boolean, selected: boolean): CSSProperties {
   return {
     width: '100%',
@@ -1156,6 +1231,44 @@ const listShellStyle: CSSProperties = {
   overflow: 'hidden',
   maxHeight: '300px',
   overflowY: 'auto',
+}
+
+const toggleShellStyle: CSSProperties = {
+  display: 'flex',
+  alignItems: 'flex-start',
+  gap: '0.6rem',
+  borderRadius: '12px',
+  border: '1px solid color-mix(in srgb, var(--border-subtle) 88%, transparent)',
+  background: 'var(--surface-elevated)',
+  padding: '0.75rem 0.85rem',
+}
+
+const courseGroupHeaderStyle: CSSProperties = {
+  padding: '0.55rem 1rem',
+  borderBottom: '1px solid color-mix(in srgb, var(--border-subtle) 88%, transparent)',
+  background: 'color-mix(in srgb, var(--surface-soft) 78%, transparent)',
+  color: 'var(--text-secondary)',
+  fontSize: '11px',
+  fontWeight: 700,
+  textTransform: 'uppercase',
+  letterSpacing: '0.04em',
+}
+
+const endedBadgeStyle: CSSProperties = {
+  borderRadius: '999px',
+  border: '1px solid color-mix(in srgb, var(--amber) 32%, var(--border-subtle) 68%)',
+  background: 'color-mix(in srgb, var(--amber-light) 28%, var(--surface-base) 72%)',
+  color: 'var(--text-secondary)',
+  padding: '0.12rem 0.42rem',
+  fontSize: '11px',
+  fontWeight: 700,
+  lineHeight: 1.35,
+}
+
+const restrictedBadgeStyle: CSSProperties = {
+  ...endedBadgeStyle,
+  border: '1px solid color-mix(in srgb, var(--red) 28%, var(--border-subtle) 72%)',
+  background: 'color-mix(in srgb, var(--red-light) 24%, var(--surface-base) 76%)',
 }
 
 const moduleRowStyle: CSSProperties = {

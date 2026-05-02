@@ -112,6 +112,7 @@ async function runCanvasSyncJob(input: {
 
   const syncedCourses: Array<{ courseName: string; moduleId: string; href: string }> = []
   const queuedOcrJobIds: string[] = []
+  const failedCourses: Array<{ courseName: string; error: string }> = []
 
   try {
     await updateCanvasJobStep(input.jobId, 6, 'Connecting to Canvas', 'connecting')
@@ -142,16 +143,8 @@ async function runCanvasSyncJob(input: {
 
       if ('error' in result) {
         await updateCanvasJobStep(input.jobId, Math.max(1, input.courses.length <= 1 ? 98 : courseProgressCap), result.error, 'failed', course.courseName)
-        await markQueuedJobFailed(input.jobId, result.error)
-        await createNotification({
-          userId: input.userId,
-          type: 'queue_failed',
-          title: 'Canvas sync failed',
-          body: result.error,
-          severity: 'error',
-          metadata: { jobId: input.jobId, dedupeKey: `sync-fail:${input.jobId}` },
-        })
-        return
+        failedCourses.push({ courseName: course.courseName, error: result.error })
+        continue
       }
 
       syncedCourses.push({
@@ -165,16 +158,36 @@ async function runCanvasSyncJob(input: {
       }
     }
 
-    await updateCanvasJobStep(input.jobId, 98, queuedOcrJobIds.length > 0
+    if (syncedCourses.length === 0 && failedCourses.length > 0) {
+      const message = failedCourses.length === 1
+        ? failedCourses[0].error
+        : `${failedCourses.length} Canvas courses could not be loaded. Retry current courses first, then add ended courses one at a time if Canvas still allows access.`
+      await updateCanvasJobStep(input.jobId, 99, message, 'failed')
+      await markQueuedJobFailed(input.jobId, message)
+      await createNotification({
+        userId: input.userId,
+        type: 'queue_failed',
+        title: 'Canvas sync failed',
+        body: message,
+        severity: 'error',
+        metadata: { jobId: input.jobId, dedupeKey: `sync-fail:${input.jobId}` },
+      })
+      return
+    }
+
+    await updateCanvasJobStep(input.jobId, 98, failedCourses.length > 0
+      ? `${syncedCourses.length} course${syncedCourses.length === 1 ? '' : 's'} synced. ${failedCourses.length} course${failedCourses.length === 1 ? '' : 's'} could not be loaded from Canvas.`
+      : queuedOcrJobIds.length > 0
       ? 'Sync complete. Preparing scanned PDFs in the background.'
       : 'Finalizing sync', 'finalizing')
 
-    const completionResult = buildCanvasSyncCompletionResult({ syncedCourses, queuedOcrJobIds })
+    const completionResult = buildCanvasSyncCompletionResult({ syncedCourses, queuedOcrJobIds, failedCourses })
     await markQueuedJobCompleted(input.jobId, completionResult)
 
     console.info('[queue-canvas] completed Canvas sync without waiting for OCR', {
       jobId: input.jobId,
       courseCount: syncedCourses.length,
+      failedCourseCount: failedCourses.length,
       queuedOcrJobIds,
       waitsForOcr: false,
     })
@@ -183,11 +196,13 @@ async function runCanvasSyncJob(input: {
       userId: input.userId,
       type: 'sync_completed',
       title: 'Canvas sync complete',
-      body: syncedCourses.length === 1
+      body: failedCourses.length > 0
+        ? `${syncedCourses.length} course${syncedCourses.length === 1 ? '' : 's'} synced. ${failedCourses.length} could not be loaded from Canvas.`
+        : syncedCourses.length === 1
         ? `${syncedCourses[0].courseName} is ready to study.`
         : `${syncedCourses.length} courses are ready to study.`,
       href: completionResult.href,
-      severity: 'success',
+      severity: failedCourses.length > 0 ? 'warning' : 'success',
       metadata: { jobId: input.jobId, dedupeKey: `sync:${input.jobId}` },
     })
 
