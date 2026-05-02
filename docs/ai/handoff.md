@@ -1521,6 +1521,16 @@ Google Vision was reachable locally but failures were collapsing into a generic 
 - OCR persistence produced `extraction_status=completed`, `visual_extraction_status=completed`, `sourceTextQuality=meaningful`, `canGenerate=true`, and partial-ready state with 27 remaining pages.
 - Debug images were generated under `tmp/ocr-debug` during validation and removed before commit.
 
+Google Vision OCR verified live (local):
+- OCR completed successfully in deployed app
+- Deep Learn generated successfully from OCR text
+- OpenAI OCR no longer needed as primary path
+- Required envs:
+  OCR_PROVIDER=google_vision
+  GOOGLE_CLOUD_PROJECT=stay-focus-492811
+  GOOGLE_VISION_CREDENTIALS_JSON in Vercel
+  GOOGLE_APPLICATION_CREDENTIALS locally
+
 ### Known risks
 
 - `.env.local` currently points `GOOGLE_APPLICATION_CREDENTIALS` to `C:\Users\omgra\secrets\stay-focused-vision-ocr.json`, which does not exist locally. The working credential file found locally is `C:\Users\omgra\secrets\stay-focus-492811-b864d33bf846.json`. `.env.local` was not edited or committed.
@@ -1535,6 +1545,7 @@ Google Vision was reachable locally but failures were collapsing into a generic 
 ### Next recommended step
 
 Correct the local/preview Google credential path, then run a Canvas resync and confirm `2-Warehousing Schema.pdf` and `3-OLAP.pdf` advance through the Study Queue after `1.1-Data Organization.pdf` completes.
+
 
 ### Suggested commit message
 
