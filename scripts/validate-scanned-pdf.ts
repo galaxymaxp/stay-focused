@@ -107,11 +107,11 @@ async function main() {
   })
   assert.equal(preReadiness.state, 'unreadable')
   assert.equal(preReadiness.canGenerate, false)
-  assert.equal(preReadiness.detail, 'Preparing scanned PDF will start automatically. If it does not start, retry extraction.')
+  assert.equal(preReadiness.detail, 'This PDF needs visual text extraction before Deep Learn.')
 
   const preUi = getLearnResourceUiState(preLearn, { hasOriginalFile: true, hasCanvasLink: true })
   assert.equal(preUi.statusKey, 'visual_ocr_required')
-  assert.equal(preUi.summary, 'Preparing scanned PDF will start automatically. If it does not start, retry extraction.')
+  assert.equal(preUi.summary, 'This PDF needs visual text extraction before Deep Learn.')
   console.log(`Pre-OCR readiness: ${preReadiness.state}`)
   console.log(`Pre-OCR UI copy: ${preUi.summary}`)
 
@@ -582,7 +582,7 @@ function explainAutoEnqueueDecision(resource: ModuleResource, readiness: ReturnT
   if (readiness.canGenerate) return 'not queued because source text is already meaningful'
   if (resource.visualExtractionStatus === 'queued' || resource.visualExtractionStatus === 'running') return 'not queued because OCR is already active'
   if (resource.visualExtractionStatus === 'failed') return 'not queued automatically if a recent failed source_ocr job exists; retry is manual'
-  if (resource.extension?.toLowerCase() === 'pdf' || resource.contentType?.toLowerCase().includes('pdf')) return 'auto-enqueue expected when normal extraction reports image-only/empty/thin PDF text'
+  if (resource.extension?.toLowerCase() === 'pdf' || resource.contentType?.toLowerCase().includes('pdf')) return 'OCR needed; auto-enqueue depends on OCR_PROVIDER and OPENAI_OCR_AUTO_RUN'
   return 'not queued because the resource does not look like a PDF OCR candidate'
 }
 

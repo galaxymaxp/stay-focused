@@ -621,7 +621,7 @@ function toSourceSummarySnapshot(summary: Awaited<ReturnType<typeof listResource
 }
 
 function describeGenerationBlock(state: ReturnType<typeof normalizeSourceReadiness>['state'], fallback: string) {
-  if (state === 'visual_ocr_available') return 'Preparing scanned PDF will start automatically. If it does not start, retry extraction.'
+  if (state === 'visual_ocr_available') return 'This PDF needs visual text extraction before Deep Learn.'
   if (state === 'visual_ocr_queued') return 'Scanned PDF is queued for text extraction.'
   if (state === 'visual_ocr_running') return 'Reading scanned pages...'
   if (state === 'visual_ocr_failed') return 'Text extraction failed for this PDF. You can open the original source.'

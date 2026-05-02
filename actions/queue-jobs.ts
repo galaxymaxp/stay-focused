@@ -34,7 +34,8 @@ import { buildDeepLearnNoteHref } from '@/lib/stay-focused-links'
 import { buildTaskDraftRequestPayload, type TaskDraftContext, type TaskDraftResponse } from '@/lib/do-now'
 import { createNotification } from '@/lib/notifications-server'
 import { saveDraftFromTaskOutput } from '@/actions/drafts'
-import { extractScannedPdfTextWithOpenAI, type PdfOcrPage, type PdfOcrResult } from '@/lib/extraction/pdf-ocr'
+import { type PdfOcrPage, type PdfOcrResult } from '@/lib/extraction/pdf-ocr'
+import { getSourceOcrProvider } from '@/lib/extraction/source-ocr-provider'
 import {
   buildMergedOcrResult,
   buildMergedOcrText,
@@ -55,12 +56,14 @@ import {
   buildSourceOcrQueueTitle,
   buildSourceOcrStatusMessage,
   calculateSourceOcrProgress,
+  countFailedSourceOcrJobs,
   countRunningSourceOcrJobs,
   findActiveSourceOcrJob,
   findRecentFailedSourceOcrJob,
   findStaleRunningSourceOcrJobs,
   getSourceOcrJobResourceId,
 } from '@/lib/source-ocr-queue'
+import { canAutoRunSourceOcr, canRunManualSourceOcr, getSourceOcrConfig } from '@/lib/source-ocr-config'
 import type { ModuleResource } from '@/lib/types'
 
 export interface QueueJobResult {
@@ -137,6 +140,13 @@ export async function queueSourceOcrAction(input: {
 
   const existingJobs = await getUserQueuedJobs(user.id, { type: 'source_ocr', limit: 50 })
   const hasRunningSourceOcrJob = countRunningSourceOcrJobs(existingJobs) > 0
+  const ocrConfig = getSourceOcrConfig()
+  if (!canRunManualSourceOcr(ocrConfig)) {
+    return {
+      jobId: '',
+      error: 'This PDF needs visual text extraction before Deep Learn.',
+    }
+  }
   const activeDuplicate = existingJobs.find((job) => {
     const payloadResourceId = typeof job.payload?.resourceId === 'string' ? job.payload.resourceId : null
     const resultResourceId = typeof job.result?.resourceId === 'string' ? job.result.resourceId : null
@@ -152,6 +162,13 @@ export async function queueSourceOcrAction(input: {
         jobId: '',
         error: 'Visual extraction failed recently. Try OCR again or open the original source.',
       }
+    }
+  }
+
+  if (countFailedSourceOcrJobs(existingJobs, input.resourceId) > ocrConfig.maxRetriesPerResource) {
+    return {
+      jobId: '',
+      error: 'Visual extraction has already failed for this PDF. Open the original source or change the OCR provider before retrying.',
     }
   }
 
@@ -214,6 +231,19 @@ export async function autoEnqueueSourceOcrJobs(input: {
 }): Promise<QueuedJob[]> {
   const candidates = input.resources.filter((resource) => isScannedPdfOcrCandidate(resource))
   if (candidates.length === 0) return []
+  const ocrConfig = getSourceOcrConfig()
+
+  if (!canAutoRunSourceOcr(ocrConfig) || ocrConfig.maxJobsPerSync <= 0) {
+    for (const resource of candidates) {
+      logAutoOcrDecision('skip_auto_disabled', {
+        ...buildAutoOcrDiagnosticBase(resource),
+        ocrProvider: ocrConfig.provider,
+        openaiAutoRun: ocrConfig.openaiAutoRun,
+        maxJobsPerSync: ocrConfig.maxJobsPerSync,
+      })
+    }
+    return []
+  }
 
   const supabase = createSupabaseServiceRoleClient()
   if (!supabase) {
@@ -246,10 +276,27 @@ export async function autoEnqueueSourceOcrJobs(input: {
   const existingJobs = ((existingRows ?? []) as Record<string, unknown>[]).map(rowToQueuedJobForAutoOcr)
   const jobs: QueuedJob[] = []
 
+  let queuedThisSync = 0
   for (const resource of candidates) {
+    if (queuedThisSync >= ocrConfig.maxJobsPerSync) {
+      logAutoOcrDecision('skip_sync_job_limit', {
+        ...buildAutoOcrDiagnosticBase(resource),
+        maxJobsPerSync: ocrConfig.maxJobsPerSync,
+      })
+      continue
+    }
+
     const diagnosticBase = buildAutoOcrDiagnosticBase(resource)
     if (findActiveSourceOcrJob(existingJobs, resource.id)) {
       logAutoOcrDecision('skip_active_duplicate', diagnosticBase)
+      continue
+    }
+
+    if (countFailedSourceOcrJobs(existingJobs, resource.id) > ocrConfig.maxRetriesPerResource) {
+      logAutoOcrDecision('skip_retry_limit', {
+        ...diagnosticBase,
+        maxRetriesPerResource: ocrConfig.maxRetriesPerResource,
+      })
       continue
     }
 
@@ -288,6 +335,7 @@ export async function autoEnqueueSourceOcrJobs(input: {
     }
 
     jobs.push(job)
+    queuedThisSync += 1
     existingJobs.unshift(job)
     logAutoOcrDecision('queued', { ...diagnosticBase, ocrQueueJobId: job.id, ocrQueueJobStatus: job.status })
   }
@@ -802,11 +850,26 @@ export async function processSourceOcrJob(input: {
     const prevCompletedCount = resume.previousCompletedCount
     let persistedPages = resume.previousPages
 
+    const ocrConfig = getSourceOcrConfig()
+    if (!canRunManualSourceOcr(ocrConfig)) {
+      await fail(resource, 'This PDF needs visual text extraction before Deep Learn.', {
+        pdfOcr: {
+          status: 'skipped',
+          provider: ocrConfig.provider,
+          error: 'OCR provider is disabled.',
+          completedAt: new Date().toISOString(),
+        },
+      }, ocrConfig.provider)
+      return
+    }
+
+    const providerAdapter = getSourceOcrProvider(ocrConfig.provider)
     const buffer = await downloadStoredPdfForOcr(sourceUrl, getOptionalCanvasConfig())
-    const ocr = await extractScannedPdfTextWithOpenAI({
+    const ocr = await providerAdapter.run({
       buffer,
       filename: resource.title || 'scanned-pdf.pdf',
       pageCount: resource.pageCount ?? null,
+      maxPages: ocrConfig.provider === 'openai' ? ocrConfig.openaiMaxPages : undefined,
       ...(isResuming ? { pagesToProcess: resume.pagesToProcess } : {}),
       onPageStart: async ({ pageNumber, pagesProcessed, totalPages }) => {
         const pageCount = resource?.pageCount ?? totalPages

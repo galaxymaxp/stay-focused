@@ -3,6 +3,7 @@ import test from 'node:test'
 import {
   PER_PAGE_OCR_TIMEOUT_MS,
 } from '../lib/extraction/pdf-ocr'
+import { DEFAULT_OPENAI_OCR_MAX_PAGES } from '../lib/source-ocr-config'
 import {
   isStaleRunningSourceOcrJob,
   SOURCE_OCR_STALE_RUNNING_THRESHOLD_MS,
@@ -16,7 +17,7 @@ test('PER_PAGE_OCR_TIMEOUT_MS is exported and reasonable', () => {
 })
 
 test('SOURCE_OCR_STALE_RUNNING_THRESHOLD_MS is exported and longer than max OCR runtime', () => {
-  const maxPagesPerRun = 24
+  const maxPagesPerRun = DEFAULT_OPENAI_OCR_MAX_PAGES
   const maxRuntimeMs = maxPagesPerRun * PER_PAGE_OCR_TIMEOUT_MS
   assert.ok(
     SOURCE_OCR_STALE_RUNNING_THRESHOLD_MS > maxRuntimeMs,

@@ -1117,3 +1117,82 @@ Run preview Canvas resync and confirm `1.1-Data Organization.pdf`, `2-Warehousin
 ```
 fix scanned PDF OCR partial recovery
 ```
+
+---
+
+## Session Update - 2026-05-02 (Limit OpenAI OCR automatic usage)
+
+### What changed
+
+- Added OCR provider config with `OCR_PROVIDER=disabled|openai|google|aws|azure|tesseract`.
+- Defaulted scanned-PDF OCR to disabled; OpenAI OCR only auto-runs when `OCR_PROVIDER=openai` and `OPENAI_OCR_AUTO_RUN=true`.
+- Lowered the OpenAI OCR page cap default to `5` pages per job.
+- Added a provider adapter layer so Google Vision, AWS Textract, Azure Document Intelligence, and Tesseract can be plugged in without rewriting queue flow.
+- Kept normal PDF text extraction unchanged; image-only PDFs still become OCR-needed resources with `visualExtractionStatus=available`.
+- Blocked auto-enqueue during Canvas sync when OCR is disabled or OpenAI auto-run is not explicitly enabled.
+- Added OCR spending guardrails for max jobs per sync and max failed OCR attempts per resource.
+- Updated student-facing scanned-PDF copy to: `This PDF needs visual text extraction before Deep Learn.`
+- Kept Deep Learn blocked until meaningful academic source text exists.
+
+### Files touched
+
+- `.env.example`
+- `README.md`
+- `actions/queue-jobs.ts`
+- `app/api/sources/ocr/route.ts`
+- `app/modules/[id]/learn/page.tsx`
+- `components/OcrSourceButton.tsx`
+- `lib/deep-learn-readiness.ts`
+- `lib/extraction/pdf-ocr.ts`
+- `lib/extraction/source-ocr-provider.ts`
+- `lib/learn-resource-ui.ts`
+- `lib/source-ocr-config.ts`
+- `lib/source-ocr-queue.ts`
+- `lib/source-readiness.ts`
+- `scripts/validate-scanned-pdf.ts`
+- `tests/deep-learn-generation.test.ts`
+- `tests/deep-learn-readiness.test.ts`
+- `tests/learn-resource-ui.test.ts`
+- `tests/source-ocr-config.test.ts`
+- `tests/source-ocr-timeout.test.ts`
+- `tests/source-repair.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+OpenAI vision OCR was being used as the automatic production OCR engine for scanned PDFs. That could drain usage through rendered-page calls, retries, and stalled jobs. OpenAI should stay focused on Deep Learn generation after grounded text exists, not default scanned-PDF OCR.
+
+### Tests run
+
+- `npm run typecheck` - passed.
+- `npm run lint` - passed.
+- `npm test -- source-ocr-config source-ocr-timeout queue deep-learn-readiness learn-resource-ui source-repair` - passed, 191 tests.
+- `npm test -- pdf-extractor source-ocr-updates deep-learn-readiness deep-learn-generation canvas-content-resolution learn-resource-ui queue` - passed, 191 tests.
+
+### Verification result
+
+- OCR config defaults to disabled, `OPENAI_OCR_AUTO_RUN=false`, and `OPENAI_OCR_MAX_PAGES=5`.
+- OpenAI OCR can be used manually only when an OCR provider is explicitly configured.
+- Canvas sync no longer auto-queues OpenAI OCR by default.
+- Scanned PDFs still surface as needing visual extraction and remain blocked from Deep Learn until useful text exists.
+
+### Known risks
+
+- Google/AWS/Azure/Tesseract adapters are intentionally stubs until credentials and provider-specific implementations are added.
+- Existing queued `source_ocr` jobs created before this change may fail with the disabled-provider message if processed after deploy.
+- Manual OCR now requires setting `OCR_PROVIDER` to a non-disabled provider; with `OCR_PROVIDER=disabled`, the UI reports that visual extraction is needed.
+
+### Blockers
+
+- No local blocker.
+- The local scanned-PDF validator was not run in this session to avoid spending OpenAI OCR usage.
+
+### Next recommended step
+
+Implement the first non-OpenAI OCR adapter, preferably Google Vision or Azure Document Intelligence, and test it behind `OCR_PROVIDER`.
+
+### Suggested commit message
+
+```
+limit OpenAI OCR automatic usage
+```

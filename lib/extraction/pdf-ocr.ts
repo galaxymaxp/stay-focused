@@ -1,5 +1,6 @@
 import OpenAI from 'openai'
 import { createIsomorphicCanvasFactory, getDocumentProxy, renderPageAsImage } from 'unpdf'
+import { DEFAULT_OPENAI_OCR_MAX_PAGES } from '@/lib/source-ocr-config'
 
 export type PdfOcrResult =
   | {
@@ -37,7 +38,7 @@ export interface PdfOcrPage {
 }
 
 const MAX_PDF_BYTES = 50 * 1024 * 1024
-const DEFAULT_MAX_PAGES_PER_RUN = 24
+const DEFAULT_MAX_PAGES_PER_RUN = DEFAULT_OPENAI_OCR_MAX_PAGES
 const DEFAULT_RENDER_WIDTH = 1800
 const DEFAULT_RENDER_RETRY_WIDTH = 2400
 export const MIN_USEFUL_OCR_CHARS = 120
@@ -51,6 +52,7 @@ export async function extractScannedPdfTextWithOpenAI(input: {
   filename: string
   pageCount?: number | null
   pagesToProcess?: number[]
+  maxPages?: number
   onPageStart?: (progress: {
     pageNumber: number
     pagesProcessed: number
@@ -65,7 +67,7 @@ export async function extractScannedPdfTextWithOpenAI(input: {
 }): Promise<PdfOcrResult> {
   const apiKey = process.env.OPENAI_API_KEY
   const model = process.env.OPENAI_OCR_MODEL?.trim() || 'gpt-4o-mini'
-  const maxPages = getConfiguredPositiveInt(process.env.OPENAI_OCR_MAX_PAGES, DEFAULT_MAX_PAGES_PER_RUN)
+  const maxPages = input.maxPages ?? getConfiguredPositiveInt(process.env.OPENAI_OCR_MAX_PAGES, DEFAULT_MAX_PAGES_PER_RUN)
   const renderWidth = getConfiguredPositiveInt(process.env.OPENAI_OCR_RENDER_WIDTH, DEFAULT_RENDER_WIDTH)
   const retryRenderWidth = getConfiguredPositiveInt(process.env.OPENAI_OCR_RETRY_RENDER_WIDTH, DEFAULT_RENDER_RETRY_WIDTH)
 

@@ -285,7 +285,7 @@ function messageForState(
   if (state === 'canvas_lesson_page') return 'This looks like a Canvas lesson page. Open it in Canvas or summarize it once page extraction is available.'
   if (state === 'external_link') return 'This source opens outside Canvas. Use the original link for now.'
   if (state === 'extraction_failed') return 'Extraction failed. Retry processing, or open the original file.'
-  if (state === 'visual_ocr_available') return 'Preparing scanned PDF will start automatically. If it does not start, retry extraction.'
+  if (state === 'visual_ocr_available') return 'This PDF needs visual text extraction before Deep Learn.'
   if (state === 'visual_ocr_queued') return 'Scanned PDF is queued for text extraction.'
   if (state === 'visual_ocr_running') return 'Scanning pages for readable text...'
   if (state === 'visual_ocr_partial') return 'Partially scanned. Enough readable text is available for Deep Learn.'
@@ -296,7 +296,7 @@ function messageForState(
       ? `Only ${readableTextLength.toLocaleString()} readable characters were found; Deep Learn needs at least 120.`
       : 'Processing completed, but Deep Learn could not find readable text.'
     return visualExtractionCandidate
-      ? `${countText} This looks image-heavy, so scanned PDF extraction should start automatically.`
+      ? `${countText} This PDF needs visual text extraction before Deep Learn.`
       : `${countText} No recovery path is available for this source type yet.`
   }
   return 'Readable source text is not available yet. Open the original file or prepare the source from Learn.'
