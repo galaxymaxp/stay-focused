@@ -163,7 +163,7 @@ async function runCanvasSyncJob(input: {
         const resourceTitle = typeof ocrJob.payload?.resourceTitle === 'string' ? ocrJob.payload.resourceTitle : 'Study source'
         if (!resourceId) continue
 
-        void processSourceOcrJob({
+        await processSourceOcrJob({
           jobId: ocrJob.id,
           userId: input.userId,
           moduleId: result.moduleId,

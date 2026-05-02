@@ -51,6 +51,11 @@ export async function extractScannedPdfTextWithOpenAI(input: {
   filename: string
   pageCount?: number | null
   pagesToProcess?: number[]
+  onPageStart?: (progress: {
+    pageNumber: number
+    pagesProcessed: number
+    totalPages: number
+  }) => void | Promise<void>
   onPageResult?: (progress: {
     page: PdfOcrPage
     pageNumber: number
@@ -89,6 +94,12 @@ export async function extractScannedPdfTextWithOpenAI(input: {
     const pageResults: PdfOcrPage[] = []
 
     for (const pageNumber of pageNumbersToRun) {
+      await input.onPageStart?.({
+        pageNumber,
+        pagesProcessed: pageResults.length,
+        totalPages,
+      })
+
       let page: PdfOcrPage
       try {
         page = await withPageTimeout(

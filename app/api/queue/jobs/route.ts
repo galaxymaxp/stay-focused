@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
+import { after } from 'next/server'
 import { getAuthenticatedUserServer } from '@/lib/auth-server'
 import { dismissCompletedQueuedJobs, dismissQueuedJob, getUserQueuedJobs } from '@/lib/queue'
-import { recoverStaleSourceOcrJobs } from '@/actions/queue-jobs'
+import { processNextPendingSourceOcrJobForUser, recoverStaleSourceOcrJobs } from '@/actions/queue-jobs'
 
 export const runtime = 'nodejs'
 
@@ -12,6 +13,9 @@ export async function GET() {
   }
 
   await recoverStaleSourceOcrJobs(user.id)
+  after(async () => {
+    await processNextPendingSourceOcrJobForUser(user.id)
+  })
 
   const jobs = await getUserQueuedJobs(user.id, { limit: 50 })
   return NextResponse.json({ jobs })

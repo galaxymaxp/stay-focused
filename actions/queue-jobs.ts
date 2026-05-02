@@ -44,6 +44,7 @@ import {
 import {
   buildOcrCompletedUpdate,
   buildOcrFailedUpdate,
+  buildOcrPageProgressUpdate,
   buildOcrProcessingUpdate,
   buildOcrQueuedUpdate,
   isOcrAlreadyCompleted,
@@ -54,6 +55,7 @@ import {
   buildSourceOcrQueueTitle,
   buildSourceOcrStatusMessage,
   calculateSourceOcrProgress,
+  countRunningSourceOcrJobs,
   findActiveSourceOcrJob,
   findRecentFailedSourceOcrJob,
   findStaleRunningSourceOcrJobs,
@@ -134,6 +136,7 @@ export async function queueSourceOcrAction(input: {
   if (!user) return { jobId: '', error: 'Not authenticated.' }
 
   const existingJobs = await getUserQueuedJobs(user.id, { type: 'source_ocr', limit: 50 })
+  const hasRunningSourceOcrJob = countRunningSourceOcrJobs(existingJobs) > 0
   const activeDuplicate = existingJobs.find((job) => {
     const payloadResourceId = typeof job.payload?.resourceId === 'string' ? job.payload.resourceId : null
     const resultResourceId = typeof job.result?.resourceId === 'string' ? job.result.resourceId : null
@@ -186,17 +189,19 @@ export async function queueSourceOcrAction(input: {
     .update(buildOcrQueuedUpdate({ resource, now: new Date().toISOString() }))
     .eq('id', resource.id)
 
-  after(async () => {
-    await processSourceOcrJob({
-      jobId: job.id,
-      userId: user.id,
-      moduleId: input.moduleId,
-      resourceId: input.resourceId,
-      courseId: input.courseId ?? resource.courseId ?? null,
-      resourceTitle: input.resourceTitle,
+  if (!hasRunningSourceOcrJob) {
+    after(async () => {
+      await processSourceOcrJob({
+        jobId: job.id,
+        userId: user.id,
+        moduleId: input.moduleId,
+        resourceId: input.resourceId,
+        courseId: input.courseId ?? resource.courseId ?? null,
+        resourceTitle: input.resourceTitle,
+      })
+      revalidateLearnQueuePaths(input.moduleId, input.courseId ?? resource.courseId ?? null, input.resourceId)
     })
-    revalidateLearnQueuePaths(input.moduleId, input.courseId ?? resource.courseId ?? null, input.resourceId)
-  })
+  }
 
   return { jobId: job.id, job }
 }
@@ -331,14 +336,66 @@ export async function recoverStaleSourceOcrJobs(userId: string): Promise<void> {
     const resource = adaptModuleResourceRow(resourceData as Record<string, unknown>)
     if (resource.visualExtractionStatus !== 'running' && resource.visualExtractionStatus !== 'queued') continue
 
+    const update = buildOcrFailedUpdate({ resource, message: STALE_ERROR, now })
     await supabase
       .from('module_resources')
-      .update(buildOcrFailedUpdate({ resource, message: STALE_ERROR, now }))
+      .update(update)
       .eq('id', resourceId)
+
+    if (update.visual_extraction_status === 'completed' && update.extracted_char_count >= 120) {
+      await markQueuedJobCompleted(job.id, {
+        resourceId,
+        moduleId: getStringFromJobField(job, 'moduleId') ?? resource.moduleId,
+        resourceTitle: resource.title,
+        pageCount: update.page_count ?? resource.pageCount ?? null,
+        pagesProcessed: update.pages_processed,
+        charCount: update.extracted_char_count,
+        statusMessage: 'Partially scanned. Enough readable text is available for Deep Learn.',
+        href: `/modules/${resource.moduleId}/learn?resource=${encodeURIComponent(resourceId)}`,
+      })
+    }
 
     const moduleId = getStringFromJobField(job, 'moduleId') ?? resource.moduleId
     revalidateLearnQueuePaths(moduleId, resource.courseId ?? null, resourceId)
   }
+}
+
+export async function processNextPendingSourceOcrJobForUser(userId: string): Promise<void> {
+  const supabase = createSupabaseServiceRoleClient()
+  if (!supabase) return
+
+  const { data: runningRows } = await supabase
+    .from('queued_jobs')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('type', 'source_ocr')
+    .eq('status', 'running')
+    .limit(1)
+  if (runningRows && runningRows.length > 0) return
+
+  const { data, error } = await supabase
+    .from('queued_jobs')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('type', 'source_ocr')
+    .eq('status', 'pending')
+    .order('created_at', { ascending: true })
+    .limit(1)
+
+  if (error || !data || data.length === 0) return
+  const job = rowToQueuedJobForAutoOcr((data as Record<string, unknown>[])[0])
+  const resourceId = getSourceOcrJobResourceId(job)
+  const moduleId = getStringFromJobField(job, 'moduleId')
+  if (!resourceId || !moduleId) return
+
+  await processSourceOcrJob({
+    jobId: job.id,
+    userId,
+    moduleId,
+    resourceId,
+    courseId: getStringFromJobField(job, 'courseId'),
+    resourceTitle: getStringFromJobField(job, 'resourceTitle') ?? 'Study source',
+  })
 }
 
 function totalTransferredCount(previousPages: PdfOcrPage[], newPagesProcessed: number) {
@@ -351,6 +408,37 @@ function getStringFromJobField(job: QueuedJob, key: string) {
   const fromPayload = job.payload?.[key]
   const value = fromResult ?? fromPayload
   return typeof value === 'string' && value.trim() ? value.trim() : null
+}
+
+function applyOcrUpdateToResource(resource: ModuleResource, update: Partial<{
+  extraction_status: ModuleResource['extractionStatus']
+  extracted_text: string | null
+  extracted_text_preview: string | null
+  extracted_char_count: number
+  extraction_error: string | null
+  visual_extraction_status: ModuleResource['visualExtractionStatus']
+  visual_extracted_text: string | null
+  visual_extraction_error: string | null
+  page_count: number | null
+  pages_processed: number
+  extraction_provider: string | null
+  metadata: Record<string, unknown>
+}>): ModuleResource {
+  return {
+    ...resource,
+    extractionStatus: update.extraction_status ?? resource.extractionStatus,
+    extractedText: update.extracted_text !== undefined ? update.extracted_text : resource.extractedText,
+    extractedTextPreview: update.extracted_text_preview !== undefined ? update.extracted_text_preview : resource.extractedTextPreview,
+    extractedCharCount: update.extracted_char_count ?? resource.extractedCharCount,
+    extractionError: update.extraction_error !== undefined ? update.extraction_error : resource.extractionError,
+    visualExtractionStatus: update.visual_extraction_status ?? resource.visualExtractionStatus,
+    visualExtractedText: update.visual_extracted_text !== undefined ? update.visual_extracted_text : resource.visualExtractedText,
+    visualExtractionError: update.visual_extraction_error !== undefined ? update.visual_extraction_error : resource.visualExtractionError,
+    pageCount: update.page_count !== undefined ? update.page_count : resource.pageCount,
+    pagesProcessed: update.pages_processed ?? resource.pagesProcessed,
+    extractionProvider: update.extraction_provider !== undefined ? update.extraction_provider : resource.extractionProvider,
+    metadata: update.metadata ?? resource.metadata,
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -630,10 +718,26 @@ export async function processSourceOcrJob(input: {
 
   const fail = async (resource: ModuleResource | null, message: string, metadata?: Record<string, unknown>, provider?: string | null) => {
     if (resource) {
+      const update = buildOcrFailedUpdate({ resource, message, ocrMetadata: metadata ?? {}, provider: provider ?? null, now: new Date().toISOString() })
       await supabase
         .from('module_resources')
-        .update(buildOcrFailedUpdate({ resource, message, ocrMetadata: metadata ?? {}, provider: provider ?? null, now: new Date().toISOString() }))
+        .update(update)
         .eq('id', resource.id)
+
+      if (update.visual_extraction_status === 'completed' && update.extracted_char_count >= 120) {
+        await markQueuedJobCompleted(input.jobId, {
+          resourceId: resource.id,
+          moduleId: input.moduleId,
+          resourceTitle: resource.title,
+          pageCount: update.page_count ?? resource.pageCount ?? null,
+          pagesProcessed: update.pages_processed,
+          charCount: update.extracted_char_count,
+          statusMessage: 'Partially scanned. Enough readable text is available for Deep Learn.',
+          href: `/modules/${input.moduleId}/learn?resource=${encodeURIComponent(resource.id)}`,
+        })
+        revalidateLearnQueuePaths(input.moduleId, input.courseId, input.resourceId)
+        return
+      }
     }
     await markQueuedJobFailed(input.jobId, message)
     revalidateLearnQueuePaths(input.moduleId, input.courseId, input.resourceId)
@@ -696,6 +800,7 @@ export async function processSourceOcrJob(input: {
     const resume = buildOcrResumeState(resource)
     const isResuming = resume.pagesToProcess.length > 0
     const prevCompletedCount = resume.previousCompletedCount
+    let persistedPages = resume.previousPages
 
     const buffer = await downloadStoredPdfForOcr(sourceUrl, getOptionalCanvasConfig())
     const ocr = await extractScannedPdfTextWithOpenAI({
@@ -703,9 +808,48 @@ export async function processSourceOcrJob(input: {
       filename: resource.title || 'scanned-pdf.pdf',
       pageCount: resource.pageCount ?? null,
       ...(isResuming ? { pagesToProcess: resume.pagesToProcess } : {}),
-      onPageResult: async ({ pagesProcessed, totalPages }) => {
+      onPageStart: async ({ pageNumber, pagesProcessed, totalPages }) => {
+        const pageCount = resource?.pageCount ?? totalPages
+        const totalProcessed = totalTransferredCount(resume.previousPages, pagesProcessed)
+        await supabase
+          .from('module_resources')
+          .update(buildOcrPageProgressUpdate({
+            resource: resource as ModuleResource,
+            pages: persistedPages,
+            provider: 'openai:running',
+            totalPagesInDocument: pageCount,
+            now: new Date().toISOString(),
+          }))
+          .eq('id', input.resourceId)
+        await updateQueuedJobStatus(input.jobId, 'running', {
+          progress: calculateSourceOcrProgress(totalProcessed, pageCount),
+          result: {
+            resourceId: input.resourceId,
+            moduleId: input.moduleId,
+            resourceTitle: input.resourceTitle,
+            pageCount,
+            currentPage: pageNumber,
+            pagesProcessed: totalProcessed,
+            statusMessage: `Scanning page ${pageNumber} of ${pageCount}`,
+          },
+        })
+      },
+      onPageResult: async ({ page, pagesProcessed, totalPages }) => {
         const pageCount = resource?.pageCount ?? totalPages
         const totalProcessed = prevCompletedCount + pagesProcessed
+        persistedPages = mergeOcrPageArrays(persistedPages, [page])
+        const progressUpdate = buildOcrPageProgressUpdate({
+          resource: resource as ModuleResource,
+          pages: persistedPages,
+          provider: page.provider,
+          totalPagesInDocument: pageCount,
+          now: new Date().toISOString(),
+        })
+        await supabase
+          .from('module_resources')
+          .update(progressUpdate)
+          .eq('id', input.resourceId)
+        resource = applyOcrUpdateToResource(resource as ModuleResource, progressUpdate)
         await updateQueuedJobStatus(input.jobId, 'running', {
           progress: calculateSourceOcrProgress(totalProcessed, pageCount),
           result: {
@@ -772,6 +916,8 @@ export async function processSourceOcrJob(input: {
     const message = err instanceof Error ? err.message : 'OCR failed. Open the original file.'
     console.error('[queue-jobs] processSourceOcrJob failed', { jobId: input.jobId, message })
     await fail(resource, message)
+  } finally {
+    await processNextPendingSourceOcrJobForUser(input.userId)
   }
 }
 

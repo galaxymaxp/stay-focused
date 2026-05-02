@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { createClient } from '@supabase/supabase-js'
 import { extractPdfTextFromBuffer } from '../lib/extraction/pdf-extractor'
-import { extractScannedPdfTextWithOpenAI } from '../lib/extraction/pdf-ocr'
+import { extractScannedPdfTextWithOpenAI, type PdfOcrResult } from '../lib/extraction/pdf-ocr'
 import { classifyExtractedTextQuality, classifyModuleResourceTextQuality } from '../lib/extracted-text-quality'
 import { buildOcrCompletedUpdate } from '../lib/source-ocr-updates'
 import { classifyDeepLearnResourceReadiness } from '../lib/deep-learn-readiness'
@@ -16,6 +16,7 @@ import type { Module, ModuleResource } from '../lib/types'
 interface ParsedArgs {
   pdfPath: string | null
   resourceId: string | null
+  simulatePageFailure: number | null
 }
 
 const REQUIRED_TERMS = [
@@ -134,13 +135,22 @@ async function main() {
   console.log(`OCR completed with ${ocr.charCount} characters across ${ocr.pages.length || 1} rendered pages`)
   console.log(`OCR term check passed for ${REQUIRED_TERMS.length} expected terms`)
 
+  const finalOcr = args.simulatePageFailure && ocr.status === 'completed'
+    ? simulateSinglePageFailure(ocr, args.simulatePageFailure)
+    : ocr
+  if (args.simulatePageFailure) {
+    assert.equal(finalOcr.status, 'completed', 'Simulated one-page OCR failure should not fail the whole OCR result.')
+    assert.ok(finalOcr.pages.some((page) => page.pageNumber === args.simulatePageFailure && page.status === 'failed'), `Expected simulated page ${args.simulatePageFailure} to be recorded as failed.`)
+    console.log(`Simulated page ${args.simulatePageFailure} failure; OCR remained completed with ${finalOcr.charCount} usable chars`)
+  }
+
   const ocrUpdate = buildOcrCompletedUpdate({
     resource: preStored,
-    ocr,
+    ocr: finalOcr,
     now: new Date().toISOString(),
   })
   assert.equal(ocrUpdate.extraction_status, 'completed', `OCR update should keep the resource blocked when text is bad; got ${ocrUpdate.extraction_status}`)
-  const failedPageNumbers = ocr.pages
+  const failedPageNumbers = finalOcr.pages
     .filter((page) => page.status === 'failed')
     .map((page) => page.pageNumber)
   printOcrPersistenceDiagnostics({
@@ -148,7 +158,7 @@ async function main() {
     resource: preStored,
     pageCountDetected: ocrUpdate.page_count ?? preStored.pageCount ?? null,
     ocrPagesProcessed: ocrUpdate.pages_processed,
-    totalOcrCharacters: ocr.charCount,
+    totalOcrCharacters: finalOcr.charCount,
     extractedTextLength: ocrUpdate.extracted_text?.length ?? 0,
     visualExtractedTextLength: ocrUpdate.visual_extracted_text?.length ?? 0,
     extractedCharCount: ocrUpdate.extracted_char_count,
@@ -171,7 +181,7 @@ async function main() {
     resource: postStored,
     pageCountDetected: postStored.pageCount ?? null,
     ocrPagesProcessed: postStored.pagesProcessed ?? 0,
-    totalOcrCharacters: ocr.charCount,
+    totalOcrCharacters: finalOcr.charCount,
     extractedTextLength: postStored.extractedText?.length ?? 0,
     visualExtractedTextLength: postStored.visualExtractedText?.length ?? 0,
     extractedCharCount: postStored.extractedCharCount,
@@ -232,6 +242,7 @@ function loadEnvFile() {
 function parseArgs(argv: string[]): ParsedArgs {
   let pdfPath: string | null = null
   let resourceId: string | null = null
+  let simulatePageFailure: number | null = null
   for (let index = 0; index < argv.length; index += 1) {
     if (argv[index] === '--pdf') {
       const nextValue = argv[index + 1]
@@ -245,10 +256,19 @@ function parseArgs(argv: string[]): ParsedArgs {
       if (!nextValue) throw new Error('Expected a resource id after --resource-id')
       resourceId = nextValue
       index += 1
+      continue
+    }
+    if (argv[index] === '--simulate-page-failure') {
+      const nextValue = argv[index + 1]
+      if (!nextValue) throw new Error('Expected a page number after --simulate-page-failure')
+      const parsedPage = Number.parseInt(nextValue, 10)
+      if (!Number.isFinite(parsedPage) || parsedPage < 1) throw new Error('--simulate-page-failure must be a positive page number')
+      simulatePageFailure = parsedPage
+      index += 1
     }
   }
 
-  return { pdfPath, resourceId }
+  return { pdfPath, resourceId, simulatePageFailure }
 }
 
 async function validateDbResource(resourceId: string) {
@@ -409,6 +429,42 @@ function applyOcrUpdate(resource: ModuleResource, update: ReturnType<typeof buil
     pagesProcessed: update.pages_processed,
     extractionProvider: update.extraction_provider ?? null,
     metadata: update.metadata,
+  }
+}
+
+function simulateSinglePageFailure(ocr: PdfOcrResult & { status: 'completed' }, pageNumber: number): PdfOcrResult & { status: 'completed' } {
+  const pages = ocr.pages.map((page) => page.pageNumber === pageNumber
+    ? {
+      ...page,
+      text: '',
+      charCount: 0,
+      status: 'failed' as const,
+      error: `Simulated page ${pageNumber} timeout for validator resilience check.`,
+      refusal: false,
+    }
+    : page)
+  const text = pages
+    .filter((page) => page.status === 'completed' && page.text.trim())
+    .map((page) => `Page ${page.pageNumber}:\n${page.text.trim()}`)
+    .join('\n\n')
+    .trim()
+
+  return {
+    ...ocr,
+    text,
+    charCount: text.length,
+    pages,
+    metadata: {
+      ...ocr.metadata,
+      pdfOcr: {
+        ...asPlainRecord(ocr.metadata.pdfOcr),
+        status: 'completed',
+        usefulCharCount: text.length,
+        successfulPages: pages.filter((page) => page.status === 'completed').length,
+        failedPages: pages.filter((page) => page.status === 'failed').length,
+        simulatedPageFailure: pageNumber,
+      },
+    },
   }
 }
 

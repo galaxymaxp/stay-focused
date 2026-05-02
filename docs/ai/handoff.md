@@ -1044,3 +1044,76 @@ Add resumable page-range OCR so retry/continue starts from the first unprocessed
 - `npm run lint` — passed (0 warnings)
 - `npm test` — 186 tests passed, 0 failed (includes 13 new resume tests, 2 new partial-UI tests)
 - `npx tsx scripts/validate-scanned-pdf.ts` — **passed** (`1.1-Data Organization.pdf`, 24362943 bytes, 51 pages, 24 pages OCR'd in first run, statusKey `visual_ocr_partial`, `canGenerate: true`, Deep Learn generation check passed). Note: the script's `statusKey` assertion was updated from hard-coded `'ready'` to a computed check (`visual_ocr_partial` when `pagesProcessed < pageCount`, `ready` when fully scanned) — the 51-page PDF will always yield `visual_ocr_partial` on a single run due to `DEFAULT_MAX_PAGES_PER_RUN = 24`.
+
+---
+
+## Session Update - 2026-05-02 (OCR reliability and partial recovery hardening)
+
+### What changed
+
+- Added a page-start OCR callback so the queue heartbeat updates before a long page/model call begins.
+- Persisted OCR page progress after each page into `module_resources`, including `visualExtractionPages`, useful text, page counts, and `pdfOcr.lastHeartbeatAt`.
+- Added a partial-progress update path that mirrors meaningful OCR text into `extracted_text` and `visual_extracted_text` while the job is still running, so useful text survives later page failures, stale recovery, or worker exceptions.
+- Hardened failed/stale OCR finalization: if a resource already has meaningful recovered text, failure recovery now marks the job/resource completed/partial-ready instead of clearing text and showing OCR failed.
+- Added one-at-a-time source OCR execution per user:
+  - manual OCR jobs remain pending when another `source_ocr` job is already running
+  - queued Canvas sync starts auto-created OCR jobs sequentially
+  - queue polling schedules the next pending `source_ocr` job after recovery when no OCR job is running
+- Updated partial-ready student copy to: `Partially scanned. Enough readable text is available for Deep Learn.`
+- Added validator support for `--simulate-page-failure <page>` to verify one failed/timed-out page does not fail the whole scanned PDF run.
+
+### Files touched
+
+- `actions/queue-canvas.ts`
+- `actions/queue-jobs.ts`
+- `app/api/queue/jobs/route.ts`
+- `lib/extraction/pdf-ocr.ts`
+- `lib/learn-resource-ui.ts`
+- `lib/source-ocr-queue.ts`
+- `lib/source-ocr-updates.ts`
+- `lib/source-readiness.ts`
+- `scripts/validate-scanned-pdf.ts`
+- `tests/learn-resource-ui.test.ts`
+- `tests/queue.test.ts`
+- `tests/source-ocr-updates.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Production OCR was still too fragile: a stalled page, stale-running recovery, or later worker exception could clear or hide useful partial OCR text. The app must treat scanned decks as usable once enough meaningful academic text exists, even if some pages fail, time out, or remain unprocessed.
+
+### Tests run
+
+- `npm run typecheck` — passed.
+- `npm run lint` — passed.
+- `npm test -- source-ocr-updates queue learn-resource-ui source-ocr-resume source-ocr-timeout` — passed, 188 tests.
+- `npm test -- pdf-extractor source-ocr-updates deep-learn-readiness deep-learn-generation canvas-content-resolution learn-resource-ui queue` — passed, 188 tests.
+- `npx tsx scripts/validate-scanned-pdf.ts --pdf "C:\Users\omgra\Downloads\1.1-Data Organization.pdf"` — passed.
+- `npx tsx scripts/validate-scanned-pdf.ts --pdf "C:\Users\omgra\Downloads\1.1-Data Organization.pdf" --simulate-page-failure 7` — passed.
+
+### Verification result
+
+- Normal validator recovered `3366` OCR chars across 24 rendered pages, persisted `3088` useful chars, `sourceTextQuality: meaningful`, `visual_extraction_status: completed`, `isPartial: true`, `canGenerate: true`, and Deep Learn generation passed.
+- Simulated page-failure validator recovered `3091` usable OCR chars after forcing page 7 to failed; persisted `2848` useful chars, recorded failed pages, stayed `completed`/partial-ready, `canGenerate: true`, and Deep Learn generation passed.
+- Focused tests cover partial preservation on failure, page-progress persistence, running-job counts, and partial-ready copy.
+
+### Known risks
+
+- Queue polling uses `after()` to schedule the next pending `source_ocr`; if the platform does not continue background work after that route response, the next OCR job may wait until another server action or poll schedules it again.
+- OCR remains capped to 24 pages per run, so long decks still need Continue extraction for full coverage.
+- Per-user OCR concurrency is capped, but there is no database-level advisory lock; two route invocations racing at the same instant could still attempt the same pending job until the first status update wins.
+
+### Blockers
+
+- No current blocker in local validation.
+- Preview resync/manual observation still needs to be run against the live Canvas state to confirm the three named PDFs transition as expected in the UI.
+
+### Next recommended step
+
+Run preview Canvas resync and confirm `1.1-Data Organization.pdf`, `2-Warehousing Schema.pdf`, and `3-OLAP.pdf` scan one at a time, preserve partial text, and show Ready/Partial Ready instead of OCR failed when enough text exists.
+
+### Suggested commit message
+
+```
+fix scanned PDF OCR partial recovery
+```
