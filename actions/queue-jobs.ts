@@ -50,6 +50,8 @@ import {
   calculateSourceOcrProgress,
   findActiveSourceOcrJob,
   findRecentFailedSourceOcrJob,
+  findStaleRunningSourceOcrJobs,
+  getSourceOcrJobResourceId,
 } from '@/lib/source-ocr-queue'
 import type { ModuleResource } from '@/lib/types'
 
@@ -280,6 +282,64 @@ export async function autoEnqueueSourceOcrJobs(input: {
   }
 
   return jobs
+}
+
+// ---------------------------------------------------------------------------
+// Stale-running source_ocr recovery
+// ---------------------------------------------------------------------------
+
+export async function recoverStaleSourceOcrJobs(userId: string): Promise<void> {
+  const supabase = createSupabaseServiceRoleClient()
+  if (!supabase) return
+
+  const { data, error } = await supabase
+    .from('queued_jobs')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('type', 'source_ocr')
+    .eq('status', 'running')
+
+  if (error || !data || data.length === 0) return
+
+  const jobs = (data as Record<string, unknown>[]).map(rowToQueuedJobForAutoOcr)
+  const staleJobs = findStaleRunningSourceOcrJobs(jobs)
+  if (staleJobs.length === 0) return
+
+  const STALE_ERROR = 'Text extraction stalled. Retry extraction.'
+  const now = new Date().toISOString()
+
+  for (const job of staleJobs) {
+    await markQueuedJobFailed(job.id, STALE_ERROR)
+
+    const resourceId = getSourceOcrJobResourceId(job)
+    if (!resourceId) continue
+
+    const { data: resourceData } = await supabase
+      .from('module_resources')
+      .select('*')
+      .eq('id', resourceId)
+      .maybeSingle()
+
+    if (!resourceData) continue
+
+    const resource = adaptModuleResourceRow(resourceData as Record<string, unknown>)
+    if (resource.visualExtractionStatus !== 'running' && resource.visualExtractionStatus !== 'queued') continue
+
+    await supabase
+      .from('module_resources')
+      .update(buildOcrFailedUpdate({ resource, message: STALE_ERROR, now }))
+      .eq('id', resourceId)
+
+    const moduleId = getStringFromJobField(job, 'moduleId') ?? resource.moduleId
+    revalidateLearnQueuePaths(moduleId, resource.courseId ?? null, resourceId)
+  }
+}
+
+function getStringFromJobField(job: QueuedJob, key: string) {
+  const fromResult = job.result?.[key]
+  const fromPayload = job.payload?.[key]
+  const value = fromResult ?? fromPayload
+  return typeof value === 'string' && value.trim() ? value.trim() : null
 }
 
 // ---------------------------------------------------------------------------

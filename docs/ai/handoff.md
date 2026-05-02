@@ -884,3 +884,92 @@ Add resumable page-range OCR so `Continue OCR` scans only unprocessed pages and 
 ```
 fix OCR queue visibility and unsupported source actions
 ```
+
+---
+
+## Session Update - 2026-05-02 (OCR timeout and stale-running recovery)
+
+### What changed
+
+- **`lib/extraction/pdf-ocr.ts`** — Added per-page OCR timeout (`PER_PAGE_OCR_TIMEOUT_MS = 30_000`). Each page render+vision call is now wrapped in a 30-second `Promise.race`. If a page times out, it is recorded as a `failed` PdfOcrPage and the loop continues to the next page. One bad page can no longer freeze the entire OCR job. `PER_PAGE_OCR_TIMEOUT_MS` is exported for tests.
+
+- **`lib/source-ocr-queue.ts`** — Added stale-running detection:
+  - `SOURCE_OCR_STALE_RUNNING_THRESHOLD_MS = 15 * 60 * 1000` (15 minutes — exceeds worst-case 24-page × 30s/page runtime)
+  - `isStaleRunningSourceOcrJob(job, now?, thresholdMs?)` — returns `true` if a `running` source_ocr job's `updatedAt` is older than the threshold
+  - `findStaleRunningSourceOcrJobs(jobs, now?, thresholdMs?)` — filters a job list to stale ones
+
+- **`actions/queue-jobs.ts`** — Added `recoverStaleSourceOcrJobs(userId)`:
+  - Loads all `running` source_ocr jobs for the user via service role
+  - Marks stale ones `failed` with copy "Text extraction stalled. Retry extraction."
+  - Updates the corresponding `module_resources` row to `visual_extraction_status = failed` (only if still `running` or `queued`)
+  - Revalidates Learn/queue paths so the next poll reflects the recovered state
+
+- **`app/api/queue/jobs/route.ts`** — GET handler now calls `recoverStaleSourceOcrJobs(userId)` before returning jobs. Every queue poll is a recovery opportunity; stale jobs are healed within one poll cycle (~12–30 s after threshold).
+
+- **`scripts/validate-scanned-pdf.ts`** — Extended diagnostics:
+  - Prints job id, job status, current page, pages processed, page count
+  - Prints last heartbeat timestamp + age in seconds
+  - Warns when heartbeat age > 15 min
+  - Prints failed page numbers from the local OCR run or the stored `visualExtractionPages` metadata
+  - Readiness detail line is included when non-null
+
+- **`tests/source-ocr-timeout.test.ts`** (new) — Unit tests for:
+  - `PER_PAGE_OCR_TIMEOUT_MS` is exported and in a sane range
+  - `SOURCE_OCR_STALE_RUNNING_THRESHOLD_MS` exceeds max OCR runtime
+  - Stale detection uses `updatedAt` as heartbeat proxy
+  - Custom threshold works correctly
+
+- **`tests/queue.test.ts`** — Added:
+  - Stale running job detected when `updatedAt` exceeds threshold
+  - Non-running and non-OCR jobs are never stale
+  - `findStaleRunningSourceOcrJobs` returns only stale running OCR jobs
+
+- **`tests/source-ocr-updates.test.ts`** — Added:
+  - Partial OCR text from pages 1–18 is preserved when page 19 times out
+  - Worker exception with no pages produces correct failed update
+
+### Root cause of the stuck job
+
+The job stalled at "Scanning page 19 of 51" / 37% because:
+1. `renderPdfPage` or the OpenAI vision API call for page 19 hung indefinitely (network stall, API rate limit, malformed page image).
+2. There was no per-page timeout — the `await` never resolved.
+3. `updated_at` stopped advancing once the page 19 call hung.
+4. The job stayed at `status = running` forever (no Vercel timeout hit the `after()` background execution path in this case).
+
+### Behavior after this fix
+
+- **New jobs**: any page that stalls is timed out after 30s, marked `failed`, and the loop continues. Pages 1–18 + 20–24 are still processed. If enough text was recovered (≥120 chars), the job completes successfully with the partial text.
+- **Existing stuck job**: on the next queue poll, `recoverStaleSourceOcrJobs` detects `updatedAt` > 15 min, marks the job `failed` with "Text extraction stalled. Retry extraction.", updates the resource, and revalidates the Learn page. The card transitions from "Extracting" to a retry state within one poll cycle.
+
+### Recovery copy shown to student
+
+`"Text extraction stalled. Retry extraction."`
+
+### Partial OCR behavior
+
+If pages 1–18 of a 24-page run produced meaningful text (≥120 chars merged), the OCR result is still `status: 'completed'`. Page 19's failure is recorded in `visualExtractionPages` metadata but excluded from merged text. The resource becomes `extraction_status = completed` and `canGenerate = true` using the partial text.
+
+### Risks / blockers
+
+- Stale recovery relies on the 30-second poll cycle of the QueuePanel. A user with the panel closed is on the 30-second fallback interval.
+- Resume from the last processed page is still future work. Retry currently restarts from page 1.
+- The 15-minute threshold allows up to 24 slow pages (each up to 30s) to complete before a job is considered stale. Adjust `SOURCE_OCR_STALE_RUNNING_THRESHOLD_MS` if page counts or timeouts change.
+
+### Verification results
+
+- `npm run typecheck` — passed.
+- `npm run lint` — passed.
+- `npm test -- pdf-extractor source-ocr-updates deep-learn-readiness deep-learn-generation canvas-content-resolution learn-resource-ui queue source-ocr-timeout` — **168 tests passed (0 failures)**. New tests: 7 in `source-ocr-timeout.test.ts`, 3 in `queue.test.ts`, 2 in `source-ocr-updates.test.ts`.
+- `npx tsx scripts/validate-scanned-pdf.ts --pdf "C:\Users\omgra\Downloads\1.1-Data Organization.pdf"` — passed:
+  - pre-OCR parse: `empty (pdf_image_only_possible)`
+  - pre-OCR readiness: `unreadable`
+  - pre-OCR UI copy: `Preparing scanned PDF will start automatically. If it does not start, retry extraction.`
+  - OCR completed with `3354` characters across `24` rendered pages
+  - expected terms check: `9/9`
+  - `extracted_char_count`: `3077`, `sourceTextQuality`: `meaningful`
+  - readiness: `text_ready`, `canGenerate: true`
+  - Deep Learn generation check passed
+
+### Next recommended task
+
+Add resumable page-range OCR so retry/continue starts from the first unprocessed page instead of page 1, appending new text to preserved earlier pages.

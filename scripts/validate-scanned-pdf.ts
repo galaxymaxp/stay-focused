@@ -140,6 +140,9 @@ async function main() {
     now: new Date().toISOString(),
   })
   assert.equal(ocrUpdate.extraction_status, 'completed', `OCR update should keep the resource blocked when text is bad; got ${ocrUpdate.extraction_status}`)
+  const failedPageNumbers = ocr.pages
+    .filter((page) => page.status === 'failed')
+    .map((page) => page.pageNumber)
   printOcrPersistenceDiagnostics({
     label: 'Local OCR update diagnostics',
     resource: preStored,
@@ -151,6 +154,7 @@ async function main() {
     extractedCharCount: ocrUpdate.extracted_char_count,
     sourceTextQuality: classifyExtractedTextQuality({ text: ocrUpdate.extracted_text, title: preStored.title }).quality,
     readiness: null,
+    failedPageIndexes: failedPageNumbers,
   })
   const postStored = applyOcrUpdate(preStored, ocrUpdate)
   const postLearn = createLearnResourceFromStored(postStored)
@@ -271,6 +275,11 @@ async function validateDbResource(resourceId: string) {
     canonicalResourceId: resource.id,
   })
 
+  const ocrQueueJob = await loadLatestOcrQueueJob(supabase, resource.id)
+  const dbFailedPages = getNestedArray(resource.metadata, ['visualExtractionPages'])
+    .filter((page) => asPlainRecord(page).status === 'failed')
+    .map((page) => Number(asPlainRecord(page).pageNumber))
+    .filter((n) => Number.isFinite(n))
   printOcrPersistenceDiagnostics({
     label: 'DB resource diagnostics',
     resource,
@@ -282,7 +291,8 @@ async function validateDbResource(resourceId: string) {
     extractedCharCount: resource.extractedCharCount,
     sourceTextQuality: sourceTextQuality.quality,
     readiness,
-    ocrQueueJob: await loadLatestOcrQueueJob(supabase, resource.id),
+    ocrQueueJob,
+    failedPageIndexes: dbFailedPages,
     autoEnqueueDecision: explainAutoEnqueueDecision(resource, readiness),
   })
 }
@@ -410,7 +420,17 @@ function printOcrPersistenceDiagnostics(input: {
   extractedCharCount: number
   sourceTextQuality: string
   readiness: ReturnType<typeof classifyDeepLearnResourceReadiness> | null
-  ocrQueueJob?: { id: string; status: string } | null
+  ocrQueueJob?: {
+    id: string
+    status: string
+    currentPage?: number | null
+    pagesProcessed?: number | null
+    pageCount?: number | null
+    lastHeartbeat?: string | null
+    startedAt?: string | null
+    completedAt?: string | null
+  } | null
+  failedPageIndexes?: number[]
   autoEnqueueDecision?: string | null
 }) {
   console.log(input.label)
@@ -428,11 +448,34 @@ function printOcrPersistenceDiagnostics(input: {
   console.log(`- visual_extracted_text length: ${input.visualExtractedTextLength}`)
   console.log(`- extracted_char_count: ${input.extractedCharCount}`)
   console.log(`- sourceTextQuality: ${input.sourceTextQuality}`)
+  if (input.failedPageIndexes && input.failedPageIndexes.length > 0) {
+    console.log(`- failed page numbers: ${input.failedPageIndexes.join(', ')}`)
+  }
   if (input.readiness) {
     console.log(`- readiness: ${input.readiness.state}`)
     console.log(`- canGenerate: ${input.readiness.canGenerate}`)
+    if (input.readiness.detail) console.log(`- readiness detail: ${input.readiness.detail}`)
   }
-  console.log(`- OCR queue job id/status: ${input.ocrQueueJob ? `${input.ocrQueueJob.id}/${input.ocrQueueJob.status}` : 'none'}`)
+  if (input.ocrQueueJob) {
+    const job = input.ocrQueueJob
+    console.log(`- OCR queue job id: ${job.id}`)
+    console.log(`- OCR queue job status: ${job.status}`)
+    if (job.currentPage != null) console.log(`- OCR current page: ${job.currentPage}`)
+    if (job.pagesProcessed != null) console.log(`- OCR pages processed (job): ${job.pagesProcessed}`)
+    if (job.pageCount != null) console.log(`- OCR page count (job): ${job.pageCount}`)
+    console.log(`- OCR last heartbeat: ${job.lastHeartbeat ?? 'none'}`)
+    if (job.startedAt) console.log(`- OCR started at: ${job.startedAt}`)
+    if (job.completedAt) console.log(`- OCR completed at: ${job.completedAt}`)
+    if (job.status === 'running' && job.lastHeartbeat) {
+      const heartbeatAge = Math.round((Date.now() - new Date(job.lastHeartbeat).getTime()) / 1000)
+      console.log(`- OCR heartbeat age: ${heartbeatAge}s`)
+      if (heartbeatAge > 15 * 60) {
+        console.log('  ⚠ heartbeat is stale — job may be stuck (>15 min since last update)')
+      }
+    }
+  } else {
+    console.log('- OCR queue job: none')
+  }
   console.log(`- auto-enqueue decision: ${input.autoEnqueueDecision ?? 'not evaluated in this local-only check'}`)
 }
 
@@ -442,7 +485,7 @@ async function loadLatestOcrQueueJob(
 ) {
   const { data, error } = await supabase
     .from('queued_jobs')
-    .select('id,status,payload,result,created_at')
+    .select('id,status,payload,result,created_at,updated_at,started_at,completed_at')
     .eq('type', 'source_ocr')
     .order('created_at', { ascending: false })
     .limit(25)
@@ -453,7 +496,19 @@ async function loadLatestOcrQueueJob(
     const result = asPlainRecord(job.result)
     return payload.resourceId === resourceId || result.resourceId === resourceId
   })
-  return row ? { id: String(row.id), status: String(row.status) } : null
+  if (!row) return null
+
+  const result = asPlainRecord(row.result)
+  return {
+    id: String(row.id),
+    status: String(row.status),
+    currentPage: getOptionalNumber(result.pagesProcessed) ?? null,
+    pagesProcessed: getOptionalNumber(result.pagesProcessed) ?? null,
+    pageCount: getOptionalNumber(result.pageCount) ?? null,
+    lastHeartbeat: row.updated_at ? String(row.updated_at) : null,
+    startedAt: row.started_at ? String(row.started_at) : null,
+    completedAt: row.completed_at ? String(row.completed_at) : null,
+  }
 }
 
 function explainAutoEnqueueDecision(resource: ModuleResource, readiness: ReturnType<typeof classifyDeepLearnResourceReadiness>) {
@@ -503,6 +558,15 @@ function getOptionalBoolean(value: unknown) {
 
 function getOptionalNumber(value: unknown) {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+function getNestedArray(source: Record<string, unknown>, pathParts: string[]): unknown[] {
+  let current: unknown = source
+  for (const part of pathParts) {
+    if (!current || typeof current !== 'object' || Array.isArray(current)) return []
+    current = (current as Record<string, unknown>)[part]
+  }
+  return Array.isArray(current) ? current : []
 }
 
 function getNestedNumber(source: Record<string, unknown>, pathParts: string[]) {

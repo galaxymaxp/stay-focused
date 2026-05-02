@@ -2,6 +2,7 @@ import type { QueuedJob } from '@/lib/queue'
 
 export const SOURCE_OCR_JOB_TYPE = 'source_ocr' as const
 export const SOURCE_OCR_RECENT_FAILURE_WINDOW_MS = 10 * 60 * 1000
+export const SOURCE_OCR_STALE_RUNNING_THRESHOLD_MS = 15 * 60 * 1000
 
 export function buildSourceOcrQueueTitle(resourceTitle: string) {
   return `Preparing scanned PDF: ${resourceTitle.trim() || 'Study source'}`
@@ -58,6 +59,24 @@ export function findRecentFailedSourceOcrJob(
     const completedAt = job.completedAt ? new Date(job.completedAt).getTime() : 0
     return Number.isFinite(completedAt) && completedAt >= cutoff
   }) ?? null
+}
+
+export function isStaleRunningSourceOcrJob(
+  job: Pick<QueuedJob, 'type' | 'status' | 'updatedAt'>,
+  now = new Date(),
+  thresholdMs = SOURCE_OCR_STALE_RUNNING_THRESHOLD_MS,
+) {
+  if (job.type !== SOURCE_OCR_JOB_TYPE || job.status !== 'running') return false
+  const updatedAt = new Date(job.updatedAt).getTime()
+  return Number.isFinite(updatedAt) && now.getTime() - updatedAt > thresholdMs
+}
+
+export function findStaleRunningSourceOcrJobs(
+  jobs: QueuedJob[],
+  now = new Date(),
+  thresholdMs = SOURCE_OCR_STALE_RUNNING_THRESHOLD_MS,
+) {
+  return jobs.filter((job) => isStaleRunningSourceOcrJob(job, now, thresholdMs))
 }
 
 function getString(source: Record<string, unknown> | null, key: string) {
