@@ -817,3 +817,70 @@ Scanned PDFs with no parsed text could still trigger Deep Learn output from stal
   - persisted extracted text length was `3117`
   - readiness became `text_ready`
   - Deep Learn generation check passed
+
+---
+
+## Session Update - 2026-05-02 (OCR queue visibility and unsupported source action fix)
+
+### What changed
+
+- **`lib/source-readiness.ts`** — Source readiness now uses `activeSourceOcrJobStatus` to gate `visual_ocr_queued` and `visual_ocr_running` states. Stale `visualExtractionStatus = queued/running` without an active queue job falls back to `visual_ocr_available` (shows "Scanned PDF" with retry guidance) instead of falsely showing "Preparing."
+- **`lib/learn-resource-ui.ts`** — Same gating applied to the Learn card UI. `visual_ocr_queued`/`visual_ocr_running` now require an active OCR job; the stale path shows "Scanned PDF" with `Preparing scanned PDF will start automatically. If it does not start, retry extraction.`
+- **`app/modules/[id]/learn/page.tsx`** — Builds OCR queue state (active `source_ocr` jobs per resource) and passes `activeSourceOcrJobStatus` into `normalizeSourceReadiness`.
+- **`lib/learn-resource-action-ui.ts`** *(new file)* — `shouldShowGenerateStudyPackAction` and `shouldShowSourceOcrRetryAction` helpers controlling when Generate Study Pack and OCR retry actions render.
+- **`components/StudyResourceAccordionList.tsx`** — Uses `shouldShowGenerateStudyPackAction`; skips the disabled Generate Study Pack button for unsupported/unready sources; shows `.ppt` conversion guidance instead.
+- **`components/DeepLearnWorkspace.tsx`** — Added `canGenerate` prop to hide Generate button when blocked.
+- **`components/DeepLearnNoteView.tsx`** — Passes `canGenerate={readiness?.canGenerate !== false}`; removed `autoStart` from OCR button status-only path.
+- **`lib/source-ocr-queue.ts`** — Added `countActiveSourceOcrJobs`.
+- **`components/shell/QueuePanel.tsx`** — Added `buildSourceOcrQueueSignature` and `sourceOcrSignatureRef` so the queue panel calls `router.refresh()` whenever OCR queue state changes.
+- **`actions/queue-jobs.ts`** — Added revalidation after queue job state changes.
+- **`scripts/validate-scanned-pdf.ts`** — Updated expected pre-OCR copy to match the new "Preparing scanned PDF will start automatically…" message.
+
+### Files touched
+
+`lib/source-readiness.ts`, `lib/learn-resource-ui.ts`, `app/modules/[id]/learn/page.tsx`, `lib/learn-resource-action-ui.ts` (new), `components/StudyResourceAccordionList.tsx`, `components/DeepLearnWorkspace.tsx`, `components/DeepLearnNoteView.tsx`, `lib/source-ocr-queue.ts`, `components/shell/QueuePanel.tsx`, `actions/queue-jobs.ts`, `scripts/validate-scanned-pdf.ts`, plus tests: `tests/learn-resource-ui.test.ts`, `tests/source-repair.test.ts`, `tests/learn-resource-action-ui.test.ts` (new), `tests/queue.test.ts`, `tests/deep-learn-readiness.test.ts`, `tests/deep-learn-generation.test.ts`.
+
+### Tests run
+
+```
+npm test -- pdf-extractor source-ocr-updates deep-learn-readiness deep-learn-generation canvas-content-resolution learn-resource-ui queue
+```
+
+All 159 tests passed (0 failures).
+
+### Verification results
+
+- `npm run typecheck` — passed.
+- `npm run lint` — passed.
+- All 159 tests passed.
+- `npx tsx scripts/validate-scanned-pdf.ts --pdf "C:\Users\omgra\Downloads\1.1-Data Organization.pdf"` — passed:
+  - pre-OCR parse: `empty (pdf_image_only_possible)`
+  - pre-OCR readiness: `unreadable`
+  - pre-OCR UI copy: `Preparing scanned PDF will start automatically. If it does not start, retry extraction.`
+  - OCR completed with `3373` characters across `24` rendered pages
+  - expected terms check passed (9/9)
+  - readiness: `text_ready`, `canGenerate: true`
+  - Deep Learn generation check passed
+
+### QueuePanel code health
+
+No duplicate declarations. `pollRef`, `completedJobIdsRef`, and `getQueuePillLabel` each appear exactly once. File compiles cleanly under TypeScript strict mode.
+
+### Bug fixed
+
+Scanned PDF cards showed "Preparing" / "OCR queued" while the Study Queue was empty. The new behavior: those states appear only when an active `source_ocr` queue job exists. Without one, the card shows "Scanned PDF" with self-recovery guidance. Unsupported `.ppt` sources no longer render a disabled Generate Study Pack button; they show conversion guidance and Open/Add Notes actions only.
+
+### Risks / blockers
+
+- Queue consistency relies on the Learn page server-render passing the correct `activeSourceOcrJobStatus` per resource. If the queue row is deleted or dismissed before the page revalidates, the state reverts to `visual_ocr_available` (correct behavior — shows retry guidance).
+- The `QueuePanel` router.refresh on OCR signature change covers live queue updates, but a full page reload is required after OCR completes if the user has the Learn page open without the queue panel polling.
+
+### Next recommended task
+
+Add resumable page-range OCR so `Continue OCR` scans only unprocessed pages and appends usable text instead of rerunning from page 1.
+
+### Suggested commit message
+
+```
+fix OCR queue visibility and unsupported source actions
+```

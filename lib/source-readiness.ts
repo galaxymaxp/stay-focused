@@ -80,6 +80,7 @@ export function normalizeSourceReadiness(input: {
   moduleId: string
   moduleTitle: string
   summary?: SourceSummarySnapshot | null
+  activeSourceOcrJobStatus?: 'pending' | 'running' | null
 }): NormalizedSourceReadiness {
   const resource = input.storedResource ?? input.resource
   const sourceType = getNormalizedModuleResourceSourceType(resource)
@@ -113,6 +114,7 @@ export function normalizeSourceReadiness(input: {
     hasSourceHref,
     fallbackReason: quality.fallbackReason,
     visualExtractionStatus: resource.visualExtractionStatus,
+    activeSourceOcrJobStatus: input.activeSourceOcrJobStatus ?? null,
     extractionError: resource.extractionError,
     pageCount: typeof resource.pageCount === 'number' ? resource.pageCount : input.resource.pageCount ?? null,
     pagesProcessed: typeof resource.pagesProcessed === 'number' ? resource.pagesProcessed : input.resource.pagesProcessed ?? null,
@@ -131,7 +133,7 @@ export function normalizeSourceReadiness(input: {
     originLabel: buildOriginLabel(input.resource, sourceType),
     state,
     statusLabel: statusLabelForState(state, isPacketTracer),
-    message: messageForState(state, isPacketTracer, readableTextLength, visualExtractionCandidate),
+    message: messageForState(state, isPacketTracer, readableTextLength, visualExtractionCandidate, fileExtension),
     actions: actionsForState(state, isSummarizable, visualExtractionCandidate),
     fileExtension,
     mimeType: resource.contentType ?? input.resource.contentType ?? null,
@@ -164,6 +166,7 @@ function resolveSourceReadinessState(input: {
   hasSourceHref: boolean
   fallbackReason: string | null
   visualExtractionStatus?: ModuleResource['visualExtractionStatus']
+  activeSourceOcrJobStatus?: 'pending' | 'running' | null
   extractionError?: string | null
   pageCount?: number | null
   pagesProcessed?: number | null
@@ -175,8 +178,11 @@ function resolveSourceReadinessState(input: {
     return 'unknown'
   }
   if (input.isReadable) return 'ready'
-  if (input.visualExtractionStatus === 'queued') return 'visual_ocr_queued'
-  if (input.visualExtractionStatus === 'running' || input.extractionStatus === 'processing') return 'visual_ocr_running'
+  if (input.activeSourceOcrJobStatus === 'pending') return 'visual_ocr_queued'
+  if (input.activeSourceOcrJobStatus === 'running') return 'visual_ocr_running'
+  if (input.visualExtractionStatus === 'queued' || input.visualExtractionStatus === 'running' || input.extractionStatus === 'processing') {
+    return 'visual_ocr_available'
+  }
   if (
     input.visualExtractionStatus === 'failed'
     && typeof input.pagesProcessed === 'number'
@@ -249,7 +255,7 @@ function statusLabelForState(state: SourceReadinessState, isPacketTracer: boolea
   if (state === 'canvas_lesson_page') return 'Canvas lesson page'
   if (state === 'external_link') return 'External link'
   if (state === 'extraction_failed') return 'Retry needed'
-  if (state === 'visual_ocr_available') return 'Preparing'
+  if (state === 'visual_ocr_available') return 'Scanned PDF'
   if (state === 'visual_ocr_queued') return 'OCR queued'
   if (state === 'visual_ocr_running') return 'Extracting...'
   if (state === 'visual_ocr_partial') return 'OCR partial'
@@ -264,6 +270,7 @@ function messageForState(
   isPacketTracer: boolean,
   readableTextLength: number,
   visualExtractionCandidate: boolean,
+  fileExtension: string | null,
 ) {
   if (state === 'ready') return 'Deep Learn can read this source and use it for notes, quizzes, and review.'
   if (state === 'needs_processing') return 'This source can be processed from its original Canvas file. Use Process source or Process all readable sources.'
@@ -271,12 +278,14 @@ function messageForState(
   if (state === 'unsupported_file_type') {
     return isPacketTracer
       ? 'Packet Tracer files cannot be read directly. Open the lab file or add notes/screenshots for Deep Learn.'
-      : 'Deep Learn cannot read this source type yet.'
+      : fileExtension === 'ppt'
+        ? 'Deep Learn cannot read this source type yet. Convert .ppt to .pptx or PDF for extraction.'
+        : 'Deep Learn cannot read this source type yet.'
   }
   if (state === 'canvas_lesson_page') return 'This looks like a Canvas lesson page. Open it in Canvas or summarize it once page extraction is available.'
   if (state === 'external_link') return 'This source opens outside Canvas. Use the original link for now.'
   if (state === 'extraction_failed') return 'Extraction failed. Retry processing, or open the original file.'
-  if (state === 'visual_ocr_available') return 'Preparing scanned PDF for Deep Learn...'
+  if (state === 'visual_ocr_available') return 'Preparing scanned PDF will start automatically. If it does not start, retry extraction.'
   if (state === 'visual_ocr_queued') return 'Scanned PDF is queued for text extraction.'
   if (state === 'visual_ocr_running') return 'Scanning pages for readable text...'
   if (state === 'visual_ocr_partial') return 'Scanned PDF partially prepared. Continue OCR to scan the remaining pages.'

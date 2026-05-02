@@ -167,6 +167,7 @@ export function QueuePanel() {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const completedJobIdsRef = useRef<Set<string>>(new Set())
   const completedJobsInitializedRef = useRef(false)
+  const sourceOcrSignatureRef = useRef<string | null>(null)
 
   const fetchJobs = useCallback(async () => {
     try {
@@ -175,6 +176,14 @@ export function QueuePanel() {
       const data = await res.json() as { jobs: QueuedJob[] }
       const fetched = data.jobs ?? []
       setJobs(fetched)
+
+      const sourceOcrSignature = buildSourceOcrQueueSignature(fetched)
+      if (sourceOcrSignatureRef.current === null) {
+        sourceOcrSignatureRef.current = sourceOcrSignature
+      } else if (sourceOcrSignatureRef.current !== sourceOcrSignature) {
+        sourceOcrSignatureRef.current = sourceOcrSignature
+        router.refresh()
+      }
 
       if (!completedJobsInitializedRef.current) {
         completedJobIdsRef.current = new Set(fetched.filter((job) => job.status === 'completed').map((job) => job.id))
@@ -573,6 +582,24 @@ function getQueuePillLabel(activeJobs: QueuedJob[], runningCount: number, active
   if (ocrCount === activeCount) return `Scanning ${activeCount}`
   if (runningCount > 0) return `Processing ${activeCount}`
   return `Queue: ${activeCount}`
+}
+
+function buildSourceOcrQueueSignature(jobs: QueuedJob[]) {
+  return jobs
+    .filter((job) => job.type === SOURCE_OCR_JOB_TYPE)
+    .map((job) => {
+      const resourceId = getString(job.result, 'resourceId') ?? getString(job.payload, 'resourceId') ?? job.id
+      return [
+        job.id,
+        resourceId,
+        job.status,
+        job.progress,
+        getNumber(job.result, 'pagesProcessed') ?? getNumber(job.payload, 'pagesProcessed') ?? '',
+        getNumber(job.result, 'pageCount') ?? getNumber(job.payload, 'pageCount') ?? '',
+        job.completedAt ?? '',
+      ].join(':')
+    })
+    .join('|')
 }
 
 function humanizeError(error: string | null) {

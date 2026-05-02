@@ -106,11 +106,11 @@ async function main() {
   })
   assert.equal(preReadiness.state, 'unreadable')
   assert.equal(preReadiness.canGenerate, false)
-  assert.equal(preReadiness.detail, 'Preparing scanned PDF for Deep Learn...')
+  assert.equal(preReadiness.detail, 'Preparing scanned PDF will start automatically. If it does not start, retry extraction.')
 
   const preUi = getLearnResourceUiState(preLearn, { hasOriginalFile: true, hasCanvasLink: true })
   assert.equal(preUi.statusKey, 'visual_ocr_required')
-  assert.equal(preUi.summary, 'Preparing scanned PDF for Deep Learn...')
+  assert.equal(preUi.summary, 'Preparing scanned PDF will start automatically. If it does not start, retry extraction.')
   console.log(`Pre-OCR readiness: ${preReadiness.state}`)
   console.log(`Pre-OCR UI copy: ${preUi.summary}`)
 

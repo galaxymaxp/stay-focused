@@ -120,14 +120,6 @@ export default async function LearnPage({ params, searchParams }: Props) {
       storedResource: selection?.storedResource ?? null,
       canonicalResourceId: selection?.canonicalResourceId ?? null,
     })
-    const sourceReadiness = normalizeSourceReadiness({
-      resource: material.resource,
-      storedResource: selection?.storedResource ?? null,
-      canonicalResourceId: selection?.canonicalResourceId ?? null,
-      moduleId: module.id,
-      moduleTitle: module.title,
-      summary: toSourceSummarySnapshot(selection?.canonicalResourceId ? resourceSummaryById.get(selection.canonicalResourceId) : null),
-    })
     const savedNote = deepLearnNoteByResourceId.get(selection?.canonicalResourceId ?? material.resource.id) ?? null
     const savedLegacyDraft = savedNote
       ? null
@@ -140,6 +132,19 @@ export default async function LearnPage({ params, searchParams }: Props) {
     const ocrQueueJob = findLatestResourceJob(queuedJobs, deepLearnResourceId, material.resource.id, 'source_ocr')
     const queuedDeepLearn = buildDeepLearnQueueState(queueJob, Boolean(savedNote || savedLegacyDraft))
     const queuedOcr = buildSourceOcrQueueState(ocrQueueJob)
+    const sourceReadiness = normalizeSourceReadiness({
+      resource: material.resource,
+      storedResource: selection?.storedResource ?? null,
+      canonicalResourceId: selection?.canonicalResourceId ?? null,
+      moduleId: module.id,
+      moduleTitle: module.title,
+      summary: toSourceSummarySnapshot(selection?.canonicalResourceId ? resourceSummaryById.get(selection.canonicalResourceId) : null),
+      activeSourceOcrJobStatus: queuedOcr?.status === 'queued'
+        ? 'pending'
+        : queuedOcr?.status === 'running'
+          ? 'running'
+          : null,
+    })
     const generationBlockedReason = readiness.canGenerate ? null : describeGenerationBlock(sourceReadiness.state, readiness.detail)
 
     return {
@@ -616,7 +621,7 @@ function toSourceSummarySnapshot(summary: Awaited<ReturnType<typeof listResource
 }
 
 function describeGenerationBlock(state: ReturnType<typeof normalizeSourceReadiness>['state'], fallback: string) {
-  if (state === 'visual_ocr_available') return 'Preparing scanned PDF for Deep Learn...'
+  if (state === 'visual_ocr_available') return 'Preparing scanned PDF will start automatically. If it does not start, retry extraction.'
   if (state === 'visual_ocr_queued') return 'Scanned PDF is queued for text extraction.'
   if (state === 'visual_ocr_running') return 'Reading scanned pages...'
   if (state === 'visual_ocr_failed') return 'Text extraction failed for this PDF. You can open the original source.'

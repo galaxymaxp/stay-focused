@@ -25,6 +25,7 @@ export function DeepLearnWorkspace({
   statusSummary,
   blockedMessage = null,
   legacyDraft = null,
+  canGenerate = true,
 }: {
   moduleId: string
   courseId: string | null
@@ -37,6 +38,7 @@ export function DeepLearnWorkspace({
   statusSummary: string
   blockedMessage?: string | null
   legacyDraft?: Draft | null
+  canGenerate?: boolean
 }) {
   if (!note && legacyDraft) {
     return (
@@ -67,7 +69,7 @@ export function DeepLearnWorkspace({
         </div>
 
         <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', alignItems: 'flex-start' }}>
-          {!note || note.status === 'failed' ? (
+          {canGenerate && (!note || note.status === 'failed') ? (
             <DeepLearnGenerateButton
               moduleId={moduleId}
               resourceId={deepLearnResourceId}

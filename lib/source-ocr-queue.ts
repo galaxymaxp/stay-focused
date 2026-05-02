@@ -38,6 +38,13 @@ export function findActiveSourceOcrJob(jobs: QueuedJob[], resourceId: string) {
   )) ?? null
 }
 
+export function countActiveSourceOcrJobs(jobs: QueuedJob[]) {
+  return jobs.filter((job) => (
+    job.type === SOURCE_OCR_JOB_TYPE
+    && (job.status === 'pending' || job.status === 'running')
+  )).length
+}
+
 export function findRecentFailedSourceOcrJob(
   jobs: QueuedJob[],
   resourceId: string,

@@ -144,7 +144,7 @@ test('empty extracts map to no-extract guidance', () => {
   assert.equal(state.textAvailabilityLabel, 'No text available')
 })
 
-test('image-only PDFs map to automatic scanned-PDF preparation copy', () => {
+test('image-only PDFs without an active OCR job do not show preparing', () => {
   const state = getLearnResourceUiState(createResource({
     extractionStatus: 'empty',
     extractedText: null,
@@ -159,13 +159,13 @@ test('image-only PDFs map to automatic scanned-PDF preparation copy', () => {
     hasCanvasLink: true,
   })
 
-  assert.equal(state.statusLabel, 'Preparing')
+  assert.equal(state.statusLabel, 'Scanned PDF')
   assert.equal(state.statusKey, 'visual_ocr_required')
   assert.equal(state.primaryAction, 'source')
-  assert.equal(state.summary, 'Preparing scanned PDF for Deep Learn...')
+  assert.equal(state.summary, 'Preparing scanned PDF will start automatically. If it does not start, retry extraction.')
 })
 
-test('queued OCR shows queued copy instead of prepare/complete contradiction', () => {
+test('queued OCR shows queued copy only when an active OCR job exists', () => {
   const state = getLearnResourceUiState(createResource({
     extractionStatus: 'empty',
     extractedText: null,
@@ -177,12 +177,27 @@ test('queued OCR shows queued copy instead of prepare/complete contradiction', (
   }), {
     hasOriginalFile: true,
     hasCanvasLink: true,
+    activeSourceOcrJobStatus: 'pending',
   })
 
   assert.equal(state.statusKey, 'visual_ocr_queued')
   assert.equal(state.statusLabel, 'OCR queued')
   assert.equal(state.summary, 'Scanned PDF is queued for text extraction.')
   assert.doesNotMatch(`${state.summary} ${state.detail}`, /OCR is already complete/i)
+})
+
+test('stale queued OCR without an active job shows waiting and retry guidance', () => {
+  const state = getLearnResourceUiState(createResource({
+    extractionStatus: 'empty',
+    visualExtractionStatus: 'queued',
+    pageCount: 51,
+  }), {
+    hasOriginalFile: true,
+  })
+
+  assert.equal(state.statusKey, 'visual_ocr_required')
+  assert.equal(state.statusLabel, 'Scanned PDF')
+  assert.match(state.summary, /retry extraction/i)
 })
 
 test('running OCR shows page progress', () => {
@@ -193,6 +208,7 @@ test('running OCR shows page progress', () => {
     pagesProcessed: 8,
   }), {
     hasOriginalFile: true,
+    activeSourceOcrJobStatus: 'running',
   })
 
   assert.equal(state.statusKey, 'visual_ocr_running')

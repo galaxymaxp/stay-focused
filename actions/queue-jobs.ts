@@ -614,6 +614,7 @@ export async function processSourceOcrJob(input: {
         statusMessage: buildSourceOcrStatusMessage({ pageCount: resource.pageCount ?? null }),
       },
     })
+    revalidateLearnQueuePaths(input.moduleId, input.courseId, resource.id)
 
     const sourceUrl = resource.sourceUrl ?? resource.htmlUrl
     if (!sourceUrl) {

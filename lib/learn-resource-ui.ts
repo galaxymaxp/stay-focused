@@ -54,6 +54,7 @@ export function getLearnResourceUiState(
     readerState?: StudyFileReaderState
     hasOriginalFile?: boolean
     hasCanvasLink?: boolean
+    activeSourceOcrJobStatus?: 'pending' | 'running' | null
   },
 ): LearnResourceUiState {
   const quality = getModuleResourceQualityInfo(resource)
@@ -95,7 +96,7 @@ export function getLearnResourceUiState(
     }
   }
 
-  if (resource.visualExtractionStatus === 'queued') {
+  if (options?.activeSourceOcrJobStatus === 'pending') {
     return {
       statusKey: 'visual_ocr_queued',
       statusLabel: 'OCR queued',
@@ -108,7 +109,7 @@ export function getLearnResourceUiState(
     }
   }
 
-  if (resource.extractionStatus === 'processing' || resource.visualExtractionStatus === 'running') {
+  if (options?.activeSourceOcrJobStatus === 'running') {
     return {
       statusKey: 'visual_ocr_running',
       statusLabel: 'Extracting...',
@@ -207,14 +208,14 @@ export function getLearnResourceUiState(
 
   if (resource.extractionStatus === 'empty' || fallbackReason === 'no_text_in_file') {
     const likelyScanned = /scanned|image-only|image based|image-based/i.test(resource.extractionError ?? '')
-    if (likelyScanned || resource.visualExtractionStatus === 'available') {
+    if (likelyScanned || resource.visualExtractionStatus === 'available' || resource.visualExtractionStatus === 'queued' || resource.visualExtractionStatus === 'running' || resource.extractionStatus === 'processing') {
       return {
         statusKey: 'visual_ocr_required',
-        statusLabel: 'Preparing',
+        statusLabel: 'Scanned PDF',
         tone: 'warning',
         primaryAction: 'source',
-        summary: 'Preparing scanned PDF for Deep Learn...',
-        detail: `${formatPageCount(resource.pageCount)}Text extraction should start automatically. Open the original ${sourceLabel} if you need it right away.`,
+        summary: 'Preparing scanned PDF will start automatically. If it does not start, retry extraction.',
+        detail: `${formatPageCount(resource.pageCount)}Open the original ${sourceLabel} if you need it right away.`,
         sourceActionLabel,
         textAvailabilityLabel,
       }
