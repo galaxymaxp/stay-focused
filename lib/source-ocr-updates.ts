@@ -66,6 +66,7 @@ export function buildOcrCompletedUpdate(input: {
   now: string
 }): ModuleResourceOcrUpdate {
   const metadata = asPlainRecord(input.resource.metadata)
+  const pages = Array.isArray(input.ocr.pages) ? input.ocr.pages : []
   return {
     extraction_status: 'completed',
     extracted_text: input.ocr.text,
@@ -75,11 +76,12 @@ export function buildOcrCompletedUpdate(input: {
     visual_extraction_status: 'completed',
     visual_extracted_text: input.ocr.text,
     visual_extraction_error: null,
-    pages_processed: input.resource.pageCount ?? 0,
+    pages_processed: input.resource.pageCount ?? pages.length,
     extraction_provider: input.ocr.provider,
     metadata: {
       ...metadata,
       ...input.ocr.metadata,
+      visualExtractionPages: pages,
       storedTextLength: input.ocr.charCount,
       storedPreviewLength: Math.min(input.ocr.text.length, 420),
       fullTextAvailable: true,
@@ -102,7 +104,7 @@ export function buildOcrFailedUpdate(input: {
   const metadata = asPlainRecord(input.resource.metadata)
   const ocrMetadata = asPlainRecord(input.ocrMetadata)
   return {
-    extraction_status: 'failed',
+    extraction_status: 'empty',
     extracted_text: null,
     extracted_text_preview: null,
     extracted_char_count: 0,

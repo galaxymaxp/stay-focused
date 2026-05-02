@@ -613,7 +613,7 @@ function toSourceSummarySnapshot(summary: Awaited<ReturnType<typeof listResource
 }
 
 function describeGenerationBlock(state: ReturnType<typeof normalizeSourceReadiness>['state'], fallback: string) {
-  if (state === 'visual_ocr_available') return 'This PDF is scanned and needs OCR before Deep Learn can use it.'
+  if (state === 'visual_ocr_available') return 'This PDF appears to be image-based. Run visual extraction first.'
   if (state === 'visual_ocr_running') return 'Reading scanned pages...'
   if (state === 'visual_ocr_failed') return 'OCR failed. Open the original file or retry.'
   if (fallback === 'The stored source text is too short to ground a trustworthy Deep Learn pack.') {

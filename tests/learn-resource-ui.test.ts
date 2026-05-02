@@ -162,7 +162,7 @@ test('image-only PDFs map to no selectable text and OCR-required copy', () => {
   assert.equal(state.statusLabel, 'OCR required')
   assert.equal(state.statusKey, 'visual_ocr_required')
   assert.equal(state.primaryAction, 'source')
-  assert.match(state.summary, /OCR is required/i)
+  assert.equal(state.summary, 'This PDF appears to be image-based. Run visual extraction first.')
 })
 
 function createResource(overrides: Partial<LearnResourceUiLike> = {}): LearnResourceUiLike {

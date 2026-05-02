@@ -156,7 +156,7 @@ export function getLearnResourceUiState(
         statusLabel: 'OCR required',
         tone: 'warning',
         primaryAction: 'source',
-        summary: 'Scanned PDF. OCR is required before Deep Learn can use it.',
+        summary: 'This PDF appears to be image-based. Run visual extraction first.',
         detail: `${formatPageCount(resource.pageCount)}Use Extract text from images to recover visible text, or open the original ${sourceLabel}.`,
         sourceActionLabel,
         textAvailabilityLabel,

@@ -398,3 +398,70 @@ The selected free-time window and visible schedule had drifted apart. A user cou
 
 ### Next recommended step
 Run the same browser checks against an authenticated/synced workspace or seeded local data, then add a small regression test harness for the Today dashboard states.
+
+---
+
+## Session Update - 2026-05-02 (Scanned PDF OCR gating for Deep Learn)
+
+### What changed
+- Tightened PDF extraction so image-only PDFs and below-threshold image-heavy extracts are classified as OCR-required instead of usable text.
+- Added page-level OCR metadata support in `lib/extraction/pdf-ocr.ts` and persisted it through `buildOcrCompletedUpdate`.
+- OCR completion now mirrors recovered text into `module_resources.extracted_text`, preview, and char count only when useful text exists.
+- OCR failure/no-text now leaves normal extraction status as `empty` while marking `visual_extraction_status = failed`.
+- Disabled Deep Learn scan fallback generation from binary files; selected resources must have stored extracted text or completed visual text before generation.
+- Updated Deep Learn prompt grounding to exclude module summaries, linked context, assignment metadata, deadlines, and other stale course/module facts.
+- Updated image-based PDF UI copy to: `This PDF appears to be image-based. Run visual extraction first.`
+
+### Why it changed
+Scanned PDFs with no parsed text could still trigger Deep Learn output from stale surrounding context. The new flow blocks generation until OCR/visual extraction produces real page text for the selected resource.
+
+### Tests added/updated
+- Image-only PDFs remain not ready until OCR completes.
+- Empty selected resources block Deep Learn and do not use stale module/course context.
+- Completed OCR makes the resource ready and stores page-level metadata.
+- Prompt grounding uses selected resource extracted text and excludes stale ERP/SAP/Gym Badge-style context.
+
+### Verification results
+- `npm test -- pdf-extractor source-ocr-updates deep-learn-readiness deep-learn-generation canvas-content-resolution learn-resource-ui` passed.
+- `npm run typecheck` passed.
+- `npm run lint` passed.
+
+### Risks / next steps
+- OpenAI OCR still depends on the model returning page labels (`Page 1:` etc.); unlabeled output is stored as page 1.
+- The exact 20-page `1.1-Data Organization.pdf` fixture was not present in-repo, so coverage uses synthetic image-only PDFs plus Deep Learn grounding tests around the expected Data Organization terms.
+- Next step: run OCR against the real Canvas/stored PDF and confirm extracted page text includes Data Organization, OLTP, ODS, Subject-Oriented, Integrated, Current Valued, and Volatile, with no ERP/SAP/Gym Badge leakage.
+
+### Session type
+- Implementation session (runtime extraction/readiness/generation changes, no schema changes).
+
+---
+
+## Session Update - 2026-05-02 (Real-file scanned PDF validation)
+
+### What changed
+- Added [`scripts/validate-scanned-pdf.ts`](/c:/Users/omgra/OneDrive/Documents/Projects/stay-focused/scripts/validate-scanned-pdf.ts) for repeatable local validation against a real scanned/image-only PDF.
+- The validator loads `.env.local`, runs the normal PDF parser, checks pre-OCR Deep Learn readiness/UI copy, attempts OpenAI OCR, falls back to local rendered-page OCR for validation when needed, then verifies post-OCR readiness plus source-only Deep Learn generation.
+
+### Real-file result
+- Validated against local file: `C:\Users\omgra\Downloads\1.1-Data Organization.pdf`
+- Normal parsing returned `empty` with `pdf_image_only_possible`.
+- Pre-OCR resource was `unreadable`, not Deep Learn-ready.
+- Pre-OCR UI copy matched exactly:
+  `This PDF appears to be image-based. Run visual extraction first.`
+- Rendered-page OCR validation recovered the expected source terms, including:
+  `DATA ORGANIZATION`, `OLTP`, `Online Transaction Processing`, `ODS`, `Operational Data Store`, `Subject-Oriented`, `Integrated`, `Current Valued`, `Volatile`
+- Deep Learn generation using the OCR-backed selected resource passed the stale-context check and did not emit `ERP`, `SAP Learning Hub`, or `Gym Badge` as unrelated fallback context.
+
+### Important risk discovered
+- The current OpenAI PDF OCR path did not reliably transcribe this real file. In repeated runs it returned refusal/too-short text such as:
+  `I'm unable to transcribe text from images or PDFs...`
+- The validator therefore used rendered-page local OCR as a validation fallback only. This means the guardrail is correct, but the production OCR path still needs a stronger rendered-page extraction implementation for real scanned slide decks.
+
+### Verification results
+- `npx tsx scripts/validate-scanned-pdf.ts --pdf "C:\Users\omgra\Downloads\1.1-Data Organization.pdf"` passed.
+- `npm run typecheck` passed.
+- `npm run lint` passed.
+- `npm test -- pdf-extractor source-ocr-updates deep-learn-readiness deep-learn-generation canvas-content-resolution learn-resource-ui` passed.
+
+### Next step
+- Replace or augment the current OpenAI PDF-file OCR call with rendered-page vision extraction inside the app pipeline, then rerun the same validator and remove the validation-only fallback distinction.
