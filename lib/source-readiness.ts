@@ -249,7 +249,7 @@ function statusLabelForState(state: SourceReadinessState, isPacketTracer: boolea
   if (state === 'canvas_lesson_page') return 'Canvas lesson page'
   if (state === 'external_link') return 'External link'
   if (state === 'extraction_failed') return 'Retry needed'
-  if (state === 'visual_ocr_available') return 'OCR required'
+  if (state === 'visual_ocr_available') return 'Preparing'
   if (state === 'visual_ocr_queued') return 'OCR queued'
   if (state === 'visual_ocr_running') return 'Extracting...'
   if (state === 'visual_ocr_partial') return 'OCR partial'
@@ -276,18 +276,18 @@ function messageForState(
   if (state === 'canvas_lesson_page') return 'This looks like a Canvas lesson page. Open it in Canvas or summarize it once page extraction is available.'
   if (state === 'external_link') return 'This source opens outside Canvas. Use the original link for now.'
   if (state === 'extraction_failed') return 'Extraction failed. Retry processing, or open the original file.'
-  if (state === 'visual_ocr_available') return 'This PDF appears to be image-based. Run visual extraction first.'
-  if (state === 'visual_ocr_queued') return 'Scanned PDF preparation is queued. Deep Learn will unlock after readable text is found.'
-  if (state === 'visual_ocr_running') return 'Extracting text from images. This source will become available when OCR completes.'
+  if (state === 'visual_ocr_available') return 'Preparing scanned PDF for Deep Learn...'
+  if (state === 'visual_ocr_queued') return 'Scanned PDF is queued for text extraction.'
+  if (state === 'visual_ocr_running') return 'Scanning pages for readable text...'
   if (state === 'visual_ocr_partial') return 'Scanned PDF partially prepared. Continue OCR to scan the remaining pages.'
-  if (state === 'visual_ocr_completed_empty') return 'Visual extraction finished, but did not find enough usable study text. Try OCR again or open the original source.'
-  if (state === 'visual_ocr_failed') return 'OCR failed. Open the original file, or retry text extraction.'
+  if (state === 'visual_ocr_completed_empty') return 'We could not find enough readable study text in this PDF. You can open the original source.'
+  if (state === 'visual_ocr_failed') return 'Text extraction failed for this PDF. You can open the original source.'
   if (state === 'empty_or_metadata_only') {
     const countText = readableTextLength > 0
       ? `Only ${readableTextLength.toLocaleString()} readable characters were found; Deep Learn needs at least 120.`
       : 'Processing completed, but Deep Learn could not find readable text.'
     return visualExtractionCandidate
-      ? `${countText} This looks image-heavy, so prepare the scanned PDF with OCR.`
+      ? `${countText} This looks image-heavy, so scanned PDF extraction should start automatically.`
       : `${countText} No recovery path is available for this source type yet.`
   }
   return 'Readable source text is not available yet. Open the original file or prepare the source from Learn.'

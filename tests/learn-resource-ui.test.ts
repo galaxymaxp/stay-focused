@@ -144,7 +144,7 @@ test('empty extracts map to no-extract guidance', () => {
   assert.equal(state.textAvailabilityLabel, 'No text available')
 })
 
-test('image-only PDFs map to no selectable text and OCR-required copy', () => {
+test('image-only PDFs map to automatic scanned-PDF preparation copy', () => {
   const state = getLearnResourceUiState(createResource({
     extractionStatus: 'empty',
     extractedText: null,
@@ -159,10 +159,10 @@ test('image-only PDFs map to no selectable text and OCR-required copy', () => {
     hasCanvasLink: true,
   })
 
-  assert.equal(state.statusLabel, 'OCR required')
+  assert.equal(state.statusLabel, 'Preparing')
   assert.equal(state.statusKey, 'visual_ocr_required')
   assert.equal(state.primaryAction, 'source')
-  assert.equal(state.summary, 'This PDF appears to be image-based. Run visual extraction first.')
+  assert.equal(state.summary, 'Preparing scanned PDF for Deep Learn...')
 })
 
 test('queued OCR shows queued copy instead of prepare/complete contradiction', () => {
@@ -181,7 +181,7 @@ test('queued OCR shows queued copy instead of prepare/complete contradiction', (
 
   assert.equal(state.statusKey, 'visual_ocr_queued')
   assert.equal(state.statusLabel, 'OCR queued')
-  assert.equal(state.summary, 'Scanned PDF preparation is queued. Deep Learn will unlock after readable text is found.')
+  assert.equal(state.summary, 'Scanned PDF is queued for text extraction.')
   assert.doesNotMatch(`${state.summary} ${state.detail}`, /OCR is already complete/i)
 })
 
@@ -212,7 +212,7 @@ test('completed OCR with thin text remains blocked with retry guidance', () => {
   })
 
   assert.equal(state.statusKey, 'visual_ocr_completed_empty')
-  assert.match(state.summary, /did not find enough usable study text/i)
+  assert.match(state.summary, /could not find enough readable study text/i)
 })
 
 test('completed OCR with meaningful visual text shows ready even when extracted text is stale and thin', () => {

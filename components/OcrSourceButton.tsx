@@ -47,7 +47,7 @@ export function OcrSourceButton({
       if (result.error) {
         setMessage(result.error)
       } else {
-        setMessage('Scanned PDF preparation is queued. Deep Learn will unlock after readable text is found.')
+        setMessage('Scanned PDF is queued for text extraction.')
         window.dispatchEvent(new CustomEvent('stay-focused:queue-refresh', { detail: { job: result.job ?? null } }))
       }
       router.refresh()
@@ -65,7 +65,7 @@ export function OcrSourceButton({
   if (statusOnly) {
     return (
       <span style={{ fontSize: '12px', lineHeight: 1.5, color: busy ? 'var(--text-secondary)' : message ? 'var(--text-muted)' : 'var(--text-secondary)' }}>
-        {busy ? activeLabel : message ?? 'Scanned PDF preparation is queued. Deep Learn will unlock after readable text is found.'}
+        {busy ? activeLabel : message ?? 'Scanned PDF is queued for text extraction.'}
       </span>
     )
   }

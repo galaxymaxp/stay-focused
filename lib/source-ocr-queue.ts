@@ -17,7 +17,7 @@ export function buildSourceOcrStatusMessage(input: {
   pageCount?: number | null
   queued?: boolean
 }) {
-  if (input.queued) return 'Scanned PDF preparation is queued.'
+  if (input.queued) return 'Scanned PDF is queued for text extraction.'
   const pageCount = input.pageCount ?? null
   const pagesProcessed = input.pagesProcessed ?? 0
   if (pageCount && pageCount > 0 && pagesProcessed > 0) {

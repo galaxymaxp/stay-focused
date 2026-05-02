@@ -4,6 +4,7 @@ import { after } from 'next/server'
 import { revalidatePath } from 'next/cache'
 import { requireAuthenticatedUserServer } from '@/lib/auth-server'
 import { syncCanvasCourse } from '@/actions/canvas'
+import { processSourceOcrJob } from '@/actions/queue-jobs'
 import {
   createQueuedJob,
   getUserQueuedJobs,
@@ -156,6 +157,21 @@ async function runCanvasSyncJob(input: {
         moduleId: result.moduleId,
         href: `/modules/${result.moduleId}`,
       })
+
+      for (const ocrJob of result.autoOcrJobs ?? []) {
+        const resourceId = typeof ocrJob.payload?.resourceId === 'string' ? ocrJob.payload.resourceId : null
+        const resourceTitle = typeof ocrJob.payload?.resourceTitle === 'string' ? ocrJob.payload.resourceTitle : 'Study source'
+        if (!resourceId) continue
+
+        void processSourceOcrJob({
+          jobId: ocrJob.id,
+          userId: input.userId,
+          moduleId: result.moduleId,
+          resourceId,
+          courseId: typeof ocrJob.payload?.courseId === 'string' ? ocrJob.payload.courseId : null,
+          resourceTitle,
+        })
+      }
     }
 
     await updateCanvasJobStep(input.jobId, 98, 'Finalizing sync', 'finalizing')

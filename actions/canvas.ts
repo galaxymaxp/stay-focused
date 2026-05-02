@@ -56,6 +56,9 @@ import {
 } from '@/lib/source-repair'
 import { generateSummariesForSyncedModule } from '@/lib/source-summaries'
 import { populateModuleTerms } from '@/actions/module-terms'
+import { autoEnqueueSourceOcrJobs } from '@/actions/queue-jobs'
+import { adaptModuleResourceRow } from '@/lib/module-resource-row'
+import type { QueuedJob } from '@/lib/queue'
 import type { AIResponse, Course, ModuleResourceExtractionStatus, Priority, TaskItem } from '@/lib/types'
 
 export interface CanvasConnectionResult {
@@ -78,6 +81,7 @@ interface SyncCourseResult {
   moduleId: string
   courseId: string
   courseName: string
+  autoOcrJobs: QueuedJob[]
 }
 
 type CanvasSyncProgressStep =
@@ -250,7 +254,7 @@ export async function syncCanvasCourse(input: {
   canvasUrl?: string
   accessToken?: string
   onProgress?: CanvasSyncProgressCallback
-}): Promise<{ success: true; courseName: string; moduleId: string } | { error: string }> {
+}): Promise<{ success: true; courseName: string; moduleId: string; autoOcrJobs: QueuedJob[] } | { error: string }> {
   const syncSupabase = await createAuthenticatedSupabaseServerClient()
   if (!syncSupabase) {
     return { error: 'Supabase is not configured yet.' }
@@ -281,6 +285,7 @@ export async function syncCanvasCourse(input: {
       success: true,
       courseName: result.courseName,
       moduleId: result.moduleId,
+      autoOcrJobs: result.autoOcrJobs,
     }
   } catch (error) {
     logCanvasActionFailure('sync selected course', error, {
@@ -468,6 +473,8 @@ async function syncSingleCourse(
 
   if (!moduleId) throw new Error('Failed to determine synced module.')
 
+  let autoOcrJobs: QueuedJob[] = []
+
   if (resourceIngestion.length > 0) {
     const resourceRows = buildModuleResourcesForSync(resourceIngestion, {
       moduleId,
@@ -477,9 +484,10 @@ async function syncSingleCourse(
       canvasCourseId: normalizedCourse.canvasCourseId,
     })
 
-    const { error: resourcesInsertError } = await syncSupabase
+    const { data: insertedResources, error: resourcesInsertError } = await syncSupabase
       .from('module_resources')
       .insert(resourceRows)
+      .select('*')
 
     if (resourcesInsertError) {
       throw createSupabaseStepError('insert module resources', resourcesInsertError, {
@@ -487,6 +495,13 @@ async function syncSingleCourse(
         moduleResourceCount: resourceRows.length,
       })
     }
+
+    autoOcrJobs = await autoEnqueueSourceOcrJobs({
+      userId,
+      moduleId,
+      courseId: courseRecord.id,
+      resources: ((insertedResources ?? []) as Record<string, unknown>[]).map(adaptModuleResourceRow),
+    })
   }
 
   let aiResult
@@ -632,6 +647,7 @@ async function syncSingleCourse(
     moduleId,
     courseId: courseRecord.id,
     courseName: databaseSafeCourse.name,
+    autoOcrJobs,
   }
 }
 

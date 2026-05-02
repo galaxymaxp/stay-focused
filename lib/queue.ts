@@ -86,6 +86,49 @@ export async function createQueuedJob(
   return rowToJob(data as Record<string, unknown>)
 }
 
+export async function createQueuedJobAsService(
+  userId: string,
+  type: QueuedJobType,
+  title: string,
+  payload?: Record<string, unknown>,
+): Promise<QueuedJob | null> {
+  const supabase = getServiceRoleClient()
+  if (!supabase) {
+    console.error('[queue] createQueuedJobAsService unavailable', { userId, type, reason: 'missing_service_role_client' })
+    return null
+  }
+
+  const insertPayload = {
+    user_id: userId,
+    type,
+    title,
+    payload: payload ?? null,
+  }
+
+  const { data, error } = await supabase
+    .from('queued_jobs')
+    .insert(insertPayload)
+    .select()
+    .single()
+
+  if (error) {
+    console.error('[queue] createQueuedJobAsService failed', {
+      userId,
+      type,
+      title,
+      payloadKeys: Object.keys(payload ?? {}),
+      resourceId: typeof payload?.resourceId === 'string' ? payload.resourceId : null,
+      code: getErrorField(error, 'code'),
+      message: getErrorField(error, 'message'),
+      details: getErrorField(error, 'details'),
+      hint: getErrorField(error, 'hint'),
+    })
+    return null
+  }
+
+  return rowToJob(data as Record<string, unknown>)
+}
+
 export async function getUserQueuedJobs(
   userId: string,
   filters?: QueuedJobFilters,
@@ -309,6 +352,11 @@ function getJobResourceId(job: QueuedJob) {
 function getStringFromRecord(source: Record<string, unknown> | null, key: string) {
   const value = source?.[key]
   return typeof value === 'string' && value.trim() ? value.trim() : null
+}
+
+function getErrorField(error: unknown, key: 'code' | 'message' | 'details' | 'hint') {
+  const value = (error as Record<string, unknown> | null)?.[key]
+  return typeof value === 'string' ? value : null
 }
 
 function isMissingDismissedAtColumnError(error: unknown) {

@@ -3,7 +3,6 @@ import { notFound } from 'next/navigation'
 import { CopyTaskBundleActions } from '@/components/CopyTaskBundleActions'
 import { DeepLearnNoteView } from '@/components/DeepLearnNoteView'
 import { ModuleLensShell } from '@/components/ModuleLensShell'
-import { OcrSourceButton } from '@/components/OcrSourceButton'
 import { StudyFileReader } from '@/components/StudyFileReader'
 import { StudyModeSwitcher } from '@/components/StudyModeSwitcher'
 import { classifyDeepLearnResourceReadiness } from '@/lib/deep-learn-readiness'
@@ -291,7 +290,7 @@ export default async function ResourceDetailPage({ params }: Props) {
                 <p className="ui-kicker">{visualExtractionAvailable ? 'Scanned PDF' : 'Extraction evidence'}</p>
                 {visualExtractionAvailable && (
                   <p style={{ margin: '0.55rem 0 0', fontSize: '14px', lineHeight: 1.7, color: 'var(--text-secondary)' }}>
-                    This PDF appears to be image-based. Run visual extraction first.
+                    Preparing scanned PDF for Deep Learn...
                     {typeof resource.pageCount === 'number' && resource.pageCount > 0 ? ` ${resource.pageCount} pages detected.` : ''}
                   </p>
                 )}
@@ -304,11 +303,6 @@ export default async function ResourceDetailPage({ params }: Props) {
                   <p style={{ margin: resource.extractedTextPreview || visualExtractionAvailable ? '0.6rem 0 0' : '0.55rem 0 0', fontSize: '13px', lineHeight: 1.6, color: visualExtractionAvailable ? 'var(--text-muted)' : 'var(--red)' }}>
                     {resource.extractionError}
                   </p>
-                )}
-                {visualExtractionAvailable && (
-                  <div style={{ display: 'grid', gap: '0.25rem', justifyItems: 'start', marginTop: '0.75rem' }}>
-                    <OcrSourceButton moduleId={module.id} resourceId={deepLearnResourceId} />
-                  </div>
                 )}
               </div>
             )}
