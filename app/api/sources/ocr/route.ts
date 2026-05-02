@@ -3,7 +3,8 @@ import { revalidatePath } from 'next/cache'
 import { createSupabaseRouteClient } from '@/lib/supabase-auth-server'
 import { resolveCanvasConfig, type CanvasConfig } from '@/lib/canvas'
 import { adaptModuleResourceRow } from '@/lib/module-resource-row'
-import { extractScannedPdfTextWithOpenAI } from '@/lib/extraction/pdf-ocr'
+import { getSourceOcrProvider } from '@/lib/extraction/source-ocr-provider'
+import { canRunManualSourceOcr, getSourceOcrConfig } from '@/lib/source-ocr-config'
 import {
   buildOcrCompletedUpdate,
   buildOcrFailedUpdate,
@@ -75,6 +76,15 @@ export async function POST(request: NextRequest) {
     }, { status: 400 })
   }
 
+  const ocrConfig = getSourceOcrConfig()
+  if (!canRunManualSourceOcr(ocrConfig)) {
+    return NextResponse.json({
+      ok: false,
+      status: 'disabled',
+      error: 'This PDF needs visual text extraction before Deep Learn.',
+    }, { status: 409 })
+  }
+
   const now = new Date().toISOString()
   const { error: processingError } = await supabase
     .from('module_resources')
@@ -93,10 +103,12 @@ export async function POST(request: NextRequest) {
     }
 
     const buffer = await downloadStoredPdf(sourceUrl, canvasConfig)
-    const ocr = await extractScannedPdfTextWithOpenAI({
+    const provider = getSourceOcrProvider(ocrConfig.provider)
+    const ocr = await provider.run({
       buffer,
       filename: resource.title || 'scanned-pdf.pdf',
       pageCount: resource.pageCount ?? null,
+      maxPages: ocrConfig.provider === 'openai' ? ocrConfig.openaiMaxPages : undefined,
     })
 
     if (ocr.status === 'completed') {

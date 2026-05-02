@@ -233,7 +233,7 @@ export function getLearnResourceUiState(
         statusLabel: 'Scanned PDF',
         tone: 'warning',
         primaryAction: 'source',
-        summary: 'Preparing scanned PDF will start automatically. If it does not start, retry extraction.',
+        summary: 'This PDF needs visual text extraction before Deep Learn.',
         detail: `${formatPageCount(resource.pageCount)}Open the original ${sourceLabel} if you need it right away.`,
         sourceActionLabel,
         textAvailabilityLabel,

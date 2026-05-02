@@ -65,7 +65,7 @@ export function OcrSourceButton({
   if (statusOnly) {
     return (
       <span style={{ fontSize: '12px', lineHeight: 1.5, color: busy ? 'var(--text-secondary)' : message ? 'var(--text-muted)' : 'var(--text-secondary)' }}>
-        {busy ? activeLabel : message ?? 'Scanned PDF is queued for text extraction.'}
+        {busy ? activeLabel : message ?? 'This PDF needs visual text extraction before Deep Learn.'}
       </span>
     )
   }

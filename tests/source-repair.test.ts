@@ -189,7 +189,7 @@ test('scanned PDF shows preparing only when active source OCR job exists', () =>
 
   assert.equal(waiting.state, 'visual_ocr_available')
   assert.equal(waiting.statusLabel, 'Scanned PDF')
-  assert.match(waiting.message, /retry extraction/i)
+  assert.equal(waiting.message, 'This PDF needs visual text extraction before Deep Learn.')
   assert.equal(queued.state, 'visual_ocr_queued')
   assert.equal(queued.statusLabel, 'OCR queued')
 })

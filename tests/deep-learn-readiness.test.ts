@@ -98,7 +98,7 @@ test('classifyDeepLearnResourceReadiness blocks scanned PDFs until OCR provides 
 
   assert.equal(readiness.state, 'unreadable')
   assert.equal(readiness.canGenerate, false)
-  assert.equal(readiness.detail, 'Preparing scanned PDF will start automatically. If it does not start, retry extraction.')
+  assert.equal(readiness.detail, 'This PDF needs visual text extraction before Deep Learn.')
 })
 
 test('classifyDeepLearnResourceReadiness marks OCR-completed scanned PDFs as ready', () => {

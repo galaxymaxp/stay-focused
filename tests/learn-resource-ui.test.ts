@@ -162,7 +162,7 @@ test('image-only PDFs without an active OCR job do not show preparing', () => {
   assert.equal(state.statusLabel, 'Scanned PDF')
   assert.equal(state.statusKey, 'visual_ocr_required')
   assert.equal(state.primaryAction, 'source')
-  assert.equal(state.summary, 'Preparing scanned PDF will start automatically. If it does not start, retry extraction.')
+  assert.equal(state.summary, 'This PDF needs visual text extraction before Deep Learn.')
 })
 
 test('queued OCR shows queued copy only when an active OCR job exists', () => {
@@ -197,7 +197,7 @@ test('stale queued OCR without an active job shows waiting and retry guidance', 
 
   assert.equal(state.statusKey, 'visual_ocr_required')
   assert.equal(state.statusLabel, 'Scanned PDF')
-  assert.match(state.summary, /retry extraction/i)
+  assert.equal(state.summary, 'This PDF needs visual text extraction before Deep Learn.')
 })
 
 test('running OCR shows page progress', () => {
