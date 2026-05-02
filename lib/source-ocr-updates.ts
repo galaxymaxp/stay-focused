@@ -141,6 +141,10 @@ export function buildOcrCompletedUpdate(input: {
           : mergedQuality.quality
   const hasUsableText = mergedQuality.usable
   const actualPageCount = getActualPdfPageCount(input.ocr.metadata) ?? input.resource.pageCount ?? pages.length
+  const totalPagesInDocument = getActualTotalPagesInDocument(input.ocr.metadata) ?? input.resource.pageCount ?? pages.length
+  const isPartial = hasUsableText && totalPagesInDocument > pages.length
+  const completedPageNumbers = pages.filter((p) => p.status === 'completed').map((p) => p.pageNumber)
+  const failedPageNumbers = pages.filter((p) => p.status === 'failed' || p.status === 'empty').map((p) => p.pageNumber)
   return {
     extraction_status: hasUsableText ? 'completed' : 'empty',
     extracted_text: hasUsableText ? mergedQuality.candidateText : null,
@@ -175,6 +179,11 @@ export function buildOcrCompletedUpdate(input: {
         totalMergedCharCount: hasUsableText ? mergedQuality.candidateCharCount : 0,
         refusalDetected: mergedQualityLabel === 'refusal',
         error: hasUsableText ? null : BAD_OCR_BLOCKED_MESSAGE,
+        isPartial,
+        completedPageNumbers,
+        failedPageNumbers,
+        remainingPages: isPartial ? totalPagesInDocument - pages.length : 0,
+        totalPagesInDocument,
       },
     },
     updated_at: input.now,
@@ -236,5 +245,12 @@ function getActualPdfPageCount(metadata: Record<string, unknown>) {
   if (typeof totalPages === 'number' && Number.isFinite(totalPages) && totalPages > 0) return totalPages
   const pageCount = pdfOcr.pageCount
   if (typeof pageCount === 'number' && Number.isFinite(pageCount) && pageCount > 0) return pageCount
+  return null
+}
+
+function getActualTotalPagesInDocument(metadata: Record<string, unknown>) {
+  const pdfOcr = asPlainRecord(metadata.pdfOcr)
+  const totalPages = pdfOcr.totalPagesInDocument
+  if (typeof totalPages === 'number' && Number.isFinite(totalPages) && totalPages > 0) return totalPages
   return null
 }

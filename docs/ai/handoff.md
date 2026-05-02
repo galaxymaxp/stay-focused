@@ -1,7 +1,7 @@
 # Stay Focused — AI Session Handoff
 
 Author: galaxymaxp omgraythekid@gmail.com
-Last Updated: 2026-04-29
+Last Updated: 2026-05-02
 
 ## Session Type
 
@@ -973,3 +973,74 @@ If pages 1–18 of a 24-page run produced meaningful text (≥120 chars merged),
 ### Next recommended task
 
 Add resumable page-range OCR so retry/continue starts from the first unprocessed page instead of page 1, appending new text to preserved earlier pages.
+
+---
+
+## Session Update - 2026-05-02 (Resumable OCR continuation)
+
+### What changed
+
+- **`lib/extraction/pdf-ocr.ts`** — Added `pagesToProcess?: number[]` input parameter. When provided, the engine runs only those specific pages (up to `maxPages` cap) instead of pages 1..N. `MIN_USEFUL_OCR_CHARS` is now exported for use by resume helpers.
+
+- **`lib/source-ocr-resume.ts`** *(new)* — Resume utility module:
+  - `loadPreviousOcrPages(resource)` — reads `visualExtractionPages` from stored metadata
+  - `computeOcrPagesToProcess(input)` — returns failed pages + unprocessed pages beyond the last batch, sorted ascending
+  - `mergeOcrPageArrays(previous, current)` — merges two page arrays; completed beats failed for any page number overlap
+  - `buildMergedOcrText(pages)` — builds merged text from completed pages in page order
+  - `buildMergedOcrResult(ocr, mergedPages, mergedText)` — wraps into a `PdfOcrResult` checking the MIN_USEFUL_OCR_CHARS threshold
+  - `buildOcrResumeState(resource)` — convenience wrapper returning all three values callers need
+
+- **`lib/source-ocr-updates.ts`** — `buildOcrCompletedUpdate` now stores in `pdfOcr` metadata:
+  - `isPartial: boolean` — true when `totalPagesInDocument > pages.length` (more pages remain)
+  - `completedPageNumbers: number[]` — sorted list of successfully processed pages
+  - `failedPageNumbers: number[]` — pages that failed or were empty
+  - `remainingPages: number` — how many pages still need scanning
+  - `totalPagesInDocument: number` — for reliable partial detection
+
+- **`actions/queue-jobs.ts`** — `processSourceOcrJob` now resumes instead of always starting from page 1:
+  1. Calls `buildOcrResumeState(resource)` to load previous pages and compute which to run
+  2. If there are pages to resume (failed + unprocessed), passes them as `pagesToProcess` to the OCR engine
+  3. `onPageResult` progress counts include `previousCompletedCount` so the progress bar shows total processed across all runs
+  4. After OCR, merges new pages with previous pages using `mergeOcrPageArrays`
+  5. Builds merged text and a merged `PdfOcrResult` before calling `buildOcrCompletedUpdate`
+  6. First runs (no prior pages) behave identically to before
+
+- **`lib/learn-resource-ui.ts`** — Before the `ready` OCR state, checks for partial completion:
+  - `visualExtractionStatus === 'completed'` + `textQuality.usable` + `pagesProcessed < pageCount` → `visual_ocr_partial` with `tone: 'accent'`, `primaryAction: 'reader'`
+  - Summary: "24 of 51 pages scanned. Readable text is available for Deep Learn."
+  - Detail: "Continue extraction to scan the remaining N pages for fuller coverage."
+  - If all pages are scanned, returns `ready` as before
+
+- **`scripts/validate-scanned-pdf.ts`** — Diagnostics now print `isPartial`, `remainingPages`, and completed page numbers from stored metadata.
+
+- **`tests/source-ocr-resume.test.ts`** *(new)* — 13 unit tests for all resume helpers.
+- **`tests/source-ocr-updates.test.ts`** — 2 new tests: `isPartial=true` when pages < total, `isPartial=false` when all pages processed.
+- **`tests/learn-resource-ui.test.ts`** — 2 new tests: partial-ready state shows correct copy and `tone: accent`; all-pages-done shows `ready`.
+
+### Resume behavior summary
+
+| Scenario | Pages run by OCR engine | Pages merged | Result |
+|---|---|---|---|
+| First run, 51-page PDF | pages 1–24 (cap) | pages 1–24 | `completed`, `isPartial=true` |
+| Continue, pages 1–24 done, page 19 failed | pages 19, 25–48 (cap) | pages 1–48, 19 replaced | `completed`, `isPartial=true` |
+| Continue, pages 1–48 done | pages 49–51 | pages 1–51 | `completed`, `isPartial=false` |
+| First run, all pages fail | pages 1–24 | pages 1–24 (failed) | `failed` |
+
+### Deep Learn with partial source
+
+- If pages 1–24 recovered meaningful text (≥120 chars), `canGenerate = true` immediately after the first run.
+- The UI card shows `OCR partial` with an accent tone so students know generation is available but coverage is incomplete.
+- Students can generate a Deep Learn note now and refine after continuing extraction.
+
+### Risks / blockers
+
+- Resume only works when previous `visualExtractionPages` metadata exists in the stored resource row. Rows OCR'd before this session do not have that metadata and will re-run from page 1 (safe — idempotent, just not optimal).
+- The OCR engine still caps at `maxPages` (24) per run. A 51-page PDF needs 3 runs to fully process: 1–24, 25–48, 49–51.
+- `PdfOcrResult` types include `pages` from only the current run; the caller merges them. This is by design to keep the engine stateless.
+
+### Verification results
+
+- `npm run typecheck` — passed (0 errors)
+- `npm run lint` — passed (0 warnings)
+- `npm test` — 186 tests passed, 0 failed (includes 13 new resume tests, 2 new partial-UI tests)
+- `npx tsx scripts/validate-scanned-pdf.ts` — **passed** (`1.1-Data Organization.pdf`, 24362943 bytes, 51 pages, 24 pages OCR'd in first run, statusKey `visual_ocr_partial`, `canGenerate: true`, Deep Learn generation check passed). Note: the script's `statusKey` assertion was updated from hard-coded `'ready'` to a computed check (`visual_ocr_partial` when `pagesProcessed < pageCount`, `ready` when fully scanned) — the 51-page PDF will always yield `visual_ocr_partial` on a single run due to `DEFAULT_MAX_PAGES_PER_RUN = 24`.

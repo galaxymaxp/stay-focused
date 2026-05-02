@@ -231,6 +231,49 @@ test('completed OCR with thin text remains blocked with retry guidance', () => {
   assert.match(state.summary, /could not find enough readable study text/i)
 })
 
+test('completed OCR with partial page scan shows partial-ready state with continue guidance', () => {
+  const state = getLearnResourceUiState(createResource({
+    extractionStatus: 'completed',
+    extractedText: buildDataOrganizationText(),
+    extractedCharCount: buildDataOrganizationText().length,
+    visualExtractionStatus: 'completed',
+    visualExtractedText: buildDataOrganizationText(),
+    pageCount: 51,
+    pagesProcessed: 24,
+    previewState: 'full_text_available',
+  }), {
+    hasOriginalFile: true,
+    hasCanvasLink: true,
+  })
+
+  assert.equal(state.statusKey, 'visual_ocr_partial')
+  assert.equal(state.statusLabel, 'OCR partial')
+  assert.equal(state.tone, 'accent')
+  assert.equal(state.primaryAction, 'reader')
+  assert.match(state.summary, /24 of 51 pages scanned/)
+  assert.match(state.detail, /Continue extraction/)
+  assert.equal(state.textAvailabilityLabel, 'Full text available')
+})
+
+test('completed OCR with all pages scanned shows ready state', () => {
+  const state = getLearnResourceUiState(createResource({
+    extractionStatus: 'completed',
+    extractedText: buildDataOrganizationText(),
+    extractedCharCount: buildDataOrganizationText().length,
+    visualExtractionStatus: 'completed',
+    visualExtractedText: buildDataOrganizationText(),
+    pageCount: 24,
+    pagesProcessed: 24,
+    previewState: 'full_text_available',
+  }), {
+    hasOriginalFile: true,
+    hasCanvasLink: true,
+  })
+
+  assert.equal(state.statusKey, 'ready')
+  assert.equal(state.statusLabel, 'OCR complete')
+})
+
 test('completed OCR with meaningful visual text shows ready even when extracted text is stale and thin', () => {
   const visualText = buildDataOrganizationText()
   const state = getLearnResourceUiState(createResource({

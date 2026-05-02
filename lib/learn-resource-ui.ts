@@ -123,6 +123,25 @@ export function getLearnResourceUiState(
   }
 
   if (resource.visualExtractionStatus === 'completed' && textQuality.usable) {
+    const isPartialScan = typeof resource.pagesProcessed === 'number'
+      && typeof resource.pageCount === 'number'
+      && resource.pageCount > 0
+      && resource.pagesProcessed < resource.pageCount
+
+    if (isPartialScan) {
+      const remaining = (resource.pageCount as number) - (resource.pagesProcessed as number)
+      return {
+        statusKey: 'visual_ocr_partial',
+        statusLabel: 'OCR partial',
+        tone: 'accent',
+        primaryAction: 'reader',
+        summary: `${resource.pagesProcessed} of ${resource.pageCount} pages scanned. Readable text is available for Deep Learn.`,
+        detail: `Continue extraction to scan the remaining ${remaining} page${remaining === 1 ? '' : 's'} for fuller coverage.`,
+        sourceActionLabel,
+        textAvailabilityLabel: 'Full text available',
+      }
+    }
+
     return {
       statusKey: 'ready',
       statusLabel: 'OCR complete',

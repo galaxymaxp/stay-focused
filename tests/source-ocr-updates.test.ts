@@ -246,6 +246,86 @@ test('failed OCR clears extracted text and records an honest error', () => {
   assert.equal(update.metadata.pdfOcr instanceof Object, true)
 })
 
+test('buildOcrCompletedUpdate stores isPartial and completedPageNumbers when pages < total', () => {
+  const text = buildDataOrganizationText()
+  const pages = Array.from({ length: 24 }, (_, i) => ({
+    pageNumber: i + 1,
+    text,
+    charCount: text.length,
+    status: 'completed' as const,
+    confidence: null,
+    provider: 'openai:test_ocr',
+    model: 'test_ocr',
+    error: null,
+    refusal: false,
+    attempts: 1,
+    imageWidth: 1800,
+    imageHeight: 1200,
+  }))
+  const update = buildOcrCompletedUpdate({
+    resource: createResource({ pageCount: 51 }),
+    ocr: {
+      status: 'completed',
+      text: pages.map((p) => `Page ${p.pageNumber}:\n${text.trim()}`).join('\n\n'),
+      charCount: text.length * 24,
+      pages,
+      provider: 'test_ocr',
+      error: null,
+      metadata: {
+        pdfOcr: { status: 'completed', totalPagesInDocument: 51, pagesProcessed: 24 },
+      },
+    },
+    now: '2026-05-02T12:00:00.000Z',
+  })
+
+  const pdfOcr = update.metadata.pdfOcr as Record<string, unknown>
+  assert.equal(pdfOcr.isPartial, true)
+  assert.equal(pdfOcr.remainingPages, 27)
+  assert.equal(pdfOcr.totalPagesInDocument, 51)
+  assert.ok(Array.isArray(pdfOcr.completedPageNumbers))
+  assert.equal((pdfOcr.completedPageNumbers as number[]).length, 24)
+  assert.deepEqual(pdfOcr.failedPageNumbers, [])
+  assert.equal(update.pages_processed, 24)
+  assert.equal(update.page_count, 51)
+})
+
+test('buildOcrCompletedUpdate does not set isPartial when all pages are processed', () => {
+  const text = buildDataOrganizationText()
+  const pages = Array.from({ length: 24 }, (_, i) => ({
+    pageNumber: i + 1,
+    text,
+    charCount: text.length,
+    status: 'completed' as const,
+    confidence: null,
+    provider: 'openai:test_ocr',
+    model: 'test_ocr',
+    error: null,
+    refusal: false,
+    attempts: 1,
+    imageWidth: 1800,
+    imageHeight: 1200,
+  }))
+  const update = buildOcrCompletedUpdate({
+    resource: createResource({ pageCount: 24 }),
+    ocr: {
+      status: 'completed',
+      text: pages.map((p) => `Page ${p.pageNumber}:\n${text.trim()}`).join('\n\n'),
+      charCount: text.length * 24,
+      pages,
+      provider: 'test_ocr',
+      error: null,
+      metadata: {
+        pdfOcr: { totalPagesInDocument: 24, pagesProcessed: 24 },
+      },
+    },
+    now: '2026-05-02T12:00:00.000Z',
+  })
+
+  const pdfOcr = update.metadata.pdfOcr as Record<string, unknown>
+  assert.equal(pdfOcr.isPartial, false)
+  assert.equal(pdfOcr.remainingPages, 0)
+})
+
 test('partial OCR text from earlier pages is preserved when a later page fails or times out', () => {
   const goodText = buildDataOrganizationText()
   const pages = Array.from({ length: 18 }, (_, index) => ({

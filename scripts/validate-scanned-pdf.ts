@@ -180,7 +180,10 @@ async function main() {
   })
 
   const postUi = getLearnResourceUiState(postLearn, { hasOriginalFile: true, hasCanvasLink: true })
-  assert.equal(postUi.statusKey, 'ready')
+  const pagesProcessed = postStored.pagesProcessed ?? 0
+  const pageCount = postStored.pageCount ?? 0
+  const expectedOcrStatusKey = pageCount > 0 && pagesProcessed < pageCount ? 'visual_ocr_partial' : 'ready'
+  assert.equal(postUi.statusKey, expectedOcrStatusKey, `Expected OCR UI statusKey to be "${expectedOcrStatusKey}" (${pagesProcessed}/${pageCount} pages processed)`)
 
   const context = createGenerationContext(postLearn, postStored)
   const grounding = await buildDeepLearnGroundingWithDependencies(context)
@@ -451,6 +454,14 @@ function printOcrPersistenceDiagnostics(input: {
   if (input.failedPageIndexes && input.failedPageIndexes.length > 0) {
     console.log(`- failed page numbers: ${input.failedPageIndexes.join(', ')}`)
   }
+  const pdfOcr = getNestedRecord(input.resource.metadata, ['pdfOcr'])
+  if (pdfOcr.isPartial === true) {
+    console.log(`- isPartial: true — ${pdfOcr.remainingPages ?? '?'} pages remaining, can continue extraction`)
+  }
+  const completedNums = pdfOcr.completedPageNumbers
+  if (Array.isArray(completedNums) && completedNums.length > 0) {
+    console.log(`- completed page numbers: ${completedNums.slice(0, 10).join(', ')}${completedNums.length > 10 ? ` ... (${completedNums.length} total)` : ''}`)
+  }
   if (input.readiness) {
     console.log(`- readiness: ${input.readiness.state}`)
     console.log(`- canGenerate: ${input.readiness.canGenerate}`)
@@ -558,6 +569,17 @@ function getOptionalBoolean(value: unknown) {
 
 function getOptionalNumber(value: unknown) {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+function getNestedRecord(source: Record<string, unknown>, pathParts: string[]): Record<string, unknown> {
+  let current: unknown = source
+  for (const part of pathParts) {
+    if (!current || typeof current !== 'object' || Array.isArray(current)) return {}
+    current = (current as Record<string, unknown>)[part]
+  }
+  return typeof current === 'object' && current !== null && !Array.isArray(current)
+    ? (current as Record<string, unknown>)
+    : {}
 }
 
 function getNestedArray(source: Record<string, unknown>, pathParts: string[]): unknown[] {
