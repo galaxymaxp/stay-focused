@@ -1552,3 +1552,70 @@ Correct the local/preview Google credential path, then run a Canvas resync and c
 ```
 fix Google Vision OCR extraction and queue continuation
 ```
+
+---
+
+## Session Update - 2026-05-03 (Split Google Vision credentials for Vercel)
+
+### What changed
+
+- Added split Google Vision service-account env support for Vercel:
+  - `GOOGLE_CLOUD_PROJECT`
+  - `GOOGLE_VISION_CLIENT_EMAIL`
+  - `GOOGLE_VISION_PRIVATE_KEY`
+- Updated Google credential resolution order for Vision:
+  1. Split service-account env vars
+  2. `GOOGLE_VISION_CREDENTIALS_JSON`
+  3. `GOOGLE_APPLICATION_CREDENTIALS`
+  4. Existing JSON env fallbacks / API key fallback
+- Normalized escaped private-key newlines with `replace(/\\n/g, '\n')`.
+- Validated split private keys include PEM header/footer before treating them as configured.
+- Added safe credential diagnostics that report only env presence, PEM header/footer booleans, OCR provider, and whether `GOOGLE_VISION_CREDENTIALS_JSON` exists/parses.
+- Updated `.env.example`, `README.md`, and `docs/extraction.md` to document split env vars as the preferred Vercel path.
+- Added tests for split env initialization, escaped newline normalization, missing field errors, malformed JSON with split env fallback, and split-over-JSON precedence.
+
+### Files touched
+
+- `.env.example`
+- `README.md`
+- `docs/extraction.md`
+- `lib/extraction/google-ocr.ts`
+- `tests/google-ocr.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Single JSON service-account env vars are fragile on Vercel. Split env vars avoid JSON escaping issues while preserving existing local `GOOGLE_APPLICATION_CREDENTIALS` and JSON/API-key fallbacks.
+
+### Tests run
+
+- `npm run typecheck` - passed.
+- `npm run lint` - passed.
+- `npm test -- google-ocr source-ocr-config queue` - passed, 219 tests.
+
+### Verification result
+
+- Split Google Vision env vars validate and resolve to service-account credentials.
+- Escaped newline private keys normalize to real newlines.
+- Missing client email and missing private key return safe errors without printing secret values.
+- Malformed `GOOGLE_VISION_CREDENTIALS_JSON` does not break a complete split-env configuration.
+- Complete split env vars take precedence over JSON credentials.
+
+### Known risks
+
+- The code still uses direct Google Vision REST calls with a service-account JWT rather than adding `@google-cloud/vision`; this preserves the existing OCR path and avoids a new dependency.
+- Vercel env values still need to be updated manually with the split vars.
+
+### Blockers
+
+- No code blocker.
+
+### Next recommended step
+
+Set the split Google Vision env vars in Vercel, redeploy, and run one scanned PDF OCR from the Study Queue to confirm production no longer reports Google Vision as unconfigured.
+
+### Suggested commit message
+
+```
+support split Google Vision credentials
+```

@@ -26,7 +26,13 @@ Cost guardrails:
 For Google Vision:
 
 - Set `OCR_PROVIDER=google_vision`.
-- Set either `GOOGLE_VISION_API_KEY` or Google service account credentials through `GOOGLE_APPLICATION_CREDENTIALS_JSON`, `GOOGLE_CREDENTIALS_JSON`, `GOOGLE_OCR_CREDENTIALS_JSON`, or `GOOGLE_APPLICATION_CREDENTIALS`.
+- Preferred on Vercel: set split service-account env vars:
+  - `GOOGLE_CLOUD_PROJECT`
+  - `GOOGLE_VISION_CLIENT_EMAIL`
+  - `GOOGLE_VISION_PRIVATE_KEY`
+- `GOOGLE_VISION_PRIVATE_KEY` may contain escaped newlines; the app normalizes `\n` into real newlines and requires `-----BEGIN PRIVATE KEY-----` / `-----END PRIVATE KEY-----`.
+- Fallbacks are supported through `GOOGLE_VISION_CREDENTIALS_JSON`, `GOOGLE_APPLICATION_CREDENTIALS_JSON`, `GOOGLE_CREDENTIALS_JSON`, `GOOGLE_OCR_CREDENTIALS_JSON`, `GOOGLE_APPLICATION_CREDENTIALS`, or `GOOGLE_VISION_API_KEY`.
+- Safe credential diagnostics report only whether required env vars exist, whether the private key has PEM header/footer, and whether `GOOGLE_VISION_CREDENTIALS_JSON` exists/parses. Secret values are never logged.
 
 For Google Document AI:
 

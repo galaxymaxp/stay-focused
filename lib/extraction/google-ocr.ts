@@ -51,8 +51,13 @@ export async function extractScannedPdfTextWithGoogle(input: {
     return buildFailedResult(provider, 'This PDF is larger than the 50 MB OCR input limit. Open the original file instead.')
   }
 
-  if (input.provider === 'google_vision' && !hasGoogleVisionCredentials()) {
-    return buildFailedResult(provider, 'Google Vision OCR is not configured. Set GOOGLE_VISION_API_KEY or Google service account credentials.')
+  const visionCredentialCheck = input.provider === 'google_vision' ? validateGoogleVisionCredentials() : null
+  if (visionCredentialCheck && !visionCredentialCheck.ok) {
+    return buildFailedResult(
+      provider,
+      visionCredentialCheck.error,
+      { googleVisionCredentials: visionCredentialCheck.diagnostics },
+    )
   }
 
   if (input.provider === 'google_document_ai' && !getDocumentAiProcessorName()) {
@@ -145,7 +150,9 @@ async function runVisionPageOcr(input: {
   provider: string
   model: string
 }): Promise<PdfOcrPage> {
-  const apiKey = process.env.GOOGLE_VISION_API_KEY?.trim() || process.env.GOOGLE_OCR_API_KEY?.trim()
+  const apiKey = shouldUseGoogleVisionApiKey()
+    ? process.env.GOOGLE_VISION_API_KEY?.trim() || process.env.GOOGLE_OCR_API_KEY?.trim()
+    : null
   const accessToken = apiKey ? null : await getGoogleAccessToken()
   const url = apiKey
     ? `https://vision.googleapis.com/v1/images:annotate?key=${encodeURIComponent(apiKey)}`
@@ -367,7 +374,7 @@ function normalizeOcrText(value: string) {
   return cleaned
 }
 
-function buildFailedResult(provider: string, error: string): PdfOcrResult {
+function buildFailedResult(provider: string, error: string, metadata?: Record<string, unknown>): PdfOcrResult {
   return {
     status: 'failed',
     text: '',
@@ -380,6 +387,7 @@ function buildFailedResult(provider: string, error: string): PdfOcrResult {
         status: 'failed',
         provider,
         error,
+        ...(metadata ?? {}),
         completedAt: new Date().toISOString(),
       },
     },
@@ -467,40 +475,161 @@ async function getGoogleAccessToken() {
   return json.access_token
 }
 
-function getGoogleServiceAccount() {
+export function getGoogleServiceAccount() {
+  const split = getSplitGoogleVisionServiceAccount()
+  if (split) return split
+
+  const visionJson = parseOptionalServiceAccountJson(process.env.GOOGLE_VISION_CREDENTIALS_JSON, 'GOOGLE_VISION_CREDENTIALS_JSON')
+  if (visionJson) return visionJson
+
+  const path = process.env.GOOGLE_APPLICATION_CREDENTIALS?.trim()
+  if (path) return parseServiceAccountJson(readFileSync(path, 'utf8'))
+
   const inline = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON?.trim()
     || process.env.GOOGLE_CREDENTIALS_JSON?.trim()
     || process.env.GOOGLE_OCR_CREDENTIALS_JSON?.trim()
   if (inline) return parseServiceAccountJson(inline)
 
-  const path = process.env.GOOGLE_APPLICATION_CREDENTIALS?.trim()
-  if (!path) return null
-  return parseServiceAccountJson(readFileSync(path, 'utf8'))
+  return null
 }
 
 function parseServiceAccountJson(value: string) {
-  const parsed = JSON.parse(value) as { client_email?: string; private_key?: string }
-  if (parsed.private_key) parsed.private_key = parsed.private_key.replace(/\\n/g, '\n')
+  const parsed = JSON.parse(value) as { project_id?: string; client_email?: string; private_key?: string }
+  if (parsed.private_key) parsed.private_key = normalizeGooglePrivateKey(parsed.private_key)
   return parsed
-}
-
-function hasGoogleVisionCredentials() {
-  return Boolean(
-    process.env.GOOGLE_VISION_API_KEY?.trim()
-    || process.env.GOOGLE_OCR_API_KEY?.trim()
-    || hasGoogleOAuthCredentials(),
-  )
 }
 
 function hasGoogleOAuthCredentials() {
   return Boolean(
     process.env.GOOGLE_OCR_ACCESS_TOKEN?.trim()
     || process.env.GOOGLE_ACCESS_TOKEN?.trim()
+    || hasCompleteSplitGoogleVisionServiceAccount()
+    || process.env.GOOGLE_VISION_CREDENTIALS_JSON?.trim()
     || process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON?.trim()
     || process.env.GOOGLE_CREDENTIALS_JSON?.trim()
     || process.env.GOOGLE_OCR_CREDENTIALS_JSON?.trim()
     || process.env.GOOGLE_APPLICATION_CREDENTIALS?.trim(),
   )
+}
+
+export function getGoogleVisionCredentialDiagnostics() {
+  const privateKey = process.env.GOOGLE_VISION_PRIVATE_KEY?.trim() ?? ''
+  const normalizedPrivateKey = normalizeGooglePrivateKey(privateKey)
+  const visionJson = process.env.GOOGLE_VISION_CREDENTIALS_JSON?.trim() ?? ''
+  let visionCredentialsJsonParses = false
+  if (visionJson) {
+    try {
+      JSON.parse(visionJson)
+      visionCredentialsJsonParses = true
+    } catch {
+      visionCredentialsJsonParses = false
+    }
+  }
+
+  return {
+    ocrProvider: process.env.OCR_PROVIDER?.trim() || 'disabled',
+    hasGoogleCloudProject: Boolean(process.env.GOOGLE_CLOUD_PROJECT?.trim()),
+    hasGoogleVisionClientEmail: Boolean(process.env.GOOGLE_VISION_CLIENT_EMAIL?.trim()),
+    hasGoogleVisionPrivateKey: Boolean(privateKey),
+    privateKeyHasPemHeader: normalizedPrivateKey.includes('-----BEGIN PRIVATE KEY-----'),
+    privateKeyHasPemFooter: normalizedPrivateKey.includes('-----END PRIVATE KEY-----'),
+    googleVisionCredentialsJsonExists: Boolean(visionJson),
+    googleVisionCredentialsJsonParses: visionCredentialsJsonParses,
+  }
+}
+
+export function validateGoogleVisionCredentials(): { ok: true; diagnostics: ReturnType<typeof getGoogleVisionCredentialDiagnostics> } | { ok: false; error: string; diagnostics: ReturnType<typeof getGoogleVisionCredentialDiagnostics> } {
+  const diagnostics = getGoogleVisionCredentialDiagnostics()
+  if (process.env.GOOGLE_OCR_ACCESS_TOKEN?.trim() || process.env.GOOGLE_ACCESS_TOKEN?.trim()) return { ok: true, diagnostics }
+
+  const splitState = getSplitGoogleVisionCredentialState()
+  if (splitState.anyConfigured) {
+    if (!splitState.projectId) return { ok: false, error: 'Google Vision OCR split credentials are missing GOOGLE_CLOUD_PROJECT.', diagnostics }
+    if (!splitState.clientEmail) return { ok: false, error: 'Google Vision OCR split credentials are missing GOOGLE_VISION_CLIENT_EMAIL.', diagnostics }
+    if (!splitState.privateKey) return { ok: false, error: 'Google Vision OCR split credentials are missing GOOGLE_VISION_PRIVATE_KEY.', diagnostics }
+    if (!hasValidPemPrivateKey(splitState.privateKey)) return { ok: false, error: 'Google Vision OCR split credentials have a malformed private key.', diagnostics }
+    return { ok: true, diagnostics }
+  }
+
+  if (process.env.GOOGLE_VISION_CREDENTIALS_JSON?.trim()) {
+    try {
+      const parsed = parseServiceAccountJson(process.env.GOOGLE_VISION_CREDENTIALS_JSON)
+      if (parsed.client_email && parsed.private_key && hasValidPemPrivateKey(parsed.private_key)) return { ok: true, diagnostics }
+      return { ok: false, error: 'GOOGLE_VISION_CREDENTIALS_JSON is missing client_email or a valid private_key.', diagnostics }
+    } catch {
+      return { ok: false, error: 'GOOGLE_VISION_CREDENTIALS_JSON could not be parsed as service account JSON.', diagnostics }
+    }
+  }
+
+  if (process.env.GOOGLE_APPLICATION_CREDENTIALS?.trim()) return { ok: true, diagnostics }
+  if (process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON?.trim() || process.env.GOOGLE_CREDENTIALS_JSON?.trim() || process.env.GOOGLE_OCR_CREDENTIALS_JSON?.trim()) return { ok: true, diagnostics }
+  if (process.env.GOOGLE_VISION_API_KEY?.trim() || process.env.GOOGLE_OCR_API_KEY?.trim()) return { ok: true, diagnostics }
+
+  return {
+    ok: false,
+    error: 'Google Vision OCR is not configured. Set GOOGLE_VISION_API_KEY or Google service account credentials.',
+    diagnostics,
+  }
+}
+
+function getSplitGoogleVisionServiceAccount() {
+  const state = getSplitGoogleVisionCredentialState()
+  if (!state.projectId || !state.clientEmail || !state.privateKey || !hasValidPemPrivateKey(state.privateKey)) return null
+  return {
+    project_id: state.projectId,
+    client_email: state.clientEmail,
+    private_key: state.privateKey,
+  }
+}
+
+function hasCompleteSplitGoogleVisionServiceAccount() {
+  return Boolean(getSplitGoogleVisionServiceAccount())
+}
+
+function shouldUseGoogleVisionApiKey() {
+  return Boolean(
+    (process.env.GOOGLE_VISION_API_KEY?.trim() || process.env.GOOGLE_OCR_API_KEY?.trim())
+    && !process.env.GOOGLE_OCR_ACCESS_TOKEN?.trim()
+    && !process.env.GOOGLE_ACCESS_TOKEN?.trim()
+    && !getSplitGoogleVisionCredentialState().anyConfigured
+    && !process.env.GOOGLE_VISION_CREDENTIALS_JSON?.trim()
+    && !process.env.GOOGLE_APPLICATION_CREDENTIALS?.trim()
+    && !process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON?.trim()
+    && !process.env.GOOGLE_CREDENTIALS_JSON?.trim()
+    && !process.env.GOOGLE_OCR_CREDENTIALS_JSON?.trim(),
+  )
+}
+
+function getSplitGoogleVisionCredentialState() {
+  const projectId = process.env.GOOGLE_CLOUD_PROJECT?.trim() || ''
+  const clientEmail = process.env.GOOGLE_VISION_CLIENT_EMAIL?.trim() || ''
+  const privateKey = normalizeGooglePrivateKey(process.env.GOOGLE_VISION_PRIVATE_KEY?.trim() || '')
+  return {
+    projectId,
+    clientEmail,
+    privateKey,
+    anyConfigured: Boolean(projectId || clientEmail || privateKey),
+  }
+}
+
+function normalizeGooglePrivateKey(privateKey: string) {
+  return privateKey.replace(/\\n/g, '\n')
+}
+
+function hasValidPemPrivateKey(privateKey: string) {
+  return privateKey.includes('-----BEGIN PRIVATE KEY-----')
+    && privateKey.includes('-----END PRIVATE KEY-----')
+}
+
+function parseOptionalServiceAccountJson(value: string | undefined, label: string) {
+  const raw = value?.trim()
+  if (!raw) return null
+  try {
+    return parseServiceAccountJson(raw)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown JSON parse error.'
+    throw new Error(`${label} could not be parsed: ${message}`)
+  }
 }
 
 function getDocumentAiProcessorName() {
