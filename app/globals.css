@@ -4033,6 +4033,7 @@ details[open] > .ui-interactive-summary,
 .planner-controls,
 .planner-schedule-panel,
 .planner-attention-panel,
+.planner-selected-panel,
 .planner-start-panel {
   border: 1px solid color-mix(in srgb, var(--accent-border) 14%, var(--border-subtle) 86%);
   border-radius: 14px;
@@ -4058,11 +4059,12 @@ details[open] > .ui-interactive-summary,
     radial-gradient(circle at center, color-mix(in srgb, var(--surface-soft) 92%, var(--amber-light) 8%) 0%, color-mix(in srgb, var(--surface-elevated) 78%, transparent) 72%);
 }
 .planner-clock-svg {
-  width: min(248px, 88%);
+  width: min(268px, 90%);
   height: auto;
   aspect-ratio: 1;
   display: block;
   overflow: visible;
+  touch-action: none;
 }
 .clock-ring-track {
   fill: none;
@@ -4076,17 +4078,70 @@ details[open] > .ui-interactive-summary,
 }
 .clock-ring-arc {
   fill: none;
-  stroke-linecap: round;
+  stroke-linecap: butt;
 }
 .clock-ring-arc.free {
   stroke: var(--amber);
   stroke-width: 16;
+  stroke-linecap: round;
   filter: drop-shadow(0 0 8px color-mix(in srgb, var(--amber) 26%, transparent));
 }
 .clock-ring-arc.plan {
   stroke: var(--accent);
   stroke-width: 14;
   filter: drop-shadow(0 0 7px color-mix(in srgb, var(--accent) 22%, transparent));
+}
+.clock-ring-arc.interactive {
+  cursor: pointer;
+  pointer-events: stroke;
+}
+.clock-ring-arc.interactive:focus-visible,
+.clock-window-handle:focus-visible {
+  outline: none;
+  filter: drop-shadow(0 0 10px color-mix(in srgb, var(--accent) 56%, transparent));
+}
+.clock-ring-arc.plan.is-selected {
+  stroke: color-mix(in srgb, var(--amber) 74%, var(--accent) 26%);
+  stroke-width: 17;
+}
+.clock-ring-arc.plan.is-current {
+  stroke: color-mix(in srgb, var(--green) 46%, var(--accent) 54%);
+}
+.clock-tick {
+  stroke: color-mix(in srgb, var(--text-muted) 42%, transparent);
+  stroke-width: 1;
+}
+.clock-tick.major {
+  stroke: color-mix(in srgb, var(--text-secondary) 56%, transparent);
+  stroke-width: 1.4;
+}
+.clock-number {
+  fill: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 750;
+  dominant-baseline: middle;
+  text-anchor: middle;
+  pointer-events: none;
+}
+.clock-window-handle {
+  fill: var(--surface-elevated);
+  stroke: var(--amber);
+  stroke-width: 3;
+  cursor: grab;
+  filter: drop-shadow(0 4px 10px color-mix(in srgb, var(--amber) 28%, transparent));
+}
+.clock-window-handle:active {
+  cursor: grabbing;
+}
+.clock-hand {
+  stroke: color-mix(in srgb, var(--text-primary) 68%, transparent);
+  stroke-linecap: round;
+}
+.clock-hand.hour {
+  stroke-width: 5;
+}
+.clock-hand.minute {
+  stroke-width: 3;
 }
 .clock-center-dot {
   fill: var(--accent);
@@ -4113,6 +4168,27 @@ details[open] > .ui-interactive-summary,
   border-radius: 999px;
   color: var(--text-primary);
   background: color-mix(in srgb, var(--accent) 20%, var(--surface-elevated));
+}
+.clock-segment-tooltip {
+  position: absolute;
+  left: 50%;
+  top: 0.85rem;
+  transform: translateX(-50%);
+  display: grid;
+  gap: 0.15rem;
+  max-width: calc(100% - 6rem);
+  padding: 0.42rem 0.58rem;
+  border: 1px solid color-mix(in srgb, var(--accent-border) 20%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface-elevated) 94%, var(--amber-light) 6%);
+  color: var(--text-primary);
+  box-shadow: 0 12px 26px color-mix(in srgb, var(--shadow-soft) 55%, transparent);
+  font-size: 11px;
+  text-align: center;
+  pointer-events: none;
+}
+.clock-segment-tooltip span {
+  color: var(--text-secondary);
 }
 .clock-legend {
   display: flex;
@@ -4189,6 +4265,7 @@ details[open] > .ui-interactive-summary,
 
 .planner-schedule-panel,
 .planner-attention-panel,
+.planner-selected-panel,
 .planner-start-panel {
   padding: .9rem;
 }
@@ -4220,10 +4297,23 @@ details[open] > .ui-interactive-summary,
   gap: .65rem;
 }
 .planner-block-card {
+  width: 100%;
+  display: block;
+  text-align: left;
+  color: inherit;
   border: 1px solid color-mix(in srgb, var(--border-subtle) 84%, transparent);
   border-radius: 12px;
   padding: .72rem;
   background: color-mix(in srgb, var(--surface-elevated) 92%, transparent);
+  cursor: pointer;
+  appearance: none;
+}
+.planner-block-card:hover,
+.planner-block-card:focus-visible,
+.planner-block-card.is-selected {
+  border-color: color-mix(in srgb, var(--accent-border) 46%, var(--border-subtle));
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--accent-shadow) 12%, transparent);
+  outline: none;
 }
 .planner-block-card.compact {
   padding: .65rem;
@@ -4287,6 +4377,41 @@ details[open] > .ui-interactive-summary,
   margin: 0;
   font-size: 1.02rem;
 }
+.planner-selected-panel {
+  display: grid;
+  gap: 0.75rem;
+}
+.planner-selected-panel h2 {
+  margin: .15rem 0 0;
+  font-size: clamp(1rem, 1.8vw, 1.18rem);
+}
+.selected-block-details {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.55rem;
+  margin: 0;
+}
+.selected-block-details div {
+  min-width: 0;
+  border: 1px solid color-mix(in srgb, var(--border-subtle) 80%, transparent);
+  border-radius: 10px;
+  padding: 0.58rem 0.62rem;
+  background: color-mix(in srgb, var(--surface-soft) 72%, transparent);
+}
+.selected-block-details dt {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 750;
+}
+.selected-block-details dd {
+  margin: 0.18rem 0 0;
+  color: var(--text-primary);
+  font-size: 12px;
+  line-height: 1.35;
+}
+.selected-block-actions {
+  margin-top: 0;
+}
 
 .schedule-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.2rem; }
 .schedule-context { margin-top: 0.25rem !important; font-size: 12px; color: var(--text-secondary); }
@@ -4309,6 +4434,9 @@ details[open] > .ui-interactive-summary,
   }
   .planner-panel-heading {
     display: grid;
+  }
+  .selected-block-details {
+    grid-template-columns: 1fr;
   }
   .planner-window-chip {
     width: fit-content;

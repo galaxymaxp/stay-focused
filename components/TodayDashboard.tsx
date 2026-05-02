@@ -3,24 +3,11 @@
 import { useMemo, useRef, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { generateUserSchedule, rescheduleBlock, updateBlockStatus } from '@/actions/scheduler'
+import { InteractivePlannerClock, type ClockScheduleBlock } from '@/components/InteractivePlannerClock'
 import type { HomeCourseSnapshot, HomeDueSoonItem } from '@/lib/home-overview'
 import { formatDuration, formatTime, isBlockInsideWindow, timeInputToTodayIso, timeToMinutes } from '@/lib/scheduler/time'
 
-type ScheduleBlock = {
-  id: string
-  title: string
-  startAt: string
-  endAt: string
-  status: 'scheduled' | 'opened' | 'completed' | 'skipped'
-  sourceTable: 'task_items' | 'modules' | 'module_resources'
-  context?: string
-  urgencyNote?: string
-}
-
-type ClockArc = {
-  id: string
-  path: string
-}
+type ScheduleBlock = ClockScheduleBlock
 
 const SHOW_DEMO_PREVIEW = process.env.NODE_ENV !== 'production' || process.env.NEXT_PUBLIC_ENABLE_DEMO_SCHEDULE === 'true'
 
@@ -35,6 +22,7 @@ export function TodayDashboard({ scheduledBlocks, dueSoon, courseSnapshots }: {
   const [availableStart, setAvailableStart] = useState('18:30')
   const [availableEnd, setAvailableEnd] = useState('21:30')
   const [isPlanStale, setIsPlanStale] = useState(false)
+  const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null)
   const schedulePanelRef = useRef<HTMLDivElement | null>(null)
 
   const scheduleForDisplay = useMemo(() => useDemoSchedule ? buildDemoScheduleBlocks() : scheduledBlocks, [scheduledBlocks, useDemoSchedule])
@@ -59,6 +47,14 @@ export function TodayDashboard({ scheduledBlocks, dueSoon, courseSnapshots }: {
 
   const hasSchedule = totalScheduledCount > 0
   const completedAll = hasSchedule && completedCount === totalScheduledCount
+  const selectedBlock = useMemo(() => {
+    if (selectedBlockId) {
+      const selected = visibleSchedule.find((block) => block.id === selectedBlockId)
+      if (selected) return selected
+    }
+
+    return currentBlock ?? visibleSchedule.find((block) => block.status !== 'completed' && block.status !== 'skipped') ?? visibleSchedule[0] ?? null
+  }, [currentBlock, selectedBlockId, visibleSchedule])
   const availableMinutes = getAvailableMinutes(availableStart, availableEnd)
   const availableLabel = availableMinutes > 0 ? formatDuration(availableMinutes) : 'Invalid window'
   const windowLabel = `${formatTime(availableStart)} - ${formatTime(availableEnd)}`
@@ -70,6 +66,12 @@ export function TodayDashboard({ scheduledBlocks, dueSoon, courseSnapshots }: {
 
   function changeAvailableEnd(value: string) {
     setAvailableEnd(value)
+    setIsPlanStale(true)
+  }
+
+  function changeWindow(start: string, end: string) {
+    setAvailableStart(start)
+    setAvailableEnd(end)
     setIsPlanStale(true)
   }
 
@@ -111,10 +113,18 @@ export function TodayDashboard({ scheduledBlocks, dueSoon, courseSnapshots }: {
       <section className="planner-shell home-sheet">
         <div className="planner-clock-column">
           <section className="planner-clock-panel" aria-label="Clock plan summary">
-            <PlannerClock availableStart={availableStart} availableEnd={availableEnd} currentBlock={currentBlock} scheduleBlocks={visibleSchedule} />
+            <InteractivePlannerClock
+              availableStart={availableStart}
+              availableEnd={availableEnd}
+              currentBlock={currentBlock}
+              scheduleBlocks={visibleSchedule}
+              selectedBlockId={selectedBlock?.id ?? null}
+              onWindowChange={changeWindow}
+              onSelectBlock={setSelectedBlockId}
+            />
             <div className="clock-legend" aria-label="Clock legend">
               <span><i className="clock-legend-swatch free" />Outer ring: Free time</span>
-              <span><i className="clock-legend-swatch plan" />Inner ring: Study plan</span>
+              <span><i className="clock-legend-swatch plan" />Inner ring: Scheduled blocks</span>
             </div>
           </section>
 
@@ -157,7 +167,13 @@ export function TodayDashboard({ scheduledBlocks, dueSoon, courseSnapshots }: {
             {visibleSchedule.length > 0 ? (
               <div className="planner-schedule-list">
                 {visibleSchedule.map((block) => (
-                  <ScheduleCard key={block.id} block={block} nowId={currentBlock?.id ?? null} onStatus={updateStatus} onReschedule={placeholderReschedule} />
+                  <ScheduleCard
+                    key={block.id}
+                    block={block}
+                    nowId={currentBlock?.id ?? null}
+                    selected={selectedBlock?.id === block.id}
+                    onSelect={setSelectedBlockId}
+                  />
                 ))}
               </div>
             ) : (
@@ -172,12 +188,27 @@ export function TodayDashboard({ scheduledBlocks, dueSoon, courseSnapshots }: {
             <p className="ui-kicker">Need Attention</p>
             {needsAttention.length > 0 ? (
               <div className="planner-compact-list">
-                {needsAttention.map((block) => <ScheduleCard key={block.id} block={block} nowId={null} onStatus={updateStatus} compact />)}
+                {needsAttention.map((block) => (
+                  <ScheduleCard
+                    key={block.id}
+                    block={block}
+                    nowId={null}
+                    selected={selectedBlock?.id === block.id}
+                    onSelect={setSelectedBlockId}
+                    compact
+                  />
+                ))}
               </div>
             ) : (
               <p className="ui-section-copy">Nothing needs attention right now.</p>
             )}
           </section>
+
+          <SelectedBlockPanel
+            block={selectedBlock}
+            onStatus={updateStatus}
+            onReschedule={useDemoSchedule ? undefined : placeholderReschedule}
+          />
 
           {!hasSchedule ? (
             <section className="planner-start-panel">
@@ -210,30 +241,11 @@ export function TodayDashboard({ scheduledBlocks, dueSoon, courseSnapshots }: {
   )
 }
 
-function PlannerClock({ availableStart, availableEnd, currentBlock, scheduleBlocks }: { availableStart: string, availableEnd: string, currentBlock: ScheduleBlock | null, scheduleBlocks: ScheduleBlock[] }) {
-  const freeArc = buildClockArc('free-window', availableStart, availableEnd, 104)
-  const scheduleArcs = buildScheduleArcs(scheduleBlocks)
-
-  return (
-    <div className="planner-clock-face">
-      <svg className="planner-clock-svg" viewBox="0 0 260 260" role="img" aria-label="Outer ring shows free time. Inner ring shows planned study blocks.">
-        <circle className="clock-ring-track outer" cx="130" cy="130" r="104" />
-        <circle className="clock-ring-track inner" cx="130" cy="130" r="76" />
-        {freeArc ? <path className="clock-ring-arc free" d={freeArc.path} /> : null}
-        {scheduleArcs.map((arc) => <path key={arc.id} className="clock-ring-arc plan" d={arc.path} />)}
-        <circle className="clock-center-dot" cx="130" cy="130" r="6" />
-      </svg>
-      <div className="clock-free-window">Free: {formatTime(availableStart)} - {formatTime(availableEnd)}</div>
-      {currentBlock ? <div className="clock-now-chip">NOW - {formatTimeRange(currentBlock.startAt, currentBlock.endAt)}</div> : null}
-    </div>
-  )
-}
-
-function ScheduleCard({ block, nowId, onStatus, onReschedule, compact = false }: {
+function ScheduleCard({ block, nowId, selected, onSelect, compact = false }: {
   block: ScheduleBlock
   nowId: string | null
-  onStatus: (id: string, status: 'opened' | 'completed' | 'skipped') => void
-  onReschedule?: (id: string, startAt: string, endAt: string) => void
+  selected: boolean
+  onSelect: (id: string) => void
   compact?: boolean
 }) {
   const isNow = nowId === block.id
@@ -241,7 +253,12 @@ function ScheduleCard({ block, nowId, onStatus, onReschedule, compact = false }:
   const stateClass = block.status === 'completed' ? ' is-completed' : block.status === 'skipped' ? ' is-skipped' : isMissed ? ' is-missed' : ''
 
   return (
-    <article className={`planner-block-card${isNow ? ' is-now' : ''}${stateClass}${compact ? ' compact' : ''}`}>
+    <button
+      type="button"
+      className={`planner-block-card${isNow ? ' is-now' : ''}${stateClass}${selected ? ' is-selected' : ''}${compact ? ' compact' : ''}`}
+      onClick={() => onSelect(block.id)}
+      aria-pressed={selected}
+    >
       <div className="planner-block-header">
         <span className="planner-status-dot" aria-hidden="true" />
         <div>
@@ -253,13 +270,55 @@ function ScheduleCard({ block, nowId, onStatus, onReschedule, compact = false }:
       {block.context ? <p className="schedule-context">{block.context}</p> : null}
       {block.urgencyNote ? <p className="schedule-urgency">{block.urgencyNote}</p> : null}
       <p className="schedule-meta-note">{getConfidenceLabel(block.sourceTable)}</p>
-      <div className="schedule-actions">
-        <button type="button" className="ui-button ui-button-secondary ui-button-xs" onClick={() => onStatus(block.id, 'opened')}>Start</button>
-        {block.status === 'opened' || isNow ? <button type="button" className="ui-button ui-button-secondary ui-button-xs" onClick={() => onStatus(block.id, 'completed')}>Complete</button> : null}
-        <button type="button" className="ui-button ui-button-secondary ui-button-xs" onClick={() => onStatus(block.id, 'skipped')}>Skip</button>
-        {onReschedule ? <button type="button" className="ui-button ui-button-ghost ui-button-xs" onClick={() => onReschedule(block.id, block.startAt, block.endAt)}>Later</button> : null}
+    </button>
+  )
+}
+
+function SelectedBlockPanel({ block, onStatus, onReschedule }: {
+  block: ScheduleBlock | null
+  onStatus: (id: string, status: 'opened' | 'completed' | 'skipped') => void
+  onReschedule?: (id: string, startAt: string, endAt: string) => void
+}) {
+  if (!block) {
+    return (
+      <section className="planner-selected-panel">
+        <p className="ui-kicker">Selected Block</p>
+        <h2>No block selected</h2>
+        <p className="ui-section-copy">Tap a clock segment or schedule row to see actions here.</p>
+      </section>
+    )
+  }
+
+  return (
+    <section className="planner-selected-panel" aria-label="Selected scheduled block">
+      <div className="planner-panel-heading">
+        <div>
+          <p className="ui-kicker">Selected Block</p>
+          <h2>{block.title}</h2>
+        </div>
+        <span className="planner-window-chip">{getSourceTypeLabel(block.sourceTable)}</span>
       </div>
-    </article>
+      <dl className="selected-block-details">
+        <div>
+          <dt>Time</dt>
+          <dd>{formatTimeRange(block.startAt, block.endAt)}</dd>
+        </div>
+        <div>
+          <dt>Duration</dt>
+          <dd>{formatBlockDuration(block)}</dd>
+        </div>
+        <div>
+          <dt>Estimate</dt>
+          <dd>{block.urgencyNote ?? getConfidenceLabel(block.sourceTable)}</dd>
+        </div>
+      </dl>
+      <div className="schedule-actions selected-block-actions">
+        <button type="button" className="ui-button ui-button-primary ui-button-xs" onClick={() => onStatus(block.id, 'opened')}>Open / Start</button>
+        <button type="button" className="ui-button ui-button-secondary ui-button-xs" onClick={() => onStatus(block.id, 'completed')}>{getDoneLabel(block.sourceTable)}</button>
+        <button type="button" className="ui-button ui-button-secondary ui-button-xs" onClick={() => onStatus(block.id, 'skipped')}>Skip</button>
+        {onReschedule ? <button type="button" className="ui-button ui-button-ghost ui-button-xs" onClick={() => onReschedule(block.id, block.startAt, block.endAt)}>Move later</button> : null}
+      </div>
+    </section>
   )
 }
 
@@ -295,6 +354,18 @@ function getConfidenceLabel(source: ScheduleBlock['sourceTable']) {
   return 'Estimated from workload and urgency'
 }
 
+function getSourceTypeLabel(source: ScheduleBlock['sourceTable']) {
+  if (source === 'module_resources') return 'Resource'
+  if (source === 'modules') return 'Module'
+  return 'Task'
+}
+
+function getDoneLabel(source: ScheduleBlock['sourceTable']) {
+  if (source === 'module_resources') return 'Mark studied'
+  if (source === 'modules') return 'Mark reviewed'
+  return 'Mark done'
+}
+
 function formatTimeRange(startAt: string, endAt: string) {
   const start = new Date(startAt)
   const end = new Date(endAt)
@@ -304,46 +375,4 @@ function formatTimeRange(startAt: string, endAt: string) {
 function formatBlockDuration(block: ScheduleBlock) {
   const minutes = Math.max(0, Math.round((new Date(block.endAt).getTime() - new Date(block.startAt).getTime()) / 60_000))
   return formatDuration(minutes)
-}
-
-function buildScheduleArcs(blocks: ScheduleBlock[]): ClockArc[] {
-  return blocks
-    .map((block) => {
-      const start = new Date(block.startAt)
-      const end = new Date(block.endAt)
-      const startMinutes = start.getHours() * 60 + start.getMinutes()
-      const endMinutes = end.getHours() * 60 + end.getMinutes()
-      const path = buildArcPath(startMinutes, endMinutes, 76)
-
-      return path ? { id: block.id, path } : null
-    })
-    .filter((arc): arc is ClockArc => Boolean(arc))
-}
-
-function buildClockArc(id: string, start: string, end: string, radius: number): ClockArc | null {
-  const path = buildArcPath(timeToMinutes(start), timeToMinutes(end), radius)
-  return path ? { id, path } : null
-}
-
-function buildArcPath(startMinutes: number, endMinutes: number, radius: number) {
-  if (!Number.isFinite(startMinutes) || !Number.isFinite(endMinutes) || endMinutes <= startMinutes) return null
-
-  const start = polarToCartesian(130, 130, radius, minutesToDegrees(startMinutes))
-  const end = polarToCartesian(130, 130, radius, minutesToDegrees(endMinutes))
-  const largeArcFlag = endMinutes - startMinutes > 720 ? 1 : 0
-
-  return `M ${start.x} ${start.y} A ${radius} ${radius} 0 ${largeArcFlag} 1 ${end.x} ${end.y}`
-}
-
-function polarToCartesian(centerX: number, centerY: number, radius: number, angleDegrees: number) {
-  const angleRadians = (angleDegrees - 90) * Math.PI / 180
-
-  return {
-    x: centerX + radius * Math.cos(angleRadians),
-    y: centerY + radius * Math.sin(angleRadians),
-  }
-}
-
-function minutesToDegrees(minutes: number) {
-  return (minutes / 1440) * 360
 }

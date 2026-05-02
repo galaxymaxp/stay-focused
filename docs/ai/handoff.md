@@ -1619,3 +1619,68 @@ Set the split Google Vision env vars in Vercel, redeploy, and run one scanned PD
 ```
 support split Google Vision credentials
 ```
+
+---
+
+## Session Update - 2026-05-03 (Interactive Clock Command Center Phase 1)
+
+### What changed
+
+- Replaced the static/abstract planner clock with a reusable `InteractivePlannerClock` SVG component.
+- Added a modern analog face with numbers 1-12, minute ticks, subtle hands, and warm yellow free-time styling.
+- Made the free-time outer arc draggable:
+  - drag either endpoint handle to adjust start/end
+  - drag the arc to move the whole window
+  - keyboard arrow keys nudge handles/window by 15 minutes
+  - time changes snap to 15-minute intervals
+- Kept precise `input type="time"` controls as the compact fallback editor for mobile and keyboard users.
+- Rendered scheduled blocks as divided inner-ring segments with clear gaps between blocks.
+- Added hover/focus details for inner clock segments and click/tap/keyboard selection.
+- Replaced repeated schedule-item action buttons with one selected-block panel showing title, source type, time range, duration, estimate/confidence note, Open/Start, type-aware completion label, Skip, and Move later when existing reschedule action wiring is available.
+- Kept existing scheduler actions (`generateUserSchedule`, `updateBlockStatus`, `rescheduleBlock`) and did not add schema changes.
+
+### Files touched
+
+- `components/InteractivePlannerClock.tsx`
+- `components/TodayDashboard.tsx`
+- `app/globals.css`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+The Home page needed to shift the Clock Command Center from decorative schedule display plus primary numeric time inputs toward the intended interactable analog clock workflow, without rewriting scheduler logic in this phase.
+
+### Tests run
+
+- `npm run typecheck` - passed.
+- `npm run lint` - passed.
+- `npm test -- scheduler` - passed; repo script ran all `tests/*.test.ts`, 219 tests.
+- Playwright browser fallback against local dev server `/` - passed for page load, nonblank body, no framework overlay, no console errors, and no failed requests.
+
+### Verification result
+
+- TypeScript and ESLint accept the new clock component and dashboard wiring.
+- Existing scheduler/time tests still pass.
+- Browser fallback verified the local app shell loads cleanly. Local data state showed the sync-first empty Home page, so the interactive clock surface was not visually exercised with real scheduled blocks in this session.
+
+### Known risks
+
+- The analog face maps times onto a 12-hour clock display, so AM/PM distinction is preserved by the selected window state but not separately labeled around the face.
+- Move later still uses the existing placeholder reschedule wiring with unchanged start/end times.
+- Inner segment hover/focus details are implemented locally in the clock; richer source-aware deep links remain future work.
+- Touch dragging is implemented through pointer events but still needs real-device QA at small widths.
+
+### Blockers
+
+- No code blocker.
+- Local browser data did not include a synced schedule, limiting visual verification of the clock surface.
+
+### Next recommended step
+
+Run a synced-account or seeded-demo browser pass at mobile widths (390px and 430px) to validate touch target comfort, arc dragging, selected-block panel placement, and clock segment readability.
+
+### Suggested commit message
+
+```
+build interactive clock command center shell
+```
