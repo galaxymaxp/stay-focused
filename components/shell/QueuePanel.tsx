@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { ListTodo, X, CheckCircle, XCircle, Loader2, Clock, RefreshCw, AlertCircle, ExternalLink, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import type { QueuedJob, QueuedJobStatus } from '@/lib/queue'
+import { buildSourceOcrStatusMessage, SOURCE_OCR_JOB_TYPE } from '@/lib/source-ocr-queue'
 
 const PILL_BASE = 'queue-panel-pill relative isolate inline-flex items-center gap-1.5 h-8 rounded-full px-3 overflow-hidden transition-colors hover:opacity-90'
 const PILL_TEXT: React.CSSProperties = { fontSize: '12px', fontWeight: 800, whiteSpace: 'nowrap', cursor: 'pointer', lineHeight: 1 }
@@ -452,6 +453,9 @@ function formatQueueTitle(job: QueuedJob) {
     const count = getNumber(job.payload, 'courseCount') ?? 1
     return `Syncing Canvas: ${count} course${count === 1 ? '' : 's'}`
   }
+  if (job.type === SOURCE_OCR_JOB_TYPE) {
+    return cleanJobTitle(job.title)
+  }
   return cleanJobTitle(job.title)
 }
 
@@ -462,6 +466,7 @@ function getJobSourceName(job: QueuedJob) {
     if (courseNames && courseNames.length > 1) return `${courseNames.length} Canvas courses`
     return 'Canvas'
   }
+  if (job.type === SOURCE_OCR_JOB_TYPE) return 'Scanned PDF'
 
   return getString(job.result, 'resourceTitle')
     ?? getString(job.payload, 'resourceTitle')
@@ -526,6 +531,13 @@ function getActiveStatus(job: QueuedJob, progress: number) {
     if (progress < 96) return 'Extracting tasks/resources'
     return 'Finalizing sync'
   }
+  if (job.type === SOURCE_OCR_JOB_TYPE) {
+    return buildSourceOcrStatusMessage({
+      pagesProcessed: getNumber(job.result, 'pagesProcessed') ?? getNumber(job.payload, 'pagesProcessed'),
+      pageCount: getNumber(job.result, 'pageCount') ?? getNumber(job.payload, 'pageCount'),
+      queued: job.status === 'pending',
+    })
+  }
   if (job.type === 'task_output' || job.type === 'do_generation') {
     if (progress < 30) return 'Reading task details'
     if (progress < 80) return 'Drafting the first output'
@@ -540,6 +552,7 @@ function getActiveStatus(job: QueuedJob, progress: number) {
 
 function getCompletedTitle(job: QueuedJob) {
   if (job.type === 'canvas_sync') return 'Canvas sync complete'
+  if (job.type === SOURCE_OCR_JOB_TYPE) return 'Scanned PDF prepared'
   if (job.type === 'learn_generation') return 'Study pack ready'
   if (job.type === 'task_output' || job.type === 'do_generation') return 'Task output ready'
   return 'Job complete'
@@ -547,6 +560,7 @@ function getCompletedTitle(job: QueuedJob) {
 
 function getFailedTitle(job: QueuedJob) {
   if (job.type === 'canvas_sync') return 'Canvas sync failed'
+  if (job.type === SOURCE_OCR_JOB_TYPE) return 'Scanned PDF preparation failed'
   if (job.type === 'learn_generation') return 'Study pack failed'
   if (job.type === 'task_output' || job.type === 'do_generation') return 'Task output failed'
   return `Failed: ${getJobSourceName(job)}`
@@ -554,7 +568,9 @@ function getFailedTitle(job: QueuedJob) {
 
 function getQueuePillLabel(activeJobs: QueuedJob[], runningCount: number, activeCount: number) {
   const canvasCount = activeJobs.filter((job) => job.type === 'canvas_sync').length
+  const ocrCount = activeJobs.filter((job) => job.type === SOURCE_OCR_JOB_TYPE).length
   if (canvasCount === activeCount) return `Syncing ${activeCount}`
+  if (ocrCount === activeCount) return `Scanning ${activeCount}`
   if (runningCount > 0) return `Processing ${activeCount}`
   return `Queue: ${activeCount}`
 }

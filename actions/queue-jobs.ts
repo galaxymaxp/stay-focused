@@ -2,7 +2,9 @@
 
 import { after } from 'next/server'
 import { revalidatePath } from 'next/cache'
-import { getAuthenticatedUserServer } from '@/lib/auth-server'
+import { createAuthenticatedSupabaseServerClient, getAuthenticatedUserServer } from '@/lib/auth-server'
+import { resolveCanvasConfig, type CanvasConfig } from '@/lib/canvas'
+import { adaptModuleResourceRow } from '@/lib/module-resource-row'
 import {
   createQueuedJob,
   getUserQueuedJobs,
@@ -30,6 +32,23 @@ import { buildDeepLearnNoteHref } from '@/lib/stay-focused-links'
 import { buildTaskDraftRequestPayload, type TaskDraftContext, type TaskDraftResponse } from '@/lib/do-now'
 import { createNotification } from '@/lib/notifications-server'
 import { saveDraftFromTaskOutput } from '@/actions/drafts'
+import { extractScannedPdfTextWithOpenAI } from '@/lib/extraction/pdf-ocr'
+import {
+  buildOcrCompletedUpdate,
+  buildOcrFailedUpdate,
+  buildOcrProcessingUpdate,
+  buildOcrQueuedUpdate,
+  isOcrAlreadyCompleted,
+  isOcrAlreadyRunning,
+  isScannedPdfOcrCandidate,
+} from '@/lib/source-ocr-updates'
+import {
+  buildSourceOcrQueueTitle,
+  buildSourceOcrStatusMessage,
+  calculateSourceOcrProgress,
+  findRecentFailedSourceOcrJob,
+} from '@/lib/source-ocr-queue'
+import type { ModuleResource } from '@/lib/types'
 
 export interface QueueJobResult {
   jobId: string
@@ -76,6 +95,93 @@ export async function queueLearnGenerationAction(input: {
       courseId: input.courseId ?? null,
     })
     revalidatePath(`/modules/${input.moduleId}/learn`)
+  })
+
+  return { jobId: job.id, job }
+}
+
+// ---------------------------------------------------------------------------
+// Queue: rendered-page OCR for scanned PDFs
+// ---------------------------------------------------------------------------
+
+export async function queueSourceOcrAction(input: {
+  moduleId: string
+  resourceId: string
+  courseId?: string | null
+  resourceTitle: string
+  manualRetry?: boolean
+}): Promise<QueueJobResult> {
+  const user = await getAuthenticatedUserServer()
+  if (!user) return { jobId: '', error: 'Not authenticated.' }
+
+  const existingJobs = await getUserQueuedJobs(user.id, { type: 'source_ocr', limit: 50 })
+  const activeDuplicate = existingJobs.find((job) => {
+    const payloadResourceId = typeof job.payload?.resourceId === 'string' ? job.payload.resourceId : null
+    const resultResourceId = typeof job.result?.resourceId === 'string' ? job.result.resourceId : null
+    return (job.status === 'pending' || job.status === 'running')
+      && (payloadResourceId === input.resourceId || resultResourceId === input.resourceId)
+  }) ?? null
+  if (activeDuplicate) return { jobId: activeDuplicate.id, job: activeDuplicate }
+
+  if (!input.manualRetry) {
+    const recentFailure = findRecentFailedSourceOcrJob(existingJobs, input.resourceId)
+    if (recentFailure) {
+      return {
+        jobId: '',
+        error: 'Visual extraction failed recently. Try OCR again or open the original source.',
+      }
+    }
+  }
+
+  const supabase = await createAuthenticatedSupabaseServerClient()
+  if (!supabase) return { jobId: '', error: 'Database connection is unavailable.' }
+
+  const resource = await getOwnedModuleResource(supabase, input.resourceId, user.id)
+  if (!resource) return { jobId: '', error: 'You do not have access to this source.' }
+
+  if (isOcrAlreadyCompleted(resource)) {
+    return { jobId: '', error: 'Readable OCR text is already available for this PDF.' }
+  }
+
+  if (isOcrAlreadyRunning(resource)) {
+    return { jobId: '', error: 'Scanned PDF preparation is already queued or running.' }
+  }
+
+  if (!isScannedPdfOcrCandidate(resource) && !input.manualRetry) {
+    return { jobId: '', error: 'OCR is only available for scanned PDFs with no selectable text.' }
+  }
+
+  const job = await createQueuedJob(
+    user.id,
+    'source_ocr',
+    buildSourceOcrQueueTitle(input.resourceTitle),
+    {
+      moduleId: input.moduleId,
+      resourceId: input.resourceId,
+      courseId: input.courseId ?? resource.courseId ?? null,
+      resourceTitle: input.resourceTitle,
+      pageCount: resource.pageCount ?? null,
+      manualRetry: Boolean(input.manualRetry),
+    },
+  )
+
+  if (!job) return { jobId: '', error: 'Failed to create OCR queue job.' }
+
+  await supabase
+    .from('module_resources')
+    .update(buildOcrQueuedUpdate({ resource, now: new Date().toISOString() }))
+    .eq('id', resource.id)
+
+  after(async () => {
+    await processSourceOcrJob({
+      jobId: job.id,
+      userId: user.id,
+      moduleId: input.moduleId,
+      resourceId: input.resourceId,
+      courseId: input.courseId ?? resource.courseId ?? null,
+      resourceTitle: input.resourceTitle,
+    })
+    revalidateLearnQueuePaths(input.moduleId, input.courseId ?? resource.courseId ?? null, input.resourceId)
   })
 
   return { jobId: job.id, job }
@@ -341,6 +447,153 @@ function revalidateLearnQueuePaths(moduleId: string, courseId: string | null, re
   }
 }
 
+async function processSourceOcrJob(input: {
+  jobId: string
+  userId: string
+  moduleId: string
+  resourceId: string
+  courseId: string | null
+  resourceTitle: string
+}) {
+  await markQueuedJobRunning(input.jobId, 8)
+  const supabase = await createAuthenticatedSupabaseServerClient()
+  if (!supabase) {
+    await markQueuedJobFailed(input.jobId, 'Database connection is unavailable.')
+    return
+  }
+
+  const fail = async (resource: ModuleResource | null, message: string, metadata?: Record<string, unknown>, provider?: string | null) => {
+    if (resource) {
+      await supabase
+        .from('module_resources')
+        .update(buildOcrFailedUpdate({ resource, message, ocrMetadata: metadata ?? {}, provider: provider ?? null, now: new Date().toISOString() }))
+        .eq('id', resource.id)
+    }
+    await markQueuedJobFailed(input.jobId, message)
+    revalidateLearnQueuePaths(input.moduleId, input.courseId, input.resourceId)
+    await createNotification({
+      userId: input.userId,
+      type: 'queue_failed',
+      title: 'Scanned PDF preparation failed',
+      body: message,
+      href: `/modules/${input.moduleId}/learn?resource=${encodeURIComponent(input.resourceId)}`,
+      severity: 'error',
+      metadata: { jobId: input.jobId, jobType: 'source_ocr', resourceId: input.resourceId, dedupeKey: `source-ocr-fail:${input.jobId}` },
+    })
+  }
+
+  let resource: ModuleResource | null = null
+  try {
+    resource = await getOwnedModuleResource(supabase, input.resourceId, input.userId)
+    if (!resource) {
+      await fail(null, 'You do not have access to this source.')
+      return
+    }
+
+    if (isOcrAlreadyCompleted(resource)) {
+      await markQueuedJobCompleted(input.jobId, {
+        resourceId: resource.id,
+        moduleId: input.moduleId,
+        resourceTitle: resource.title,
+        pageCount: resource.pageCount ?? null,
+        pagesProcessed: resource.pagesProcessed ?? resource.pageCount ?? null,
+        statusMessage: 'Readable text is already available.',
+        href: `/modules/${input.moduleId}/learn?resource=${encodeURIComponent(resource.id)}`,
+      })
+      return
+    }
+
+    await supabase
+      .from('module_resources')
+      .update(buildOcrProcessingUpdate({ resource, now: new Date().toISOString() }))
+      .eq('id', resource.id)
+
+    await updateQueuedJobStatus(input.jobId, 'running', {
+      progress: 8,
+      result: {
+        resourceId: resource.id,
+        moduleId: input.moduleId,
+        resourceTitle: resource.title,
+        pageCount: resource.pageCount ?? null,
+        pagesProcessed: 0,
+        statusMessage: buildSourceOcrStatusMessage({ pageCount: resource.pageCount ?? null }),
+      },
+    })
+
+    const sourceUrl = resource.sourceUrl ?? resource.htmlUrl
+    if (!sourceUrl) {
+      await fail(resource, 'No downloadable PDF source is stored for this item. Open the original file.')
+      return
+    }
+
+    const buffer = await downloadStoredPdfForOcr(sourceUrl, getOptionalCanvasConfig())
+    const ocr = await extractScannedPdfTextWithOpenAI({
+      buffer,
+      filename: resource.title || 'scanned-pdf.pdf',
+      pageCount: resource.pageCount ?? null,
+      onPageResult: async ({ pagesProcessed, totalPages }) => {
+        const pageCount = resource?.pageCount ?? totalPages
+        await updateQueuedJobStatus(input.jobId, 'running', {
+          progress: calculateSourceOcrProgress(pagesProcessed, pageCount),
+          result: {
+            resourceId: input.resourceId,
+            moduleId: input.moduleId,
+            resourceTitle: input.resourceTitle,
+            pageCount,
+            pagesProcessed,
+            statusMessage: buildSourceOcrStatusMessage({ pagesProcessed, pageCount }),
+          },
+        })
+      },
+    })
+
+    if (ocr.status !== 'completed') {
+      await fail(resource, ocr.error ?? 'OCR failed. Open the original file.', ocr.metadata, ocr.provider)
+      return
+    }
+
+    const update = buildOcrCompletedUpdate({ resource, ocr, now: new Date().toISOString() })
+    const { error: updateError } = await supabase
+      .from('module_resources')
+      .update(update)
+      .eq('id', resource.id)
+
+    if (updateError) throw new Error(updateError.message)
+
+    if (update.visual_extraction_status !== 'completed' || update.extracted_char_count < 120) {
+      const message = update.visual_extraction_error ?? 'Visual extraction finished, but did not find enough usable study text. Try OCR again or open the original source.'
+      await markQueuedJobFailed(input.jobId, message)
+      revalidateLearnQueuePaths(input.moduleId, input.courseId, resource.id)
+      return
+    }
+
+    await markQueuedJobCompleted(input.jobId, {
+      resourceId: resource.id,
+      moduleId: input.moduleId,
+      resourceTitle: resource.title,
+      pageCount: resource.pageCount ?? null,
+      pagesProcessed: update.pages_processed,
+      charCount: update.extracted_char_count,
+      statusMessage: 'Scanned PDF prepared with readable text.',
+      href: `/modules/${input.moduleId}/learn?resource=${encodeURIComponent(resource.id)}`,
+    })
+    revalidateLearnQueuePaths(input.moduleId, input.courseId, resource.id)
+    await createNotification({
+      userId: input.userId,
+      type: 'queue_completed',
+      title: 'Scanned PDF prepared',
+      body: `Readable text is ready for "${resource.title}".`,
+      href: `/modules/${input.moduleId}/learn?resource=${encodeURIComponent(resource.id)}`,
+      severity: 'success',
+      metadata: { jobId: input.jobId, jobType: 'source_ocr', resourceId: resource.id, dedupeKey: `source-ocr:${resource.id}` },
+    })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'OCR failed. Open the original file.'
+    console.error('[queue-jobs] processSourceOcrJob failed', { jobId: input.jobId, message })
+    await fail(resource, message)
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Internal: run Do Now AI and persist result
 // ---------------------------------------------------------------------------
@@ -456,4 +709,95 @@ async function findActiveJob(
 ) {
   const jobs = await getUserQueuedJobs(userId, { status: ['pending', 'running'], type, limit: 50 })
   return jobs.find((job) => job.payload?.[payloadKey] === payloadValue || job.result?.[payloadKey] === payloadValue) ?? null
+}
+
+async function getOwnedModuleResource(
+  supabase: NonNullable<Awaited<ReturnType<typeof createAuthenticatedSupabaseServerClient>>>,
+  resourceId: string,
+  userId: string,
+) {
+  const { data, error } = await supabase
+    .from('module_resources')
+    .select('*, courses!inner(id, user_id)')
+    .eq('id', resourceId)
+    .eq('courses.user_id', userId)
+    .maybeSingle()
+
+  if (error || !data) return null
+  return adaptModuleResourceRow(data as Record<string, unknown>)
+}
+
+async function downloadStoredPdfForOcr(url: string, canvasConfig: CanvasConfig | null) {
+  const resolvedUrl = await resolveStoredBinaryUrlForOcr(url, canvasConfig)
+  const response = await fetchStoredSourceForOcr(resolvedUrl, canvasConfig)
+  const contentType = response.headers.get('content-type')?.toLowerCase() ?? ''
+  const buffer = Buffer.from(await response.arrayBuffer())
+
+  if (!contentType.includes('pdf') && !buffer.subarray(0, 5).toString('utf8').startsWith('%PDF-')) {
+    throw new Error('The stored source did not return a PDF file. Open the original file.')
+  }
+
+  return buffer
+}
+
+async function resolveStoredBinaryUrlForOcr(url: string, canvasConfig: CanvasConfig | null) {
+  const absoluteUrl = resolveStoredUrlForOcr(url, canvasConfig)
+  const parsed = new URL(absoluteUrl)
+  const normalizedPathname = parsed.pathname.replace(/\/$/, '')
+
+  if (/\/api\/v1\/(?:courses\/\d+\/)?files\/\d+$/i.test(normalizedPathname)) {
+    const response = await fetchStoredSourceForOcr(absoluteUrl, canvasConfig)
+    const file = await response.json().catch(() => null) as { url?: string | null } | null
+    if (!file?.url) throw new Error('The stored Canvas file endpoint no longer returns a downloadable URL.')
+    return file.url
+  }
+
+  if (/\/courses\/\d+\/files\/\d+$/i.test(normalizedPathname)) {
+    parsed.pathname = `${normalizedPathname}/download`
+    return parsed.toString()
+  }
+
+  return absoluteUrl
+}
+
+async function fetchStoredSourceForOcr(url: string, canvasConfig: CanvasConfig | null) {
+  const absoluteUrl = resolveStoredUrlForOcr(url, canvasConfig)
+  const response = await fetch(absoluteUrl, {
+    headers: buildStoredSourceHeadersForOcr(absoluteUrl, canvasConfig),
+    next: { revalidate: 0 },
+  })
+
+  if (response.ok) return response
+  if (response.status === 401 || response.status === 403) {
+    throw new Error('Canvas auth is required to OCR this PDF. Check CANVAS_API_URL and CANVAS_API_TOKEN, or open the original file.')
+  }
+  if (response.status === 404) throw new Error('The stored PDF no longer resolves. Open the original file.')
+  throw new Error(`The stored PDF request failed with HTTP ${response.status}.`)
+}
+
+function resolveStoredUrlForOcr(url: string, canvasConfig: CanvasConfig | null) {
+  try {
+    return new URL(url).toString()
+  } catch {
+    if (!canvasConfig) throw new Error('This stored source URL is relative, but no Canvas base URL is configured for OCR.')
+    return new URL(url, `${canvasConfig.url}/`).toString()
+  }
+}
+
+function buildStoredSourceHeadersForOcr(url: string, canvasConfig: CanvasConfig | null) {
+  if (!canvasConfig) return undefined
+  const targetHost = new URL(url).host
+  const canvasHost = new URL(`${canvasConfig.url}/`).host
+  if (targetHost !== canvasHost) return undefined
+  return { Authorization: `Bearer ${canvasConfig.token}` }
+}
+
+function getOptionalCanvasConfig() {
+  const hasEnvConfig = Boolean((process.env.CANVAS_API_URL ?? process.env.CANVAS_API_BASE_URL)?.trim() && process.env.CANVAS_API_TOKEN?.trim())
+  if (!hasEnvConfig) return null
+  try {
+    return resolveCanvasConfig()
+  } catch {
+    return null
+  }
 }

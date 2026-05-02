@@ -159,6 +159,18 @@ export function StudyResourceAccordionList({
                 gap: expanded ? '0.72rem' : '0.48rem',
               }}
             >
+              {shouldAutoQueueOcr(item) && (
+                <div style={{ display: 'none' }}>
+                  <OcrSourceButton
+                    moduleId={item.moduleId}
+                    resourceId={item.canonicalResourceId ?? item.id}
+                    courseId={item.courseId ?? null}
+                    resourceTitle={item.title}
+                    autoStart
+                    statusOnly
+                  />
+                </div>
+              )}
               <button
                 type="button"
                 onClick={() => {
@@ -222,12 +234,9 @@ export function StudyResourceAccordionList({
               {expanded && (
                 <div style={{ display: 'grid', gap: '0.75rem' }}>
                   {/* OCR status — inline, no technical controls needed */}
-                  {item.sourceReadinessState === 'visual_ocr_available' && (
-                    <OcrSourceButton moduleId={item.moduleId} resourceId={item.canonicalResourceId ?? item.id} autoStart statusOnly />
-                  )}
-                  {item.sourceReadinessState === 'visual_ocr_running' && (
+                  {(shouldAutoQueueOcr(item) || item.sourceReadinessState === 'visual_ocr_queued' || item.sourceReadinessState === 'visual_ocr_running') && (
                     <span style={{ fontSize: '12px', lineHeight: 1.5, color: 'var(--text-secondary)' }}>
-                      Reading scanned pages...
+                      {item.sourceReadinessMessage}
                     </span>
                   )}
 
@@ -281,8 +290,11 @@ export function StudyResourceAccordionList({
                       <OcrSourceButton
                         moduleId={item.moduleId}
                         resourceId={item.canonicalResourceId ?? item.id}
+                        courseId={item.courseId ?? null}
+                        resourceTitle={item.title}
                         className="ui-button ui-button-secondary ui-button-xs"
-                        idleLabel="Prepare scanned PDF"
+                        idleLabel={getOcrActionLabel(item)}
+                        manualRetry={item.sourceReadinessState === 'visual_ocr_failed' || item.sourceReadinessState === 'visual_ocr_completed_empty'}
                       />
                     ) : item.deepLearnStatus !== 'unavailable' ? (
                       <DeepLearnGenerateButton
@@ -304,12 +316,15 @@ export function StudyResourceAccordionList({
                       />
                     )}
                     {/* OCR retry — shown inline when extraction previously failed */}
-                    {item.sourceReadinessState === 'visual_ocr_failed' && (
+                    {(item.sourceReadinessState === 'visual_ocr_failed' || item.sourceReadinessState === 'visual_ocr_completed_empty') && (
                       <OcrSourceButton
                         moduleId={item.moduleId}
                         resourceId={item.canonicalResourceId ?? item.id}
+                        courseId={item.courseId ?? null}
+                        resourceTitle={item.title}
                         className="ui-button ui-button-ghost ui-button-xs"
                         idleLabel="Retry OCR"
+                        manualRetry
                       />
                     )}
                     {item.deepLearnStatus === 'ready' && item.deepLearnQuizReady && (
@@ -496,8 +511,20 @@ function shouldShowDeepLearnWorkspaceAction(item: StudyResourceAccordionItem) {
 }
 
 function shouldShowPrepareScannedPdfAction(item: StudyResourceAccordionItem) {
-  return item.sourceReadinessState === 'empty_or_metadata_only'
+  return item.sourceReadinessActions.includes('extract_text_from_images')
+    && item.sourceReadinessState !== 'visual_ocr_failed'
+    && item.sourceReadinessState !== 'visual_ocr_completed_empty'
+}
+
+function shouldAutoQueueOcr(item: StudyResourceAccordionItem) {
+  return (item.sourceReadinessState === 'visual_ocr_available' || item.sourceReadinessState === 'empty_or_metadata_only')
     && item.sourceReadinessActions.includes('extract_text_from_images')
+}
+
+function getOcrActionLabel(item: StudyResourceAccordionItem) {
+  if (item.sourceReadinessState === 'visual_ocr_partial') return 'Continue OCR'
+  if (item.sourceReadinessState === 'visual_ocr_failed' || item.sourceReadinessState === 'visual_ocr_completed_empty') return 'Retry OCR'
+  return 'Prepare scanned PDF'
 }
 
 function labelForSourceAction(item: StudyResourceAccordionItem) {

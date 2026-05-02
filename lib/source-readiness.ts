@@ -18,7 +18,10 @@ export type SourceReadinessState =
   | 'external_link'
   | 'extraction_failed'
   | 'visual_ocr_available'
+  | 'visual_ocr_queued'
   | 'visual_ocr_running'
+  | 'visual_ocr_partial'
+  | 'visual_ocr_completed_empty'
   | 'visual_ocr_failed'
   | 'empty_or_metadata_only'
   | 'unknown'
@@ -111,6 +114,8 @@ export function normalizeSourceReadiness(input: {
     fallbackReason: quality.fallbackReason,
     visualExtractionStatus: resource.visualExtractionStatus,
     extractionError: resource.extractionError,
+    pageCount: typeof resource.pageCount === 'number' ? resource.pageCount : input.resource.pageCount ?? null,
+    pagesProcessed: typeof resource.pagesProcessed === 'number' ? resource.pagesProcessed : input.resource.pagesProcessed ?? null,
   })
   const isUnsupported = state === 'unsupported_file_type'
   const isRepairable = state === 'missing_resource_link'
@@ -160,6 +165,8 @@ function resolveSourceReadinessState(input: {
   fallbackReason: string | null
   visualExtractionStatus?: ModuleResource['visualExtractionStatus']
   extractionError?: string | null
+  pageCount?: number | null
+  pagesProcessed?: number | null
 }): SourceReadinessState {
   if (input.isPacketTracer) return 'unsupported_file_type'
   if (!input.hasStoredResource) {
@@ -168,8 +175,17 @@ function resolveSourceReadinessState(input: {
     return 'unknown'
   }
   if (input.isReadable) return 'ready'
+  if (input.visualExtractionStatus === 'queued') return 'visual_ocr_queued'
   if (input.visualExtractionStatus === 'running' || input.extractionStatus === 'processing') return 'visual_ocr_running'
+  if (
+    input.visualExtractionStatus === 'failed'
+    && typeof input.pagesProcessed === 'number'
+    && typeof input.pageCount === 'number'
+    && input.pagesProcessed > 0
+    && input.pagesProcessed < input.pageCount
+  ) return 'visual_ocr_partial'
   if (input.visualExtractionStatus === 'failed') return 'visual_ocr_failed'
+  if (input.visualExtractionStatus === 'completed' && input.readableTextLength < 120) return 'visual_ocr_completed_empty'
   if (input.visualExtractionStatus === 'available' || /\bpdf_image_only_possible\b|\bimage-only\b|\bscanned\b/i.test(input.extractionError ?? '')) {
     return 'visual_ocr_available'
   }
@@ -234,7 +250,10 @@ function statusLabelForState(state: SourceReadinessState, isPacketTracer: boolea
   if (state === 'external_link') return 'External link'
   if (state === 'extraction_failed') return 'Retry needed'
   if (state === 'visual_ocr_available') return 'OCR required'
+  if (state === 'visual_ocr_queued') return 'OCR queued'
   if (state === 'visual_ocr_running') return 'Extracting...'
+  if (state === 'visual_ocr_partial') return 'OCR partial'
+  if (state === 'visual_ocr_completed_empty') return 'OCR finished'
   if (state === 'visual_ocr_failed') return 'OCR failed'
   if (state === 'empty_or_metadata_only') return 'Little readable text'
   return 'Extraction status unavailable'
@@ -258,7 +277,10 @@ function messageForState(
   if (state === 'external_link') return 'This source opens outside Canvas. Use the original link for now.'
   if (state === 'extraction_failed') return 'Extraction failed. Retry processing, or open the original file.'
   if (state === 'visual_ocr_available') return 'This PDF appears to be image-based. Run visual extraction first.'
+  if (state === 'visual_ocr_queued') return 'Scanned PDF preparation is queued. Deep Learn will unlock after readable text is found.'
   if (state === 'visual_ocr_running') return 'Extracting text from images. This source will become available when OCR completes.'
+  if (state === 'visual_ocr_partial') return 'Scanned PDF partially prepared. Continue OCR to scan the remaining pages.'
+  if (state === 'visual_ocr_completed_empty') return 'Visual extraction finished, but did not find enough usable study text. Try OCR again or open the original source.'
   if (state === 'visual_ocr_failed') return 'OCR failed. Open the original file, or retry text extraction.'
   if (state === 'empty_or_metadata_only') {
     const countText = readableTextLength > 0
@@ -283,7 +305,10 @@ function actionsForState(
   if (state === 'canvas_lesson_page') return ['open_lesson', 'summarize_page']
   if (state === 'extraction_failed') return ['retry_extraction', 'open_source']
   if (state === 'visual_ocr_available') return ['extract_text_from_images', 'open_source']
+  if (state === 'visual_ocr_queued') return ['open_source']
   if (state === 'visual_ocr_running') return ['open_source']
+  if (state === 'visual_ocr_partial') return ['extract_text_from_images', 'open_source']
+  if (state === 'visual_ocr_completed_empty') return ['extract_text_from_images', 'open_source']
   if (state === 'visual_ocr_failed') return ['extract_text_from_images', 'open_source']
   if (state === 'empty_or_metadata_only') {
     return visualExtractionCandidate

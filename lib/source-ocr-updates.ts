@@ -31,7 +31,9 @@ export function isScannedPdfOcrCandidate(resource: ModuleResource) {
 }
 
 export function isOcrAlreadyRunning(resource: ModuleResource) {
-  return resource.extractionStatus === 'processing' || resource.visualExtractionStatus === 'running'
+  return resource.extractionStatus === 'processing'
+    || resource.visualExtractionStatus === 'queued'
+    || resource.visualExtractionStatus === 'running'
 }
 
 export function isOcrAlreadyCompleted(resource: ModuleResource) {
@@ -55,6 +57,30 @@ export function buildOcrProcessingUpdate(input: {
         ...asPlainRecord(metadata.pdfOcr),
         status: 'running',
         startedAt: input.now,
+      },
+    },
+    updated_at: input.now,
+  }
+}
+
+export function buildOcrQueuedUpdate(input: {
+  resource: ModuleResource
+  now: string
+}): Pick<ModuleResourceOcrUpdate, 'extraction_status' | 'extraction_error' | 'visual_extraction_status' | 'visual_extraction_error' | 'metadata' | 'updated_at'> {
+  const metadata = asPlainRecord(input.resource.metadata)
+  return {
+    extraction_status: input.resource.extractionStatus === 'completed' || input.resource.extractionStatus === 'extracted'
+      ? input.resource.extractionStatus
+      : 'empty',
+    visual_extraction_status: 'queued',
+    visual_extraction_error: null,
+    extraction_error: 'OCR is queued for this scanned PDF.',
+    metadata: {
+      ...metadata,
+      pdfOcr: {
+        ...asPlainRecord(metadata.pdfOcr),
+        status: 'queued',
+        queuedAt: input.now,
       },
     },
     updated_at: input.now,
@@ -110,7 +136,7 @@ export function buildOcrCompletedUpdate(input: {
     visual_extraction_status: hasUsableText ? 'completed' : 'failed',
     visual_extracted_text: hasUsableText ? mergedQuality.candidateText : null,
     visual_extraction_error: hasUsableText ? null : BAD_OCR_BLOCKED_MESSAGE,
-    pages_processed: input.resource.pageCount ?? pages.length,
+    pages_processed: pages.length,
     extraction_provider: input.ocr.provider,
     metadata: {
       ...metadata,

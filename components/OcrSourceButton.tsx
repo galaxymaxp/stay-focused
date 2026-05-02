@@ -1,5 +1,6 @@
 'use client'
 
+import { queueSourceOcrAction } from '@/actions/queue-jobs'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
@@ -10,13 +11,21 @@ export function OcrSourceButton({
   autoStart = false,
   statusOnly = false,
   idleLabel = 'Extract text from images',
+  activeLabel = 'Scanning...',
+  resourceTitle = 'Study source',
+  courseId = null,
+  manualRetry = false,
 }: {
   moduleId: string
   resourceId: string | null
+  courseId?: string | null
+  resourceTitle?: string
   className?: string
   autoStart?: boolean
   statusOnly?: boolean
   idleLabel?: string
+  activeLabel?: string
+  manualRetry?: boolean
 }) {
   const router = useRouter()
   const [busy, setBusy] = useState(false)
@@ -28,25 +37,24 @@ export function OcrSourceButton({
     setBusy(true)
     setMessage(null)
     try {
-      const response = await fetch('/api/sources/ocr', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ resourceId, moduleId }),
+      const result = await queueSourceOcrAction({
+        moduleId,
+        resourceId,
+        courseId,
+        resourceTitle,
+        manualRetry,
       })
-      const payload = await response.json().catch(() => null) as { message?: string; error?: string; status?: string } | null
-      const nextMessage = payload?.message
-        ?? payload?.error
-        ?? (response.ok ? 'Text is ready. Generate a study pack.' : 'OCR failed. Open the original file or retry.')
-      setMessage(nextMessage)
-      if (response.ok) {
-        window.dispatchEvent(new CustomEvent('stay-focused:canvas-sync-complete', { detail: { moduleId, resourceId } }))
-        window.dispatchEvent(new CustomEvent('stay-focused:notifications-refresh'))
+      if (result.error) {
+        setMessage(result.error)
+      } else {
+        setMessage('Scanned PDF preparation is queued. Deep Learn will unlock after readable text is found.')
+        window.dispatchEvent(new CustomEvent('stay-focused:queue-refresh', { detail: { job: result.job ?? null } }))
       }
       router.refresh()
     } finally {
       setBusy(false)
     }
-  }, [busy, moduleId, resourceId, router])
+  }, [busy, courseId, manualRetry, moduleId, resourceId, resourceTitle, router])
 
   useEffect(() => {
     if (!autoStart || !resourceId || autoStartedRef.current) return
@@ -57,7 +65,7 @@ export function OcrSourceButton({
   if (statusOnly) {
     return (
       <span style={{ fontSize: '12px', lineHeight: 1.5, color: busy ? 'var(--text-secondary)' : message ? 'var(--text-muted)' : 'var(--text-secondary)' }}>
-        {busy ? 'Reading scanned pages...' : message ?? 'Preparing scanned PDF...'}
+        {busy ? activeLabel : message ?? 'Scanned PDF preparation is queued. Deep Learn will unlock after readable text is found.'}
       </span>
     )
   }
@@ -70,7 +78,7 @@ export function OcrSourceButton({
         onClick={runOcr}
         className={className}
       >
-        {busy ? 'Reading...' : idleLabel}
+        {busy ? activeLabel : idleLabel}
       </button>
       {message && (
         <span style={{ fontSize: '11px', lineHeight: 1.45, color: 'var(--text-muted)', alignSelf: 'center' }}>

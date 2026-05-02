@@ -16,6 +16,7 @@ import { buildModuleOverviewFallback, getModuleSummary, listResourceSummaries } 
 import { getSourceReadinessBucket, normalizeSourceReadiness } from '@/lib/source-readiness'
 import { getAuthenticatedUserServer } from '@/lib/auth-server'
 import { getUserQueuedJobs, type QueuedJob } from '@/lib/queue'
+import { buildSourceOcrStatusMessage } from '@/lib/source-ocr-queue'
 import { buildModuleDoHref, getSearchParamValue, getTaskElementId } from '@/lib/stay-focused-links'
 import { buildStudyLibraryDetailHref, type DraftShelfItem } from '@/lib/types'
 import {
@@ -57,7 +58,7 @@ export default async function LearnPage({ params, searchParams }: Props) {
   const deepLearnNotesResult = await listDeepLearnNotesForModule(module.id)
   const libraryResult = await listDraftsForShelves()
   const user = await getAuthenticatedUserServer()
-  const queuedJobs = user ? await getUserQueuedJobs(user.id, { type: 'learn_generation', limit: 50 }) : []
+  const queuedJobs = user ? await getUserQueuedJobs(user.id, { type: ['learn_generation', 'source_ocr'], limit: 75 }) : []
   const deepLearnNotes = deepLearnNotesResult.notes
   const deepLearnNoteByResourceId = new Map(deepLearnNotes.map((note) => [note.resourceId, note]))
   const savedLegacyDrafts = libraryResult.availability === 'available'
@@ -135,8 +136,10 @@ export default async function LearnPage({ params, searchParams }: Props) {
           resourceId: deepLearnResourceId,
           canonicalSourceId: selection?.canonicalResourceId ?? null,
         })
-    const queueJob = findLatestResourceJob(queuedJobs, deepLearnResourceId, material.resource.id)
+    const queueJob = findLatestResourceJob(queuedJobs, deepLearnResourceId, material.resource.id, 'learn_generation')
+    const ocrQueueJob = findLatestResourceJob(queuedJobs, deepLearnResourceId, material.resource.id, 'source_ocr')
     const queuedDeepLearn = buildDeepLearnQueueState(queueJob, Boolean(savedNote || savedLegacyDraft))
+    const queuedOcr = buildSourceOcrQueueState(ocrQueueJob)
     const generationBlockedReason = readiness.canGenerate ? null : describeGenerationBlock(sourceReadiness.state, readiness.detail)
 
     return {
@@ -173,8 +176,8 @@ export default async function LearnPage({ params, searchParams }: Props) {
       canvasHref: getResourceCanvasHref(material.resource),
       originalFileHref: getResourceOriginalFileHref(material.resource),
       sourceReadinessState: sourceReadiness.state,
-      sourceReadinessStatusLabel: getSourceGenerationStatusLabel(sourceReadiness.statusLabel, readiness, queuedDeepLearn),
-      sourceReadinessMessage: getSourceGenerationStatusMessage(sourceReadiness.message, readiness, queuedDeepLearn),
+      sourceReadinessStatusLabel: getSourceGenerationStatusLabel(sourceReadiness.statusLabel, readiness, queuedDeepLearn, queuedOcr),
+      sourceReadinessMessage: getSourceGenerationStatusMessage(sourceReadiness.message, readiness, queuedDeepLearn, queuedOcr),
       sourceReadinessActions: sourceReadiness.actions,
       sourceReadinessBucket: generationBlockedReason ? 'needs_action' : getSourceReadinessBucket(sourceReadiness.state),
       pageCount: sourceReadiness.pageCount,
@@ -662,8 +665,9 @@ function buildDeepLearnAccordionState(
   }
 }
 
-function findLatestResourceJob(jobs: QueuedJob[], canonicalResourceId: string | null, displayResourceId: string) {
+function findLatestResourceJob(jobs: QueuedJob[], canonicalResourceId: string | null, displayResourceId: string, type?: QueuedJob['type']) {
   return jobs.find((job) => {
+    if (type && job.type !== type) return false
     const payloadResourceId = typeof job.payload?.resourceId === 'string' ? job.payload.resourceId : null
     const resultResourceId = typeof job.result?.resourceId === 'string' ? job.result.resourceId : null
     return payloadResourceId === canonicalResourceId
@@ -698,11 +702,41 @@ function buildDeepLearnQueueState(job: QueuedJob | null, hasSavedPack: boolean) 
   return null
 }
 
+function buildSourceOcrQueueState(job: QueuedJob | null) {
+  if (!job) return null
+  const pageCount = getNumber(job.result, 'pageCount') ?? getNumber(job.payload, 'pageCount')
+  const pagesProcessed = getNumber(job.result, 'pagesProcessed') ?? getNumber(job.payload, 'pagesProcessed')
+  if (job.status === 'pending') {
+    return {
+      status: 'queued' as const,
+      label: 'OCR queued',
+      summary: 'Scanned PDF preparation is queued. Deep Learn will unlock after readable text is found.',
+    }
+  }
+  if (job.status === 'running') {
+    return {
+      status: 'running' as const,
+      label: 'Extracting...',
+      summary: buildSourceOcrStatusMessage({ pagesProcessed, pageCount }),
+    }
+  }
+  if (job.status === 'failed') {
+    return {
+      status: 'failed' as const,
+      label: 'OCR failed',
+      summary: job.error ?? 'Visual extraction failed or returned non-usable text. Try OCR again or open the original source.',
+    }
+  }
+  return null
+}
+
 function getSourceGenerationStatusLabel(
   fallback: string,
   readiness: ReturnType<typeof classifyDeepLearnResourceReadiness>,
   queuedDeepLearn: ReturnType<typeof buildDeepLearnQueueState>,
+  queuedOcr: ReturnType<typeof buildSourceOcrQueueState>,
 ) {
+  if (queuedOcr?.label) return queuedOcr.label
   if (queuedDeepLearn?.status === 'pending') return queuedDeepLearn.primaryLabel === 'Added to queue' ? 'Preparing' : 'Preparing'
   if (queuedDeepLearn?.status === 'failed') return 'Failed'
   if (queuedDeepLearn?.status === 'ready') return 'Ready'
@@ -715,7 +749,9 @@ function getSourceGenerationStatusMessage(
   fallback: string,
   readiness: ReturnType<typeof classifyDeepLearnResourceReadiness>,
   queuedDeepLearn: ReturnType<typeof buildDeepLearnQueueState>,
+  queuedOcr: ReturnType<typeof buildSourceOcrQueueState>,
 ) {
+  if (queuedOcr?.summary) return queuedOcr.summary
   if (queuedDeepLearn?.summary) return queuedDeepLearn.summary
   if (!readiness.canGenerate && readiness.state === 'partial_text') {
     return 'This source does not have enough readable text to create a trustworthy study pack.'
@@ -724,4 +760,9 @@ function getSourceGenerationStatusMessage(
     return readiness.detail
   }
   return fallback
+}
+
+function getNumber(source: Record<string, unknown> | null, key: string) {
+  const value = source?.[key]
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
