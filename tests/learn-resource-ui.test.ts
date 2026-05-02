@@ -250,7 +250,7 @@ test('completed OCR with partial page scan shows partial-ready state with contin
   assert.equal(state.statusLabel, 'OCR partial')
   assert.equal(state.tone, 'accent')
   assert.equal(state.primaryAction, 'reader')
-  assert.match(state.summary, /24 of 51 pages scanned/)
+  assert.equal(state.summary, 'Partially scanned. Enough readable text is available for Deep Learn.')
   assert.match(state.detail, /Continue extraction/)
   assert.equal(state.textAvailabilityLabel, 'Full text available')
 })

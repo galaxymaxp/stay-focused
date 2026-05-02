@@ -3,6 +3,7 @@ import test from 'node:test'
 import {
   buildOcrCompletedUpdate,
   buildOcrFailedUpdate,
+  buildOcrPageProgressUpdate,
   buildOcrProcessingUpdate,
   buildOcrQueuedUpdate,
   isOcrAlreadyCompleted,
@@ -244,6 +245,79 @@ test('failed OCR clears extracted text and records an honest error', () => {
   assert.equal(update.visual_extraction_error, 'OCR finished, but no legible text was returned. Open the original file.')
   assert.equal(update.metadata.fullTextAvailable, false)
   assert.equal(update.metadata.pdfOcr instanceof Object, true)
+})
+
+test('failed OCR preserves existing useful partial text instead of marking source failed', () => {
+  const text = buildDataOrganizationText()
+  const update = buildOcrFailedUpdate({
+    resource: createResource({
+      extractedText: text,
+      extractedTextPreview: text.slice(0, 420),
+      extractedCharCount: text.length,
+      visualExtractionStatus: 'running',
+      visualExtractedText: text,
+      pageCount: 51,
+      pagesProcessed: 18,
+      metadata: {
+        visualExtractionPages: Array.from({ length: 18 }, (_, index) => ({
+          pageNumber: index + 1,
+          text,
+          charCount: text.length,
+          status: 'completed',
+          confidence: null,
+          provider: 'openai:test_ocr',
+          model: 'test_ocr',
+          error: null,
+          refusal: false,
+          attempts: 1,
+          imageWidth: 1800,
+          imageHeight: 1200,
+        })),
+      },
+    }),
+    message: 'Text extraction stalled. Retry extraction.',
+    now: '2026-05-02T12:10:00.000Z',
+  })
+
+  assert.equal(update.extraction_status, 'completed')
+  assert.equal(update.visual_extraction_status, 'completed')
+  assert.match(update.extracted_text ?? '', /DATA ORGANIZATION/)
+  assert.equal(update.visual_extracted_text, update.extracted_text)
+  assert.ok(update.extracted_char_count > 120)
+  assert.equal((update.metadata.pdfOcr as Record<string, unknown>).recoveredFromFailure, true)
+  assert.equal((update.metadata.pdfOcr as Record<string, unknown>).isPartial, true)
+})
+
+test('page progress update preserves useful text while OCR remains running', () => {
+  const text = buildDataOrganizationText()
+  const pages = Array.from({ length: 3 }, (_, index) => ({
+    pageNumber: index + 1,
+    text,
+    charCount: text.length,
+    status: 'completed' as const,
+    confidence: null,
+    provider: 'openai:test_ocr',
+    model: 'test_ocr',
+    error: null,
+    refusal: false,
+    attempts: 1,
+    imageWidth: 1800,
+    imageHeight: 1200,
+  }))
+  const update = buildOcrPageProgressUpdate({
+    resource: createResource({ pageCount: 51 }),
+    pages,
+    provider: 'openai:test_ocr',
+    totalPagesInDocument: 51,
+    now: '2026-05-02T12:02:00.000Z',
+  })
+
+  assert.equal(update.extraction_status, 'completed')
+  assert.equal(update.visual_extraction_status, 'running')
+  assert.ok(update.extracted_char_count > 120)
+  assert.equal(update.pages_processed, 3)
+  assert.equal((update.metadata.pdfOcr as Record<string, unknown>).status, 'running')
+  assert.equal((update.metadata.pdfOcr as Record<string, unknown>).remainingPages, 48)
 })
 
 test('buildOcrCompletedUpdate stores isPartial and completedPageNumbers when pages < total', () => {

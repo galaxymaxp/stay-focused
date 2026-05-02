@@ -5,6 +5,7 @@ import {
   buildSourceOcrStatusMessage,
   calculateSourceOcrProgress,
   countActiveSourceOcrJobs,
+  countRunningSourceOcrJobs,
   findActiveSourceOcrJob,
   findRecentFailedSourceOcrJob,
   findStaleRunningSourceOcrJobs,
@@ -54,6 +55,7 @@ test('source OCR active count includes queued and running OCR jobs for queue pil
   ]
 
   assert.equal(countActiveSourceOcrJobs(jobs), 2)
+  assert.equal(countRunningSourceOcrJobs(jobs), 1)
 })
 
 test('source OCR recent failure guard blocks auto retry briefly', () => {

@@ -288,7 +288,7 @@ function messageForState(
   if (state === 'visual_ocr_available') return 'Preparing scanned PDF will start automatically. If it does not start, retry extraction.'
   if (state === 'visual_ocr_queued') return 'Scanned PDF is queued for text extraction.'
   if (state === 'visual_ocr_running') return 'Scanning pages for readable text...'
-  if (state === 'visual_ocr_partial') return 'Scanned PDF partially prepared. Continue OCR to scan the remaining pages.'
+  if (state === 'visual_ocr_partial') return 'Partially scanned. Enough readable text is available for Deep Learn.'
   if (state === 'visual_ocr_completed_empty') return 'We could not find enough readable study text in this PDF. You can open the original source.'
   if (state === 'visual_ocr_failed') return 'Text extraction failed for this PDF. You can open the original source.'
   if (state === 'empty_or_metadata_only') {
