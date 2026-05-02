@@ -132,6 +132,55 @@ test('completed OCR mirrors text into normal extraction fields for Deep Learn', 
   assert.equal(pages[1]?.usableCharCount, 81)
 })
 
+test('completed Data Organization OCR persists thousands of chars and actual PDF page count', () => {
+  const text = buildDataOrganizationText()
+  const update = buildOcrCompletedUpdate({
+    resource: createResource({ pageCount: 51, title: '1.1-Data Organization.pdf' }),
+    ocr: {
+      status: 'completed',
+      text,
+      charCount: text.length,
+      pages: Array.from({ length: 20 }, (_, index) => ({
+        pageNumber: index + 1,
+        text: `${index + 1}. ${text}`,
+        charCount: text.length + 4,
+        status: 'completed' as const,
+        confidence: null,
+        provider: 'openai:test_ocr',
+        model: 'test_ocr',
+        error: null,
+        refusal: false,
+        attempts: 1,
+        imageWidth: 1800,
+        imageHeight: 1200,
+      })),
+      provider: 'test_ocr',
+      error: null,
+      metadata: {
+        pdfOcr: {
+          status: 'completed',
+          provider: 'test_ocr',
+          pageCount: 51,
+          totalPagesInDocument: 20,
+          pagesProcessed: 20,
+          usefulCharCount: text.length,
+        },
+      },
+    },
+    now: '2026-05-02T12:05:00.000Z',
+  })
+
+  assert.equal(update.extraction_status, 'completed')
+  assert.equal(update.visual_extraction_status, 'completed')
+  assert.equal(update.page_count, 20)
+  assert.equal(update.pages_processed, 20)
+  assert.ok(update.extracted_char_count > 3000)
+  assert.equal(update.extracted_text, update.visual_extracted_text)
+  assert.match(update.extracted_text ?? '', /OLTP/i)
+  assert.match(update.extracted_text ?? '', /Operational Data Store/i)
+  assert.equal(update.metadata.extractedTextQuality, 'meaningful')
+})
+
 test('OCR refusal text is stored as metadata and not mirrored into extracted text', () => {
   const update = buildOcrCompletedUpdate({
     resource: createResource({ pageCount: 1 }),
@@ -250,4 +299,16 @@ function buildText() {
     'The student can use this text to build grounded review notes after OCR completes.',
     'No extra facts are added beyond the recovered source wording.',
   ].join('\n')
+}
+
+function buildDataOrganizationText() {
+  const paragraph = [
+    'DATA ORGANIZATION explains how operational data is arranged for transaction processing and analytics.',
+    'OLTP means Online Transaction Processing and supports current operational transactions.',
+    'The on demand query approach extracts data when a user requests a report.',
+    'The eager approach prepares data earlier so later queries can be answered efficiently.',
+    'ODS means Operational Data Store and keeps integrated current valued volatile operational data.',
+    'A data warehouse is Subject-Oriented, Integrated, Current Valued, and Volatile in the lesson terminology.',
+  ].join(' ')
+  return Array.from({ length: 8 }, () => paragraph).join('\n\n')
 }

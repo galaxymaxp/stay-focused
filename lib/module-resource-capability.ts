@@ -32,6 +32,8 @@ export interface ModuleResourceCapabilityLike {
   extractedTextPreview?: string | null
   extractedCharCount?: number | null
   extractionError?: string | null
+  visualExtractionStatus?: import('./types').ModuleResourceVisualExtractionStatus | null
+  visualExtractedText?: string | null
   metadata?: Record<string, unknown> | null
 }
 

@@ -158,16 +158,21 @@ export function classifyModuleResourceTextQuality(
     title?: string | null
   },
 ) {
-  const preferredText = typeof resource.extractedText === 'string' && resource.extractedText.trim()
-    ? resource.extractedText
-    : resource.visualExtractionStatus === 'completed' && typeof resource.visualExtractedText === 'string' && resource.visualExtractedText.trim()
-      ? resource.visualExtractedText
-      : resource.extractedTextPreview
+  const candidates = [
+    resource.extractedText,
+    resource.visualExtractionStatus === 'completed' ? resource.visualExtractedText : null,
+    resource.extractedTextPreview,
+  ]
+    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    .map((text) => classifyExtractedTextQuality({ text, title: resource.title }))
 
-  return classifyExtractedTextQuality({
-    text: preferredText,
-    title: resource.title,
-  })
+  if (candidates.length === 0) {
+    return classifyExtractedTextQuality({ text: '', title: resource.title })
+  }
+
+  return candidates.find((quality) => quality.usable)
+    ?? candidates.sort((left, right) => qualityRank(right.quality) - qualityRank(left.quality)
+      || right.candidateCharCount - left.candidateCharCount)[0]
 }
 
 export function isMeaningfulDeepLearnSourceText(input: {
@@ -203,6 +208,15 @@ function buildResult(
     refusalDetected: REFUSAL_PATTERNS.some((pattern) => pattern.test(normalizedText)),
     reason,
   }
+}
+
+function qualityRank(quality: ExtractedTextQuality) {
+  if (quality === 'meaningful') return 5
+  if (quality === 'too_short') return 4
+  if (quality === 'metadata_only') return 3
+  if (quality === 'boilerplate') return 2
+  if (quality === 'refusal') return 1
+  return 0
 }
 
 function isMetadataLikeLine(line: string, normalizedTitle: string | null) {

@@ -315,6 +315,42 @@ test('classifyDeepLearnResourceReadiness accepts valid Data Organization OCR tex
   assert.equal(readiness.canGenerate, true)
 })
 
+test('classifyDeepLearnResourceReadiness uses meaningful visual OCR when extracted text is stale and thin', () => {
+  const thinText = 'DATA ORGANIZATION OLTP ODS.'
+  const visualText = buildDataOrganizationText()
+  const readiness = classifyDeepLearnResourceReadiness({
+    resource: createLearnResource({
+      title: '1.1-Data Organization.pdf',
+      extractionStatus: 'completed',
+      extractedText: thinText,
+      extractedTextPreview: thinText,
+      extractedCharCount: thinText.length,
+      visualExtractionStatus: 'completed',
+      visualExtractedText: visualText,
+      pageCount: 20,
+      pagesProcessed: 20,
+      previewState: 'full_text_available',
+      fullTextAvailable: true,
+      storedTextLength: thinText.length,
+    }),
+    storedResource: createStoredResource({
+      title: '1.1-Data Organization.pdf',
+      extractionStatus: 'completed',
+      extractedText: thinText,
+      extractedTextPreview: thinText,
+      extractedCharCount: thinText.length,
+      visualExtractionStatus: 'completed',
+      visualExtractedText: visualText,
+      pageCount: 20,
+      pagesProcessed: 20,
+    }),
+    canonicalResourceId: 'stored-resource-1',
+  })
+
+  assert.equal(readiness.state, 'text_ready')
+  assert.equal(readiness.canGenerate, true)
+})
+
 test('classifyDeepLearnResourceReadiness marks resources with no viable stored backing row as unreadable', () => {
   const readiness = classifyDeepLearnResourceReadiness({
     resource: createLearnResource(),
@@ -430,4 +466,14 @@ function createStoredResource(overrides: Partial<ModuleResource> = {}): ModuleRe
 
 function buildLongText(sentence: string) {
   return `${sentence} ${sentence} ${sentence} ${sentence} ${sentence} ${sentence}`
+}
+
+function buildDataOrganizationText() {
+  const paragraph = [
+    'DATA ORGANIZATION explains OLTP and Online Transaction Processing for operational systems.',
+    'The lesson distinguishes an on demand query approach from an eager approach.',
+    'ODS means Operational Data Store and supports current integrated operational reporting.',
+    'Data warehouse content is Subject-Oriented, Integrated, Current Valued, and Volatile in the source deck.',
+  ].join(' ')
+  return Array.from({ length: 10 }, () => paragraph).join('\n\n')
 }

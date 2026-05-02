@@ -11,6 +11,7 @@ export interface ModuleResourceOcrUpdate {
   visual_extraction_status: NonNullable<ModuleResource['visualExtractionStatus']>
   visual_extracted_text: string | null
   visual_extraction_error: string | null
+  page_count?: number | null
   pages_processed: number
   extraction_provider?: string | null
   metadata: Record<string, unknown>
@@ -127,6 +128,7 @@ export function buildOcrCompletedUpdate(input: {
           ? 'metadata_only'
           : mergedQuality.quality
   const hasUsableText = mergedQuality.usable
+  const actualPageCount = getActualPdfPageCount(input.ocr.metadata) ?? input.resource.pageCount ?? pages.length
   return {
     extraction_status: hasUsableText ? 'completed' : 'empty',
     extracted_text: hasUsableText ? mergedQuality.candidateText : null,
@@ -136,6 +138,7 @@ export function buildOcrCompletedUpdate(input: {
     visual_extraction_status: hasUsableText ? 'completed' : 'failed',
     visual_extracted_text: hasUsableText ? mergedQuality.candidateText : null,
     visual_extraction_error: hasUsableText ? null : BAD_OCR_BLOCKED_MESSAGE,
+    page_count: actualPageCount,
     pages_processed: pages.length,
     extraction_provider: input.ocr.provider,
     metadata: {
@@ -157,6 +160,7 @@ export function buildOcrCompletedUpdate(input: {
         provider: input.ocr.provider,
         completedAt: input.now,
         textQuality: mergedQualityLabel,
+        totalMergedCharCount: hasUsableText ? mergedQuality.candidateCharCount : 0,
         refusalDetected: mergedQualityLabel === 'refusal',
         error: hasUsableText ? null : BAD_OCR_BLOCKED_MESSAGE,
       },
@@ -183,6 +187,7 @@ export function buildOcrFailedUpdate(input: {
     visual_extraction_status: 'failed',
     visual_extracted_text: null,
     visual_extraction_error: input.message,
+    page_count: input.resource.pageCount ?? null,
     pages_processed: 0,
     extraction_provider: input.provider ?? input.resource.extractionProvider ?? null,
     metadata: {
@@ -211,4 +216,13 @@ function asPlainRecord(value: unknown): Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
     ? { ...value as Record<string, unknown> }
     : {}
+}
+
+function getActualPdfPageCount(metadata: Record<string, unknown>) {
+  const pdfOcr = asPlainRecord(metadata.pdfOcr)
+  const totalPages = pdfOcr.totalPagesInDocument
+  if (typeof totalPages === 'number' && Number.isFinite(totalPages) && totalPages > 0) return totalPages
+  const pageCount = pdfOcr.pageCount
+  if (typeof pageCount === 'number' && Number.isFinite(pageCount) && pageCount > 0) return pageCount
+  return null
 }

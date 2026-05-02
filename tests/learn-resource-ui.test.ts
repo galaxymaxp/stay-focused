@@ -215,6 +215,27 @@ test('completed OCR with thin text remains blocked with retry guidance', () => {
   assert.match(state.summary, /did not find enough usable study text/i)
 })
 
+test('completed OCR with meaningful visual text shows ready even when extracted text is stale and thin', () => {
+  const visualText = buildDataOrganizationText()
+  const state = getLearnResourceUiState(createResource({
+    title: '1.1-Data Organization.pdf',
+    extractionStatus: 'completed',
+    extractedText: 'DATA ORGANIZATION OLTP ODS.',
+    extractedTextPreview: 'DATA ORGANIZATION OLTP ODS.',
+    extractedCharCount: 27,
+    visualExtractionStatus: 'completed',
+    visualExtractedText: visualText,
+    pageCount: 20,
+    pagesProcessed: 20,
+    previewState: 'full_text_available',
+  }), {
+    hasOriginalFile: true,
+  })
+
+  assert.equal(state.statusKey, 'ready')
+  assert.equal(state.statusLabel, 'OCR complete')
+})
+
 test('visual OCR refusal text does not surface as ready reader content', () => {
   const refusalText = "I'm unable to transcribe text from images or scanned documents at this time."
   const state = getLearnResourceUiState(createResource({
@@ -294,4 +315,13 @@ function buildUsableText() {
     'Readable notes should separate the method, the evidence, and the prevention move so the source can support later tasks.',
     'That structure makes a PDF or page useful in Learn even when the original source still includes repeated headings or framing text.',
   ].join('\n\n')
+}
+
+function buildDataOrganizationText() {
+  const paragraph = [
+    'DATA ORGANIZATION explains OLTP and Online Transaction Processing for operational systems.',
+    'ODS means Operational Data Store and supports current integrated operational reporting.',
+    'The data warehouse is Subject-Oriented, Integrated, Current Valued, and Volatile in the lesson.',
+  ].join(' ')
+  return Array.from({ length: 10 }, () => paragraph).join('\n\n')
 }

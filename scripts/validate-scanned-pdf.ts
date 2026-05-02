@@ -1,18 +1,21 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
+import { createClient } from '@supabase/supabase-js'
 import { extractPdfTextFromBuffer } from '../lib/extraction/pdf-extractor'
 import { extractScannedPdfTextWithOpenAI } from '../lib/extraction/pdf-ocr'
-import { classifyExtractedTextQuality } from '../lib/extracted-text-quality'
+import { classifyExtractedTextQuality, classifyModuleResourceTextQuality } from '../lib/extracted-text-quality'
 import { buildOcrCompletedUpdate } from '../lib/source-ocr-updates'
 import { classifyDeepLearnResourceReadiness } from '../lib/deep-learn-readiness'
 import { buildDeepLearnGroundingWithDependencies, generateDeepLearnNoteForResource } from '../lib/deep-learn-generation'
 import { getLearnResourceUiState } from '../lib/learn-resource-ui'
+import { adaptModuleResourceRow } from '../lib/module-resource-row'
 import type { ModuleSourceResource } from '../lib/module-workspace'
 import type { Module, ModuleResource } from '../lib/types'
 
 interface ParsedArgs {
-  pdfPath: string
+  pdfPath: string | null
+  resourceId: string | null
 }
 
 const REQUIRED_TERMS = [
@@ -43,6 +46,15 @@ const FORBIDDEN_TERMS = [
 async function main() {
   loadEnvFile()
   const args = parseArgs(process.argv.slice(2))
+  if (args.resourceId) {
+    await validateDbResource(args.resourceId)
+  }
+
+  if (!args.pdfPath) {
+    if (args.resourceId) return
+    throw new Error('Usage: npx tsx scripts/validate-scanned-pdf.ts --pdf "C:\\path\\to\\file.pdf" [--resource-id uuid]')
+  }
+
   const pdfPath = path.resolve(args.pdfPath)
   const buffer = fs.readFileSync(pdfPath)
 
@@ -128,6 +140,18 @@ async function main() {
     now: new Date().toISOString(),
   })
   assert.equal(ocrUpdate.extraction_status, 'completed', `OCR update should keep the resource blocked when text is bad; got ${ocrUpdate.extraction_status}`)
+  printOcrPersistenceDiagnostics({
+    label: 'Local OCR update diagnostics',
+    resource: preStored,
+    pageCountDetected: ocrUpdate.page_count ?? preStored.pageCount ?? null,
+    ocrPagesProcessed: ocrUpdate.pages_processed,
+    totalOcrCharacters: ocr.charCount,
+    extractedTextLength: ocrUpdate.extracted_text?.length ?? 0,
+    visualExtractedTextLength: ocrUpdate.visual_extracted_text?.length ?? 0,
+    extractedCharCount: ocrUpdate.extracted_char_count,
+    sourceTextQuality: classifyExtractedTextQuality({ text: ocrUpdate.extracted_text, title: preStored.title }).quality,
+    readiness: null,
+  })
   const postStored = applyOcrUpdate(preStored, ocrUpdate)
   const postLearn = createLearnResourceFromStored(postStored)
 
@@ -138,6 +162,18 @@ async function main() {
   })
   assert.equal(postReadiness.state, 'text_ready')
   assert.equal(postReadiness.canGenerate, true)
+  printOcrPersistenceDiagnostics({
+    label: 'Post-OCR readiness diagnostics',
+    resource: postStored,
+    pageCountDetected: postStored.pageCount ?? null,
+    ocrPagesProcessed: postStored.pagesProcessed ?? 0,
+    totalOcrCharacters: ocr.charCount,
+    extractedTextLength: postStored.extractedText?.length ?? 0,
+    visualExtractedTextLength: postStored.visualExtractedText?.length ?? 0,
+    extractedCharCount: postStored.extractedCharCount,
+    sourceTextQuality: classifyExtractedTextQuality({ text: postStored.extractedText, title: postStored.title }).quality,
+    readiness: postReadiness,
+  })
 
   const postUi = getLearnResourceUiState(postLearn, { hasOriginalFile: true, hasCanvasLink: true })
   assert.equal(postUi.statusKey, 'ready')
@@ -187,15 +223,66 @@ function loadEnvFile() {
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
+  let pdfPath: string | null = null
+  let resourceId: string | null = null
   for (let index = 0; index < argv.length; index += 1) {
     if (argv[index] === '--pdf') {
       const nextValue = argv[index + 1]
       if (!nextValue) throw new Error('Expected a file path after --pdf')
-      return { pdfPath: nextValue }
+      pdfPath = nextValue
+      index += 1
+      continue
+    }
+    if (argv[index] === '--resource-id') {
+      const nextValue = argv[index + 1]
+      if (!nextValue) throw new Error('Expected a resource id after --resource-id')
+      resourceId = nextValue
+      index += 1
     }
   }
 
-  throw new Error('Usage: npx tsx scripts/validate-scanned-pdf.ts --pdf "C:\\path\\to\\file.pdf"')
+  return { pdfPath, resourceId }
+}
+
+async function validateDbResource(resourceId: string) {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() || process.env.SUPABASE_URL?.trim()
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim()
+  assert.ok(supabaseUrl, 'NEXT_PUBLIC_SUPABASE_URL or SUPABASE_URL is required for --resource-id validation.')
+  assert.ok(supabaseKey, 'SUPABASE_SERVICE_ROLE_KEY or NEXT_PUBLIC_SUPABASE_ANON_KEY is required for --resource-id validation.')
+
+  const supabase = createClient(supabaseUrl, supabaseKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  })
+  const { data, error } = await supabase
+    .from('module_resources')
+    .select('*')
+    .eq('id', resourceId)
+    .maybeSingle()
+
+  if (error) throw new Error(`Failed to load module_resources row ${resourceId}: ${error.message}`)
+  assert.ok(data, `No module_resources row found for ${resourceId}`)
+
+  const resource = adaptModuleResourceRow(data as Record<string, unknown>)
+  const learnResource = createLearnResourceFromStored(resource)
+  const sourceTextQuality = classifyModuleResourceTextQuality(resource)
+  const readiness = classifyDeepLearnResourceReadiness({
+    resource: learnResource,
+    storedResource: resource,
+    canonicalResourceId: resource.id,
+  })
+
+  printOcrPersistenceDiagnostics({
+    label: 'DB resource diagnostics',
+    resource,
+    pageCountDetected: resource.pageCount ?? null,
+    ocrPagesProcessed: resource.pagesProcessed ?? 0,
+    totalOcrCharacters: getNestedNumber(resource.metadata, ['pdfOcr', 'usefulCharCount']) ?? (resource.visualExtractedText?.length ?? resource.extractedText?.length ?? 0),
+    extractedTextLength: resource.extractedText?.length ?? 0,
+    visualExtractedTextLength: resource.visualExtractedText?.length ?? 0,
+    extractedCharCount: resource.extractedCharCount,
+    sourceTextQuality: sourceTextQuality.quality,
+    readiness,
+  })
 }
 
 function createStoredResource(overrides: Partial<ModuleResource>): ModuleResource {
@@ -303,10 +390,41 @@ function applyOcrUpdate(resource: ModuleResource, update: ReturnType<typeof buil
     visualExtractionStatus: update.visual_extraction_status,
     visualExtractedText: update.visual_extracted_text,
     visualExtractionError: update.visual_extraction_error,
-    pageCount: resource.pageCount,
+    pageCount: update.page_count ?? resource.pageCount,
     pagesProcessed: update.pages_processed,
     extractionProvider: update.extraction_provider ?? null,
     metadata: update.metadata,
+  }
+}
+
+function printOcrPersistenceDiagnostics(input: {
+  label: string
+  resource: ModuleResource
+  pageCountDetected: number | null
+  ocrPagesProcessed: number
+  totalOcrCharacters: number
+  extractedTextLength: number
+  visualExtractedTextLength: number
+  extractedCharCount: number
+  sourceTextQuality: string
+  readiness: ReturnType<typeof classifyDeepLearnResourceReadiness> | null
+}) {
+  console.log(input.label)
+  console.log(`- resource id: ${input.resource.id}`)
+  console.log(`- title: ${input.resource.title}`)
+  console.log(`- canvas file id: ${input.resource.canvasFileId ?? 'null'}`)
+  console.log(`- canvas module id: ${input.resource.canvasModuleId ?? 'null'}`)
+  console.log(`- canvas item id: ${input.resource.canvasItemId ?? 'null'}`)
+  console.log(`- page count detected: ${input.pageCountDetected ?? 'null'}`)
+  console.log(`- OCR pages processed: ${input.ocrPagesProcessed}`)
+  console.log(`- total OCR characters: ${input.totalOcrCharacters}`)
+  console.log(`- extracted_text length: ${input.extractedTextLength}`)
+  console.log(`- visual_extracted_text length: ${input.visualExtractedTextLength}`)
+  console.log(`- extracted_char_count: ${input.extractedCharCount}`)
+  console.log(`- sourceTextQuality: ${input.sourceTextQuality}`)
+  if (input.readiness) {
+    console.log(`- readiness: ${input.readiness.state}`)
+    console.log(`- canGenerate: ${input.readiness.canGenerate}`)
   }
 }
 
@@ -343,6 +461,15 @@ function getOptionalBoolean(value: unknown) {
 
 function getOptionalNumber(value: unknown) {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+function getNestedNumber(source: Record<string, unknown>, pathParts: string[]) {
+  let current: unknown = source
+  for (const part of pathParts) {
+    if (!current || typeof current !== 'object' || Array.isArray(current)) return null
+    current = (current as Record<string, unknown>)[part]
+  }
+  return typeof current === 'number' && Number.isFinite(current) ? current : null
 }
 
 function getOptionalPreviewState(value: unknown): ModuleSourceResource['previewState'] {
