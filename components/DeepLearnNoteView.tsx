@@ -60,6 +60,7 @@ export function DeepLearnNoteView({
         readerHref={readerHref}
         statusSummary={ui.detail}
         blockedMessage={(ui.status === 'unavailable' || ui.status === 'blocked') ? effectiveAvailabilityMessage : null}
+        canGenerate={readiness?.canGenerate !== false}
       />
 
       <section className="motion-card motion-delay-2 section-shell" style={{ padding: '0.95rem 1rem', display: 'grid', gap: '0.8rem' }}>
@@ -71,7 +72,7 @@ export function DeepLearnNoteView({
         <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', alignItems: 'flex-start' }}>
           {ui.status === 'unavailable' || ui.status === 'blocked' ? (
             visualExtractionAvailable ? (
-              <OcrSourceButton moduleId={moduleId} resourceId={resolvedDeepLearnResourceId} autoStart statusOnly />
+              <OcrSourceButton moduleId={moduleId} resourceId={resolvedDeepLearnResourceId} statusOnly />
             ) : (
               <span style={{ fontSize: '12px', lineHeight: 1.5, color: 'var(--text-secondary)', maxWidth: '24rem' }}>
                 {effectiveAvailabilityMessage}

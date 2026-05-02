@@ -4,6 +4,7 @@ import {
   buildSourceOcrQueueTitle,
   buildSourceOcrStatusMessage,
   calculateSourceOcrProgress,
+  countActiveSourceOcrJobs,
   findActiveSourceOcrJob,
   findRecentFailedSourceOcrJob,
 } from '../lib/source-ocr-queue'
@@ -40,6 +41,17 @@ test('source OCR duplicate guard ignores same-title jobs for different resource 
 
   assert.equal(findActiveSourceOcrJob(jobs, 'resource-selected'), null)
   assert.equal(findActiveSourceOcrJob(jobs, 'resource-other')?.id, 'ocr-other')
+})
+
+test('source OCR active count includes queued and running OCR jobs for queue pill', () => {
+  const jobs = [
+    createJob({ id: 'ocr-pending', type: 'source_ocr', status: 'pending', resourceId: 'resource-1' }),
+    createJob({ id: 'ocr-running', type: 'source_ocr', status: 'running', resourceId: 'resource-2' }),
+    createJob({ id: 'ocr-completed', type: 'source_ocr', status: 'completed', resourceId: 'resource-3' }),
+    createJob({ id: 'learn-running', type: 'learn_generation', status: 'running', resourceId: 'resource-4' }),
+  ]
+
+  assert.equal(countActiveSourceOcrJobs(jobs), 2)
 })
 
 test('source OCR recent failure guard blocks auto retry briefly', () => {

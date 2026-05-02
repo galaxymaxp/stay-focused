@@ -7,6 +7,7 @@ import { DeepLearnGenerateButton } from '@/components/DeepLearnGenerateButton'
 import { OcrSourceButton } from '@/components/OcrSourceButton'
 import { SourceReadinessFilters, type SourceReadinessFilter } from '@/components/SourceReadinessFilters'
 import { SourceSummaryBadge, type SourceSummaryBadgeModel } from '@/components/SourceSummaryBadge'
+import { shouldShowGenerateStudyPackAction, shouldShowSourceOcrRetryAction } from '@/lib/learn-resource-action-ui'
 import { getResourceElementId } from '@/lib/stay-focused-links'
 import type { StudyFileOutlineSection, StudyFileReaderState } from '@/lib/study-file-reader'
 import type { LearnResourceActionPriority, LearnResourceStatusKey } from '@/lib/learn-resource-ui'
@@ -284,7 +285,7 @@ export function StudyResourceAccordionList({
                         idleLabel={getOcrActionLabel(item)}
                         manualRetry={item.sourceReadinessState === 'visual_ocr_failed' || item.sourceReadinessState === 'visual_ocr_completed_empty'}
                       />
-                    ) : item.deepLearnStatus !== 'unavailable' ? (
+                    ) : shouldShowGenerateStudyPackAction(item) ? (
                       <DeepLearnGenerateButton
                         moduleId={item.moduleId}
                         resourceId={item.canonicalResourceId ?? item.id}
@@ -293,26 +294,22 @@ export function StudyResourceAccordionList({
                         disabledReason={item.deepLearnDisabledReason}
                         resourceTitle={item.title}
                       />
-                    ) : (
-                      <DeepLearnGenerateButton
-                        moduleId={item.moduleId}
-                        resourceId={item.canonicalResourceId ?? item.id}
-                        courseId={item.courseId ?? null}
-                        label="Generate study pack"
-                        disabledReason={item.deepLearnDisabledReason ?? 'Saved study packs are unavailable right now.'}
-                        resourceTitle={item.title}
-                      />
+                    ) : null}
+                    {/* OCR retry - shown when scanned-PDF preparation is not active. */}
+                    {item.sourceReadinessState === 'unsupported_file_type' && item.sourceReadinessMessage.toLowerCase().includes('convert .ppt') && (
+                      <span style={{ fontSize: '12px', lineHeight: 1.5, color: 'var(--text-muted)', alignSelf: 'center' }}>
+                        Convert .ppt to .pptx or PDF for extraction.
+                      </span>
                     )}
-                    {/* OCR retry — shown inline when extraction previously failed */}
-                    {(item.sourceReadinessState === 'visual_ocr_failed' || item.sourceReadinessState === 'visual_ocr_completed_empty') && (
+                    {shouldShowSourceOcrRetryAction(item) && (
                       <OcrSourceButton
                         moduleId={item.moduleId}
                         resourceId={item.canonicalResourceId ?? item.id}
                         courseId={item.courseId ?? null}
                         resourceTitle={item.title}
                         className="ui-button ui-button-ghost ui-button-xs"
-                        idleLabel="Retry OCR"
-                        manualRetry
+                        idleLabel={getOcrActionLabel(item)}
+                        manualRetry={item.sourceReadinessState !== 'visual_ocr_available'}
                       />
                     )}
                     {item.deepLearnStatus === 'ready' && item.deepLearnQuizReady && (
@@ -504,6 +501,7 @@ function shouldShowPrepareScannedPdfAction(item: StudyResourceAccordionItem) {
 }
 
 function getOcrActionLabel(item: StudyResourceAccordionItem) {
+  if (item.sourceReadinessState === 'visual_ocr_available') return 'Retry extraction'
   if (item.sourceReadinessState === 'visual_ocr_partial') return 'Continue OCR'
   if (item.sourceReadinessState === 'visual_ocr_failed' || item.sourceReadinessState === 'visual_ocr_completed_empty') return 'Retry OCR'
   return 'Retry extraction'

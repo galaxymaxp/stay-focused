@@ -152,6 +152,48 @@ test('extracted resource with readable text is source-readiness ready', () => {
   assert.equal(readiness.actions.includes('process_source'), false)
 })
 
+test('scanned PDF shows preparing only when active source OCR job exists', () => {
+  const resource = createLearnResource({
+    title: '1-Data Organization.pdf',
+    type: 'File',
+    extension: 'pdf',
+    contentType: 'application/pdf',
+    extractionStatus: 'empty',
+    extractionError: 'pdf_image_only_possible: PDF parsed, but it appears to be image-only or scanned.',
+    sourceUrl: 'https://canvas.example/files/1/download',
+  })
+  const storedResource = createResource({
+    title: '1-Data Organization.pdf',
+    extension: 'pdf',
+    contentType: 'application/pdf',
+    extractionStatus: 'empty',
+    extractionError: 'pdf_image_only_possible: PDF parsed, but it appears to be image-only or scanned.',
+    sourceUrl: 'https://canvas.example/files/1/download',
+  })
+
+  const waiting = normalizeSourceReadiness({
+    resource,
+    storedResource,
+    canonicalResourceId: 'resource-1',
+    moduleId: 'module-1',
+    moduleTitle: 'Data',
+  })
+  const queued = normalizeSourceReadiness({
+    resource,
+    storedResource,
+    canonicalResourceId: 'resource-1',
+    moduleId: 'module-1',
+    moduleTitle: 'Data',
+    activeSourceOcrJobStatus: 'pending',
+  })
+
+  assert.equal(waiting.state, 'visual_ocr_available')
+  assert.equal(waiting.statusLabel, 'Scanned PDF')
+  assert.match(waiting.message, /retry extraction/i)
+  assert.equal(queued.state, 'visual_ocr_queued')
+  assert.equal(queued.statusLabel, 'OCR queued')
+})
+
 test('healthy extracted module resource is ready and not a repair source', () => {
   const text = 'Intro to Web Development explains HTML structure, browser rendering, and document semantics for building reliable pages.'.repeat(3)
   const readiness = normalizeSourceReadiness({
