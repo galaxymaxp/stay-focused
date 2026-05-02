@@ -38,6 +38,10 @@ OCR_MAX_PAGES_PER_JOB=24
 OPENAI_OCR_AUTO_RUN=false
 OPENAI_OCR_MAX_PAGES=5
 GOOGLE_VISION_API_KEY=
+GOOGLE_CLOUD_PROJECT=
+GOOGLE_VISION_CLIENT_EMAIL=
+GOOGLE_VISION_PRIVATE_KEY=
+GOOGLE_VISION_CREDENTIALS_JSON=
 GOOGLE_DOCUMENT_AI_PROCESSOR_NAME=
 CANVAS_API_URL=
 CANVAS_API_TOKEN=
@@ -65,7 +69,9 @@ npm run dev
 - `OCR_MAX_PAGES_PER_JOB`: shared scanned-PDF OCR page cap per job; defaults to `24`
 - `OPENAI_OCR_AUTO_RUN`: must be explicitly set to `true` before OpenAI vision OCR can run automatically during sync
 - `OPENAI_OCR_MAX_PAGES`: safety cap for OpenAI OCR pages per job; defaults to `5`
-- `GOOGLE_VISION_API_KEY`: optional API key for `OCR_PROVIDER=google_vision`; service account credentials also work
+- `GOOGLE_CLOUD_PROJECT`, `GOOGLE_VISION_CLIENT_EMAIL`, `GOOGLE_VISION_PRIVATE_KEY`: preferred Vercel service-account configuration for `OCR_PROVIDER=google_vision`; private keys may use escaped `\n` newlines
+- `GOOGLE_VISION_CREDENTIALS_JSON`: optional single-env service-account JSON fallback for Google Vision
+- `GOOGLE_VISION_API_KEY`: optional API key fallback for `OCR_PROVIDER=google_vision`
 - `GOOGLE_DOCUMENT_AI_PROCESSOR_NAME`: processor resource for `OCR_PROVIDER=google_document_ai`; use `projects/<project>/locations/<location>/processors/<processor>`
 - `CANVAS_API_URL`: Canvas base URL used for sync
 - `CANVAS_API_TOKEN`: Canvas personal access token for sync
