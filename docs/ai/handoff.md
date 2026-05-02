@@ -1454,3 +1454,90 @@ Manually verify against a real Canvas account with at least one past enrollment 
 ```
 show ended Canvas courses during sync
 ```
+
+---
+
+## Session Update - 2026-05-03 (Google Vision OCR diagnostics and queue continuation)
+
+### What changed
+
+- Added Google Vision OCR response fallback from `textAnnotations[0].description` when `fullTextAnnotation.text` is absent.
+- Added safe page/image diagnostics for Google OCR:
+  - rendered image byte size
+  - image dimensions
+  - blank-image signal
+  - debug image save support through `--debug-images`
+- Added OCR diagnostics to persisted resource/job metadata through `pdfOcr.diagnostics`, including provider, pages attempted/succeeded/empty/failed, raw OCR chars, accepted useful chars, text quality details, final statuses, and final reason.
+- Updated the scanned-PDF validator with:
+  - `--provider openai|google_vision|google_document_ai`
+  - `--debug-images`
+  - raw provider char count vs accepted useful char count
+  - per-page OCR status and image diagnostics
+  - first non-empty page preview
+- Added source OCR queue helper coverage proving completed/failed jobs do not block the next pending `source_ocr` job.
+- Added Google OCR unit coverage for fullTextAnnotation, textAnnotations fallback, empty-page continuation, and Data Organization source text quality.
+
+### Files touched
+
+- `actions/queue-jobs.ts`
+- `lib/extraction/google-ocr.ts`
+- `lib/extraction/pdf-ocr.ts`
+- `lib/extraction/source-ocr-provider.ts`
+- `lib/source-ocr-queue.ts`
+- `lib/source-ocr-updates.ts`
+- `scripts/validate-scanned-pdf.ts`
+- `tests/google-ocr.test.ts`
+- `tests/queue.test.ts`
+- `tests/source-ocr-updates.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Google Vision was reachable locally but failures were collapsing into a generic no-text result. The app needed enough internal diagnostics to distinguish bad credentials, bad rendered images, empty Vision pages, and classifier rejection, while keeping student-facing states simple. Queue continuation also needed explicit test coverage so completed/failed OCR rows cannot hold the concurrency slot.
+
+### Tests run
+
+- `npm run typecheck` - passed.
+- `npm run lint` - passed.
+- `npm test -- google-ocr source-ocr-updates queue` - passed, 213 tests.
+- `npm test -- pdf-extractor source-ocr-updates deep-learn-readiness deep-learn-generation canvas-content-resolution learn-resource-ui queue` - passed, 213 tests.
+- `npx tsx scripts/validate-scanned-pdf.ts --pdf "C:\Users\omgra\Downloads\1.1-Data Organization.pdf" --provider google_vision --debug-images` - initially failed because `.env.local` pointed at a missing credential JSON.
+- `$env:GOOGLE_APPLICATION_CREDENTIALS='C:\Users\omgra\secrets\stay-focus-492811-b864d33bf846.json'; npx tsx scripts/validate-scanned-pdf.ts --pdf "C:\Users\omgra\Downloads\1.1-Data Organization.pdf" --provider google_vision --debug-images` - passed.
+
+### Verification result
+
+- Google Vision recovered Data Organization text successfully from 24 rendered pages.
+- Validator reported raw provider chars `3158`, accepted useful chars `3181`, page status summary `completed=24, empty=0, failed=0`, first page image `1800x1013`, first page bytes `743099`, and `blank=false`.
+- Data Organization expected terms passed:
+  - DATA ORGANIZATION
+  - OLTP
+  - Online Transaction Processing
+  - ODS
+  - Operational Data Store
+  - Subject-Oriented
+  - Integrated
+  - Current Valued
+  - Volatile
+- OCR persistence produced `extraction_status=completed`, `visual_extraction_status=completed`, `sourceTextQuality=meaningful`, `canGenerate=true`, and partial-ready state with 27 remaining pages.
+- Debug images were generated under `tmp/ocr-debug` during validation and removed before commit.
+
+### Known risks
+
+- `.env.local` currently points `GOOGLE_APPLICATION_CREDENTIALS` to `C:\Users\omgra\secrets\stay-focused-vision-ocr.json`, which does not exist locally. The working credential file found locally is `C:\Users\omgra\secrets\stay-focus-492811-b864d33bf846.json`. `.env.local` was not edited or committed.
+- Source OCR queue advancement is still app-triggered by route polling/actions and in-process continuation, not a durable external worker.
+- `OCR_MAX_PAGES_PER_JOB=24` means longer decks continue as partial-ready and require continuation for remaining pages.
+
+### Blockers
+
+- No code blocker.
+- Local validation needs the credential path corrected outside Git or supplied in the shell as shown above.
+
+### Next recommended step
+
+Correct the local/preview Google credential path, then run a Canvas resync and confirm `2-Warehousing Schema.pdf` and `3-OLAP.pdf` advance through the Study Queue after `1.1-Data Organization.pdf` completes.
+
+### Suggested commit message
+
+```
+fix Google Vision OCR extraction and queue continuation
+```

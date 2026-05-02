@@ -56,9 +56,11 @@ import {
   buildSourceOcrQueueTitle,
   buildSourceOcrStatusMessage,
   calculateSourceOcrProgress,
+  canStartNextSourceOcrJob,
   countFailedSourceOcrJobs,
   countRunningSourceOcrJobs,
   findActiveSourceOcrJob,
+  findNextPendingSourceOcrJob,
   findRecentFailedSourceOcrJob,
   findStaleRunningCanvasSyncJobs,
   findStaleRunningSourceOcrJobs,
@@ -487,7 +489,8 @@ export async function processNextPendingSourceOcrJobForUser(userId: string): Pro
     .eq('type', 'source_ocr')
     .eq('status', 'running')
     .limit(1)
-  if (runningRows && runningRows.length > 0) return
+  const runningJobs = ((runningRows ?? []) as Record<string, unknown>[]).map(rowToQueuedJobForAutoOcr)
+  if (!canStartNextSourceOcrJob(runningJobs)) return
 
   const { data, error } = await supabase
     .from('queued_jobs')
@@ -500,6 +503,7 @@ export async function processNextPendingSourceOcrJobForUser(userId: string): Pro
 
   if (error || !data || data.length === 0) return
   const job = rowToQueuedJobForAutoOcr((data as Record<string, unknown>[])[0])
+  if (!findNextPendingSourceOcrJob([job])) return
   const resourceId = getSourceOcrJobResourceId(job)
   const moduleId = getStringFromJobField(job, 'moduleId')
   if (!resourceId || !moduleId) return

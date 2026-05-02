@@ -8,6 +8,8 @@ export interface SourceOcrRunInput {
   pageCount?: number | null
   pagesToProcess?: number[]
   maxPages?: number
+  debugImages?: boolean
+  debugImagesDir?: string
   onPageStart?: Parameters<typeof extractScannedPdfTextWithOpenAI>[0]['onPageStart']
   onPageResult?: Parameters<typeof extractScannedPdfTextWithOpenAI>[0]['onPageResult']
 }

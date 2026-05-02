@@ -35,6 +35,8 @@ export interface PdfOcrPage {
   attempts: number
   imageWidth: number | null
   imageHeight: number | null
+  imageByteSize?: number | null
+  imageBlank?: boolean | null
 }
 
 const MAX_PDF_BYTES = 50 * 1024 * 1024

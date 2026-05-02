@@ -1,5 +1,6 @@
 import { createPrivateKey, createSign } from 'node:crypto'
-import { readFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { createIsomorphicCanvasFactory, getDocumentProxy, renderPageAsImage } from 'unpdf'
 import { DEFAULT_OCR_MAX_PAGES_PER_JOB } from '@/lib/source-ocr-config'
 import { MIN_USEFUL_OCR_CHARS, PER_PAGE_OCR_TIMEOUT_MS, type PdfOcrPage, type PdfOcrResult } from '@/lib/extraction/pdf-ocr'
@@ -19,6 +20,8 @@ export async function extractScannedPdfTextWithGoogle(input: {
   pageCount?: number | null
   pagesToProcess?: number[]
   maxPages?: number
+  debugImages?: boolean
+  debugImagesDir?: string
   onPageStart?: (progress: {
     pageNumber: number
     pagesProcessed: number
@@ -78,12 +81,17 @@ export async function extractScannedPdfTextWithGoogle(input: {
       })
 
       let page: PdfOcrPage
+      let image: RenderedPdfPage | null = null
       try {
-        const image = await renderPdfPage(pdf, pageNumber, renderWidth)
+        image = await renderPdfPage(pdf, pageNumber, renderWidth)
+        if (input.debugImages) {
+          saveDebugImage(input.debugImagesDir, input.filename, pageNumber, image.buffer)
+        }
+        const renderedImage = image
         page = await withPageTimeout(
           () => input.provider === 'google_document_ai'
-            ? runDocumentAiPageOcr({ image, pageNumber, provider, model })
-            : runVisionPageOcr({ image, pageNumber, provider, model }),
+            ? runDocumentAiPageOcr({ image: renderedImage, pageNumber, provider, model })
+            : runVisionPageOcr({ image: renderedImage, pageNumber, provider, model }),
           PER_PAGE_OCR_TIMEOUT_MS,
         )
       } catch (error) {
@@ -98,8 +106,10 @@ export async function extractScannedPdfTextWithGoogle(input: {
           error: normalizeErrorMessage(error),
           refusal: false,
           attempts: 1,
-          imageWidth: null,
-          imageHeight: null,
+          imageWidth: image?.width ?? null,
+          imageHeight: image?.height ?? null,
+          imageByteSize: image?.byteSize ?? null,
+          imageBlank: image?.blank ?? null,
         }
       }
 
@@ -112,50 +122,16 @@ export async function extractScannedPdfTextWithGoogle(input: {
       })
     }
 
-    const mergedText = mergeSuccessfulPageText(pageResults)
-    if (!mergedText || mergedText.length < MIN_USEFUL_OCR_CHARS) {
-      return {
-        status: 'failed',
-        text: '',
-        charCount: 0,
-        pages: pageResults,
-        provider,
-        error: 'OCR finished, but no useful text was recovered from the rendered PDF pages. Open the original file.',
-        metadata: buildOcrMetadata({
-          provider,
-          model,
-          inputBytes: input.buffer.length,
-          pageCount: input.pageCount ?? totalPages,
-          totalPagesInDocument: totalPages,
-          pagesProcessed: pageNumbersToRun.length,
-          pages: pageResults,
-          usefulCharCount: mergedText.length,
-          truncated: totalPages > pageNumbersToRun.length,
-          status: 'no_text',
-        }),
-      }
-    }
-
-    return {
-      status: 'completed',
-      text: mergedText,
-      charCount: mergedText.length,
-      pages: pageResults,
+    return buildGoogleOcrResultFromPages({
       provider,
-      error: null,
-      metadata: buildOcrMetadata({
-        provider,
-        model,
-        inputBytes: input.buffer.length,
-        pageCount: input.pageCount ?? totalPages,
-        totalPagesInDocument: totalPages,
-        pagesProcessed: pageNumbersToRun.length,
-        pages: pageResults,
-        usefulCharCount: mergedText.length,
-        truncated: totalPages > pageNumbersToRun.length,
-        status: 'completed',
-      }),
-    }
+      model,
+      inputBytes: input.buffer.length,
+      pageCount: input.pageCount ?? totalPages,
+      totalPagesInDocument: totalPages,
+      pagesProcessed: pageNumbersToRun.length,
+      pages: pageResults,
+      truncated: totalPages > pageNumbersToRun.length,
+    })
   } catch (error) {
     return buildFailedResult(provider, `OCR failed: ${normalizeErrorMessage(error)}`)
   } finally {
@@ -190,8 +166,10 @@ async function runVisionPageOcr(input: {
   const json = await response.json().catch(() => null) as GoogleVisionAnnotateResponse | null
   if (!response.ok) throw new Error(extractGoogleError(json) ?? `Google Vision returned HTTP ${response.status}.`)
 
-  const annotation = json?.responses?.[0]?.fullTextAnnotation
-  const text = normalizeOcrText(annotation?.text ?? '')
+  const firstResponse = json?.responses?.[0]
+  if (firstResponse?.error?.message) throw new Error(firstResponse.error.message)
+  const annotation = firstResponse?.fullTextAnnotation
+  const text = extractGoogleVisionTextFromResponse(json)
   const confidence = averageNumbers(annotation?.pages?.map((page) => page.confidence).filter(isFiniteNumber) ?? [])
   return buildPage({
     pageNumber: input.pageNumber,
@@ -201,6 +179,62 @@ async function runVisionPageOcr(input: {
     model: input.model,
     image: input.image,
   })
+}
+
+export function extractGoogleVisionTextFromResponse(json: GoogleVisionAnnotateResponse | null): string {
+  const firstResponse = json?.responses?.[0]
+  return normalizeOcrText(
+    firstResponse?.fullTextAnnotation?.text
+    ?? firstResponse?.textAnnotations?.[0]?.description
+    ?? '',
+  )
+}
+
+export function buildGoogleOcrResultFromPages(input: {
+  provider: string
+  model: string
+  inputBytes: number
+  pageCount: number | null
+  totalPagesInDocument: number
+  pagesProcessed: number
+  pages: PdfOcrPage[]
+  truncated: boolean
+}): PdfOcrResult {
+  const mergedText = mergeSuccessfulPageText(input.pages)
+  const metadata = buildOcrMetadata({
+    provider: input.provider,
+    model: input.model,
+    inputBytes: input.inputBytes,
+    pageCount: input.pageCount,
+    totalPagesInDocument: input.totalPagesInDocument,
+    pagesProcessed: input.pagesProcessed,
+    pages: input.pages,
+    usefulCharCount: mergedText.length,
+    truncated: input.truncated,
+    status: mergedText.length >= MIN_USEFUL_OCR_CHARS ? 'completed' : 'no_text',
+  })
+
+  if (!mergedText || mergedText.length < MIN_USEFUL_OCR_CHARS) {
+    return {
+      status: 'failed',
+      text: '',
+      charCount: 0,
+      pages: input.pages,
+      provider: input.provider,
+      error: 'OCR finished, but no useful text was recovered from the rendered PDF pages. Open the original file.',
+      metadata,
+    }
+  }
+
+  return {
+    status: 'completed',
+    text: mergedText,
+    charCount: mergedText.length,
+    pages: input.pages,
+    provider: input.provider,
+    error: null,
+    metadata,
+  }
 }
 
 async function runDocumentAiPageOcr(input: {
@@ -257,11 +291,14 @@ async function renderPdfPage(
     canvasImport: CANVAS_IMPORT,
     width,
   })
+  const buffer = Buffer.from(image)
 
   return {
-    buffer: Buffer.from(image),
+    buffer,
     width: Math.round(viewport.width * scale),
     height: Math.round(viewport.height * scale),
+    byteSize: buffer.length,
+    blank: await isRenderedImageBlank(buffer),
   }
 }
 
@@ -287,6 +324,8 @@ function buildPage(input: {
       attempts: 1,
       imageWidth: input.image.width,
       imageHeight: input.image.height,
+      imageByteSize: input.image.byteSize,
+      imageBlank: input.image.blank,
     }
   }
 
@@ -303,6 +342,8 @@ function buildPage(input: {
     attempts: 1,
     imageWidth: input.image.width,
     imageHeight: input.image.height,
+    imageByteSize: input.image.byteSize,
+    imageBlank: input.image.blank,
   }
 }
 
@@ -367,11 +408,20 @@ function buildOcrMetadata(input: {
       pagesProcessed: input.pagesProcessed,
       inputBytes: input.inputBytes,
       usefulCharCount: input.usefulCharCount,
+      rawProviderCharCount: input.pages.reduce((sum, page) => sum + page.charCount, 0),
       successfulPages: input.pages.filter((page) => page.status === 'completed').length,
       failedPages: input.pages.filter((page) => page.status === 'failed').length,
       emptyPages: input.pages.filter((page) => page.status === 'empty').length,
       truncated: input.truncated,
       pages: input.pages,
+      renderedImages: input.pages.map((page) => ({
+        pageNumber: page.pageNumber,
+        byteSize: page.imageByteSize ?? null,
+        width: page.imageWidth ?? null,
+        height: page.imageHeight ?? null,
+        blank: page.imageBlank ?? null,
+        status: page.status,
+      })),
       completedAt: new Date().toISOString(),
     },
   }
@@ -492,6 +542,48 @@ function getConfiguredPositiveInt(value: string | undefined, fallback: number) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
 }
 
+function saveDebugImage(debugImagesDir: string | undefined, filename: string, pageNumber: number, buffer: Buffer) {
+  const dir = debugImagesDir?.trim() || join(process.cwd(), 'tmp', 'ocr-debug')
+  mkdirSync(dir, { recursive: true })
+  const safeBase = filename.replace(/[^a-z0-9._-]+/gi, '_').slice(0, 80) || 'scanned-pdf'
+  writeFileSync(join(dir, `${safeBase}-page-${pageNumber}.png`), buffer)
+}
+
+async function isRenderedImageBlank(buffer: Buffer): Promise<boolean | null> {
+  try {
+    const canvasModule = await CANVAS_IMPORT() as unknown as {
+      createCanvas: (width: number, height: number) => {
+        getContext: (type: '2d') => {
+          drawImage: (image: unknown, x: number, y: number, width: number, height: number) => void
+          getImageData: (x: number, y: number, width: number, height: number) => { data: Uint8ClampedArray }
+        }
+      }
+      loadImage: (buffer: Buffer) => Promise<{ width: number; height: number }>
+    }
+    const image = await canvasModule.loadImage(buffer)
+    const sampleWidth = Math.min(64, image.width)
+    const sampleHeight = Math.min(64, image.height)
+    if (sampleWidth <= 0 || sampleHeight <= 0) return null
+    const canvas = canvasModule.createCanvas(sampleWidth, sampleHeight)
+    const ctx = canvas.getContext('2d')
+    ctx.drawImage(image, 0, 0, sampleWidth, sampleHeight)
+    const data = ctx.getImageData(0, 0, sampleWidth, sampleHeight).data
+    let min = 255
+    let max = 0
+    let nonWhite = 0
+    for (let index = 0; index < data.length; index += 4) {
+      const avg = Math.round((data[index] + data[index + 1] + data[index + 2]) / 3)
+      min = Math.min(min, avg)
+      max = Math.max(max, avg)
+      if (avg < 248) nonWhite += 1
+    }
+    const pixels = data.length / 4
+    return (max - min) < 4 || nonWhite / pixels < 0.001
+  } catch {
+    return null
+  }
+}
+
 function withPageTimeout<T>(fn: () => Promise<T>, ms: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     let settled = false
@@ -530,14 +622,17 @@ interface RenderedPdfPage {
   buffer: Buffer
   width: number
   height: number
+  byteSize: number
+  blank: boolean | null
 }
 
-interface GoogleVisionAnnotateResponse {
+export interface GoogleVisionAnnotateResponse {
   responses?: Array<{
     fullTextAnnotation?: {
       text?: string
       pages?: Array<{ confidence?: number }>
     }
+    textAnnotations?: Array<{ description?: string }>
     error?: { message?: string }
   }>
   error?: { message?: string }

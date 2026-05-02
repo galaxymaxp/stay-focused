@@ -180,6 +180,13 @@ test('completed Data Organization OCR persists thousands of chars and actual PDF
   assert.match(update.extracted_text ?? '', /OLTP/i)
   assert.match(update.extracted_text ?? '', /Operational Data Store/i)
   assert.equal(update.metadata.extractedTextQuality, 'meaningful')
+  const diagnostics = (update.metadata.pdfOcr as Record<string, unknown>).diagnostics as Record<string, unknown>
+  assert.equal(diagnostics.provider, 'test_ocr')
+  assert.equal(diagnostics.pagesAttempted, 20)
+  assert.ok(Number(diagnostics.totalRawOcrChars) > 3000)
+  assert.ok(Number(diagnostics.totalAcceptedUsefulChars) > 3000)
+  assert.match(String(diagnostics.ocrTextPreview), /DATA ORGANIZATION/)
+  assert.deepEqual((diagnostics.sourceTextQuality as Record<string, unknown>).quality, 'meaningful')
 })
 
 test('OCR refusal text is stored as metadata and not mirrored into extracted text', () => {

@@ -5,8 +5,10 @@ import {
   buildSourceOcrQueueTitle,
   buildSourceOcrStatusMessage,
   calculateSourceOcrProgress,
+  canStartNextSourceOcrJob,
   countActiveSourceOcrJobs,
   countRunningSourceOcrJobs,
+  findNextPendingSourceOcrJob,
   findStaleRunningCanvasSyncJobs,
   findActiveSourceOcrJob,
   findRecentFailedSourceOcrJob,
@@ -61,6 +63,43 @@ test('source OCR active count includes queued and running OCR jobs for queue pil
 
   assert.equal(countActiveSourceOcrJobs(jobs), 2)
   assert.equal(countRunningSourceOcrJobs(jobs), 1)
+})
+
+test('source OCR concurrency cap ignores completed and failed jobs', () => {
+  const jobs = [
+    createJob({ id: 'ocr-completed', type: 'source_ocr', status: 'completed', resourceId: 'resource-1' }),
+    createJob({ id: 'ocr-failed', type: 'source_ocr', status: 'failed', resourceId: 'resource-2' }),
+  ]
+
+  assert.equal(countRunningSourceOcrJobs(jobs), 0)
+  assert.equal(canStartNextSourceOcrJob(jobs), true)
+})
+
+test('source OCR concurrency cap blocks only while a job is running', () => {
+  const jobs = [
+    createJob({ id: 'ocr-running', type: 'source_ocr', status: 'running', resourceId: 'resource-1' }),
+    createJob({ id: 'ocr-pending', type: 'source_ocr', status: 'pending', resourceId: 'resource-2' }),
+  ]
+
+  assert.equal(canStartNextSourceOcrJob(jobs), false)
+})
+
+test('source OCR queue selects next pending job after one completes', () => {
+  const jobs = [
+    createJob({ id: 'ocr-completed', type: 'source_ocr', status: 'completed', resourceId: 'resource-1', createdAt: '2026-05-02T09:00:00.000Z' }),
+    createJob({ id: 'ocr-next', type: 'source_ocr', status: 'pending', resourceId: 'resource-2', createdAt: '2026-05-02T09:01:00.000Z' }),
+  ]
+
+  assert.equal(findNextPendingSourceOcrJob(jobs)?.id, 'ocr-next')
+})
+
+test('source OCR queue selects next pending job after one fails', () => {
+  const jobs = [
+    createJob({ id: 'ocr-failed', type: 'source_ocr', status: 'failed', resourceId: 'resource-1', createdAt: '2026-05-02T09:00:00.000Z' }),
+    createJob({ id: 'ocr-next', type: 'source_ocr', status: 'pending', resourceId: 'resource-2', createdAt: '2026-05-02T09:01:00.000Z' }),
+  ]
+
+  assert.equal(findNextPendingSourceOcrJob(jobs)?.id, 'ocr-next')
 })
 
 test('source OCR recent failure guard blocks auto retry briefly', () => {
@@ -200,6 +239,7 @@ function createJob(input: {
   resourceId: string
   resourceTitle?: string
   completedAt?: string | null
+  createdAt?: string
   updatedAt?: string
 }): QueuedJob {
   return {
@@ -214,7 +254,7 @@ function createJob(input: {
     error: null,
     attempts: 0,
     maxAttempts: 3,
-    createdAt: '2026-05-02T09:00:00.000Z',
+    createdAt: input.createdAt ?? '2026-05-02T09:00:00.000Z',
     updatedAt: input.updatedAt ?? '2026-05-02T09:00:00.000Z',
     startedAt: null,
     completedAt: input.completedAt ?? null,
