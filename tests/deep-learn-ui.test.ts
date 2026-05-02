@@ -28,6 +28,26 @@ test('ready packs surface quiz-ready state and pack-first actions', () => {
   assert.match(state.detail, /answer-bank review/i)
 })
 
+test('packs generated from bad source grounding are blocked in the UI', () => {
+  const state = getDeepLearnResourceUiState('module-1', 'resource-1', createNote({
+    status: 'ready',
+    sourceGrounding: {
+      sourceType: 'PDF',
+      extractionQuality: 'empty',
+      sourceTextQuality: 'refusal',
+      groundingStrategy: 'stored_extract',
+      usedAiFallback: false,
+      qualityReason: 'OCR returned refusal text.',
+      warning: 'Visual extraction did not find enough usable study text. Try OCR again or open the original source.',
+      charCount: 73,
+    },
+  }))
+
+  assert.equal(state.status, 'blocked')
+  assert.equal(state.primaryLabel, 'Open Source')
+  assert.match(state.detail, /usable study text/i)
+})
+
 test('failed packs shift the action to rebuild', () => {
   const state = getDeepLearnResourceUiState('module-1', 'resource-1', createNote({
     status: 'failed',

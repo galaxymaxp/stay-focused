@@ -165,6 +165,25 @@ test('image-only PDFs map to no selectable text and OCR-required copy', () => {
   assert.equal(state.summary, 'This PDF appears to be image-based. Run visual extraction first.')
 })
 
+test('visual OCR refusal text does not surface as ready reader content', () => {
+  const refusalText = "I'm unable to transcribe text from images or scanned documents at this time."
+  const state = getLearnResourceUiState(createResource({
+    extractionStatus: 'empty',
+    extractedText: null,
+    extractedTextPreview: null,
+    visualExtractionStatus: 'failed',
+    visualExtractedText: refusalText,
+    visualExtractionError: 'Visual extraction did not find enough usable study text. Try OCR again or open the original source.',
+    previewState: 'no_text_available',
+  }), {
+    hasOriginalFile: true,
+    hasCanvasLink: true,
+  })
+
+  assert.equal(state.statusKey, 'visual_ocr_failed')
+  assert.match(state.detail, /usable study text/i)
+})
+
 function createResource(overrides: Partial<LearnResourceUiLike> = {}): LearnResourceUiLike {
   return {
     type: 'File',

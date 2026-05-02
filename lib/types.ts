@@ -18,6 +18,7 @@ export type DeepLearnNoteStatus = 'pending' | 'ready' | 'failed'
 export type DeepLearnTermImportance = 'high' | 'medium' | 'low'
 export type DeepLearnGroundingStrategy = 'stored_extract' | 'source_refetch' | 'scan_fallback' | 'context_only' | 'insufficient'
 export type DeepLearnReadiness = 'text_ready' | 'partial_text' | 'scan_fallback' | 'unreadable'
+export type ExtractedTextQuality = 'meaningful' | 'too_short' | 'refusal' | 'metadata_only' | 'boilerplate' | 'empty'
 export type DeepLearnBlockedReason =
   | 'no_stored_resource'
   | 'no_source_path'
@@ -215,6 +216,7 @@ export interface DeepLearnMultipleChoiceItem extends DeepLearnReviewLinkFields {
 export interface DeepLearnSourceGrounding {
   sourceType: string | null
   extractionQuality: string | null
+  sourceTextQuality?: ExtractedTextQuality | null
   groundingStrategy: DeepLearnGroundingStrategy
   usedAiFallback: boolean
   qualityReason: string | null

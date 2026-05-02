@@ -1,4 +1,5 @@
 import OpenAI from 'openai'
+import { createIsomorphicCanvasFactory, getDocumentProxy, renderPageAsImage } from 'unpdf'
 
 export type PdfOcrResult =
   | {
@@ -14,7 +15,7 @@ export type PdfOcrResult =
     status: 'failed'
     text: ''
     charCount: 0
-    pages: []
+    pages: PdfOcrPage[]
     provider: string
     error: string
     metadata: Record<string, unknown>
@@ -24,11 +25,24 @@ export interface PdfOcrPage {
   pageNumber: number
   text: string
   charCount: number
+  status: 'completed' | 'empty' | 'failed'
+  confidence: number | null
+  provider: string
+  model: string
+  error: string | null
+  refusal: boolean
+  attempts: number
+  imageWidth: number | null
+  imageHeight: number | null
 }
 
 const MAX_PDF_BYTES = 50 * 1024 * 1024
-const DEFAULT_MAX_OUTPUT_TOKENS = 12000
+const DEFAULT_MAX_PAGES_PER_RUN = 24
+const DEFAULT_RENDER_WIDTH = 1800
+const DEFAULT_RENDER_RETRY_WIDTH = 2400
 const MIN_USEFUL_OCR_CHARS = 120
+const MAX_OUTPUT_TOKENS_PER_PAGE = 1200
+const CANVAS_IMPORT = () => import('@napi-rs/canvas')
 
 export async function extractScannedPdfTextWithOpenAI(input: {
   buffer: Buffer
@@ -36,96 +50,230 @@ export async function extractScannedPdfTextWithOpenAI(input: {
   pageCount?: number | null
 }): Promise<PdfOcrResult> {
   const apiKey = process.env.OPENAI_API_KEY
-  const provider = process.env.OPENAI_OCR_MODEL?.trim() || 'gpt-4o-mini'
+  const model = process.env.OPENAI_OCR_MODEL?.trim() || 'gpt-4o-mini'
+  const maxPages = getConfiguredPositiveInt(process.env.OPENAI_OCR_MAX_PAGES, DEFAULT_MAX_PAGES_PER_RUN)
+  const renderWidth = getConfiguredPositiveInt(process.env.OPENAI_OCR_RENDER_WIDTH, DEFAULT_RENDER_WIDTH)
+  const retryRenderWidth = getConfiguredPositiveInt(process.env.OPENAI_OCR_RETRY_RENDER_WIDTH, DEFAULT_RENDER_RETRY_WIDTH)
 
   if (!apiKey) {
-    return buildFailedResult(provider, 'OPENAI_API_KEY is not set, so OCR cannot run.')
+    return buildFailedResult(model, 'OPENAI_API_KEY is not set, so OCR cannot run.')
   }
 
   if (input.buffer.length === 0) {
-    return buildFailedResult(provider, 'The PDF download was empty, so OCR cannot run.')
+    return buildFailedResult(model, 'The PDF download was empty, so OCR cannot run.')
   }
 
   if (input.buffer.length > MAX_PDF_BYTES) {
-    return buildFailedResult(provider, 'This PDF is larger than the 50 MB OCR input limit. Open the original file instead.')
+    return buildFailedResult(model, 'This PDF is larger than the 50 MB OCR input limit. Open the original file instead.')
   }
 
-  try {
-    const client = new OpenAI({ apiKey })
-    const response = await client.responses.create({
-      model: provider,
-      max_output_tokens: DEFAULT_MAX_OUTPUT_TOKENS,
-      input: [
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'input_file',
-              filename: sanitizeFilename(input.filename),
-              file_data: `data:application/pdf;base64,${input.buffer.toString('base64')}`,
-            },
-            {
-              type: 'input_text',
-              text: buildOcrPrompt(input.pageCount),
-            },
-          ],
-        },
-      ],
-    })
-    const rawText = typeof response.output_text === 'string' ? response.output_text : ''
-    const text = normalizeOcrText(rawText)
-    const pages = parsePageLevelOcrText(text)
+  const provider = `openai:${model}`
+  const client = new OpenAI({ apiKey })
+  const CanvasFactory = await createIsomorphicCanvasFactory(CANVAS_IMPORT)
+  const pdf = await getDocumentProxy(new Uint8Array(input.buffer), { CanvasFactory })
 
-    if (!text) {
-      return {
-        status: 'failed',
-        text: '',
-        charCount: 0,
-        pages: [],
+  try {
+    const totalPages = pdf.numPages
+    const pagesToProcess = Math.min(totalPages, maxPages)
+    const pageResults: PdfOcrPage[] = []
+
+    for (let pageNumber = 1; pageNumber <= pagesToProcess; pageNumber += 1) {
+      const page = await runPageOcr({
+        client,
+        pdf,
+        pageNumber,
+        model,
         provider,
-        error: 'OCR finished, but no legible text was returned. Open the original file.',
-        metadata: buildOcrMetadata(provider, input, response.id, rawText.length, 'no_text', []),
-      }
+        widths: [renderWidth, retryRenderWidth],
+      })
+      pageResults.push(page)
     }
 
-    if (text.length < MIN_USEFUL_OCR_CHARS) {
+    const successfulPages = pageResults.filter((page) => page.status === 'completed' && page.text.trim())
+    const mergedText = successfulPages
+      .map((page) => `Page ${page.pageNumber}:\n${page.text.trim()}`)
+      .join('\n\n')
+      .trim()
+
+    if (!mergedText || mergedText.length < MIN_USEFUL_OCR_CHARS) {
       return {
         status: 'failed',
         text: '',
         charCount: 0,
-        pages: [],
+        pages: pageResults,
         provider,
-        error: 'OCR finished, but the recovered text was too short to ground Deep Learn. Open the original file.',
-        metadata: buildOcrMetadata(provider, input, response.id, rawText.length, 'no_text', pages),
+        error: 'OCR finished, but no useful text was recovered from the rendered PDF pages. Open the original file.',
+        metadata: buildOcrMetadata({
+          provider,
+          model,
+          inputBytes: input.buffer.length,
+          pageCount: input.pageCount ?? totalPages,
+          totalPagesInDocument: totalPages,
+          pagesProcessed: pagesToProcess,
+          pages: pageResults,
+          usefulCharCount: mergedText.length,
+          truncated: totalPages > pagesToProcess,
+          status: 'no_text',
+        }),
       }
     }
 
     return {
       status: 'completed',
-      text,
-      charCount: text.length,
-      pages,
+      text: mergedText,
+      charCount: mergedText.length,
+      pages: pageResults,
       provider,
       error: null,
-      metadata: buildOcrMetadata(provider, input, response.id, rawText.length, 'completed', pages),
+      metadata: buildOcrMetadata({
+        provider,
+        model,
+        inputBytes: input.buffer.length,
+        pageCount: input.pageCount ?? totalPages,
+        totalPagesInDocument: totalPages,
+        pagesProcessed: pagesToProcess,
+        pages: pageResults,
+        usefulCharCount: mergedText.length,
+        truncated: totalPages > pagesToProcess,
+        status: 'completed',
+      }),
     }
   } catch (error) {
     return buildFailedResult(provider, `OCR failed: ${normalizeErrorMessage(error)}`)
+  } finally {
+    await pdf.destroy()
   }
 }
 
-function buildOcrPrompt(pageCount: number | null | undefined) {
-  const pageHint = typeof pageCount === 'number' && pageCount > 0
-    ? `The PDF has ${pageCount} detected page${pageCount === 1 ? '' : 's'}.`
-    : 'The PDF page count may be unknown.'
+async function runPageOcr(input: {
+  client: OpenAI
+  pdf: Awaited<ReturnType<typeof getDocumentProxy>>
+  pageNumber: number
+  model: string
+  provider: string
+  widths: number[]
+}): Promise<PdfOcrPage> {
+  let lastFailure: PdfOcrPage | null = null
 
+  for (let attemptIndex = 0; attemptIndex < input.widths.length; attemptIndex += 1) {
+    const width = input.widths[attemptIndex]
+    try {
+      const image = await renderPdfPage(input.pdf, input.pageNumber, width)
+      const response = await input.client.responses.create({
+        model: input.model,
+        max_output_tokens: MAX_OUTPUT_TOKENS_PER_PAGE,
+        input: [{
+          role: 'user',
+          content: [
+            {
+              type: 'input_text',
+              text: buildRenderedPagePrompt(input.pageNumber),
+            },
+            {
+              type: 'input_image',
+              detail: 'high',
+              image_url: `data:image/png;base64,${image.buffer.toString('base64')}`,
+            },
+          ],
+        }],
+      })
+
+      const rawText = typeof response.output_text === 'string' ? response.output_text : ''
+      const normalizedText = normalizeOcrText(rawText)
+      const refusal = looksLikeModelRefusal(normalizedText)
+      if (normalizedText && !refusal) {
+        return {
+          pageNumber: input.pageNumber,
+          text: normalizedText,
+          charCount: normalizedText.length,
+          status: 'completed',
+          confidence: null,
+          provider: input.provider,
+          model: input.model,
+          error: null,
+          refusal: false,
+          attempts: attemptIndex + 1,
+          imageWidth: image.width,
+          imageHeight: image.height,
+        }
+      }
+
+      lastFailure = {
+        pageNumber: input.pageNumber,
+        text: '',
+        charCount: 0,
+        status: refusal ? 'failed' : 'empty',
+        confidence: null,
+        provider: input.provider,
+        model: input.model,
+        error: refusal
+          ? `Model refusal on rendered page ${input.pageNumber}.`
+          : `No legible text returned for rendered page ${input.pageNumber}.`,
+        refusal,
+        attempts: attemptIndex + 1,
+        imageWidth: image.width,
+        imageHeight: image.height,
+      }
+    } catch (error) {
+      lastFailure = {
+        pageNumber: input.pageNumber,
+        text: '',
+        charCount: 0,
+        status: 'failed',
+        confidence: null,
+        provider: input.provider,
+        model: input.model,
+        error: normalizeErrorMessage(error),
+        refusal: false,
+        attempts: attemptIndex + 1,
+        imageWidth: null,
+        imageHeight: null,
+      }
+    }
+  }
+
+  return lastFailure ?? {
+    pageNumber: input.pageNumber,
+    text: '',
+    charCount: 0,
+    status: 'failed',
+    confidence: null,
+    provider: input.provider,
+    model: input.model,
+    error: `OCR did not return text for rendered page ${input.pageNumber}.`,
+    refusal: false,
+    attempts: input.widths.length,
+    imageWidth: null,
+    imageHeight: null,
+  }
+}
+
+async function renderPdfPage(
+  pdf: Awaited<ReturnType<typeof getDocumentProxy>>,
+  pageNumber: number,
+  width: number,
+) {
+  const page = await pdf.getPage(pageNumber)
+  const viewport = page.getViewport({ scale: 1 })
+  const scale = width / viewport.width
+  const image = await renderPageAsImage(pdf, pageNumber, {
+    canvasImport: CANVAS_IMPORT,
+    width,
+  })
+
+  return {
+    buffer: Buffer.from(image),
+    width: Math.round(viewport.width * scale),
+    height: Math.round(viewport.height * scale),
+  }
+}
+
+function buildRenderedPagePrompt(pageNumber: number) {
   return [
-    'Transcribe the visible text in this scanned or image-based PDF.',
-    pageHint,
-    'Return only text that is visible in the document. Do not summarize, infer missing words, explain the document, or add facts.',
-    'Keep the original reading order as well as you can. Add page headings as "Page 1:", "Page 2:", etc. only to separate pages.',
-    'If a page has no legible text, write "[No legible text]" for that page.',
-    'If the entire PDF has no legible text, return exactly "NO_TEXT_FOUND".',
+    `Transcribe only the visible text from PDF page ${pageNumber}.`,
+    'Return plain text only. Do not summarize, explain, refuse, or add facts.',
+    'Preserve reading order as closely as possible.',
+    'If the page has no legible text, return exactly NO_TEXT_FOUND.',
   ].join('\n')
 }
 
@@ -141,19 +289,12 @@ function normalizeOcrText(value: string) {
 
   if (!cleaned || /^NO_TEXT_FOUND\.?$/i.test(cleaned)) return ''
 
-  const withoutEmptyPageMarkers = cleaned
-    .split('\n')
-    .filter((line) => !/^\s*(?:page\s+\d+\s*:\s*)?\[no legible text\]\s*$/i.test(line))
-    .join('\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim()
-
-  return withoutEmptyPageMarkers
+  return cleaned
 }
 
-function sanitizeFilename(value: string) {
-  const normalized = value.replace(/[^\w.\- ()]+/g, '_').trim()
-  return normalized.toLowerCase().endsWith('.pdf') ? normalized : `${normalized || 'scanned-pdf'}.pdf`
+function looksLikeModelRefusal(value: string) {
+  if (!value) return false
+  return /\bI('| a)?m unable\b|\bI cannot\b|\bcan't assist\b|\bI can only\b|\bfeel free to ask\b/i.test(value)
 }
 
 function buildFailedResult(provider: string, error: string): PdfOcrResult {
@@ -175,49 +316,42 @@ function buildFailedResult(provider: string, error: string): PdfOcrResult {
   }
 }
 
-function buildOcrMetadata(
-  provider: string,
-  input: { buffer: Buffer; pageCount?: number | null },
-  responseId: string,
-  rawOutputLength: number,
-  status: 'completed' | 'no_text',
-  pages: PdfOcrPage[],
-) {
+function buildOcrMetadata(input: {
+  provider: string
+  model: string
+  inputBytes: number
+  pageCount: number | null
+  totalPagesInDocument: number
+  pagesProcessed: number
+  pages: PdfOcrPage[]
+  usefulCharCount: number
+  truncated: boolean
+  status: 'completed' | 'no_text'
+}) {
   return {
     pdfOcr: {
-      status,
-      provider,
-      responseId,
-      pageCount: input.pageCount ?? null,
-      inputBytes: input.buffer.length,
-      rawOutputLength,
-      pages,
+      status: input.status,
+      provider: input.provider,
+      model: input.model,
+      pageCount: input.pageCount,
+      totalPagesInDocument: input.totalPagesInDocument,
+      pagesProcessed: input.pagesProcessed,
+      inputBytes: input.inputBytes,
+      usefulCharCount: input.usefulCharCount,
+      successfulPages: input.pages.filter((page) => page.status === 'completed').length,
+      failedPages: input.pages.filter((page) => page.status === 'failed').length,
+      emptyPages: input.pages.filter((page) => page.status === 'empty').length,
+      truncated: input.truncated,
+      pages: input.pages,
       completedAt: new Date().toISOString(),
     },
   }
 }
 
-function parsePageLevelOcrText(text: string): PdfOcrPage[] {
-  const cleaned = text.trim()
-  if (!cleaned) return []
-
-  const matches = [...cleaned.matchAll(/(?:^|\n)\s*Page\s+(\d+)\s*:\s*/gi)]
-  if (matches.length === 0) {
-    return [{ pageNumber: 1, text: cleaned, charCount: cleaned.length }]
-  }
-
-  const pages: PdfOcrPage[] = []
-  for (let index = 0; index < matches.length; index += 1) {
-    const match = matches[index]
-    const pageNumber = Number.parseInt(match[1] ?? '', 10)
-    const start = match.index === undefined ? 0 : match.index + match[0].length
-    const end = matches[index + 1]?.index ?? cleaned.length
-    const pageText = cleaned.slice(start, end).trim()
-    if (!Number.isFinite(pageNumber) || pageNumber <= 0 || !pageText) continue
-    pages.push({ pageNumber, text: pageText, charCount: pageText.length })
-  }
-
-  return pages
+function getConfiguredPositiveInt(value: string | undefined, fallback: number) {
+  if (!value) return fallback
+  const parsed = Number.parseInt(value, 10)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
 }
 
 function normalizeErrorMessage(error: unknown) {

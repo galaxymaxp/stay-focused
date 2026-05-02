@@ -1,5 +1,6 @@
 import type { ModuleResource } from '@/lib/types'
 import type { PdfOcrResult } from '@/lib/extraction/pdf-ocr'
+import { BAD_OCR_BLOCKED_MESSAGE, classifyExtractedTextQuality } from '@/lib/extracted-text-quality'
 
 export interface ModuleResourceOcrUpdate {
   extraction_status: ModuleResource['extractionStatus']
@@ -67,28 +68,72 @@ export function buildOcrCompletedUpdate(input: {
 }): ModuleResourceOcrUpdate {
   const metadata = asPlainRecord(input.resource.metadata)
   const pages = Array.isArray(input.ocr.pages) ? input.ocr.pages : []
+  const classifiedPages = pages.map((page) => {
+    const quality = classifyExtractedTextQuality({
+      text: page.text,
+      title: input.resource.title,
+    })
+
+    return {
+      ...page,
+      textQuality: quality.quality,
+      usableText: quality.candidateText,
+      usableCharCount: quality.candidateCharCount,
+      qualityReason: quality.reason,
+    }
+  })
+  const mergedUsableText = classifiedPages
+    .map((page) => page.usableText)
+    .filter((text): text is string => Boolean(text))
+    .join('\n\n')
+    .trim()
+  const mergedQuality = classifyExtractedTextQuality({
+    text: mergedUsableText,
+    title: input.resource.title,
+  })
+  const mergedQualityLabel = mergedQuality.usable
+    ? mergedQuality.quality
+    : classifiedPages.some((page) => page.textQuality === 'refusal')
+      ? 'refusal'
+      : classifiedPages.some((page) => page.textQuality === 'boilerplate')
+        ? 'boilerplate'
+        : classifiedPages.some((page) => page.textQuality === 'metadata_only')
+          ? 'metadata_only'
+          : mergedQuality.quality
+  const hasUsableText = mergedQuality.usable
   return {
-    extraction_status: 'completed',
-    extracted_text: input.ocr.text,
-    extracted_text_preview: input.ocr.text.slice(0, 420),
-    extracted_char_count: input.ocr.charCount,
-    extraction_error: null,
-    visual_extraction_status: 'completed',
-    visual_extracted_text: input.ocr.text,
-    visual_extraction_error: null,
+    extraction_status: hasUsableText ? 'completed' : 'empty',
+    extracted_text: hasUsableText ? mergedQuality.candidateText : null,
+    extracted_text_preview: hasUsableText ? mergedQuality.candidateText.slice(0, 420) : null,
+    extracted_char_count: hasUsableText ? mergedQuality.candidateCharCount : 0,
+    extraction_error: hasUsableText ? null : BAD_OCR_BLOCKED_MESSAGE,
+    visual_extraction_status: hasUsableText ? 'completed' : 'failed',
+    visual_extracted_text: hasUsableText ? mergedQuality.candidateText : null,
+    visual_extraction_error: hasUsableText ? null : BAD_OCR_BLOCKED_MESSAGE,
     pages_processed: input.resource.pageCount ?? pages.length,
     extraction_provider: input.ocr.provider,
     metadata: {
       ...metadata,
       ...input.ocr.metadata,
-      visualExtractionPages: pages,
-      storedTextLength: input.ocr.charCount,
-      storedPreviewLength: Math.min(input.ocr.text.length, 420),
-      fullTextAvailable: true,
-      previewState: 'full_text_available',
-      fallbackState: null,
-      fallbackReason: null,
-      normalizedContentStatus: 'success',
+      visualExtractionPages: classifiedPages,
+      storedTextLength: hasUsableText ? mergedQuality.candidateCharCount : 0,
+      storedPreviewLength: hasUsableText ? Math.min(mergedQuality.candidateCharCount, 420) : 0,
+      fullTextAvailable: hasUsableText,
+      previewState: hasUsableText ? 'full_text_available' : 'no_text_available',
+      fallbackState: hasUsableText ? null : 'no_text_in_file',
+      fallbackReason: hasUsableText ? null : 'no_text_in_file',
+      normalizedContentStatus: hasUsableText ? 'success' : 'failed',
+      extractedTextQuality: mergedQualityLabel,
+      pdfOcr: {
+        ...asPlainRecord(metadata.pdfOcr),
+        ...asPlainRecord(input.ocr.metadata.pdfOcr),
+        status: hasUsableText ? 'completed' : 'failed',
+        provider: input.ocr.provider,
+        completedAt: input.now,
+        textQuality: mergedQualityLabel,
+        refusalDetected: mergedQualityLabel === 'refusal',
+        error: hasUsableText ? null : BAD_OCR_BLOCKED_MESSAGE,
+      },
     },
     updated_at: input.now,
   }

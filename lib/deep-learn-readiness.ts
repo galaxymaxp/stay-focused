@@ -4,6 +4,7 @@ import {
   type ModuleResourceCapabilityLike,
   type NormalizedModuleResourceSourceType,
 } from '@/lib/module-resource-capability'
+import { classifyExtractedTextQuality, classifyModuleResourceTextQuality } from '@/lib/extracted-text-quality'
 import { getModuleResourceQualityInfo } from '@/lib/module-resource-quality'
 import type { ModuleSourceResource } from '@/lib/module-workspace'
 import type { DeepLearnBlockedReason, DeepLearnReadiness, ModuleResource } from '@/lib/types'
@@ -21,16 +22,18 @@ export interface DeepLearnResourceReadiness {
 }
 
 export function hasUsableDeepLearnText(resource: Pick<ModuleResourceCapabilityLike, 'extractedText' | 'extractedTextPreview'> & {
+  title?: string | null
   extractedCharCount?: number | null
   visualExtractionStatus?: ModuleResource['visualExtractionStatus']
   visualExtractedText?: string | null
 }) {
-  const text = selectDeepLearnGroundingText(resource)
-  const charCount = typeof resource.extractedCharCount === 'number' && resource.extractedCharCount > 0
-    ? resource.extractedCharCount
-    : text.length
-
-  return Boolean(text.trim()) && charCount >= 120
+  return classifyModuleResourceTextQuality({
+    title: resource.title ?? null,
+    extractedText: resource.extractedText ?? null,
+    extractedTextPreview: resource.extractedTextPreview ?? null,
+    visualExtractionStatus: resource.visualExtractionStatus,
+    visualExtractedText: resource.visualExtractedText ?? null,
+  }).usable
 }
 
 export function classifyDeepLearnResourceReadiness(input: {
@@ -51,8 +54,15 @@ export function classifyDeepLearnResourceReadiness(input: {
   }
 
   const quality = getModuleResourceQualityInfo(sourceRecord)
-  const hasGroundingText = Boolean(selectDeepLearnGroundingText(sourceRecord))
-  const hasUsableText = hasUsableDeepLearnText(sourceRecord)
+  const textQuality = classifyModuleResourceTextQuality({
+    title: sourceRecord.title,
+    extractedText: sourceRecord.extractedText ?? null,
+    extractedTextPreview: sourceRecord.extractedTextPreview ?? null,
+    visualExtractionStatus: sourceRecord.visualExtractionStatus,
+    visualExtractedText: sourceRecord.visualExtractedText ?? null,
+  })
+  const hasGroundingText = Boolean(textQuality.candidateText)
+  const hasUsableText = textQuality.usable
   const canFetchSource = canAttemptDeepLearnSourceFetch(storedResource)
   const explicitBlockedReason = detectExplicitDeepLearnBlockedReason(sourceRecord)
 
@@ -116,7 +126,7 @@ export function classifyDeepLearnResourceReadiness(input: {
         : 'No readable text found. Deep Learn cannot generate from this source.',
       detail: hasUsableText
         ? 'The system will prefer compact, source-grounded answer units and may refetch the original source first if it can strengthen the extract.'
-        : 'The stored source text is too short to ground a trustworthy Deep Learn pack.',
+        : textQuality.reason,
     }
   }
 
@@ -173,19 +183,30 @@ export function isDeepLearnScanFallbackCapable(resource: ModuleResourceCapabilit
 
 export function selectDeepLearnGroundingText(
   resource: Pick<ModuleResourceCapabilityLike, 'extractedText' | 'extractedTextPreview'> & {
+    title?: string | null
     visualExtractionStatus?: ModuleResource['visualExtractionStatus']
     visualExtractedText?: string | null
   },
 ) {
-  const extractedText = resource.extractedText?.trim() ?? ''
-  if (extractedText) return extractedText
+  const extracted = classifyExtractedTextQuality({
+    text: resource.extractedText,
+    title: resource.title ?? null,
+  })
+  if (extracted.quality === 'meaningful') return extracted.candidateText
 
   if (resource.visualExtractionStatus === 'completed') {
-    return resource.visualExtractedText?.trim() ?? ''
+    const visual = classifyExtractedTextQuality({
+      text: resource.visualExtractedText,
+      title: resource.title ?? null,
+    })
+    if (visual.quality === 'meaningful') return visual.candidateText
   }
 
-  const extractedPreview = resource.extractedTextPreview?.trim() ?? ''
-  if (extractedPreview) return extractedPreview
+  const preview = classifyExtractedTextQuality({
+    text: resource.extractedTextPreview,
+    title: resource.title ?? null,
+  })
+  if (preview.quality === 'meaningful') return preview.candidateText
 
   return ''
 }

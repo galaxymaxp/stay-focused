@@ -465,3 +465,124 @@ Scanned PDFs with no parsed text could still trigger Deep Learn output from stal
 
 ### Next step
 - Replace or augment the current OpenAI PDF-file OCR call with rendered-page vision extraction inside the app pipeline, then rerun the same validator and remove the validation-only fallback distinction.
+
+---
+
+## Session Update - 2026-05-02 (Production rendered-page OCR for scanned PDFs)
+
+### What changed
+- Replaced the scanned PDF OCR adapter in [lib/extraction/pdf-ocr.ts](/c:/Users/omgra/OneDrive/Documents/Projects/stay-focused/lib/extraction/pdf-ocr.ts) so production OCR now renders PDF pages to images first and sends rendered page images to the vision model.
+- Added direct runtime dependency on `@napi-rs/canvas` so `unpdf` can render pages server-side in Node.
+- OCR now runs page-by-page with bounded rendering and retries:
+  - max pages per run: default `24` (`OPENAI_OCR_MAX_PAGES`)
+  - first render width: default `1800`
+  - retry render width for empty/failed pages: default `2400`
+- Page-level OCR metadata now stores:
+  - page number
+  - extracted text
+  - char count
+  - status (`completed` / `empty` / `failed`)
+  - provider/model
+  - refusal flag
+  - page-level error
+  - attempts
+  - rendered image dimensions
+- OCR merge still writes usable text into `module_resources.extracted_text`, preview, and char count only when enough useful text exists.
+- Updated [scripts/validate-scanned-pdf.ts](/c:/Users/omgra/OneDrive/Documents/Projects/stay-focused/scripts/validate-scanned-pdf.ts) to use the same production OCR path instead of the old validation-only offline fallback.
+
+### Real-file result
+- Production rendered-page OCR validated against local file:
+  `C:\Users\omgra\Downloads\1.1-Data Organization.pdf`
+- Pre-OCR behavior remained correct:
+  - normal parse returned `empty`
+  - `pdf_image_only_possible`
+  - Deep Learn readiness stayed blocked
+  - UI copy matched:
+    `This PDF appears to be image-based. Run visual extraction first.`
+- Production OCR recovered the expected terms from rendered pages:
+  `DATA ORGANIZATION`, `OLTP`, `Online Transaction Processing`, `ODS`, `Operational Data Store`, `Subject-Oriented`, `Integrated`, `Current Valued`, `Volatile`
+- Real-file validator passed using the production path, and Deep Learn generation stayed grounded in the selected OCR text without leaking stale module/course context.
+
+### Remaining risks
+- OCR currently caps processing to the first `24` pages per run by default. This worked for the real slide deck because the required material appeared early, but longer scanned PDFs may need a follow-up pass or a higher configured page cap.
+- Page-level confidence is still `null` because the OpenAI vision response does not expose OCR confidence scores.
+- The adapter is intentionally conservative: partial page failures are recorded in metadata, but the resource is only marked completed when the merged OCR text is useful overall.
+
+### Verification results
+- `npm run typecheck` passed.
+- `npm run lint` passed.
+- `npm test -- pdf-extractor source-ocr-updates deep-learn-readiness deep-learn-generation canvas-content-resolution learn-resource-ui` passed.
+- `npx tsx scripts/validate-scanned-pdf.ts --pdf "C:\Users\omgra\Downloads\1.1-Data Organization.pdf"` passed.
+
+### Next step
+- Add a resumable follow-up OCR path for truncated scanned PDFs so page ranges beyond the first run can be processed without redoing already successful pages.
+
+---
+
+## Session Update - 2026-05-02 (Deep Learn source-text quality gate for OCR refusal and metadata)
+
+### What changed
+- Added shared extracted-text classification in [lib/extracted-text-quality.ts](/c:/Users/omgra/OneDrive/Documents/Projects/stay-focused/lib/extracted-text-quality.ts) with these outcomes:
+  - `meaningful`
+  - `too_short`
+  - `refusal`
+  - `metadata_only`
+  - `boilerplate`
+  - `empty`
+- Deep Learn readiness now uses that classifier instead of treating any non-empty OCR string as usable text.
+- OCR completion in [lib/source-ocr-updates.ts](/c:/Users/omgra/OneDrive/Documents/Projects/stay-focused/lib/source-ocr-updates.ts) now:
+  - classifies each OCR page
+  - merges only usable page text
+  - refuses to mirror refusal/metadata/boilerplate text into `extracted_text`
+  - stores refusal/error state in metadata only
+  - keeps `extraction_status = empty` and `visual_extraction_status = failed` when OCR did not recover meaningful study text
+- Deep Learn prompt grounding in [lib/deep-learn-generation.ts](/c:/Users/omgra/OneDrive/Documents/Projects/stay-focused/lib/deep-learn-generation.ts) now strips prompt-side resource metadata that could become fake study material:
+  - removed resource UUID/id from the grounding block
+  - removed quality-note/source-warning text from the factual grounding block
+  - preserved only selected-resource source text as grounding
+- Saved Deep Learn pack UI in [lib/deep-learn-ui.ts](/c:/Users/omgra/OneDrive/Documents/Projects/stay-focused/lib/deep-learn-ui.ts) now blocks packs whose `sourceGrounding.sourceTextQuality` is not `meaningful`, or whose source grounding is obviously insufficient.
+- Learn resource UI and source-readiness checks now use the same quality gate so OCR refusal text does not surface as reader-ready content.
+- Real-file validator in [scripts/validate-scanned-pdf.ts](/c:/Users/omgra/OneDrive/Documents/Projects/stay-focused/scripts/validate-scanned-pdf.ts) now fails if production OCR returns only refusal/metadata text but still appears Deep Learn-ready.
+
+### Why it changed
+- A scanned PDF OCR refusal such as `I'm unable to transcribe text from images or scanned documents at this time...` could still be stored as extracted content and then turned into a Deep Learn pack containing document titles, UUIDs, and extraction notes.
+- The new gate forces Deep Learn to wait for meaningful academic text and blocks metadata-shaped or refusal-shaped OCR output from becoming study material.
+
+### Blocked message
+- The OCR/no-usable-text path now uses:
+  `Visual extraction did not find enough usable study text. Try OCR again or open the original source.`
+
+### Real-file validation result
+- Re-ran the production validator against:
+  `C:\Users\omgra\Downloads\1.1-Data Organization.pdf`
+- Result:
+  - pre-OCR parse stayed `empty` / `pdf_image_only_possible`
+  - pre-OCR Deep Learn stayed blocked
+  - pre-OCR UI copy stayed:
+    `This PDF appears to be image-based. Run visual extraction first.`
+  - production rendered-page OCR recovered meaningful source text
+  - validator confirmed expected terms including:
+    `DATA ORGANIZATION`, `OLTP`, `Online Transaction Processing`, `ODS`, `Operational Data Store`, `Subject-Oriented`, `Integrated`, `Current Valued`, `Volatile`
+  - Deep Learn generation stayed grounded in selected-resource OCR text and did not leak `ERP`, `SAP Learning Hub`, or `Gym Badge`
+
+### Tests added/updated
+- Refusal text is not Deep Learn-ready.
+- Metadata-only OCR text is not Deep Learn-ready.
+- UUID/title-only OCR text is not Deep Learn-ready.
+- OCR refusal is stored as metadata/error, not mirrored into `extracted_text`.
+- Valid Data Organization OCR text is Deep Learn-ready.
+- Saved Deep Learn packs with bad source grounding are blocked in the UI.
+- Learn resource UI does not surface OCR refusal text as ready reader content.
+
+### Verification results
+- `npm run typecheck` passed.
+- `npm run lint` passed.
+- `npm test -- pdf-extractor source-ocr-updates deep-learn-readiness deep-learn-generation canvas-content-resolution learn-resource-ui` passed.
+- `npx tsx scripts/validate-scanned-pdf.ts --pdf "C:\Users\omgra\Downloads\1.1-Data Organization.pdf"` passed.
+
+### Remaining risks
+- The classifier is heuristic. It is tuned to reject refusal/metadata/UUID-heavy OCR output, but extremely short legitimate slides can still depend on adjacent pages to cross the meaningful-text threshold.
+- OCR still processes only the first `24` pages per run by default, so longer scanned decks may need a resumable follow-up pass before the source becomes fully grounded.
+
+### Next step
+- Add resumable page-range OCR so long scanned PDFs can accumulate meaningful text across multiple runs without reprocessing already successful pages.
