@@ -34,7 +34,13 @@ import { buildDeepLearnNoteHref } from '@/lib/stay-focused-links'
 import { buildTaskDraftRequestPayload, type TaskDraftContext, type TaskDraftResponse } from '@/lib/do-now'
 import { createNotification } from '@/lib/notifications-server'
 import { saveDraftFromTaskOutput } from '@/actions/drafts'
-import { extractScannedPdfTextWithOpenAI } from '@/lib/extraction/pdf-ocr'
+import { extractScannedPdfTextWithOpenAI, type PdfOcrPage, type PdfOcrResult } from '@/lib/extraction/pdf-ocr'
+import {
+  buildMergedOcrResult,
+  buildMergedOcrText,
+  buildOcrResumeState,
+  mergeOcrPageArrays,
+} from '@/lib/source-ocr-resume'
 import {
   buildOcrCompletedUpdate,
   buildOcrFailedUpdate,
@@ -333,6 +339,11 @@ export async function recoverStaleSourceOcrJobs(userId: string): Promise<void> {
     const moduleId = getStringFromJobField(job, 'moduleId') ?? resource.moduleId
     revalidateLearnQueuePaths(moduleId, resource.courseId ?? null, resourceId)
   }
+}
+
+function totalTransferredCount(previousPages: PdfOcrPage[], newPagesProcessed: number) {
+  const prevCompleted = previousPages.filter((p) => p.status === 'completed').length
+  return prevCompleted + newPagesProcessed
 }
 
 function getStringFromJobField(job: QueuedJob, key: string) {
@@ -682,33 +693,47 @@ export async function processSourceOcrJob(input: {
       return
     }
 
+    const resume = buildOcrResumeState(resource)
+    const isResuming = resume.pagesToProcess.length > 0
+    const prevCompletedCount = resume.previousCompletedCount
+
     const buffer = await downloadStoredPdfForOcr(sourceUrl, getOptionalCanvasConfig())
     const ocr = await extractScannedPdfTextWithOpenAI({
       buffer,
       filename: resource.title || 'scanned-pdf.pdf',
       pageCount: resource.pageCount ?? null,
+      ...(isResuming ? { pagesToProcess: resume.pagesToProcess } : {}),
       onPageResult: async ({ pagesProcessed, totalPages }) => {
         const pageCount = resource?.pageCount ?? totalPages
+        const totalProcessed = prevCompletedCount + pagesProcessed
         await updateQueuedJobStatus(input.jobId, 'running', {
-          progress: calculateSourceOcrProgress(pagesProcessed, pageCount),
+          progress: calculateSourceOcrProgress(totalProcessed, pageCount),
           result: {
             resourceId: input.resourceId,
             moduleId: input.moduleId,
             resourceTitle: input.resourceTitle,
             pageCount,
-            pagesProcessed,
-            statusMessage: buildSourceOcrStatusMessage({ pagesProcessed, pageCount }),
+            pagesProcessed: totalTransferredCount(resume.previousPages, pagesProcessed),
+            statusMessage: buildSourceOcrStatusMessage({ pagesProcessed: totalTransferredCount(resume.previousPages, pagesProcessed), pageCount }),
           },
         })
       },
     })
 
-    if (ocr.status !== 'completed') {
-      await fail(resource, ocr.error ?? 'OCR failed. Open the original file.', ocr.metadata, ocr.provider)
+    const mergedPages = isResuming
+      ? mergeOcrPageArrays(resume.previousPages, ocr.pages)
+      : ocr.pages
+    const mergedText = isResuming ? buildMergedOcrText(mergedPages) : (ocr.status === 'completed' ? ocr.text : '')
+    const finalOcr: PdfOcrResult = isResuming
+      ? buildMergedOcrResult(ocr, mergedPages, mergedText)
+      : ocr
+
+    if (finalOcr.status !== 'completed') {
+      await fail(resource, finalOcr.error ?? 'OCR failed. Open the original file.', finalOcr.metadata, finalOcr.provider)
       return
     }
 
-    const update = buildOcrCompletedUpdate({ resource, ocr, now: new Date().toISOString() })
+    const update = buildOcrCompletedUpdate({ resource, ocr: finalOcr, now: new Date().toISOString() })
     const { error: updateError } = await supabase
       .from('module_resources')
       .update(update)

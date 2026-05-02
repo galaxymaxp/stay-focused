@@ -40,7 +40,7 @@ const MAX_PDF_BYTES = 50 * 1024 * 1024
 const DEFAULT_MAX_PAGES_PER_RUN = 24
 const DEFAULT_RENDER_WIDTH = 1800
 const DEFAULT_RENDER_RETRY_WIDTH = 2400
-const MIN_USEFUL_OCR_CHARS = 120
+export const MIN_USEFUL_OCR_CHARS = 120
 const MAX_OUTPUT_TOKENS_PER_PAGE = 1200
 const CANVAS_IMPORT = () => import('@napi-rs/canvas')
 
@@ -50,6 +50,7 @@ export async function extractScannedPdfTextWithOpenAI(input: {
   buffer: Buffer
   filename: string
   pageCount?: number | null
+  pagesToProcess?: number[]
   onPageResult?: (progress: {
     page: PdfOcrPage
     pageNumber: number
@@ -82,10 +83,12 @@ export async function extractScannedPdfTextWithOpenAI(input: {
 
   try {
     const totalPages = pdf.numPages
-    const pagesToProcess = Math.min(totalPages, maxPages)
+    const pageNumbersToRun: number[] = input.pagesToProcess && input.pagesToProcess.length > 0
+      ? input.pagesToProcess.filter((n) => n >= 1 && n <= totalPages).slice(0, maxPages)
+      : Array.from({ length: Math.min(totalPages, maxPages) }, (_, i) => i + 1)
     const pageResults: PdfOcrPage[] = []
 
-    for (let pageNumber = 1; pageNumber <= pagesToProcess; pageNumber += 1) {
+    for (const pageNumber of pageNumbersToRun) {
       let page: PdfOcrPage
       try {
         page = await withPageTimeout(
@@ -137,10 +140,10 @@ export async function extractScannedPdfTextWithOpenAI(input: {
           inputBytes: input.buffer.length,
           pageCount: input.pageCount ?? totalPages,
           totalPagesInDocument: totalPages,
-          pagesProcessed: pagesToProcess,
+          pagesProcessed: pageNumbersToRun.length,
           pages: pageResults,
           usefulCharCount: mergedText.length,
-          truncated: totalPages > pagesToProcess,
+          truncated: totalPages > pageNumbersToRun.length,
           status: 'no_text',
         }),
       }
@@ -159,10 +162,10 @@ export async function extractScannedPdfTextWithOpenAI(input: {
         inputBytes: input.buffer.length,
         pageCount: input.pageCount ?? totalPages,
         totalPagesInDocument: totalPages,
-        pagesProcessed: pagesToProcess,
+        pagesProcessed: pageNumbersToRun.length,
         pages: pageResults,
         usefulCharCount: mergedText.length,
-        truncated: totalPages > pagesToProcess,
+        truncated: totalPages > pageNumbersToRun.length,
         status: 'completed',
       }),
     }
