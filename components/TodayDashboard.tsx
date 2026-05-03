@@ -668,7 +668,7 @@ function ScheduledBlockHero({
           </span>
           {isNow ? (
             <span
-              className="ui-chip"
+              className="ui-chip ui-chip-soft"
               style={{
                 fontWeight: 700,
                 background: 'color-mix(in srgb, var(--accent-light) 60%, var(--surface-soft) 40%)',
