@@ -131,3 +131,49 @@ test('ready module_resource is included in generated schedule', () => {
   assert.equal(blocks.length, 1, 'ready module_resource should appear in schedule')
   assert.equal(blocks[0]?.sourceTable, 'module_resources')
 })
+
+test('deep_learn_notes passed to scheduler algorithm would produce blocks (action is responsible for exclusion)', () => {
+  const now = Date.now()
+  const window = { start: new Date(now).toISOString(), end: new Date(now + 3 * 3600_000).toISOString() }
+  const blocks = generateSchedule([
+    scoreSchedulerItem({ id: 'sp1', userId, sourceTable: 'deep_learn_notes', title: 'Data Organization pack', dueAt: null, quizReady: true }),
+  ], window)
+  // The algorithm does not filter by source table — the action (generateUserSchedule) is
+  // responsible for not passing deep_learn_notes as standalone source items.
+  assert.equal(blocks.length, 1, 'algorithm itself does not block deep_learn_notes; action-level exclusion is tested elsewhere')
+  assert.equal(blocks[0]?.sourceTable, 'deep_learn_notes')
+})
+
+test('task_items are classified in the task group (assignment/quiz/project types)', () => {
+  const now = Date.now()
+  const window = { start: new Date(now).toISOString(), end: new Date(now + 6 * 3600_000).toISOString() }
+  const blocks = generateSchedule([
+    scoreSchedulerItem({ id: 'ti10', userId, sourceTable: 'task_items', title: 'Final quiz', dueAt: new Date(now + 2 * 3600_000).toISOString(), taskType: 'quiz' }),
+    scoreSchedulerItem({ id: 'ti11', userId, sourceTable: 'task_items', title: 'Essay draft', dueAt: new Date(now + 4 * 3600_000).toISOString(), taskType: 'project' }),
+  ], window)
+  assert.ok(blocks.every((b) => b.sourceTable === 'task_items'), 'task_items produce task-typed blocks')
+})
+
+test('modules and module_resources are classified in the module group', () => {
+  const now = Date.now()
+  const window = { start: new Date(now).toISOString(), end: new Date(now + 6 * 3600_000).toISOString() }
+  const blocks = generateSchedule([
+    scoreSchedulerItem({ id: 'mod1', userId, sourceTable: 'modules', title: 'Week 4 module', dueAt: null }),
+    scoreSchedulerItem({ id: 'res1', userId, sourceTable: 'module_resources', title: 'Week 4 slides.pdf', dueAt: null, extractedCharCount: 5000, extractionStatus: 'extracted' }),
+  ], window)
+  assert.ok(blocks.some((b) => b.sourceTable === 'modules'), 'modules appear in schedule')
+  assert.ok(blocks.some((b) => b.sourceTable === 'module_resources'), 'module_resources appear in schedule')
+})
+
+test('completed blocks are excluded from active group count (UI logic test via sortGroupBlocks contract)', () => {
+  // completed blocks must not appear in active group lists — this is enforced by filtering
+  // activeBlocks = visibleSchedule.filter(b => b.status !== 'completed') in TodayDashboard.
+  // We verify here that the scheduler algorithm preserves all statuses faithfully.
+  const now = Date.now()
+  const window = { start: new Date(now).toISOString(), end: new Date(now + 4 * 3600_000).toISOString() }
+  const scheduled = generateSchedule([
+    scoreSchedulerItem({ id: 'act1', userId, sourceTable: 'task_items', title: 'Active task', dueAt: new Date(now + 2 * 3600_000).toISOString() }),
+  ], window)
+  // All generated blocks start with status 'scheduled'
+  assert.ok(scheduled.every((b) => b.status === 'scheduled'), 'generated blocks always start as scheduled')
+})

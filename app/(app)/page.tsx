@@ -19,18 +19,33 @@ export default async function Dashboard() {
 
   const overview = buildHomeOverview(workspace)
   const client = await createAuthenticatedSupabaseServerClient()
-  const { data: scheduledBlocks } = client
-    ? await client
-      .from('scheduled_blocks')
-      .select('id,title,subtitle,start_at,end_at,status,source_table,source_id,course_id,source_type,block_type,estimate_confidence,estimate_reason')
-      .order('start_at', { ascending: true })
-      .limit(24)
-    : { data: [] }
+
+  const [scheduledBlocksResult, studyPacksResult] = client
+    ? await Promise.all([
+      client
+        .from('scheduled_blocks')
+        .select('id,title,subtitle,start_at,end_at,status,source_table,source_id,course_id,source_type,block_type,estimate_confidence,estimate_reason')
+        .order('start_at', { ascending: true })
+        .limit(24),
+      client
+        .from('deep_learn_notes')
+        .select('id,module_id,title,quiz_ready')
+        .eq('status', 'ready'),
+    ])
+    : [{ data: [] }, { data: [] }]
+
+  const studyPacksByModuleId: Record<string, Array<{ id: string; title: string; quizReady: boolean }>> = {}
+  for (const pack of studyPacksResult.data ?? []) {
+    if (!pack.module_id) continue
+    const list = studyPacksByModuleId[pack.module_id] ?? []
+    list.push({ id: pack.id, title: pack.title ?? 'Study pack', quizReady: pack.quiz_ready ?? false })
+    studyPacksByModuleId[pack.module_id] = list
+  }
 
   return (
     <main className="page-shell">
       <TodayDashboard
-        scheduledBlocks={(scheduledBlocks ?? []).map((block) => ({
+        scheduledBlocks={(scheduledBlocksResult.data ?? []).map((block) => ({
           id: block.id,
           title: block.title,
           startAt: block.start_at,
@@ -47,6 +62,7 @@ export default async function Dashboard() {
         }))}
         dueSoon={overview.dueSoon}
         courseSnapshots={overview.courseSnapshots}
+        studyPacksByModuleId={studyPacksByModuleId}
       />
     </main>
   )

@@ -10,6 +10,8 @@ import { formatDuration, formatTime, getWindowDurationMinutes, isBlockInsideWind
 
 type ScheduleBlock = ClockScheduleBlock
 
+type StudyPackRef = { id: string; title: string; quizReady: boolean }
+
 type ScheduleGroupKey = 'tasks' | 'modules' | 'drafts'
 
 interface ScheduleGroupDef {
@@ -27,10 +29,11 @@ const SCHEDULE_GROUPS: ScheduleGroupDef[] = [
 const GROUP_DEFAULT_VISIBLE = 3
 const SHOW_DEMO_PREVIEW = process.env.NEXT_PUBLIC_ENABLE_DEMO_SCHEDULE === 'true'
 
-export function TodayDashboard({ scheduledBlocks, dueSoon, courseSnapshots }: {
+export function TodayDashboard({ scheduledBlocks, dueSoon, courseSnapshots, studyPacksByModuleId = {} }: {
   scheduledBlocks: ScheduleBlock[]
   dueSoon: HomeDueSoonItem[]
   courseSnapshots: HomeCourseSnapshot[]
+  studyPacksByModuleId?: Record<string, StudyPackRef[]>
 }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -43,6 +46,7 @@ export function TodayDashboard({ scheduledBlocks, dueSoon, courseSnapshots }: {
   const [expandedGroups, setExpandedGroups] = useState<Set<ScheduleGroupKey>>(new Set(['tasks', 'modules', 'drafts']))
   const [showMorePerGroup, setShowMorePerGroup] = useState<Partial<Record<ScheduleGroupKey, boolean>>>({})
   const [showAllAttention, setShowAllAttention] = useState(false)
+  const [completedExpanded, setCompletedExpanded] = useState(false)
   const schedulePanelRef = useRef<HTMLDivElement | null>(null)
 
   const scheduleForDisplay = useMemo(() => useDemoSchedule ? buildDemoScheduleBlocks() : scheduledBlocks, [scheduledBlocks, useDemoSchedule])
@@ -51,7 +55,7 @@ export function TodayDashboard({ scheduledBlocks, dueSoon, courseSnapshots }: {
     [scheduleForDisplay, availableStart, availableEnd],
   )
 
-  const { currentBlock, needsAttention, completedCount, totalScheduledCount, hasAnySourceData } = useMemo(() => {
+  const { currentBlock, needsAttention, completedBlocks, activeBlocks, totalScheduledCount, hasAnySourceData } = useMemo(() => {
     const now = new Date()
     const nowMs = now.getTime()
     const urgentCutoff = nowMs + 30 * 60_000
@@ -69,14 +73,15 @@ export function TodayDashboard({ scheduledBlocks, dueSoon, courseSnapshots }: {
         if (block.status === 'scheduled' && endMs <= nowMs) return true
         return block.status === 'scheduled' && startMs >= nowMs && startMs <= urgentCutoff
       }),
-      completedCount: sorted.filter((block) => block.status === 'completed').length,
+      completedBlocks: sorted.filter((block) => block.status === 'completed'),
+      activeBlocks: sorted.filter((block) => block.status !== 'completed'),
       totalScheduledCount: sorted.length,
       hasAnySourceData: dueSoon.length > 0 || courseSnapshots.length > 0,
     }
   }, [visibleSchedule, dueSoon.length, courseSnapshots.length])
 
   const hasSchedule = totalScheduledCount > 0
-  const completedAll = hasSchedule && completedCount === totalScheduledCount
+  const completedAll = hasSchedule && completedBlocks.length === totalScheduledCount
   const selectedBlock = useMemo(() => {
     return selectedBlockId ? visibleSchedule.find((block) => block.id === selectedBlockId) ?? null : null
   }, [selectedBlockId, visibleSchedule])
@@ -96,7 +101,7 @@ export function TodayDashboard({ scheduledBlocks, dueSoon, courseSnapshots }: {
     const block = visibleSchedule.find((b) => b.id === blockId)
     if (!block) return
     const group = getBlockGroup(block)
-    const groupBlocks = visibleSchedule.filter((b) => getBlockGroup(b) === group)
+    const groupBlocks = activeBlocks.filter((b) => getBlockGroup(b) === group)
     const blockIndexInGroup = groupBlocks.findIndex((b) => b.id === blockId)
 
     setSelectedBlockId(blockId)
@@ -125,7 +130,7 @@ export function TodayDashboard({ scheduledBlocks, dueSoon, courseSnapshots }: {
     setShowMorePerGroup((prev) => {
       const nowExpanded = prev[key] ?? false
       if (nowExpanded) {
-        const groupBlocks = visibleSchedule.filter((b) => getBlockGroup(b) === key)
+        const groupBlocks = activeBlocks.filter((b) => getBlockGroup(b) === key)
         const selIdx = selectedBlockId ? groupBlocks.findIndex((b) => b.id === selectedBlockId) : -1
         if (selIdx >= GROUP_DEFAULT_VISIBLE) setSelectedBlockId(null)
       }
@@ -230,10 +235,10 @@ export function TodayDashboard({ scheduledBlocks, dueSoon, courseSnapshots }: {
               <span className="planner-window-chip">{windowLabel}</span>
             </div>
 
-            {visibleSchedule.length > 0 ? (
+            {activeBlocks.length > 0 ? (
               <div className="schedule-groups">
                 {SCHEDULE_GROUPS.map((groupDef) => {
-                  const groupBlocks = visibleSchedule.filter((b) => getBlockGroup(b) === groupDef.key)
+                  const groupBlocks = sortGroupBlocks(activeBlocks.filter((b) => getBlockGroup(b) === groupDef.key))
                   if (groupBlocks.length === 0) return null
                   const isExpanded = expandedGroups.has(groupDef.key)
                   const showAll = showMorePerGroup[groupDef.key] ?? false
@@ -260,6 +265,7 @@ export function TodayDashboard({ scheduledBlocks, dueSoon, courseSnapshots }: {
                               block={block}
                               nowId={currentBlock?.id ?? null}
                               selected={selectedBlock?.id === block.id}
+                              studyPacks={block.sourceTable === 'modules' && block.sourceId ? (studyPacksByModuleId[block.sourceId] ?? []) : []}
                               onSelect={selectBlock}
                               onStatus={updateStatus}
                               onOpen={openBlock}
@@ -281,12 +287,20 @@ export function TodayDashboard({ scheduledBlocks, dueSoon, courseSnapshots }: {
                   )
                 })}
               </div>
-            ) : (
+            ) : visibleSchedule.length === 0 ? (
               <section className="planner-empty-state">
                 <h3>No blocks fit this time window.</h3>
                 <p className="ui-section-copy">Generate a plan to fill {windowLabel}.</p>
               </section>
-            )}
+            ) : null}
+
+            {completedBlocks.length > 0 ? (
+              <CompletedSection
+                blocks={completedBlocks}
+                isOpen={completedExpanded}
+                onToggle={() => setCompletedExpanded((v) => !v)}
+              />
+            ) : null}
           </section>
 
           <section className="planner-attention-panel">
@@ -299,6 +313,7 @@ export function TodayDashboard({ scheduledBlocks, dueSoon, courseSnapshots }: {
                     block={block}
                     nowId={null}
                     selected={selectedBlock?.id === block.id}
+                    studyPacks={[]}
                     onSelect={selectBlock}
                     onStatus={updateStatus}
                     onOpen={openBlock}
@@ -359,10 +374,51 @@ export function TodayDashboard({ scheduledBlocks, dueSoon, courseSnapshots }: {
   )
 }
 
-function ScheduleCard({ block, nowId, selected, onSelect, onStatus, onOpen, onReschedule, compact = false }: {
+function CompletedSection({ blocks, isOpen, onToggle }: {
+  blocks: ScheduleBlock[]
+  isOpen: boolean
+  onToggle: () => void
+}) {
+  const sorted = [...blocks].sort((a, b) => new Date(b.endAt).getTime() - new Date(a.endAt).getTime())
+  return (
+    <div className="schedule-group completed-group">
+      <button
+        type="button"
+        className="schedule-group-header"
+        onClick={onToggle}
+        aria-expanded={isOpen}
+      >
+        <span className="schedule-group-name">Completed</span>
+        <span className="schedule-group-count">{blocks.length}</span>
+        <span className="schedule-group-chevron" aria-hidden="true">{isOpen ? '▾' : '▸'}</span>
+      </button>
+      {isOpen ? (
+        <div className="planner-schedule-list">
+          {sorted.map((block) => (
+            <article key={block.id} className="planner-block-card is-completed compact">
+              <div className="planner-block-summary">
+                <span className="planner-status-dot" aria-hidden="true" />
+                <div>
+                  <div className="planner-block-title-row">
+                    <span className="planner-type-pill">{getStudentTypeLabel(block)}</span>
+                  </div>
+                  <h3>{block.title}</h3>
+                  <p className="planner-block-time">{formatTimeRange(block.startAt, block.endAt)}</p>
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function ScheduleCard({ block, nowId, selected, studyPacks, onSelect, onStatus, onOpen, onReschedule, compact = false }: {
   block: ScheduleBlock
   nowId: string | null
   selected: boolean
+  studyPacks: StudyPackRef[]
   onSelect: (id: string) => void
   onStatus: (id: string, status: 'opened' | 'completed' | 'skipped') => void
   onOpen: (id: string) => void
@@ -390,7 +446,17 @@ function ScheduleCard({ block, nowId, selected, onSelect, onStatus, onOpen, onRe
       </button>
       <p className="schedule-context">{block.subtitle ?? block.context ?? typeLabel}</p>
       {block.urgencyNote ? <p className="schedule-urgency">{block.urgencyNote}</p> : null}
-      <p className="schedule-meta-note">{getEstimateLabel(block)}</p>
+      {studyPacks.length > 0 ? (
+        <div className="study-pack-sublist">
+          {studyPacks.map((pack) => (
+            <Link key={pack.id} href={`/library/${encodeURIComponent(pack.id)}`} className="study-pack-chip">
+              <span className="study-pack-chip-icon">✦</span>
+              {pack.title}
+              {pack.quizReady ? <span className="study-pack-chip-badge">Quiz</span> : null}
+            </Link>
+          ))}
+        </div>
+      ) : null}
       {selected ? (
         <div className="planner-block-details">
           <dl>
@@ -421,6 +487,16 @@ function ScheduleCard({ block, nowId, selected, onSelect, onStatus, onOpen, onRe
       ) : null}
     </article>
   )
+}
+
+function sortGroupBlocks(blocks: ScheduleBlock[]): ScheduleBlock[] {
+  const nowMs = Date.now()
+  return [...blocks].sort((a, b) => {
+    const aIsMissed = a.status === 'scheduled' && new Date(a.endAt).getTime() <= nowMs
+    const bIsMissed = b.status === 'scheduled' && new Date(b.endAt).getTime() <= nowMs
+    if (aIsMissed !== bIsMissed) return aIsMissed ? -1 : 1
+    return new Date(a.startAt).getTime() - new Date(b.startAt).getTime()
+  })
 }
 
 function getBlockGroup(block: ScheduleBlock): ScheduleGroupKey {
@@ -517,11 +593,10 @@ function getDoneLabel(block: ScheduleBlock) {
 
 function getEstimateLabel(block: ScheduleBlock) {
   if (block.estimateReason) {
-    const confidence = block.estimateConfidence ? ` - ${block.estimateConfidence} confidence` : ''
+    const confidence = block.estimateConfidence ? ` · ${block.estimateConfidence} confidence` : ''
     return `${block.estimateReason}${confidence}`
   }
-
-  return `${getConfidenceLabel(block)} - low confidence`
+  return `${getConfidenceLabel(block)} · low confidence`
 }
 
 function formatTimeRange(startAt: string, endAt: string) {

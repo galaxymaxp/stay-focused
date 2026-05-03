@@ -158,19 +158,8 @@ export async function generateUserSchedule(freeTimeStart: string, freeTimeEnd: s
       estimatedMinutes: row.estimated_minutes,
       createdAt: row.created_at,
     })),
-    ...deepLearnNotesData.map((row) => ({
-      id: row.id,
-      userId,
-      sourceTable: 'deep_learn_notes' as const,
-      courseId: row.course_id,
-      title: row.title?.trim() || 'Study pack',
-      subtitle: row.quiz_ready ? 'Study pack / quiz practice' : 'Study pack',
-      dueAt: null,
-      taskType: 'quiz',
-      quizReady: row.quiz_ready,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
-    })),
+    // deep_learn_notes are study pack outputs attached to modules — displayed under their
+    // parent module block in the UI, not scheduled as standalone blocks.
     ...draftsData.map((row) => ({
       id: row.id,
       userId,
