@@ -1199,6 +1199,95 @@ limit OpenAI OCR automatic usage
 
 ---
 
+## Session Update - 2026-05-03 (Today's Schedule grouping, Open/Start routing, student-facing labels)
+
+### What changed
+
+- **`components/InteractivePlannerClock.tsx`** — Added `sourceId?: string | null` and `courseId?: string | null` fields to `ClockScheduleBlock` type so routing information flows from the database to the UI.
+
+- **`app/(app)/page.tsx`** — Extended the `scheduled_blocks` select query to include `source_id` and `course_id`. Both fields are passed through to `TodayDashboard` via the block map.
+
+- **`components/TodayDashboard.tsx`** — Major behavioral cleanup:
+  - Today's Schedule is now grouped into three collapsible sections: **Tasks**, **Modules**, **Drafts**.
+  - Grouping logic (`getBlockGroup`):
+    - `task_items`, `tasks`, `deadlines` → Tasks
+    - `modules`, `module_resources`, `learning_items`, `deep_learn_notes` → Modules
+    - `drafts` with `subtitle = 'Draft'` (task-specific writing) → Drafts
+    - `drafts` with any other subtitle (module-based study output) → Modules
+  - Each group is independently collapsible; empty groups are hidden.
+  - Default: all non-empty groups expanded. Clock-click expands the relevant group automatically.
+  - Per-group show-more at 3 cards (replaces the previous flat 4-card limit across all blocks).
+  - **Open / Start** now does two things: marks the block `opened` via the existing server action AND navigates to the correct workspace via `useRouter`:
+    - `task_items` → `/tasks?taskTitle=...` (title-based match, consistent with cross-table navigation pattern in `stay-focused-links.ts`)
+    - `tasks` → `/tasks?task=[sourceId]`
+    - `deadlines` → `/tasks`
+    - `modules` → `/modules/[sourceId]/learn`
+    - `module_resources` → `/courses/[courseId]?resource=...#resource-...` if `courseId` available; disabled otherwise with dev warning
+    - `learning_items` → `/courses/[courseId]` or `/tasks` fallback
+    - `deep_learn_notes` → `/library/[sourceId]`
+    - `drafts` → `/library/[sourceId]`
+    - Open / Start is disabled (not removed) when no route can be derived; shows a tooltip note.
+  - **Student-facing type labels** (`getStudentTypeLabel`) — removed all internal identifiers from the type pill:
+    - `task_items`/`tasks`/`deadlines` → `Task`
+    - `modules` → `Module review`
+    - `module_resources` → `Study material`
+    - `learning_items` → `Quiz practice` or `Module review` based on subtitle
+    - `deep_learn_notes` → `Study pack`
+    - `drafts` (task-based) → `Draft`; (module-based) → `Study material`
+  - Removed `getSourceTypeLabel` (old function that exposed `Resource`, `Quiz practice`, `Assignment` etc.); replaced with `getStudentTypeLabel` throughout.
+  - Clock-block selection now also expands the matching group and triggers show-more if the block is beyond the per-group visible limit.
+
+- **`app/globals.css`** — Added minimal CSS for group sections: `.schedule-groups`, `.schedule-group`, `.schedule-group-header`, `.schedule-group-name`, `.schedule-group-count`, `.schedule-group-chevron`. Borders and overflow inherit the existing warm dark card style. No new colors or design tokens.
+
+### Files touched
+
+- `components/InteractivePlannerClock.tsx`
+- `app/(app)/page.tsx`
+- `components/TodayDashboard.tsx`
+- `app/globals.css`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Today's Schedule was showing a flat list of raw source type labels (Resource, Quiz practice, Draft, etc.) with no grouping. "Open / Start" only marked the block as opened and did not navigate anywhere. With many scheduled blocks, the flat list became overwhelming. This pass groups blocks by student intent (Tasks / Modules / Drafts), uses friendly labels, and makes Open / Start actually open the correct workspace.
+
+### Tests run
+
+```
+npm run typecheck       -- passed (0 errors)
+npm run lint            -- passed (0 warnings)
+npm test -- scheduler queue learn-resource-ui deep-learn-readiness   -- 223 tests passed, 0 failed
+```
+
+### Verification result
+
+- TypeScript strict mode: 0 errors.
+- ESLint: 0 warnings.
+- All 223 targeted tests passed.
+- Browser QA against demo schedule and live data was not automated in this session due to local sync-empty state. Demo schedule toggle (dev-only) was used to visually validate group rendering, collapse/expand, show-more, and clock-click-to-group behavior in the browser.
+
+### Known risks
+
+- `module_resources` Open / Start requires `courseId` to construct the course-level resource anchor. If a block's `course_id` is null (e.g., a resource not linked to a specific course), the button is disabled. This is honest behavior but may surface in edge cases with course-less resources.
+- `learning_items` Open / Start routes to `/courses/[courseId]` which shows the course overview, not a specific learning item deep-link. A more precise route would require a module-level URL, but `module_id` is not stored in `scheduled_blocks`.
+- The grouping for `drafts` uses `subtitle === 'Draft'` as the task-specific signal. This matches what the scheduler sets in `actions/scheduler.ts`. If subtitle is ever null for a draft, it falls to Modules (conservative fallback).
+
+### Blockers
+
+None.
+
+### Next recommended task
+
+Run browser QA at 390px and 430px widths against a synced Canvas workspace with real scheduled blocks to confirm group rendering, mobile layout, and Open/Start routing for each source type.
+
+### Suggested commit message
+
+```
+group schedule blocks and route start actions
+```
+
+---
+
 ## Session Update - 2026-05-02 (Google OCR provider path)
 
 ### What changed

@@ -12,6 +12,8 @@ export type ClockScheduleBlock = {
   endAt: string
   status: 'scheduled' | 'opened' | 'completed' | 'skipped'
   sourceTable: SchedulerSourceTable
+  sourceId?: string | null
+  courseId?: string | null
   sourceType?: SchedulerSourceTable | string | null
   blockType?: SchedulerBlockType | null
   subtitle?: string | null

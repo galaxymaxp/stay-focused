@@ -4496,6 +4496,18 @@ details[open] > .ui-interactive-summary,
 .schedule-context { margin-top: 0.25rem !important; font-size: 12px; color: var(--text-secondary); }
 .schedule-urgency { margin-top: 0.2rem !important; font-size: 11px; color: color-mix(in srgb, var(--amber) 62%, var(--text-secondary) 38%); }
 .schedule-meta-note { margin: 0.3rem 0 0; font-size: 11px; color: var(--text-muted); }
+.schedule-groups { display: flex; flex-direction: column; gap: 0.15rem; }
+.schedule-group { border-radius: 0.5rem; overflow: hidden; border: 1px solid var(--border-subtle); }
+.schedule-group-header { width: 100%; display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.75rem; background: transparent; border: none; cursor: pointer; text-align: left; color: var(--text-primary); font-size: 0.78rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; transition: background 0.12s; }
+.schedule-group-header:hover, .schedule-group-header:focus-visible { background: color-mix(in srgb, var(--surface-hover) 60%, transparent); }
+.schedule-group-header:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.schedule-group-name { flex: 1; }
+.schedule-group-count { font-size: 0.72rem; color: var(--text-muted); font-weight: 400; background: color-mix(in srgb, var(--text-muted) 12%, transparent); border-radius: 10px; padding: 0.1rem 0.45rem; }
+.schedule-group-chevron { font-size: 0.7rem; color: var(--text-muted); }
+.schedule-group .planner-schedule-list { border-top: 1px solid var(--border-subtle); border-radius: 0; }
+.schedule-group .planner-block-card { border-radius: 0; border-left: none; border-right: none; border-bottom: 1px solid var(--border-subtle); }
+.schedule-group .planner-block-card:last-of-type, .schedule-group .planner-show-more { border-bottom: none; }
+.schedule-group .planner-show-more { border-radius: 0; width: 100%; }
 .command-empty-state { min-height: 9rem; display: grid; align-content: center; gap: 0.55rem; }
 .command-empty-state h2 { margin: 0; font-size: 1.1rem; }
 .command-empty-state-success { border-color: color-mix(in srgb, var(--green) 35%, var(--border-subtle)); background: color-mix(in srgb, var(--green-light) 32%, var(--surface-elevated)); }

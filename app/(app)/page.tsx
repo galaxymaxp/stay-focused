@@ -22,7 +22,7 @@ export default async function Dashboard() {
   const { data: scheduledBlocks } = client
     ? await client
       .from('scheduled_blocks')
-      .select('id,title,subtitle,start_at,end_at,status,source_table,source_type,block_type,estimate_confidence,estimate_reason')
+      .select('id,title,subtitle,start_at,end_at,status,source_table,source_id,course_id,source_type,block_type,estimate_confidence,estimate_reason')
       .order('start_at', { ascending: true })
       .limit(24)
     : { data: [] }
@@ -37,6 +37,8 @@ export default async function Dashboard() {
           endAt: block.end_at,
           status: block.status,
           sourceTable: block.source_table,
+          sourceId: block.source_id,
+          courseId: block.course_id,
           sourceType: block.source_type,
           subtitle: block.subtitle,
           blockType: block.block_type,
