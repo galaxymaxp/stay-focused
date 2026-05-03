@@ -2732,6 +2732,52 @@ details[open] > .ui-interactive-summary,
   font-style: italic;
 }
 
+/* Filter chips for Today Plan (All / Tasks / Study Materials) */
+.home-plan-filter {
+  display: flex;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+  padding-bottom: 0.45rem;
+}
+
+.home-plan-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.home-plan-filter-chip:hover {
+  background: color-mix(in srgb, var(--surface-soft) 80%, transparent);
+  color: var(--text-primary);
+}
+
+.home-plan-filter-chip.active {
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface-soft) 88%);
+  border-color: color-mix(in srgb, var(--accent-border) 38%, var(--border-subtle) 62%);
+  color: var(--accent-foreground, var(--text-primary));
+}
+
+/* Inline study-ready chips inside plan rows */
+.home-study-ready-chip {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+  border-radius: 999px;
+  padding: 0.08rem 0.4rem;
+}
+
 /* Completed section inside Today Plan */
 .home-plan-completed {
   display: grid;
@@ -4220,13 +4266,7 @@ details[open] > .ui-interactive-summary,
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: .55rem;
-  overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--accent-border) 18%, var(--border-subtle) 82%);
-  border-radius: 12px;
-  padding: .85rem .75rem .9rem;
-  background: radial-gradient(circle at center, color-mix(in srgb, var(--surface-soft) 92%, var(--amber-light) 8%) 0%, color-mix(in srgb, var(--surface-elevated) 78%, transparent) 72%);
+  gap: .35rem;
 }
 .planner-clock-svg {
   width: min(360px, 94%);
@@ -4764,9 +4804,6 @@ details[open] > .ui-interactive-summary,
 @media (max-width: 640px) {
   .planner-shell {
     padding: .75rem;
-  }
-  .planner-clock-face {
-    padding: .65rem .55rem .75rem;
   }
   .planner-clock-svg {
     width: min(292px, 96%);

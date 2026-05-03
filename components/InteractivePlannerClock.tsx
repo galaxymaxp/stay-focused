@@ -323,10 +323,6 @@ export function InteractivePlannerClock({
         ) : null}
       </svg>
 
-      <div className="clock-status-stack">
-        <div className="clock-free-window">Free: {formatTime(availableStart)} - {formatTime(availableEnd)}</div>
-        {currentBlock ? <div className="clock-now-chip">NOW - {formatTimeRange(currentBlock.startAt, currentBlock.endAt)}</div> : null}
-      </div>
       {activeTooltipSegment ? (
         <div className="clock-segment-tooltip" role="status">
           <strong>{activeTooltipSegment.block.title}</strong>

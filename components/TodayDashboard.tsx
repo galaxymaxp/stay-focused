@@ -48,6 +48,7 @@ export function TodayDashboard({
   const [isPlanStale, setIsPlanStale] = useState(false)
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null)
   const [completedExpanded, setCompletedExpanded] = useState(false)
+  const [filterMode, setFilterMode] = useState<'all' | 'tasks' | 'study'>('all')
   const planPanelRef = useRef<HTMLDivElement | null>(null)
 
   const scheduleForDisplay = useMemo(
@@ -137,6 +138,28 @@ export function TodayDashboard({
     }
     return packs
   }, [studyPacksByModuleId, studyPacksByResourceId])
+
+  const studyPacksByBlockId = useMemo(() => {
+    const map: Record<string, StudyPackRef[]> = {}
+    for (const block of visibleSchedule) {
+      const packs = getBlockStudyPacks(block, studyPacksByModuleId, studyPacksByResourceId)
+      if (packs.length > 0) map[block.id] = packs
+    }
+    return map
+  }, [visibleSchedule, studyPacksByModuleId, studyPacksByResourceId])
+
+  const { filteredNow, filteredNext, filteredLater } = useMemo(() => {
+    const keep = (block: ScheduleBlock) => {
+      if (filterMode === 'tasks') return isTaskBlock(block)
+      if (filterMode === 'study') return !isTaskBlock(block)
+      return true
+    }
+    return {
+      filteredNow: nowBlocks.filter(keep),
+      filteredNext: nextBlocks.filter(keep),
+      filteredLater: laterBlocks.filter(keep),
+    }
+  }, [nowBlocks, nextBlocks, laterBlocks, filterMode])
 
   // The primary scheduled block: current if one is live, otherwise soonest upcoming
   const primaryScheduleBlock =
@@ -251,7 +274,7 @@ export function TodayDashboard({
                 onReschedule={useDemoSchedule ? undefined : handleRescheduleBlock}
               />
             ) : primaryAction ? (
-              <PrimaryActionHero item={primaryAction} upNext={upNext} />
+              <PrimaryActionHero item={primaryAction} upNext={upNext} hasSchedule={hasSchedule} />
             ) : (
               <div
                 className="ui-empty"
@@ -303,35 +326,51 @@ export function TodayDashboard({
                 description="Your blocks for this window, grouped by how soon they start."
               />
 
+              <div className="home-plan-filter" role="group" aria-label="Filter schedule">
+                {(['all', 'tasks', 'study'] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    className={`home-plan-filter-chip${filterMode === mode ? ' active' : ''}`}
+                    onClick={() => setFilterMode(mode)}
+                  >
+                    {mode === 'all' ? 'All' : mode === 'tasks' ? 'Tasks' : 'Study Materials'}
+                  </button>
+                ))}
+              </div>
+
               <div className="home-plan-list">
                 <PlanGroup
                   label="Now"
-                  blocks={nowBlocks}
+                  blocks={filteredNow}
                   selectedBlockId={selectedBlockId}
+                  studyPacksByBlockId={studyPacksByBlockId}
                   onOpen={handleOpenBlock}
                   onStatus={handleUpdateStatus}
                   onSelect={setSelectedBlockId}
                 />
                 <PlanGroup
                   label="Next"
-                  blocks={nextBlocks}
+                  blocks={filteredNext}
                   selectedBlockId={selectedBlockId}
+                  studyPacksByBlockId={studyPacksByBlockId}
                   onOpen={handleOpenBlock}
                   onStatus={handleUpdateStatus}
                   onSelect={setSelectedBlockId}
                 />
                 <PlanGroup
                   label="Later"
-                  blocks={laterBlocks}
+                  blocks={filteredLater}
                   selectedBlockId={selectedBlockId}
+                  studyPacksByBlockId={studyPacksByBlockId}
                   onOpen={handleOpenBlock}
                   onStatus={handleUpdateStatus}
                   onSelect={setSelectedBlockId}
                 />
 
-                {nowBlocks.length === 0 &&
-                nextBlocks.length === 0 &&
-                laterBlocks.length === 0 ? (
+                {filteredNow.length === 0 &&
+                filteredNext.length === 0 &&
+                filteredLater.length === 0 ? (
                   <p
                     className="ui-section-copy"
                     style={{ padding: '0.5rem 0', color: 'var(--text-muted)' }}
@@ -429,7 +468,7 @@ export function TodayDashboard({
                 availableStart={availableStart}
                 availableEnd={availableEnd}
                 currentBlock={currentBlock}
-                scheduleBlocks={visibleSchedule}
+                scheduleBlocks={visibleSchedule.filter((b) => b.status !== 'completed')}
                 selectedBlockId={selectedBlockId}
                 onWindowChange={changeWindow}
                 onSelectBlock={selectClockBlock}
@@ -446,6 +485,22 @@ export function TodayDashboard({
                 Scheduled
               </span>
             </div>
+
+            {!hasSchedule ? (
+              <button
+                type="button"
+                className="ui-button ui-button-primary"
+                style={{ width: '100%' }}
+                onClick={handleGenerate}
+                disabled={isGenerating || isPending || availableMinutes <= 0}
+              >
+                {isGenerating ? 'Building…' : 'Generate plan'}
+              </button>
+            ) : isPlanStale ? (
+              <p className="home-plan-stale-note" style={{ textAlign: 'center' }}>
+                Window changed — regenerate in Today plan.
+              </p>
+            ) : null}
 
             {completedAll ? (
               <p
@@ -700,9 +755,11 @@ function ScheduledBlockHero({
 function PrimaryActionHero({
   item,
   upNext,
+  hasSchedule,
 }: {
   item: TodayItem
   upNext: TodayItem[]
+  hasSchedule: boolean
 }) {
   const href = resolveItemHref(item)
 
@@ -781,12 +838,12 @@ function PrimaryActionHero({
         </aside>
       </div>
 
-      {upNext.length > 0 ? (
+      {!hasSchedule && upNext.length > 0 ? (
         <div className="home-inline-list">
           <div className="home-inline-list-header">
-            <p className="ui-kicker">After that</p>
+            <p className="ui-kicker">Also coming up</p>
             <Link href="/tasks" className="home-subtle-link">
-              See all tasks
+              See all
             </Link>
           </div>
 
@@ -805,6 +862,7 @@ function PlanGroup({
   label,
   blocks,
   selectedBlockId,
+  studyPacksByBlockId,
   onOpen,
   onStatus,
   onSelect,
@@ -812,6 +870,7 @@ function PlanGroup({
   label: string
   blocks: ScheduleBlock[]
   selectedBlockId: string | null
+  studyPacksByBlockId: Record<string, StudyPackRef[]>
   onOpen: (id: string) => void
   onStatus: (id: string, status: 'opened' | 'completed' | 'skipped') => void
   onSelect: (id: string | null) => void
@@ -827,6 +886,7 @@ function PlanGroup({
             key={block.id}
             block={block}
             selected={selectedBlockId === block.id}
+            studyPacks={studyPacksByBlockId[block.id] ?? []}
             onOpen={onOpen}
             onStatus={onStatus}
             onSelect={onSelect}
@@ -840,12 +900,14 @@ function PlanGroup({
 function PlanRow({
   block,
   selected,
+  studyPacks,
   onOpen,
   onStatus,
   onSelect,
 }: {
   block: ScheduleBlock
   selected: boolean
+  studyPacks: StudyPackRef[]
   onOpen: (id: string) => void
   onStatus: (id: string, status: 'opened' | 'completed' | 'skipped') => void
   onSelect: (id: string | null) => void
@@ -858,6 +920,7 @@ function PlanRow({
     (block.status === 'scheduled' &&
       new Date(block.startAt) <= now &&
       new Date(block.endAt) > now)
+  const hasQuizReady = studyPacks.some((p) => p.quizReady)
 
   return (
     <article className={`home-list-row home-plan-row${selected ? ' home-plan-row-selected' : ''}`}>
@@ -870,6 +933,12 @@ function PlanRow({
         <div className="home-row-meta">
           <span className="planner-type-pill">{typeLabel}</span>
           {isNow ? <span className="now-pill">Now</span> : null}
+          {studyPacks.length > 0 ? (
+            <span className="home-study-ready-chip">Study pack ready</span>
+          ) : null}
+          {hasQuizReady ? (
+            <span className="home-study-ready-chip">Quiz ready</span>
+          ) : null}
           <span>{formatTimeRange(block.startAt, block.endAt)}</span>
         </div>
         <p className="home-row-title">{block.title}</p>
@@ -1120,6 +1189,15 @@ function FactItem({ label, value }: { label: string; value: string }) {
 }
 
 // ── Utilities ───────────────────────────────────────────────────────────────
+
+function isTaskBlock(block: ScheduleBlock): boolean {
+  return (
+    block.sourceTable === 'task_items' ||
+    block.sourceTable === 'tasks' ||
+    block.sourceTable === 'deadlines' ||
+    (block.sourceTable === 'drafts' && block.subtitle === 'Draft')
+  )
+}
 
 function resolveItemHref(item: TodayItem) {
   if (item.kind === 'task') return item.href

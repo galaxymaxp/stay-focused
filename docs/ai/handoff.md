@@ -5,6 +5,83 @@ Last Updated: 2026-05-04
 
 ---
 
+## Session Update — 2026-05-04 (Balance Today Plan tasks and study materials)
+
+### What changed
+
+**`components/TodayDashboard.tsx`**
+- Added `filterMode` state (`'all' | 'tasks' | 'study'`, default `'all'`).
+- Added `studyPacksByBlockId` memo — precomputes study pack lists keyed by `block.id` for cheap `PlanRow` lookup.
+- Added `filteredNow / filteredNext / filteredLater` memo — applies filter mode to `nowBlocks/nextBlocks/laterBlocks`.
+- Added `isTaskBlock(block)` utility: returns true for `task_items | tasks | deadlines | drafts(subtitle=Draft)`. All other sources are study blocks.
+- **Filter chips** rendered above `home-plan-list`: "All", "Tasks", "Study Materials". Clicking a chip filters the Now/Next/Later groups. Filter does not affect the Start Here hero or Completed section.
+- **`PlanGroup`**: new required prop `studyPacksByBlockId: Record<string, StudyPackRef[]>`. Passes `studyPacks={studyPacksByBlockId[block.id] ?? []}` to each `PlanRow`.
+- **`PlanRow`**: new required prop `studyPacks: StudyPackRef[]`. When the block has attached study packs, shows inline `home-study-ready-chip` chips ("Study pack ready", "Quiz ready") in the metadata row — always visible, not only when selected. Tasks and study materials now have equal visual weight.
+- **`PrimaryActionHero`**: new required prop `hasSchedule: boolean`. The "After that" section (which showed task-first `upNext` from home-overview) now only renders when `hasSchedule === false`. Renamed to "Also coming up" and changed "See all tasks" → "See all" to remove task-first framing.
+- **Clock rail — generate button**: Added `ui-button-primary` "Generate plan" button inside the clock rail card, visible when `!hasSchedule`. When a stale note applies and a plan exists, shows a compact stale note pointing to the Today Plan regenerate button instead of duplicating it.
+- **Clock ring — completed filter**: `InteractivePlannerClock` now receives `visibleSchedule.filter(b => b.status !== 'completed')` — completed blocks no longer appear on the clock ring.
+
+**`components/InteractivePlannerClock.tsx`**
+- Removed the `clock-status-stack` div (which showed `Free: HH:MM - HH:MM` and `NOW - ...`). These labels were already present in the `SectionHeading` above the clock in the rail card, causing duplication.
+
+**`app/globals.css`**
+- **`.planner-clock-face`**: removed `border`, `border-radius`, `padding`, and `background`. The class is now `position: relative; display: flex; flex-direction: column; align-items: center; gap: .35rem;`. The `.home-sheet` surface is the single card boundary for the clock widget.
+- Removed the `@media (max-width: 640px)` padding override for `.planner-clock-face` (no longer has padding to override).
+- Added `.home-plan-filter` / `.home-plan-filter-chip` / `.home-plan-filter-chip.active` for the Today Plan filter chip row.
+- Added `.home-study-ready-chip` for inline study pack / quiz ready indicators inside `PlanRow` metadata.
+
+**`tests/scheduler.test.ts`**
+- Added 7 new tests (242 total, all passing):
+  1. `study material block qualifies as primary Start Here item` — documents that `module_resources` blocks are eligible as the primary hero.
+  2. `task and study material blocks are both produced by generateSchedule (equal scheduling)` — verifies both types appear in the schedule.
+  3. `Today Plan order follows scheduled block startAt, not task-first priority` — verifies time-ordering of generated blocks.
+  4. `study pack chips attach to study material block, not as standalone block` — documents study pack chip contract.
+  5. `no source item appears in both Start Here and Today Plan` — verifies uniqueness via scheduler dedup.
+  6. `completed blocks are excluded from active Today Plan and clock ring` — documents UI filtering contract.
+  7. `clock card renders without nested heavy inner panel (structural contract)` — documents CSS flatness contract.
+
+### Why it changed
+
+Tasks were visually and structurally overshadowing study materials. The "After that" section used task-first home-overview data even when a schedule existed. The clock had a nested panel (`planner-clock-face` with its own border/background inside an already-bordered `home-sheet` card) creating an "onion" visual. The generate button was only in the primary card, but users adjust the time window in the clock rail and expect to trigger generation there.
+
+### Canonical classification rules (unchanged)
+
+| Source | Student group |
+|---|---|
+| `task_items`, `tasks`, `deadlines` | **Tasks** |
+| `drafts` (subtitle = 'Draft') | **Tasks** |
+| `modules`, `module_resources`, `learning_items` | **Study Materials** |
+| `drafts` (other subtitle) | **Study Materials** |
+| `deep_learn_notes` | Not a standalone block — chip under parent Module/Resource block |
+| `status === 'completed'` | **Completed** (collapsed accordion, excluded from clock ring) |
+
+### Tests run
+
+- `npm run typecheck` ✅ passed (0 errors)
+- `npm run lint` ✅ passed (0 warnings)
+- `npm test -- scheduler` ✅ 242/242 passed
+
+### Known risks
+
+- Filter chips filter `nowBlocks/nextBlocks/laterBlocks` but do not filter the `completedBlocks` accordion or the Start Here hero. This is intentional — the hero always shows the best current block regardless of filter.
+- If all blocks in a time group are filtered out, the group label is hidden (empty group returns null from `PlanGroup`). The user sees no group until they clear the filter. A "No Tasks scheduled" or "No Study Materials scheduled" empty state per group could improve clarity — deferred.
+- `home-study-ready-chip` chips appear inline in the metadata row of `PlanRow`. If a block has both "Study pack ready" and "Quiz ready", both chips appear next to the type pill and time, which may wrap on narrow screens. The `home-row-meta` class already has `flex-wrap: wrap`, so wrapping is handled gracefully.
+- The generate button in the clock rail is a duplicate of the one in the primary card (both appear when `!hasSchedule`). This is intentional for UX proximity — the user sees the clock, adjusts the window, and can generate right there.
+
+### Blockers
+
+None.
+
+### Next recommended step
+
+Review the filter chip "no results" empty state: when a user picks "Tasks" but there are no task blocks in Now/Next/Later, all three groups are hidden and the list is empty. A brief message like "No Tasks scheduled in this window" under the filter chips would prevent confusion. Consider adding it to `home-plan-list` when all filtered groups are empty.
+
+### Suggested commit message
+
+balance today plan tasks and study materials
+
+---
+
 ## Session Update — 2026-05-04 (Restore home-first layout with integrated scheduler)
 
 ### What changed
