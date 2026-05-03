@@ -148,8 +148,18 @@ export function TodayDashboard({
     return map
   }, [visibleSchedule, studyPacksByModuleId, studyPacksByResourceId])
 
+  // The primary scheduled block: current if one is live, otherwise soonest upcoming
+  const primaryScheduleBlock =
+    currentBlock ??
+    activeBlocks
+      .filter((b) => b.status === 'scheduled' && new Date(b.startAt) >= new Date())
+      .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())[0] ??
+    null
+
   const { filteredNow, filteredNext, filteredLater } = useMemo(() => {
+    const heroId = primaryScheduleBlock?.id ?? null
     const keep = (block: ScheduleBlock) => {
+      if (block.id === heroId) return false
       if (filterMode === 'tasks') return isTaskBlock(block)
       if (filterMode === 'study') return !isTaskBlock(block)
       return true
@@ -159,15 +169,7 @@ export function TodayDashboard({
       filteredNext: nextBlocks.filter(keep),
       filteredLater: laterBlocks.filter(keep),
     }
-  }, [nowBlocks, nextBlocks, laterBlocks, filterMode])
-
-  // The primary scheduled block: current if one is live, otherwise soonest upcoming
-  const primaryScheduleBlock =
-    currentBlock ??
-    activeBlocks
-      .filter((b) => b.status === 'scheduled' && new Date(b.startAt) >= new Date())
-      .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())[0] ??
-    null
+  }, [nowBlocks, nextBlocks, laterBlocks, filterMode, primaryScheduleBlock])
 
   function changeWindow(start: string, end: string) {
     setAvailableStart(start)
@@ -232,7 +234,7 @@ export function TodayDashboard({
 
         {undatedTaskCount > 0 ? (
           <p className="home-page-note">
-            {undatedTaskCount} task{undatedTaskCount === 1 ? '' : 's'} still need a due date and
+            {undatedTaskCount} task{undatedTaskCount === 1 ? '' : 's'} still need{undatedTaskCount === 1 ? 's' : ''} a due date and
             stay out of today&apos;s first recommendation.
           </p>
         ) : null}
@@ -321,8 +323,8 @@ export function TodayDashboard({
           {hasSchedule ? (
             <section className="home-sheet" ref={planPanelRef}>
               <SectionHeading
-                eyebrow="Today plan"
-                title="Today's schedule"
+                eyebrow="Today's Schedule"
+                title="Today's Schedule"
                 description="Your blocks for this window, grouped by how soon they start."
               />
 
@@ -348,6 +350,7 @@ export function TodayDashboard({
                   onOpen={handleOpenBlock}
                   onStatus={handleUpdateStatus}
                   onSelect={setSelectedBlockId}
+                  onReschedule={useDemoSchedule ? undefined : handleRescheduleBlock}
                 />
                 <PlanGroup
                   label="Next"
@@ -357,6 +360,7 @@ export function TodayDashboard({
                   onOpen={handleOpenBlock}
                   onStatus={handleUpdateStatus}
                   onSelect={setSelectedBlockId}
+                  onReschedule={useDemoSchedule ? undefined : handleRescheduleBlock}
                 />
                 <PlanGroup
                   label="Later"
@@ -366,6 +370,7 @@ export function TodayDashboard({
                   onOpen={handleOpenBlock}
                   onStatus={handleUpdateStatus}
                   onSelect={setSelectedBlockId}
+                  onReschedule={useDemoSchedule ? undefined : handleRescheduleBlock}
                 />
 
                 {filteredNow.length === 0 &&
@@ -424,8 +429,8 @@ export function TodayDashboard({
           {/* ── DUE SOON ─────────────────────────────────────────────── */}
           <section className="home-sheet">
             <SectionHeading
-              eyebrow="Due soon"
-              title="Due soon"
+              eyebrow="Due Soon"
+              title="Due Soon"
               description="A short list of work with dates close enough to affect today."
               actionHref="/tasks"
               actionLabel="Open Tasks"
@@ -463,17 +468,15 @@ export function TodayDashboard({
               description={`${availableLabel} available · drag ring to adjust`}
             />
 
-            <div className="home-clock-face-wrap">
-              <InteractivePlannerClock
-                availableStart={availableStart}
-                availableEnd={availableEnd}
-                currentBlock={currentBlock}
-                scheduleBlocks={visibleSchedule.filter((b) => b.status !== 'completed')}
-                selectedBlockId={selectedBlockId}
-                onWindowChange={changeWindow}
-                onSelectBlock={selectClockBlock}
-              />
-            </div>
+            <InteractivePlannerClock
+              availableStart={availableStart}
+              availableEnd={availableEnd}
+              currentBlock={currentBlock}
+              scheduleBlocks={visibleSchedule.filter((b) => b.status !== 'completed')}
+              selectedBlockId={selectedBlockId}
+              onWindowChange={changeWindow}
+              onSelectBlock={selectClockBlock}
+            />
 
             <div className="clock-legend" aria-label="Clock legend">
               <span>
@@ -584,7 +587,7 @@ export function TodayDashboard({
           <section className="home-sheet">
             <SectionHeading
               eyebrow="Courses"
-              title="Course snapshot"
+              title="Course Snapshot"
               description="Each class reduced to what matters now."
               actionHref="/courses"
               actionLabel="Open Courses"
@@ -866,6 +869,7 @@ function PlanGroup({
   onOpen,
   onStatus,
   onSelect,
+  onReschedule,
 }: {
   label: string
   blocks: ScheduleBlock[]
@@ -874,6 +878,7 @@ function PlanGroup({
   onOpen: (id: string) => void
   onStatus: (id: string, status: 'opened' | 'completed' | 'skipped') => void
   onSelect: (id: string | null) => void
+  onReschedule?: (id: string, startAt: string, endAt: string) => void
 }) {
   if (blocks.length === 0) return null
 
@@ -890,6 +895,7 @@ function PlanGroup({
             onOpen={onOpen}
             onStatus={onStatus}
             onSelect={onSelect}
+            onReschedule={onReschedule}
           />
         ))}
       </div>
@@ -904,6 +910,7 @@ function PlanRow({
   onOpen,
   onStatus,
   onSelect,
+  onReschedule,
 }: {
   block: ScheduleBlock
   selected: boolean
@@ -911,6 +918,7 @@ function PlanRow({
   onOpen: (id: string) => void
   onStatus: (id: string, status: 'opened' | 'completed' | 'skipped') => void
   onSelect: (id: string | null) => void
+  onReschedule?: (id: string, startAt: string, endAt: string) => void
 }) {
   const typeLabel = getStudentTypeLabel(block)
   const href = getBlockHref(block)
@@ -968,6 +976,15 @@ function PlanRow({
           >
             Skip
           </button>
+          {onReschedule ? (
+            <button
+              type="button"
+              className="ui-button ui-button-ghost ui-button-xs"
+              onClick={() => onReschedule(block.id, block.startAt, block.endAt)}
+            >
+              Move later
+            </button>
+          ) : null}
         </div>
       ) : href ? (
         <Link href={href} className="home-row-open">

@@ -5,6 +5,44 @@ Last Updated: 2026-05-04
 
 ---
 
+## Session Update — 2026-05-04 (Home scheduler priority and clock integration)
+
+### What changed
+
+**`components/TodayDashboard.tsx`**
+- **Grammar fix**: `"1 task still need a due date"` → `"1 task still needs a due date"` (singular/plural now both correct).
+- **No duplicate Open buttons**: `primaryScheduleBlock` is now excluded from `filteredNow / filteredNext / filteredLater` via a `heroId` guard in the filter memo. The hero block (Start Here) no longer duplicates in the Today's Schedule list below it.
+- **Move later on PlanRow**: `onReschedule` prop threaded through `PlanGroup` → `PlanRow`. When a schedule row is expanded/selected, a "Move later" ghost button appears alongside Open / Mark Done / Skip. Uses existing `rescheduleBlock` server action.
+- **Section titles updated**: "Today plan" / "Today's schedule" → "Today's Schedule"; "Due soon" → "Due Soon"; "Course snapshot" → "Course Snapshot".
+- **Clock wrapper removed**: `home-clock-face-wrap` div removed. `InteractivePlannerClock` now renders directly inside the rail card. One fewer nesting layer.
+- **Moved `primaryScheduleBlock` declaration** above the `filteredNow/Next/Later` memo (was declared after; TypeScript reported a use-before-declaration error).
+
+### Why it changed
+
+The hero (Start Here) block was appearing both at the top of the page AND as the first row in Today's Schedule — two "Open" buttons for the same block. The grammar bug produced "1 task still need a due date". Section titles had inconsistent capitalization. The `home-clock-face-wrap` div added an extra layout nesting layer with no meaningful purpose after previous CSS flattening. Move Later was already wired in the hero but missing from the plan row; `rescheduleBlock` already existed so adding it to plan rows was a small extension.
+
+### Tests run
+
+- `npm run typecheck` ✅ passed (0 errors)
+- `npm run lint` ✅ passed (0 warnings)
+- `npm test -- scheduler` ✅ 242/242 passed
+
+### Known risks / blockers
+
+- **"Move later" does not actually shift the time.** `rescheduleBlock(id, block.startAt, block.endAt)` in both the hero and plan rows passes the block's current times unchanged — the DB call is a no-op except for `updated_at`. A real "move later" needs to compute `startAt + Δ` (e.g., push by 30 min or to end of window). TODO: implement time-shifting logic; until then the button triggers a server round-trip but produces no visible change.
+- **`filteredNow` hero exclusion**: If the primaryScheduleBlock is in the "Now" group and the user opens the plan filter, the "Now" group may be empty (just a group label with no rows), which is confusing. The existing empty-group guard (`if (blocks.length === 0) return null`) handles this — the group disappears entirely. Fine for now.
+- **Clock flatness**: Removing `home-clock-face-wrap` reduces one DOM nesting layer. If any CSS targeted `.home-clock-face-wrap > *` selectors those styles will need to be moved to `.home-clock-rail .planner-clock-face` — check `globals.css` if the clock layout shifts.
+
+### Next recommended step
+
+Fix the "Move later" time-shifting logic: compute a new `startAt = block.endAt` (push block to start right after its current slot) and update the duration accordingly. Or add a Δ-minutes UI. The server action and DB schema already support arbitrary times.
+
+### Suggested commit message
+
+fix home scheduler priority and clock integration
+
+---
+
 ## Session Update — 2026-05-04 (Balance Today Plan tasks and study materials)
 
 ### What changed
