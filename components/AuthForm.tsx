@@ -58,7 +58,7 @@ export function AuthForm({
 
   return (
     <main className="page-shell page-shell-narrow page-stack" style={{ gap: '1rem' }}>
-      <section className="glass-panel glass-strong motion-card" style={{ padding: '1.35rem', display: 'grid', gap: '1rem' }}>
+      <section className="glass-panel glass-strong motion-card" style={{ padding: '1.35rem', display: 'grid', gap: '1rem', borderRadius: 'var(--radius-panel)' }}>
         <header style={{ display: 'grid', gap: '0.45rem' }}>
           <p className="ui-kicker">Account</p>
           <h1 className="ui-page-title" style={{ fontSize: '2rem' }}>{title}</h1>
