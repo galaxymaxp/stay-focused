@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { createAuthenticatedSupabaseServerClient } from '@/lib/auth-server'
+import { classifyModuleResourceTextQuality } from '@/lib/extracted-text-quality'
 import { generateSchedule } from '@/lib/scheduler/algorithm'
 import { scoreSchedulerItem } from '@/lib/scheduler/priority'
 import { timeInputToTodayIso } from '@/lib/scheduler/time'
@@ -18,29 +19,85 @@ async function getSchedulerContext() {
 export async function generateUserSchedule(freeTimeStart: string, freeTimeEnd: string) {
   const { client, userId } = await getSchedulerContext()
 
-  const [taskItemsResult, modulesResult, resourcesResult] = await Promise.all([
-    client.from('task_items').select('id,title,deadline,task_type,estimated_minutes,created_at').eq('user_id', userId).neq('status', 'completed'),
-    client.from('modules').select('id,title,released_at,created_at').eq('user_id', userId),
-    client.from('module_resources').select('id,title,extracted_char_count,extraction_status,created_at').eq('user_id', userId),
+  const [taskItemsResult, tasksResult, deadlinesResult, modulesResult, resourcesResult, learningItemsResult, deepLearnNotesResult, draftsResult] = await Promise.all([
+    client.from('task_items').select('id,course_id,module_id,title,deadline,task_type,estimated_minutes,created_at').eq('user_id', userId).neq('status', 'completed'),
+    client.from('tasks').select('id,module_id,title,deadline,estimated_minutes,created_at').eq('user_id', userId).neq('status', 'completed'),
+    client.from('deadlines').select('id,module_id,label,date,estimated_minutes,created_at').eq('user_id', userId),
+    client.from('modules').select('id,course_id,title,released_at,estimated_minutes,created_at').eq('user_id', userId),
+    client.from('module_resources').select('id,course_id,module_id,title,resource_type,extracted_text,extracted_text_preview,extracted_char_count,extraction_status,visual_extraction_status,visual_extracted_text,estimated_minutes,created_at').eq('user_id', userId),
+    client.from('learning_items').select('id,course_id,module_id,title,type,estimated_minutes,created_at').eq('user_id', userId),
+    client.from('deep_learn_notes').select('id,course_id,module_id,resource_id,title,overview,status,quiz_ready,created_at,updated_at').eq('user_id', userId).eq('status', 'ready'),
+    client.from('drafts').select('id,course_id,source_type,source_module_id,source_resource_id,source_title,draft_type,title,status,token_count,created_at,updated_at').eq('user_id', userId).eq('status', 'ready'),
   ])
 
-  if (taskItemsResult.error || modulesResult.error || resourcesResult.error) {
+  if (taskItemsResult.error || tasksResult.error || deadlinesResult.error || modulesResult.error || resourcesResult.error || learningItemsResult.error) {
     console.warn('[scheduler] source data fetch failed; skipping schedule generation', {
       taskItemsError: taskItemsResult.error?.message,
+      tasksError: tasksResult.error?.message,
+      deadlinesError: deadlinesResult.error?.message,
       modulesError: modulesResult.error?.message,
       resourcesError: resourcesResult.error?.message,
+      learningItemsError: learningItemsResult.error?.message,
     })
     return { generated: 0 }
   }
+
+  if (deepLearnNotesResult.error || draftsResult.error) {
+    console.warn('[scheduler] saved output candidates unavailable; continuing with Canvas/task sources', {
+      deepLearnNotesError: deepLearnNotesResult.error?.message,
+      draftsError: draftsResult.error?.message,
+    })
+  }
+
+  const savedOutputResourceIds = new Set<string>([
+    ...(!deepLearnNotesResult.error ? (deepLearnNotesResult.data ?? []).flatMap((row) => row.resource_id ? [row.resource_id] : []) : []),
+    ...(!draftsResult.error ? (draftsResult.data ?? []).flatMap((row) => row.source_resource_id ? [row.source_resource_id] : []) : []),
+  ])
+  const readyResources = (resourcesResult.data ?? []).filter((row) => {
+    if (savedOutputResourceIds.has(row.id)) return false
+    return classifyModuleResourceTextQuality({
+      title: row.title,
+      extractedText: row.extracted_text,
+      extractedTextPreview: row.extracted_text_preview,
+      visualExtractionStatus: row.visual_extraction_status,
+      visualExtractedText: row.visual_extracted_text,
+    }).usable
+  })
 
   const sourceItems: SchedulerItem[] = [
     ...(taskItemsResult.data ?? []).map((row) => ({
       id: row.id,
       userId,
       sourceTable: 'task_items' as const,
+      courseId: row.course_id,
       title: row.title ?? 'Task',
+      subtitle: getTaskSubtitle(row.task_type),
       dueAt: row.deadline,
       taskType: row.task_type,
+      estimatedMinutes: row.estimated_minutes,
+      createdAt: row.created_at,
+    })),
+    ...(tasksResult.data ?? []).map((row) => ({
+      id: row.id,
+      userId,
+      sourceTable: 'tasks' as const,
+      courseId: null,
+      title: row.title ?? 'Task',
+      subtitle: 'Assignment',
+      dueAt: row.deadline,
+      taskType: inferTaskType(row.title),
+      estimatedMinutes: row.estimated_minutes,
+      createdAt: row.created_at,
+    })),
+    ...(deadlinesResult.data ?? []).map((row) => ({
+      id: row.id,
+      userId,
+      sourceTable: 'deadlines' as const,
+      courseId: null,
+      title: row.label ?? 'Deadline',
+      subtitle: 'Assignment',
+      dueAt: row.date,
+      taskType: inferTaskType(row.label),
       estimatedMinutes: row.estimated_minutes,
       createdAt: row.created_at,
     })),
@@ -48,21 +105,68 @@ export async function generateUserSchedule(freeTimeStart: string, freeTimeEnd: s
       id: row.id,
       userId,
       sourceTable: 'modules' as const,
+      courseId: row.course_id,
       title: row.title ?? 'Module',
+      subtitle: 'Module review',
       dueAt: null,
+      taskType: 'review',
+      estimatedMinutes: row.estimated_minutes,
       releasedAt: row.released_at,
       createdAt: row.created_at,
     })),
-    ...(resourcesResult.data ?? []).map((row) => ({
+    ...readyResources.map((row) => ({
       id: row.id,
       userId,
       sourceTable: 'module_resources' as const,
+      courseId: row.course_id,
       title: row.title ?? 'Resource',
+      subtitle: getResourceSubtitle(row.resource_type),
       dueAt: null,
+      resourceType: row.resource_type,
       extractedCharCount: row.extracted_char_count,
       extractionStatus: row.extraction_status,
+      estimatedMinutes: row.estimated_minutes,
+      taskType: row.resource_type?.toLowerCase().includes('quiz') ? 'quiz' : 'reading',
       createdAt: row.created_at,
     })),
+    ...(learningItemsResult.data ?? []).map((row) => ({
+      id: row.id,
+      userId,
+      sourceTable: 'learning_items' as const,
+      courseId: row.course_id,
+      title: row.title ?? 'Review item',
+      subtitle: row.type === 'review' ? 'Quiz practice' : 'Learning material',
+      dueAt: null,
+      taskType: row.type === 'review' ? 'quiz' : 'prep',
+      estimatedMinutes: row.estimated_minutes,
+      createdAt: row.created_at,
+    })),
+    ...(!deepLearnNotesResult.error ? (deepLearnNotesResult.data ?? []).map((row) => ({
+      id: row.id,
+      userId,
+      sourceTable: 'deep_learn_notes' as const,
+      courseId: row.course_id,
+      title: row.title?.trim() || 'Study pack',
+      subtitle: row.quiz_ready ? 'Study pack / quiz practice' : 'Study pack',
+      dueAt: null,
+      taskType: 'quiz',
+      quizReady: row.quiz_ready,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    })) : []),
+    ...(!draftsResult.error ? (draftsResult.data ?? []).map((row) => ({
+      id: row.id,
+      userId,
+      sourceTable: 'drafts' as const,
+      courseId: row.course_id,
+      title: row.title?.trim() || row.source_title?.trim() || 'Saved draft',
+      subtitle: row.source_type === 'task' ? 'Draft' : 'Study draft',
+      dueAt: null,
+      taskType: row.source_type === 'task' ? 'project' : 'prep',
+      tokenCount: row.token_count,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    })) : []),
   ]
 
   const scored = sourceItems.map(scoreSchedulerItem)
@@ -83,11 +187,17 @@ export async function generateUserSchedule(freeTimeStart: string, freeTimeEnd: s
       generatedBlocks.map((block) => ({
         user_id: block.userId,
         source_table: block.sourceTable,
+        source_type: block.sourceType,
         source_id: block.sourceId,
+        course_id: block.courseId,
         title: block.title,
+        subtitle: block.subtitle,
+        block_type: block.blockType,
         start_at: block.startAt,
         end_at: block.endAt,
         estimated_minutes: block.estimatedMinutes,
+        estimate_confidence: confidenceToNumeric(block.estimateConfidence),
+        estimate_reason: block.estimateReason,
         schedule_priority_score: block.schedulePriorityScore,
         status: block.status,
       })),
@@ -110,6 +220,34 @@ export async function updateBlockStatus(blockId: string, status: 'scheduled' | '
 
   if (error) throw new Error('Failed to update scheduled block status.')
   revalidatePath('/')
+}
+
+function getTaskSubtitle(taskType: string | null | undefined) {
+  if (taskType === 'quiz') return 'Quiz practice'
+  if (taskType === 'reading' || taskType === 'prep') return 'Reading'
+  if (taskType === 'project') return 'Drafting'
+  return 'Assignment'
+}
+
+function getResourceSubtitle(resourceType: string | null | undefined) {
+  const value = resourceType?.toLowerCase() ?? ''
+  if (value.includes('quiz')) return 'Quiz practice'
+  if (value.includes('file') || value.includes('pdf') || value.includes('page')) return 'Learning material'
+  return 'Learning material'
+}
+
+function inferTaskType(title: string | null | undefined) {
+  const value = title ?? ''
+  if (/\bquiz|exam|test\b/i.test(value)) return 'quiz'
+  if (/draft|essay|paper|report|write|writing/i.test(value)) return 'project'
+  if (/read|chapter|article/i.test(value)) return 'reading'
+  return 'assignment'
+}
+
+function confidenceToNumeric(confidence: 'low' | 'medium' | 'high') {
+  if (confidence === 'high') return 0.7
+  if (confidence === 'medium') return 0.55
+  return 0.35
 }
 
 export async function rescheduleBlock(blockId: string, start: string, end: string) {

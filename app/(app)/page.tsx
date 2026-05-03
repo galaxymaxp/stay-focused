@@ -22,7 +22,7 @@ export default async function Dashboard() {
   const { data: scheduledBlocks } = client
     ? await client
       .from('scheduled_blocks')
-      .select('id,title,start_at,end_at,status,source_table')
+      .select('id,title,subtitle,start_at,end_at,status,source_table,source_type,block_type,estimate_confidence,estimate_reason')
       .order('start_at', { ascending: true })
       .limit(24)
     : { data: [] }
@@ -37,10 +37,31 @@ export default async function Dashboard() {
           endAt: block.end_at,
           status: block.status,
           sourceTable: block.source_table,
+          sourceType: block.source_type,
+          subtitle: block.subtitle,
+          blockType: block.block_type,
+          estimateConfidence: normalizeEstimateConfidence(block.estimate_confidence),
+          estimateReason: block.estimate_reason,
         }))}
         dueSoon={overview.dueSoon}
         courseSnapshots={overview.courseSnapshots}
       />
     </main>
   )
+}
+
+function normalizeEstimateConfidence(value: unknown) {
+  if (typeof value === 'string') {
+    if (value === 'low' || value === 'medium' || value === 'high') return value
+    const numeric = Number(value)
+    if (Number.isFinite(numeric)) return numericToEstimateConfidence(numeric)
+  }
+  if (typeof value === 'number') return numericToEstimateConfidence(value)
+  return null
+}
+
+function numericToEstimateConfidence(value: number) {
+  if (value >= 0.7) return 'high'
+  if (value >= 0.5) return 'medium'
+  return 'low'
 }

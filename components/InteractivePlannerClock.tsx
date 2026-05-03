@@ -330,7 +330,7 @@ function buildClockSegments(blocks: ClockScheduleBlock[]): ClockSegment[] {
         path,
         startLabel: formatTimeRange(block.startAt, block.endAt),
         durationLabel: formatBlockDuration(block),
-        sourceLabel: getSourceTypeLabel(block.sourceTable),
+        sourceLabel: getSourceTypeLabel(block),
       } : null
     })
     .filter((segment): segment is ClockSegment => Boolean(segment))
@@ -406,9 +406,12 @@ function getClockHandAngles(date: Date) {
   }
 }
 
-function getSourceTypeLabel(source: ClockScheduleBlock['sourceTable']) {
+function getSourceTypeLabel(blockOrSource: ClockScheduleBlock | ClockScheduleBlock['sourceTable']) {
+  const source = typeof blockOrSource === 'string' ? blockOrSource : blockOrSource.sourceTable
   if (source === 'deadlines' || source === 'tasks') return 'Assignment'
   if (source === 'learning_items') return 'Quiz practice'
+  if (source === 'deep_learn_notes') return 'Study pack'
+  if (source === 'drafts') return 'Draft'
   if (source === 'module_resources') return 'Resource'
   if (source === 'modules') return 'Module'
   return 'Task'

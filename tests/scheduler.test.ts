@@ -18,12 +18,22 @@ test('time estimation handles long extracted text', () => {
   assert.ok(est.estimatedMinutes >= 60)
   assert.ok(est.estimatedMinutes <= 90)
   assert.ok(est.estimationConfidence < 0.7)
-  assert.equal(est.reason, 'Estimated from reading length')
+  assert.equal(est.reason, 'Estimated from content length')
 })
 
 test('metadata-only resource gets low confidence', () => {
   const est = estimateMinutesAndConfidence({ id: 'r2', userId, sourceTable: 'module_resources', title: 'Scanned file', dueAt: null, extractionStatus: 'metadata_only' })
   assert.ok(est.estimationConfidence < 0.4)
+})
+
+test('saved study outputs get stable student-facing estimates', () => {
+  const pack = estimateMinutesAndConfidence({ id: 'p1', userId, sourceTable: 'deep_learn_notes', title: 'Data Organization pack', dueAt: null, quizReady: true })
+  const draft = estimateMinutesAndConfidence({ id: 'd1', userId, sourceTable: 'drafts', title: 'Activity draft', dueAt: null, tokenCount: 6600 })
+
+  assert.equal(pack.estimatedMinutes, 30)
+  assert.equal(pack.reason, 'Estimated from saved study pack')
+  assert.equal(draft.estimatedMinutes, 30)
+  assert.equal(draft.reason, 'Estimated from saved draft')
 })
 
 test('schedule generation uses score ordering and fits time window', () => {

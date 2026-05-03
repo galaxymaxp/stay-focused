@@ -1746,3 +1746,88 @@ Run a seeded/demo schedule browser pass at 390px and 430px widths to validate re
 ```
 fix clock command center timing and layout
 ```
+
+---
+
+## Session Update - 2026-05-03 (Schedule resources and simplify clock details)
+
+### What changed
+
+- Expanded scheduler candidate construction beyond task items to include verified data sources already in the app:
+  - `tasks`
+  - `deadlines`
+  - `modules`
+  - readable `module_resources`
+  - `learning_items`
+  - ready `deep_learn_notes`
+  - ready `drafts`
+- Hardened module-resource scheduling so resources are only candidates when existing text-quality rules classify stored or completed visual OCR text as usable academic text.
+- Skipped raw resource scheduling when a ready saved study pack or draft already exists for that resource, so the plan favors the prepared output over duplicate source material.
+- Added saved-output estimate rules:
+  - `Estimated from saved study pack`
+  - `Estimated from saved draft`
+  - resource estimates now say `Estimated from content length`
+- Added `deep_learn_notes` and `drafts` as allowed `scheduled_blocks.source_table` values in a follow-up migration.
+- Replaced the large Selected Block panel with inline card expansion in Today's Schedule and Need Attention.
+- Capped Today's Schedule to 4 blocks by default and Need Attention to 2 by default, each with a lightweight `Show more` control.
+- Made clock segment clicks open the matching schedule card expansion and scroll toward the schedule list.
+- Added type pills on schedule cards for Task, Assignment, Module, Resource, Quiz practice, Study pack, and Draft.
+- Kept Open / Start, Mark studied/done/reviewed, Skip, and Move later actions inside each expanded card.
+
+### Files touched
+
+- `actions/scheduler.ts`
+- `app/page.tsx`
+- `app/(app)/page.tsx`
+- `lib/scheduler/types.ts`
+- `lib/scheduler/algorithm.ts`
+- `lib/scheduler/estimation.ts`
+- `lib/scheduler/priority.ts`
+- `components/TodayDashboard.tsx`
+- `components/InteractivePlannerClock.tsx`
+- `app/globals.css`
+- `tests/scheduler.test.ts`
+- `supabase/migrations/20260503070000_expand_scheduled_blocks_and_queue_cancel.sql`
+- `supabase/migrations/20260503090000_allow_saved_outputs_in_schedule.sql`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Today's Schedule needed to reflect the actual student workflow instead of reading as task-only. The scheduler now uses ready academic resources and saved study outputs without treating unreadable PDFs, metadata-only extracts, OCR refusal text, or debug metadata as study content.
+
+### Tests run
+
+- `npm run typecheck` - passed.
+- `npm run lint` - passed.
+- `npm test -- scheduler queue learn-resource-ui deep-learn-readiness` - passed; repo test script ran all `tests/*.test.ts`, 223 tests.
+- `npx agent-browser` Home smoke check against existing local dev server - passed for page content, no Next.js overlay, no captured console errors, and interactive snapshot.
+
+### Verification result
+
+- TypeScript and ESLint accept scheduler source expansion and inline schedule-card details.
+- Scheduler tests cover saved study pack/draft estimate wording and existing resource/time behavior.
+- Existing queue tests still cover active/completed/failed/canceled grouping and OCR queue continuation.
+- Existing Learn resource and Deep Learn readiness tests still block unreadable, metadata-only, and OCR-refusal sources.
+- Browser smoke check loaded the Home route cleanly; local data still showed the sync-first empty state, so seeded schedule-card expansion was not visually exercised.
+
+### Known risks
+
+- `deep_learn_notes` and `drafts` are optional candidate reads; if those tables are unavailable in an older environment, scheduling continues with Canvas/task/resource sources and logs a warning.
+- Generated study pack/draft blocks are persisted with their own `source_table` values, but source-aware Open routing remains future work.
+- The `Move later` action still uses existing placeholder reschedule wiring with unchanged times.
+- Exact mobile visual QA for expanded cards and Show more controls still needs a seeded schedule state.
+
+### Blockers
+
+- No code blocker.
+- Local browser state did not include synced schedule data.
+
+### Next recommended step
+
+Add source-aware Open routing for scheduled blocks so Study pack, Draft, Resource, Module, and Task blocks jump to the exact execution workspace instead of only changing block status.
+
+### Suggested commit message
+
+```
+schedule resources and simplify clock details
+```

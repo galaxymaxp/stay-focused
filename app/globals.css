@@ -4309,22 +4309,21 @@ details[open] > .ui-interactive-summary,
 }
 .planner-block-card {
   width: 100%;
-  display: block;
-  text-align: left;
   color: inherit;
   border: 1px solid color-mix(in srgb, var(--border-subtle) 84%, transparent);
   border-radius: 12px;
   padding: .72rem;
   background: color-mix(in srgb, var(--surface-elevated) 92%, transparent);
-  cursor: pointer;
-  appearance: none;
+  transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
 }
 .planner-block-card:hover,
-.planner-block-card:focus-visible,
 .planner-block-card.is-selected {
   border-color: color-mix(in srgb, var(--accent-border) 46%, var(--border-subtle));
   box-shadow: 0 10px 24px color-mix(in srgb, var(--accent-shadow) 12%, transparent);
+}
+.planner-block-summary:focus-visible {
   outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-shadow) 36%, transparent);
 }
 .planner-block-card.compact {
   padding: .65rem;
@@ -4345,16 +4344,44 @@ details[open] > .ui-interactive-summary,
   border-style: dashed;
   opacity: .9;
 }
-.planner-block-header {
+.planner-block-summary {
+  width: 100%;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr);
   gap: .55rem;
   align-items: start;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  appearance: none;
+  border-radius: 9px;
 }
-.planner-block-header h3 {
+.planner-block-summary h3 {
   margin: 0;
   font-size: .96rem;
   line-height: 1.25;
+}
+.planner-block-title-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: .35rem;
+  margin-bottom: .18rem;
+}
+.planner-type-pill {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  border: 1px solid color-mix(in srgb, var(--accent-border) 18%, var(--border-subtle) 82%);
+  border-radius: 999px;
+  padding: .16rem .42rem;
+  background: color-mix(in srgb, var(--surface-soft) 72%, transparent);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 760;
 }
 .planner-status-dot {
   width: .62rem;
@@ -4387,6 +4414,50 @@ details[open] > .ui-interactive-summary,
 .planner-empty-state h3 {
   margin: 0;
   font-size: 1.02rem;
+}
+.planner-block-details {
+  display: grid;
+  gap: .62rem;
+  margin-top: .62rem;
+  padding-top: .62rem;
+  border-top: 1px solid color-mix(in srgb, var(--border-subtle) 76%, transparent);
+}
+.planner-block-details dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .5rem;
+  margin: 0;
+}
+.planner-block-details div {
+  min-width: 0;
+}
+.planner-block-details dt {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 750;
+}
+.planner-block-details dd {
+  margin: .14rem 0 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.35;
+}
+.planner-show-more {
+  width: 100%;
+  border: 1px dashed color-mix(in srgb, var(--accent-border) 20%, var(--border-subtle) 80%);
+  border-radius: 10px;
+  padding: .58rem .7rem;
+  background: color-mix(in srgb, var(--surface-soft) 62%, transparent);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 750;
+  cursor: pointer;
+}
+.planner-show-more:hover,
+.planner-show-more:focus-visible {
+  border-color: color-mix(in srgb, var(--accent-border) 42%, var(--border-subtle));
+  color: var(--text-primary);
+  outline: none;
 }
 .planner-selected-panel {
   display: grid;

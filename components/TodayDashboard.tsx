@@ -23,6 +23,8 @@ export function TodayDashboard({ scheduledBlocks, dueSoon, courseSnapshots }: {
   const [availableEnd, setAvailableEnd] = useState('21:30')
   const [isPlanStale, setIsPlanStale] = useState(false)
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null)
+  const [showAllSchedule, setShowAllSchedule] = useState(false)
+  const [showAllAttention, setShowAllAttention] = useState(false)
   const schedulePanelRef = useRef<HTMLDivElement | null>(null)
 
   const scheduleForDisplay = useMemo(() => useDemoSchedule ? buildDemoScheduleBlocks() : scheduledBlocks, [scheduledBlocks, useDemoSchedule])
@@ -33,12 +35,22 @@ export function TodayDashboard({ scheduledBlocks, dueSoon, courseSnapshots }: {
 
   const { currentBlock, needsAttention, completedCount, totalScheduledCount, hasAnySourceData } = useMemo(() => {
     const now = new Date()
+    const nowMs = now.getTime()
+    const urgentCutoff = nowMs + 30 * 60_000
     const sorted = [...visibleSchedule].sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())
     const active = sorted.find((block) => block.status === 'opened' || (block.status === 'scheduled' && new Date(block.startAt) <= now && new Date(block.endAt) > now)) ?? null
 
     return {
       currentBlock: active,
-      needsAttention: sorted.filter((block) => block.status === 'scheduled' && new Date(block.endAt) <= now).slice(0, 4),
+      needsAttention: sorted.filter((block) => {
+        const startMs = new Date(block.startAt).getTime()
+        const endMs = new Date(block.endAt).getTime()
+        if (block.status === 'completed') return false
+        if (block.status === 'skipped') return true
+        if (block.status === 'opened' && endMs <= nowMs) return true
+        if (block.status === 'scheduled' && endMs <= nowMs) return true
+        return block.status === 'scheduled' && startMs >= nowMs && startMs <= urgentCutoff
+      }),
       completedCount: sorted.filter((block) => block.status === 'completed').length,
       totalScheduledCount: sorted.length,
       hasAnySourceData: dueSoon.length > 0 || courseSnapshots.length > 0,
@@ -48,16 +60,28 @@ export function TodayDashboard({ scheduledBlocks, dueSoon, courseSnapshots }: {
   const hasSchedule = totalScheduledCount > 0
   const completedAll = hasSchedule && completedCount === totalScheduledCount
   const selectedBlock = useMemo(() => {
-    if (selectedBlockId) {
-      const selected = visibleSchedule.find((block) => block.id === selectedBlockId)
-      if (selected) return selected
-    }
-
-    return currentBlock ?? visibleSchedule.find((block) => block.status !== 'completed' && block.status !== 'skipped') ?? visibleSchedule[0] ?? null
-  }, [currentBlock, selectedBlockId, visibleSchedule])
+    return selectedBlockId ? visibleSchedule.find((block) => block.id === selectedBlockId) ?? null : null
+  }, [selectedBlockId, visibleSchedule])
   const availableMinutes = getWindowDurationMinutes(availableStart, availableEnd)
   const availableLabel = availableMinutes > 0 ? formatDuration(availableMinutes) : 'Invalid window'
   const windowLabel = `${formatTime(availableStart)} - ${formatTime(availableEnd)}`
+  const selectedScheduleIndex = selectedBlockId ? visibleSchedule.findIndex((block) => block.id === selectedBlockId) : -1
+  const scheduleListExpanded = showAllSchedule || selectedScheduleIndex >= 4
+  const visibleScheduleCards = scheduleListExpanded ? visibleSchedule : visibleSchedule.slice(0, 4)
+  const selectedAttentionIndex = selectedBlockId ? needsAttention.findIndex((block) => block.id === selectedBlockId) : -1
+  const attentionListExpanded = showAllAttention || selectedAttentionIndex >= 2
+  const visibleAttentionCards = attentionListExpanded ? needsAttention : needsAttention.slice(0, 2)
+
+  function selectBlock(blockId: string) {
+    setSelectedBlockId((current) => current === blockId ? null : blockId)
+  }
+
+  function selectClockBlock(blockId: string) {
+    setSelectedBlockId(blockId)
+    if (visibleSchedule.findIndex((block) => block.id === blockId) >= 4) setShowAllSchedule(true)
+    if (needsAttention.findIndex((block) => block.id === blockId) >= 2) setShowAllAttention(true)
+    requestAnimationFrame(() => schedulePanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+  }
 
   function changeWindow(start: string, end: string) {
     setAvailableStart(start)
@@ -109,9 +133,9 @@ export function TodayDashboard({ scheduledBlocks, dueSoon, courseSnapshots }: {
               availableEnd={availableEnd}
               currentBlock={currentBlock}
               scheduleBlocks={visibleSchedule}
-              selectedBlockId={selectedBlock?.id ?? null}
+              selectedBlockId={selectedBlockId}
               onWindowChange={changeWindow}
-              onSelectBlock={setSelectedBlockId}
+              onSelectBlock={selectClockBlock}
             />
             <div className="clock-legend" aria-label="Clock legend">
               <span><i className="clock-legend-swatch free" />Outer ring: Free time</span>
@@ -146,15 +170,33 @@ export function TodayDashboard({ scheduledBlocks, dueSoon, courseSnapshots }: {
 
             {visibleSchedule.length > 0 ? (
               <div className="planner-schedule-list">
-                {visibleSchedule.map((block) => (
+                {visibleScheduleCards.map((block) => (
                   <ScheduleCard
                     key={block.id}
                     block={block}
                     nowId={currentBlock?.id ?? null}
                     selected={selectedBlock?.id === block.id}
-                    onSelect={setSelectedBlockId}
+                    onSelect={selectBlock}
+                    onStatus={updateStatus}
+                    onReschedule={useDemoSchedule ? undefined : placeholderReschedule}
                   />
                 ))}
+                {visibleSchedule.length > 4 ? (
+                  <button
+                    type="button"
+                    className="planner-show-more"
+                    onClick={() => {
+                      if (scheduleListExpanded) {
+                        setSelectedBlockId(null)
+                        setShowAllSchedule(false)
+                      } else {
+                        setShowAllSchedule(true)
+                      }
+                    }}
+                  >
+                    {scheduleListExpanded ? 'Show less' : `Show ${visibleSchedule.length - 4} more`}
+                  </button>
+                ) : null}
               </div>
             ) : (
               <section className="planner-empty-state">
@@ -168,27 +210,39 @@ export function TodayDashboard({ scheduledBlocks, dueSoon, courseSnapshots }: {
             <p className="ui-kicker">Need Attention</p>
             {needsAttention.length > 0 ? (
               <div className="planner-compact-list">
-                {needsAttention.map((block) => (
+                {visibleAttentionCards.map((block) => (
                   <ScheduleCard
                     key={block.id}
                     block={block}
                     nowId={null}
                     selected={selectedBlock?.id === block.id}
-                    onSelect={setSelectedBlockId}
+                    onSelect={selectBlock}
+                    onStatus={updateStatus}
+                    onReschedule={useDemoSchedule ? undefined : placeholderReschedule}
                     compact
                   />
                 ))}
+                {needsAttention.length > 2 ? (
+                  <button
+                    type="button"
+                    className="planner-show-more"
+                    onClick={() => {
+                      if (attentionListExpanded) {
+                        setSelectedBlockId(null)
+                        setShowAllAttention(false)
+                      } else {
+                        setShowAllAttention(true)
+                      }
+                    }}
+                  >
+                    {attentionListExpanded ? 'Show less' : `Show ${needsAttention.length - 2} more`}
+                  </button>
+                ) : null}
               </div>
             ) : (
               <p className="ui-section-copy">Nothing needs attention right now.</p>
             )}
           </section>
-
-          <SelectedBlockPanel
-            block={selectedBlock}
-            onStatus={updateStatus}
-            onReschedule={useDemoSchedule ? undefined : placeholderReschedule}
-          />
 
           {!hasSchedule ? (
             <section className="planner-start-panel">
@@ -221,11 +275,13 @@ export function TodayDashboard({ scheduledBlocks, dueSoon, courseSnapshots }: {
   )
 }
 
-function ScheduleCard({ block, nowId, selected, onSelect, compact = false }: {
+function ScheduleCard({ block, nowId, selected, onSelect, onStatus, onReschedule, compact = false }: {
   block: ScheduleBlock
   nowId: string | null
   selected: boolean
   onSelect: (id: string) => void
+  onStatus: (id: string, status: 'opened' | 'completed' | 'skipped') => void
+  onReschedule?: (id: string, startAt: string, endAt: string) => void
   compact?: boolean
 }) {
   const isNow = nowId === block.id
@@ -233,72 +289,42 @@ function ScheduleCard({ block, nowId, selected, onSelect, compact = false }: {
   const stateClass = block.status === 'completed' ? ' is-completed' : block.status === 'skipped' ? ' is-skipped' : isMissed ? ' is-missed' : ''
 
   return (
-    <button
-      type="button"
-      className={`planner-block-card${isNow ? ' is-now' : ''}${stateClass}${selected ? ' is-selected' : ''}${compact ? ' compact' : ''}`}
-      onClick={() => onSelect(block.id)}
-      aria-pressed={selected}
-    >
-      <div className="planner-block-header">
+    <article className={`planner-block-card${isNow ? ' is-now' : ''}${stateClass}${selected ? ' is-selected' : ''}${compact ? ' compact' : ''}`}>
+      <button type="button" className="planner-block-summary" onClick={() => onSelect(block.id)} aria-expanded={selected}>
         <span className="planner-status-dot" aria-hidden="true" />
         <div>
+          <div className="planner-block-title-row">
+            <span className="planner-type-pill">{getSourceTypeLabel(block)}</span>
+            {isNow ? <span className="now-pill">NOW</span> : null}
+          </div>
           <h3>{block.title}</h3>
           <p className="planner-block-time">{formatTimeRange(block.startAt, block.endAt)} <span>{formatBlockDuration(block)}</span></p>
         </div>
-        {isNow ? <span className="now-pill">NOW</span> : null}
-      </div>
-      <p className="schedule-context">{block.subtitle ?? block.context ?? getSourceTypeLabel(block.sourceTable)}</p>
+      </button>
+      <p className="schedule-context">{block.subtitle ?? block.context ?? getSourceTypeLabel(block)}</p>
       {block.urgencyNote ? <p className="schedule-urgency">{block.urgencyNote}</p> : null}
       <p className="schedule-meta-note">{getEstimateLabel(block)}</p>
-    </button>
-  )
-}
-
-function SelectedBlockPanel({ block, onStatus, onReschedule }: {
-  block: ScheduleBlock | null
-  onStatus: (id: string, status: 'opened' | 'completed' | 'skipped') => void
-  onReschedule?: (id: string, startAt: string, endAt: string) => void
-}) {
-  if (!block) {
-    return (
-      <section className="planner-selected-panel">
-        <p className="ui-kicker">Selected Block</p>
-        <h2>No block selected</h2>
-        <p className="ui-section-copy">Tap a clock segment or schedule row to see actions here.</p>
-      </section>
-    )
-  }
-
-  return (
-    <section className="planner-selected-panel" aria-label="Selected scheduled block">
-      <div className="planner-panel-heading">
-        <div>
-          <p className="ui-kicker">Selected Block</p>
-          <h2>{block.title}</h2>
+      {selected ? (
+        <div className="planner-block-details">
+          <dl>
+            <div>
+              <dt>Type</dt>
+              <dd>{getSourceTypeLabel(block)}</dd>
+            </div>
+            <div>
+              <dt>Estimate</dt>
+              <dd>{getEstimateLabel(block)}</dd>
+            </div>
+          </dl>
+          <div className="schedule-actions selected-block-actions">
+            <button type="button" className="ui-button ui-button-primary ui-button-xs" onClick={() => onStatus(block.id, 'opened')}>Open / Start</button>
+            <button type="button" className="ui-button ui-button-secondary ui-button-xs" onClick={() => onStatus(block.id, 'completed')}>{getDoneLabel(block)}</button>
+            <button type="button" className="ui-button ui-button-secondary ui-button-xs" onClick={() => onStatus(block.id, 'skipped')}>Skip</button>
+            {onReschedule ? <button type="button" className="ui-button ui-button-ghost ui-button-xs" onClick={() => onReschedule(block.id, block.startAt, block.endAt)}>Move later</button> : null}
+          </div>
         </div>
-        <span className="planner-window-chip">{getSourceTypeLabel(block.sourceTable)}</span>
-      </div>
-      <dl className="selected-block-details">
-        <div>
-          <dt>Time</dt>
-          <dd>{formatTimeRange(block.startAt, block.endAt)}</dd>
-        </div>
-        <div>
-          <dt>Duration</dt>
-          <dd>{formatBlockDuration(block)}</dd>
-        </div>
-        <div>
-          <dt>Estimate</dt>
-          <dd>{getEstimateLabel(block)}</dd>
-        </div>
-      </dl>
-      <div className="schedule-actions selected-block-actions">
-        <button type="button" className="ui-button ui-button-primary ui-button-xs" onClick={() => onStatus(block.id, 'opened')}>Open / Start</button>
-        <button type="button" className="ui-button ui-button-secondary ui-button-xs" onClick={() => onStatus(block.id, 'completed')}>{getDoneLabel(block.sourceTable)}</button>
-        <button type="button" className="ui-button ui-button-secondary ui-button-xs" onClick={() => onStatus(block.id, 'skipped')}>Skip</button>
-        {onReschedule ? <button type="button" className="ui-button ui-button-ghost ui-button-xs" onClick={() => onReschedule(block.id, block.startAt, block.endAt)}>Move later</button> : null}
-      </div>
-    </section>
+      ) : null}
+    </article>
   )
 }
 
@@ -322,25 +348,32 @@ function buildDemoScheduleBlocks(): ScheduleBlock[] {
     { id: 'demo-current', title: 'Review Web App Development module', context: 'CIS 310', subtitle: 'Module review', estimateConfidence: 'low', estimateReason: 'Estimated module review block', urgencyNote: 'Due tonight 11:59 PM', ...current, status: 'opened', sourceTable: 'modules' },
     { id: 'demo-next', title: 'Draft activity answer', context: 'CIS 310', subtitle: 'Drafting', estimateConfidence: 'medium', estimateReason: 'Estimated from task type', urgencyNote: 'Deadline basis: due in 5h', ...next, status: 'scheduled', sourceTable: 'task_items' },
     { id: 'demo-upcoming-one', title: 'Quiz prep: JavaScript basics', context: 'CIS 302', subtitle: 'Quiz practice', estimateConfidence: 'medium', estimateReason: 'Estimated from quiz/review type', urgencyNote: 'Prep target: quiz tomorrow', ...upcomingOne, status: 'scheduled', sourceTable: 'learning_items' },
-    { id: 'demo-upcoming-two', title: 'Finish database assignment', context: 'DBMS 201', subtitle: 'Assignment', estimateConfidence: 'low', estimateReason: 'Estimated default task block', ...upcomingTwo, status: 'skipped', sourceTable: 'task_items' },
+    { id: 'demo-upcoming-two', title: 'Data Organization study pack', context: 'DBMS 201', subtitle: 'Study pack', estimateConfidence: 'medium', estimateReason: 'Estimated from saved study pack', ...upcomingTwo, status: 'skipped', sourceTable: 'deep_learn_notes' },
   ]
 }
 
-function getConfidenceLabel(source: ScheduleBlock['sourceTable']) {
-  if (source === 'module_resources') return 'Estimated from content length'
-  if (source === 'modules') return 'Based on deadline urgency'
+function getConfidenceLabel(block: ScheduleBlock) {
+  if (block.sourceTable === 'module_resources') return 'Estimated from content length'
+  if (block.sourceTable === 'deep_learn_notes') return 'Estimated from saved study pack'
+  if (block.sourceTable === 'drafts') return 'Estimated from saved draft'
+  if (block.sourceTable === 'modules') return 'Estimated module review block'
   return 'Estimated from workload and urgency'
 }
 
-function getSourceTypeLabel(source: ScheduleBlock['sourceTable']) {
+function getSourceTypeLabel(blockOrSource: ScheduleBlock | ScheduleBlock['sourceTable']) {
+  const source = typeof blockOrSource === 'string' ? blockOrSource : blockOrSource.sourceTable
   if (source === 'deadlines' || source === 'tasks') return 'Assignment'
   if (source === 'learning_items') return 'Quiz practice'
+  if (source === 'deep_learn_notes') return 'Study pack'
+  if (source === 'drafts') return 'Draft'
   if (source === 'module_resources') return 'Resource'
   if (source === 'modules') return 'Module'
   return 'Task'
 }
 
-function getDoneLabel(source: ScheduleBlock['sourceTable']) {
+function getDoneLabel(block: ScheduleBlock) {
+  const source = block.sourceTable
+  if (source === 'deep_learn_notes' || source === 'drafts') return 'Mark studied'
   if (source === 'learning_items') return 'Mark reviewed'
   if (source === 'module_resources') return 'Mark studied'
   if (source === 'modules') return 'Mark reviewed'
@@ -349,11 +382,11 @@ function getDoneLabel(source: ScheduleBlock['sourceTable']) {
 
 function getEstimateLabel(block: ScheduleBlock) {
   if (block.estimateReason) {
-    const confidence = block.estimateConfidence ? ` · ${block.estimateConfidence} confidence` : ''
+    const confidence = block.estimateConfidence ? ` - ${block.estimateConfidence} confidence` : ''
     return `${block.estimateReason}${confidence}`
   }
 
-  return `Estimated · low confidence (${getConfidenceLabel(block.sourceTable)})`
+  return `${getConfidenceLabel(block)} - low confidence`
 }
 
 function formatTimeRange(startAt: string, endAt: string) {
