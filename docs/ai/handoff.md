@@ -1684,3 +1684,65 @@ Run a synced-account or seeded-demo browser pass at mobile widths (390px and 430
 ```
 build interactive clock command center shell
 ```
+
+---
+
+## Session Update - 2026-05-03 (Clock Command Center timing and layout fix)
+
+### What changed
+
+- Synced the analog clock hands to the browser's current local time with a client-side ticking state and added a second hand.
+- Updated free-time window math so `end <= start` is treated as an overnight window instead of invalid.
+- Added overnight-aware ISO range generation for scheduler creation, including windows such as `7:00 PM - 12:00 AM`.
+- Removed visible Start/End time inputs and the View Schedule button from the main Clock Command Center controls.
+- Moved available duration into the clock card and kept one primary generation action: `Generate schedule` / `Regenerate Today Plan`.
+- Enlarged the clock on desktop, improved mobile sizing, separated status chips from the clock face, and kept the free-time outer ring plus scheduled-block inner ring.
+- Preserved selected-block actions for Open/Start, Mark studied/done/reviewed, Skip, and Move later through existing action wiring.
+- Added scheduler coverage for overnight free-time windows.
+
+### Files touched
+
+- `components/InteractivePlannerClock.tsx`
+- `components/TodayDashboard.tsx`
+- `lib/scheduler/time.ts`
+- `tests/scheduler.test.ts`
+- `app/globals.css`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+The Phase 1 clock shell still behaved like a time input form and rejected valid PM-to-midnight availability. The clock now reads as the primary control, reflects the user's real local time, and keeps schedule/free-time filtering aligned for overnight study windows.
+
+### Tests run
+
+- `npm run typecheck` - passed.
+- `npm run lint` - passed.
+- `npm test -- scheduler queue` - passed; repo test script ran all `tests/*.test.ts`, 222 tests.
+- `npx agent-browser` smoke check against local dev server `/` - passed for page content, no Next.js error overlay, no captured console errors, and interactive snapshot.
+
+### Verification result
+
+- TypeScript and ESLint accept the clock/dashboard/time-helper changes.
+- Scheduler tests now cover a `19:00 -> 00:00` window and after-midnight block filtering.
+- Browser smoke check verified the Home route loads cleanly, but local data still showed the sync-first empty Home page rather than a seeded clock schedule.
+
+### Known risks
+
+- The analog clock remains a 12-hour face; overnight state is preserved in time values and filtering, but AM/PM is not separately drawn around the ring.
+- Very long availability windows over 12 hours are valid in duration math, but the 12-hour ring is still a compact visual abstraction.
+- Touch dragging at exact 390px/430px widths still needs a seeded visual QA pass.
+
+### Blockers
+
+- No code blocker.
+- Local browser state did not include synced schedule data, so clock visual verification was limited to compile/runtime checks.
+
+### Next recommended step
+
+Run a seeded/demo schedule browser pass at 390px and 430px widths to validate real clock segment readability, touch target comfort, and label spacing.
+
+### Suggested commit message
+
+```
+fix clock command center timing and layout
+```

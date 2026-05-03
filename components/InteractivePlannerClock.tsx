@@ -1,8 +1,9 @@
 'use client'
 
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent, PointerEvent } from 'react'
 import { formatDuration, formatTime, minutesToTime, timeToMinutes } from '@/lib/scheduler/time'
+import type { SchedulerBlockType, SchedulerSourceTable } from '@/lib/scheduler/types'
 
 export type ClockScheduleBlock = {
   id: string
@@ -10,7 +11,12 @@ export type ClockScheduleBlock = {
   startAt: string
   endAt: string
   status: 'scheduled' | 'opened' | 'completed' | 'skipped'
-  sourceTable: 'task_items' | 'modules' | 'module_resources'
+  sourceTable: SchedulerSourceTable
+  sourceType?: SchedulerSourceTable | string | null
+  blockType?: SchedulerBlockType | null
+  subtitle?: string | null
+  estimateConfidence?: 'low' | 'medium' | 'high' | null
+  estimateReason?: string | null
   context?: string
   urgencyNote?: string
 }
@@ -33,11 +39,13 @@ type DragState = {
   endMinutes: number
 }
 
-const CENTER = 140
-const OUTER_RADIUS = 116
-const INNER_RADIUS = 82
+const CENTER = 160
+const VIEWBOX_SIZE = 320
+const OUTER_RADIUS = 136
+const INNER_RADIUS = 96
 const SNAP_MINUTES = 15
 const MIN_WINDOW_MINUTES = 15
+const MINUTES_PER_DAY = 24 * 60
 
 export function InteractivePlannerClock({
   availableStart,
@@ -59,9 +67,11 @@ export function InteractivePlannerClock({
   const svgRef = useRef<SVGSVGElement | null>(null)
   const dragRef = useRef<DragState | null>(null)
   const [hoveredSegmentId, setHoveredSegmentId] = useState<string | null>(null)
+  const [now, setNow] = useState<Date | null>(null)
 
   const startMinutes = timeToMinutes(availableStart)
-  const endMinutes = timeToMinutes(availableEnd)
+  const rawEndMinutes = timeToMinutes(availableEnd)
+  const endMinutes = normalizeClockEnd(startMinutes, rawEndMinutes)
   const freeArcPath = Number.isFinite(startMinutes) && Number.isFinite(endMinutes)
     ? buildArcPath(startMinutes, endMinutes, OUTER_RADIUS)
     : null
@@ -70,6 +80,16 @@ export function InteractivePlannerClock({
 
   const segments = useMemo(() => buildClockSegments(scheduleBlocks), [scheduleBlocks])
   const activeTooltipSegment = segments.find((segment) => segment.id === hoveredSegmentId) ?? null
+  const handAngles = now ? getClockHandAngles(now) : null
+
+  useEffect(() => {
+    const animationFrame = window.requestAnimationFrame(() => setNow(new Date()))
+    const interval = window.setInterval(() => setNow(new Date()), 1000)
+    return () => {
+      window.cancelAnimationFrame(animationFrame)
+      window.clearInterval(interval)
+    }
+  }, [])
 
   function beginDrag(mode: DragMode, event: PointerEvent<SVGElement>) {
     if (!Number.isFinite(startMinutes) || !Number.isFinite(endMinutes) || endMinutes <= startMinutes) return
@@ -104,7 +124,7 @@ export function InteractivePlannerClock({
     const delta = shortestClockDelta(pointerMinutes - drag.pointerMinutes)
     const snappedDelta = snapToInterval(delta, SNAP_MINUTES)
     const duration = drag.endMinutes - drag.startMinutes
-    const nextStart = clamp(drag.startMinutes + snappedDelta, 0, 1440 - duration)
+    const nextStart = normalizeMinutes(drag.startMinutes + snappedDelta)
     commitWindow(nextStart, nextStart + duration)
   }
 
@@ -119,7 +139,7 @@ export function InteractivePlannerClock({
     if (!svg) return Number.NaN
 
     const rect = svg.getBoundingClientRect()
-    const scale = 280 / rect.width
+    const scale = VIEWBOX_SIZE / rect.width
     const x = (event.clientX - rect.left) * scale
     const y = (event.clientY - rect.top) * scale
     const angle = Math.atan2(y - CENTER, x - CENTER) * 180 / Math.PI + 90
@@ -129,9 +149,11 @@ export function InteractivePlannerClock({
   }
 
   function commitWindow(start: number, end: number) {
-    const nextStart = clamp(snapToInterval(start, SNAP_MINUTES), 0, 1425)
-    const nextEnd = clamp(snapToInterval(end, SNAP_MINUTES), nextStart + MIN_WINDOW_MINUTES, 1440)
-    onWindowChange(minutesToTime(nextStart), minutesToTime(nextEnd))
+    const nextStart = normalizeMinutes(clamp(snapToInterval(start, SNAP_MINUTES), 0, MINUTES_PER_DAY - SNAP_MINUTES))
+    const snappedEnd = snapToInterval(end, SNAP_MINUTES)
+    const nextEnd = Math.max(snappedEnd, start + MIN_WINDOW_MINUTES)
+    const duration = Math.min(MINUTES_PER_DAY, nextEnd - start)
+    onWindowChange(minutesToTime(nextStart), minutesToTime(nextStart + duration))
   }
 
   function nudgeWindow(mode: DragMode, event: KeyboardEvent<SVGElement>) {
@@ -153,7 +175,7 @@ export function InteractivePlannerClock({
     }
 
     const duration = endMinutes - startMinutes
-    const nextStart = clamp(startMinutes + delta, 0, 1440 - duration)
+    const nextStart = normalizeMinutes(startMinutes + delta)
     commitWindow(nextStart, nextStart + duration)
   }
 
@@ -162,7 +184,7 @@ export function InteractivePlannerClock({
       <svg
         ref={svgRef}
         className="planner-clock-svg"
-        viewBox="0 0 280 280"
+        viewBox={`0 0 ${VIEWBOX_SIZE} ${VIEWBOX_SIZE}`}
         role="img"
         aria-label="Analog clock. Outer ring adjusts free time. Inner segments show scheduled study blocks."
         onPointerMove={updateDrag}
@@ -174,8 +196,8 @@ export function InteractivePlannerClock({
 
         {Array.from({ length: 60 }, (_, index) => {
           const major = index % 5 === 0
-          const outer = polarToCartesian(CENTER, CENTER, major ? 104 : 108, index * 6)
-          const inner = polarToCartesian(CENTER, CENTER, major ? 98 : 104, index * 6)
+          const outer = polarToCartesian(CENTER, CENTER, major ? 120 : 126, index * 6)
+          const inner = polarToCartesian(CENTER, CENTER, major ? 112 : 121, index * 6)
           return (
             <line
               key={index}
@@ -190,7 +212,7 @@ export function InteractivePlannerClock({
 
         {Array.from({ length: 12 }, (_, index) => {
           const number = index + 1
-          const point = polarToCartesian(CENTER, CENTER, 66, number * 30)
+          const point = polarToCartesian(CENTER, CENTER, 74, number * 30)
           return (
             <text key={number} className="clock-number" x={point.x} y={point.y}>
               {number}
@@ -268,13 +290,20 @@ export function InteractivePlannerClock({
           />
         ) : null}
 
-        <line className="clock-hand hour" x1={CENTER} y1={CENTER} x2={CENTER - 22} y2={CENTER + 10} />
-        <line className="clock-hand minute" x1={CENTER} y1={CENTER} x2={CENTER + 2} y2={CENTER - 46} />
-        <circle className="clock-center-dot" cx={CENTER} cy={CENTER} r="6" />
+        {handAngles ? (
+          <>
+            <line className="clock-hand hour" x1={CENTER} y1={CENTER} x2={handAngles.hour.x} y2={handAngles.hour.y} />
+            <line className="clock-hand minute" x1={CENTER} y1={CENTER} x2={handAngles.minute.x} y2={handAngles.minute.y} />
+            <line className="clock-hand second" x1={CENTER} y1={CENTER + 12} x2={handAngles.second.x} y2={handAngles.second.y} />
+            <circle className="clock-center-dot" cx={CENTER} cy={CENTER} r="6" />
+          </>
+        ) : null}
       </svg>
 
-      <div className="clock-free-window">Free: {formatTime(availableStart)} - {formatTime(availableEnd)}</div>
-      {currentBlock ? <div className="clock-now-chip">NOW - {formatTimeRange(currentBlock.startAt, currentBlock.endAt)}</div> : null}
+      <div className="clock-status-stack">
+        <div className="clock-free-window">Free: {formatTime(availableStart)} - {formatTime(availableEnd)}</div>
+        {currentBlock ? <div className="clock-now-chip">NOW - {formatTimeRange(currentBlock.startAt, currentBlock.endAt)}</div> : null}
+      </div>
       {activeTooltipSegment ? (
         <div className="clock-segment-tooltip" role="status">
           <strong>{activeTooltipSegment.block.title}</strong>
@@ -291,7 +320,8 @@ function buildClockSegments(blocks: ClockScheduleBlock[]): ClockSegment[] {
       const start = new Date(block.startAt)
       const end = new Date(block.endAt)
       const startMinutes = start.getHours() * 60 + start.getMinutes()
-      const endMinutes = end.getHours() * 60 + end.getMinutes()
+      const rawEndMinutes = end.getHours() * 60 + end.getMinutes()
+      const endMinutes = normalizeClockEnd(startMinutes, rawEndMinutes)
       const path = buildArcPath(startMinutes + 1, Math.max(startMinutes + 2, endMinutes - 1), INNER_RADIUS)
 
       return path ? {
@@ -352,7 +382,33 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value))
 }
 
+function normalizeClockEnd(startMinutes: number, endMinutes: number) {
+  if (!Number.isFinite(startMinutes) || !Number.isFinite(endMinutes)) return Number.NaN
+  return endMinutes <= startMinutes ? endMinutes + MINUTES_PER_DAY : endMinutes
+}
+
+function normalizeMinutes(minutes: number) {
+  return ((minutes % MINUTES_PER_DAY) + MINUTES_PER_DAY) % MINUTES_PER_DAY
+}
+
+function getClockHandAngles(date: Date) {
+  const hours = date.getHours() % 12
+  const minutes = date.getMinutes()
+  const seconds = date.getSeconds()
+  const secondAngle = seconds * 6
+  const minuteAngle = minutes * 6 + seconds * 0.1
+  const hourAngle = hours * 30 + minutes * 0.5
+
+  return {
+    hour: polarToCartesian(CENTER, CENTER, 42, hourAngle),
+    minute: polarToCartesian(CENTER, CENTER, 66, minuteAngle),
+    second: polarToCartesian(CENTER, CENTER, 76, secondAngle),
+  }
+}
+
 function getSourceTypeLabel(source: ClockScheduleBlock['sourceTable']) {
+  if (source === 'deadlines' || source === 'tasks') return 'Assignment'
+  if (source === 'learning_items') return 'Quiz practice'
   if (source === 'module_resources') return 'Resource'
   if (source === 'modules') return 'Module'
   return 'Task'

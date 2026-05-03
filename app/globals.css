@@ -4043,23 +4043,26 @@ details[open] > .ui-interactive-summary,
 
 .planner-clock-panel {
   display: grid;
-  gap: .75rem;
-  padding: .85rem;
+  gap: .85rem;
+  padding: 1rem;
 }
 .planner-clock-face {
-  min-height: 280px;
+  min-height: 360px;
   position: relative;
   display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
   place-items: center;
-  overflow: hidden;
+  gap: .55rem;
+  overflow: visible;
   border: 1px solid color-mix(in srgb, var(--accent-border) 18%, var(--border-subtle) 82%);
   border-radius: 12px;
+  padding: .75rem .75rem .8rem;
   background:
     radial-gradient(circle at center, color-mix(in srgb, var(--surface-focus) 86%, var(--accent) 14%) 0 30%, transparent 31%),
     radial-gradient(circle at center, color-mix(in srgb, var(--surface-soft) 92%, var(--amber-light) 8%) 0%, color-mix(in srgb, var(--surface-elevated) 78%, transparent) 72%);
 }
 .planner-clock-svg {
-  width: min(268px, 90%);
+  width: min(380px, 94%);
   height: auto;
   aspect-ratio: 1;
   display: block;
@@ -4117,7 +4120,7 @@ details[open] > .ui-interactive-summary,
 }
 .clock-number {
   fill: var(--text-secondary);
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 750;
   dominant-baseline: middle;
   text-anchor: middle;
@@ -4143,31 +4146,33 @@ details[open] > .ui-interactive-summary,
 .clock-hand.minute {
   stroke-width: 3;
 }
+.clock-hand.second {
+  stroke: color-mix(in srgb, var(--red) 72%, var(--amber) 28%);
+  stroke-width: 1.6;
+}
 .clock-center-dot {
   fill: var(--accent);
   filter: drop-shadow(0 0 8px color-mix(in srgb, var(--accent) 40%, transparent));
 }
-.clock-free-window {
-  position: absolute;
-  left: 50%;
-  bottom: .85rem;
-  transform: translateX(-50%);
-  width: max-content;
-  max-width: calc(100% - 2rem);
-  font-size: 12px;
+.clock-status-stack {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: .35rem;
+  max-width: 100%;
+}
+.clock-free-window,
+.clock-now-chip {
+  font-size: 11px;
+  padding: .28rem .56rem;
+  border: 1px solid color-mix(in srgb, var(--accent-border) 24%, transparent);
+  border-radius: 999px;
   color: var(--text-secondary);
+  background: color-mix(in srgb, var(--accent) 20%, var(--surface-elevated));
   text-align: center;
 }
 .clock-now-chip {
-  position: absolute;
-  top: .85rem;
-  left: .85rem;
-  font-size: 11px;
-  padding: .24rem .5rem;
-  border: 1px solid color-mix(in srgb, var(--accent-border) 24%, transparent);
-  border-radius: 999px;
   color: var(--text-primary);
-  background: color-mix(in srgb, var(--accent) 20%, var(--surface-elevated));
 }
 .clock-segment-tooltip {
   position: absolute;
@@ -4256,6 +4261,12 @@ details[open] > .ui-interactive-summary,
 }
 .planner-duration-row strong {
   color: var(--text-primary);
+}
+.clock-duration-row {
+  justify-content: center;
+  gap: .5rem;
+  margin-inline: auto;
+  min-width: min(100%, 14rem);
 }
 .planner-stale-note {
   margin: 0;
@@ -4422,15 +4433,28 @@ details[open] > .ui-interactive-summary,
 .command-empty-state-success { border-color: color-mix(in srgb, var(--green) 35%, var(--border-subtle)); background: color-mix(in srgb, var(--green-light) 32%, var(--surface-elevated)); }
 
 @media (min-width: 960px) {
-  .planner-shell { grid-template-columns: minmax(300px, 420px) minmax(0, 1fr); }
+  .planner-shell { grid-template-columns: minmax(440px, 560px) minmax(0, 1fr); }
   .planner-clock-column { position: sticky; top: calc(var(--app-safe-top) + 5rem); }
+  .planner-clock-face {
+    min-height: 430px;
+  }
+  .planner-clock-svg {
+    width: min(430px, 96%);
+  }
 }
 @media (max-width: 640px) {
   .planner-shell {
     padding: .75rem;
   }
   .planner-clock-face {
-    min-height: 245px;
+    min-height: 310px;
+    padding: .65rem .55rem .75rem;
+  }
+  .planner-clock-svg {
+    width: min(292px, 96%);
+  }
+  .clock-number {
+    font-size: 13px;
   }
   .planner-panel-heading {
     display: grid;

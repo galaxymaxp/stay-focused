@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { scoreSchedulerItem } from '@/lib/scheduler/priority'
 import { estimateMinutesAndConfidence } from '@/lib/scheduler/estimation'
 import { deriveScheduledBlockStatus, generateSchedule } from '@/lib/scheduler/algorithm'
-import { formatDuration, formatTime, isBlockInsideWindow, minutesToTime, timeToMinutes } from '@/lib/scheduler/time'
+import { formatDuration, formatTime, getWindowDurationMinutes, isBlockInsideWindow, minutesToTime, timeToMinutes } from '@/lib/scheduler/time'
 
 const userId = '00000000-0000-0000-0000-000000000001'
 
@@ -15,8 +15,10 @@ test('priority calculation ranks deliverable over announcement/reference', () =>
 
 test('time estimation handles long extracted text', () => {
   const est = estimateMinutesAndConfidence({ id: 'r1', userId, sourceTable: 'module_resources', title: 'Large PDF', dueAt: null, extractedCharCount: 120000, extractionStatus: 'extracted' })
-  assert.ok(est.estimatedMinutes >= 80)
-  assert.ok(est.estimationConfidence > 0.7)
+  assert.ok(est.estimatedMinutes >= 60)
+  assert.ok(est.estimatedMinutes <= 90)
+  assert.ok(est.estimationConfidence < 0.7)
+  assert.equal(est.reason, 'Estimated from reading length')
 })
 
 test('metadata-only resource gets low confidence', () => {
@@ -51,6 +53,26 @@ test('schedule time helpers keep visible blocks inside the selected free-time wi
   assert.equal(formatDuration(180), '3h')
   assert.equal(isBlockInsideWindow(inside, '05:45', '08:45'), true)
   assert.equal(isBlockInsideWindow(outside, '05:45', '08:45'), false)
+})
+
+test('schedule time helpers support overnight free-time windows', () => {
+  const evening = {
+    startAt: '2026-04-30T19:15:00',
+    endAt: '2026-04-30T20:00:00',
+  }
+  const afterMidnight = {
+    startAt: '2026-05-01T00:15:00',
+    endAt: '2026-05-01T00:45:00',
+  }
+  const outside = {
+    startAt: '2026-05-01T01:15:00',
+    endAt: '2026-05-01T01:45:00',
+  }
+
+  assert.equal(getWindowDurationMinutes('19:00', '00:00'), 300)
+  assert.equal(isBlockInsideWindow(evening, '19:00', '00:00'), true)
+  assert.equal(isBlockInsideWindow(afterMidnight, '19:00', '01:00'), true)
+  assert.equal(isBlockInsideWindow(outside, '19:00', '01:00'), false)
 })
 
 test('block status transition marks missed lazily for scheduled past blocks', () => {

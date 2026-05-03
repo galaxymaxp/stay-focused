@@ -50,22 +50,38 @@ export function formatDuration(minutes: number) {
   return `${hours}h ${remainder}m`
 }
 
-export function isBlockInsideWindow(block: WindowedBlock, startTime: string, endTime: string) {
+export function getWindowDurationMinutes(startTime: string, endTime: string) {
   const windowStart = timeToMinutes(startTime)
   const windowEnd = timeToMinutes(endTime)
-  const blockStart = dateToLocalMinutes(block.startAt)
-  const blockEnd = dateToLocalMinutes(block.endAt)
+
+  if (!Number.isFinite(windowStart) || !Number.isFinite(windowEnd)) return Number.NaN
+  return normalizeEndMinutes(windowStart, windowEnd) - windowStart
+}
+
+export function isBlockInsideWindow(block: WindowedBlock, startTime: string, endTime: string) {
+  const windowStart = timeToMinutes(startTime)
+  const rawWindowEnd = timeToMinutes(endTime)
+  const windowEnd = normalizeEndMinutes(windowStart, rawWindowEnd)
+  const rawBlockStart = dateToLocalMinutes(block.startAt)
+  const rawBlockEnd = dateToLocalMinutes(block.endAt)
 
   if (
     !Number.isFinite(windowStart) ||
-    !Number.isFinite(windowEnd) ||
-    !Number.isFinite(blockStart) ||
-    !Number.isFinite(blockEnd) ||
-    windowEnd <= windowStart ||
-    blockEnd <= blockStart
+    !Number.isFinite(rawWindowEnd) ||
+    !Number.isFinite(rawBlockStart) ||
+    !Number.isFinite(rawBlockEnd)
   ) {
     return false
   }
+
+  const windowCrossesMidnight = rawWindowEnd <= windowStart
+  const blockStart = windowCrossesMidnight && rawBlockStart < windowStart
+    ? rawBlockStart + MINUTES_PER_DAY
+    : rawBlockStart
+  const blockEndBase = normalizeEndMinutes(rawBlockStart, rawBlockEnd)
+  const blockEnd = windowCrossesMidnight && blockEndBase <= windowStart
+    ? blockEndBase + MINUTES_PER_DAY
+    : blockEndBase
 
   return blockStart >= windowStart && blockEnd <= windowEnd
 }
@@ -80,9 +96,34 @@ export function timeInputToTodayIso(time: string, now = new Date()) {
   return date.toISOString()
 }
 
+export function timeWindowToIsoRange(startTime: string, endTime: string, now = new Date()) {
+  const startMinutes = timeToMinutes(startTime)
+  const endMinutes = timeToMinutes(endTime)
+
+  if (!Number.isFinite(startMinutes) || !Number.isFinite(endMinutes)) {
+    return { start: startTime, end: endTime }
+  }
+
+  const start = new Date(now)
+  start.setHours(Math.floor(startMinutes / 60), startMinutes % 60, 0, 0)
+
+  const end = new Date(now)
+  end.setHours(Math.floor(endMinutes / 60), endMinutes % 60, 0, 0)
+  if (endMinutes <= startMinutes) {
+    end.setDate(end.getDate() + 1)
+  }
+
+  return { start: start.toISOString(), end: end.toISOString() }
+}
+
 function dateToLocalMinutes(value: string) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return Number.NaN
 
   return date.getHours() * 60 + date.getMinutes()
+}
+
+function normalizeEndMinutes(startMinutes: number, endMinutes: number) {
+  if (!Number.isFinite(startMinutes) || !Number.isFinite(endMinutes)) return Number.NaN
+  return endMinutes <= startMinutes ? endMinutes + MINUTES_PER_DAY : endMinutes
 }

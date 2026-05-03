@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { generateUserSchedule, rescheduleBlock, updateBlockStatus } from '@/actions/scheduler'
 import { InteractivePlannerClock, type ClockScheduleBlock } from '@/components/InteractivePlannerClock'
 import type { HomeCourseSnapshot, HomeDueSoonItem } from '@/lib/home-overview'
-import { formatDuration, formatTime, isBlockInsideWindow, timeInputToTodayIso, timeToMinutes } from '@/lib/scheduler/time'
+import { formatDuration, formatTime, getWindowDurationMinutes, isBlockInsideWindow, timeWindowToIsoRange } from '@/lib/scheduler/time'
 
 type ScheduleBlock = ClockScheduleBlock
 
@@ -55,19 +55,9 @@ export function TodayDashboard({ scheduledBlocks, dueSoon, courseSnapshots }: {
 
     return currentBlock ?? visibleSchedule.find((block) => block.status !== 'completed' && block.status !== 'skipped') ?? visibleSchedule[0] ?? null
   }, [currentBlock, selectedBlockId, visibleSchedule])
-  const availableMinutes = getAvailableMinutes(availableStart, availableEnd)
+  const availableMinutes = getWindowDurationMinutes(availableStart, availableEnd)
   const availableLabel = availableMinutes > 0 ? formatDuration(availableMinutes) : 'Invalid window'
   const windowLabel = `${formatTime(availableStart)} - ${formatTime(availableEnd)}`
-
-  function changeAvailableStart(value: string) {
-    setAvailableStart(value)
-    setIsPlanStale(true)
-  }
-
-  function changeAvailableEnd(value: string) {
-    setAvailableEnd(value)
-    setIsPlanStale(true)
-  }
 
   function changeWindow(start: string, end: string) {
     setAvailableStart(start)
@@ -78,7 +68,8 @@ export function TodayDashboard({ scheduledBlocks, dueSoon, courseSnapshots }: {
   async function handleGenerate() {
     setIsGenerating(true)
     try {
-      await generateUserSchedule(timeInputToTodayIso(availableStart), timeInputToTodayIso(availableEnd))
+      const windowRange = timeWindowToIsoRange(availableStart, availableEnd)
+      await generateUserSchedule(windowRange.start, windowRange.end)
       setUseDemoSchedule(false)
       setIsPlanStale(false)
       requestAnimationFrame(() => schedulePanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
@@ -126,28 +117,17 @@ export function TodayDashboard({ scheduledBlocks, dueSoon, courseSnapshots }: {
               <span><i className="clock-legend-swatch free" />Outer ring: Free time</span>
               <span><i className="clock-legend-swatch plan" />Inner ring: Scheduled blocks</span>
             </div>
-          </section>
-
-          <section className="planner-controls" aria-label="Free time controls">
-            <div className="command-time-grid">
-              <label className="command-time-field">
-                <span>Start</span>
-                <input type="time" value={availableStart} onChange={(event) => changeAvailableStart(event.target.value)} />
-              </label>
-              <label className="command-time-field">
-                <span>End</span>
-                <input type="time" value={availableEnd} onChange={(event) => changeAvailableEnd(event.target.value)} />
-              </label>
-            </div>
-            <div className="planner-duration-row">
-              <span>Available duration</span>
+            <div className="planner-duration-row clock-duration-row">
+              <span>Available</span>
               <strong>{availableLabel}</strong>
             </div>
             {isPlanStale ? <p className="planner-stale-note">Time window changed. Regenerate when you want a fresh plan for this window.</p> : null}
+          </section>
+
+          <section className="planner-controls" aria-label="Schedule generation">
             <div className="schedule-actions">
-              <button type="button" className="ui-button ui-button-secondary" onClick={() => schedulePanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>View schedule</button>
               <button type="button" className="ui-button ui-button-primary" onClick={handleGenerate} disabled={isGenerating || isPending || availableMinutes <= 0}>
-                {isGenerating ? 'Building your plan...' : hasSchedule ? 'Regenerate Today Plan' : 'Generate Today Plan'}
+                {isGenerating ? 'Building your plan...' : hasSchedule ? 'Regenerate Today Plan' : 'Generate schedule'}
               </button>
               {SHOW_DEMO_PREVIEW ? <button type="button" className="ui-button ui-button-ghost ui-button-xs" onClick={() => setUseDemoSchedule((value) => !value)}>{useDemoSchedule ? 'Use real schedule' : 'Preview demo schedule'}</button> : null}
             </div>
@@ -267,9 +247,9 @@ function ScheduleCard({ block, nowId, selected, onSelect, compact = false }: {
         </div>
         {isNow ? <span className="now-pill">NOW</span> : null}
       </div>
-      {block.context ? <p className="schedule-context">{block.context}</p> : null}
+      <p className="schedule-context">{block.subtitle ?? block.context ?? getSourceTypeLabel(block.sourceTable)}</p>
       {block.urgencyNote ? <p className="schedule-urgency">{block.urgencyNote}</p> : null}
-      <p className="schedule-meta-note">{getConfidenceLabel(block.sourceTable)}</p>
+      <p className="schedule-meta-note">{getEstimateLabel(block)}</p>
     </button>
   )
 }
@@ -309,7 +289,7 @@ function SelectedBlockPanel({ block, onStatus, onReschedule }: {
         </div>
         <div>
           <dt>Estimate</dt>
-          <dd>{block.urgencyNote ?? getConfidenceLabel(block.sourceTable)}</dd>
+          <dd>{getEstimateLabel(block)}</dd>
         </div>
       </dl>
       <div className="schedule-actions selected-block-actions">
@@ -338,15 +318,13 @@ function buildDemoScheduleBlocks(): ScheduleBlock[] {
 
   return [
     { id: 'demo-missed', title: 'Catch up on missed reviewer', context: 'English 102', urgencyNote: 'Overdue by 2h - professor follow-up tomorrow', ...missed, status: 'scheduled', sourceTable: 'task_items' },
-    { id: 'demo-completed', title: 'Read Canvas announcement', context: 'Student Success Seminar', urgencyNote: 'Done this morning', ...completed, status: 'completed', sourceTable: 'module_resources' },
-    { id: 'demo-current', title: 'Review Web App Development module', context: 'CIS 310', urgencyNote: 'Due tonight 11:59 PM', ...current, status: 'opened', sourceTable: 'modules' },
-    { id: 'demo-next', title: 'Draft activity answer', context: 'CIS 310', urgencyNote: 'Deadline basis: due in 5h', ...next, status: 'scheduled', sourceTable: 'task_items' },
-    { id: 'demo-upcoming-one', title: 'Quiz prep: JavaScript basics', context: 'CIS 302', urgencyNote: 'Prep target: quiz tomorrow', ...upcomingOne, status: 'scheduled', sourceTable: 'task_items' },
-    { id: 'demo-upcoming-two', title: 'Finish database assignment', context: 'DBMS 201', urgencyNote: 'Est. 50 min from prior workload', ...upcomingTwo, status: 'skipped', sourceTable: 'task_items' },
+    { id: 'demo-completed', title: 'Read Canvas announcement', context: 'Student Success Seminar', subtitle: 'Learning material', estimateConfidence: 'low', estimateReason: 'Estimated from material fallback', ...completed, status: 'completed', sourceTable: 'module_resources' },
+    { id: 'demo-current', title: 'Review Web App Development module', context: 'CIS 310', subtitle: 'Module review', estimateConfidence: 'low', estimateReason: 'Estimated module review block', urgencyNote: 'Due tonight 11:59 PM', ...current, status: 'opened', sourceTable: 'modules' },
+    { id: 'demo-next', title: 'Draft activity answer', context: 'CIS 310', subtitle: 'Drafting', estimateConfidence: 'medium', estimateReason: 'Estimated from task type', urgencyNote: 'Deadline basis: due in 5h', ...next, status: 'scheduled', sourceTable: 'task_items' },
+    { id: 'demo-upcoming-one', title: 'Quiz prep: JavaScript basics', context: 'CIS 302', subtitle: 'Quiz practice', estimateConfidence: 'medium', estimateReason: 'Estimated from quiz/review type', urgencyNote: 'Prep target: quiz tomorrow', ...upcomingOne, status: 'scheduled', sourceTable: 'learning_items' },
+    { id: 'demo-upcoming-two', title: 'Finish database assignment', context: 'DBMS 201', subtitle: 'Assignment', estimateConfidence: 'low', estimateReason: 'Estimated default task block', ...upcomingTwo, status: 'skipped', sourceTable: 'task_items' },
   ]
 }
-
-const getAvailableMinutes = (start: string, end: string) => timeToMinutes(end) - timeToMinutes(start)
 
 function getConfidenceLabel(source: ScheduleBlock['sourceTable']) {
   if (source === 'module_resources') return 'Estimated from content length'
@@ -355,15 +333,27 @@ function getConfidenceLabel(source: ScheduleBlock['sourceTable']) {
 }
 
 function getSourceTypeLabel(source: ScheduleBlock['sourceTable']) {
+  if (source === 'deadlines' || source === 'tasks') return 'Assignment'
+  if (source === 'learning_items') return 'Quiz practice'
   if (source === 'module_resources') return 'Resource'
   if (source === 'modules') return 'Module'
   return 'Task'
 }
 
 function getDoneLabel(source: ScheduleBlock['sourceTable']) {
+  if (source === 'learning_items') return 'Mark reviewed'
   if (source === 'module_resources') return 'Mark studied'
   if (source === 'modules') return 'Mark reviewed'
   return 'Mark done'
+}
+
+function getEstimateLabel(block: ScheduleBlock) {
+  if (block.estimateReason) {
+    const confidence = block.estimateConfidence ? ` · ${block.estimateConfidence} confidence` : ''
+    return `${block.estimateReason}${confidence}`
+  }
+
+  return `Estimated · low confidence (${getConfidenceLabel(block.sourceTable)})`
 }
 
 function formatTimeRange(startAt: string, endAt: string) {
