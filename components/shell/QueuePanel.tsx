@@ -72,7 +72,7 @@ function QueueSection({
   )
 }
 
-function ActiveJobCard({ job }: { job: QueuedJob }) {
+function ActiveJobCard({ job, onCancel }: { job: QueuedJob; onCancel: (jobId: string) => void }) {
   const fileName = getJobSourceName(job)
   const progress = Math.max(0, Math.min(job.progress ?? 0, 100))
   const isPending = job.status === 'pending'
@@ -92,6 +92,11 @@ function ActiveJobCard({ job }: { job: QueuedJob }) {
           </div>
           <ProgressBar progress={progress} status={job.status} />
         </div>
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.72rem' }}>
+        <button type="button" onClick={() => onCancel(job.id)} className="ui-button ui-button-ghost ui-button-xs">
+          Cancel
+        </button>
       </div>
     </article>
   )
@@ -145,6 +150,32 @@ function FailedJobCard({ job, onDismiss }: { job: QueuedJob; onDismiss: (jobId: 
           </div>
         </div>
         <button type="button" onClick={() => onDismiss(job.id)} className="queue-action-icon" style={ghostIconStyle} aria-label="Dismiss failed job">
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+      <div style={{ display: 'flex', gap: '0.42rem', flexWrap: 'wrap', marginTop: '0.72rem' }}>
+        <button type="button" onClick={() => onDismiss(job.id)} className="ui-button ui-button-ghost ui-button-xs">
+          Dismiss
+        </button>
+      </div>
+    </article>
+  )
+}
+
+function CanceledJobCard({ job, onDismiss }: { job: QueuedJob; onDismiss: (jobId: string) => void }) {
+  return (
+    <article className="glass-panel glass-soft" style={jobCardStyle('failed')}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.65rem', alignItems: 'flex-start' }}>
+        <div style={{ minWidth: 0, display: 'flex', gap: '0.65rem', alignItems: 'flex-start' }}>
+          <span style={iconShellStyle('failed')}>
+            <XCircle className="h-3.5 w-3.5" />
+          </span>
+          <div style={{ minWidth: 0 }}>
+            <p style={titleStyle}>{getCanceledTitle(job)}</p>
+            <p style={sourceStyle}>{getJobSourceName(job)}</p>
+          </div>
+        </div>
+        <button type="button" onClick={() => onDismiss(job.id)} className="queue-action-icon" style={ghostIconStyle} aria-label="Dismiss canceled job">
           <X className="h-3.5 w-3.5" />
         </button>
       </div>
@@ -230,6 +261,14 @@ export function QueuePanel() {
     void mutateQueue({ action: 'dismiss', jobId })
   }, [mutateQueue])
 
+  const cancelJob = useCallback((jobId: string) => {
+    const now = new Date().toISOString()
+    setJobs((current) => current.map((job) => job.id === jobId
+      ? { ...job, status: 'cancelled', completedAt: now, cancelRequestedAt: now, canceledAt: now, error: null }
+      : job))
+    void mutateQueue({ action: 'cancel', jobId })
+  }, [mutateQueue])
+
   const clearCompleted = useCallback(() => {
     setJobs((current) => current.filter((job) => job.status !== 'completed'))
     void mutateQueue({ action: 'clear_completed' })
@@ -289,14 +328,14 @@ export function QueuePanel() {
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
-  const { activeJobs, failedJobs, completedJobs } = groupQueueJobsForPanel(jobs)
+  const { activeJobs, failedJobs, canceledJobs, completedJobs } = groupQueueJobsForPanel(jobs)
   const runningJobs = jobs.filter((j) => j.status === 'running')
   const activeCount = activeJobs.length
   const runningCount = runningJobs.length
   const maxProgress = runningJobs.length > 0 ? Math.max(...runningJobs.map((j) => j.progress)) : 0
   const pillProgress = Math.max(0, Math.min(maxProgress, 100))
   const hasFailed = failedJobs.length > 0
-  const hasAny = activeJobs.length + failedJobs.length + completedJobs.length > 0
+  const hasAny = activeJobs.length + failedJobs.length + canceledJobs.length + completedJobs.length > 0
   const toggle = () => setOpen((p) => !p)
 
   return (
@@ -421,11 +460,15 @@ export function QueuePanel() {
               ) : (
                 <>
                   <QueueSection title="Active" count={activeJobs.length}>
-                    {activeJobs.map((job) => <ActiveJobCard key={job.id} job={job} />)}
+                    {activeJobs.map((job) => <ActiveJobCard key={job.id} job={job} onCancel={cancelJob} />)}
                   </QueueSection>
 
                   <QueueSection title="Needs attention" count={failedJobs.length}>
                     {failedJobs.map((job) => <FailedJobCard key={job.id} job={job} onDismiss={dismissJob} />)}
+                  </QueueSection>
+
+                  <QueueSection title="Canceled" count={canceledJobs.length}>
+                    {canceledJobs.map((job) => <CanceledJobCard key={job.id} job={job} onDismiss={dismissJob} />)}
                   </QueueSection>
 
                   <QueueSection
@@ -542,6 +585,7 @@ function getActiveStatus(job: QueuedJob, progress: number) {
   if (job.type === SOURCE_OCR_JOB_TYPE) {
     return buildSourceOcrStatusMessage({
       pagesProcessed: getNumber(job.result, 'pagesProcessed') ?? getNumber(job.payload, 'pagesProcessed'),
+      currentPage: getNumber(job.result, 'currentPage') ?? getNumber(job.payload, 'currentPage'),
       pageCount: getNumber(job.result, 'pageCount') ?? getNumber(job.payload, 'pageCount'),
       queued: job.status === 'pending',
     })
@@ -572,6 +616,14 @@ function getFailedTitle(job: QueuedJob) {
   if (job.type === 'learn_generation') return 'Study pack failed'
   if (job.type === 'task_output' || job.type === 'do_generation') return 'Task output failed'
   return `Failed: ${getJobSourceName(job)}`
+}
+
+function getCanceledTitle(job: QueuedJob) {
+  if (job.type === 'canvas_sync') return 'Canvas sync canceled'
+  if (job.type === SOURCE_OCR_JOB_TYPE) return 'Scanning canceled'
+  if (job.type === 'learn_generation') return 'Study pack canceled'
+  if (job.type === 'task_output' || job.type === 'do_generation') return 'Task output canceled'
+  return 'Job canceled'
 }
 
 function getQueuePillLabel(activeJobs: QueuedJob[], runningCount: number, activeCount: number) {

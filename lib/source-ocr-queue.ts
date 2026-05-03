@@ -16,12 +16,17 @@ export function calculateSourceOcrProgress(pagesProcessed: number | null | undef
 
 export function buildSourceOcrStatusMessage(input: {
   pagesProcessed?: number | null
+  currentPage?: number | null
   pageCount?: number | null
   queued?: boolean
 }) {
   if (input.queued) return 'Scanned PDF is queued for text extraction.'
   const pageCount = input.pageCount ?? null
   const pagesProcessed = input.pagesProcessed ?? 0
+  const currentPage = input.currentPage ?? null
+  if (pageCount && pageCount > 0 && currentPage && currentPage > 0) {
+    return `Scanning page ${Math.min(currentPage, pageCount)} of ${pageCount}`
+  }
   if (pageCount && pageCount > 0 && pagesProcessed > 0) {
     return `Scanning page ${Math.min(pagesProcessed, pageCount)} of ${pageCount}`
   }

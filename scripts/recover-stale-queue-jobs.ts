@@ -344,6 +344,8 @@ function rowToQueuedJob(row: Record<string, unknown>): QueuedJob {
     startedAt: (row.started_at as string | null) ?? null,
     completedAt: (row.completed_at as string | null) ?? null,
     dismissedAt: (row.dismissed_at as string | null) ?? null,
+    cancelRequestedAt: (row.cancel_requested_at as string | null) ?? null,
+    canceledAt: (row.canceled_at as string | null) ?? null,
   }
 }
 

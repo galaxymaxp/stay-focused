@@ -66,5 +66,7 @@ function createOcrJob(input: {
     startedAt: new Date(Date.now() - 18 * 60 * 1000).toISOString(),
     completedAt: null,
     dismissedAt: null,
+    cancelRequestedAt: null,
+    canceledAt: null,
   }
 }

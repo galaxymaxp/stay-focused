@@ -17,32 +17,63 @@ export default async function Dashboard() {
 
   const overview = buildHomeOverview(workspace)
   const client = await createAuthenticatedSupabaseServerClient()
-  const { data: scheduledBlocks } = client
-    ? await client
-      .from('scheduled_blocks')
-      .select('id,title,subtitle,start_at,end_at,status,source_table,source_type,block_type,estimate_confidence,estimate_reason')
-      .order('start_at', { ascending: true })
-      .limit(24)
-    : { data: [] }
+
+  const [scheduledBlocksResult, studyPacksResult] = client
+    ? await Promise.all([
+      client
+        .from('scheduled_blocks')
+        .select('id,title,subtitle,start_at,end_at,status,source_table,source_id,course_id,source_type,block_type,estimate_confidence,estimate_reason')
+        .order('start_at', { ascending: true })
+        .limit(24),
+      client
+        .from('deep_learn_notes')
+        .select('id,module_id,resource_id,title,quiz_ready')
+        .eq('status', 'ready'),
+    ])
+    : [{ data: [] }, { data: [] }]
+
+  const studyPacksByModuleId: Record<string, Array<{ id: string; title: string; quizReady: boolean }>> = {}
+  const studyPacksByResourceId: Record<string, Array<{ id: string; title: string; quizReady: boolean }>> = {}
+  for (const pack of studyPacksResult.data ?? []) {
+    const entry = { id: pack.id, title: pack.title ?? 'Study pack', quizReady: pack.quiz_ready ?? false }
+    if (pack.module_id) {
+      const list = studyPacksByModuleId[pack.module_id] ?? []
+      list.push(entry)
+      studyPacksByModuleId[pack.module_id] = list
+    }
+    if (pack.resource_id) {
+      const list = studyPacksByResourceId[pack.resource_id] ?? []
+      list.push(entry)
+      studyPacksByResourceId[pack.resource_id] = list
+    }
+  }
 
   return (
     <main className="page-shell">
       <TodayDashboard
-        scheduledBlocks={(scheduledBlocks ?? []).map((block) => ({
+        primaryAction={overview.primaryAction}
+        upNext={overview.upNext}
+        dueSoon={overview.dueSoon}
+        recentActivity={overview.recentActivity}
+        courseSnapshots={overview.courseSnapshots}
+        undatedTaskCount={overview.undatedTaskCount}
+        scheduledBlocks={(scheduledBlocksResult.data ?? []).map((block) => ({
           id: block.id,
           title: block.title,
           startAt: block.start_at,
           endAt: block.end_at,
           status: block.status,
           sourceTable: block.source_table,
+          sourceId: block.source_id,
+          courseId: block.course_id,
           sourceType: block.source_type,
           subtitle: block.subtitle,
           blockType: block.block_type,
           estimateConfidence: normalizeEstimateConfidence(block.estimate_confidence),
           estimateReason: block.estimate_reason,
         }))}
-        dueSoon={overview.dueSoon}
-        courseSnapshots={overview.courseSnapshots}
+        studyPacksByModuleId={studyPacksByModuleId}
+        studyPacksByResourceId={studyPacksByResourceId}
       />
     </main>
   )

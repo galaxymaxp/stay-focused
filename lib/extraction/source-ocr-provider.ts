@@ -12,6 +12,7 @@ export interface SourceOcrRunInput {
   debugImagesDir?: string
   onPageStart?: Parameters<typeof extractScannedPdfTextWithOpenAI>[0]['onPageStart']
   onPageResult?: Parameters<typeof extractScannedPdfTextWithOpenAI>[0]['onPageResult']
+  shouldContinue?: () => boolean | Promise<boolean>
 }
 
 export interface SourceOcrProviderAdapter {

@@ -23,6 +23,7 @@ import type { QueuedJob } from '../lib/queue'
 test('source OCR queue helpers format labels and page progress', () => {
   assert.equal(buildSourceOcrQueueTitle('1-Data Organization.pdf'), 'Preparing scanned PDF: 1-Data Organization.pdf')
   assert.equal(buildSourceOcrStatusMessage({ queued: true, pageCount: 51 }), 'Scanned PDF is queued for text extraction.')
+  assert.equal(buildSourceOcrStatusMessage({ currentPage: 20, pagesProcessed: 19, pageCount: 51 }), 'Scanning page 20 of 51')
   assert.equal(buildSourceOcrStatusMessage({ pagesProcessed: 8, pageCount: 51 }), 'Scanning page 8 of 51')
   assert.equal(buildSourceOcrStatusMessage({}), 'Extracting readable text from scanned PDF')
   assert.equal(calculateSourceOcrProgress(8, 51), 16)
@@ -195,6 +196,17 @@ test('queue panel groups completed canvas_sync separately from active source_ocr
   assert.equal(grouped.failedJobs.length, 0)
 })
 
+test('queue panel groups canceled jobs separately from failed and completed jobs', () => {
+  const canceled = createJob({ id: 'ocr-canceled', type: 'source_ocr', status: 'cancelled', resourceId: 'resource-1' })
+  const failed = createJob({ id: 'ocr-failed', type: 'source_ocr', status: 'failed', resourceId: 'resource-2' })
+
+  const grouped = groupQueueJobsForPanel([canceled, failed])
+
+  assert.deepEqual(grouped.canceledJobs.map((job) => job.id), ['ocr-canceled'])
+  assert.deepEqual(grouped.failedJobs.map((job) => job.id), ['ocr-failed'])
+  assert.equal(grouped.completedJobs.length, 0)
+})
+
 test('canvas_sync completion records queued OCR without waiting for OCR completion', () => {
   const result = buildCanvasSyncCompletionResult({
     syncedCourses: [{ courseName: 'Data 101', moduleId: 'module-1', href: '/modules/module-1' }],
@@ -259,5 +271,7 @@ function createJob(input: {
     startedAt: null,
     completedAt: input.completedAt ?? null,
     dismissedAt: null,
+    cancelRequestedAt: null,
+    canceledAt: null,
   }
 }

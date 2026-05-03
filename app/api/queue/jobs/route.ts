@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server'
 import { after } from 'next/server'
 import { getAuthenticatedUserServer } from '@/lib/auth-server'
-import { dismissCompletedQueuedJobs, dismissQueuedJob, getUserQueuedJobs } from '@/lib/queue'
-import { processNextPendingSourceOcrJobForUser, recoverStaleCanvasSyncJobs, recoverStaleSourceOcrJobs } from '@/actions/queue-jobs'
+import { cancelQueuedJob, dismissCompletedQueuedJobs, dismissQueuedJob, getUserQueuedJobs } from '@/lib/queue'
+import { applyQueueCancellationEffects, processNextPendingSourceOcrJobForUser, recoverStaleCanvasSyncJobs, recoverStaleSourceOcrJobs } from '@/actions/queue-jobs'
 
 export const runtime = 'nodejs'
 
@@ -29,7 +29,7 @@ export async function PATCH(request: Request) {
   }
 
   const body = await request.json().catch(() => null) as {
-    action?: 'dismiss' | 'clear_completed'
+    action?: 'dismiss' | 'clear_completed' | 'cancel'
     jobId?: string
   } | null
 
@@ -40,6 +40,15 @@ export async function PATCH(request: Request) {
 
   if (body?.action === 'dismiss' && body.jobId) {
     const ok = await dismissQueuedJob(user.id, body.jobId)
+    return NextResponse.json({ ok }, { status: ok ? 200 : 500 })
+  }
+
+  if (body?.action === 'cancel' && body.jobId) {
+    const ok = await cancelQueuedJob(user.id, body.jobId)
+    after(async () => {
+      if (ok) await applyQueueCancellationEffects(user.id, body.jobId as string)
+      await processNextPendingSourceOcrJobForUser(user.id)
+    })
     return NextResponse.json({ ok }, { status: ok ? 200 : 500 })
   }
 

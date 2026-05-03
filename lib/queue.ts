@@ -34,6 +34,8 @@ export interface QueuedJob {
   startedAt: string | null
   completedAt: string | null
   dismissedAt: string | null
+  cancelRequestedAt: string | null
+  canceledAt: string | null
 }
 
 export interface QueuedJobFilters {
@@ -60,6 +62,8 @@ function rowToJob(row: Record<string, unknown>): QueuedJob {
     startedAt: (row.started_at as string | null) ?? null,
     completedAt: (row.completed_at as string | null) ?? null,
     dismissedAt: (row.dismissed_at as string | null) ?? null,
+    cancelRequestedAt: (row.cancel_requested_at as string | null) ?? null,
+    canceledAt: (row.canceled_at as string | null) ?? null,
   }
 }
 
@@ -200,10 +204,17 @@ export async function updateQueuedJobStatus(
     error?: string
     startedAt?: string
     completedAt?: string
+    cancelRequestedAt?: string
+    canceledAt?: string
   },
 ): Promise<boolean> {
   const supabase = getServiceRoleClient()
   if (!supabase) return false
+
+  if (status !== 'cancelled') {
+    const existing = await getQueuedJobById(jobId)
+    if (existing?.status === 'cancelled') return false
+  }
 
   const patch: Record<string, unknown> = { status }
   if (updates?.progress !== undefined) patch.progress = updates.progress
@@ -211,6 +222,8 @@ export async function updateQueuedJobStatus(
   if (updates?.error !== undefined) patch.error = updates.error
   if (updates?.startedAt !== undefined) patch.started_at = updates.startedAt
   if (updates?.completedAt !== undefined) patch.completed_at = updates.completedAt
+  if (updates?.cancelRequestedAt !== undefined) patch.cancel_requested_at = updates.cancelRequestedAt
+  if (updates?.canceledAt !== undefined) patch.canceled_at = updates.canceledAt
 
   const { error } = await supabase
     .from('queued_jobs')
@@ -248,6 +261,47 @@ export async function markQueuedJobFailed(jobId: string, error: string): Promise
     error,
     completedAt: new Date().toISOString(),
   })
+}
+
+export async function cancelQueuedJob(userId: string, jobId: string): Promise<boolean> {
+  const supabase = await createAuthenticatedSupabaseServerClient()
+  if (!supabase) return false
+
+  const now = new Date().toISOString()
+  const { error } = await supabase
+    .from('queued_jobs')
+    .update({
+      status: 'cancelled',
+      cancel_requested_at: now,
+      canceled_at: now,
+      completed_at: now,
+      error: null,
+    })
+    .eq('id', jobId)
+    .eq('user_id', userId)
+    .in('status', ['pending', 'running'])
+
+  if (error) {
+    console.error('[queue] cancelQueuedJob failed', { userId, jobId, error })
+    return false
+  }
+
+  return true
+}
+
+export async function markQueuedJobCancelled(jobId: string): Promise<boolean> {
+  const now = new Date().toISOString()
+  return updateQueuedJobStatus(jobId, 'cancelled', {
+    completedAt: now,
+    cancelRequestedAt: now,
+    canceledAt: now,
+    result: { statusMessage: 'Canceled' },
+  })
+}
+
+export async function isQueuedJobCancelled(jobId: string): Promise<boolean> {
+  const job = await getQueuedJobById(jobId)
+  return job?.status === 'cancelled' || Boolean(job?.cancelRequestedAt)
 }
 
 export async function incrementJobAttempts(jobId: string): Promise<void> {

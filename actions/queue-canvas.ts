@@ -9,6 +9,8 @@ import { buildCanvasSyncCompletionResult } from '@/lib/canvas-sync-queue'
 import {
   createQueuedJob,
   getUserQueuedJobs,
+  isQueuedJobCancelled,
+  markQueuedJobCancelled,
   markQueuedJobCompleted,
   markQueuedJobFailed,
   markQueuedJobRunning,
@@ -110,14 +112,22 @@ async function runCanvasSyncJob(input: {
 }) {
   await markQueuedJobRunning(input.jobId, 4)
 
+  async function canceled() {
+    if (!await isQueuedJobCancelled(input.jobId)) return false
+    await markQueuedJobCancelled(input.jobId)
+    return true
+  }
+
   const syncedCourses: Array<{ courseName: string; moduleId: string; href: string }> = []
   const queuedOcrJobIds: string[] = []
   const failedCourses: Array<{ courseName: string; error: string }> = []
 
   try {
+    if (await canceled()) return
     await updateCanvasJobStep(input.jobId, 6, 'Connecting to Canvas', 'connecting')
 
     for (const [index, course] of input.courses.entries()) {
+      if (await canceled()) return
       const courseOffset = input.courses.length <= 1 ? 0 : Math.floor((index / input.courses.length) * 80)
       const courseProgressCap = input.courses.length <= 1 ? 100 : Math.floor(((index + 1) / input.courses.length) * 92)
 
@@ -126,6 +136,7 @@ async function runCanvasSyncJob(input: {
         canvasUrl: input.canvasUrl,
         accessToken: input.accessToken,
         onProgress: async (update) => {
+          if (await isQueuedJobCancelled(input.jobId)) return
           const baseProgress = CANVAS_SYNC_PROGRESS[update.step]
           const scaledProgress = input.courses.length <= 1
             ? baseProgress
@@ -140,6 +151,8 @@ async function runCanvasSyncJob(input: {
           )
         },
       })
+
+      if (await canceled()) return
 
       if ('error' in result) {
         await updateCanvasJobStep(input.jobId, Math.max(1, input.courses.length <= 1 ? 98 : courseProgressCap), result.error, 'failed', course.courseName)

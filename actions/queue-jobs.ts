@@ -8,7 +8,10 @@ import { adaptModuleResourceRow } from '@/lib/module-resource-row'
 import {
   createQueuedJob,
   createQueuedJobAsService,
+  getQueuedJobById,
   getUserQueuedJobs,
+  isQueuedJobCancelled,
+  markQueuedJobCancelled,
   markQueuedJobCompleted,
   markQueuedJobFailed,
   markQueuedJobRunning,
@@ -44,6 +47,7 @@ import {
 } from '@/lib/source-ocr-resume'
 import {
   buildOcrCompletedUpdate,
+  buildOcrCanceledUpdate,
   buildOcrFailedUpdate,
   buildOcrPageProgressUpdate,
   buildOcrProcessingUpdate,
@@ -518,6 +522,36 @@ export async function processNextPendingSourceOcrJobForUser(userId: string): Pro
   })
 }
 
+export async function applyQueueCancellationEffects(userId: string, jobId: string): Promise<void> {
+  const job = await getQueuedJobById(jobId)
+  if (!job || job.userId !== userId) return
+
+  if (job.type === 'source_ocr') {
+    const resourceId = getSourceOcrJobResourceId(job)
+    if (!resourceId) return
+    const supabase = createSupabaseServiceRoleClient()
+    if (!supabase) return
+
+    const { data } = await supabase
+      .from('module_resources')
+      .select('*')
+      .eq('id', resourceId)
+      .eq('user_id', userId)
+      .maybeSingle()
+
+    if (!data) return
+    const resource = adaptModuleResourceRow(data as Record<string, unknown>)
+    await supabase
+      .from('module_resources')
+      .update(buildOcrCanceledUpdate({ resource, now: new Date().toISOString() }))
+      .eq('id', resourceId)
+      .eq('user_id', userId)
+
+    const moduleId = getStringFromJobField(job, 'moduleId') ?? resource.moduleId
+    revalidateLearnQueuePaths(moduleId, resource.courseId ?? null, resourceId)
+  }
+}
+
 function totalTransferredCount(previousPages: PdfOcrPage[], newPagesProcessed: number) {
   const prevCompleted = previousPages.filter((p) => p.status === 'completed').length
   return prevCompleted + newPagesProcessed
@@ -661,6 +695,13 @@ async function processLearnGenerationJob(input: {
 }) {
   await markQueuedJobRunning(input.jobId, 10)
 
+  async function canceled() {
+    if (!await isQueuedJobCancelled(input.jobId)) return false
+    await markQueuedJobCancelled(input.jobId)
+    revalidateLearnQueuePaths(input.moduleId, input.courseId ?? null, input.resourceId)
+    return true
+  }
+
   async function fail(message: string, href?: string | null) {
     await markQueuedJobFailed(input.jobId, message)
     await createNotification({
@@ -675,6 +716,7 @@ async function processLearnGenerationJob(input: {
   }
 
   try {
+    if (await canceled()) return
     const workspace = await getModuleWorkspace(input.moduleId)
     if (!workspace) {
       await fail('Module not found.')
@@ -682,6 +724,7 @@ async function processLearnGenerationJob(input: {
     }
 
     await updateQueuedJobStatus(input.jobId, 'running', { progress: 20 })
+    if (await canceled()) return
 
     const courseName = extractCourseName(workspace.module.raw_content)
     const experience = buildLearnExperience(workspace.module, {
@@ -706,6 +749,7 @@ async function processLearnGenerationJob(input: {
     }
 
     await updateQueuedJobStatus(input.jobId, 'running', { progress: 30 })
+    if (await canceled()) return
 
     await saveDeepLearnNote({
       moduleId: workspace.module.id,
@@ -736,6 +780,7 @@ async function processLearnGenerationJob(input: {
     })
 
     await updateQueuedJobStatus(input.jobId, 'running', { progress: 40 })
+    if (await canceled()) return
 
     const linkedTask = workspace.tasks.find((t) =>
       t.title.trim().toLowerCase() === resource.title.trim().toLowerCase()
@@ -750,6 +795,7 @@ async function processLearnGenerationJob(input: {
         module: workspace.module,
         linkedTask,
       })
+      if (await canceled()) return
     } catch (err) {
       if (err instanceof DeepLearnGenerationBlockedError) {
         await fail(err.message, `/modules/${workspace.module.id}/learn?resource=${encodeURIComponent(canonicalResourceId)}`)
@@ -786,6 +832,7 @@ async function processLearnGenerationJob(input: {
     }
 
     await updateQueuedJobStatus(input.jobId, 'running', { progress: 85 })
+    if (await canceled()) return
 
     const noteBody = buildDeepLearnNoteBody(generated.content.sections)
     const quizReady = computeDeepLearnQuizReady(generated.content)
@@ -878,6 +925,19 @@ export async function processSourceOcrJob(input: {
     return
   }
 
+  const cancel = async (resource: ModuleResource | null) => {
+    if (!await isQueuedJobCancelled(input.jobId)) return false
+    await markQueuedJobCancelled(input.jobId)
+    if (resource) {
+      await supabase
+        .from('module_resources')
+        .update(buildOcrCanceledUpdate({ resource, now: new Date().toISOString() }))
+        .eq('id', resource.id)
+    }
+    revalidateLearnQueuePaths(input.moduleId, input.courseId, input.resourceId)
+    return true
+  }
+
   const fail = async (resource: ModuleResource | null, message: string, metadata?: Record<string, unknown>, provider?: string | null) => {
     if (resource) {
       const update = buildOcrFailedUpdate({ resource, message, ocrMetadata: metadata ?? {}, provider: provider ?? null, now: new Date().toISOString() })
@@ -916,6 +976,7 @@ export async function processSourceOcrJob(input: {
 
   let resource: ModuleResource | null = null
   try {
+    if (await cancel(null)) return
     resource = await getOwnedModuleResource(supabase, input.resourceId, input.userId)
     if (!resource) {
       await fail(null, 'You do not have access to this source.')
@@ -935,6 +996,8 @@ export async function processSourceOcrJob(input: {
       return
     }
 
+    if (await cancel(resource)) return
+
     await supabase
       .from('module_resources')
       .update(buildOcrProcessingUpdate({ resource, now: new Date().toISOString() }))
@@ -952,6 +1015,7 @@ export async function processSourceOcrJob(input: {
       },
     })
     revalidateLearnQueuePaths(input.moduleId, input.courseId, resource.id)
+    if (await cancel(resource)) return
 
     const sourceUrl = resource.sourceUrl ?? resource.htmlUrl
     if (!sourceUrl) {
@@ -979,14 +1043,18 @@ export async function processSourceOcrJob(input: {
 
     const providerAdapter = getSourceOcrProvider(ocrConfig.provider)
     const runningProviderLabel = `${ocrConfig.provider}:running`
+    if (await cancel(resource)) return
     const buffer = await downloadStoredPdfForOcr(sourceUrl, getOptionalCanvasConfig())
+    if (await cancel(resource)) return
     const ocr = await providerAdapter.run({
       buffer,
       filename: resource.title || 'scanned-pdf.pdf',
       pageCount: resource.pageCount ?? null,
       maxPages: getOcrMaxPagesForProvider(ocrConfig),
       ...(isResuming ? { pagesToProcess: resume.pagesToProcess } : {}),
+      shouldContinue: async () => !await isQueuedJobCancelled(input.jobId),
       onPageStart: async ({ pageNumber, pagesProcessed, totalPages }) => {
+        if (await cancel(resource)) throw new Error('OCR canceled.')
         const pageCount = resource?.pageCount ?? totalPages
         const totalProcessed = totalTransferredCount(resume.previousPages, pagesProcessed)
         await supabase
@@ -1000,7 +1068,7 @@ export async function processSourceOcrJob(input: {
           }))
           .eq('id', input.resourceId)
         await updateQueuedJobStatus(input.jobId, 'running', {
-          progress: calculateSourceOcrProgress(totalProcessed, pageCount),
+          progress: Math.max(calculateSourceOcrProgress(totalProcessed, pageCount), calculateSourceOcrProgress(totalProcessed + 0.25, pageCount)),
           result: {
             resourceId: input.resourceId,
             moduleId: input.moduleId,
@@ -1008,11 +1076,12 @@ export async function processSourceOcrJob(input: {
             pageCount,
             currentPage: pageNumber,
             pagesProcessed: totalProcessed,
-            statusMessage: `Scanning page ${pageNumber} of ${pageCount}`,
+            statusMessage: buildSourceOcrStatusMessage({ currentPage: pageNumber, pagesProcessed: totalProcessed, pageCount }),
           },
         })
       },
       onPageResult: async ({ page, pagesProcessed, totalPages }) => {
+        if (await cancel(resource)) throw new Error('OCR canceled.')
         const pageCount = resource?.pageCount ?? totalPages
         const totalProcessed = prevCompletedCount + pagesProcessed
         persistedPages = mergeOcrPageArrays(persistedPages, [page])
@@ -1042,6 +1111,8 @@ export async function processSourceOcrJob(input: {
       },
     })
 
+    if (await cancel(resource)) return
+
     const mergedPages = isResuming
       ? mergeOcrPageArrays(resume.previousPages, ocr.pages)
       : ocr.pages
@@ -1049,6 +1120,11 @@ export async function processSourceOcrJob(input: {
     const finalOcr: PdfOcrResult = isResuming
       ? buildMergedOcrResult(ocr, mergedPages, mergedText)
       : ocr
+
+    if (finalOcr.status === 'failed' && /OCR canceled/i.test(finalOcr.error ?? '')) {
+      await cancel(resource)
+      return
+    }
 
     if (finalOcr.status !== 'completed') {
       await fail(resource, finalOcr.error ?? 'OCR failed. Open the original file.', finalOcr.metadata, finalOcr.provider)
@@ -1112,10 +1188,18 @@ async function processDoGenerationJob(input: {
 }) {
   await markQueuedJobRunning(input.jobId, 10)
 
+  async function canceled() {
+    if (!await isQueuedJobCancelled(input.jobId)) return false
+    await markQueuedJobCancelled(input.jobId)
+    return true
+  }
+
   try {
+    if (await canceled()) return
     const apiPayload = buildTaskDraftRequestPayload(input.context)
 
     await updateQueuedJobStatus(input.jobId, 'running', { progress: 20 })
+    if (await canceled()) return
 
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL
       || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null)
@@ -1128,6 +1212,7 @@ async function processDoGenerationJob(input: {
     })
 
     await updateQueuedJobStatus(input.jobId, 'running', { progress: 80 })
+    if (await canceled()) return
 
     if (!resp.ok) {
       const body = await resp.json().catch(() => ({})) as { error?: string }
@@ -1138,6 +1223,7 @@ async function processDoGenerationJob(input: {
     }
 
     const data = await resp.json() as { ok: boolean; draft?: unknown; error?: string }
+    if (await canceled()) return
 
     if (!data.ok || !data.draft) {
       const message = data.error ?? 'Task output returned an empty draft.'
@@ -1265,6 +1351,8 @@ function rowToQueuedJobForAutoOcr(row: Record<string, unknown>): QueuedJob {
     startedAt: (row.started_at as string | null) ?? null,
     completedAt: (row.completed_at as string | null) ?? null,
     dismissedAt: (row.dismissed_at as string | null) ?? null,
+    cancelRequestedAt: (row.cancel_requested_at as string | null) ?? null,
+    canceledAt: (row.canceled_at as string | null) ?? null,
   }
 }
 

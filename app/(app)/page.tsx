@@ -29,22 +29,36 @@ export default async function Dashboard() {
         .limit(24),
       client
         .from('deep_learn_notes')
-        .select('id,module_id,title,quiz_ready')
+        .select('id,module_id,resource_id,title,quiz_ready')
         .eq('status', 'ready'),
     ])
     : [{ data: [] }, { data: [] }]
 
   const studyPacksByModuleId: Record<string, Array<{ id: string; title: string; quizReady: boolean }>> = {}
+  const studyPacksByResourceId: Record<string, Array<{ id: string; title: string; quizReady: boolean }>> = {}
   for (const pack of studyPacksResult.data ?? []) {
-    if (!pack.module_id) continue
-    const list = studyPacksByModuleId[pack.module_id] ?? []
-    list.push({ id: pack.id, title: pack.title ?? 'Study pack', quizReady: pack.quiz_ready ?? false })
-    studyPacksByModuleId[pack.module_id] = list
+    const entry = { id: pack.id, title: pack.title ?? 'Study pack', quizReady: pack.quiz_ready ?? false }
+    if (pack.module_id) {
+      const list = studyPacksByModuleId[pack.module_id] ?? []
+      list.push(entry)
+      studyPacksByModuleId[pack.module_id] = list
+    }
+    if (pack.resource_id) {
+      const list = studyPacksByResourceId[pack.resource_id] ?? []
+      list.push(entry)
+      studyPacksByResourceId[pack.resource_id] = list
+    }
   }
 
   return (
     <main className="page-shell">
       <TodayDashboard
+        primaryAction={overview.primaryAction}
+        upNext={overview.upNext}
+        dueSoon={overview.dueSoon}
+        recentActivity={overview.recentActivity}
+        courseSnapshots={overview.courseSnapshots}
+        undatedTaskCount={overview.undatedTaskCount}
         scheduledBlocks={(scheduledBlocksResult.data ?? []).map((block) => ({
           id: block.id,
           title: block.title,
@@ -60,9 +74,8 @@ export default async function Dashboard() {
           estimateConfidence: normalizeEstimateConfidence(block.estimate_confidence),
           estimateReason: block.estimate_reason,
         }))}
-        dueSoon={overview.dueSoon}
-        courseSnapshots={overview.courseSnapshots}
         studyPacksByModuleId={studyPacksByModuleId}
+        studyPacksByResourceId={studyPacksByResourceId}
       />
     </main>
   )

@@ -33,6 +33,7 @@ export async function extractScannedPdfTextWithGoogle(input: {
     pagesProcessed: number
     totalPages: number
   }) => void | Promise<void>
+  shouldContinue?: () => boolean | Promise<boolean>
 }): Promise<PdfOcrResult> {
   const model = input.provider === 'google_document_ai'
     ? getDocumentAiProcessorName() ?? 'document_ai'
@@ -79,6 +80,9 @@ export async function extractScannedPdfTextWithGoogle(input: {
     const pageResults: PdfOcrPage[] = []
 
     for (const pageNumber of pageNumbersToRun) {
+      if (input.shouldContinue && !await input.shouldContinue()) {
+        return buildFailedResult(provider, 'OCR canceled.')
+      }
       await input.onPageStart?.({
         pageNumber,
         pagesProcessed: pageResults.length,
@@ -125,6 +129,9 @@ export async function extractScannedPdfTextWithGoogle(input: {
         pagesProcessed: pageResults.length,
         totalPages,
       })
+      if (input.shouldContinue && !await input.shouldContinue()) {
+        return buildFailedResult(provider, 'OCR canceled.')
+      }
     }
 
     return buildGoogleOcrResultFromPages({

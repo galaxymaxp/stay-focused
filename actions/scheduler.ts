@@ -19,14 +19,13 @@ async function getSchedulerContext() {
 export async function generateUserSchedule(freeTimeStart: string, freeTimeEnd: string) {
   const { client, userId } = await getSchedulerContext()
 
-  const [taskItemsResult, tasksResult, deadlinesResult, modulesResult, resourcesResult, learningItemsResult, deepLearnNotesResult, draftsResult] = await Promise.all([
+  const [taskItemsResult, tasksResult, deadlinesResult, modulesResult, resourcesResult, learningItemsResult, draftsResult] = await Promise.all([
     client.from('task_items').select('id,course_id,module_id,title,deadline,task_type,estimated_minutes,created_at').eq('user_id', userId).neq('status', 'completed'),
     client.from('tasks').select('id,module_id,title,deadline,estimated_minutes,created_at').eq('user_id', userId).neq('status', 'completed'),
     client.from('deadlines').select('id,module_id,label,date,estimated_minutes,created_at').eq('user_id', userId),
     client.from('modules').select('id,course_id,title,released_at,estimated_minutes,created_at').eq('user_id', userId),
     client.from('module_resources').select('id,course_id,module_id,title,resource_type,extracted_text,extracted_text_preview,extracted_char_count,extraction_status,visual_extraction_status,visual_extracted_text,estimated_minutes,created_at').eq('user_id', userId),
     client.from('learning_items').select('id,course_id,module_id,title,type,estimated_minutes,created_at').eq('user_id', userId),
-    client.from('deep_learn_notes').select('id,course_id,module_id,resource_id,title,overview,status,quiz_ready,created_at,updated_at').eq('user_id', userId).eq('status', 'ready'),
     client.from('drafts').select('id,course_id,source_type,source_module_id,source_resource_id,source_title,draft_type,title,status,token_count,created_at,updated_at').eq('user_id', userId).eq('status', 'ready'),
   ])
 
@@ -42,19 +41,16 @@ export async function generateUserSchedule(freeTimeStart: string, freeTimeEnd: s
     return { generated: 0 }
   }
 
-  if (deepLearnNotesResult.error || draftsResult.error) {
-    console.warn('[scheduler] saved output candidates unavailable; continuing with Canvas/task sources', {
-      deepLearnNotesError: deepLearnNotesResult.error?.message,
+  if (draftsResult.error) {
+    console.warn('[scheduler] drafts unavailable; continuing without draft sources', {
       draftsError: draftsResult.error?.message,
     })
   }
 
-  const savedOutputResourceIds = new Set<string>([
-    ...(!deepLearnNotesResult.error ? (deepLearnNotesResult.data ?? []).flatMap((row) => row.resource_id ? [row.resource_id] : []) : []),
-    ...(!draftsResult.error ? (draftsResult.data ?? []).flatMap((row) => row.source_resource_id ? [row.source_resource_id] : []) : []),
-  ])
+  // Include all resources that have usable text (quality filter). Resources with associated
+  // study packs (deep_learn_notes) are still scheduled — the study pack chip is shown as
+  // metadata under the block, not as a reason to exclude the source.
   const readyResources = (resourcesResult.data ?? []).filter((row) => {
-    if (savedOutputResourceIds.has(row.id)) return false
     const quality = classifyModuleResourceTextQuality({
       title: row.title,
       extractedText: row.extracted_text,
@@ -65,7 +61,6 @@ export async function generateUserSchedule(freeTimeStart: string, freeTimeEnd: s
     return quality.usable || quality.quality === 'too_short'
   })
 
-  const deepLearnNotesData = !deepLearnNotesResult.error ? (deepLearnNotesResult.data ?? []) : []
   const draftsData = !draftsResult.error ? (draftsResult.data ?? []) : []
 
   console.log('[scheduler:sources] raw counts', {
@@ -74,10 +69,8 @@ export async function generateUserSchedule(freeTimeStart: string, freeTimeEnd: s
     deadlines: deadlinesResult.data?.length ?? 0,
     modules: modulesResult.data?.length ?? 0,
     module_resources_raw: resourcesResult.data?.length ?? 0,
-    module_resources_excluded_saved_output: savedOutputResourceIds.size,
     module_resources_ready: readyResources.length,
     learning_items: learningItemsResult.data?.length ?? 0,
-    deep_learn_notes: deepLearnNotesData.length,
     drafts: draftsData.length,
   })
 

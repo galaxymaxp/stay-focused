@@ -390,6 +390,49 @@ export function buildOcrFailedUpdate(input: {
   }
 }
 
+export function buildOcrCanceledUpdate(input: {
+  resource: ModuleResource
+  now: string
+}): ModuleResourceOcrUpdate {
+  const metadata = asPlainRecord(input.resource.metadata)
+  const pages = loadStoredOcrPages(metadata)
+  const totalPagesInDocument = getActualTotalPagesInDocument(metadata) ?? input.resource.pageCount ?? pages.length
+
+  return {
+    extraction_status: 'empty',
+    extracted_text: null,
+    extracted_text_preview: null,
+    extracted_char_count: 0,
+    extraction_error: 'Canceled',
+    visual_extraction_status: 'skipped',
+    visual_extracted_text: null,
+    visual_extraction_error: 'Canceled',
+    page_count: totalPagesInDocument,
+    pages_processed: input.resource.pagesProcessed ?? pages.length,
+    extraction_provider: input.resource.extractionProvider ?? null,
+    metadata: {
+      ...metadata,
+      storedTextLength: 0,
+      storedPreviewLength: 0,
+      fullTextAvailable: false,
+      previewState: 'no_text_available',
+      fallbackState: 'no_text_in_file',
+      fallbackReason: 'canceled',
+      normalizedContentStatus: 'canceled',
+      pdfOcr: {
+        ...asPlainRecord(metadata.pdfOcr),
+        status: 'canceled',
+        error: 'Canceled',
+        canceledAt: input.now,
+        pagesProcessed: input.resource.pagesProcessed ?? pages.length,
+        remainingPages: Math.max(0, totalPagesInDocument - (input.resource.pagesProcessed ?? pages.length)),
+        totalPagesInDocument,
+      },
+    },
+    updated_at: input.now,
+  }
+}
+
 function classifyOcrPages(pages: PdfOcrPage[], title: string | null | undefined) {
   return pages.map((page) => {
     const quality = classifyExtractedTextQuality({

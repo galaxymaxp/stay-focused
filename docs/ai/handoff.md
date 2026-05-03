@@ -1,7 +1,197 @@
 # Stay Focused — AI Session Handoff
 
 Author: galaxymaxp omgraythekid@gmail.com
-Last Updated: 2026-05-02
+Last Updated: 2026-05-04
+
+---
+
+## Session Update — 2026-05-04 (Restore home-first layout with integrated scheduler)
+
+### What changed
+
+**`components/TodayDashboard.tsx`** — complete rewrite
+- Replaced the Clock Command Center / admin-table layout with the old home-first information architecture.
+- Props expanded: now accepts all former home-overview props (`primaryAction`, `upNext`, `recentActivity`, `undatedTaskCount`) in addition to the existing scheduler props (`scheduledBlocks`, `studyPacksByModuleId`, `studyPacksByResourceId`, `dueSoon`, `courseSnapshots`).
+- New layout: `home-page` → `home-layout` (main column + rail).
+- **Main column**: Primary card (Start here), Today Plan (Now/Next/Later), Due Soon.
+- **Rail**: Clock planner (InteractivePlannerClock), Study Packs, What Changed, Course Snapshot.
+- **Primary card logic**: shows the live/next scheduled block when a schedule exists; falls back to `primaryAction` from home-overview (the old task-priority hero). If no schedule and no primary action, shows empty state + Generate plan button.
+- **Today Plan**: compact `Now / Next / Later` groups using `home-plan-group` → `home-compact-list` → `home-list-row`. Completed blocks excluded from active groups; shown in a collapsed accordion at the bottom.
+- **Clock placement**: `InteractivePlannerClock` moved to the rail as a secondary card (`home-clock-rail`). Clicking a clock segment still scrolls to the Today Plan and selects the block. Generate schedule button also available inside the primary card when no schedule exists, and inline in Today Plan when one does.
+- **Old home sections restored**: `DueSoonRow`, `ActivityRow` (What Changed), `CourseSnapshotRow`, `CompactActionRow` (After that / up-next), all using old `home-sheet-row` / `home-row-open` layout.
+- **Study packs section**: shows all unique packs from `studyPacksByModuleId` + `studyPacksByResourceId` in the rail. Study packs (deep_learn_notes) remain non-standalone-scheduled — their chips still appear under module/resource blocks in the primary card's expanded details.
+- Retained all scheduler state: `useDemoSchedule`, `isPlanStale`, `availableStart/End`, `selectedBlockId`, `completedExpanded`, `handleGenerate`, `handleUpdateStatus`, `handleOpenBlock`, `handleRescheduleBlock`, `selectClockBlock`.
+- All block-type helpers preserved: `getBlockHref`, `getStudentTypeLabel`, `getDoneLabel`, `getBlockStudyPacks`, `buildDemoScheduleBlocks`.
+- Removed admin-facing `SCHEDULE_GROUPS`, `planner-shell`, `planner-timeline-column`, `planner-attention-panel`, `planner-start-panel`, `ScheduleCard`, `CompletedSection` (replaced with simpler `home-plan-completed` variant), `needsAttention` panel.
+
+**`app/(app)/page.tsx`**
+- Added `primaryAction`, `upNext`, `recentActivity`, `undatedTaskCount` from `overview` to the `TodayDashboard` call. These were previously computed but not passed.
+
+**`app/page.tsx`** (root page — mirrors the (app) version)
+- Updated to pass the same full prop set. Also added parallel `deep_learn_notes` fetch and study-pack maps to match the (app) version.
+
+**`app/globals.css`**
+- Added `.home-row-open` (was missing from current version; used by sheet-row action links).
+- Added `.home-sheet-row-link` / `.home-sheet-row-link:hover` (used by ActivityRow).
+- Added Today Plan CSS: `.home-plan-list`, `.home-plan-group`, `.home-plan-group-label`, `.home-plan-row`, `.home-plan-row-selected`, `.home-plan-row-main`, `.home-plan-row-actions`, `.home-plan-stale-note`.
+- Added completed accordion CSS: `.home-plan-completed`, `.home-plan-completed-toggle`, `.home-plan-count`, `.home-plan-completed-row`.
+- Added `.home-generate-prompt` / `.home-generate-copy` for the "no plan yet" prompt inside the primary card.
+- Added `.home-clock-rail`, `.home-clock-face-wrap` for the clock rail card.
+- All planner/clock CSS (`today-command-center`, `planner-shell`, `planner-block-card`, etc.) preserved — still needed by InteractivePlannerClock internals.
+
+### Why it changed
+
+The previous Clock Command Center layout prioritized the scheduling UI as the primary page surface. The product direction is schedule-first but home-first: the student lands on a clear "What should I do right now?" answer, with the clock as a planning tool in the sidebar — not the main content.
+
+### Tests run
+
+- `npm run typecheck` ✅ passed (0 errors)
+- `npm run lint` ✅ passed (0 warnings)
+- `npm test -- scheduler` ✅ 235/235 passed
+
+### Known risks
+
+- `home-plan-row` uses `grid-template-columns: minmax(0, 1fr) auto` for the normal state, but when `selected` and `home-plan-row-actions` renders, it spans `grid-column: 1 / -1`. This is handled by the CSS `.home-plan-row-actions { grid-column: 1 / -1 }` — verify renders correctly on narrow viewports.
+- The primary card shows the "next upcoming" scheduled block even if it starts several hours away. If nothing is live now but the schedule has a block at 9 PM, that block appears as the hero. This may feel stale mid-morning; a time-proximity filter could improve relevance.
+- `app/page.tsx` (root) and `app/(app)/page.tsx` now duplicate the same page logic. One of them may be unreachable depending on route group setup — the duplication should be resolved when route architecture is cleaned up.
+
+### Blockers
+
+None.
+
+### Next recommended step
+
+Review the responsive layout on mobile (≤720px): the Today Plan and Clock rail stack vertically, which is correct, but the clock SVG may need a `max-width` constraint inside `.home-clock-face-wrap` to prevent overflow on narrow screens. Consider adding `max-width: 320px; width: 100%; margin: 0 auto;` to `.home-clock-face-wrap` if the SVG stretches.
+
+### Suggested commit message
+
+restore home-first scheduler layout
+
+---
+
+## Session Update — 2026-05-04 (Scheduler source normalization + Clock design language restore)
+
+### What changed
+
+**`actions/scheduler.ts`**
+- Removed `deep_learn_notes` from the Promise.all fetch entirely — it was only used to build `savedOutputResourceIds`, which is now gone.
+- Removed `savedOutputResourceIds` set and the `if (savedOutputResourceIds.has(row.id)) return false` exclusion from the `readyResources` filter. Previously, any `module_resource` that had an associated `deep_learn_notes` or `drafts` was silently excluded from scheduling. This caused the Clock Command Center to show mostly Tasks and miss most study materials. The correct behaviour is to schedule the resource and show the study pack as a chip under the block.
+- Updated the source-count log to remove the now-obsolete `module_resources_excluded_saved_output` field.
+
+**`app/(app)/page.tsx`**
+- Added `resource_id` to the `deep_learn_notes` select query.
+- Built a second lookup map `studyPacksByResourceId` (resource UUID → study pack refs) in addition to the existing `studyPacksByModuleId`.
+- Passed `studyPacksByResourceId` as a new prop to `TodayDashboard`.
+
+**`components/TodayDashboard.tsx`**
+- Removed `'drafts'` from `ScheduleGroupKey` and `SCHEDULE_GROUPS`. Drafts are not a student-facing category — task drafts route to `tasks`; study drafts route to `modules`.
+- `SCHEDULE_GROUPS` now contains exactly two active groups: `tasks` (Tasks) and `modules` (Modules / Study Materials).
+- `getBlockGroup` updated: task_items / tasks / deadlines → `tasks`; drafts with subtitle `'Draft'` → `tasks`; everything else (modules, module_resources, learning_items, study drafts) → `modules`.
+- Added `getBlockStudyPacks` helper that returns study packs for both `modules` (via `studyPacksByModuleId`) and `module_resources` (via `studyPacksByResourceId`).
+- Groups now always render when `visibleSchedule.length > 0` — both Tasks and Modules/Study Materials show even if empty, with an honest empty-state message (`schedule-group-empty`) rather than being silently hidden.
+- Moved `schedule-context` (subtitle) and `schedule-urgency` (urgencyNote) out of the always-visible card row into the expanded `planner-block-details` section. Collapsed cards now show only: type chip, NOW pill, title, time + duration.
+- Updated `getStudentTypeLabel` so `drafts` with subtitle `'Draft'` returns `'Task'` (was `'Draft'`).
+- Updated demo schedule block: replaced the `deep_learn_notes` demo entry with a `module_resources` PDF entry, matching the new rule that study packs are never standalone scheduled blocks.
+
+**`app/globals.css`**
+- Removed the table-like `.schedule-group` styling (was: `border: 1px solid var(--border-subtle); overflow: hidden`).
+- Removed overrides that flattened block cards into spreadsheet rows (`border-radius: 0; border-left: none; border-right: none; border-bottom: 1px solid`).
+- `.schedule-group-header` is now a section label (no background box, uppercase small text, no hover fill).
+- `.schedule-group .planner-schedule-list` uses `gap: 0.42rem` with standalone cards — matching the Courses/Learn card language (`rounded-xl`, each item separated by gap).
+- `.schedule-groups` gap increased from `0.15rem` to `1.1rem` to visually separate sections.
+- Added `.schedule-group-empty` style for the honest empty state paragraph.
+- `schedule-context` and `schedule-urgency` margin/spacing updated to work inside the expanded details section.
+
+**`tests/scheduler.test.ts`**
+- Added 5 new tests (21 total, all passing):
+  1. `no duplicate source keys in generateSchedule output` — same sourceTable:sourceId deduped to one block.
+  2. `module_resource with study pack is still schedulable` — documents new contract that study pack is metadata, not exclusion.
+  3. `deep_learn_notes are never added as standalone scheduler source items by the action` — contract documentation test.
+  4. `completed group is collapsed by default (TodayDashboard initial state)` — documents initial state contract.
+  5. `task sources map to task group; module_resource sources map to module group` — verifies getBlockGroup classification logic inline.
+
+### Canonical classification rules (updated)
+
+| Source | Student group | Notes |
+|---|---|---|
+| `task_items`, `tasks`, `deadlines` | **Tasks** | |
+| `drafts` (subtitle = 'Draft') | **Tasks** | Task-sourced draft is actionable work |
+| `modules`, `module_resources`, `learning_items` | **Modules / Study Materials** | |
+| `drafts` (other subtitle) | **Modules / Study Materials** | Study-sourced draft is learning material |
+| `deep_learn_notes` | Not a standalone block | Shown as study-pack chip under parent Module or Resource block |
+| `status === 'completed'` | **Completed** (collapsed accordion) | Excluded from active groups |
+
+### Verification results
+
+- `npm run typecheck` ✅ passed
+- `npm run lint` ✅ passed
+- `npx tsx --test tests/scheduler.test.ts` ✅ 21/21 passed
+
+### Known risks / next steps
+
+- The `study-pack-chip` for `module_resources` blocks links to `/library/[id]` (the study pack detail). If a user has multiple study packs per resource the chip list will grow; consider showing only the latest or a "+N more" pill.
+- `studyPacksByResourceId` is now fetched on every page load regardless of whether the schedule panel is shown. If the table grows large, consider scoping the query to only resource IDs present in the current schedule.
+- Modules priority score: module_resources with no due date receive a low `urgencyScore` (25) vs. tasks with imminent deadlines (78–100). This means tasks still fill the schedule first by score. This is intentional — urgent tasks should be prioritized — but it can mean modules don't appear if the time window is short. No change required now; surfaced for awareness.
+- The "Sort modules: related to upcoming tasks first" requirement (from earlier sessions) is still pending — needs cross-referencing module IDs against task due dates.
+
+### Session type
+Implementation session (source classification fix, visual redesign, test expansion). No schema changes.
+
+### Suggested commit message
+fix scheduler source normalization and restore clock design language
+
+---
+
+## Session Update — 2026-05-04 (Schedule classification and completed grouping)
+
+### What changed
+
+- **`actions/scheduler.ts`**: Removed `deep_learn_notes` from the scheduler source item list. Study packs are generated output attached to modules; they must not appear as standalone schedulable blocks. The fetch is retained solely for the `savedOutputResourceIds` filter that excludes module resources already covered by a study pack or draft.
+
+- **`app/(app)/page.tsx`**: Added a parallel fetch for `deep_learn_notes` (id, module_id, title, quiz_ready). Built a `studyPacksByModuleId` map (module UUID → study pack refs) and passed it as a new prop to `TodayDashboard`.
+
+- **`components/TodayDashboard.tsx`**: Multiple improvements:
+  - Module block cards now show linked study-pack chips for any associated study packs (linked directly to `/library/[id]`), fulfilling the "study pack under its module" requirement with no duplicate schedule entries.
+  - Completed blocks are removed from active group lists and collected in a collapsed **Completed** accordion at the bottom of Today's Schedule, sorted newest-completed first (by endAt descending). The accordion is closed by default.
+  - Removed the `schedule-meta-note` paragraph (estimate confidence + reason text) from the main visible card row. This text now appears only inside the expanded block details section.
+  - Each active group is sorted: missed blocks (scheduled + endAt in the past) first, then ascending by startAt (which already reflects scheduler priority order).
+  - Added `sortGroupBlocks` helper.
+  - `activeBlocks` is now derived separately from `completedBlocks` so group rendering only iterates non-completed items.
+
+- **`tests/scheduler.test.ts`**: Added 4 new tests:
+  - Documents that the algorithm itself does not filter deep_learn_notes (action-level exclusion contract).
+  - Verifies task_items produce task-typed blocks.
+  - Verifies modules and module_resources appear in generated schedule.
+  - Verifies all generated blocks start with status `scheduled` (completed-block filtering is a UI concern).
+
+- **`app/globals.css`**: Added `.completed-group`, `.study-pack-sublist`, `.study-pack-chip`, `.study-pack-chip-icon`, `.study-pack-chip-badge` using existing design tokens. No new visual language.
+
+### Classification rules (canonical, post-session)
+
+| Source | Student-facing group |
+|---|---|
+| `task_items`, `tasks`, `deadlines` | **Tasks** |
+| `modules`, `module_resources`, `learning_items` | **Modules** |
+| `drafts` (subtitle=Draft) | **Drafts** |
+| `drafts` (other subtitle) | **Modules** |
+| `deep_learn_notes` | Not a standalone scheduled block. Shown as study-pack chip under the parent Module block. |
+| `status === 'completed'` (any source) | **Completed** collapsed accordion, excluded from active groups. |
+
+### Verification results
+
+- `npm run typecheck` passed.
+- `npm run lint` passed.
+- `npx tsx --test tests/scheduler.test.ts` passed (16/16 tests).
+
+### Remaining risks / next steps
+
+- The `study-pack-chip` link points to `/library/[id]`. If a study pack's module has no scheduled block in the current window (e.g., the module was not selected during generation), its study pack will not be visible on the Today surface. Future work: surface study packs attached to modules that weren't scheduled (e.g., in a separate Study Pack sidebar or within module detail pages).
+- Completed accordion uses `block.endAt` as a proxy for "completed at" since the `scheduled_blocks` table does not store a `completed_at` timestamp. Schema addition would improve sort accuracy.
+- Drafts classified as `modules` group when subtitle is not "Draft" — this is intentional (study drafts are learning-material outputs). If the product hierarchy should always put drafts in Tasks, change `getBlockGroup` to map all `drafts` → `tasks`.
+- The "Sort modules: related to upcoming tasks first" requirement requires cross-referencing module IDs against task due dates, which isn't in the current scheduled block data. Currently modules sort by missed-first then startAt (which reflects scheduler priority). Full implementation would require either enriching the scheduled block row with task-relation metadata or a client-side join.
+
+### Session type
+Implementation session (runtime UI changes, no schema changes).
 
 ## Session Type
 

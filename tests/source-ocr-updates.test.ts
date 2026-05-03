@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  buildOcrCanceledUpdate,
   buildOcrCompletedUpdate,
   buildOcrFailedUpdate,
   buildOcrPageProgressUpdate,
@@ -252,6 +253,30 @@ test('failed OCR clears extracted text and records an honest error', () => {
   assert.equal(update.visual_extraction_error, 'OCR finished, but no legible text was returned. Open the original file.')
   assert.equal(update.metadata.fullTextAvailable, false)
   assert.equal(update.metadata.pdfOcr instanceof Object, true)
+})
+
+test('canceled OCR does not surface as ready text', () => {
+  const text = buildDataOrganizationText()
+  const update = buildOcrCanceledUpdate({
+    resource: createResource({
+      extractionStatus: 'processing',
+      extractedText: text,
+      extractedTextPreview: text.slice(0, 420),
+      extractedCharCount: text.length,
+      visualExtractionStatus: 'running',
+      visualExtractedText: text,
+      pagesProcessed: 19,
+      pageCount: 51,
+    }),
+    now: '2026-05-03T12:00:00.000Z',
+  })
+
+  assert.equal(update.extraction_status, 'empty')
+  assert.equal(update.extracted_text, null)
+  assert.equal(update.extracted_char_count, 0)
+  assert.equal(update.visual_extraction_status, 'skipped')
+  assert.equal(update.visual_extracted_text, null)
+  assert.equal((update.metadata.pdfOcr as Record<string, unknown>).status, 'canceled')
 })
 
 test('failed OCR preserves existing useful partial text instead of marking source failed', () => {
