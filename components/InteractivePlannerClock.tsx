@@ -339,9 +339,15 @@ function buildClockSegments(blocks: ClockScheduleBlock[]): ClockSegment[] {
 function buildArcPath(startMinutes: number, endMinutes: number, radius: number) {
   if (!Number.isFinite(startMinutes) || !Number.isFinite(endMinutes) || endMinutes <= startMinutes) return null
 
+  // Cap at 719 minutes so arcs ≥ 12 h don't collapse to a degenerate full-circle path
+  const cappedEnd = Math.min(endMinutes, startMinutes + 719)
   const start = polarToCartesian(CENTER, CENTER, radius, minutesToClockDegrees(startMinutes))
-  const end = polarToCartesian(CENTER, CENTER, radius, minutesToClockDegrees(endMinutes))
-  const largeArcFlag = endMinutes - startMinutes > 360 ? 1 : 0
+  const end = polarToCartesian(CENTER, CENTER, radius, minutesToClockDegrees(cappedEnd))
+  // Large-arc-flag must reflect the visual angle on the 12-hour face, not the raw minute span
+  const startDeg = minutesToClockDegrees(startMinutes)
+  const endDeg = minutesToClockDegrees(cappedEnd)
+  const clockwiseAngle = ((endDeg - startDeg) + 360) % 360
+  const largeArcFlag = clockwiseAngle > 180 ? 1 : 0
 
   return `M ${start.x} ${start.y} A ${radius} ${radius} 0 ${largeArcFlag} 1 ${end.x} ${end.y}`
 }

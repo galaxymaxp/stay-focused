@@ -9,7 +9,7 @@ import { formatDuration, formatTime, getWindowDurationMinutes, isBlockInsideWind
 
 type ScheduleBlock = ClockScheduleBlock
 
-const SHOW_DEMO_PREVIEW = process.env.NODE_ENV !== 'production' || process.env.NEXT_PUBLIC_ENABLE_DEMO_SCHEDULE === 'true'
+const SHOW_DEMO_PREVIEW = process.env.NEXT_PUBLIC_ENABLE_DEMO_SCHEDULE === 'true'
 
 export function TodayDashboard({ scheduledBlocks, dueSoon, courseSnapshots }: {
   scheduledBlocks: ScheduleBlock[]

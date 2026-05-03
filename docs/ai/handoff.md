@@ -1831,3 +1831,72 @@ Add source-aware Open routing for scheduled blocks so Study pack, Draft, Resourc
 ```
 schedule resources and simplify clock details
 ```
+
+---
+
+## Session Update - 2026-05-03 (Clock Command Center arc overflow bugfixes)
+
+### What changed
+
+- Fixed `buildArcPath` in `components/InteractivePlannerClock.tsx`:
+  - The `largeArcFlag` was computed from the raw minute span (`endMinutes - startMinutes > 360`) which is wrong for a 12-hour clock face. It now computes the clockwise visual angle from the converted clock-face degrees and sets the flag correctly (`clockwiseAngle > 180 ? 1 : 0`).
+  - Added a 719-minute cap on the visual arc so windows ≥ 12 hours render as a near-full-circle arc instead of collapsing to a degenerate zero-length path or drawing a broken oversized stroke.
+  - Duration text (displayed in the legend/chip) is computed from the original uncapped window and remains accurate.
+
+- Fixed overflow containment in `app/globals.css`:
+  - `.planner-clock-face`: changed `overflow: visible` → `overflow: hidden` so the yellow free-time ring can no longer escape the card and overlap the sidebar.
+  - Replaced `display: grid; grid-template-rows: minmax(0, 1fr) auto` with `display: flex; flex-direction: column; align-items: center; justify-content: center` for proper centering of the SVG and status chips inside the face.
+  - Removed hard-coded `min-height` from the face (desktop media query block) — the face now sizes to its content naturally.
+  - `.planner-clock-svg`: changed `overflow: visible` → `overflow: hidden` to confine all SVG rendering (including filter glows) within the SVG element; the face's `overflow: hidden` is the final backstop.
+  - Adjusted SVG max-widths to slightly more conservative values (`360px` base, `400px` desktop, `292px` mobile) for better proportion within the card.
+  - Slightly increased face padding top/bottom for breathing room.
+
+- Cleaned dev-facing demo controls in `components/TodayDashboard.tsx`:
+  - Changed `SHOW_DEMO_PREVIEW` from `process.env.NODE_ENV !== 'production' || process.env.NEXT_PUBLIC_ENABLE_DEMO_SCHEDULE === 'true'` to `process.env.NEXT_PUBLIC_ENABLE_DEMO_SCHEDULE === 'true'`.
+  - "Preview demo schedule" / "Use real schedule" buttons no longer appear in normal development. They only appear when explicitly opted in via the env flag, which keeps the student-facing UI finished in all normal contexts.
+  - The underlying demo state, logic, and `buildDemoScheduleBlocks` function are preserved for opt-in QA use.
+
+### Files touched
+
+- `components/InteractivePlannerClock.tsx`
+- `components/TodayDashboard.tsx`
+- `app/globals.css`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+The clock's yellow outer ring was escaping the card boundary due to `overflow: visible` on the face container. Long free-time windows (12h+, 17h45m) produced broken arcs due to an incorrect `largeArcFlag` calculation that used the raw minute span instead of the visual clock-face angle. The dev demo toggle appeared on every local development load, making the UI feel unfinished to a student.
+
+### Tests run
+
+- `npm run typecheck` — passed (0 errors)
+- `npm run lint` — passed (0 errors)
+- `npm test` — 223 tests, 0 failures
+
+### Verification result
+
+All checks passed. Browser QA was not automated in this session (no Playwright setup available in this environment); visual verification is recommended at 390px, 430px, and desktop widths to confirm:
+- Yellow ring stays inside the card
+- Long availability windows (12h+, overnight) render as a clean near-full arc
+- Clock centered in face
+- No "Preview demo schedule" button visible in normal dev/prod
+
+### Known risks
+
+- The 719-minute arc cap means windows exactly at or over 12 hours show a near-full-circle arc regardless of actual end angle. This is intentionally conservative; the duration text remains accurate and the arc is visually unambiguous.
+- `overflow: hidden` on the face clips the outermost filter glow (drop-shadow) on arcs that reach the very top or edge of the clock face. The effect is subtle and preferable to the previous ring overflow.
+- Browser QA at exact mobile widths was not run with automation.
+
+### Blockers
+
+None.
+
+### Next recommended step
+
+Run manual browser QA at 390px, 430px, and desktop with a real or demo schedule to confirm arc rendering, centering, and no overflow regression. Then add source-aware Open routing for scheduled blocks (Study pack → library, Draft → do page, Resource → learn page, Module → module page, Task → task page).
+
+### Suggested commit message
+
+```
+fix clock command center arc overflow
+```
