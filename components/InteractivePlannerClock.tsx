@@ -48,6 +48,7 @@ const INNER_RADIUS = 96
 const SNAP_MINUTES = 15
 const MIN_WINDOW_MINUTES = 15
 const MINUTES_PER_DAY = 24 * 60
+const DENSE_SEGMENT_THRESHOLD = 7
 
 export function InteractivePlannerClock({
   availableStart,
@@ -81,6 +82,21 @@ export function InteractivePlannerClock({
   const endHandle = Number.isFinite(endMinutes) ? polarToCartesian(CENTER, CENTER, OUTER_RADIUS, minutesToClockDegrees(endMinutes)) : null
 
   const segments = useMemo(() => buildClockSegments(scheduleBlocks), [scheduleBlocks])
+  const isDense = segments.length > DENSE_SEGMENT_THRESHOLD
+  const denseArcPath = useMemo(() => {
+    if (!isDense || segments.length === 0) return null
+    const starts = segments.map((s) => {
+      const d = new Date(s.block.startAt)
+      return d.getHours() * 60 + d.getMinutes()
+    })
+    const ends = segments.map((s) => {
+      const d = new Date(s.block.endAt)
+      return d.getHours() * 60 + d.getMinutes()
+    })
+    const minStart = Math.min(...starts)
+    const maxEnd = Math.max(...ends)
+    return buildArcPath(minStart, maxEnd, INNER_RADIUS)
+  }, [isDense, segments])
   const activeTooltipSegment = segments.find((segment) => segment.id === hoveredSegmentId) ?? null
   const handAngles = now ? getClockHandAngles(now) : null
 
@@ -235,14 +251,19 @@ export function InteractivePlannerClock({
           />
         ) : null}
 
+        {isDense && denseArcPath ? (
+          <path className="clock-ring-arc plan dense" d={denseArcPath} aria-hidden="true" />
+        ) : null}
+
         {segments.map((segment) => {
           const isSelected = selectedBlockId === segment.id
           const isCurrent = currentBlock?.id === segment.id
+          const ghostClass = isDense && !isSelected && !isCurrent ? ' ghost' : ''
 
           return (
             <path
               key={segment.id}
-              className={`clock-ring-arc plan interactive${isSelected ? ' is-selected' : ''}${isCurrent ? ' is-current' : ''}`}
+              className={`clock-ring-arc plan interactive${ghostClass}${isSelected ? ' is-selected' : ''}${isCurrent ? ' is-current' : ''}`}
               d={segment.path}
               role="button"
               tabIndex={0}
@@ -296,7 +317,7 @@ export function InteractivePlannerClock({
           <>
             <line className="clock-hand hour" x1={CENTER} y1={CENTER} x2={handAngles.hour.x} y2={handAngles.hour.y} />
             <line className="clock-hand minute" x1={CENTER} y1={CENTER} x2={handAngles.minute.x} y2={handAngles.minute.y} />
-            <line className="clock-hand second" x1={CENTER} y1={CENTER + 12} x2={handAngles.second.x} y2={handAngles.second.y} />
+            <line className="clock-hand second" x1={CENTER} y1={CENTER} x2={handAngles.second.x} y2={handAngles.second.y} />
             <circle className="clock-center-dot" cx={CENTER} cy={CENTER} r="6" />
           </>
         ) : null}

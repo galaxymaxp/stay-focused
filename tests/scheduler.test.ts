@@ -96,3 +96,38 @@ test('regenerate preservation filter would keep non-scheduled statuses', () => {
   const deletable = statuses.filter((s) => s === 'scheduled')
   assert.deepEqual(deletable, ['scheduled'])
 })
+
+test('cross-table title dedup produces only one block for same-group title', () => {
+  const now = Date.now()
+  const window = { start: new Date(now).toISOString(), end: new Date(now + 4 * 3600_000).toISOString() }
+  // Same title exists in both task_items and tasks (cross-table)
+  const blocks = generateSchedule([
+    scoreSchedulerItem({ id: 'ti1', userId, sourceTable: 'task_items', title: 'Statistics midterm', dueAt: new Date(now + 2 * 3600_000).toISOString(), taskType: 'quiz' }),
+    scoreSchedulerItem({ id: 't1', userId, sourceTable: 'tasks', title: 'Statistics midterm', dueAt: new Date(now + 2 * 3600_000).toISOString(), taskType: 'quiz' }),
+  ], window)
+
+  assert.equal(blocks.length, 1, 'cross-table duplicate should produce only one block')
+})
+
+test('same-table same-title items are both scheduled independently', () => {
+  const now = Date.now()
+  const window = { start: new Date(now).toISOString(), end: new Date(now + 6 * 3600_000).toISOString() }
+  // Two different task_items with same title in same table — both should be scheduled
+  const blocks = generateSchedule([
+    scoreSchedulerItem({ id: 'ti2', userId, sourceTable: 'task_items', title: 'Reading chapter 1', dueAt: new Date(now + 2 * 3600_000).toISOString(), taskType: 'reading' }),
+    scoreSchedulerItem({ id: 'ti3', userId, sourceTable: 'task_items', title: 'Reading chapter 1', dueAt: new Date(now + 3 * 3600_000).toISOString(), taskType: 'reading' }),
+  ], window)
+
+  assert.equal(blocks.length, 2, 'same-table items with same title should both be scheduled')
+})
+
+test('ready module_resource is included in generated schedule', () => {
+  const now = Date.now()
+  const window = { start: new Date(now).toISOString(), end: new Date(now + 3 * 3600_000).toISOString() }
+  const blocks = generateSchedule([
+    scoreSchedulerItem({ id: 'mr1', userId, sourceTable: 'module_resources', title: 'Week 3 slides PDF', dueAt: null, extractedCharCount: 8000, extractionStatus: 'extracted' }),
+  ], window)
+
+  assert.equal(blocks.length, 1, 'ready module_resource should appear in schedule')
+  assert.equal(blocks[0]?.sourceTable, 'module_resources')
+})

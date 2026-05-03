@@ -2128,3 +2128,83 @@ None.
 ```
 fix scheduler sources and clock ring geometry
 ```
+
+---
+
+## Session Update - 2026-05-03 (Dedupe schedule sources and group today plan)
+
+### What changed
+
+- **`components/InteractivePlannerClock.tsx`** — Three fixes:
+  1. **Second-hand pivot**: corrected `y1={CENTER + 12}` → `y1={CENTER}` so the second hand starts from the center dot instead of being offset 12 SVG units downward.
+  2. **Dense schedule ring**: when `segments.length > 7` (constant `DENSE_SEGMENT_THRESHOLD`), a single `.clock-ring-arc.plan.dense` arc is rendered from the earliest block start to the latest block end. Individual arcs render as `.clock-ring-arc.plan.ghost` (opacity 0) so they remain interactable via focus/keyboard; selected or current blocks override opacity to 1 so the active block always shows clearly. Ghost arcs still respond to pointer/keyboard events normally.
+
+- **`actions/scheduler.ts`** — Fixed duplicate schedule generation:
+  - Removed `.gte('start_at', nowIso)` guard from cleanup query. Previous behavior only deleted future `scheduled` blocks, leaving past-window blocks from prior regeneration runs. Now all `status = scheduled` blocks for the user are deleted before inserting the new plan. `opened`/`completed`/`skipped` blocks are still preserved (deleted only if `status = scheduled`).
+
+- **`lib/scheduler/algorithm.ts`** — Added cross-table title deduplication:
+  - New `scheduledTitleSources: Map<string, string>` tracks which source group (T = task_items/tasks/deadlines, M = modules/module_resources/etc., D = drafts) first claimed a given normalized title.
+  - If the same normalized title appears in a different source group's table (e.g., an assignment in both `task_items` and `tasks`), the lower-priority duplicate is skipped.
+  - Same-table same-title items (two different DB rows in the same table) are both scheduled — dedup is cross-table only.
+  - Helper functions: `getSourceGroupKey(sourceTable)`, `normalizeSourceTitle(title)`.
+
+- **`app/globals.css`** — Added:
+  - `.clock-ring-arc.plan.dense`: low-opacity filled arc representing the overall scheduled time range.
+  - `.clock-ring-arc.plan.ghost`: opacity 0 for non-selected/non-current arcs in dense mode.
+  - `.clock-ring-arc.plan.ghost:focus-visible`, `.ghost.is-selected`, `.ghost.is-current`: override opacity to 1 for active/selected arcs.
+
+- **`tests/scheduler.test.ts`** — Three new tests:
+  - Cross-table same-title items produce only one block (dedup works across task_items vs tasks).
+  - Same-table same-title items are both scheduled (dedup does not apply within a table).
+  - Ready `module_resource` is included in generated schedule.
+
+### Files touched
+
+- `components/InteractivePlannerClock.tsx`
+- `actions/scheduler.ts`
+- `lib/scheduler/algorithm.ts`
+- `app/globals.css`
+- `tests/scheduler.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+- Second-hand offset was a geometry bug: `y1={CENTER + 12}` moved the hand's anchor 12px below center, making the hand appear to hang from an off-center pivot.
+- Dense ring: at 8+ blocks the inner ring becomes too crowded to read; a single arc summarizes the scheduled range while ghost arcs stay keyboard-accessible.
+- Cleanup query: Canvas data frequently records the same assignment across both `task_items` and `tasks`. Without full cleanup, regenerating during the same day would accumulate both past-window duplicates and cross-table duplicates.
+- Cross-table dedup: the greedy algorithm packs the highest-scoring block first; with a `tasks` and `task_items` row for the same assignment, both could schedule. The `titleKey` guard prevents two blocks representing the same student work item from both landing in the plan.
+
+### Tests run
+
+```
+npm run typecheck   — passed (0 errors)
+npm run lint        — passed (0 errors)
+npm test            — 226 tests, 0 failures
+```
+
+### Verification result
+
+All quality gates passed. Browser QA was not automated. Manual verification recommended:
+- Regenerate a schedule twice back-to-back and confirm block count stays stable (no compounding duplicates).
+- With 8+ scheduled blocks, confirm the clock ring shows a single dense arc with no individual arcs visible, but clicking or tabbing to a block still highlights that block's arc on the ring.
+- Confirm the second hand now starts from the center dot.
+
+### Known risks
+
+- Dense-mode ghost arcs rely on SVG `pointer-events: stroke`, which is correct for arc paths. If a ghost arc has a very short path, the clickable stroke area may be too small to tap on mobile; users can still use the schedule list to select blocks.
+- Cross-table title dedup uses a normalized lowercase-alpha-numeric comparison. Very similarly named but genuinely distinct assignments (e.g., "Reading 1" vs "Reading 1b") remain distinct.
+
+### Blockers
+
+None.
+
+### Next recommended step
+
+1. Browser QA at 390px and 430px with a real synced Canvas workspace and 8+ scheduled blocks to validate dense ring behavior and group layout.
+2. Remove the `console.log` diagnostics from `actions/scheduler.ts` once source inclusion is confirmed working in production.
+
+### Suggested commit message
+
+```
+dedupe schedule sources and group today plan
+```

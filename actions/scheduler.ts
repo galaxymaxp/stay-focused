@@ -201,15 +201,13 @@ export async function generateUserSchedule(freeTimeStart: string, freeTimeEnd: s
   }
   console.log('[scheduler:generated] blocks by source', countsByGeneratedSource, 'total:', generatedBlocks.length)
 
-  const nowIso = new Date().toISOString()
   const { error: cleanupError } = await client
     .from('scheduled_blocks')
     .delete()
     .eq('user_id', userId)
     .eq('status', 'scheduled')
-    .gte('start_at', nowIso)
 
-  if (cleanupError) throw new Error('Failed to clear existing future scheduled blocks.')
+  if (cleanupError) throw new Error('Failed to clear existing scheduled blocks.')
 
   if (generatedBlocks.length > 0) {
     const { error: insertError } = await client.from('scheduled_blocks').insert(

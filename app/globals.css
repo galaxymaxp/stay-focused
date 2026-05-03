@@ -4107,6 +4107,21 @@ details[open] > .ui-interactive-summary,
 .clock-ring-arc.plan.is-current {
   stroke: color-mix(in srgb, var(--green) 46%, var(--accent) 54%);
 }
+.clock-ring-arc.plan.dense {
+  stroke: var(--accent);
+  stroke-width: 11;
+  opacity: 0.22;
+  pointer-events: none;
+}
+.clock-ring-arc.plan.ghost {
+  opacity: 0;
+  pointer-events: stroke;
+}
+.clock-ring-arc.plan.ghost:focus-visible,
+.clock-ring-arc.plan.ghost.is-selected,
+.clock-ring-arc.plan.ghost.is-current {
+  opacity: 1;
+}
 .clock-tick {
   stroke: color-mix(in srgb, var(--text-muted) 42%, transparent);
   stroke-width: 1;
