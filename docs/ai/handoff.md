@@ -1900,3 +1900,72 @@ Run manual browser QA at 390px, 430px, and desktop with a real or demo schedule 
 ```
 fix clock command center arc overflow
 ```
+
+---
+
+## Session Update - 2026-05-03 (Schedule persistence fix + clock ring bleed)
+
+### What changed
+
+**Priority 1 — Schedule persistence**
+
+- Root cause: migrations `20260503070000` and `20260503090000` were not applied to the remote Supabase database. The `scheduled_blocks` table was missing six columns (`source_type`, `course_id`, `subtitle`, `block_type`, `estimate_confidence`, `estimate_reason`) that `generateUserSchedule` now inserts.
+- Applied both migrations via Supabase MCP:
+  - `expand_scheduled_blocks_and_queue_cancel`: adds the missing columns, `block_type` check constraint, two new indexes, and the queue cancel policy.
+  - `allow_saved_outputs_in_schedule`: replaces the `source_table` check constraint to also allow `deep_learn_notes` and `drafts`.
+- Added structured error logging in `actions/scheduler.ts` before the student-facing throw:
+  ```
+  console.error('[scheduler] insert failed', { code, message, details, hint })
+  ```
+  This lets server logs capture the real Supabase error without exposing it to the student UI.
+
+**Priority 2 — Inner clock ring bleed**
+
+- Root cause 1: `.planner-clock-svg` was set to `overflow: hidden` in the previous session. SVG `overflow: hidden` clips CSS `filter: drop-shadow()` in ways that create rendering artifacts — the glow from the inner plan arc was being clipped into a visible blurry "filled circle" at the clock center.
+- Root cause 2: `filter: drop-shadow(0 0 7px var(--accent) 22%)` on `.clock-ring-arc.plan` radiates inward toward the clock center. With the current `is-current` green color this created a glow that visually merged into a large bleeding green circle.
+- Root cause 3: `stroke-width: 17` on `is-selected` exceeded the inner track band (14px) causing the selected segment to protrude outside its ring.
+- Fixes in `app/globals.css`:
+  - `.planner-clock-svg`: reverted `overflow: hidden` → `overflow: visible`. The `.planner-clock-face` `overflow: hidden` is the card-level backstop and is sufficient; the SVG element does not need its own clip.
+  - `.clock-ring-arc.plan`: removed `filter: drop-shadow(...)`, reduced `stroke-width` from 14 → 11. Plan segments are now clean colored strokes within the 14px inner track band — no glow, no bleed.
+  - `.clock-ring-arc.plan.is-selected`: reduced `stroke-width` from 17 → 14 (matches track width, no protrusion).
+
+### Files touched
+
+- `actions/scheduler.ts`
+- `app/globals.css`
+- `docs/ai/handoff.md`
+- Supabase remote DB: applied `expand_scheduled_blocks_and_queue_cancel` and `allow_saved_outputs_in_schedule` migrations
+
+### Why it changed
+
+The schedule generation has been broken since the two May 3 migrations were written locally but never applied to the remote database. Every generate attempt silently failed with an insert error that had no server log trace. The clock ring bleed was an interaction between the previous session's `overflow: hidden` on the SVG element and the drop-shadow filter on plan arcs.
+
+### Tests run
+
+- `npm run typecheck` — passed (0 errors)
+- `npm run lint` — passed (0 errors)
+- `npm test` — 223 tests, 0 failures
+
+### Verification result
+
+Schema confirmed via Supabase MCP — all 19 columns present, constraints correct. Code checks all passed. Browser QA not automated (no Playwright); recommend manual verification that generate schedule now works end-to-end and the inner ring shows clean segments without glow.
+
+### Known risks
+
+- Plan arc `stroke-width: 11` is narrower than the inner track (14px), so the gray track shows as a thin halo around each segment. This is intentional — segments-in-a-band look. If this is visually undesirable, increase plan arc stroke-width back to 14.
+- The `is-current` green color is still applied; it will be visible but without glow bleed.
+- Queue cancel policy from `expand_scheduled_blocks_and_queue_cancel` is now active remotely — this is an unrelated change that was bundled in the migration file.
+
+### Blockers
+
+None. Both migrations applied and verified remotely.
+
+### Next recommended step
+
+Manually test Generate schedule end-to-end with a real Canvas-synced account. Confirm blocks are persisted, `Today's Schedule` updates, and the inner ring shows clean segments. Then add source-aware Open routing per block type.
+
+### Suggested commit message
+
+```
+fix schedule persistence and clock ring bleed
+```

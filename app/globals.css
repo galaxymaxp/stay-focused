@@ -4066,7 +4066,7 @@ details[open] > .ui-interactive-summary,
   height: auto;
   aspect-ratio: 1;
   display: block;
-  overflow: hidden;
+  overflow: visible;
   touch-action: none;
 }
 .clock-ring-track {
@@ -4091,8 +4091,7 @@ details[open] > .ui-interactive-summary,
 }
 .clock-ring-arc.plan {
   stroke: var(--accent);
-  stroke-width: 14;
-  filter: drop-shadow(0 0 7px color-mix(in srgb, var(--accent) 22%, transparent));
+  stroke-width: 11;
 }
 .clock-ring-arc.interactive {
   cursor: pointer;
@@ -4105,7 +4104,7 @@ details[open] > .ui-interactive-summary,
 }
 .clock-ring-arc.plan.is-selected {
   stroke: color-mix(in srgb, var(--amber) 74%, var(--accent) 26%);
-  stroke-width: 17;
+  stroke-width: 14;
 }
 .clock-ring-arc.plan.is-current {
   stroke: color-mix(in srgb, var(--green) 46%, var(--accent) 54%);

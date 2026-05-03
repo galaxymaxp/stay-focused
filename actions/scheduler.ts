@@ -203,7 +203,15 @@ export async function generateUserSchedule(freeTimeStart: string, freeTimeEnd: s
       })),
     )
 
-    if (insertError) throw new Error('Failed to persist generated schedule blocks.')
+    if (insertError) {
+      console.error('[scheduler] insert failed', {
+        code: insertError.code,
+        message: insertError.message,
+        details: insertError.details,
+        hint: insertError.hint,
+      })
+      throw new Error('Failed to persist generated schedule blocks.')
+    }
   }
 
   revalidatePath('/')
