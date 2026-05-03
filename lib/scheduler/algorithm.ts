@@ -12,8 +12,12 @@ export function generateSchedule(items: ScoredSchedulerItem[], window: TimeWindo
 
   let cursor = start
   const blocks: GeneratedScheduledBlock[] = []
+  const scheduled = new Set<string>()
 
   for (const item of [...items].sort((a, b) => b.schedulePriorityScore - a.schedulePriorityScore)) {
+    const key = `${item.sourceTable}:${item.id}`
+    if (scheduled.has(key)) continue
+
     const durationMs = item.estimatedMinutes * 60_000
     if (cursor + durationMs > end) continue
 
@@ -35,6 +39,7 @@ export function generateSchedule(items: ScoredSchedulerItem[], window: TimeWindo
       status: 'scheduled',
     })
 
+    scheduled.add(key)
     cursor += durationMs
   }
 

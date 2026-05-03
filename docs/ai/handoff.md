@@ -1969,3 +1969,73 @@ Manually test Generate schedule end-to-end with a real Canvas-synced account. Co
 ```
 fix schedule persistence and clock ring bleed
 ```
+
+---
+
+## Session Update — 2026-05-03 (Clock ring geometry and scheduler source fixes)
+
+### What changed
+
+**Part A — Clock ring geometry:**
+- `app/globals.css`: removed the accent-color radial-gradient from `.planner-clock-face` background. The first layer (`color-mix(in srgb, var(--surface-focus) 86%, var(--accent) 14%) 0 30%`) created a green-tinted disc sized at 30% of the CSS element — not tied to the SVG viewBox — and appeared as a large haze circle behind the clock.
+- `app/globals.css`: reduced `drop-shadow` blur on `.clock-ring-arc.free` from `8px` to `3px`. At 8px blur the glow spread ~24 SVG units inward from the free arc's inner edge (r=128), nearly touching the inner ring's outer edge at r=103 — causing visible amber bleed.
+- SVG geometry (InteractivePlannerClock.tsx) was verified correct; no changes needed. All inner ring segments use the same `CENTER=160, INNER_RADIUS=96` coordinate system as the rest of the clock.
+
+**Part B — Scheduler source quality:**
+- `actions/scheduler.ts`: loosened `module_resources` readiness filter to include `too_short` quality (has some content, just brief) in addition to `meaningful`. Previously only `meaningful` resources were scheduled; resources with brief but real extracted text were silently dropped.
+- `actions/scheduler.ts`: refactored `deepLearnNotesData` and `draftsData` into named variables (eliminating repeated `!result.error` ternaries) and added server-side diagnostic logging:
+  - `[scheduler:sources] raw counts` — counts per source table before readiness filtering
+  - `[scheduler:candidates] by source type` — counts in `sourceItems` after all filters
+  - `[scheduler:generated] blocks by source` — counts in the final generated block list
+- `lib/scheduler/algorithm.ts`: added deduplication in `generateSchedule` keyed on `sourceTable:id`. Prevents the same record appearing twice in a single generated schedule (can happen if Canvas sync produces overlapping records in `task_items` and `tasks`).
+- `lib/scheduler/estimation.ts`: improved two generic estimate reason labels:
+  - `'Estimated module review block'` → `'Estimated from module review'`
+  - `'Estimated default task block'` → `'Estimated from workload and urgency'`
+
+### Files touched
+
+- `app/globals.css`
+- `lib/scheduler/algorithm.ts`
+- `lib/scheduler/estimation.ts`
+- `actions/scheduler.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+The clock face background had a CSS radial-gradient using `var(--accent)` (green) at 30% element width, creating a visible haze circle that floated independently of the SVG coordinate system. At the same time, the 8px drop-shadow on the free arc bled inward to r≈104, almost touching the inner plan ring at r=103. Resources with brief (but real) extracted text were silently excluded from scheduling, reducing schedule variety. The dedup guard prevents the same source appearing twice if Canvas data has overlapping entries across tables.
+
+### Tests run
+
+- `npm run typecheck` — passed (0 errors)
+- `npm run lint` — passed (0 errors)
+- `npm test` — 223 tests, 0 failures (scheduler, queue, learn-resource-ui, deep-learn-readiness all included)
+
+### Verification result
+
+All code checks passed. The CSS changes are geometry-only and do not alter SVG math. Browser QA was not automated (no Playwright); manual verification recommended:
+- Clock face background should no longer show a green-tinted haze circle at center
+- Free arc glow should be tighter and not visually merge with the inner ring
+- Server logs should show `[scheduler:sources]` and `[scheduler:generated]` output on generate
+- Resources with brief extracted text that previously showed 0 resource blocks in the generated schedule should now be included as candidates
+
+### Known risks
+
+- The diagnostic `console.log` calls in `scheduler.ts` are intentionally temporary. Remove them once the source-inclusion issue is confirmed resolved (or after next session).
+- `too_short` resources will now be scheduled; they will have estimate_reason `'Estimated from material fallback'` and low confidence. The student may find blocks shorter than expected. This is intentional — the student still needs to review these pages.
+- If a user's `module_resources` have no extracted text at all (extraction pending/queued), they remain excluded (`empty` quality). That is correct behavior.
+
+### Blockers
+
+None.
+
+### Next recommended step
+
+1. Manually test Generate schedule with a synced account and confirm the server logs show module/resource/deep_learn candidates.
+2. Remove the diagnostic `console.log` calls from `actions/scheduler.ts` once source inclusion is confirmed.
+3. Add source-aware Open routing per scheduled block type (open task → task page, open module → module page, open resource → resource reader).
+
+### Suggested commit message
+
+```
+fix scheduler sources and clock ring geometry
+```

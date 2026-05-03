@@ -54,7 +54,7 @@ export function estimateMinutesAndConfidence(item: SchedulerItem): { estimatedMi
   }
 
   if (item.sourceTable === 'modules' && !item.dueAt) {
-    return { estimatedMinutes: 30, estimationConfidence: 0.4, reason: 'Estimated module review block' }
+    return { estimatedMinutes: 30, estimationConfidence: 0.4, reason: 'Estimated from module review' }
   }
 
   if (item.sourceTable === 'learning_items') {
@@ -67,7 +67,7 @@ export function estimateMinutesAndConfidence(item: SchedulerItem): { estimatedMi
 
   if (overdue) return { estimatedMinutes: 35, estimationConfidence: 0.45, reason: 'Estimated overdue catch-up block' }
   if (normalizedTaskType === 'reading' || normalizedTaskType === 'prep') return { estimatedMinutes: 30, estimationConfidence: 0.4, reason: 'Estimated from task type' }
-  return { estimatedMinutes: 20, estimationConfidence: 0.35, reason: 'Estimated default task block' }
+  return { estimatedMinutes: 20, estimationConfidence: 0.35, reason: 'Estimated from workload and urgency' }
 }
 
 function clampMinutes(minutes: number, min: number, max: number) {

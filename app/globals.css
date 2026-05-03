@@ -4057,9 +4057,7 @@ details[open] > .ui-interactive-summary,
   border: 1px solid color-mix(in srgb, var(--accent-border) 18%, var(--border-subtle) 82%);
   border-radius: 12px;
   padding: .85rem .75rem .9rem;
-  background:
-    radial-gradient(circle at center, color-mix(in srgb, var(--surface-focus) 86%, var(--accent) 14%) 0 30%, transparent 31%),
-    radial-gradient(circle at center, color-mix(in srgb, var(--surface-soft) 92%, var(--amber-light) 8%) 0%, color-mix(in srgb, var(--surface-elevated) 78%, transparent) 72%);
+  background: radial-gradient(circle at center, color-mix(in srgb, var(--surface-soft) 92%, var(--amber-light) 8%) 0%, color-mix(in srgb, var(--surface-elevated) 78%, transparent) 72%);
 }
 .planner-clock-svg {
   width: min(360px, 94%);
@@ -4087,7 +4085,7 @@ details[open] > .ui-interactive-summary,
   stroke: var(--amber);
   stroke-width: 16;
   stroke-linecap: round;
-  filter: drop-shadow(0 0 8px color-mix(in srgb, var(--amber) 26%, transparent));
+  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--amber) 22%, transparent));
 }
 .clock-ring-arc.plan {
   stroke: var(--accent);

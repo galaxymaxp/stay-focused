@@ -55,13 +55,30 @@ export async function generateUserSchedule(freeTimeStart: string, freeTimeEnd: s
   ])
   const readyResources = (resourcesResult.data ?? []).filter((row) => {
     if (savedOutputResourceIds.has(row.id)) return false
-    return classifyModuleResourceTextQuality({
+    const quality = classifyModuleResourceTextQuality({
       title: row.title,
       extractedText: row.extracted_text,
       extractedTextPreview: row.extracted_text_preview,
       visualExtractionStatus: row.visual_extraction_status,
       visualExtractedText: row.visual_extracted_text,
-    }).usable
+    })
+    return quality.usable || quality.quality === 'too_short'
+  })
+
+  const deepLearnNotesData = !deepLearnNotesResult.error ? (deepLearnNotesResult.data ?? []) : []
+  const draftsData = !draftsResult.error ? (draftsResult.data ?? []) : []
+
+  console.log('[scheduler:sources] raw counts', {
+    task_items: taskItemsResult.data?.length ?? 0,
+    tasks: tasksResult.data?.length ?? 0,
+    deadlines: deadlinesResult.data?.length ?? 0,
+    modules: modulesResult.data?.length ?? 0,
+    module_resources_raw: resourcesResult.data?.length ?? 0,
+    module_resources_excluded_saved_output: savedOutputResourceIds.size,
+    module_resources_ready: readyResources.length,
+    learning_items: learningItemsResult.data?.length ?? 0,
+    deep_learn_notes: deepLearnNotesData.length,
+    drafts: draftsData.length,
   })
 
   const sourceItems: SchedulerItem[] = [
@@ -141,7 +158,7 @@ export async function generateUserSchedule(freeTimeStart: string, freeTimeEnd: s
       estimatedMinutes: row.estimated_minutes,
       createdAt: row.created_at,
     })),
-    ...(!deepLearnNotesResult.error ? (deepLearnNotesResult.data ?? []).map((row) => ({
+    ...deepLearnNotesData.map((row) => ({
       id: row.id,
       userId,
       sourceTable: 'deep_learn_notes' as const,
@@ -153,8 +170,8 @@ export async function generateUserSchedule(freeTimeStart: string, freeTimeEnd: s
       quizReady: row.quiz_ready,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
-    })) : []),
-    ...(!draftsResult.error ? (draftsResult.data ?? []).map((row) => ({
+    })),
+    ...draftsData.map((row) => ({
       id: row.id,
       userId,
       sourceTable: 'drafts' as const,
@@ -166,11 +183,23 @@ export async function generateUserSchedule(freeTimeStart: string, freeTimeEnd: s
       tokenCount: row.token_count,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
-    })) : []),
+    })),
   ]
+
+  const countsBySource: Record<string, number> = {}
+  for (const item of sourceItems) {
+    countsBySource[item.sourceTable] = (countsBySource[item.sourceTable] ?? 0) + 1
+  }
+  console.log('[scheduler:candidates] by source type', countsBySource, 'total:', sourceItems.length)
 
   const scored = sourceItems.map(scoreSchedulerItem)
   const generatedBlocks = generateSchedule(scored, { start: timeInputToTodayIso(freeTimeStart), end: timeInputToTodayIso(freeTimeEnd) })
+
+  const countsByGeneratedSource: Record<string, number> = {}
+  for (const block of generatedBlocks) {
+    countsByGeneratedSource[block.sourceTable] = (countsByGeneratedSource[block.sourceTable] ?? 0) + 1
+  }
+  console.log('[scheduler:generated] blocks by source', countsByGeneratedSource, 'total:', generatedBlocks.length)
 
   const nowIso = new Date().toISOString()
   const { error: cleanupError } = await client
