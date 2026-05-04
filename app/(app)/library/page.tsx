@@ -46,46 +46,41 @@ export default async function StudyLibraryPage({ searchParams }: Props) {
 
   return (
     <main className="page-shell command-page">
-      <section
-        className="motion-card section-shell section-shell-elevated"
-        style={{ padding: '1.05rem 1.15rem', display: 'grid', gap: '1rem' }}
-      >
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-          <div>
+      <section className="motion-card section-shell" style={{ padding: '1rem 1.1rem', display: 'grid', gap: '0.9rem' }}>
+        <div className="home-section-heading">
+          <div style={{ minWidth: 0 }}>
             <p className="ui-kicker">{scopedLabel}</p>
-            <h1 className="ui-page-title" style={{ marginTop: '0.5rem' }}>Study Library</h1>
-            <p className="ui-page-copy" style={{ marginTop: '0.35rem', maxWidth: '46rem' }}>
-              Generated study content lives here in one place. Learning packs from Learn and saved drafts from Tasks stay grouped by course so you can reopen the right workspace without hunting through modules.
+            <h1 className="ui-page-title" style={{ marginTop: '0.4rem', fontSize: 'clamp(1.6rem, 2.5vw, 2.1rem)' }}>Study Library</h1>
+            <p className="ui-section-copy" style={{ marginTop: '0.4rem', maxWidth: '44rem' }}>
+              Learning packs and saved drafts grouped by course.
             </p>
-            {(courseFilter || moduleFilter) && (
-              <div style={{ marginTop: '0.6rem' }}>
-                <Link href="/library" className="ui-button ui-button-ghost ui-button-xs">
-                  View all generated content
-                </Link>
-              </div>
-            )}
           </div>
+          {(courseFilter || moduleFilter) && (
+            <Link href="/library" className="home-subtle-link">
+              View all
+            </Link>
+          )}
         </div>
 
-        {/* Filter tabs */}
-        <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+        {/* Filter chips */}
+        <div className="home-plan-filter" style={{ paddingBottom: 0 }}>
           <Link
             href={filterHref(null)}
-            className={!kindFilter ? 'ui-button ui-button-secondary ui-button-xs' : 'ui-button ui-button-ghost ui-button-xs'}
+            className={`home-plan-filter-chip${!kindFilter ? ' active' : ''}`}
           >
-            All ({items.length})
+            All {items.length > 0 ? `(${items.length})` : ''}
           </Link>
           <Link
             href={filterHref('learning')}
-            className={kindFilter === 'learning' ? 'ui-button ui-button-secondary ui-button-xs' : 'ui-button ui-button-ghost ui-button-xs'}
+            className={`home-plan-filter-chip${kindFilter === 'learning' ? ' active' : ''}`}
           >
-            Learning ({learningCount})
+            Learning {learningCount > 0 ? `(${learningCount})` : ''}
           </Link>
           <Link
             href={filterHref('tasks')}
-            className={kindFilter === 'tasks' ? 'ui-button ui-button-secondary ui-button-xs' : 'ui-button ui-button-ghost ui-button-xs'}
+            className={`home-plan-filter-chip${kindFilter === 'tasks' ? ' active' : ''}`}
           >
-            Tasks ({tasksCount})
+            Tasks {tasksCount > 0 ? `(${tasksCount})` : ''}
           </Link>
         </div>
       </section>

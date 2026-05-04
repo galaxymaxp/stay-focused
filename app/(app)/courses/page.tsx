@@ -74,18 +74,26 @@ function CourseCard({ summary, index }: { summary: CourseSummary; index: number 
       </div>
 
       {/* Actionable metrics */}
-      <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flex: 1 }}>
-        <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--amber)' }}>
-          Due: {summary.pendingTaskCount}
-        </span>
-        <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
-          Done: {summary.completedTaskCount}
-        </span>
+      <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
+        {summary.pendingTaskCount > 0 ? (
+          <span className="ui-chip ui-status-warning" style={{ fontSize: '11px', fontWeight: 700, padding: '0.2rem 0.5rem' }}>
+            {summary.pendingTaskCount} due
+          </span>
+        ) : (
+          <span className="ui-chip ui-chip-soft" style={{ fontSize: '11px', fontWeight: 600 }}>
+            All caught up
+          </span>
+        )}
+        {summary.readyPackCount > 0 ? (
+          <span className="ui-chip ui-chip-soft" style={{ fontSize: '11px', fontWeight: 700, color: 'var(--accent)', borderColor: 'color-mix(in srgb, var(--accent) 20%, var(--border-subtle) 80%)' }}>
+            {summary.readyPackCount} pack{summary.readyPackCount === 1 ? '' : 's'} ready
+          </span>
+        ) : null}
       </div>
 
       {/* Footer */}
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <span className="workspace-row-link" style={{ fontSize: '12px', flexShrink: 0 }}>Open course</span>
+        <span className="home-row-open">Open course</span>
       </div>
     </Link>
   )

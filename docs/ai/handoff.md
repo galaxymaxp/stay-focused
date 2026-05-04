@@ -5,6 +5,45 @@ Last Updated: 2026-05-04
 
 ---
 
+## Session Update — 2026-05-04 (Design consistency pass: Home / Study Library / Courses)
+
+### What changed
+
+**`components/drafts/DraftCard.tsx`**
+- Replaced individually-bordered elevated card style with `home-sheet-row` flat separator pattern.
+- Now uses `home-row-meta` chips, `home-row-title` link, `home-row-copy`, and `home-row-note` — matching the visual language of the Home Today Plan rows.
+
+**`components/drafts/CourseShelf.tsx`**
+- Expanded content container changed from a gap-separated CSS grid to `home-sheet-list` (border-top separator between items).
+- Removed tinted background override from shelf header div; now inherits section-shell surface cleanly.
+
+**`app/(app)/courses/page.tsx`**
+- Replaced raw amber inline-styled text metrics with `ui-chip ui-status-warning` / `ui-chip ui-chip-soft` elements for pending task count and ready pack count.
+- "Open course" now uses `home-row-open` link class (matches Home section row links).
+
+**`app/(app)/library/page.tsx`**
+- Changed header section from `section-shell section-shell-elevated` (heavy shadow) to flat `section-shell`.
+- Used `home-section-heading` layout, `home-subtle-link` for "View all", and `home-plan-filter-chip` for All/Learning/Tasks filter tabs.
+- Condensed description copy to a single tight line.
+
+### Why it changed
+
+Design consistency pass requested by user: align Study Library and Courses visually with the Home page. Prior implementation used ad-hoc elevated/bordered inner cards that read as a separate design system from the Home sheet-row pattern.
+
+### Tests run
+
+- `npm run typecheck` — ✅ clean
+- `npm run lint` — ✅ clean
+- `npm test -- scheduler` — ✅ 252 pass, 0 fail
+
+### Next recommended steps
+
+- No blockers. Visual alignment is complete across Home, Library, and Courses.
+- Next natural improvement: calendar page light consistency pass if desired.
+- Clock widget is already clean (right-rail `home-sheet` with heading + SVG + legend, no card-inside-card).
+
+---
+
 ## Session Update — 2026-05-04 (Implement real Move Later + Home/Library consistency pass)
 
 ### What changed

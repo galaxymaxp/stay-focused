@@ -38,9 +38,8 @@ export function CourseShelf({
         gap: '1rem',
         padding: '0.85rem 1rem',
         borderBottom: isExpanded
-          ? '1px solid color-mix(in srgb, var(--border-subtle) 70%, transparent)'
+          ? '1px solid color-mix(in srgb, var(--border-subtle) 60%, transparent)'
           : 'none',
-        background: 'color-mix(in srgb, var(--surface-soft) 56%, transparent)',
         flexWrap: 'wrap',
       }}>
         <button
@@ -118,7 +117,7 @@ export function CourseShelf({
       </div>
 
       {isExpanded && (
-        <div id={contentId} style={{ padding: '0.85rem 1rem', display: 'grid', gap: '0.6rem' }}>
+        <div id={contentId} className="home-sheet-list" style={{ padding: '0 1rem 0.25rem' }}>
           {items.map((item) => (
             <DraftCard key={item.id} item={item} />
           ))}
