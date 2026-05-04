@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { scoreSchedulerItem } from '@/lib/scheduler/priority'
 import { estimateMinutesAndConfidence } from '@/lib/scheduler/estimation'
 import { deriveScheduledBlockStatus, generateSchedule } from '@/lib/scheduler/algorithm'
+import { findLaterSlot } from '@/lib/scheduler/move-later'
 import { formatDuration, formatTime, getWindowDurationMinutes, isBlockInsideWindow, minutesToTime, timeToMinutes } from '@/lib/scheduler/time'
 
 const userId = '00000000-0000-0000-0000-000000000001'
@@ -333,4 +334,100 @@ test('task sources map to task group; module_resource sources map to module grou
   for (const src of moduleSources) assert.ok(!isTaskGroup(src), `${src} should be in modules group`)
   assert.ok(isTaskGroup('drafts', taskDraftSubtitle), 'task draft maps to tasks')
   assert.ok(!isTaskGroup('drafts', studyDraftSubtitle), 'study draft maps to modules')
+})
+
+// ── Move Later (findLaterSlot) contracts ─────────────────────────────────────
+
+function makeBlock(id: string, startIso: string, durationMinutes: number, status = 'scheduled') {
+  const start = new Date(startIso).getTime()
+  const end = start + durationMinutes * 60_000
+  return { id, startAt: startIso, endAt: new Date(end).toISOString(), status }
+}
+
+test('Move Later changes start and end time', () => {
+  const block = makeBlock('b1', '2026-05-04T10:00:00.000Z', 45)
+  const result = findLaterSlot(block, [])
+  assert.ok(result.moved, 'should find a later slot when the day is free')
+  if (!result.moved) return
+  assert.ok(new Date(result.newStartAt).getTime() > new Date(block.startAt).getTime(), 'new start is later')
+  assert.ok(new Date(result.newEndAt).getTime() > new Date(block.endAt).getTime(), 'new end is later')
+})
+
+test('Move Later preserves duration exactly', () => {
+  const durationMinutes = 45
+  const block = makeBlock('b2', '2026-05-04T10:00:00.000Z', durationMinutes)
+  const result = findLaterSlot(block, [])
+  assert.ok(result.moved)
+  if (!result.moved) return
+  const newDuration = (new Date(result.newEndAt).getTime() - new Date(result.newStartAt).getTime()) / 60_000
+  assert.equal(newDuration, durationMinutes, 'duration must be preserved')
+})
+
+test('Move Later shifts by at least 30 minutes', () => {
+  const block = makeBlock('b3', '2026-05-04T10:00:00.000Z', 10)
+  const result = findLaterSlot(block, [])
+  assert.ok(result.moved)
+  if (!result.moved) return
+  const shiftMs = new Date(result.newStartAt).getTime() - new Date(block.startAt).getTime()
+  assert.ok(shiftMs >= 30 * 60_000, 'minimum shift is 30 minutes')
+})
+
+test('Move Later shifts by at least one block duration when duration > 30 min', () => {
+  const block = makeBlock('b4', '2026-05-04T08:00:00.000Z', 60)
+  const result = findLaterSlot(block, [])
+  assert.ok(result.moved)
+  if (!result.moved) return
+  const shiftMs = new Date(result.newStartAt).getTime() - new Date(block.startAt).getTime()
+  assert.ok(shiftMs >= 60 * 60_000, 'minimum shift equals one block duration when > 30 min')
+})
+
+test('Completed block cannot be moved', () => {
+  const block = makeBlock('b5', '2026-05-04T10:00:00.000Z', 45, 'completed')
+  const result = findLaterSlot(block, [])
+  assert.ok(!result.moved, 'completed block must not be moved')
+})
+
+test('Skipped block cannot be moved', () => {
+  const block = makeBlock('b6', '2026-05-04T10:00:00.000Z', 45, 'skipped')
+  const result = findLaterSlot(block, [])
+  assert.ok(!result.moved, 'skipped block must not be moved')
+})
+
+test('Move Later avoids overlapping another scheduled block', () => {
+  // block ends at 10:45; min shift by 45 min puts new start at 10:45.
+  // Another block occupies 10:45–11:30 — should slide past it to 11:30.
+  const block = makeBlock('b7', '2026-05-04T10:00:00.000Z', 45)
+  const blocker = makeBlock('other', '2026-05-04T10:45:00.000Z', 45)
+  const result = findLaterSlot(block, [blocker])
+  assert.ok(result.moved)
+  if (!result.moved) return
+  const newStart = new Date(result.newStartAt).getTime()
+  const blockerEnd = new Date(blocker.endAt).getTime()
+  assert.ok(newStart >= blockerEnd, 'new block must start at or after the blocking block ends')
+})
+
+test('Move Later creates no duplicate block (same id in others is ignored)', () => {
+  // When the action passes other blocks, the block itself must not count as a conflict.
+  const block = makeBlock('self', '2026-05-04T10:00:00.000Z', 30)
+  // Pass the block itself as an "other" — findLaterSlot must filter it out
+  const result = findLaterSlot(block, [block])
+  assert.ok(result.moved, 'should not treat self as an overlap')
+})
+
+test('No later slot returns a clear safe failure when day is full', () => {
+  // Block at T22:00Z, duration 60 min; explicit day end at T23:00Z.
+  // Minimum shift = max(60 min, 30 min) = 60 min → earliest new start = T23:00Z.
+  // New end = T00:00Z next day, which is > dayEnd → no available slot.
+  const block = makeBlock('b8', '2026-05-04T22:00:00.000Z', 60)
+  const result = findLaterSlot(block, [], { dayEndIso: '2026-05-04T23:00:00.000Z' })
+  assert.ok(!result.moved, 'must fail gracefully when no slot is available')
+  if (result.moved) return
+  assert.ok(result.reason.length > 0, 'must return a non-empty reason string')
+})
+
+test('Move Later with explicit day end boundary respects the boundary', () => {
+  // Block at 14:00 for 60 min; day end capped at 15:00 — shift of 60 min = new start 15:00, end 16:00 > 15:00 cap
+  const block = makeBlock('b9', '2026-05-04T14:00:00.000Z', 60)
+  const result = findLaterSlot(block, [], { dayEndIso: '2026-05-04T15:00:00.000Z' })
+  assert.ok(!result.moved, 'must respect caller-supplied day end boundary')
 })

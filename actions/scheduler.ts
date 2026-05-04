@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { createAuthenticatedSupabaseServerClient } from '@/lib/auth-server'
 import { classifyModuleResourceTextQuality } from '@/lib/extracted-text-quality'
 import { generateSchedule } from '@/lib/scheduler/algorithm'
+import { findLaterSlot } from '@/lib/scheduler/move-later'
 import { scoreSchedulerItem } from '@/lib/scheduler/priority'
 import { timeInputToTodayIso } from '@/lib/scheduler/time'
 import type { SchedulerItem } from '@/lib/scheduler/types'
@@ -277,4 +278,78 @@ export async function rescheduleBlock(blockId: string, start: string, end: strin
 
   if (error) throw new Error('Failed to reschedule block.')
   revalidatePath('/')
+}
+
+export async function moveScheduledBlockLater(
+  blockId: string,
+): Promise<{ moved: boolean; message: string }> {
+  const { client, userId } = await getSchedulerContext()
+
+  // Fetch the target block
+  const { data: block, error: fetchError } = await client
+    .from('scheduled_blocks')
+    .select('id,start_at,end_at,status')
+    .eq('id', blockId)
+    .eq('user_id', userId)
+    .single()
+
+  if (fetchError || !block) {
+    return { moved: false, message: 'Block not found.' }
+  }
+
+  if (
+    block.status === 'completed' ||
+    block.status === 'skipped' ||
+    block.status === 'missed'
+  ) {
+    return { moved: false, message: 'This block is already finished.' }
+  }
+
+  // Fetch all other active blocks on the same calendar day
+  const blockDate = new Date(block.start_at)
+  const dayStart = new Date(blockDate)
+  dayStart.setHours(0, 0, 0, 0)
+  const dayEnd = new Date(blockDate)
+  dayEnd.setDate(dayEnd.getDate() + 1)
+
+  const { data: dayBlocks } = await client
+    .from('scheduled_blocks')
+    .select('id,start_at,end_at,status')
+    .eq('user_id', userId)
+    .neq('id', blockId)
+    .gte('start_at', dayStart.toISOString())
+    .lt('start_at', dayEnd.toISOString())
+
+  const otherBlocks = (dayBlocks ?? []).map((b) => ({
+    id: b.id,
+    startAt: b.start_at,
+    endAt: b.end_at,
+    status: b.status,
+  }))
+
+  const result = findLaterSlot(
+    { id: block.id, startAt: block.start_at, endAt: block.end_at, status: block.status },
+    otherBlocks,
+  )
+
+  if (!result.moved) {
+    return { moved: false, message: result.reason }
+  }
+
+  const { error: updateError } = await client
+    .from('scheduled_blocks')
+    .update({
+      start_at: result.newStartAt,
+      end_at: result.newEndAt,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', blockId)
+    .eq('user_id', userId)
+
+  if (updateError) {
+    return { moved: false, message: 'Failed to move block.' }
+  }
+
+  revalidatePath('/')
+  return { moved: true, message: 'Moved later.' }
 }

@@ -3,7 +3,7 @@
 import { useMemo, useRef, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { generateUserSchedule, rescheduleBlock, updateBlockStatus } from '@/actions/scheduler'
+import { generateUserSchedule, moveScheduledBlockLater, updateBlockStatus } from '@/actions/scheduler'
 import { TaskDraftButton } from '@/components/DoNowButton'
 import { TaskStatusToggle } from '@/components/TaskStatusToggle'
 import { InteractivePlannerClock, type ClockScheduleBlock } from '@/components/InteractivePlannerClock'
@@ -49,6 +49,7 @@ export function TodayDashboard({
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null)
   const [completedExpanded, setCompletedExpanded] = useState(false)
   const [filterMode, setFilterMode] = useState<'all' | 'tasks' | 'study'>('all')
+  const [moveLaterMessage, setMoveLaterMessage] = useState<string | null>(null)
   const planPanelRef = useRef<HTMLDivElement | null>(null)
 
   const scheduleForDisplay = useMemo(
@@ -207,10 +208,12 @@ export function TodayDashboard({
     if (href) router.push(href)
   }
 
-  function handleRescheduleBlock(id: string, startAt: string, endAt: string) {
+  function handleMoveLater(id: string) {
     if (useDemoSchedule) return
     startTransition(async () => {
-      await rescheduleBlock(id, startAt, endAt)
+      const result = await moveScheduledBlockLater(id)
+      setMoveLaterMessage(result.message)
+      setTimeout(() => setMoveLaterMessage(null), 4000)
     })
   }
 
@@ -271,9 +274,10 @@ export function TodayDashboard({
                   studyPacksByModuleId,
                   studyPacksByResourceId,
                 )}
+                moveLaterMessage={moveLaterMessage}
                 onOpen={handleOpenBlock}
                 onStatus={handleUpdateStatus}
-                onReschedule={useDemoSchedule ? undefined : handleRescheduleBlock}
+                onMoveLater={useDemoSchedule ? undefined : handleMoveLater}
               />
             ) : primaryAction ? (
               <PrimaryActionHero item={primaryAction} upNext={upNext} hasSchedule={hasSchedule} />
@@ -350,7 +354,7 @@ export function TodayDashboard({
                   onOpen={handleOpenBlock}
                   onStatus={handleUpdateStatus}
                   onSelect={setSelectedBlockId}
-                  onReschedule={useDemoSchedule ? undefined : handleRescheduleBlock}
+                  onMoveLater={useDemoSchedule ? undefined : handleMoveLater}
                 />
                 <PlanGroup
                   label="Next"
@@ -360,7 +364,7 @@ export function TodayDashboard({
                   onOpen={handleOpenBlock}
                   onStatus={handleUpdateStatus}
                   onSelect={setSelectedBlockId}
-                  onReschedule={useDemoSchedule ? undefined : handleRescheduleBlock}
+                  onMoveLater={useDemoSchedule ? undefined : handleMoveLater}
                 />
                 <PlanGroup
                   label="Later"
@@ -370,7 +374,7 @@ export function TodayDashboard({
                   onOpen={handleOpenBlock}
                   onStatus={handleUpdateStatus}
                   onSelect={setSelectedBlockId}
-                  onReschedule={useDemoSchedule ? undefined : handleRescheduleBlock}
+                  onMoveLater={useDemoSchedule ? undefined : handleMoveLater}
                 />
 
                 {filteredNow.length === 0 &&
@@ -381,6 +385,15 @@ export function TodayDashboard({
                     style={{ padding: '0.5rem 0', color: 'var(--text-muted)' }}
                   >
                     All active blocks are complete or skipped.
+                  </p>
+                ) : null}
+
+                {moveLaterMessage ? (
+                  <p
+                    className="home-plan-stale-note"
+                    style={{ padding: '0.25rem 0' }}
+                  >
+                    {moveLaterMessage}
                   </p>
                 ) : null}
               </div>
@@ -645,16 +658,18 @@ function ScheduledBlockHero({
   block,
   isNow,
   studyPacks,
+  moveLaterMessage,
   onOpen,
   onStatus,
-  onReschedule,
+  onMoveLater,
 }: {
   block: ScheduleBlock
   isNow: boolean
   studyPacks: StudyPackRef[]
+  moveLaterMessage?: string | null
   onOpen: (id: string) => void
   onStatus: (id: string, status: 'opened' | 'completed' | 'skipped') => void
-  onReschedule?: (id: string, startAt: string, endAt: string) => void
+  onMoveLater?: (id: string) => void
 }) {
   const typeLabel = getStudentTypeLabel(block)
   const href = getBlockHref(block)
@@ -714,16 +729,22 @@ function ScheduledBlockHero({
           >
             Skip
           </button>
-          {onReschedule ? (
+          {onMoveLater ? (
             <button
               type="button"
               className="ui-button ui-button-ghost ui-button-xs"
-              onClick={() => onReschedule(block.id, block.startAt, block.endAt)}
+              onClick={() => onMoveLater(block.id)}
             >
               Move later
             </button>
           ) : null}
         </div>
+
+        {moveLaterMessage ? (
+          <p className="home-plan-stale-note" style={{ marginTop: '0.35rem' }}>
+            {moveLaterMessage}
+          </p>
+        ) : null}
 
         {studyPacks.length > 0 ? (
           <div className="study-pack-sublist">
@@ -869,7 +890,7 @@ function PlanGroup({
   onOpen,
   onStatus,
   onSelect,
-  onReschedule,
+  onMoveLater,
 }: {
   label: string
   blocks: ScheduleBlock[]
@@ -878,7 +899,7 @@ function PlanGroup({
   onOpen: (id: string) => void
   onStatus: (id: string, status: 'opened' | 'completed' | 'skipped') => void
   onSelect: (id: string | null) => void
-  onReschedule?: (id: string, startAt: string, endAt: string) => void
+  onMoveLater?: (id: string) => void
 }) {
   if (blocks.length === 0) return null
 
@@ -895,7 +916,7 @@ function PlanGroup({
             onOpen={onOpen}
             onStatus={onStatus}
             onSelect={onSelect}
-            onReschedule={onReschedule}
+            onMoveLater={onMoveLater}
           />
         ))}
       </div>
@@ -910,7 +931,7 @@ function PlanRow({
   onOpen,
   onStatus,
   onSelect,
-  onReschedule,
+  onMoveLater,
 }: {
   block: ScheduleBlock
   selected: boolean
@@ -918,7 +939,7 @@ function PlanRow({
   onOpen: (id: string) => void
   onStatus: (id: string, status: 'opened' | 'completed' | 'skipped') => void
   onSelect: (id: string | null) => void
-  onReschedule?: (id: string, startAt: string, endAt: string) => void
+  onMoveLater?: (id: string) => void
 }) {
   const typeLabel = getStudentTypeLabel(block)
   const href = getBlockHref(block)
@@ -976,11 +997,11 @@ function PlanRow({
           >
             Skip
           </button>
-          {onReschedule ? (
+          {onMoveLater ? (
             <button
               type="button"
               className="ui-button ui-button-ghost ui-button-xs"
-              onClick={() => onReschedule(block.id, block.startAt, block.endAt)}
+              onClick={() => onMoveLater(block.id)}
             >
               Move later
             </button>

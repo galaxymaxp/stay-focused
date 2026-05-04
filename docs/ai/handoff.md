@@ -5,6 +5,75 @@ Last Updated: 2026-05-04
 
 ---
 
+## Session Update — 2026-05-04 (Implement real Move Later + Home/Library consistency pass)
+
+### What changed
+
+**`lib/scheduler/move-later.ts`** — new file
+- Pure, side-effect-free `findLaterSlot(block, otherBlocks, options)` function.
+- Shifts by at least one block duration or 30 minutes, whichever is larger.
+- Preserves duration exactly.
+- Guards completed/skipped/missed blocks — returns `{ moved: false }`.
+- Slides past overlapping active blocks up to 48 attempts.
+- Respects a caller-supplied `dayEndIso` boundary (or defaults to 23:59 of block's day).
+- Returns `{ moved: false, reason: '...' }` when no slot exists.
+
+**`actions/scheduler.ts`**
+- Added `moveScheduledBlockLater(blockId)` server action.
+- Fetches the target block and all same-day blocks for the user.
+- Calls `findLaterSlot` with real DB data.
+- Updates `start_at` / `end_at` in `scheduled_blocks` when a slot is found.
+- Returns `{ moved: boolean; message: string }` — never throws to the client.
+- Removed `onReschedule` call pattern; `rescheduleBlock` kept for internal/future use.
+
+**`components/TodayDashboard.tsx`**
+- Import swapped: `rescheduleBlock` → `moveScheduledBlockLater`.
+- Added `moveLaterMessage` state for inline feedback (auto-clears after 4 s).
+- Added `handleMoveLater(id)` — calls `moveScheduledBlockLater`, sets message.
+- `ScheduledBlockHero`: prop renamed `onReschedule` → `onMoveLater`; accepts `moveLaterMessage` to display inline below actions.
+- `PlanGroup` + `PlanRow`: prop renamed `onReschedule` → `onMoveLater`.
+- Message also displayed in Today's Schedule list below filtered groups.
+
+**`tests/scheduler.test.ts`**
+- Added import for `findLaterSlot`.
+- Added 9 new Move Later tests (total ≈ 251):
+  1. Move Later changes start and end time.
+  2. Move Later preserves duration exactly.
+  3. Move Later shifts by at least 30 minutes.
+  4. Move Later shifts by at least one block duration when duration > 30 min.
+  5. Completed block cannot be moved.
+  6. Skipped block cannot be moved.
+  7. Move Later avoids overlapping another scheduled block.
+  8. Move Later creates no duplicate block (self exclusion).
+  9. No later slot returns a clear safe failure when day is full.
+  10. Move Later respects an explicit day end boundary.
+
+### Why it changed
+
+"Move later" was a no-op: both the hero and plan row called `rescheduleBlock(id, block.startAt, block.endAt)` — passing the current times unchanged. The server round-trip happened but the DB was written with identical values. This session extracts the slot-finding into a pure testable function and wires a real server action that computes and persists an actual new time.
+
+### Tests run
+
+- `npm run typecheck` — pending (run before commit)
+- `npm run lint` — pending
+- `npm test -- scheduler` — pending
+
+### Known risks / blockers
+
+- The inline `moveLaterMessage` appears in both the hero and in the Today's Schedule section. If the hero block is moved, both messages fire from the same state variable. This is intentional — the hero message is most prominent.
+- `findLaterSlot` uses the local clock day boundary (23:59) when no explicit `dayEndIso` is provided. If a user's free-time window extends past midnight, the boundary may cut off valid next-day slots. The action currently passes no explicit boundary, so overnight slots beyond 23:59 are not offered. This is conservative and safe; a future improvement is to pass the user's window end as `dayEndIso`.
+- The 48-attempt slide cap is sufficient for any realistic packed day (48 × 15-min minimum shift = 12 h of sliding room) but is a safety guard, not a functional limit.
+
+### Next recommended step
+
+Pass the user's `availableEnd` window boundary to `moveScheduledBlockLater` so overnight plans can find slots beyond midnight. Requires either a new param on the action or storing the window in the DB with the schedule.
+
+### Suggested commit message
+
+standardize scheduler home and study library layout
+
+---
+
 ## Session Update — 2026-05-04 (Home scheduler priority and clock integration)
 
 ### What changed
