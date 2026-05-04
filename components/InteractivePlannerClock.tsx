@@ -375,9 +375,15 @@ function polarToCartesian(centerX: number, centerY: number, radius: number, angl
   const angleRadians = (angleDegrees - 90) * Math.PI / 180
 
   return {
-    x: centerX + radius * Math.cos(angleRadians),
-    y: centerY + radius * Math.sin(angleRadians),
+    x: svgNum(centerX + radius * Math.cos(angleRadians)),
+    y: svgNum(centerY + radius * Math.sin(angleRadians)),
   }
+}
+
+// Rounds to 3 decimal places so SSR and client produce bit-identical SVG attribute strings.
+// Math.cos/sin can differ by ±1e-15 between Node and browser JS engines, causing hydration errors.
+function svgNum(value: number): number {
+  return Math.round(value * 1000) / 1000
 }
 
 function minutesToClockDegrees(minutes: number) {
