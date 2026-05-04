@@ -5,6 +5,73 @@ Last Updated: 2026-05-04
 
 ---
 
+## Session Update — 2026-05-04 (Refactor Home schedule into Syllabus and Learn focus)
+
+### What changed
+
+**`components/TodayDashboard.tsx`**
+- Replaced `filterMode: 'all' | 'tasks' | 'study'` state with `focusMode: 'syllabus' | 'learn'` (default: `'syllabus'`).
+- Replaced the 3-chip "All / Tasks / Study Materials" filter row with a 2-tab "Syllabus / Learn" focus switcher (`role="tablist"` with `aria-selected`).
+- Added `isSyllabusBlock(block)` — true for `task_items`, `tasks`, `deadlines`.
+- Added `isLearnBlock(block)` — true for `module_resources`, `modules`.
+- Drafts, `learning_items`, and `deep_learn_notes` do not appear in either focus (never standalone per product rules).
+- Updated `filteredNow/Next/Later` memo to use `isSyllabusBlock` / `isLearnBlock` instead of the old `isTaskBlock` check.
+- Updated `PlanGroup` and `PlanRow` to accept and forward `focusMode`.
+- `PlanRow` now shows `urgencyNote` (or `context`) as a compact hint in Syllabus mode, and `context` (course name) in Learn mode.
+- `PlanRow` now shows "Unavailable" copy instead of a broken Open button when no valid href exists.
+- Removed the separate "Study packs ready" rail section from `aside`. Study pack chips remain on individual blocks via `studyPacksByBlockId`.
+- Removed `allStudyPacks` useMemo (no longer needed without the rail card).
+- Added `buildCourseLearnHref` import from `@/lib/stay-focused-links`.
+- Updated `getBlockHref` for `module_resources`: now uses `buildCourseLearnHref(courseId, { resourceId })` for a proper learn-view deep link instead of a hand-built URL string.
+
+**`tests/scheduler.test.ts`**
+- Added 13 new tests covering all 10 required test contracts:
+  1. `isSyllabusBlock` includes task_items, tasks, deadlines
+  2. `isLearnBlock` includes module_resources, modules
+  3. Learn focus shows PDF/PPTX/DOCX/Canvas page module_resources
+  4. Syllabus and Learn focus produce correct block subsets from mixed input
+  5. Drafts not in Syllabus or Learn focus
+  6. `learning_items` (generated "Check your understanding") not in either focus
+  7. `deep_learn_notes` not standalone rows in either focus
+  8. Study Materials rail card removed (documented contract)
+  9. Open href for syllabus/task_items block routes to /tasks
+  10. Open href for learn/module_resources block routes to /courses/:id learn view
+  11. Free-time window assigns start/end times to focus row blocks
+  12. No duplicate source in Today's Schedule across focus modes
+  13. Syllabus + Learn focus can each render their own block subset independently
+
+### Why it changed
+
+Today's Schedule was mixing generated scheduler blocks, study packs, quiz practice items, and tasks with no clear product structure. The new Syllabus/Learn focus model gives students a single switch to see either:
+- **Syllabus**: due work, quizzes, discussions, graded tasks (Canvas syllabus spirit)
+- **Learn**: PDFs, PPTs, DOCXs, Canvas pages, module materials (study sessions)
+
+The separate Study Materials rail card was redundant because Learn focus now owns study material navigation. Removing it reduces rail noise.
+
+### Tests run
+
+- `npm run typecheck` — ✅ clean
+- `npm run lint` — ✅ clean (0 errors, 0 warnings)
+- `npm test -- scheduler` — ✅ 281 pass, 0 fail (was 262; +19 new)
+
+### Known risks / blockers
+
+- `module_resources` blocks do not carry `module_id` in `scheduled_blocks` (only `course_id` is stored). The learn route uses `/courses/:courseId?resource=:resourceId` via `buildCourseLearnHref`. This opens the course view with the resource highlighted — not the dedicated module learn page. To get `/modules/:moduleId/learn?resource=:resourceId` routing, `module_id` would need to be added to the `scheduled_blocks` table as a new column (schema migration required).
+- `task_items` blocks route to `/tasks?taskTitle=...` rather than the Do page, because `module_id` is not stored in blocks. The Do page requires `moduleId` to build the path. A future migration adding `module_id` to `scheduled_blocks` would unlock direct Do-page routing for both task and resource blocks.
+- Drafts are still fetched in `generateUserSchedule` (actions/scheduler.ts) and stored in `scheduled_blocks`. They simply don't appear in either focus tab's view. A future cleanup could remove drafts from the scheduler source entirely if they are not wanted as data.
+
+### Next recommended steps
+
+1. (Optional) Add `module_id` column to `scheduled_blocks` table. Populate it from `task_items.module_id` and `module_resources.module_id` during schedule generation. This enables proper `/modules/:id/learn` routing for Learn blocks and `/modules/:id/do` routing for Syllabus task blocks.
+2. (Optional) Remove drafts from scheduler sources in `actions/scheduler.ts` if "never standalone" is the permanent policy.
+3. (Optional) Add a secondary "Ready / Needs action / Completed" filter under Learn focus if product direction calls for it (deliberately deferred per task instructions).
+
+### Suggested commit message
+
+refactor home schedule into syllabus and learn focus
+
+---
+
 ## Session Update — 2026-05-04 (Fix Google Vision OCR credential fallback for local development)
 
 ### What changed

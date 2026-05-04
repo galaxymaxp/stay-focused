@@ -11,6 +11,7 @@ import { buildManualCopyBundle } from '@/lib/manual-copy-bundle'
 import type { HomeActivityItem, HomeCourseSnapshot, HomeDueSoonItem } from '@/lib/home-overview'
 import type { TodayItem } from '@/lib/types'
 import { formatDuration, formatTime, getWindowDurationMinutes, isBlockInsideWindow, timeWindowToIsoRange } from '@/lib/scheduler/time'
+import { buildCourseLearnHref } from '@/lib/stay-focused-links'
 
 type ScheduleBlock = ClockScheduleBlock
 
@@ -48,7 +49,7 @@ export function TodayDashboard({
   const [isPlanStale, setIsPlanStale] = useState(false)
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null)
   const [completedExpanded, setCompletedExpanded] = useState(false)
-  const [filterMode, setFilterMode] = useState<'all' | 'tasks' | 'study'>('all')
+  const [focusMode, setFocusMode] = useState<'syllabus' | 'learn'>('syllabus')
   const [moveLaterMessage, setMoveLaterMessage] = useState<string | null>(null)
   const planPanelRef = useRef<HTMLDivElement | null>(null)
 
@@ -118,28 +119,6 @@ export function TodayDashboard({
     return { nowBlocks: nowGroup, nextBlocks: nextGroup, laterBlocks: laterGroup }
   }, [activeBlocks])
 
-  const allStudyPacks = useMemo(() => {
-    const seen = new Set<string>()
-    const packs: Array<StudyPackRef> = []
-    for (const list of Object.values(studyPacksByModuleId)) {
-      for (const pack of list) {
-        if (!seen.has(pack.id)) {
-          seen.add(pack.id)
-          packs.push(pack)
-        }
-      }
-    }
-    for (const list of Object.values(studyPacksByResourceId)) {
-      for (const pack of list) {
-        if (!seen.has(pack.id)) {
-          seen.add(pack.id)
-          packs.push(pack)
-        }
-      }
-    }
-    return packs
-  }, [studyPacksByModuleId, studyPacksByResourceId])
-
   const studyPacksByBlockId = useMemo(() => {
     const map: Record<string, StudyPackRef[]> = {}
     for (const block of visibleSchedule) {
@@ -161,16 +140,14 @@ export function TodayDashboard({
     const heroId = primaryScheduleBlock?.id ?? null
     const keep = (block: ScheduleBlock) => {
       if (block.id === heroId) return false
-      if (filterMode === 'tasks') return isTaskBlock(block)
-      if (filterMode === 'study') return !isTaskBlock(block)
-      return true
+      return focusMode === 'syllabus' ? isSyllabusBlock(block) : isLearnBlock(block)
     }
     return {
       filteredNow: nowBlocks.filter(keep),
       filteredNext: nextBlocks.filter(keep),
       filteredLater: laterBlocks.filter(keep),
     }
-  }, [nowBlocks, nextBlocks, laterBlocks, filterMode, primaryScheduleBlock])
+  }, [nowBlocks, nextBlocks, laterBlocks, focusMode, primaryScheduleBlock])
 
   function changeWindow(start: string, end: string) {
     setAvailableStart(start)
@@ -329,18 +306,20 @@ export function TodayDashboard({
               <SectionHeading
                 eyebrow="Today's Schedule"
                 title="Today's Schedule"
-                description="Your blocks for this window, grouped by how soon they start."
+                description="Switch between due work and study materials for this free-time window."
               />
 
-              <div className="home-plan-filter" role="group" aria-label="Filter schedule">
-                {(['all', 'tasks', 'study'] as const).map((mode) => (
+              <div className="home-plan-filter" role="tablist" aria-label="Schedule focus">
+                {(['syllabus', 'learn'] as const).map((mode) => (
                   <button
                     key={mode}
                     type="button"
-                    className={`home-plan-filter-chip${filterMode === mode ? ' active' : ''}`}
-                    onClick={() => setFilterMode(mode)}
+                    role="tab"
+                    aria-selected={focusMode === mode}
+                    className={`home-plan-filter-chip${focusMode === mode ? ' active' : ''}`}
+                    onClick={() => setFocusMode(mode)}
                   >
-                    {mode === 'all' ? 'All' : mode === 'tasks' ? 'Tasks' : 'Study Materials'}
+                    {mode === 'syllabus' ? 'Syllabus' : 'Learn'}
                   </button>
                 ))}
               </div>
@@ -349,6 +328,7 @@ export function TodayDashboard({
                 <PlanGroup
                   label="Now"
                   blocks={filteredNow}
+                  focusMode={focusMode}
                   selectedBlockId={selectedBlockId}
                   studyPacksByBlockId={studyPacksByBlockId}
                   onOpen={handleOpenBlock}
@@ -359,6 +339,7 @@ export function TodayDashboard({
                 <PlanGroup
                   label="Next"
                   blocks={filteredNext}
+                  focusMode={focusMode}
                   selectedBlockId={selectedBlockId}
                   studyPacksByBlockId={studyPacksByBlockId}
                   onOpen={handleOpenBlock}
@@ -369,6 +350,7 @@ export function TodayDashboard({
                 <PlanGroup
                   label="Later"
                   blocks={filteredLater}
+                  focusMode={focusMode}
                   selectedBlockId={selectedBlockId}
                   studyPacksByBlockId={studyPacksByBlockId}
                   onOpen={handleOpenBlock}
@@ -527,45 +509,6 @@ export function TodayDashboard({
               </p>
             ) : null}
           </section>
-
-          {/* Study packs */}
-          {allStudyPacks.length > 0 ? (
-            <section className="home-sheet">
-              <SectionHeading
-                eyebrow="Study materials"
-                title="Study packs ready"
-                description="Generated packs available for review or quiz."
-                actionHref="/library"
-                actionLabel="Open Library"
-              />
-
-              <div className="home-sheet-list">
-                {allStudyPacks.slice(0, 5).map((pack) => (
-                  <article key={pack.id} className="home-sheet-row">
-                    <div style={{ minWidth: 0 }}>
-                      <div className="home-row-meta">
-                        <span className="ui-chip ui-chip-soft" style={{ fontWeight: 700 }}>
-                          Study pack
-                        </span>
-                        {pack.quizReady ? (
-                          <span className="ui-chip ui-chip-soft" style={{ fontWeight: 700 }}>
-                            Quiz ready
-                          </span>
-                        ) : null}
-                      </div>
-                      <p className="home-row-title">{pack.title}</p>
-                    </div>
-                    <Link
-                      href={`/library/${encodeURIComponent(pack.id)}`}
-                      className="home-row-open"
-                    >
-                      Open
-                    </Link>
-                  </article>
-                ))}
-              </div>
-            </section>
-          ) : null}
 
           {/* What changed */}
           <section className="home-sheet">
@@ -885,6 +828,7 @@ function PrimaryActionHero({
 function PlanGroup({
   label,
   blocks,
+  focusMode,
   selectedBlockId,
   studyPacksByBlockId,
   onOpen,
@@ -894,6 +838,7 @@ function PlanGroup({
 }: {
   label: string
   blocks: ScheduleBlock[]
+  focusMode: 'syllabus' | 'learn'
   selectedBlockId: string | null
   studyPacksByBlockId: Record<string, StudyPackRef[]>
   onOpen: (id: string) => void
@@ -911,6 +856,7 @@ function PlanGroup({
           <PlanRow
             key={block.id}
             block={block}
+            focusMode={focusMode}
             selected={selectedBlockId === block.id}
             studyPacks={studyPacksByBlockId[block.id] ?? []}
             onOpen={onOpen}
@@ -926,6 +872,7 @@ function PlanGroup({
 
 function PlanRow({
   block,
+  focusMode,
   selected,
   studyPacks,
   onOpen,
@@ -934,6 +881,7 @@ function PlanRow({
   onMoveLater,
 }: {
   block: ScheduleBlock
+  focusMode: 'syllabus' | 'learn'
   selected: boolean
   studyPacks: StudyPackRef[]
   onOpen: (id: string) => void
@@ -950,6 +898,12 @@ function PlanRow({
       new Date(block.startAt) <= now &&
       new Date(block.endAt) > now)
   const hasQuizReady = studyPacks.some((p) => p.quizReady)
+
+  // Context hint: urgency note for Syllabus, course name for Learn
+  const contextHint =
+    focusMode === 'syllabus'
+      ? (block.urgencyNote ?? block.context ?? null)
+      : (block.context ?? null)
 
   return (
     <article className={`home-list-row home-plan-row${selected ? ' home-plan-row-selected' : ''}`}>
@@ -968,7 +922,10 @@ function PlanRow({
           {hasQuizReady ? (
             <span className="home-study-ready-chip">Quiz ready</span>
           ) : null}
-          <span>{formatTimeRange(block.startAt, block.endAt)}</span>
+          <span style={{ color: 'var(--text-muted)' }}>{formatTimeRange(block.startAt, block.endAt)}</span>
+          {contextHint ? (
+            <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>{contextHint}</span>
+          ) : null}
         </div>
         <p className="home-row-title">{block.title}</p>
       </button>
@@ -980,6 +937,7 @@ function PlanRow({
             className="ui-button ui-button-primary ui-button-xs"
             onClick={() => onOpen(block.id)}
             disabled={!href}
+            title={!href ? 'No destination available for this item' : undefined}
           >
             Open
           </button>
@@ -1011,7 +969,11 @@ function PlanRow({
         <Link href={href} className="home-row-open">
           Open
         </Link>
-      ) : null}
+      ) : (
+        <span className="home-row-open" style={{ color: 'var(--text-muted)', cursor: 'default' }} aria-disabled="true">
+          Unavailable
+        </span>
+      )}
     </article>
   )
 }
@@ -1228,12 +1190,20 @@ function FactItem({ label, value }: { label: string; value: string }) {
 
 // ── Utilities ───────────────────────────────────────────────────────────────
 
-function isTaskBlock(block: ScheduleBlock): boolean {
+// Syllabus focus: due/graded/actionable work
+function isSyllabusBlock(block: ScheduleBlock): boolean {
   return (
     block.sourceTable === 'task_items' ||
     block.sourceTable === 'tasks' ||
-    block.sourceTable === 'deadlines' ||
-    (block.sourceTable === 'drafts' && block.subtitle === 'Draft')
+    block.sourceTable === 'deadlines'
+  )
+}
+
+// Learn focus: source materials — PDFs, PPTs, Canvas pages, modules
+function isLearnBlock(block: ScheduleBlock): boolean {
+  return (
+    block.sourceTable === 'module_resources' ||
+    block.sourceTable === 'modules'
   )
 }
 
@@ -1284,6 +1254,7 @@ function getBlockHref(block: ScheduleBlock): string | null {
 
   switch (sourceTable) {
     case 'task_items':
+      // Route to tasks list filtered by title — Do page requires moduleId which is not stored in blocks
       return `/tasks?taskTitle=${encodeURIComponent(block.title)}`
     case 'tasks':
       return `/tasks?task=${encodeURIComponent(sourceId)}`
@@ -1292,8 +1263,9 @@ function getBlockHref(block: ScheduleBlock): string | null {
     case 'modules':
       return `/modules/${encodeURIComponent(sourceId)}/learn`
     case 'module_resources':
+      // Open resource inside the course learn view; uses resource anchor for deep-link
       if (courseId)
-        return `/courses/${encodeURIComponent(courseId)}?resource=${encodeURIComponent(sourceId)}#resource-${encodeURIComponent(sourceId)}`
+        return buildCourseLearnHref(courseId, { resourceId: sourceId })
       return null
     case 'learning_items':
       return courseId ? `/courses/${encodeURIComponent(courseId)}` : '/tasks'

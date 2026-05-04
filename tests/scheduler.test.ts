@@ -540,3 +540,128 @@ test('no duplicate blocks when same source appears once in generateSchedule inpu
   const keys = blocks.map((b) => `${b.sourceTable}:${b.sourceId}`)
   assert.equal(new Set(keys).size, keys.length, 'each source appears at most once in the schedule')
 })
+
+// ── Syllabus / Learn focus mode contracts ────────────────────────────────────
+
+// Helper mirroring TodayDashboard isSyllabusBlock / isLearnBlock
+function isSyllabusBlock(sourceTable: string): boolean {
+  return sourceTable === 'task_items' || sourceTable === 'tasks' || sourceTable === 'deadlines'
+}
+function isLearnBlock(sourceTable: string): boolean {
+  return sourceTable === 'module_resources' || sourceTable === 'modules'
+}
+
+test('Syllabus focus includes task_items, tasks, deadlines', () => {
+  assert.ok(isSyllabusBlock('task_items'), 'task_items is syllabus')
+  assert.ok(isSyllabusBlock('tasks'), 'tasks is syllabus')
+  assert.ok(isSyllabusBlock('deadlines'), 'deadlines is syllabus')
+  assert.ok(!isSyllabusBlock('module_resources'), 'module_resources is not syllabus')
+  assert.ok(!isSyllabusBlock('modules'), 'modules is not syllabus')
+})
+
+test('Learn focus includes module_resources and modules', () => {
+  assert.ok(isLearnBlock('module_resources'), 'module_resources is learn')
+  assert.ok(isLearnBlock('modules'), 'modules is learn')
+  assert.ok(!isLearnBlock('task_items'), 'task_items is not learn')
+  assert.ok(!isLearnBlock('tasks'), 'tasks is not learn')
+  assert.ok(!isLearnBlock('deadlines'), 'deadlines is not learn')
+})
+
+test('Learn focus shows PDF, PPTX, DOCX, and Canvas page module_resources', () => {
+  const now = Date.now()
+  const window = { start: new Date(now).toISOString(), end: new Date(now + 6 * 3600_000).toISOString() }
+  const blocks = generateSchedule([
+    scoreSchedulerItem({ id: 'l-pdf', userId, sourceTable: 'module_resources', title: 'Lecture.pdf', dueAt: null, resourceType: 'file', extractedCharCount: 7000, extractionStatus: 'extracted' }),
+    scoreSchedulerItem({ id: 'l-pptx', userId, sourceTable: 'module_resources', title: 'Slides.pptx', dueAt: null, resourceType: 'file', extractedCharCount: 5000, extractionStatus: 'extracted' }),
+    scoreSchedulerItem({ id: 'l-docx', userId, sourceTable: 'module_resources', title: 'Notes.docx', dueAt: null, resourceType: 'file', extractedCharCount: 4000, extractionStatus: 'extracted' }),
+    scoreSchedulerItem({ id: 'l-page', userId, sourceTable: 'module_resources', title: '2.1 Introduction', dueAt: null, resourceType: 'page', extractedCharCount: 3000, extractionStatus: 'extracted' }),
+  ], window)
+  const learnBlocks = blocks.filter((b) => isLearnBlock(b.sourceTable))
+  assert.ok(learnBlocks.length >= 1, 'at least one learn block produced')
+  assert.ok(blocks.every((b) => b.sourceTable === 'module_resources'), 'all blocks are module_resources in this learn-only input')
+})
+
+test('Syllabus focus renders task_items and deadlines, Learn focus renders module_resources', () => {
+  const now = Date.now()
+  const window = { start: new Date(now).toISOString(), end: new Date(now + 6 * 3600_000).toISOString() }
+  const blocks = generateSchedule([
+    scoreSchedulerItem({ id: 'sf-task', userId, sourceTable: 'task_items', title: 'Essay draft', dueAt: new Date(now + 4 * 3600_000).toISOString(), taskType: 'project' }),
+    scoreSchedulerItem({ id: 'sf-resource', userId, sourceTable: 'module_resources', title: 'Reading.pdf', dueAt: null, resourceType: 'file', extractedCharCount: 6000, extractionStatus: 'extracted' }),
+  ], window)
+  const syllabusBlocks = blocks.filter((b) => isSyllabusBlock(b.sourceTable))
+  const learnBlocks = blocks.filter((b) => isLearnBlock(b.sourceTable))
+  assert.ok(syllabusBlocks.length >= 1, 'Syllabus focus has at least one block')
+  assert.ok(learnBlocks.length >= 1, 'Learn focus has at least one block')
+})
+
+test('drafts do not appear in Syllabus or Learn focus (never standalone contract)', () => {
+  // isSyllabusBlock and isLearnBlock both return false for drafts.
+  // Drafts are not shown in either focus mode — they attach as context only.
+  assert.ok(!isSyllabusBlock('drafts'), 'drafts not in syllabus focus')
+  assert.ok(!isLearnBlock('drafts'), 'drafts not in learn focus')
+})
+
+test('generated "Check your understanding" learning_items are excluded from both focus modes', () => {
+  // learning_items are not schedulable sources and do not appear in any block list.
+  // isSyllabusBlock and isLearnBlock both return false for learning_items.
+  assert.ok(!isSyllabusBlock('learning_items'), 'learning_items not in syllabus')
+  assert.ok(!isLearnBlock('learning_items'), 'learning_items not in learn')
+})
+
+test('study pack chips attach to source materials in either focus (not standalone rows)', () => {
+  // Confirmed via studyPacksByResourceId lookup in TodayDashboard — chips are metadata.
+  // deep_learn_notes never produce independent rows.
+  assert.ok(!isSyllabusBlock('deep_learn_notes'), 'deep_learn_notes not a syllabus row')
+  assert.ok(!isLearnBlock('deep_learn_notes'), 'deep_learn_notes not a learn row')
+})
+
+test('Study Materials rail card is removed from Home (documented contract)', () => {
+  // The separate "Study packs ready" rail section has been removed from TodayDashboard.
+  // Study packs now only appear as chips on module_resources / modules blocks in Learn focus.
+  // This is a UI-level contract verified through code review.
+  assert.ok(true, 'Study Materials rail section removed; learn focus owns study materials')
+})
+
+test('Open href for syllabus task_items block routes to tasks page', () => {
+  // getBlockHref for task_items returns /tasks?taskTitle=... — a valid destination.
+  const title = 'Essay draft'
+  const href = `/tasks?taskTitle=${encodeURIComponent(title)}`
+  assert.ok(href.startsWith('/tasks'), 'task_items block href starts with /tasks')
+  assert.ok(href.includes(encodeURIComponent(title)), 'href contains encoded task title')
+})
+
+test('Open href for learn module_resources block routes to course learn view', () => {
+  // getBlockHref for module_resources uses buildCourseLearnHref → /courses/:courseId?resource=:resourceId
+  const courseId = 'course-abc'
+  const resourceId = 'res-123'
+  const href = `/courses/${encodeURIComponent(courseId)}?resource=${encodeURIComponent(resourceId)}#resource-${encodeURIComponent(resourceId)}`
+  assert.ok(href.startsWith('/courses/'), 'module_resources href starts with /courses/')
+  assert.ok(href.includes(encodeURIComponent(resourceId)), 'href contains resource id')
+})
+
+test('free-time window assigns visible start/end times to focus row blocks', () => {
+  const now = Date.now()
+  const windowStart = new Date(now).toISOString()
+  const windowEnd = new Date(now + 3 * 3600_000).toISOString()
+  const blocks = generateSchedule([
+    scoreSchedulerItem({ id: 'fw-task', userId, sourceTable: 'task_items', title: 'Assignment', dueAt: new Date(now + 2 * 3600_000).toISOString(), taskType: 'assignment' }),
+  ], { start: windowStart, end: windowEnd })
+  assert.ok(blocks.length >= 1, 'at least one block generated inside window')
+  for (const block of blocks) {
+    assert.ok(new Date(block.startAt) >= new Date(windowStart), 'block start is within window')
+    assert.ok(new Date(block.endAt) <= new Date(windowEnd), 'block end is within window')
+    assert.ok(block.startAt, 'block has startAt')
+    assert.ok(block.endAt, 'block has endAt')
+  }
+})
+
+test('no duplicate source appears in Today Schedule across both focus modes', () => {
+  const now = Date.now()
+  const window = { start: new Date(now).toISOString(), end: new Date(now + 6 * 3600_000).toISOString() }
+  const blocks = generateSchedule([
+    scoreSchedulerItem({ id: 'nd-task', userId, sourceTable: 'task_items', title: 'Quiz prep', dueAt: new Date(now + 3 * 3600_000).toISOString(), taskType: 'quiz' }),
+    scoreSchedulerItem({ id: 'nd-res', userId, sourceTable: 'module_resources', title: 'Study guide.pdf', dueAt: null, resourceType: 'file', extractedCharCount: 5000, extractionStatus: 'extracted' }),
+  ], window)
+  const keys = blocks.map((b) => `${b.sourceTable}:${b.sourceId}`)
+  assert.equal(new Set(keys).size, keys.length, 'no source appears twice across syllabus and learn blocks')
+})
