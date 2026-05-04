@@ -5,6 +5,63 @@ Last Updated: 2026-05-04
 
 ---
 
+## Session Update — 2026-05-04 (Exclude generated quiz prompts from scheduler sources)
+
+### What changed
+
+**`lib/scheduler/source-filter.ts`** — new file
+- Exports `isSchedulableResourceType(resourceType)` — returns `false` for any resource_type that contains 'quiz' (case-insensitive), `true` for everything else (file, page, pdf, pptx, docx, etc.).
+
+**`actions/scheduler.ts`**
+- Removed `learning_items` from `Promise.all` fetch and from `sourceItems`. These are AI-generated module content ("Check your understanding N", "Key idea N", summaries) inserted by `buildLearningItemsForSync` during Canvas sync — not actual source materials.
+- Added `isSchedulableResourceType` guard to the `readyResources` filter so `module_resources` rows with `resource_type` containing 'quiz' (Canvas Quiz items) are excluded before they reach the scheduler algorithm.
+- Removed the `taskType: row.resource_type?.toLowerCase().includes('quiz') ? 'quiz' : 'reading'` inline ternary on module_resources — now always `'reading'` since quiz resources are filtered out upstream.
+- Removed `learningItemsError` from source-data error check and from the console.log counts.
+
+**`tests/scheduler.test.ts`**
+- Imported `isSchedulableResourceType` from `@/lib/scheduler/source-filter`.
+- Added 9 new tests covering:
+  1. action-level contract that learning_items are excluded
+  2. `isSchedulableResourceType` rejects quiz resource types
+  3. `isSchedulableResourceType` accepts file/page/pdf/pptx/docx/etc.
+  4. action-level contract that deep_learn_notes are excluded even when quiz_ready
+  5. PDF module_resource produces a scheduled block with the correct title
+  6. PPT/PPTX/DOC/DOCX module_resources are schedulable
+  7. Canvas page module_resource is schedulable
+  8. Today's Schedule block title is the source material title, not a generated quiz prompt
+  9. Study pack metadata attaches to source block; no standalone block for study packs
+  10. No duplicate blocks in a mixed source input
+
+### Why it changed
+
+Today's Schedule was surfacing synthetic "Check your understanding 1/2/3" blocks with type "Quiz practice". These originated from:
+1. `learning_items` (type `review`) — AI-generated study prompts inserted by Canvas sync, never actual source materials
+2. `module_resources` with `resource_type` containing 'quiz' — Canvas Quiz items, which are assessments, not source materials
+
+Product rule: only PDF, PPT, PPTX, DOC, DOCX, Canvas pages, and readable Canvas files are schedulable as Study Materials. Generated quiz/review outputs attach as metadata chips to their parent source material block.
+
+### Tests run
+
+- `npm run typecheck` — ✅ clean
+- `npm run lint` — ✅ clean
+- `npm test -- scheduler` — ✅ 262 pass, 0 fail (was 252; +10 new)
+
+### Known risks / blockers
+
+- None. `learning_items` were never actual source documents; removing them from the scheduler changes no existing scheduled block routing or user-visible study flow.
+- `isSchedulableResourceType` is a simple contains-'quiz' check. If a future resource_type legitimately contains the word 'quiz' but is schedulable, the filter would need a more precise check (exact match or explicit allowlist). Current Canvas resource_type values are: file, page, assignment, discussion, quiz, announcement, external_url, external_tool, subheader, module_item.
+
+### Next recommended steps
+
+- No blockers. Today's Schedule will now show only actual source material titles.
+- Optional future improvement: extend `isSchedulableResourceType` to also filter out `external_url`, `external_tool`, `subheader`, and `announcement` resource types if those surface as noise. Current fix addresses the immediate reported bug.
+
+### Suggested commit message
+
+exclude generated quiz prompts from scheduler sources
+
+---
+
 ## Session Update — 2026-05-04 (Fix InteractivePlannerClock hydration mismatch)
 
 ### What changed

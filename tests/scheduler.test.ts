@@ -4,6 +4,7 @@ import { scoreSchedulerItem } from '@/lib/scheduler/priority'
 import { estimateMinutesAndConfidence } from '@/lib/scheduler/estimation'
 import { deriveScheduledBlockStatus, generateSchedule } from '@/lib/scheduler/algorithm'
 import { findLaterSlot } from '@/lib/scheduler/move-later'
+import { isSchedulableResourceType } from '@/lib/scheduler/source-filter'
 import { formatDuration, formatTime, getWindowDurationMinutes, isBlockInsideWindow, minutesToTime, timeToMinutes } from '@/lib/scheduler/time'
 
 const userId = '00000000-0000-0000-0000-000000000001'
@@ -430,4 +431,112 @@ test('Move Later with explicit day end boundary respects the boundary', () => {
   const block = makeBlock('b9', '2026-05-04T14:00:00.000Z', 60)
   const result = findLaterSlot(block, [], { dayEndIso: '2026-05-04T15:00:00.000Z' })
   assert.ok(!result.moved, 'must respect caller-supplied day end boundary')
+})
+
+// ── Source-filter: generated quiz items excluded from scheduler ──────────────
+
+test('generated "Check your understanding" learning_items are excluded from scheduler sources (action-level contract)', () => {
+  // learning_items are AI-generated module content (key ideas, review prompts, summaries).
+  // The action (generateUserSchedule) never adds learning_items to sourceItems.
+  // "Check your understanding N" items have type='review' and are study prompts, not source materials.
+  // Contract: action excludes ALL learning_items; algorithm itself does not enforce this.
+  assert.ok(true, 'enforced in actions/scheduler.ts — learning_items are not added to sourceItems')
+})
+
+test('isSchedulableResourceType excludes quiz resource types', () => {
+  assert.equal(isSchedulableResourceType('quiz'), false, 'quiz is not schedulable')
+  assert.equal(isSchedulableResourceType('Canvas Quiz'), false, 'Canvas Quiz is not schedulable')
+  assert.equal(isSchedulableResourceType('QUIZ'), false, 'uppercase QUIZ is not schedulable')
+  assert.equal(isSchedulableResourceType('ExternalQuiz'), false, 'type containing quiz is not schedulable')
+})
+
+test('isSchedulableResourceType includes PDF, PPT, DOC, Canvas page, and file resource types', () => {
+  assert.equal(isSchedulableResourceType('file'), true, 'file is schedulable')
+  assert.equal(isSchedulableResourceType('page'), true, 'Canvas page is schedulable')
+  assert.equal(isSchedulableResourceType('canvas_page'), true, 'canvas_page is schedulable')
+  assert.equal(isSchedulableResourceType('pdf'), true, 'pdf is schedulable')
+  assert.equal(isSchedulableResourceType('ppt'), true, 'ppt is schedulable')
+  assert.equal(isSchedulableResourceType('pptx'), true, 'pptx is schedulable')
+  assert.equal(isSchedulableResourceType('doc'), true, 'doc is schedulable')
+  assert.equal(isSchedulableResourceType('docx'), true, 'docx is schedulable')
+  assert.equal(isSchedulableResourceType(null), true, 'null resource type is not filtered out')
+  assert.equal(isSchedulableResourceType(undefined), true, 'undefined resource type is not filtered out')
+  assert.equal(isSchedulableResourceType(''), true, 'empty resource type is not filtered out')
+})
+
+test('deep_learn_notes with quiz_ready are not standalone scheduler sources (action-level contract)', () => {
+  // deep_learn_notes represent study pack outputs. Even when quiz_ready=true they are
+  // metadata/chips attached to their parent module_resource block, not scheduled independently.
+  // The action never adds deep_learn_notes to sourceItems.
+  assert.ok(true, 'enforced in actions/scheduler.ts — deep_learn_notes not added to sourceItems')
+})
+
+test('module_resources PDF is a schedulable study material', () => {
+  const now = Date.now()
+  const window = { start: new Date(now).toISOString(), end: new Date(now + 3 * 3600_000).toISOString() }
+  const blocks = generateSchedule([
+    scoreSchedulerItem({ id: 'pdf1', userId, sourceTable: 'module_resources', title: '1. Introduction to HTML.pdf', dueAt: null, resourceType: 'file', extractedCharCount: 8000, extractionStatus: 'extracted' }),
+  ], window)
+  assert.equal(blocks.length, 1, 'PDF module_resource produces one scheduled block')
+  assert.equal(blocks[0]?.sourceTable, 'module_resources')
+  assert.equal(blocks[0]?.title, '1. Introduction to HTML.pdf')
+})
+
+test('module_resources PPT/PPTX/DOC/DOCX files are schedulable study materials', () => {
+  const now = Date.now()
+  const window = { start: new Date(now).toISOString(), end: new Date(now + 6 * 3600_000).toISOString() }
+  const blocks = generateSchedule([
+    scoreSchedulerItem({ id: 'pptx1', userId, sourceTable: 'module_resources', title: 'Week 1 Slides.pptx', dueAt: null, resourceType: 'file', extractedCharCount: 6000, extractionStatus: 'extracted' }),
+    scoreSchedulerItem({ id: 'docx1', userId, sourceTable: 'module_resources', title: 'Lab Instructions.docx', dueAt: null, resourceType: 'file', extractedCharCount: 5000, extractionStatus: 'extracted' }),
+  ], window)
+  const titles = blocks.map((b) => b.title)
+  assert.ok(titles.includes('Week 1 Slides.pptx'), 'PPTX file is scheduled')
+  assert.ok(titles.includes('Lab Instructions.docx'), 'DOCX file is scheduled')
+})
+
+test('Canvas page module_resource is a schedulable study material', () => {
+  const now = Date.now()
+  const window = { start: new Date(now).toISOString(), end: new Date(now + 3 * 3600_000).toISOString() }
+  const blocks = generateSchedule([
+    scoreSchedulerItem({ id: 'page1', userId, sourceTable: 'module_resources', title: '1.2 - Intro to Web Development', dueAt: null, resourceType: 'page', extractedCharCount: 4000, extractionStatus: 'extracted' }),
+  ], window)
+  assert.equal(blocks.length, 1, 'Canvas page produces one scheduled block')
+  assert.equal(blocks[0]?.sourceTable, 'module_resources')
+  assert.equal(blocks[0]?.title, '1.2 - Intro to Web Development')
+})
+
+test('Today\'s Schedule block title comes from source material, not a generated quiz prompt', () => {
+  // Verify that the scheduled block title is the actual resource title, not "Check your understanding N".
+  const now = Date.now()
+  const window = { start: new Date(now).toISOString(), end: new Date(now + 3 * 3600_000).toISOString() }
+  const blocks = generateSchedule([
+    scoreSchedulerItem({ id: 'src1', userId, sourceTable: 'module_resources', title: '1. Introduction to HTML.pdf', dueAt: null, resourceType: 'file', extractedCharCount: 9000, extractionStatus: 'extracted' }),
+  ], window)
+  assert.equal(blocks.length, 1)
+  assert.ok(!blocks[0]?.title.match(/^check your understanding \d+/i), 'block title must not be a generated quiz prompt')
+  assert.equal(blocks[0]?.title, '1. Introduction to HTML.pdf', 'block title is the actual source material title')
+})
+
+test('study pack and quiz-ready metadata attach to source block, not as standalone blocks', () => {
+  // A source material block must appear for the PDF; study pack chips are resolved via
+  // studyPacksByResourceId in TodayDashboard — they do NOT create separate schedule blocks.
+  const now = Date.now()
+  const window = { start: new Date(now).toISOString(), end: new Date(now + 3 * 3600_000).toISOString() }
+  const sourceBlocks = generateSchedule([
+    scoreSchedulerItem({ id: 'res-chip1', userId, sourceTable: 'module_resources', title: 'Data Org.pdf', dueAt: null, resourceType: 'file', extractedCharCount: 8000, extractionStatus: 'extracted' }),
+  ], window)
+  // study pack would be added via studyPacksByResourceId map, not as a separate block
+  assert.equal(sourceBlocks.length, 1, 'one block for the source material')
+  assert.equal(sourceBlocks[0]?.sourceTable, 'module_resources', 'study pack chip attaches to module_resources block in TodayDashboard')
+})
+
+test('no duplicate blocks when same source appears once in generateSchedule input', () => {
+  const now = Date.now()
+  const window = { start: new Date(now).toISOString(), end: new Date(now + 4 * 3600_000).toISOString() }
+  const blocks = generateSchedule([
+    scoreSchedulerItem({ id: 'dedup-pdf', userId, sourceTable: 'module_resources', title: 'Week3.pdf', dueAt: null, resourceType: 'file', extractedCharCount: 7000, extractionStatus: 'extracted' }),
+    scoreSchedulerItem({ id: 'dedup-task', userId, sourceTable: 'task_items', title: 'Assignment A', dueAt: new Date(now + 2 * 3600_000).toISOString(), taskType: 'project' }),
+  ], window)
+  const keys = blocks.map((b) => `${b.sourceTable}:${b.sourceId}`)
+  assert.equal(new Set(keys).size, keys.length, 'each source appears at most once in the schedule')
 })

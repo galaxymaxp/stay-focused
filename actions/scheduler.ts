@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { createAuthenticatedSupabaseServerClient } from '@/lib/auth-server'
 import { classifyModuleResourceTextQuality } from '@/lib/extracted-text-quality'
 import { generateSchedule } from '@/lib/scheduler/algorithm'
+import { isSchedulableResourceType } from '@/lib/scheduler/source-filter'
 import { findLaterSlot } from '@/lib/scheduler/move-later'
 import { scoreSchedulerItem } from '@/lib/scheduler/priority'
 import { timeInputToTodayIso } from '@/lib/scheduler/time'
@@ -20,24 +21,22 @@ async function getSchedulerContext() {
 export async function generateUserSchedule(freeTimeStart: string, freeTimeEnd: string) {
   const { client, userId } = await getSchedulerContext()
 
-  const [taskItemsResult, tasksResult, deadlinesResult, modulesResult, resourcesResult, learningItemsResult, draftsResult] = await Promise.all([
+  const [taskItemsResult, tasksResult, deadlinesResult, modulesResult, resourcesResult, draftsResult] = await Promise.all([
     client.from('task_items').select('id,course_id,module_id,title,deadline,task_type,estimated_minutes,created_at').eq('user_id', userId).neq('status', 'completed'),
     client.from('tasks').select('id,module_id,title,deadline,estimated_minutes,created_at').eq('user_id', userId).neq('status', 'completed'),
     client.from('deadlines').select('id,module_id,label,date,estimated_minutes,created_at').eq('user_id', userId),
     client.from('modules').select('id,course_id,title,released_at,estimated_minutes,created_at').eq('user_id', userId),
     client.from('module_resources').select('id,course_id,module_id,title,resource_type,extracted_text,extracted_text_preview,extracted_char_count,extraction_status,visual_extraction_status,visual_extracted_text,estimated_minutes,created_at').eq('user_id', userId),
-    client.from('learning_items').select('id,course_id,module_id,title,type,estimated_minutes,created_at').eq('user_id', userId),
     client.from('drafts').select('id,course_id,source_type,source_module_id,source_resource_id,source_title,draft_type,title,status,token_count,created_at,updated_at').eq('user_id', userId).eq('status', 'ready'),
   ])
 
-  if (taskItemsResult.error || tasksResult.error || deadlinesResult.error || modulesResult.error || resourcesResult.error || learningItemsResult.error) {
+  if (taskItemsResult.error || tasksResult.error || deadlinesResult.error || modulesResult.error || resourcesResult.error) {
     console.warn('[scheduler] source data fetch failed; skipping schedule generation', {
       taskItemsError: taskItemsResult.error?.message,
       tasksError: tasksResult.error?.message,
       deadlinesError: deadlinesResult.error?.message,
       modulesError: modulesResult.error?.message,
       resourcesError: resourcesResult.error?.message,
-      learningItemsError: learningItemsResult.error?.message,
     })
     return { generated: 0 }
   }
@@ -48,10 +47,12 @@ export async function generateUserSchedule(freeTimeStart: string, freeTimeEnd: s
     })
   }
 
-  // Include all resources that have usable text (quality filter). Resources with associated
-  // study packs (deep_learn_notes) are still scheduled — the study pack chip is shown as
-  // metadata under the block, not as a reason to exclude the source.
+  // Only include actual source materials (PDFs, PPTs, DOCXs, Canvas pages/files).
+  // Quiz-type resources are Canvas assessments — not source materials — and are excluded.
+  // Resources with associated study packs (deep_learn_notes) are still scheduled; the study
+  // pack chip is shown as metadata under the block, not as a reason to exclude the source.
   const readyResources = (resourcesResult.data ?? []).filter((row) => {
+    if (!isSchedulableResourceType(row.resource_type)) return false
     const quality = classifyModuleResourceTextQuality({
       title: row.title,
       extractedText: row.extracted_text,
@@ -71,7 +72,6 @@ export async function generateUserSchedule(freeTimeStart: string, freeTimeEnd: s
     modules: modulesResult.data?.length ?? 0,
     module_resources_raw: resourcesResult.data?.length ?? 0,
     module_resources_ready: readyResources.length,
-    learning_items: learningItemsResult.data?.length ?? 0,
     drafts: draftsData.length,
   })
 
@@ -137,21 +137,12 @@ export async function generateUserSchedule(freeTimeStart: string, freeTimeEnd: s
       extractedCharCount: row.extracted_char_count,
       extractionStatus: row.extraction_status,
       estimatedMinutes: row.estimated_minutes,
-      taskType: row.resource_type?.toLowerCase().includes('quiz') ? 'quiz' : 'reading',
+      taskType: 'reading' as const,
       createdAt: row.created_at,
     })),
-    ...(learningItemsResult.data ?? []).map((row) => ({
-      id: row.id,
-      userId,
-      sourceTable: 'learning_items' as const,
-      courseId: row.course_id,
-      title: row.title ?? 'Review item',
-      subtitle: row.type === 'review' ? 'Quiz practice' : 'Learning material',
-      dueAt: null,
-      taskType: row.type === 'review' ? 'quiz' : 'prep',
-      estimatedMinutes: row.estimated_minutes,
-      createdAt: row.created_at,
-    })),
+    // learning_items are AI-generated module content (key ideas, "Check your understanding"
+    // review prompts) — not actual source materials. They are never scheduled as standalone
+    // blocks; deep_learn_notes and drafts handle the study-pack and output layers.
     // deep_learn_notes are study pack outputs attached to modules — displayed under their
     // parent module block in the UI, not scheduled as standalone blocks.
     ...draftsData.map((row) => ({
