@@ -151,6 +151,94 @@ test('credential resolution prefers split env vars over JSON', () => {
   })
 })
 
+test('missing split client email does not fail when GOOGLE_VISION_SERVICE_ACCOUNT_JSON is present', () => {
+  withGoogleEnv({
+    GOOGLE_CLOUD_PROJECT: 'stay-focus-test',
+    GOOGLE_VISION_SERVICE_ACCOUNT_JSON: validServiceAccountJson(),
+  }, () => {
+    const check = validateGoogleVisionCredentials()
+    assert.equal(check.ok, true, 'should succeed via JSON credentials when split email is absent')
+  })
+})
+
+test('missing split client email does not fail when GOOGLE_VISION_CREDENTIALS_JSON is present', () => {
+  withGoogleEnv({
+    GOOGLE_CLOUD_PROJECT: 'stay-focus-test',
+    GOOGLE_VISION_CREDENTIALS_JSON: validServiceAccountJson(),
+  }, () => {
+    const check = validateGoogleVisionCredentials()
+    assert.equal(check.ok, true, 'should succeed via GOOGLE_VISION_CREDENTIALS_JSON when split email is absent')
+  })
+})
+
+test('GOOGLE_VISION_SERVICE_ACCOUNT_JSON JSON credentials work for local development', () => {
+  const json = validServiceAccountJson()
+  withGoogleEnv({
+    GOOGLE_VISION_SERVICE_ACCOUNT_JSON: json,
+  }, () => {
+    const check = validateGoogleVisionCredentials()
+    assert.equal(check.ok, true, 'GOOGLE_VISION_SERVICE_ACCOUNT_JSON should be accepted as credentials')
+    const serviceAccount = getGoogleServiceAccount()
+    assert.equal(serviceAccount?.project_id, 'local-dev-project')
+    assert.equal(serviceAccount?.client_email, 'local@example.iam.gserviceaccount.com')
+  })
+})
+
+test('GOOGLE_APPLICATION_CREDENTIALS file path is accepted as valid by the validator', () => {
+  withGoogleEnv({
+    GOOGLE_APPLICATION_CREDENTIALS: '/path/to/service-account.json',
+  }, () => {
+    // The validator trusts a non-empty file path; actual file reading happens at token-fetch time.
+    const check = validateGoogleVisionCredentials()
+    assert.equal(check.ok, true, 'GOOGLE_APPLICATION_CREDENTIALS file path is accepted by validator')
+  })
+})
+
+test('GOOGLE_CLOUD_PROJECT alone does not trigger split credential failure (common env var must not block JSON fallback)', () => {
+  withGoogleEnv({
+    GOOGLE_CLOUD_PROJECT: 'stay-focus-test',
+    GOOGLE_VISION_SERVICE_ACCOUNT_JSON: validServiceAccountJson(),
+  }, () => {
+    const check = validateGoogleVisionCredentials()
+    // ok=true means the JSON path succeeded; split client_email error was not raised
+    assert.equal(check.ok, true, 'GOOGLE_CLOUD_PROJECT alone must not cause split credential failure when JSON is present')
+  })
+})
+
+test('partial split credentials (private key only) without JSON produce a helpful error', () => {
+  withGoogleEnv({
+    GOOGLE_VISION_PRIVATE_KEY: escapedPem(),
+  }, () => {
+    const check = validateGoogleVisionCredentials()
+    assert.equal(check.ok, false, 'partial split (private key only) without JSON must fail')
+    // validation enters the split path (privateKey is set → anyConfigured=true) and names
+    // the first missing required var; GOOGLE_CLOUD_PROJECT is checked before client_email
+    assert.ok(check.ok === false && check.error.length > 0, 'error must be a non-empty helpful message')
+    assert.ok(check.ok === false && !check.error.includes('private_key') && !check.error.includes('BEGIN PRIVATE KEY'), 'error must not expose key contents')
+  })
+})
+
+test('no credential value is included in thrown error messages', () => {
+  withGoogleEnv({
+    GOOGLE_VISION_PRIVATE_KEY: escapedPem(),
+  }, () => {
+    const check = validateGoogleVisionCredentials()
+    if (!check.ok) {
+      assert.equal(check.error.includes('-----BEGIN PRIVATE KEY-----'), false, 'error must not contain PEM data')
+      assert.equal(check.error.includes('PRIVATE KEY'), false, 'error must not contain key content')
+    }
+  })
+})
+
+function validServiceAccountJson() {
+  return JSON.stringify({
+    type: 'service_account',
+    project_id: 'local-dev-project',
+    client_email: 'local@example.iam.gserviceaccount.com',
+    private_key: escapedPem().replace(/\\n/g, '\n'),
+  })
+}
+
 function createPage(input: {
   pageNumber: number
   text: string
@@ -193,6 +281,7 @@ function withGoogleEnv(values: Record<string, string | undefined>, fn: () => voi
     'GOOGLE_CLOUD_PROJECT',
     'GOOGLE_VISION_CLIENT_EMAIL',
     'GOOGLE_VISION_PRIVATE_KEY',
+    'GOOGLE_VISION_SERVICE_ACCOUNT_JSON',
     'GOOGLE_VISION_CREDENTIALS_JSON',
     'GOOGLE_APPLICATION_CREDENTIALS',
     'GOOGLE_APPLICATION_CREDENTIALS_JSON',

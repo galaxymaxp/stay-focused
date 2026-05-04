@@ -5,6 +5,62 @@ Last Updated: 2026-05-04
 
 ---
 
+## Session Update — 2026-05-04 (Fix Google Vision OCR credential fallback for local development)
+
+### What changed
+
+**`lib/extraction/google-ocr.ts`**
+- Fixed `getSplitGoogleVisionCredentialState`: `anyConfigured` now only fires when `GOOGLE_VISION_CLIENT_EMAIL` or `GOOGLE_VISION_PRIVATE_KEY` is set. `GOOGLE_CLOUD_PROJECT` alone no longer triggers the split credential path — it is a general Google Cloud env var shared across many services, and its presence must not block the JSON credential fallback.
+- Added `GOOGLE_VISION_SERVICE_ACCOUNT_JSON` as an alias for `GOOGLE_VISION_CREDENTIALS_JSON` in `getGoogleServiceAccount`, `hasGoogleOAuthCredentials`, `validateGoogleVisionCredentials`, and `shouldUseGoogleVisionApiKey`. Local dev can now set either name to provide full service account JSON.
+- Updated the final "not configured" error message to list all accepted options: API key, split vars, `GOOGLE_VISION_SERVICE_ACCOUNT_JSON`, and `GOOGLE_APPLICATION_CREDENTIALS`.
+
+**`tests/google-ocr.test.ts`**
+- Added `GOOGLE_VISION_SERVICE_ACCOUNT_JSON` to the `withGoogleEnv` key list so it is isolated between tests.
+- Added 7 new tests:
+  1. Missing split client email does not fail when `GOOGLE_VISION_SERVICE_ACCOUNT_JSON` is present
+  2. Missing split client email does not fail when `GOOGLE_VISION_CREDENTIALS_JSON` is present
+  3. `GOOGLE_VISION_SERVICE_ACCOUNT_JSON` JSON credentials work for local development
+  4. `GOOGLE_APPLICATION_CREDENTIALS` file path is accepted by the validator
+  5. `GOOGLE_CLOUD_PROJECT` alone does not trigger split credential failure
+  6. Partial split credentials (private key only) without JSON produce a non-empty helpful error
+  7. No credential value (PEM key) is included in thrown error messages
+
+### Why it changed
+
+Local OCR was failing with "Google Vision OCR split credentials are missing GOOGLE_VISION_CLIENT_EMAIL" even when `GOOGLE_APPLICATION_CREDENTIALS` or a JSON credential env was set. The cause: `GOOGLE_CLOUD_PROJECT` (commonly set as a general Next.js/GCP env var) made `anyConfigured = true`, pushing validation into the split credential path before it could check JSON fallbacks. Fixing `anyConfigured` to exclude `projectId` alone resolves the fallback ordering.
+
+### Local development setup (two options)
+
+**Option A — Full service account JSON env var:**
+```
+GOOGLE_VISION_SERVICE_ACCOUNT_JSON='{"type":"service_account","project_id":"...","client_email":"...","private_key":"-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"}'
+```
+
+**Option B — File path:**
+```
+GOOGLE_APPLICATION_CREDENTIALS=C:\path\to\google-service-account.json
+```
+
+Vercel split-value setup (`GOOGLE_CLOUD_PROJECT` + `GOOGLE_VISION_CLIENT_EMAIL` + `GOOGLE_VISION_PRIVATE_KEY`) continues to work unchanged.
+
+### Tests run
+
+- `npm run typecheck` — ✅ clean
+- `npm run lint` — ✅ clean
+- `npm test -- google-ocr source-ocr-updates queue` — ✅ 269 pass, 0 fail
+- `validate-scanned-pdf.ts` — skipped (local PDF not present)
+
+### Known risks / blockers
+
+- None. The `anyConfigured` change is backward-compatible: existing Vercel deployments that set `GOOGLE_VISION_CLIENT_EMAIL` and `GOOGLE_VISION_PRIVATE_KEY` still enter the split path and validate exactly as before.
+- `GOOGLE_VISION_SERVICE_ACCOUNT_JSON` and `GOOGLE_VISION_CREDENTIALS_JSON` are true aliases — if both are set, `GOOGLE_VISION_SERVICE_ACCOUNT_JSON` takes precedence (checked first in the OR expression).
+
+### Next recommended steps
+
+- No blockers. Set `GOOGLE_VISION_SERVICE_ACCOUNT_JSON` or `GOOGLE_APPLICATION_CREDENTIALS` in `.env.local` to enable local OCR.
+
+---
+
 ## Session Update — 2026-05-04 (Exclude generated quiz prompts from scheduler sources)
 
 ### What changed

@@ -486,7 +486,12 @@ export function getGoogleServiceAccount() {
   const split = getSplitGoogleVisionServiceAccount()
   if (split) return split
 
-  const visionJson = parseOptionalServiceAccountJson(process.env.GOOGLE_VISION_CREDENTIALS_JSON, 'GOOGLE_VISION_CREDENTIALS_JSON')
+  // GOOGLE_VISION_SERVICE_ACCOUNT_JSON and GOOGLE_VISION_CREDENTIALS_JSON are aliases;
+  // both accept full service account JSON for local dev or CI environments.
+  const visionJson = parseOptionalServiceAccountJson(
+    process.env.GOOGLE_VISION_SERVICE_ACCOUNT_JSON || process.env.GOOGLE_VISION_CREDENTIALS_JSON,
+    'GOOGLE_VISION_SERVICE_ACCOUNT_JSON / GOOGLE_VISION_CREDENTIALS_JSON',
+  )
   if (visionJson) return visionJson
 
   const path = process.env.GOOGLE_APPLICATION_CREDENTIALS?.trim()
@@ -511,6 +516,7 @@ function hasGoogleOAuthCredentials() {
     process.env.GOOGLE_OCR_ACCESS_TOKEN?.trim()
     || process.env.GOOGLE_ACCESS_TOKEN?.trim()
     || hasCompleteSplitGoogleVisionServiceAccount()
+    || process.env.GOOGLE_VISION_SERVICE_ACCOUNT_JSON?.trim()
     || process.env.GOOGLE_VISION_CREDENTIALS_JSON?.trim()
     || process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON?.trim()
     || process.env.GOOGLE_CREDENTIALS_JSON?.trim()
@@ -558,13 +564,18 @@ export function validateGoogleVisionCredentials(): { ok: true; diagnostics: Retu
     return { ok: true, diagnostics }
   }
 
-  if (process.env.GOOGLE_VISION_CREDENTIALS_JSON?.trim()) {
+  // Check GOOGLE_VISION_SERVICE_ACCOUNT_JSON (alias) and GOOGLE_VISION_CREDENTIALS_JSON
+  const visionJsonRaw = process.env.GOOGLE_VISION_SERVICE_ACCOUNT_JSON?.trim() || process.env.GOOGLE_VISION_CREDENTIALS_JSON?.trim()
+  if (visionJsonRaw) {
+    const label = process.env.GOOGLE_VISION_SERVICE_ACCOUNT_JSON?.trim()
+      ? 'GOOGLE_VISION_SERVICE_ACCOUNT_JSON'
+      : 'GOOGLE_VISION_CREDENTIALS_JSON'
     try {
-      const parsed = parseServiceAccountJson(process.env.GOOGLE_VISION_CREDENTIALS_JSON)
+      const parsed = parseServiceAccountJson(visionJsonRaw)
       if (parsed.client_email && parsed.private_key && hasValidPemPrivateKey(parsed.private_key)) return { ok: true, diagnostics }
-      return { ok: false, error: 'GOOGLE_VISION_CREDENTIALS_JSON is missing client_email or a valid private_key.', diagnostics }
+      return { ok: false, error: `${label} is missing client_email or a valid private_key.`, diagnostics }
     } catch {
-      return { ok: false, error: 'GOOGLE_VISION_CREDENTIALS_JSON could not be parsed as service account JSON.', diagnostics }
+      return { ok: false, error: `${label} could not be parsed as service account JSON.`, diagnostics }
     }
   }
 
@@ -574,7 +585,7 @@ export function validateGoogleVisionCredentials(): { ok: true; diagnostics: Retu
 
   return {
     ok: false,
-    error: 'Google Vision OCR is not configured. Set GOOGLE_VISION_API_KEY or Google service account credentials.',
+    error: 'Google Vision OCR is not configured. Set GOOGLE_VISION_API_KEY, split service account vars (GOOGLE_VISION_CLIENT_EMAIL + GOOGLE_VISION_PRIVATE_KEY + GOOGLE_CLOUD_PROJECT), GOOGLE_VISION_SERVICE_ACCOUNT_JSON with full service account JSON, or GOOGLE_APPLICATION_CREDENTIALS.',
     diagnostics,
   }
 }
@@ -599,6 +610,7 @@ function shouldUseGoogleVisionApiKey() {
     && !process.env.GOOGLE_OCR_ACCESS_TOKEN?.trim()
     && !process.env.GOOGLE_ACCESS_TOKEN?.trim()
     && !getSplitGoogleVisionCredentialState().anyConfigured
+    && !process.env.GOOGLE_VISION_SERVICE_ACCOUNT_JSON?.trim()
     && !process.env.GOOGLE_VISION_CREDENTIALS_JSON?.trim()
     && !process.env.GOOGLE_APPLICATION_CREDENTIALS?.trim()
     && !process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON?.trim()
@@ -615,7 +627,10 @@ function getSplitGoogleVisionCredentialState() {
     projectId,
     clientEmail,
     privateKey,
-    anyConfigured: Boolean(projectId || clientEmail || privateKey),
+    // GOOGLE_CLOUD_PROJECT is a general Google Cloud env var shared across many services;
+    // setting it alone does not indicate intent to use split Vision credentials.
+    // Only trigger the split path when at least one Vision-specific var is present.
+    anyConfigured: Boolean(clientEmail || privateKey),
   }
 }
 
