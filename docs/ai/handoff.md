@@ -5,6 +5,45 @@ Last Updated: 2026-05-05
 
 ---
 
+## Session Update - 2026-05-05l (Fix Sync course list scrolling)
+
+### What changed
+
+**`app/globals.css`**
+- Added a desktop `--sync-panel-height` variable on the `/sync` split layout.
+- Changed the split grid to `align-items: stretch` so the left Available Courses panel and right status panel share the same row height.
+- Applied the same desktop height to `.sync-course-picker` and `.sync-status-panel`.
+- Kept the picker as a grid with the course list in the `minmax(0, 1fr)` row and restored the course list as the internal scroll area.
+- Reset both panels to natural height on mobile while keeping the course list capped with its existing mobile max-height.
+
+### Why it changed
+
+The previous min-height-only layout let the Available Courses panel grow with its course rows, which removed the internal scrollbar and made the page stretch vertically. The picker now has a stable desktop height matching the status panel, while the course list scrolls inside the card.
+
+### Tests run
+
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+
+### Verification result
+
+- Static checks passed. Browser verification with a real connected course list was not run in this session.
+
+### Known risks / blockers
+
+- Connected-account visual QA is still needed to confirm the scrollbar with a real long Canvas course list.
+
+### Next recommended steps
+
+1. Open `/sync` with a Canvas-connected account and confirm the Available Courses list scrolls internally.
+2. Verify desktop panel heights match and 390px mobile remains natural-height with no overflow.
+
+### Suggested commit message
+
+fix sync course list scrolling
+
+---
+
 ## Session Update - 2026-05-05k (Polish Sync Courses layout and refresh behavior)
 
 ### What changed

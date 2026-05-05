@@ -2773,16 +2773,18 @@ details[open] > .ui-interactive-summary,
 }
 
 .sync-split-layout {
+  --sync-panel-height: clamp(31rem, 62vh, 39rem);
   display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr);
   gap: 1rem;
-  align-items: start;
+  align-items: stretch;
 }
 
 .sync-panel {
   min-width: 0;
   border-radius: 16px;
   padding: 1rem;
+  height: 100%;
 }
 
 .sync-panel-header {
@@ -2808,13 +2810,17 @@ details[open] > .ui-interactive-summary,
 }
 
 .sync-course-picker {
-  min-height: clamp(34rem, 66vh, 43rem);
+  height: var(--sync-panel-height);
+  min-height: var(--sync-panel-height);
   grid-template-rows: auto auto auto minmax(0, 1fr) auto auto;
+  overflow: hidden;
 }
 
 .sync-status-panel {
-  min-height: clamp(34rem, 66vh, 43rem);
+  height: var(--sync-panel-height);
+  min-height: var(--sync-panel-height);
   align-content: start;
+  overflow: auto;
 }
 
 .sync-ended-toggle {
@@ -2945,7 +2951,6 @@ details[open] > .ui-interactive-summary,
 
 .sync-course-list {
   min-height: 0;
-  height: 100%;
   max-height: none;
   overflow-y: auto;
   overflow-x: hidden;
@@ -3194,7 +3199,9 @@ details[open] > .ui-interactive-summary,
 
   .sync-course-picker,
   .sync-status-panel {
+    height: auto;
     min-height: auto;
+    overflow: visible;
   }
 
   .sync-course-list {
