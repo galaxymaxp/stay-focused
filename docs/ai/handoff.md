@@ -5,6 +5,40 @@ Last Updated: 2026-05-05
 
 ---
 
+## Session Update — 2026-05-05b (Fix home-focus client-safe imports)
+
+### What changed
+
+**`lib/home-focus.ts`**
+- Removed `import { getTaskUrgencyLabel } from '@/lib/clarity-workspace'` — that module transitively imports `next/headers` (via `lib/workspace-source` → `lib/auth-server`) which cannot appear in the client bundle.
+- Removed `import type { TaskItem } from '@/lib/types'`.
+- Added exported `HomeSyllabusTaskInput` interface — minimal subset of `TaskItem` fields needed by `buildSyllabusFocusRows`. `TaskItem` (which is a superset) satisfies this structurally, so `app/(app)/page.tsx` continues to pass `workspace.taskItems` without changes.
+- Added local `deriveUrgencyLabel(task: HomeSyllabusTaskInput)` pure function — inlines the same logic that was in `getTaskUrgencyLabel`.
+- `buildSyllabusFocusRows` now takes `HomeSyllabusTaskInput[]`.
+- `getTaskTypeLabel` now takes `string | null | undefined` instead of `TaskItem['taskType']`.
+- `compareSyllabusRows` now takes `HomeSyllabusTaskInput` (no behavioral change).
+- `lib/home-focus.ts` is now fully client-safe: no DB calls, no Supabase, no Next.js server imports, no auth imports.
+
+**`tests/scheduler.test.ts`**
+- Replaced `import type { TaskItem } from '@/lib/types'` with `type HomeSyllabusTaskInput` from `@/lib/home-focus`.
+- `makeTaskItem` factory now returns `HomeSyllabusTaskInput` (removed server-only fields: `courseId`, `details`, `priority`, `extractedFrom`, `planningAnnotation`, `moduleFreshnessScore`).
+- Inline `TaskItem[]` annotation in one test updated to `HomeSyllabusTaskInput[]`.
+
+### Why it changed
+
+`TodayDashboard.tsx` is a client component. It imports `lib/home-focus.ts`, which previously imported `getTaskUrgencyLabel` from `lib/clarity-workspace`. That module's import chain (`clarity-workspace` → `workspace-source` → `auth-server` → `next/headers`) is server-only and cannot be bundled for the client. The build would fail with a "next/headers cannot be used in a client component" error.
+
+### Tests run
+
+- `npm run typecheck` — ✅ clean
+- `npm run lint` — ✅ clean
+
+### Suggested commit message
+
+fix home focus client-safe imports
+
+---
+
 ## Session Update — 2026-05-05 (Reuse canonical Syllabus and Learn sources for Home schedule)
 
 ### What changed

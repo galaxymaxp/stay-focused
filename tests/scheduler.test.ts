@@ -6,8 +6,7 @@ import { deriveScheduledBlockStatus, generateSchedule } from '@/lib/scheduler/al
 import { findLaterSlot } from '@/lib/scheduler/move-later'
 import { isSchedulableResourceType } from '@/lib/scheduler/source-filter'
 import { formatDuration, formatTime, getWindowDurationMinutes, isBlockInsideWindow, minutesToTime, timeToMinutes } from '@/lib/scheduler/time'
-import { buildSyllabusFocusRows, buildLearnFocusRows, fitFocusRowsToWindow, type ModuleResourceRow } from '@/lib/home-focus'
-import type { TaskItem } from '@/lib/types'
+import { buildSyllabusFocusRows, buildLearnFocusRows, fitFocusRowsToWindow, type ModuleResourceRow, type HomeSyllabusTaskInput } from '@/lib/home-focus'
 
 const userId = '00000000-0000-0000-0000-000000000001'
 
@@ -671,22 +670,16 @@ test('no duplicate source appears in Today Schedule across both focus modes', ()
 // ── Canonical home focus rows (home-focus.ts) ─────────────────────────────────
 
 // Minimal task item factory for home-focus tests
-function makeTaskItem(overrides: Partial<TaskItem> & { id: string; title: string }): TaskItem {
+function makeTaskItem(overrides: Partial<HomeSyllabusTaskInput> & { id: string; title: string }): HomeSyllabusTaskInput {
   return {
-    courseId: 'course-1',
     courseName: 'Test Course',
     moduleId: 'mod-1',
     moduleTitle: 'Week 1',
-    details: null,
     status: 'pending',
-    priority: 'medium',
     deadline: new Date(Date.now() + 2 * 24 * 3600_000).toISOString(),
     taskType: 'assignment',
     estimatedMinutes: 20,
-    extractedFrom: 'canvas',
     canvasUrl: null,
-    planningAnnotation: 'none',
-    moduleFreshnessScore: 4,
     actionScore: 10,
     ...overrides,
   }
@@ -737,7 +730,7 @@ test('Learn focus shows PDF, PPTX, DOCX, and Canvas page rows from canonical mod
 })
 
 test('Syllabus focus uses task/assignment/quiz/due source rows from task_items', () => {
-  const tasks: TaskItem[] = [
+  const tasks: HomeSyllabusTaskInput[] = [
     makeTaskItem({ id: 't1', title: 'Essay Assignment', taskType: 'assignment' }),
     makeTaskItem({ id: 't2', title: 'Midterm Quiz', taskType: 'quiz' }),
     makeTaskItem({ id: 't3', title: 'Discussion Post', taskType: 'discussion' }),

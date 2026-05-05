@@ -1,10 +1,22 @@
 import { buildModuleLearnHref, buildModuleDoHref } from '@/lib/stay-focused-links'
 import { classifyModuleResourceTextQuality } from '@/lib/extracted-text-quality'
 import { isSchedulableResourceType } from '@/lib/scheduler/source-filter'
-import { getTaskUrgencyLabel } from '@/lib/clarity-workspace'
-import type { TaskItem } from '@/lib/types'
 
 // ── Types ────────────────────────────────────────────────────────────────────
+
+export interface HomeSyllabusTaskInput {
+  id: string
+  title: string
+  taskType?: string | null
+  courseName?: string | null
+  moduleId?: string | null
+  moduleTitle?: string | null
+  deadline?: string | null
+  canvasUrl?: string | null
+  estimatedMinutes?: number | null
+  status?: string | null
+  actionScore?: number | null
+}
 
 export interface SyllabusFocusRow {
   id: string
@@ -62,7 +74,7 @@ const DEFAULT_LEARN_MINUTES = 30
  * These match the Canvas Syllabus / Course Summary view: assignments, quizzes,
  * discussions, and any graded or due items.
  */
-export function buildSyllabusFocusRows(taskItems: TaskItem[]): SyllabusFocusRow[] {
+export function buildSyllabusFocusRows(taskItems: HomeSyllabusTaskInput[]): SyllabusFocusRow[] {
   return taskItems
     .filter((item) => item.status !== 'completed')
     .sort(compareSyllabusRows)
@@ -70,14 +82,14 @@ export function buildSyllabusFocusRows(taskItems: TaskItem[]): SyllabusFocusRow[
       id: item.id,
       title: item.title,
       typeLabel: getTaskTypeLabel(item.taskType),
-      courseName: item.courseName,
-      moduleId: item.moduleId,
-      moduleTitle: item.moduleTitle,
-      dueAt: item.deadline,
-      urgencyLabel: getTaskUrgencyLabel(item),
+      courseName: item.courseName ?? '',
+      moduleId: item.moduleId ?? '',
+      moduleTitle: item.moduleTitle ?? '',
+      dueAt: item.deadline ?? null,
+      urgencyLabel: deriveUrgencyLabel(item),
       canvasUrl: item.canvasUrl ?? null,
       // Open Canvas directly when canvas_url is available; fall back to Do page
-      href: item.canvasUrl ?? buildModuleDoHref(item.moduleId, { taskTitle: item.title }),
+      href: item.canvasUrl ?? buildModuleDoHref(item.moduleId ?? '', { taskTitle: item.title }),
       estimatedMinutes: item.estimatedMinutes ?? DEFAULT_TASK_MINUTES,
     }))
 }
@@ -195,7 +207,7 @@ function getFileTypeLabel(resourceType: string | null | undefined): string {
   return 'File'
 }
 
-function getTaskTypeLabel(taskType: TaskItem['taskType']): string {
+function getTaskTypeLabel(taskType: string | null | undefined): string {
   if (taskType === 'quiz') return 'Quiz'
   if (taskType === 'discussion') return 'Discussion'
   if (taskType === 'project') return 'Project'
@@ -204,9 +216,22 @@ function getTaskTypeLabel(taskType: TaskItem['taskType']): string {
   return 'Assignment'
 }
 
-function compareSyllabusRows(a: TaskItem, b: TaskItem): number {
+function deriveUrgencyLabel(task: HomeSyllabusTaskInput): string {
+  if (task.status === 'completed') return 'Completed'
+  if (!task.deadline) return 'No due date'
+  const due = new Date(task.deadline)
+  if (Number.isNaN(due.getTime())) return 'No due date'
+  const daysUntil = Math.ceil((due.getTime() - Date.now()) / (24 * 3600_000))
+  if (daysUntil < 0) return 'Overdue'
+  if (daysUntil === 0) return 'Due today'
+  if (daysUntil === 1) return 'Due tomorrow'
+  if (daysUntil <= 3) return 'Due soon'
+  return 'Upcoming'
+}
+
+function compareSyllabusRows(a: HomeSyllabusTaskInput, b: HomeSyllabusTaskInput): number {
   const aDue = a.deadline ? new Date(a.deadline).getTime() : Number.POSITIVE_INFINITY
   const bDue = b.deadline ? new Date(b.deadline).getTime() : Number.POSITIVE_INFINITY
   if (aDue !== bDue) return aDue - bDue
-  return b.actionScore - a.actionScore
+  return (b.actionScore ?? 0) - (a.actionScore ?? 0)
 }
