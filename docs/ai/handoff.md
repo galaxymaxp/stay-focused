@@ -5,6 +5,47 @@ Last Updated: 2026-05-05
 
 ---
 
+## Session Update — 2026-05-05f (Wire home focus rows on root page)
+
+### What changed
+
+**`app/page.tsx`** (the visible home route at `/`)
+- Added import: `buildLearnFocusRows, buildSyllabusFocusRows` from `@/lib/home-focus`.
+- Expanded `Promise.all` from two queries to three — added `module_resources` select with all quality/extraction fields (`id,course_id,module_id,title,resource_type,extracted_text,extracted_text_preview,visual_extraction_status,visual_extracted_text,html_url,source_url,estimated_minutes,extraction_status,extracted_char_count`).
+- Fallback tuple extended to three empty results.
+- Built `courseNameById` from `workspace.courses`.
+- Built `syllabusFocusRows` via `buildSyllabusFocusRows(workspace.taskItems)`.
+- Built `learnFocusRows` via `buildLearnFocusRows(homeLearnResourceRows, studyPacksByResourceId, courseNameById)`.
+- Added `syllabusFocusRows` and `learnFocusRows` props to `TodayDashboard`.
+
+**`app/(app)/page.tsx`**
+- Removed temporary `console.log('[home-focus]', ...)` diagnostic.
+
+### Why it changed
+
+`app/(app)/page.tsx` had already been updated with the full focus-row loading logic in session 2026-05-05c/d, but the root page at `localhost:3000` is served by `app/page.tsx`, which still passed empty arrays to `TodayDashboard`. Because `syllabusFocusRows` and `learnFocusRows` default to `[]`, Today's Schedule always showed the empty-state message even when tasks and resources existed.
+
+### Tests run
+
+- `npm run typecheck` — ✅ clean
+- `npm run lint` — ✅ clean
+- `npm test -- scheduler` — ✅ 296/296 pass
+
+### Suggested commit
+
+wire home focus rows on root page
+
+### Next recommended steps
+
+1. Verify in browser: Syllabus tab shows tasks if Due Soon has items; Learn tab shows ready materials.
+2. If `workspace.courses` is empty for a user, `courseNameById` will be `{}` and course names on Learn rows will be `null` — acceptable fallback.
+
+### Risks / blockers
+
+None — no DB, schema, scheduler, or auth changes.
+
+---
+
 ## Session Update — 2026-05-05e (Fix home focus fitting and schedule controls)
 
 ### What changed

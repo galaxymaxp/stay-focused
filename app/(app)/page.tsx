@@ -76,14 +76,6 @@ export default async function Dashboard() {
     courseNameById,
   )
 
-  console.log('[home-focus]', {
-    taskItems: workspace.taskItems?.length ?? 0,
-    dueSoon: overview.dueSoon.length,
-    rawResources: homeLearnResourceRows.length,
-    syllabusRows: syllabusFocusRows.length,
-    learnRows: learnFocusRows.length,
-  })
-
   return (
     <main className="page-shell">
       <TodayDashboard
