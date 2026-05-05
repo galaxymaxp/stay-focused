@@ -32,10 +32,12 @@ export default async function Dashboard() {
         .from('deep_learn_notes')
         .select('id,module_id,resource_id,title,quiz_ready')
         .eq('status', 'ready'),
-      // Canonical Learn source: module_resources with quality fields
+      // Canonical Learn source: module_resources with quality fields.
+      // extraction_status + extracted_char_count mirror how /modules/:id/learn
+      // classifies "Ready for Deep Learn" resources.
       client
         .from('module_resources')
-        .select('id,course_id,module_id,title,resource_type,extracted_text,extracted_text_preview,visual_extraction_status,visual_extracted_text,html_url,source_url,estimated_minutes')
+        .select('id,course_id,module_id,title,resource_type,extracted_text,extracted_text_preview,visual_extraction_status,visual_extracted_text,html_url,source_url,estimated_minutes,extraction_status,extracted_char_count')
         .order('title', { ascending: true }),
     ])
     : [{ data: [] }, { data: [] }, { data: [] }]
@@ -62,15 +64,25 @@ export default async function Dashboard() {
     courseNameById[course.id] = course.name
   }
 
+  const homeLearnResourceRows = resourcesResult.data ?? []
+
   // Canonical Syllabus focus rows from workspace task_items (all pending tasks, not just scheduled)
   const syllabusFocusRows = buildSyllabusFocusRows(workspace.taskItems)
 
   // Canonical Learn focus rows from module_resources (same classification as /modules/:id/learn)
   const learnFocusRows = buildLearnFocusRows(
-    resourcesResult.data ?? [],
+    homeLearnResourceRows,
     studyPacksByResourceId,
     courseNameById,
   )
+
+  console.log('[home-focus]', {
+    taskItems: workspace.taskItems?.length ?? 0,
+    dueSoon: overview.dueSoon.length,
+    rawResources: homeLearnResourceRows.length,
+    syllabusRows: syllabusFocusRows.length,
+    learnRows: learnFocusRows.length,
+  })
 
   return (
     <main className="page-shell">

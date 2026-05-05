@@ -62,6 +62,8 @@ export interface ModuleResourceRow {
   html_url: string | null
   source_url: string | null
   estimated_minutes: number | null
+  extraction_status: string | null
+  extracted_char_count: number | null
 }
 
 const DEFAULT_TASK_MINUTES = 20
@@ -173,6 +175,12 @@ function isReadyForLearn(resource: ModuleResourceRow): boolean {
   // Canvas pages are always in the Learn lane even without extracted text
   const type = (resource.resource_type ?? '').toLowerCase()
   if (type === 'page' || type === 'canvas_page') return true
+  // Honour extraction_status + extracted_char_count (same as /modules/:id/learn):
+  // if the pipeline has completed extraction and logged enough chars, it's ready
+  // even if extracted_text itself is null in the select (e.g. large text not returned).
+  const status = resource.extraction_status ?? ''
+  const charCount = resource.extracted_char_count ?? 0
+  if ((status === 'completed' || status === 'extracted') && charCount >= 120) return true
   const quality = classifyModuleResourceTextQuality({
     extractedText: resource.extracted_text,
     extractedTextPreview: resource.extracted_text_preview,
@@ -186,6 +194,9 @@ function isReadyForLearn(resource: ModuleResourceRow): boolean {
 function classifyLearnReadiness(resource: ModuleResourceRow): 'ready' | 'limited' {
   const type = (resource.resource_type ?? '').toLowerCase()
   if (type === 'page' || type === 'canvas_page') return 'ready'
+  const status = resource.extraction_status ?? ''
+  const charCount = resource.extracted_char_count ?? 0
+  if ((status === 'completed' || status === 'extracted') && charCount >= 120) return 'ready'
   const quality = classifyModuleResourceTextQuality({
     extractedText: resource.extracted_text,
     extractedTextPreview: resource.extracted_text_preview,

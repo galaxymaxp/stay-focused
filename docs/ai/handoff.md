@@ -5,6 +5,94 @@ Last Updated: 2026-05-05
 
 ---
 
+## Session Update — 2026-05-05d (Render home focus rows as Syllabus/Learn table)
+
+### What changed
+
+**`components/TodayDashboard.tsx`**
+- Removed `nowFocusRows / nextFocusRows / laterFocusRows` useMemo — the Now/Next/Later time-bucketing logic that compared fitted row times against `Date.now()` was hiding rows that weren't "current" or upcoming relative to the real clock, contradicting the intent of the Syllabus/Learn arrangement.
+- Removed `studyPacksByBlockId` useMemo — was only used by the old `FocusPlanGroup` / `LearnPlanRow` components.
+- Removed `hasFocusRows` derived variable — empty state is now handled inside `FocusScheduleTable`.
+- Removed `FocusPlanGroup`, `SyllabusPlanRow`, `LearnPlanRow` component definitions — all replaced by the table.
+- Added `FocusScheduleTable` — renders `activeFocusRows` directly in order as a compact `<table>` with a header row. Empty state shows "No pending assignments or tasks found." (Syllabus) or "No ready study materials found." (Learn) when the row array is empty.
+- Added `SyllabusTableRow` — columns: Time (startAt–endAt), Details (typeLabel chip + title + course/module), Due / Action (urgency label + Open link).
+- Added `LearnTableRow` — columns: Time (startAt–endAt), Material (fileTypeLabel chip + readiness chip + title + course), Status / Action (Study pack / Quiz chips + Open link). Study pack readiness read directly from `row.studyPackRefs` (already embedded in `FittedLearnRow`).
+- Today's Schedule `<div className="home-plan-list">` now renders `<FocusScheduleTable rows={activeFocusRows} mode={focusMode} />`.
+- Clock (`clockBlocks`) and segmented pill (`focusMode`) unchanged — switching tabs still updates the clock.
+- Start Here, Completed, and all other sections unchanged.
+
+### Why it changed
+
+The Now/Next/Later bucketing compared each fitted row's `startAt`/`endAt` against the real wall clock. Since `fitFocusRowsToWindow` assigns times starting from the user-selected window start (e.g. 6:30 PM), any row whose window hadn't arrived yet would land in `laterFocusRows`. But the "Later" bucket was capped at 6 rows, and rows outside the 2-hour "Next" window that had already passed were dropped entirely. In practice, all rows were invisible unless the user happened to view the page exactly during their scheduled free-time window. The flat table approach renders every fitted row in window order regardless of the current clock.
+
+### Tests run
+
+- `npm run typecheck` — ✅ clean
+- `npm run lint` — ✅ clean
+- `npm test -- scheduler` — ✅ 294/294 pass
+
+### Suggested commit
+
+render home focus rows as syllabus learn table
+
+### Next recommended steps
+
+1. **Remove diagnostic `console.log('[home-focus]', ...)` in `app/(app)/page.tsx`** once the data-path is confirmed working.
+2. **CSS refinement**: the table uses inline styles. If the design needs pixel-perfect column widths or responsive behaviour on mobile, add `.home-focus-table` CSS to `app/globals.css`.
+3. **Start Here / Completed** still use `scheduledBlocks` — no change needed for now.
+
+### Risks / blockers
+
+None — no DB, schema, scheduler, or auth changes in this session.
+
+---
+
+## Session Update — 2026-05-05c (Fix home focus row data sources)
+
+### What changed
+
+**`lib/home-focus.ts`**
+- `ModuleResourceRow` — added `extraction_status: string | null` and `extracted_char_count: number | null` fields. These mirror the columns the `/modules/:id/learn` page uses (via `source-readiness.ts → getReadableTextLength`) to classify "Ready for Deep Learn" resources.
+- `isReadyForLearn` — now checks `extraction_status === 'completed' | 'extracted'` AND `extracted_char_count >= 120` first, before falling through to `classifyModuleResourceTextQuality`. This matches the same logic used by `source-readiness.ts`. Resources with completed extraction but null `extracted_text` (e.g. large files where the stored text was truncated or not returned by the select) are now correctly included.
+- `classifyLearnReadiness` — same extraction_status/char_count check added so the `readiness` label on Learn rows also agrees with the module Learn page.
+
+**`app/(app)/page.tsx`**
+- Module resources DB query now selects `extraction_status,extracted_char_count` in addition to existing quality fields.
+- Introduced `homeLearnResourceRows` local variable to remove duplication.
+- Added `console.log('[home-focus]', {...})` diagnostic log (taskItems, dueSoon, rawResources, syllabusRows, learnRows) to confirm data is flowing through each layer. Remove this log once the root cause is confirmed.
+
+**`app/globals.css`**
+- Added `.home-focus-pill`, `.home-focus-pill-track`, `.home-focus-pill-tab`, `.home-focus-pill-btn` CSS. The pill was rendering as "SyllabusLearn" glued text because these classes had no styles. The track element now slides via `translateX` on the active tab. Both `-tab` and `-btn` class names are styled identically (the JSX uses `-btn`).
+
+**`tests/scheduler.test.ts`**
+- `makeResourceRow` factory now initialises `extraction_status: null` and `extracted_char_count: null` to satisfy the updated `ModuleResourceRow` interface.
+
+### Why it changed
+
+**Learn rows empty**: The DB query for `module_resources` didn't fetch `extraction_status` or `extracted_char_count`. Resources where the pipeline has completed extraction (status=completed, char_count>0) but the `extracted_text` column is null (large files, truncated selects) were being rejected by `classifyModuleResourceTextQuality`. The `/modules/:id/learn` page uses `extractedCharCount` as a fallback (see `source-readiness.ts:getReadableTextLength`), so the Home Learn rows were incorrectly showing fewer resources than the module page.
+
+**Pill rendering as "SyllabusLearn"**: The `home-focus-pill` container and its child elements had no CSS at all, causing the buttons to render as inline text with no gap or visible tab styling.
+
+**Syllabus rows**: No data-path change was needed — `buildSyllabusFocusRows(workspace.taskItems)` uses the same source as `overview.dueSoon`. The diagnostic log will confirm actual counts at runtime. If `syllabusRows` is still 0 while `taskItems > 0`, the issue is in `fitFocusRowsToWindow` or the Now/Next/Later time bucketing (all items may land in a past window if the user checks late at night).
+
+### Tests run
+
+- `npm run typecheck` — ✅ clean
+- `npm run lint` — ✅ clean
+- `npm test -- scheduler` — ✅ 294/294 pass
+
+### Next recommended steps
+
+1. **Check the `[home-focus]` server log** once deployed — if `syllabusRows > 0` but the UI shows empty, the bug is in the client-side time bucketing (all rows assigned to a past window). Fix: expand `laterFocusRows` to also include rows whose `endAt` is in the past but whose `startAt` is on today's date (i.e. the whole window is scheduled for later today but already passed).
+2. **Remove diagnostic log** once root cause confirmed (`console.log('[home-focus]', ...)` in `app/(app)/page.tsx`).
+3. **Start Here / Completed** still use `scheduledBlocks` — no change needed for now.
+
+### Risks / blockers
+
+- If `extraction_status` in the DB uses values other than `'completed'` or `'extracted'` (e.g. `'done'`), the new `isReadyForLearn` check would miss those rows. Verify against the actual DB enum or extend the condition.
+
+---
+
 ## Session Update — 2026-05-05b (Fix home-focus client-safe imports)
 
 ### What changed

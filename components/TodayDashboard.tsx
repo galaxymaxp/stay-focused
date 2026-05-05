@@ -148,40 +148,6 @@ export function TodayDashboard({
     }))
   }, [focusMode, fittedSyllabusRows, fittedLearnRows])
 
-  // Group active focus rows into Now / Next / Later by fitted time
-  const { nowFocusRows, nextFocusRows, laterFocusRows } = useMemo(() => {
-    const now = new Date()
-    const nowMs = now.getTime()
-    const twoHoursMs = 2 * 60 * 60_000
-    const heroId = primaryScheduleBlock?.id ?? null
-    const rows = activeFocusRows.filter((r) => r.id !== heroId)
-
-    const nowGroup = rows.filter(
-      (r) => new Date(r.startAt) <= now && new Date(r.endAt) > now,
-    )
-    const nowIds = new Set(nowGroup.map((r) => r.id))
-
-    const upcoming = rows.filter((r) => !nowIds.has(r.id) && new Date(r.startAt) >= now)
-    const nextGroup = upcoming.filter((r) => new Date(r.startAt).getTime() - nowMs <= twoHoursMs).slice(0, 3)
-    const nextIds = new Set(nextGroup.map((r) => r.id))
-    const laterGroup = upcoming.filter((r) => !nextIds.has(r.id)).slice(0, 6)
-
-    return { nowFocusRows: nowGroup, nextFocusRows: nextGroup, laterFocusRows: laterGroup }
-  }, [activeFocusRows, primaryScheduleBlock])
-
-  const studyPacksByBlockId = useMemo(() => {
-    const map: Record<string, StudyPackRef[]> = {}
-    // Attach study packs for scheduled blocks (hero)
-    for (const block of visibleSchedule) {
-      const packs = getBlockStudyPacks(block, studyPacksByModuleId, studyPacksByResourceId)
-      if (packs.length > 0) map[block.id] = packs
-    }
-    // Attach study packs for learn focus rows
-    for (const row of fittedLearnRows) {
-      if (row.studyPackRefs.length > 0) map[row.id] = row.studyPackRefs
-    }
-    return map
-  }, [visibleSchedule, fittedLearnRows, studyPacksByModuleId, studyPacksByResourceId])
 
   function changeWindow(start: string, end: string) {
     setAvailableStart(start)
@@ -234,9 +200,6 @@ export function TodayDashboard({
       planPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
     )
   }
-
-  // Determine if there are any focus rows to show (either tab has content)
-  const hasFocusRows = activeFocusRows.length > 0
 
   return (
     <section className="home-page">
@@ -369,72 +332,10 @@ export function TodayDashboard({
             </div>
 
             <div className="home-plan-list">
-              {focusMode === 'syllabus' ? (
-                <>
-                  <FocusPlanGroup
-                    label="Now"
-                    rows={nowFocusRows}
-                    kind="syllabus"
-                    selectedId={selectedBlockId}
-                    studyPacksByBlockId={studyPacksByBlockId}
-                    onSelect={setSelectedBlockId}
-                  />
-                  <FocusPlanGroup
-                    label="Next"
-                    rows={nextFocusRows}
-                    kind="syllabus"
-                    selectedId={selectedBlockId}
-                    studyPacksByBlockId={studyPacksByBlockId}
-                    onSelect={setSelectedBlockId}
-                  />
-                  <FocusPlanGroup
-                    label="Later"
-                    rows={laterFocusRows}
-                    kind="syllabus"
-                    selectedId={selectedBlockId}
-                    studyPacksByBlockId={studyPacksByBlockId}
-                    onSelect={setSelectedBlockId}
-                  />
-                </>
-              ) : (
-                <>
-                  <FocusPlanGroup
-                    label="Now"
-                    rows={nowFocusRows}
-                    kind="learn"
-                    selectedId={selectedBlockId}
-                    studyPacksByBlockId={studyPacksByBlockId}
-                    onSelect={setSelectedBlockId}
-                  />
-                  <FocusPlanGroup
-                    label="Next"
-                    rows={nextFocusRows}
-                    kind="learn"
-                    selectedId={selectedBlockId}
-                    studyPacksByBlockId={studyPacksByBlockId}
-                    onSelect={setSelectedBlockId}
-                  />
-                  <FocusPlanGroup
-                    label="Later"
-                    rows={laterFocusRows}
-                    kind="learn"
-                    selectedId={selectedBlockId}
-                    studyPacksByBlockId={studyPacksByBlockId}
-                    onSelect={setSelectedBlockId}
-                  />
-                </>
-              )}
-
-              {!hasFocusRows ? (
-                <p
-                  className="ui-section-copy"
-                  style={{ padding: '0.5rem 0', color: 'var(--text-muted)' }}
-                >
-                  {focusMode === 'syllabus'
-                    ? 'No pending assignments or tasks found for this window.'
-                    : 'No ready study materials found for this window.'}
-                </p>
-              ) : null}
+              <FocusScheduleTable
+                rows={activeFocusRows}
+                mode={focusMode}
+              />
 
               {moveLaterMessage ? (
                 <p
@@ -890,183 +791,137 @@ function PrimaryActionHero({
   )
 }
 
-// ── Focus plan row components ────────────────────────────────────────────────
+// ── Focus schedule table ─────────────────────────────────────────────────────
 
 type FittedSyllabusRow = SyllabusFocusRow & { startAt: string; endAt: string }
 type FittedLearnRow = LearnFocusRow & { startAt: string; endAt: string }
 type AnyFocusRow = FittedSyllabusRow | FittedLearnRow
 
-function FocusPlanGroup({
-  label,
+function FocusScheduleTable({
   rows,
-  kind,
-  selectedId,
-  studyPacksByBlockId,
-  onSelect,
+  mode,
 }: {
-  label: string
   rows: AnyFocusRow[]
-  kind: 'syllabus' | 'learn'
-  selectedId: string | null
-  studyPacksByBlockId: Record<string, StudyPackRef[]>
-  onSelect: (id: string | null) => void
+  mode: 'syllabus' | 'learn'
 }) {
-  if (rows.length === 0) return null
+  if (rows.length === 0) {
+    return (
+      <p className="ui-section-copy" style={{ padding: '0.5rem 0', color: 'var(--text-muted)' }}>
+        {mode === 'syllabus'
+          ? 'No pending assignments or tasks found.'
+          : 'No ready study materials found.'}
+      </p>
+    )
+  }
 
   return (
-    <div className="home-plan-group">
-      <p className="home-plan-group-label">{label}</p>
-      <div className="home-compact-list">
+    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+      <thead>
+        <tr style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+          <th style={{ textAlign: 'left', padding: '0.35rem 0.5rem 0.35rem 0', fontWeight: 600, color: 'var(--text-muted)', width: '130px' }}>
+            Time
+          </th>
+          <th style={{ textAlign: 'left', padding: '0.35rem 0.5rem', fontWeight: 600, color: 'var(--text-muted)' }}>
+            {mode === 'syllabus' ? 'Details' : 'Material'}
+          </th>
+          <th style={{ textAlign: 'right', padding: '0.35rem 0 0.35rem 0.5rem', fontWeight: 600, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+            {mode === 'syllabus' ? 'Due / Action' : 'Status / Action'}
+          </th>
+        </tr>
+      </thead>
+      <tbody>
         {rows.map((row) =>
-          kind === 'syllabus' ? (
-            <SyllabusPlanRow
-              key={row.id}
-              row={row as FittedSyllabusRow}
-              selected={selectedId === row.id}
-              onSelect={onSelect}
-            />
+          mode === 'syllabus' ? (
+            <SyllabusTableRow key={row.id} row={row as FittedSyllabusRow} />
           ) : (
-            <LearnPlanRow
-              key={row.id}
-              row={row as FittedLearnRow}
-              selected={selectedId === row.id}
-              studyPacks={studyPacksByBlockId[row.id] ?? []}
-              onSelect={onSelect}
-            />
+            <LearnTableRow key={row.id} row={row as FittedLearnRow} />
           ),
         )}
-      </div>
-    </div>
+      </tbody>
+    </table>
   )
 }
 
-function SyllabusPlanRow({
-  row,
-  selected,
-  onSelect,
-}: {
-  row: FittedSyllabusRow
-  selected: boolean
-  onSelect: (id: string | null) => void
-}) {
-  const now = new Date()
-  const isNow = new Date(row.startAt) <= now && new Date(row.endAt) > now
-
+function SyllabusTableRow({ row }: { row: FittedSyllabusRow }) {
   return (
-    <article className={`home-list-row home-plan-row${selected ? ' home-plan-row-selected' : ''}`}>
-      <button
-        type="button"
-        className="home-plan-row-main"
-        onClick={() => onSelect(selected ? null : row.id)}
-        aria-expanded={selected}
-      >
-        <div className="home-row-meta">
+    <tr style={{ borderBottom: '1px solid color-mix(in srgb, var(--border-subtle) 50%, transparent)' }}>
+      <td style={{ padding: '0.5rem 0.5rem 0.5rem 0', color: 'var(--text-muted)', whiteSpace: 'nowrap', verticalAlign: 'top' }}>
+        {formatTimeRange(row.startAt, row.endAt)}
+      </td>
+      <td style={{ padding: '0.5rem', verticalAlign: 'top' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', alignItems: 'center', marginBottom: '0.2rem' }}>
           <span className="planner-type-pill">{row.typeLabel}</span>
-          {isNow ? <span className="now-pill">Now</span> : null}
-          {row.urgencyLabel !== 'No due date' && row.urgencyLabel !== 'Upcoming' ? (
-            <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>{row.urgencyLabel}</span>
+          {row.courseName ? (
+            <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>{row.courseName}</span>
           ) : null}
-          <span style={{ color: 'var(--text-muted)' }}>{formatTimeRange(row.startAt, row.endAt)}</span>
-          <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>{row.courseName}</span>
+          {row.moduleTitle ? (
+            <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>{row.moduleTitle}</span>
+          ) : null}
         </div>
-        <p className="home-row-title">{row.title}</p>
-      </button>
-
-      {selected ? (
-        <div className="home-plan-row-actions">
-          {row.href ? (
-            <a
-              href={row.href}
-              className="ui-button ui-button-primary ui-button-xs"
-              target={row.canvasUrl ? '_blank' : undefined}
-              rel={row.canvasUrl ? 'noreferrer' : undefined}
-            >
-              Open
-            </a>
-          ) : (
-            <span className="ui-button ui-button-primary ui-button-xs" aria-disabled="true" style={{ opacity: 0.5, cursor: 'default' }}>
-              Unavailable
-            </span>
-          )}
-        </div>
-      ) : row.href ? (
-        <a
-          href={row.href}
-          className="home-row-open"
-          target={row.canvasUrl ? '_blank' : undefined}
-          rel={row.canvasUrl ? 'noreferrer' : undefined}
-        >
-          Open
-        </a>
-      ) : (
-        <span className="home-row-open" style={{ color: 'var(--text-muted)', cursor: 'default' }} aria-disabled="true">
-          Unavailable
-        </span>
-      )}
-    </article>
+        <p style={{ margin: 0, fontWeight: 500 }}>{row.title}</p>
+      </td>
+      <td style={{ padding: '0.5rem 0 0.5rem 0.5rem', textAlign: 'right', whiteSpace: 'nowrap', verticalAlign: 'top' }}>
+        {row.urgencyLabel !== 'No due date' && row.urgencyLabel !== 'Upcoming' ? (
+          <span style={{ color: 'var(--text-muted)', fontSize: '11px', display: 'block', marginBottom: '0.25rem' }}>
+            {row.urgencyLabel}
+          </span>
+        ) : null}
+        {row.href ? (
+          <a
+            href={row.href}
+            className="ui-button ui-button-primary ui-button-xs"
+            target={row.canvasUrl ? '_blank' : undefined}
+            rel={row.canvasUrl ? 'noreferrer' : undefined}
+          >
+            Open
+          </a>
+        ) : (
+          <span className="ui-button ui-button-primary ui-button-xs" aria-disabled="true" style={{ opacity: 0.5, cursor: 'default' }}>
+            Unavailable
+          </span>
+        )}
+      </td>
+    </tr>
   )
 }
 
-function LearnPlanRow({
-  row,
-  selected,
-  studyPacks,
-  onSelect,
-}: {
-  row: FittedLearnRow
-  selected: boolean
-  studyPacks: StudyPackRef[]
-  onSelect: (id: string | null) => void
-}) {
-  const now = new Date()
-  const isNow = new Date(row.startAt) <= now && new Date(row.endAt) > now
-  const hasQuizReady = studyPacks.some((p) => p.quizReady)
+function LearnTableRow({ row }: { row: FittedLearnRow }) {
+  const hasStudyPack = row.studyPackRefs.length > 0
+  const hasQuizReady = row.studyPackRefs.some((p) => p.quizReady)
   const openTarget = row.originalHref && !row.href?.startsWith('/') ? '_blank' : undefined
   const openRel = openTarget ? 'noreferrer' : undefined
 
   return (
-    <article className={`home-list-row home-plan-row${selected ? ' home-plan-row-selected' : ''}`}>
-      <button
-        type="button"
-        className="home-plan-row-main"
-        onClick={() => onSelect(selected ? null : row.id)}
-        aria-expanded={selected}
-      >
-        <div className="home-row-meta">
+    <tr style={{ borderBottom: '1px solid color-mix(in srgb, var(--border-subtle) 50%, transparent)' }}>
+      <td style={{ padding: '0.5rem 0.5rem 0.5rem 0', color: 'var(--text-muted)', whiteSpace: 'nowrap', verticalAlign: 'top' }}>
+        {formatTimeRange(row.startAt, row.endAt)}
+      </td>
+      <td style={{ padding: '0.5rem', verticalAlign: 'top' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', alignItems: 'center', marginBottom: '0.2rem' }}>
           <span className="planner-type-pill">{row.fileTypeLabel}</span>
-          {isNow ? <span className="now-pill">Now</span> : null}
-          {studyPacks.length > 0 ? (
-            <span className="home-study-ready-chip">Study pack ready</span>
-          ) : null}
-          {hasQuizReady ? (
-            <span className="home-study-ready-chip">Quiz ready</span>
-          ) : null}
-          <span style={{ color: 'var(--text-muted)' }}>{formatTimeRange(row.startAt, row.endAt)}</span>
+          <span className="ui-chip ui-chip-soft" style={{ fontSize: '11px', padding: '0.15rem 0.4rem' }}>
+            {row.readiness === 'ready' ? 'Ready' : 'Limited'}
+          </span>
           {row.courseName ? (
             <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>{row.courseName}</span>
           ) : null}
         </div>
-        <p className="home-row-title">{row.title}</p>
-      </button>
-
-      {selected ? (
-        <div className="home-plan-row-actions">
+        <p style={{ margin: 0, fontWeight: 500 }}>{row.title}</p>
+      </td>
+      <td style={{ padding: '0.5rem 0 0.5rem 0.5rem', textAlign: 'right', verticalAlign: 'top' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.25rem' }}>
+          {hasStudyPack ? (
+            <span className="home-study-ready-chip">Study pack</span>
+          ) : null}
+          {hasQuizReady ? (
+            <span className="home-study-ready-chip">Quiz</span>
+          ) : null}
           {row.href ? (
-            <a
-              href={row.href}
-              className="ui-button ui-button-primary ui-button-xs"
-              target={openTarget}
-              rel={openRel}
-            >
-              {row.readiness === 'ready' ? 'Open' : 'Preview'}
+            <a href={row.href} className="ui-button ui-button-primary ui-button-xs" target={openTarget} rel={openRel}>
+              Open
             </a>
           ) : row.originalHref ? (
-            <a
-              href={row.originalHref}
-              className="ui-button ui-button-primary ui-button-xs"
-              target="_blank"
-              rel="noreferrer"
-            >
+            <a href={row.originalHref} className="ui-button ui-button-primary ui-button-xs" target="_blank" rel="noreferrer">
               Open source
             </a>
           ) : (
@@ -1075,20 +930,8 @@ function LearnPlanRow({
             </span>
           )}
         </div>
-      ) : row.href ? (
-        <a href={row.href} className="home-row-open" target={openTarget} rel={openRel}>
-          {row.readiness === 'ready' ? 'Open' : 'Preview'}
-        </a>
-      ) : row.originalHref ? (
-        <a href={row.originalHref} className="home-row-open" target="_blank" rel="noreferrer">
-          Open source
-        </a>
-      ) : (
-        <span className="home-row-open" style={{ color: 'var(--text-muted)', cursor: 'default' }} aria-disabled="true">
-          Unavailable
-        </span>
-      )}
-    </article>
+      </td>
+    </tr>
   )
 }
 

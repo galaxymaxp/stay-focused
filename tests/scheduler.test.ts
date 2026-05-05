@@ -698,6 +698,8 @@ function makeResourceRow(overrides: Partial<ModuleResourceRow> & { id: string; t
     html_url: null,
     source_url: null,
     estimated_minutes: 30,
+    extraction_status: null,
+    extracted_char_count: null,
     ...overrides,
   }
 }
