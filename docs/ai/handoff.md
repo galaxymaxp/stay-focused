@@ -5,6 +5,72 @@ Last Updated: 2026-05-05
 
 ---
 
+## Session Update - 2026-05-05j (Redesign Sync Courses split layout)
+
+### What changed
+
+**`app/sync/page.tsx`**
+- Replaced the old `ConnectCanvasFlowWrapper` usage with a dedicated `SyncCoursesPageClient`.
+- Kept Canvas token/setup out of `/sync`; disconnected users now get a compact Settings > Canvas link.
+- Added module resource counts and course names for the synced modules management list.
+
+**`components/SyncCoursesPageClient.tsx`** (new)
+- Added the dedicated `/sync` experience: header, summary cards, split course picker/status layout, and synced modules management.
+- Auto-loads available courses from the saved Canvas connection on mount.
+- Show ended courses reloads the course list immediately.
+- Refresh courses uses `fetchCurrentUserCanvasCourses`.
+- Sync selected uses existing `queueCanvasSyncAction`.
+- Keeps only a subtle `Connection settings` link to `/settings?section=canvas`.
+
+**`app/globals.css`**
+- Added responsive Sync Courses styles for the desktop split layout, mobile one-column stacking, touch-friendly course rows, and compact synced module rows.
+
+**`components/SettingsPage.tsx`**
+- Tightened Canvas settings nav description to connection/token management only.
+- Existing "Go to Sync Courses" link remains in Settings > Canvas.
+
+**`actions/queue-canvas.ts`**
+- Added `revalidatePath('/sync')` after Canvas sync jobs complete.
+
+**`tests/scheduler.test.ts`**
+- Added regression tests for the dedicated `/sync` route, saved-connection refresh behavior, no fake pagination label, immediate ended-course reload, and disconnected Settings > Canvas link.
+
+### Why it changed
+
+The dedicated Sync Courses page was still presenting the old Settings-style Canvas connection workflow. `/sync` now focuses on syncing and managing synced courses, while Settings > Canvas remains the place for Canvas URL/token setup.
+
+### Tests run
+
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- scheduler learn-resource-ui queue` - passed, 317/317
+- Browser smoke via Playwright against `http://localhost:3000/sync` and `/settings?section=canvas` - passed
+
+### Verification result
+
+- `/sync` loaded with meaningful content and no Next.js error overlay.
+- Mobile viewport at 390px had no horizontal overflow.
+- `/settings?section=canvas` loaded and retained the Sync Courses pathway.
+- Connected-account checks were not fully exercised because the local browser session was unauthenticated.
+
+### Known risks / blockers
+
+- Real connected-account browser QA is still recommended to confirm live Canvas course loading, Show ended courses reload behavior against Canvas, and queue status updates with actual jobs.
+- `agent-browser` CLI was unavailable in this shell, so Playwright was used directly for browser smoke verification.
+- Existing remote Supabase migration risk from prior sessions remains: `user_source_progress` still needs to be applied remotely if not already done.
+
+### Next recommended steps
+
+1. Sign in locally with a Canvas-connected account and manually verify `/sync`: auto-load courses, search, Show ended courses, Sync selected, queue status, and synced modules management.
+2. Verify mobile bottom nav at narrow widths with the new Sync item still fits acceptably.
+3. Consider redirecting legacy `/canvas` to `/sync` once there is no need for the old compatibility route.
+
+### Suggested commit message
+
+redesign sync courses split layout
+
+---
+
 ## Session Update — 2026-05-05i (Wire sync nav and simplify home row actions)
 
 ### What changed

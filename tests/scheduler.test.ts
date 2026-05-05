@@ -1,5 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { scoreSchedulerItem } from '@/lib/scheduler/priority'
 import { estimateMinutesAndConfidence } from '@/lib/scheduler/estimation'
 import { deriveScheduledBlockStatus, generateSchedule } from '@/lib/scheduler/algorithm'
@@ -1102,4 +1103,32 @@ test('Sync Courses nav route exists at /sync (documented contract)', () => {
   // Sidebar.tsx includes { href: '/sync', label: 'Sync Courses' }.
   // Verified by code review.
   assert.ok(true, '/sync route exists in app/sync/page.tsx; nav item added to Sidebar.tsx')
+})
+
+test('/sync renders dedicated Sync Courses split page without primary connection card', () => {
+  const pageSource = readFileSync('app/sync/page.tsx', 'utf8')
+  const clientSource = readFileSync('components/SyncCoursesPageClient.tsx', 'utf8')
+
+  assert.match(clientSource, /<p className="ui-kicker">Sync Courses<\/p>/, 'dedicated Sync Courses eyebrow renders')
+  assert.match(clientSource, /<h1 className="ui-page-title">Sync Courses<\/h1>/, 'page title is Sync Courses')
+  assert.match(clientSource, /sync-summary-grid/, 'top summary grid exists')
+  assert.match(clientSource, /sync-split-layout/, 'split layout exists')
+  assert.doesNotMatch(pageSource, /ConnectCanvasFlowWrapper/, '/sync does not wrap old Canvas settings flow')
+  assert.doesNotMatch(clientSource, /eyebrow="Connection"/, '/sync does not render old full Connection section')
+})
+
+test('/sync course controls use saved Canvas connection and no fake pagination', () => {
+  const source = readFileSync('components/SyncCoursesPageClient.tsx', 'utf8')
+
+  assert.match(source, /fetchCurrentUserCanvasCourses\(\{ includeEnded: nextIncludeEnded \}\)/, 'refresh uses saved Canvas connection')
+  assert.match(source, /function handleToggleEndedCourses\(value: boolean\)[\s\S]*loadCourses\(value\)/, 'Show ended courses reloads courses immediately')
+  assert.match(source, /Refresh courses/, 'course refresh action is labeled Refresh courses')
+  assert.doesNotMatch(source, /Load more courses/, 'no Load more courses label without real pagination')
+})
+
+test('/sync disconnected state links to Settings Canvas setup', () => {
+  const source = readFileSync('app/sync/page.tsx', 'utf8')
+
+  assert.match(source, /href="\/settings\?section=canvas"/, 'disconnected state links to Settings > Canvas')
+  assert.match(source, /Connection required/, 'disconnected state is compact and explicit')
 })

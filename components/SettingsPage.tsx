@@ -47,7 +47,7 @@ const SECTION_LABELS: Record<Exclude<SettingsSectionId, 'advanced'>, SettingsSec
   canvas: {
     id: 'canvas',
     label: 'Canvas',
-    description: 'Connection setup, sync flow, and course import actions.',
+    description: 'Connection setup and token management.',
   },
   theme: {
     id: 'theme',

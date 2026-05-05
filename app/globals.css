@@ -2692,6 +2692,484 @@ details[open] > .ui-interactive-summary,
   text-decoration-color: currentColor;
 }
 
+.sync-courses-page {
+  gap: 1rem;
+}
+
+.sync-courses-header {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.sync-courses-intro {
+  max-width: 48rem;
+  margin-top: 0;
+}
+
+.sync-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.sync-summary-card,
+.sync-panel {
+  border: 1px solid color-mix(in srgb, var(--border-subtle) 88%, transparent);
+  background: color-mix(in srgb, var(--surface-elevated) 98%, transparent);
+  box-shadow: var(--highlight-sheen);
+}
+
+.sync-summary-card {
+  min-width: 0;
+  display: grid;
+  gap: 0.4rem;
+  align-content: start;
+  border-radius: 14px;
+  padding: 0.9rem 1rem;
+}
+
+.sync-summary-card[data-tone='success'] {
+  border-color: color-mix(in srgb, var(--green) 20%, var(--border-subtle) 80%);
+  background: color-mix(in srgb, var(--green-light) 13%, var(--surface-elevated) 87%);
+}
+
+.sync-summary-card[data-tone='warning'] {
+  border-color: color-mix(in srgb, var(--amber) 22%, var(--border-subtle) 78%);
+  background: color-mix(in srgb, var(--amber-light) 14%, var(--surface-elevated) 86%);
+}
+
+.sync-summary-label {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.sync-summary-title {
+  margin: 0;
+  min-width: 0;
+  font-size: 1rem;
+  line-height: 1.35;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.sync-summary-detail {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+.sync-summary-action {
+  margin-top: 0.25rem;
+}
+
+.sync-summary-action a {
+  text-decoration: none;
+}
+
+.sync-split-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.65fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.sync-panel {
+  min-width: 0;
+  border-radius: 16px;
+  padding: 1rem;
+}
+
+.sync-panel-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.85rem;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.sync-panel-title {
+  margin: 0.28rem 0 0;
+  font-size: 1.1rem;
+  line-height: 1.35;
+  color: var(--text-primary);
+}
+
+.sync-course-picker,
+.sync-status-panel,
+.sync-managed-section {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.sync-ended-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 36px;
+  border-radius: var(--radius-control);
+  border: 1px solid color-mix(in srgb, var(--border-subtle) 88%, transparent);
+  background: color-mix(in srgb, var(--surface-soft) 72%, transparent);
+  padding: 0.45rem 0.65rem;
+  font-size: 12.5px;
+  font-weight: 650;
+  color: var(--text-secondary);
+}
+
+.sync-ended-toggle input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.sync-picker-tools {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.75rem;
+  align-items: end;
+}
+
+.sync-search-field {
+  min-width: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.sync-search-field span {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.sync-search-field input {
+  width: 100%;
+  min-height: 2.45rem;
+  padding: 0.65rem 0.8rem;
+  font-size: 14px;
+}
+
+.sync-picker-actions,
+.sync-managed-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.sync-helper-text {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+
+.sync-error-message {
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--red) 22%, var(--border-subtle) 78%);
+  background: color-mix(in srgb, var(--red-light) 20%, var(--surface-elevated) 80%);
+  padding: 0.8rem 0.9rem;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+.sync-course-list {
+  max-height: 430px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--border-subtle) 88%, transparent);
+  background: var(--surface-elevated);
+}
+
+.sync-course-group-header {
+  padding: 0.55rem 1rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--border-subtle) 88%, transparent);
+  background: color-mix(in srgb, var(--surface-soft) 78%, transparent);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.sync-course-row {
+  width: 100%;
+  min-height: 52px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0.85rem 1rem;
+  text-align: left;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+
+.sync-course-row[data-divider='true'] {
+  border-bottom: 1px solid color-mix(in srgb, var(--border-subtle) 88%, transparent);
+}
+
+.sync-course-row[data-selected='true'] {
+  background: color-mix(in srgb, var(--surface-selected) 62%, var(--surface-elevated) 38%);
+}
+
+.sync-course-row-copy {
+  min-width: 0;
+  flex: 1 1 220px;
+  display: grid;
+  gap: 0.22rem;
+}
+
+.sync-course-row-title {
+  min-width: 0;
+  display: flex;
+  gap: 0.45rem;
+  align-items: center;
+  flex-wrap: wrap;
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.45;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.sync-course-row-meta,
+.sync-course-selection {
+  font-size: 12px;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.sync-course-selection {
+  flex-shrink: 0;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.sync-course-badge {
+  flex-shrink: 0;
+  border-radius: 999px;
+  padding: 0.12rem 0.42rem;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.sync-course-badge-ended {
+  border: 1px solid color-mix(in srgb, var(--amber) 32%, var(--border-subtle) 68%);
+  background: color-mix(in srgb, var(--amber-light) 28%, var(--surface-base) 72%);
+  color: var(--text-secondary);
+}
+
+.sync-course-badge-restricted {
+  border: 1px solid color-mix(in srgb, var(--red) 28%, var(--border-subtle) 72%);
+  background: color-mix(in srgb, var(--red-light) 24%, var(--surface-base) 76%);
+  color: var(--text-secondary);
+}
+
+.sync-empty-state {
+  border-radius: 12px;
+  padding: 0.95rem 1rem;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.sync-progress-list {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.sync-progress-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--border-subtle) 88%, transparent);
+  background: var(--surface-elevated);
+  padding: 0.72rem 0.82rem;
+}
+
+.sync-progress-title,
+.sync-progress-message,
+.sync-detail-title,
+.sync-detail-copy,
+.sync-managed-title,
+.sync-managed-meta,
+.sync-managed-summary {
+  margin: 0;
+}
+
+.sync-progress-title {
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.45;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.sync-progress-message {
+  margin-top: 0.2rem;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.sync-detail-block {
+  display: grid;
+  gap: 0.42rem;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--border-subtle) 84%, transparent);
+  background: color-mix(in srgb, var(--surface-soft) 48%, transparent);
+  padding: 0.85rem 0.95rem;
+}
+
+.sync-detail-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.sync-detail-copy,
+.sync-update-list {
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+.sync-update-list {
+  margin: 0;
+  padding-left: 1.05rem;
+}
+
+.sync-settings-link {
+  justify-self: start;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 3px;
+}
+
+.sync-settings-link:hover {
+  color: var(--text-secondary);
+  text-decoration-color: currentColor;
+}
+
+.sync-managed-list {
+  display: grid;
+  gap: 0;
+  overflow: hidden;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--border-subtle) 88%, transparent);
+  background: var(--surface-elevated);
+}
+
+.sync-managed-row {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.85rem 0.95rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--border-subtle) 88%, transparent);
+}
+
+.sync-managed-row:last-child {
+  border-bottom: 0;
+}
+
+.sync-managed-main {
+  min-width: 0;
+  display: grid;
+  gap: 0.22rem;
+}
+
+.sync-managed-title {
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.45;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.sync-managed-meta,
+.sync-managed-date,
+.sync-managed-summary {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.sync-managed-date {
+  white-space: nowrap;
+}
+
+.sync-managed-summary {
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 900px) {
+  .sync-summary-grid,
+  .sync-split-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .sync-picker-tools {
+    grid-template-columns: 1fr;
+  }
+
+  .sync-picker-actions {
+    justify-content: flex-start;
+  }
+
+  .sync-managed-row {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .sync-managed-date {
+    white-space: normal;
+  }
+}
+
+@media (max-width: 520px) {
+  .sync-panel,
+  .sync-summary-card {
+    padding: 0.85rem;
+  }
+
+  .sync-ended-toggle {
+    width: 100%;
+  }
+
+  .sync-course-row {
+    align-items: flex-start;
+    min-height: 58px;
+  }
+
+  .sync-course-selection {
+    padding-top: 0.12rem;
+  }
+
+  .sync-picker-actions,
+  .sync-managed-actions {
+    width: 100%;
+  }
+}
+
 /* Segmented pill focus switcher (Syllabus / Learn tab selector) */
 .home-focus-pill {
   position: relative;

@@ -94,6 +94,7 @@ export async function queueCanvasSyncAction(
     })
 
     revalidatePath('/canvas')
+    revalidatePath('/sync')
     revalidatePath('/courses')
     revalidatePath('/learn')
     revalidatePath('/tasks')

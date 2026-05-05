@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react'
 import Link from 'next/link'
-import { ConnectCanvasFlowWrapper } from '@/components/ConnectCanvasFlowWrapper'
+import { SyncCoursesPageClient } from '@/components/SyncCoursesPageClient'
 import { createAuthenticatedSupabaseServerClient, getAuthenticatedUserServer } from '@/lib/auth-server'
 import { buildCanvasCourseSyncKey } from '@/lib/canvas-sync'
 
@@ -61,9 +61,9 @@ export default async function SyncCoursesPage() {
       <main className="page-shell page-shell-narrow page-stack">
         <header className="motion-card" style={{ display: 'grid', gap: '0.5rem' }}>
           <p className="ui-kicker">Sync Courses</p>
-          <h1 className="ui-page-title" style={{ fontSize: '2rem' }}>Canvas not connected</h1>
+          <h1 className="ui-page-title" style={{ fontSize: '2rem' }}>Sync Courses</h1>
           <p className="ui-page-copy" style={{ maxWidth: '46rem', marginTop: 0 }}>
-            Add your Canvas URL and access token in Settings before syncing courses.
+            Keep Canvas courses up to date so Stay Focused can plan your work.
           </p>
         </header>
 
@@ -92,7 +92,7 @@ export default async function SyncCoursesPage() {
   const ownedCourses = db
     ? (await db
         .from('courses')
-        .select('id, canvas_instance_url, canvas_course_id, created_at')
+        .select('id, name, canvas_instance_url, canvas_course_id, created_at')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })).data
     : []
@@ -103,16 +103,23 @@ export default async function SyncCoursesPage() {
   const syncedModules = db
     ? ownedCourseIds.length > 0
       ? (await db
-        .from('modules')
-        .select('id, course_id, title, summary, status, created_at')
-        .in('course_id', ownedCourseIds)
-        .order('created_at', { ascending: false })).data
+          .from('modules')
+          .select('id, course_id, title, summary, status, created_at')
+          .in('course_id', ownedCourseIds)
+          .order('created_at', { ascending: false })).data
+      : []
+    : []
+  const moduleResources = db
+    ? ownedCourseIds.length > 0
+      ? (await db
+          .from('module_resources')
+          .select('id, course_id, module_id')
+          .in('course_id', ownedCourseIds)).data
       : []
     : []
 
   const latestModule = syncedModules?.[0]
-  const initialConnectionUrl = userSettings?.canvas_api_url ?? null
-  const initialAccessToken = userSettings?.canvas_access_token ?? null
+  const initialConnectionUrl = userSettings?.canvas_api_url ?? ''
   const processedCourseIds = new Set(
     (syncedModules ?? [])
       .filter((module) => module.status === 'processed')
@@ -138,25 +145,35 @@ export default async function SyncCoursesPage() {
         tone: getSyncTone(latestModule.status),
       }
     : null
+  const courseNameById = new Map(
+    (ownedCourses ?? [])
+      .map((course) => [course.id, course.name] as const)
+      .filter((entry): entry is readonly [string, string] => typeof entry[0] === 'string' && typeof entry[1] === 'string')
+  )
+  const resourceCountByModuleId = new Map<string, number>()
+  for (const resource of moduleResources ?? []) {
+    if (typeof resource.module_id !== 'string') continue
+    resourceCountByModuleId.set(resource.module_id, (resourceCountByModuleId.get(resource.module_id) ?? 0) + 1)
+  }
   const syncedModulesForFlow = (syncedModules ?? [])
     .filter((module) => module.status === 'processed')
     .map((module) => ({
       id: module.id,
       title: module.title,
       summary: module.summary,
+      courseTitle: courseNameById.get(module.course_id) ?? null,
+      contentCount: resourceCountByModuleId.get(module.id) ?? 0,
       createdAt: module.created_at,
     }))
 
   return (
     <main className="page-shell page-shell-narrow page-stack">
-      <ConnectCanvasFlowWrapper
-        currentUserId={user.id}
+      <SyncCoursesPageClient
         initialConnectionUrl={initialConnectionUrl}
-        initialAccessToken={initialAccessToken}
         lastSync={lastSync}
         syncedCourseKeys={syncedCourseKeys}
-        initialAction="sync"
         syncedModules={syncedModulesForFlow}
+        syncedCourseCount={processedCourseIds.size}
       />
     </main>
   )
