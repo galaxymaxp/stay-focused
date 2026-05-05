@@ -978,6 +978,13 @@ function SyllabusTableRow({
               {row.urgencyLabel}
             </span>
           ) : null}
+          <button
+            type="button"
+            className="home-row-text-action"
+            onClick={() => onMarkDone(row)}
+          >
+            Mark done
+          </button>
           {row.href ? (
             <a
               href={row.href}
@@ -985,20 +992,13 @@ function SyllabusTableRow({
               target={row.canvasUrl ? '_blank' : undefined}
               rel={row.canvasUrl ? 'noreferrer' : undefined}
             >
-              View more
+              Open
             </a>
           ) : (
             <span className="ui-button ui-button-primary ui-button-xs" aria-disabled="true" style={{ opacity: 0.5, cursor: 'default' }}>
               Unavailable
             </span>
           )}
-          <button
-            type="button"
-            className="ui-button ui-button-secondary ui-button-xs"
-            onClick={() => onMarkDone(row)}
-          >
-            Mark done
-          </button>
         </div>
       </td>
     </tr>
@@ -1028,26 +1028,26 @@ function LearnTableRow({
       </td>
       <td style={{ padding: '0.5rem 0 0.5rem 0.5rem', textAlign: 'right', whiteSpace: 'nowrap', verticalAlign: 'top' }}>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.25rem' }}>
+          <button
+            type="button"
+            className="home-row-text-action"
+            onClick={() => onMarkReviewed(row)}
+          >
+            Mark reviewed
+          </button>
           {row.href ? (
             <a href={row.href} className="ui-button ui-button-primary ui-button-xs" target={viewTarget} rel={viewRel}>
-              View more
+              Open
             </a>
           ) : row.originalHref ? (
             <a href={row.originalHref} className="ui-button ui-button-primary ui-button-xs" target="_blank" rel="noreferrer">
-              View source
+              Open
             </a>
           ) : (
             <span className="ui-button ui-button-primary ui-button-xs" aria-disabled="true" style={{ opacity: 0.5, cursor: 'default' }}>
               Unavailable
             </span>
           )}
-          <button
-            type="button"
-            className="ui-button ui-button-secondary ui-button-xs"
-            onClick={() => onMarkReviewed(row)}
-          >
-            Mark reviewed
-          </button>
         </div>
       </td>
     </tr>

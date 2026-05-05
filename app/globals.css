@@ -2670,6 +2670,28 @@ details[open] > .ui-interactive-summary,
   color: var(--text-primary);
 }
 
+.home-row-text-action {
+  display: inline-flex;
+  align-items: center;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0.1rem 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  line-height: 1.4;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  transition: color 0.12s, text-decoration-color 0.12s;
+}
+
+.home-row-text-action:hover {
+  color: var(--text-primary);
+  text-decoration-color: currentColor;
+}
+
 /* Segmented pill focus switcher (Syllabus / Learn tab selector) */
 .home-focus-pill {
   position: relative;

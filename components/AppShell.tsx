@@ -66,10 +66,24 @@ const NAV_ITEMS = [
     ),
   },
   {
+    href: '/sync',
+    label: 'Sync Courses',
+    mobileLabel: 'Sync',
+    matches: (pathname: string) => pathname.startsWith('/sync'),
+    icon: (
+      <>
+        <path d="M19.25 12A7.25 7.25 0 0 1 6.4 17.1" />
+        <path d="M4.75 12A7.25 7.25 0 0 1 17.6 6.9" />
+        <path d="M19.25 7.75v4.5h-4.5" />
+        <path d="M4.75 16.25v-4.5h4.5" />
+      </>
+    ),
+  },
+  {
     href: '/settings',
     label: 'Settings',
     mobileLabel: 'Settings',
-    matches: (pathname: string) => pathname.startsWith('/settings') || pathname.startsWith('/canvas') || pathname.startsWith('/sign-in') || pathname.startsWith('/sign-up'),
+    matches: (pathname: string) => pathname.startsWith('/settings') || pathname.startsWith('/sign-in') || pathname.startsWith('/sign-up'),
     icon: (
       <>
         <path d="M12 4.75v2.1M12 17.15v2.1M6.9 6.9l1.48 1.48M15.62 15.62l1.48 1.48M4.75 12h2.1M17.15 12h2.1M6.9 17.1l1.48-1.48M15.62 8.38l1.48-1.48" />

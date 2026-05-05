@@ -5,6 +5,56 @@ Last Updated: 2026-05-05
 
 ---
 
+## Session Update — 2026-05-05i (Wire sync nav and simplify home row actions)
+
+### What changed
+
+**`components/AppShell.tsx`**
+- Added `Sync Courses` nav item to `NAV_ITEMS` between Calendar and Settings:
+  - `href: '/sync'`, `label: 'Sync Courses'`, `mobileLabel: 'Sync'`
+  - `matches: (pathname) => pathname.startsWith('/sync')`
+  - Thin-line refresh arrow SVG icon (two arcs + arrowheads, consistent with nav icon style)
+  - Because `MOBILE_NAV_ITEMS = NAV_ITEMS`, Sync Courses now appears in the mobile bottom nav automatically
+- Removed `|| pathname.startsWith('/canvas')` from Settings `matches` — `/sync` no longer falls under Settings
+- Breadcrumb topbar now shows "Sync Courses" on `/sync` automatically via `activeSection?.label`
+
+**`components/TodayDashboard.tsx`**
+- `SyllabusTableRow`: "View more" → "Open"; "Mark done" moved above the Open button and changed from `ui-button ui-button-secondary ui-button-xs` to `home-row-text-action`
+- `LearnTableRow`: "View more" / "View source" → "Open"; "Mark reviewed" moved above the Open button and changed from `ui-button ui-button-secondary ui-button-xs` to `home-row-text-action`
+
+**`app/globals.css`**
+- Added `.home-row-text-action` class: transparent background, no border/shadow, compact padding, muted color, underline-on-hover, 12px font — visually a plain text action link
+
+### Why it changed
+
+- The Sync Courses nav was previously added to `components/shell/Sidebar.tsx` (an older Tailwind component not in use), so it never appeared in the live sidebar or mobile nav. The real nav is `NAV_ITEMS` in `AppShell.tsx`.
+- "View more" is generic and ambiguous; "Open" is shorter and consistent with other row actions in the dashboard.
+- "Mark done" / "Mark reviewed" as full `ui-button-secondary` buttons looked visually heavy compared to the primary "Open" button — using plain text styling keeps the hierarchy clear.
+
+### Tests run
+
+- `npm run typecheck` — ✅ clean
+- `npm run lint` — ✅ clean
+
+### Known risks / blockers
+
+- `user_source_progress` migration still needs to be applied to the remote Supabase project before deploy.
+- Mobile nav now has 6 items (Home, Courses, Library, Calendar, Sync, Settings). Verify the mobile bottom nav layout still looks correct at narrow widths — `--mobile-nav-count` is set from `MOBILE_NAV_ITEMS.length` dynamically, so it should adapt, but worth a visual check.
+
+### Next recommended steps
+
+1. Apply `20260505010000_add_user_source_progress.sql` to remote Supabase if not done yet.
+2. Verify in browser: "Sync Courses" appears in sidebar nav and mobile bottom nav, links to `/sync`, and breadcrumb reads "Sync Courses".
+3. Verify in browser: Settings nav no longer highlights when on `/sync`.
+4. Verify in browser: Home > Today's Schedule — "Mark done" / "Mark reviewed" render as plain text, "Open" is the primary button.
+5. Consider redirect from `/canvas` → `/sync` to clean up the legacy route.
+
+### Suggested commit message
+
+wire sync nav and simplify home row actions
+
+---
+
 ## Session Update — 2026-05-05h (Add reviewed home rows and dedicated sync page)
 
 ### What changed
