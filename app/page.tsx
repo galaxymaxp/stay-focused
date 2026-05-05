@@ -3,7 +3,7 @@ import { SyncFirstEmptyState } from '@/components/SyncFirstEmptyState'
 import { createAuthenticatedSupabaseServerClient } from '@/lib/auth-server'
 import { getClarityWorkspace } from '@/lib/clarity-workspace'
 import { buildHomeOverview } from '@/lib/home-overview'
-import { buildLearnFocusRows, buildSyllabusFocusRows } from '@/lib/home-focus'
+import { buildLearnFocusRows, buildSyllabusFocusRows, mergeScheduledBlocksIntoFocusRows } from '@/lib/home-focus'
 
 export default async function Dashboard() {
   const workspace = await getClarityWorkspace()
@@ -62,6 +62,29 @@ export default async function Dashboard() {
   const syllabusFocusRows = buildSyllabusFocusRows(workspace.taskItems)
   const learnFocusRows = buildLearnFocusRows(homeLearnResourceRows, studyPacksByResourceId, courseNameById)
 
+  const rawScheduledBlocks = (scheduledBlocksResult.data ?? []).map((block) => ({
+    id: block.id,
+    title: block.title,
+    startAt: block.start_at,
+    endAt: block.end_at,
+    status: block.status,
+    sourceTable: block.source_table,
+    sourceId: block.source_id,
+    courseId: block.course_id,
+    sourceType: block.source_type,
+    subtitle: block.subtitle,
+    blockType: block.block_type,
+    estimateConfidence: normalizeEstimateConfidence(block.estimate_confidence),
+    estimateReason: block.estimate_reason,
+  }))
+
+  const { mergedSyllabus, mergedLearn } = mergeScheduledBlocksIntoFocusRows(
+    syllabusFocusRows,
+    learnFocusRows,
+    rawScheduledBlocks,
+    courseNameById,
+  )
+
   return (
     <main className="page-shell">
       <TodayDashboard
@@ -71,23 +94,9 @@ export default async function Dashboard() {
         recentActivity={overview.recentActivity}
         courseSnapshots={overview.courseSnapshots}
         undatedTaskCount={overview.undatedTaskCount}
-        scheduledBlocks={(scheduledBlocksResult.data ?? []).map((block) => ({
-          id: block.id,
-          title: block.title,
-          startAt: block.start_at,
-          endAt: block.end_at,
-          status: block.status,
-          sourceTable: block.source_table,
-          sourceId: block.source_id,
-          courseId: block.course_id,
-          sourceType: block.source_type,
-          subtitle: block.subtitle,
-          blockType: block.block_type,
-          estimateConfidence: normalizeEstimateConfidence(block.estimate_confidence),
-          estimateReason: block.estimate_reason,
-        }))}
-        syllabusFocusRows={syllabusFocusRows}
-        learnFocusRows={learnFocusRows}
+        scheduledBlocks={rawScheduledBlocks}
+        syllabusFocusRows={mergedSyllabus}
+        learnFocusRows={mergedLearn}
         studyPacksByModuleId={studyPacksByModuleId}
         studyPacksByResourceId={studyPacksByResourceId}
       />
@@ -95,7 +104,7 @@ export default async function Dashboard() {
   )
 }
 
-function normalizeEstimateConfidence(value: unknown) {
+function normalizeEstimateConfidence(value: unknown): 'low' | 'medium' | 'high' | null {
   if (typeof value === 'string') {
     if (value === 'low' || value === 'medium' || value === 'high') return value
     const numeric = Number(value)

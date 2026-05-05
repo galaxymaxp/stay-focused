@@ -118,8 +118,30 @@ export function TodayDashboard({
     [learnFocusRows, windowRange],
   )
 
-  // Active focus rows for the current tab (with fitted times)
-  const activeFocusRows = focusMode === 'syllabus' ? fittedSyllabusRows : fittedLearnRows
+  // Set of completed scheduled block IDs — used to hide reviewed/done rows from active lists
+  const completedScheduledBlockIds = useMemo(
+    () => new Set(completedBlocks.map((b) => b.id)),
+    [completedBlocks],
+  )
+
+  // Active focus rows for the current tab (with fitted times), excluding rows whose
+  // matching scheduled block has been marked completed/reviewed
+  const activeFocusRows = useMemo(() => {
+    const rows = focusMode === 'syllabus' ? fittedSyllabusRows : fittedLearnRows
+    return rows.filter((row) => {
+      const sbId = row.scheduledBlockId
+      return !sbId || !completedScheduledBlockIds.has(sbId)
+    })
+  }, [focusMode, fittedSyllabusRows, fittedLearnRows, completedScheduledBlockIds])
+
+  // Blocks that have been scheduled but moved outside the current free-time window
+  const laterBlocks = useMemo(
+    () =>
+      scheduleForDisplay.filter(
+        (b) => b.status === 'scheduled' && !isBlockInsideWindow(b, availableStart, availableEnd),
+      ),
+    [scheduleForDisplay, availableStart, availableEnd],
+  )
 
   // Convert canonical focus rows to ClockScheduleBlock for the clock
   const clockBlocks = useMemo((): ClockScheduleBlock[] => {
@@ -174,6 +196,7 @@ export function TodayDashboard({
     if (useDemoSchedule) return
     startTransition(async () => {
       await updateBlockStatus(id, status)
+      router.refresh()
     })
   }
 
@@ -191,6 +214,14 @@ export function TodayDashboard({
       const result = await moveScheduledBlockLater(id)
       setMoveLaterMessage(result.message)
       setTimeout(() => setMoveLaterMessage(null), 4000)
+      if (result.moved) router.refresh()
+    })
+  }
+
+  function handleMarkReviewed(scheduledBlockId: string) {
+    startTransition(async () => {
+      await updateBlockStatus(scheduledBlockId, 'completed')
+      router.refresh()
     })
   }
 
@@ -335,6 +366,8 @@ export function TodayDashboard({
               <FocusScheduleTable
                 rows={activeFocusRows}
                 mode={focusMode}
+                onMarkDone={handleUpdateStatus}
+                onMarkReviewed={handleMarkReviewed}
               />
 
               {moveLaterMessage ? (
@@ -353,6 +386,10 @@ export function TodayDashboard({
                 isOpen={completedExpanded}
                 onToggle={() => setCompletedExpanded((v) => !v)}
               />
+            ) : null}
+
+            {laterBlocks.length > 0 ? (
+              <LaterSection blocks={laterBlocks} />
             ) : null}
 
             <div
@@ -800,9 +837,13 @@ type AnyFocusRow = FittedSyllabusRow | FittedLearnRow
 function FocusScheduleTable({
   rows,
   mode,
+  onMarkDone,
+  onMarkReviewed,
 }: {
   rows: AnyFocusRow[]
   mode: 'syllabus' | 'learn'
+  onMarkDone: (id: string, status: 'opened' | 'completed' | 'skipped') => void
+  onMarkReviewed: (scheduledBlockId: string) => void
 }) {
   if (rows.length === 0) {
     return (
@@ -832,9 +873,17 @@ function FocusScheduleTable({
       <tbody>
         {rows.map((row) =>
           mode === 'syllabus' ? (
-            <SyllabusTableRow key={row.id} row={row as FittedSyllabusRow} />
+            <SyllabusTableRow
+              key={row.id}
+              row={row as FittedSyllabusRow}
+              onMarkDone={onMarkDone}
+            />
           ) : (
-            <LearnTableRow key={row.id} row={row as FittedLearnRow} />
+            <LearnTableRow
+              key={row.id}
+              row={row as FittedLearnRow}
+              onMarkReviewed={onMarkReviewed}
+            />
           ),
         )}
       </tbody>
@@ -842,7 +891,15 @@ function FocusScheduleTable({
   )
 }
 
-function SyllabusTableRow({ row }: { row: FittedSyllabusRow }) {
+function SyllabusTableRow({
+  row,
+  onMarkDone,
+}: {
+  row: FittedSyllabusRow
+  onMarkDone: (id: string, status: 'opened' | 'completed' | 'skipped') => void
+}) {
+  const blockId = row.scheduledBlockId ?? null
+
   return (
     <tr style={{ borderBottom: '1px solid color-mix(in srgb, var(--border-subtle) 50%, transparent)' }}>
       <td style={{ padding: '0.5rem 0.5rem 0.5rem 0', color: 'var(--text-muted)', whiteSpace: 'nowrap', verticalAlign: 'top' }}>
@@ -861,35 +918,53 @@ function SyllabusTableRow({ row }: { row: FittedSyllabusRow }) {
         <p style={{ margin: 0, fontWeight: 500 }}>{row.title}</p>
       </td>
       <td style={{ padding: '0.5rem 0 0.5rem 0.5rem', textAlign: 'right', whiteSpace: 'nowrap', verticalAlign: 'top' }}>
-        {row.urgencyLabel !== 'No due date' && row.urgencyLabel !== 'Upcoming' ? (
-          <span style={{ color: 'var(--text-muted)', fontSize: '11px', display: 'block', marginBottom: '0.25rem' }}>
-            {row.urgencyLabel}
-          </span>
-        ) : null}
-        {row.href ? (
-          <a
-            href={row.href}
-            className="ui-button ui-button-primary ui-button-xs"
-            target={row.canvasUrl ? '_blank' : undefined}
-            rel={row.canvasUrl ? 'noreferrer' : undefined}
-          >
-            Open
-          </a>
-        ) : (
-          <span className="ui-button ui-button-primary ui-button-xs" aria-disabled="true" style={{ opacity: 0.5, cursor: 'default' }}>
-            Unavailable
-          </span>
-        )}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.25rem' }}>
+          {row.urgencyLabel !== 'No due date' && row.urgencyLabel !== 'Upcoming' ? (
+            <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>
+              {row.urgencyLabel}
+            </span>
+          ) : null}
+          {row.href ? (
+            <a
+              href={row.href}
+              className="ui-button ui-button-primary ui-button-xs"
+              target={row.canvasUrl ? '_blank' : undefined}
+              rel={row.canvasUrl ? 'noreferrer' : undefined}
+            >
+              View more
+            </a>
+          ) : (
+            <span className="ui-button ui-button-primary ui-button-xs" aria-disabled="true" style={{ opacity: 0.5, cursor: 'default' }}>
+              Unavailable
+            </span>
+          )}
+          {blockId ? (
+            <button
+              type="button"
+              className="ui-button ui-button-secondary ui-button-xs"
+              onClick={() => onMarkDone(blockId, 'completed')}
+            >
+              Mark done
+            </button>
+          ) : null}
+        </div>
       </td>
     </tr>
   )
 }
 
-function LearnTableRow({ row }: { row: FittedLearnRow }) {
+function LearnTableRow({
+  row,
+  onMarkReviewed,
+}: {
+  row: FittedLearnRow
+  onMarkReviewed: (scheduledBlockId: string) => void
+}) {
   const hasStudyPack = row.studyPackRefs.length > 0
   const hasQuizReady = row.studyPackRefs.some((p) => p.quizReady)
-  const openTarget = row.originalHref && !row.href?.startsWith('/') ? '_blank' : undefined
-  const openRel = openTarget ? 'noreferrer' : undefined
+  const viewTarget = row.originalHref && !row.href?.startsWith('/') ? '_blank' : undefined
+  const viewRel = viewTarget ? 'noreferrer' : undefined
+  const blockId = row.scheduledBlockId ?? null
 
   return (
     <tr style={{ borderBottom: '1px solid color-mix(in srgb, var(--border-subtle) 50%, transparent)' }}>
@@ -917,21 +992,56 @@ function LearnTableRow({ row }: { row: FittedLearnRow }) {
             <span className="home-study-ready-chip">Quiz</span>
           ) : null}
           {row.href ? (
-            <a href={row.href} className="ui-button ui-button-primary ui-button-xs" target={openTarget} rel={openRel}>
-              Open
+            <a href={row.href} className="ui-button ui-button-primary ui-button-xs" target={viewTarget} rel={viewRel}>
+              View more
             </a>
           ) : row.originalHref ? (
             <a href={row.originalHref} className="ui-button ui-button-primary ui-button-xs" target="_blank" rel="noreferrer">
-              Open source
+              View source
             </a>
           ) : (
             <span className="ui-button ui-button-primary ui-button-xs" aria-disabled="true" style={{ opacity: 0.5, cursor: 'default' }}>
               Unavailable
             </span>
           )}
+          {blockId ? (
+            <button
+              type="button"
+              className="ui-button ui-button-secondary ui-button-xs"
+              onClick={() => onMarkReviewed(blockId)}
+            >
+              Mark reviewed
+            </button>
+          ) : null}
         </div>
       </td>
     </tr>
+  )
+}
+
+function LaterSection({ blocks }: { blocks: ScheduleBlock[] }) {
+  const sorted = [...blocks].sort(
+    (a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime(),
+  )
+
+  return (
+    <div className="home-plan-completed">
+      <div className="home-plan-completed-toggle" style={{ cursor: 'default' }}>
+        <span>Later</span>
+        <span className="home-plan-count">{blocks.length}</span>
+      </div>
+      <div className="home-compact-list">
+        {sorted.map((block) => (
+          <div key={block.id} className="home-list-row home-plan-completed-row">
+            <div className="home-row-meta">
+              <span className="planner-type-pill">{getStudentTypeLabel(block)}</span>
+              <span>{block.title}</span>
+            </div>
+            <span className="home-row-note">{formatTimeRange(block.startAt, block.endAt)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
   )
 }
 

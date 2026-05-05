@@ -6,7 +6,7 @@ import { deriveScheduledBlockStatus, generateSchedule } from '@/lib/scheduler/al
 import { findLaterSlot } from '@/lib/scheduler/move-later'
 import { isSchedulableResourceType } from '@/lib/scheduler/source-filter'
 import { formatDuration, formatTime, getWindowDurationMinutes, isBlockInsideWindow, minutesToTime, timeToMinutes } from '@/lib/scheduler/time'
-import { buildSyllabusFocusRows, buildLearnFocusRows, fitFocusRowsToWindow, type ModuleResourceRow, type HomeSyllabusTaskInput } from '@/lib/home-focus'
+import { buildSyllabusFocusRows, buildLearnFocusRows, fitFocusRowsToWindow, mergeScheduledBlocksIntoFocusRows, type ModuleResourceRow, type HomeSyllabusTaskInput, type ScheduledBlockInput } from '@/lib/home-focus'
 
 const userId = '00000000-0000-0000-0000-000000000001'
 
@@ -884,4 +884,107 @@ test('No duplicate source appears in canonical focus rows', () => {
   const rows = buildLearnFocusRows(uniqueResources, {}, {})
   const ids = rows.map((r) => r.id)
   assert.equal(new Set(ids).size, ids.length, 'no duplicate IDs in learn focus rows for unique inputs')
+})
+
+// ── mergeScheduledBlocksIntoFocusRows contracts ──────────────────────────────
+
+function makeScheduledBlock(overrides: Partial<ScheduledBlockInput> & { id: string; sourceTable: string; title: string }): ScheduledBlockInput {
+  const now = new Date()
+  const start = new Date(now.getTime() + 30 * 60_000)
+  const end = new Date(start.getTime() + 30 * 60_000)
+  return {
+    sourceId: overrides.id,
+    courseId: null,
+    startAt: start.toISOString(),
+    endAt: end.toISOString(),
+    status: 'scheduled',
+    subtitle: null,
+    ...overrides,
+  }
+}
+
+test('scheduled tasks fallback appears in Syllabus when workspace.taskItems is empty', () => {
+  const block = makeScheduledBlock({ id: 'sb-task-1', sourceTable: 'tasks', title: 'Learning Contract', sourceId: 'src-t1' })
+  const { mergedSyllabus } = mergeScheduledBlocksIntoFocusRows([], [], [block], {})
+  assert.equal(mergedSyllabus.length, 1, 'one fallback syllabus row from tasks block')
+  assert.equal(mergedSyllabus[0]?.title, 'Learning Contract', 'fallback row uses block title')
+  assert.equal(mergedSyllabus[0]?.scheduledBlockId, 'sb-task-1', 'fallback row carries scheduled block id')
+})
+
+test('scheduled deadlines fallback appears in Syllabus when workspace.taskItems is empty', () => {
+  const block = makeScheduledBlock({ id: 'sb-dead-1', sourceTable: 'deadlines', title: 'Project Deadline', sourceId: 'src-d1' })
+  const { mergedSyllabus } = mergeScheduledBlocksIntoFocusRows([], [], [block], {})
+  assert.equal(mergedSyllabus.length, 1, 'deadlines fallback row in syllabus')
+  assert.equal(mergedSyllabus[0]?.title, 'Project Deadline')
+  assert.equal(mergedSyllabus[0]?.scheduledBlockId, 'sb-dead-1')
+})
+
+test('scheduled task_items block attaches scheduledBlockId to matching canonical syllabus row', () => {
+  const task = makeTaskItem({ id: 'ti-1', title: 'Essay Assignment' })
+  const block = makeScheduledBlock({ id: 'sb-ti-1', sourceTable: 'task_items', sourceId: 'ti-1', title: 'Essay Assignment' })
+  const canonical = buildSyllabusFocusRows([task])
+  const { mergedSyllabus } = mergeScheduledBlocksIntoFocusRows(canonical, [], [block], {})
+  const row = mergedSyllabus.find((r) => r.id === 'ti-1')
+  assert.ok(row, 'canonical row preserved')
+  assert.equal(row!.scheduledBlockId, 'sb-ti-1', 'scheduledBlockId attached to canonical row')
+  assert.equal(mergedSyllabus.length, 1, 'no duplicate — matched to canonical, no fallback added')
+})
+
+test('scheduled module_resources block attaches scheduledBlockId to matching canonical learn row', () => {
+  const resource = makeResourceRow({ id: 'res-1', title: 'Lecture.pdf' })
+  const block = makeScheduledBlock({ id: 'sb-res-1', sourceTable: 'module_resources', sourceId: 'res-1', title: 'Lecture.pdf' })
+  const canonical = buildLearnFocusRows([resource], {}, {})
+  const { mergedLearn } = mergeScheduledBlocksIntoFocusRows([], canonical, [block], {})
+  const row = mergedLearn.find((r) => r.id === 'res-1')
+  assert.ok(row, 'canonical learn row preserved')
+  assert.equal(row!.scheduledBlockId, 'sb-res-1', 'scheduledBlockId attached to canonical learn row')
+  assert.equal(mergedLearn.length, 1, 'no duplicate from the scheduled block')
+})
+
+test('scheduled modules block without canonical match gets a fallback learn row', () => {
+  const block = makeScheduledBlock({ id: 'sb-mod-1', sourceTable: 'modules', sourceId: 'mod-42', title: 'Week 3 Module' })
+  const { mergedLearn } = mergeScheduledBlocksIntoFocusRows([], [], [block], {})
+  assert.equal(mergedLearn.length, 1, 'fallback learn row for unmatched module block')
+  assert.equal(mergedLearn[0]?.title, 'Week 3 Module')
+  assert.equal(mergedLearn[0]?.fileTypeLabel, 'Module', 'module block gets Module type label')
+  assert.ok(mergedLearn[0]?.href?.startsWith('/modules/'), 'href points to module learn page')
+  assert.equal(mergedLearn[0]?.scheduledBlockId, 'sb-mod-1')
+})
+
+test('learning_items, deep_learn_notes, and drafts are skipped by merge (never standalone rows)', () => {
+  const blocks = [
+    makeScheduledBlock({ id: 'sb-li', sourceTable: 'learning_items', title: 'Check your understanding 1' }),
+    makeScheduledBlock({ id: 'sb-dln', sourceTable: 'deep_learn_notes', title: 'Study pack' }),
+    makeScheduledBlock({ id: 'sb-draft', sourceTable: 'drafts', title: 'Activity draft' }),
+  ]
+  const { mergedSyllabus, mergedLearn } = mergeScheduledBlocksIntoFocusRows([], [], blocks, {})
+  assert.equal(mergedSyllabus.length, 0, 'learning_items/deep_learn_notes/drafts not in syllabus')
+  assert.equal(mergedLearn.length, 0, 'learning_items/deep_learn_notes/drafts not in learn')
+})
+
+test('completed scheduled blocks do not create fallback rows (only appear in Completed section)', () => {
+  const block = makeScheduledBlock({ id: 'sb-done', sourceTable: 'tasks', sourceId: 'src-done', title: 'Done Task', status: 'completed' })
+  const { mergedSyllabus } = mergeScheduledBlocksIntoFocusRows([], [], [block], {})
+  assert.equal(mergedSyllabus.length, 0, 'completed blocks do not add fallback rows')
+})
+
+test('canonical unscheduled module_resource still appears in Learn after merge', () => {
+  const resource = makeResourceRow({ id: 'unscheduled-res', title: 'Unscheduled PDF.pdf' })
+  const canonical = buildLearnFocusRows([resource], {}, {})
+  const { mergedLearn } = mergeScheduledBlocksIntoFocusRows([], canonical, [], {})
+  const row = mergedLearn.find((r) => r.id === 'unscheduled-res')
+  assert.ok(row, 'unscheduled canonical resource remains in learn list')
+  assert.equal(row!.scheduledBlockId, undefined, 'no scheduledBlockId since no block matched')
+})
+
+test('Start Here and Today Schedule do not duplicate the same source (merge produces one row, not two)', () => {
+  // When a task_items block drives Start Here AND matches a canonical syllabus row,
+  // the merge attaches scheduledBlockId to the existing row rather than adding a new one.
+  const task = makeTaskItem({ id: 'ti-nodup', title: 'No Duplicate Task' })
+  const block = makeScheduledBlock({ id: 'sb-nodup', sourceTable: 'task_items', sourceId: 'ti-nodup', title: 'No Duplicate Task' })
+  const canonical = buildSyllabusFocusRows([task])
+  const { mergedSyllabus } = mergeScheduledBlocksIntoFocusRows(canonical, [], [block], {})
+  assert.equal(mergedSyllabus.length, 1, 'one row for the task, not two')
+  assert.equal(mergedSyllabus[0]?.id, 'ti-nodup', 'row id is the canonical task id')
+  assert.equal(mergedSyllabus[0]?.scheduledBlockId, 'sb-nodup', 'scheduledBlockId links to the scheduled block')
 })

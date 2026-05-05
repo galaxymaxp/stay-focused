@@ -2347,13 +2347,7 @@ details[open] > .ui-interactive-summary,
 }
 
 .home-rail {
-  padding-top: 0.25rem;
-}
-
-@media (min-width: 1025px) {
-  .home-rail {
-    padding-top: 2.85rem;
-  }
+  padding-top: 0;
 }
 
 .home-focus-card {

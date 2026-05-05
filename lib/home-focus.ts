@@ -30,6 +30,7 @@ export interface SyllabusFocusRow {
   canvasUrl: string | null
   href: string
   estimatedMinutes: number
+  scheduledBlockId?: string | null
 }
 
 export interface LearnFocusRow {
@@ -43,6 +44,7 @@ export interface LearnFocusRow {
   originalHref: string | null
   href: string | null
   studyPackRefs: Array<{ id: string; title: string; quizReady: boolean }>
+  scheduledBlockId?: string | null
 }
 
 /**
@@ -256,4 +258,131 @@ function compareSyllabusRows(a: HomeSyllabusTaskInput, b: HomeSyllabusTaskInput)
   const bDue = b.deadline ? new Date(b.deadline).getTime() : Number.POSITIVE_INFINITY
   if (aDue !== bDue) return aDue - bDue
   return (b.actionScore ?? 0) - (a.actionScore ?? 0)
+}
+
+// ── Merge helpers ─────────────────────────────────────────────────────────────
+
+/**
+ * Minimal shape of a scheduled_blocks row used for merging.
+ * Matches the camelCase fields mapped in page server components.
+ */
+export interface ScheduledBlockInput {
+  id: string
+  sourceTable: string
+  sourceId: string | null
+  courseId: string | null
+  title: string
+  startAt: string
+  endAt: string
+  status: string
+  subtitle?: string | null
+}
+
+/**
+ * Merge scheduled_blocks into canonical focus row lists.
+ *
+ * For each scheduled block:
+ * - If a canonical row exists (matching sourceId), attach scheduledBlockId to it.
+ * - If no canonical row exists and the source is syllabus-eligible (task_items,
+ *   tasks, deadlines), add a fallback SyllabusFocusRow built from block data.
+ * - If no canonical row exists and the source is learn-eligible (modules,
+ *   module_resources), add a fallback LearnFocusRow.
+ * - learning_items, deep_learn_notes, and drafts are always skipped.
+ *
+ * Completed and skipped blocks do not get fallback rows (they only appear in
+ * the Completed section via the scheduledBlocks prop in TodayDashboard).
+ */
+export function mergeScheduledBlocksIntoFocusRows(
+  syllabusFocusRows: SyllabusFocusRow[],
+  learnFocusRows: LearnFocusRow[],
+  scheduledBlocks: ScheduledBlockInput[],
+  courseNameById: Record<string, string>,
+): {
+  mergedSyllabus: SyllabusFocusRow[]
+  mergedLearn: LearnFocusRow[]
+} {
+  // Copy canonical rows into maps (keyed by canonical source id) so we can mutate copies
+  const syllabusMap = new Map<string, SyllabusFocusRow>()
+  for (const row of syllabusFocusRows) syllabusMap.set(row.id, { ...row })
+
+  const learnMap = new Map<string, LearnFocusRow>()
+  for (const row of learnFocusRows) learnMap.set(row.id, { ...row })
+
+  const fallbackSyllabus: SyllabusFocusRow[] = []
+  const fallbackLearn: LearnFocusRow[] = []
+
+  for (const block of scheduledBlocks) {
+    const { sourceTable, sourceId, id: blockId, status } = block
+
+    if (
+      sourceTable === 'learning_items' ||
+      sourceTable === 'deep_learn_notes' ||
+      sourceTable === 'drafts'
+    ) continue
+
+    const isSyllabus =
+      sourceTable === 'task_items' || sourceTable === 'tasks' || sourceTable === 'deadlines'
+    const isLearn = sourceTable === 'module_resources' || sourceTable === 'modules'
+
+    if (isSyllabus) {
+      if (sourceId && syllabusMap.has(sourceId)) {
+        const existing = syllabusMap.get(sourceId)!
+        syllabusMap.set(sourceId, { ...existing, scheduledBlockId: blockId })
+      } else if (status !== 'completed' && status !== 'skipped') {
+        const courseName = block.courseId ? (courseNameById[block.courseId] ?? '') : ''
+        fallbackSyllabus.push({
+          id: blockId,
+          title: block.title,
+          typeLabel: deriveTypeLabelFromSubtitle(block.subtitle),
+          courseName,
+          moduleId: '',
+          moduleTitle: '',
+          dueAt: null,
+          urgencyLabel: 'Scheduled',
+          canvasUrl: null,
+          href: '/tasks',
+          estimatedMinutes: DEFAULT_TASK_MINUTES,
+          scheduledBlockId: blockId,
+        })
+      }
+    } else if (isLearn) {
+      if (sourceId && learnMap.has(sourceId)) {
+        const existing = learnMap.get(sourceId)!
+        learnMap.set(sourceId, { ...existing, scheduledBlockId: blockId })
+      } else if (status !== 'completed' && status !== 'skipped') {
+        const courseName = block.courseId ? (courseNameById[block.courseId] ?? null) : null
+        const href =
+          sourceTable === 'modules' && sourceId
+            ? buildModuleLearnHref(sourceId)
+            : null
+        fallbackLearn.push({
+          id: blockId,
+          title: block.title,
+          fileTypeLabel: sourceTable === 'modules' ? 'Module' : 'File',
+          readiness: 'ready',
+          courseName,
+          moduleId: sourceTable === 'modules' ? (sourceId ?? null) : null,
+          estimatedMinutes: DEFAULT_LEARN_MINUTES,
+          originalHref: null,
+          href,
+          studyPackRefs: [],
+          scheduledBlockId: blockId,
+        })
+      }
+    }
+  }
+
+  return {
+    mergedSyllabus: [...syllabusMap.values(), ...fallbackSyllabus],
+    mergedLearn: [...learnMap.values(), ...fallbackLearn],
+  }
+}
+
+function deriveTypeLabelFromSubtitle(subtitle: string | null | undefined): string {
+  if (!subtitle) return 'Assignment'
+  const s = subtitle.toLowerCase()
+  if (s.includes('quiz')) return 'Quiz'
+  if (s.includes('draft') || s.includes('drafting')) return 'Draft'
+  if (s.includes('read')) return 'Reading'
+  return 'Assignment'
 }

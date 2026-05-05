@@ -5,6 +5,86 @@ Last Updated: 2026-05-05
 
 ---
 
+## Session Update — 2026-05-05g (Fix merged home schedule model)
+
+### What changed
+
+**`lib/home-focus.ts`**
+- Added `scheduledBlockId?: string | null` to `SyllabusFocusRow`.
+- Added `scheduledBlockId?: string | null` to `LearnFocusRow`.
+- Added exported `ScheduledBlockInput` interface — minimal camelCase shape of a `scheduled_blocks` row used for merging.
+- Added exported `mergeScheduledBlocksIntoFocusRows(syllabusFocusRows, learnFocusRows, scheduledBlocks, courseNameById)`:
+  - For each scheduled block whose `sourceTable` is `task_items / tasks / deadlines`: if a canonical syllabus row exists by `sourceId`, attaches `scheduledBlockId` to it. If no canonical match and block status is not `completed/skipped`, adds a fallback `SyllabusFocusRow` built from block data.
+  - For `modules / module_resources`: same logic for `learnFocusRows`.
+  - `learning_items`, `deep_learn_notes`, and `drafts` are always skipped.
+- Added internal helper `deriveTypeLabelFromSubtitle` for fallback syllabus type labels.
+
+**`app/page.tsx`** and **`app/(app)/page.tsx`**
+- Extracted inline `scheduledBlocks` mapping into a `rawScheduledBlocks` variable.
+- Added explicit return type `'low' | 'medium' | 'high' | null` on `normalizeEstimateConfidence` (needed for TS after variable extraction).
+- Imported and called `mergeScheduledBlocksIntoFocusRows` after building canonical focus rows.
+- Passed `mergedSyllabus` and `mergedLearn` (instead of raw canonical rows) as `syllabusFocusRows`/`learnFocusRows` props to `TodayDashboard`.
+
+**`components/TodayDashboard.tsx`**
+- `handleUpdateStatus`: added `router.refresh()` after `updateBlockStatus` so completed blocks disappear from the active list without requiring a full navigation.
+- `handleMoveLater`: added `router.refresh()` when the block was successfully moved, so the Later section populates immediately.
+- Added `handleMarkReviewed(scheduledBlockId)` — calls `updateBlockStatus(scheduledBlockId, 'completed')` + `router.refresh()`.
+- Added `completedScheduledBlockIds` useMemo (Set of completed block IDs).
+- Changed `activeFocusRows` from a direct alias to a `useMemo` that filters out rows whose `scheduledBlockId` is in `completedScheduledBlockIds`.
+- Added `laterBlocks` useMemo — scheduled blocks from `scheduleForDisplay` that are outside the current free-time window (`isBlockInsideWindow` = false, `status === 'scheduled'`).
+- `FocusScheduleTable`: added `onMarkDone` and `onMarkReviewed` callback props; forwards them to row components.
+- `SyllabusTableRow`: accepts `onMarkDone`; renamed "Open" → "View more"; added "Mark done" button when `scheduledBlockId` is present.
+- `LearnTableRow`: accepts `onMarkReviewed`; renamed "Open" → "View more" / "View source"; added "Mark reviewed" button when `scheduledBlockId` is present.
+- Added `LaterSection` component — compact non-collapsible list of out-of-window scheduled blocks.
+- Rendered `LaterSection` after `CompletedSection` in the Today's Schedule section.
+
+**`app/globals.css`**
+- Removed `padding-top: 2.85rem` from `.home-rail` at `@media (min-width: 1025px)`. The desktop-only offset was causing the Free Time clock card to start ~2.85rem lower than the Start Here card. The base `.home-rail { padding-top: 0 }` is now used at all breakpoints. The topbar overlap issue that motivated the offset should be addressed at page-shell level if it recurs.
+
+**`tests/scheduler.test.ts`**
+- Added `mergeScheduledBlocksIntoFocusRows` and `ScheduledBlockInput` to imports.
+- Added `makeScheduledBlock` factory helper.
+- Added 9 new tests covering the merge contracts:
+  1. scheduled tasks fallback appears in Syllabus when workspace.taskItems is empty
+  2. scheduled deadlines fallback appears in Syllabus when workspace.taskItems is empty
+  3. scheduled task_items block attaches scheduledBlockId to matching canonical syllabus row
+  4. scheduled module_resources block attaches scheduledBlockId to matching canonical learn row
+  5. scheduled modules block without canonical match gets a fallback learn row
+  6. learning_items, deep_learn_notes, and drafts are skipped by merge (never standalone rows)
+  7. completed scheduled blocks do not create fallback rows (only appear in Completed section)
+  8. canonical unscheduled module_resource still appears in Learn after merge
+  9. Start Here and Today Schedule do not duplicate the same source (merge produces one row, not two)
+
+### Why it changed
+
+Two separate Home schedule models (scheduled_blocks for Start Here/Completed vs. canonical rows for Syllabus/Learn) caused the Syllabus tab to be empty when the same item appeared in Start Here. The root cause: `tasks` and `deadlines` scheduled blocks had no canonical counterpart in `workspace.taskItems` (which only covers `task_items`). The merge helper unifies both models: canonical rows are primary, scheduled blocks attach their IDs or contribute fallback rows when no canonical match exists.
+
+### Tests run
+
+- `npm run typecheck` — ✅ clean
+- `npm run lint` — ✅ clean
+- `npm test -- scheduler learn-resource-ui queue` — ✅ 305/305 pass (+9 new merge tests)
+
+### Known risks / blockers
+
+- The right-rail `padding-top: 2.85rem` removal may re-expose topbar overlap on the clock card if the `page-shell` does not already provide adequate top spacing. Verify in browser on desktop breakpoint (≥ 1025px).
+- "Mark done" in `SyllabusTableRow` only updates `scheduled_blocks.status` (via `updateBlockStatus`). It does not update the source `task_items.status`. A future improvement should also call a server action that marks the canonical task completed.
+- `mergeScheduledBlocksIntoFocusRows` is called server-side in page components and produces serializable plain objects — this is safe. The result is passed as RSC props to TodayDashboard.
+
+### Next recommended steps
+
+1. Verify in browser: Syllabus tab now shows tasks from both `task_items` canonical rows and `tasks/deadlines` scheduled-block fallbacks.
+2. Verify in browser: Move Later now populates the Later section after the page refreshes.
+3. Verify right-rail alignment: Free Time clock card top should align with Start Here card top on desktop.
+4. Future: add source-level task completion to "Mark done" (update `task_items.status` when `row.sourceTable === 'task_items'`).
+5. Future: add a `module_id` column to `scheduled_blocks` to enable proper `/modules/:id/do` routing for syllabus fallback rows.
+
+### Suggested commit message
+
+fix merged home schedule model
+
+---
+
 ## Session Update — 2026-05-05f (Wire home focus rows on root page)
 
 ### What changed
