@@ -31,6 +31,8 @@ export interface SyllabusFocusRow {
   href: string
   estimatedMinutes: number
   scheduledBlockId?: string | null
+  /** Which table this row came from — 'task_items' for canonical rows, absent for scheduled-block fallbacks */
+  sourceTable?: string
 }
 
 export interface LearnFocusRow {
@@ -45,6 +47,8 @@ export interface LearnFocusRow {
   href: string | null
   studyPackRefs: Array<{ id: string; title: string; quizReady: boolean }>
   scheduledBlockId?: string | null
+  /** Which table this row came from — 'module_resources' for canonical rows, absent for scheduled-block fallbacks */
+  sourceTable?: string
 }
 
 /**
@@ -95,6 +99,7 @@ export function buildSyllabusFocusRows(taskItems: HomeSyllabusTaskInput[]): Syll
       // Open Canvas directly when canvas_url is available; fall back to Do page
       href: item.canvasUrl ?? buildModuleDoHref(item.moduleId ?? '', { taskTitle: item.title }),
       estimatedMinutes: item.estimatedMinutes ?? DEFAULT_TASK_MINUTES,
+      sourceTable: 'task_items',
     }))
 }
 
@@ -128,6 +133,7 @@ export function buildLearnFocusRows(
         originalHref,
         href: moduleLearnHref ?? originalHref,
         studyPackRefs: studyPacksByResourceId[resource.id] ?? [],
+        sourceTable: 'module_resources',
       }
     })
 }

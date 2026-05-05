@@ -21,7 +21,7 @@ export default async function Dashboard() {
   const overview = buildHomeOverview(workspace)
   const client = await createAuthenticatedSupabaseServerClient()
 
-  const [scheduledBlocksResult, studyPacksResult, resourcesResult] = client
+  const [scheduledBlocksResult, studyPacksResult, resourcesResult, sourceProgressResult] = client
     ? await Promise.all([
       client
         .from('scheduled_blocks')
@@ -39,8 +39,13 @@ export default async function Dashboard() {
         .from('module_resources')
         .select('id,course_id,module_id,title,resource_type,extracted_text,extracted_text_preview,visual_extraction_status,visual_extracted_text,html_url,source_url,estimated_minutes,extraction_status,extracted_char_count')
         .order('title', { ascending: true }),
+      client
+        .from('user_source_progress')
+        .select('source_id')
+        .eq('source_table', 'module_resources')
+        .in('status', ['reviewed', 'completed']),
     ])
-    : [{ data: [] }, { data: [] }, { data: [] }]
+    : [{ data: [] }, { data: [] }, { data: [] }, { data: [] }]
 
   const studyPacksByModuleId: Record<string, Array<{ id: string; title: string; quizReady: boolean }>> = {}
   const studyPacksByResourceId: Record<string, Array<{ id: string; title: string; quizReady: boolean }>> = {}
@@ -63,6 +68,10 @@ export default async function Dashboard() {
   for (const course of workspace.courses) {
     courseNameById[course.id] = course.name
   }
+
+  const reviewedSourceIds = (sourceProgressResult.data ?? [])
+    .map((row) => row.source_id)
+    .filter((id): id is string => typeof id === 'string' && id.length > 0)
 
   const homeLearnResourceRows = resourcesResult.data ?? []
 
@@ -111,6 +120,7 @@ export default async function Dashboard() {
         scheduledBlocks={rawScheduledBlocks}
         syllabusFocusRows={mergedSyllabus}
         learnFocusRows={mergedLearn}
+        reviewedSourceIds={reviewedSourceIds}
         studyPacksByModuleId={studyPacksByModuleId}
         studyPacksByResourceId={studyPacksByResourceId}
       />

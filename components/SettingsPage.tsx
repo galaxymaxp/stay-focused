@@ -366,7 +366,7 @@ export function SettingsPage() {
               id="canvas"
               eyebrow="Canvas"
               title="Canvas"
-              description="Configure your Canvas API connection for syncing courses, modules, and tasks."
+              description="Configure your Canvas API connection. Course selection and sync are on the Sync Courses page."
             >
               {!authSummary.user ? (
                 <div className="settings-account-card">
@@ -483,8 +483,8 @@ export function SettingsPage() {
 
                   {canvasConnected && (
                     <div className="settings-card-actions">
-                      <Link href="/canvas" className="ui-button ui-button-secondary">
-                        Go to Canvas Sync
+                      <Link href="/sync" className="ui-button ui-button-secondary">
+                        Go to Sync Courses
                       </Link>
                     </div>
                   )}

@@ -4,6 +4,8 @@ import { useMemo, useRef, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { generateUserSchedule, moveScheduledBlockLater, updateBlockStatus } from '@/actions/scheduler'
+import { markSourceProgress } from '@/actions/source-progress'
+import { updateTaskCompletion } from '@/actions/tasks'
 import { TaskDraftButton } from '@/components/DoNowButton'
 import { TaskStatusToggle } from '@/components/TaskStatusToggle'
 import { InteractivePlannerClock, type ClockScheduleBlock } from '@/components/InteractivePlannerClock'
@@ -30,6 +32,7 @@ export function TodayDashboard({
   scheduledBlocks,
   syllabusFocusRows = [],
   learnFocusRows = [],
+  reviewedSourceIds = [],
   studyPacksByModuleId = {},
   studyPacksByResourceId = {},
 }: {
@@ -42,6 +45,7 @@ export function TodayDashboard({
   scheduledBlocks: ScheduleBlock[]
   syllabusFocusRows?: SyllabusFocusRow[]
   learnFocusRows?: LearnFocusRow[]
+  reviewedSourceIds?: string[]
   studyPacksByModuleId?: Record<string, StudyPackRef[]>
   studyPacksByResourceId?: Record<string, StudyPackRef[]>
 }) {
@@ -54,6 +58,7 @@ export function TodayDashboard({
   const [isPlanStale, setIsPlanStale] = useState(false)
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null)
   const [completedExpanded, setCompletedExpanded] = useState(false)
+  const [reviewedExpanded, setReviewedExpanded] = useState(false)
   const [focusMode, setFocusMode] = useState<'syllabus' | 'learn'>('syllabus')
   const [moveLaterMessage, setMoveLaterMessage] = useState<string | null>(null)
   const planPanelRef = useRef<HTMLDivElement | null>(null)
@@ -124,15 +129,26 @@ export function TodayDashboard({
     [completedBlocks],
   )
 
+  // Set of source IDs the user has marked as reviewed (from user_source_progress)
+  const reviewedIdSet = useMemo(() => new Set(reviewedSourceIds), [reviewedSourceIds])
+
   // Active focus rows for the current tab (with fitted times), excluding rows whose
-  // matching scheduled block has been marked completed/reviewed
+  // matching scheduled block has been marked completed/reviewed, or whose source has been reviewed
   const activeFocusRows = useMemo(() => {
     const rows = focusMode === 'syllabus' ? fittedSyllabusRows : fittedLearnRows
     return rows.filter((row) => {
       const sbId = row.scheduledBlockId
-      return !sbId || !completedScheduledBlockIds.has(sbId)
+      if (sbId && completedScheduledBlockIds.has(sbId)) return false
+      if (focusMode === 'learn' && reviewedIdSet.has(row.id)) return false
+      return true
     })
-  }, [focusMode, fittedSyllabusRows, fittedLearnRows, completedScheduledBlockIds])
+  }, [focusMode, fittedSyllabusRows, fittedLearnRows, completedScheduledBlockIds, reviewedIdSet])
+
+  // Learn rows the user has already reviewed (shown in the Reviewed section)
+  const reviewedLearnRows = useMemo(
+    () => fittedLearnRows.filter((row) => reviewedIdSet.has(row.id)),
+    [fittedLearnRows, reviewedIdSet],
+  )
 
   // Blocks that have been scheduled but moved outside the current free-time window
   const laterBlocks = useMemo(
@@ -218,9 +234,41 @@ export function TodayDashboard({
     })
   }
 
-  function handleMarkReviewed(scheduledBlockId: string) {
+  function handleMarkSyllabusDone(row: FittedSyllabusRow) {
     startTransition(async () => {
-      await updateBlockStatus(scheduledBlockId, 'completed')
+      const ops: Promise<unknown>[] = []
+      // Update the canonical task_items row when this is a real task_item
+      if (row.sourceTable === 'task_items') {
+        ops.push(
+          updateTaskCompletion({
+            status: 'completed',
+            moduleId: row.moduleId,
+            title: row.title,
+            taskItemId: row.id,
+          }),
+        )
+      }
+      // Also mark the scheduled block done when one is attached
+      if (row.scheduledBlockId) {
+        ops.push(updateBlockStatus(row.scheduledBlockId, 'completed'))
+      }
+      await Promise.all(ops)
+      router.refresh()
+    })
+  }
+
+  function handleMarkLearnReviewed(row: FittedLearnRow) {
+    startTransition(async () => {
+      const ops: Promise<unknown>[] = []
+      // Update the source-level progress for the canonical resource
+      if (row.sourceTable === 'module_resources') {
+        ops.push(markSourceProgress('module_resources', row.id, 'reviewed'))
+      }
+      // Also mark the scheduled block done when one is attached
+      if (row.scheduledBlockId) {
+        ops.push(updateBlockStatus(row.scheduledBlockId, 'completed'))
+      }
+      await Promise.all(ops)
       router.refresh()
     })
   }
@@ -366,8 +414,8 @@ export function TodayDashboard({
               <FocusScheduleTable
                 rows={activeFocusRows}
                 mode={focusMode}
-                onMarkDone={handleUpdateStatus}
-                onMarkReviewed={handleMarkReviewed}
+                onMarkDone={handleMarkSyllabusDone}
+                onMarkReviewed={handleMarkLearnReviewed}
               />
 
               {moveLaterMessage ? (
@@ -390,6 +438,14 @@ export function TodayDashboard({
 
             {laterBlocks.length > 0 ? (
               <LaterSection blocks={laterBlocks} />
+            ) : null}
+
+            {focusMode === 'learn' ? (
+              <ReviewedSection
+                rows={reviewedLearnRows}
+                isOpen={reviewedExpanded}
+                onToggle={() => setReviewedExpanded((v) => !v)}
+              />
             ) : null}
 
             <div
@@ -842,8 +898,8 @@ function FocusScheduleTable({
 }: {
   rows: AnyFocusRow[]
   mode: 'syllabus' | 'learn'
-  onMarkDone: (id: string, status: 'opened' | 'completed' | 'skipped') => void
-  onMarkReviewed: (scheduledBlockId: string) => void
+  onMarkDone: (row: FittedSyllabusRow) => void
+  onMarkReviewed: (row: FittedLearnRow) => void
 }) {
   if (rows.length === 0) {
     return (
@@ -882,7 +938,7 @@ function FocusScheduleTable({
             <LearnTableRow
               key={row.id}
               row={row as FittedLearnRow}
-              onMarkReviewed={onMarkReviewed}
+              onMarkReviewed={(r) => onMarkReviewed(r)}
             />
           ),
         )}
@@ -896,10 +952,8 @@ function SyllabusTableRow({
   onMarkDone,
 }: {
   row: FittedSyllabusRow
-  onMarkDone: (id: string, status: 'opened' | 'completed' | 'skipped') => void
+  onMarkDone: (row: FittedSyllabusRow) => void
 }) {
-  const blockId = row.scheduledBlockId ?? null
-
   return (
     <tr style={{ borderBottom: '1px solid color-mix(in srgb, var(--border-subtle) 50%, transparent)' }}>
       <td style={{ padding: '0.5rem 0.5rem 0.5rem 0', color: 'var(--text-muted)', whiteSpace: 'nowrap', verticalAlign: 'top' }}>
@@ -938,15 +992,13 @@ function SyllabusTableRow({
               Unavailable
             </span>
           )}
-          {blockId ? (
-            <button
-              type="button"
-              className="ui-button ui-button-secondary ui-button-xs"
-              onClick={() => onMarkDone(blockId, 'completed')}
-            >
-              Mark done
-            </button>
-          ) : null}
+          <button
+            type="button"
+            className="ui-button ui-button-secondary ui-button-xs"
+            onClick={() => onMarkDone(row)}
+          >
+            Mark done
+          </button>
         </div>
       </td>
     </tr>
@@ -958,13 +1010,10 @@ function LearnTableRow({
   onMarkReviewed,
 }: {
   row: FittedLearnRow
-  onMarkReviewed: (scheduledBlockId: string) => void
+  onMarkReviewed: (row: FittedLearnRow) => void
 }) {
-  const hasStudyPack = row.studyPackRefs.length > 0
-  const hasQuizReady = row.studyPackRefs.some((p) => p.quizReady)
   const viewTarget = row.originalHref && !row.href?.startsWith('/') ? '_blank' : undefined
   const viewRel = viewTarget ? 'noreferrer' : undefined
-  const blockId = row.scheduledBlockId ?? null
 
   return (
     <tr style={{ borderBottom: '1px solid color-mix(in srgb, var(--border-subtle) 50%, transparent)' }}>
@@ -972,25 +1021,13 @@ function LearnTableRow({
         {formatTimeRange(row.startAt, row.endAt)}
       </td>
       <td style={{ padding: '0.5rem', verticalAlign: 'top' }}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', alignItems: 'center', marginBottom: '0.2rem' }}>
-          <span className="planner-type-pill">{row.fileTypeLabel}</span>
-          <span className="ui-chip ui-chip-soft" style={{ fontSize: '11px', padding: '0.15rem 0.4rem' }}>
-            {row.readiness === 'ready' ? 'Ready' : 'Limited'}
-          </span>
-          {row.courseName ? (
-            <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>{row.courseName}</span>
-          ) : null}
-        </div>
+        {row.courseName ? (
+          <p style={{ margin: '0 0 0.15rem', color: 'var(--text-muted)', fontSize: '11px' }}>{row.courseName}</p>
+        ) : null}
         <p style={{ margin: 0, fontWeight: 500 }}>{row.title}</p>
       </td>
-      <td style={{ padding: '0.5rem 0 0.5rem 0.5rem', textAlign: 'right', verticalAlign: 'top' }}>
+      <td style={{ padding: '0.5rem 0 0.5rem 0.5rem', textAlign: 'right', whiteSpace: 'nowrap', verticalAlign: 'top' }}>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.25rem' }}>
-          {hasStudyPack ? (
-            <span className="home-study-ready-chip">Study pack</span>
-          ) : null}
-          {hasQuizReady ? (
-            <span className="home-study-ready-chip">Quiz</span>
-          ) : null}
           {row.href ? (
             <a href={row.href} className="ui-button ui-button-primary ui-button-xs" target={viewTarget} rel={viewRel}>
               View more
@@ -1004,15 +1041,13 @@ function LearnTableRow({
               Unavailable
             </span>
           )}
-          {blockId ? (
-            <button
-              type="button"
-              className="ui-button ui-button-secondary ui-button-xs"
-              onClick={() => onMarkReviewed(blockId)}
-            >
-              Mark reviewed
-            </button>
-          ) : null}
+          <button
+            type="button"
+            className="ui-button ui-button-secondary ui-button-xs"
+            onClick={() => onMarkReviewed(row)}
+          >
+            Mark reviewed
+          </button>
         </div>
       </td>
     </tr>
@@ -1041,6 +1076,47 @@ function LaterSection({ blocks }: { blocks: ScheduleBlock[] }) {
           </div>
         ))}
       </div>
+    </div>
+  )
+}
+
+function ReviewedSection({
+  rows,
+  isOpen,
+  onToggle,
+}: {
+  rows: FittedLearnRow[]
+  isOpen: boolean
+  onToggle: () => void
+}) {
+  if (rows.length === 0) return null
+  const sorted = [...rows].sort((a, b) => a.title.localeCompare(b.title))
+
+  return (
+    <div className="home-plan-completed">
+      <button
+        type="button"
+        className="home-plan-completed-toggle"
+        onClick={onToggle}
+        aria-expanded={isOpen}
+      >
+        <span>Reviewed</span>
+        <span className="home-plan-count">{rows.length}</span>
+        <span aria-hidden="true">{isOpen ? '▾' : '▸'}</span>
+      </button>
+
+      {isOpen ? (
+        <div className="home-compact-list">
+          {sorted.map((row) => (
+            <div key={row.id} className="home-list-row home-plan-completed-row">
+              <div className="home-row-meta">
+                {row.courseName ? <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>{row.courseName}</span> : null}
+                <span>{row.title}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
     </div>
   )
 }

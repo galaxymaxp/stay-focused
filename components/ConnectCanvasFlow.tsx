@@ -39,7 +39,6 @@ export function ConnectCanvasFlow({
   initialAccessToken,
   lastSync,
   syncedCourseKeys,
-  hasSyncedCourses,
   initialAction,
   syncedModules,
 }: {
@@ -48,7 +47,6 @@ export function ConnectCanvasFlow({
   initialAccessToken: string | null
   lastSync: SyncActivitySnapshot | null
   syncedCourseKeys: string[]
-  hasSyncedCourses: boolean
   initialAction: string | null
   syncedModules: SyncedCanvasModule[]
 }) {
@@ -283,7 +281,8 @@ export function ConnectCanvasFlow({
   function handleToggleEndedCourses(value: boolean) {
     setIncludeEndedCourses(value)
     setSelectedCourseIds([])
-    if (step === 'courses') {
+    // Reload immediately if already showing courses, or if connected but not yet loaded
+    if (step === 'courses' || canLoadCourses) {
       handleUseSavedConnection(value)
     }
   }
@@ -530,7 +529,7 @@ export function ConnectCanvasFlow({
               <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
                 {canLoadCourses ? (
                   <button type="button" onClick={() => handleUseSavedConnection()} disabled={isTesting} className="ui-button ui-button-primary ui-button-sm">
-                    {isTesting ? 'Loading courses...' : hasSyncedCourses ? 'Load more courses' : 'Load courses'}
+                    {isTesting ? 'Loading courses...' : 'Refresh courses'}
                   </button>
                 ) : (
                   <button type="button" onClick={() => openSetup('guide')} className="ui-button ui-button-primary ui-button-sm">

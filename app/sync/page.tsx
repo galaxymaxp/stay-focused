@@ -1,0 +1,185 @@
+import type { CSSProperties } from 'react'
+import Link from 'next/link'
+import { ConnectCanvasFlowWrapper } from '@/components/ConnectCanvasFlowWrapper'
+import { createAuthenticatedSupabaseServerClient, getAuthenticatedUserServer } from '@/lib/auth-server'
+import { buildCanvasCourseSyncKey } from '@/lib/canvas-sync'
+
+type SyncTone = 'success' | 'neutral' | 'warning'
+
+export default async function SyncCoursesPage() {
+  const user = await getAuthenticatedUserServer()
+
+  if (!user) {
+    return (
+      <main className="page-shell page-shell-narrow page-stack">
+        <header className="motion-card" style={{ display: 'grid', gap: '0.5rem' }}>
+          <p className="ui-kicker">Sync Courses</p>
+          <h1 className="ui-page-title" style={{ fontSize: '2rem' }}>Sign in to sync courses</h1>
+          <p className="ui-page-copy" style={{ maxWidth: '46rem', marginTop: 0 }}>
+            Sign in before connecting Canvas. That keeps synced courses, announcements, and future account-owned data tied to you instead of a shared anonymous session.
+          </p>
+        </header>
+
+        <section style={sectionStyle}>
+          <div style={{ display: 'grid', gap: '0.9rem' }}>
+            <div style={messageCardStyle}>
+              <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                Signed out
+              </div>
+              <div style={{ marginTop: '0.26rem', fontSize: '13px', lineHeight: 1.6, color: 'var(--text-secondary)' }}>
+                Canvas sync is available after sign-in.
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+              <Link href="/sign-in?next=%2Fsync" className="ui-button ui-button-primary" style={{ textDecoration: 'none' }}>
+                Sign in
+              </Link>
+              <Link href="/sign-up?next=%2Fsync" className="ui-button ui-button-secondary" style={{ textDecoration: 'none' }}>
+                Sign up
+              </Link>
+            </div>
+          </div>
+        </section>
+      </main>
+    )
+  }
+
+  const db = await createAuthenticatedSupabaseServerClient()
+
+  const userSettings = db
+    ? (await db
+        .from('user_settings')
+        .select('canvas_api_url, canvas_access_token')
+        .eq('user_id', user.id)
+        .maybeSingle()).data
+    : null
+  const hasCurrentUserCanvasSettings = Boolean(userSettings?.canvas_api_url && userSettings?.canvas_access_token)
+
+  if (!hasCurrentUserCanvasSettings) {
+    return (
+      <main className="page-shell page-shell-narrow page-stack">
+        <header className="motion-card" style={{ display: 'grid', gap: '0.5rem' }}>
+          <p className="ui-kicker">Sync Courses</p>
+          <h1 className="ui-page-title" style={{ fontSize: '2rem' }}>Canvas not connected</h1>
+          <p className="ui-page-copy" style={{ maxWidth: '46rem', marginTop: 0 }}>
+            Add your Canvas URL and access token in Settings before syncing courses.
+          </p>
+        </header>
+
+        <section style={sectionStyle}>
+          <div style={{ display: 'grid', gap: '0.9rem' }}>
+            <div style={messageCardStyle}>
+              <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                Connection required
+              </div>
+              <div style={{ marginTop: '0.26rem', fontSize: '13px', lineHeight: 1.6, color: 'var(--text-secondary)' }}>
+                Go to Settings &rsaquo; Canvas to add your Canvas URL and access token, then come back here to select and sync courses.
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+              <Link href="/settings?section=canvas" className="ui-button ui-button-primary" style={{ textDecoration: 'none' }}>
+                Go to Settings &rsaquo; Canvas
+              </Link>
+            </div>
+          </div>
+        </section>
+      </main>
+    )
+  }
+
+  const ownedCourses = db
+    ? (await db
+        .from('courses')
+        .select('id, canvas_instance_url, canvas_course_id, created_at')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })).data
+    : []
+  const ownedCourseIds = (ownedCourses ?? [])
+    .map((course) => course.id)
+    .filter((value): value is string => typeof value === 'string' && value.length > 0)
+
+  const syncedModules = db
+    ? ownedCourseIds.length > 0
+      ? (await db
+        .from('modules')
+        .select('id, course_id, title, summary, status, created_at')
+        .in('course_id', ownedCourseIds)
+        .order('created_at', { ascending: false })).data
+      : []
+    : []
+
+  const latestModule = syncedModules?.[0]
+  const initialConnectionUrl = userSettings?.canvas_api_url ?? null
+  const initialAccessToken = userSettings?.canvas_access_token ?? null
+  const processedCourseIds = new Set(
+    (syncedModules ?? [])
+      .filter((module) => module.status === 'processed')
+      .map((module) => module.course_id)
+      .filter((value): value is string => typeof value === 'string' && value.length > 0)
+  )
+  const syncedCourseKeys = Array.from(
+    new Set(
+      (ownedCourses ?? [])
+        .filter((course) => processedCourseIds.has(course.id))
+        .map((course) => buildCanvasCourseSyncKey(course.canvas_instance_url, course.canvas_course_id))
+        .filter((value): value is string => Boolean(value))
+    )
+  )
+  const lastSync = latestModule
+    ? {
+        label:
+          latestModule.status === 'processed'
+            ? `Last sync finished on ${new Date(latestModule.created_at).toLocaleString()}`
+            : latestModule.status === 'error'
+              ? `Last sync ran into a problem on ${new Date(latestModule.created_at).toLocaleString()}`
+              : `A sync started on ${new Date(latestModule.created_at).toLocaleString()}`,
+        tone: getSyncTone(latestModule.status),
+      }
+    : null
+  const syncedModulesForFlow = (syncedModules ?? [])
+    .filter((module) => module.status === 'processed')
+    .map((module) => ({
+      id: module.id,
+      title: module.title,
+      summary: module.summary,
+      createdAt: module.created_at,
+    }))
+
+  return (
+    <main className="page-shell page-shell-narrow page-stack">
+      <ConnectCanvasFlowWrapper
+        currentUserId={user.id}
+        initialConnectionUrl={initialConnectionUrl}
+        initialAccessToken={initialAccessToken}
+        lastSync={lastSync}
+        syncedCourseKeys={syncedCourseKeys}
+        initialAction="sync"
+        syncedModules={syncedModulesForFlow}
+      />
+    </main>
+  )
+}
+
+const sectionStyle: CSSProperties = {
+  borderRadius: '16px',
+  border: '1px solid color-mix(in srgb, var(--border-subtle) 88%, transparent)',
+  background: 'color-mix(in srgb, var(--surface-elevated) 98%, transparent)',
+  boxShadow: 'var(--highlight-sheen)',
+  overflow: 'hidden',
+  padding: '1rem 1.1rem',
+}
+
+const messageCardStyle: CSSProperties = {
+  borderRadius: '12px',
+  border: '1px solid color-mix(in srgb, var(--border-subtle) 88%, transparent)',
+  background: 'var(--surface-elevated)',
+  padding: '0.95rem',
+}
+
+function getSyncTone(status: string): SyncTone {
+  if (status === 'processed') return 'success'
+  if (status === 'error') return 'warning'
+  return 'neutral'
+}
