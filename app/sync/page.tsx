@@ -11,7 +11,7 @@ export default async function SyncCoursesPage() {
 
   if (!user) {
     return (
-      <main className="page-shell page-shell-narrow page-stack">
+      <main className="page-shell page-stack">
         <header className="motion-card" style={{ display: 'grid', gap: '0.5rem' }}>
           <p className="ui-kicker">Sync Courses</p>
           <h1 className="ui-page-title" style={{ fontSize: '2rem' }}>Sign in to sync courses</h1>
@@ -58,7 +58,7 @@ export default async function SyncCoursesPage() {
 
   if (!hasCurrentUserCanvasSettings) {
     return (
-      <main className="page-shell page-shell-narrow page-stack">
+      <main className="page-shell page-stack">
         <header className="motion-card" style={{ display: 'grid', gap: '0.5rem' }}>
           <p className="ui-kicker">Sync Courses</p>
           <h1 className="ui-page-title" style={{ fontSize: '2rem' }}>Sync Courses</h1>
@@ -167,7 +167,7 @@ export default async function SyncCoursesPage() {
     }))
 
   return (
-    <main className="page-shell page-shell-narrow page-stack">
+    <main className="page-shell page-stack">
       <SyncCoursesPageClient
         initialConnectionUrl={initialConnectionUrl}
         lastSync={lastSync}

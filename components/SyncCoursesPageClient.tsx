@@ -108,12 +108,14 @@ export function SyncCoursesPageClient({
         return
       }
 
+      if (!haveSameCourseIds(courses, result.courses)) {
+        setSelectedCourseIds((currentSelectedIds) => pruneUnavailableSelectedCourseIds(currentSelectedIds, result.courses, initialConnectionUrl, syncedCourseKeySet))
+      }
       setCourses(result.courses)
-      setSelectedCourseIds([])
       setSearch('')
       setIncludeEndedCourses(nextIncludeEnded)
     })
-  }, [includeEndedCourses, startLoadingCourses])
+  }, [courses, includeEndedCourses, initialConnectionUrl, startLoadingCourses, syncedCourseKeySet])
 
   const refreshCanvasQueue = useCallback(async () => {
     try {
@@ -253,10 +255,10 @@ export function SyncCoursesPageClient({
         <SummaryCard
           label="Last sync"
           title={latestSync?.label ?? 'No sync yet'}
-          detail={latestSync ? 'Your latest course import is saved.' : 'Refresh courses, select what you need, then sync.'}
+          detail={latestSync ? 'Your latest course import is saved.' : 'Refresh Courses, select what you need, then sync.'}
           action={(
             <button type="button" onClick={() => loadCourses()} disabled={isLoadingCourses} className="ui-button ui-button-primary ui-button-sm">
-              {isLoadingCourses ? 'Refreshing...' : 'Refresh courses'}
+              {isLoadingCourses ? 'Refreshing courses...' : 'Refresh Courses'}
             </button>
           )}
         />
@@ -278,14 +280,9 @@ export function SyncCoursesPageClient({
         <section className="sync-panel sync-course-picker" aria-labelledby="sync-course-picker-title">
           <div className="sync-panel-header">
             <div>
-              <p className="ui-kicker">Available courses</p>
+              <p className="ui-kicker">Available Courses</p>
               <h2 id="sync-course-picker-title" className="sync-panel-title">Choose courses to sync</h2>
             </div>
-            <EndedCoursesToggle
-              checked={includeEndedCourses}
-              disabled={isLoadingCourses || isSyncActionPending}
-              onChange={handleToggleEndedCourses}
-            />
           </div>
 
           <div className="sync-picker-tools">
@@ -301,6 +298,11 @@ export function SyncCoursesPageClient({
               />
             </label>
             <div className="sync-picker-actions">
+              <EndedCoursesToggle
+                checked={includeEndedCourses}
+                disabled={isLoadingCourses || isSyncActionPending}
+                onChange={handleToggleEndedCourses}
+              />
               <button
                 type="button"
                 onClick={handleCourseSubmit}
@@ -314,7 +316,7 @@ export function SyncCoursesPageClient({
                 })}
               </button>
               <button type="button" onClick={() => loadCourses()} disabled={isLoadingCourses || isSyncActionPending} className="ui-button ui-button-secondary ui-button-sm">
-                {isLoadingCourses ? 'Refreshing...' : 'Refresh courses'}
+                {isLoadingCourses ? 'Refreshing courses...' : 'Refresh Courses'}
               </button>
             </div>
           </div>
@@ -323,7 +325,7 @@ export function SyncCoursesPageClient({
 
           <p className="sync-helper-text">
             {isLoadingCourses
-              ? 'Loading your Canvas course list...'
+              ? 'Refreshing courses...'
               : courses.length === 0
                 ? includeEndedCourses ? 'No current or past courses were found for this account.' : 'No active courses were found for this account.'
                 : filteredCourses.length === 0
@@ -334,7 +336,7 @@ export function SyncCoursesPageClient({
           <div className="sync-course-list">
             {filteredCourses.length === 0 ? (
               <div className="ui-empty sync-empty-state">
-                {isLoadingCourses ? 'Preparing course list...' : search ? 'No courses matched that search.' : 'No courses available to sync right now.'}
+                {isLoadingCourses ? 'Refreshing courses...' : search ? 'No courses matched that search.' : 'No courses available to sync right now.'}
               </div>
             ) : (
               groupedCourses.map((group) => (
@@ -512,13 +514,14 @@ function EndedCoursesToggle({
   onChange: (value: boolean) => void
 }) {
   return (
-    <label className="sync-ended-toggle">
+    <label className="sync-ended-toggle" data-checked={checked ? 'true' : 'false'}>
       <input
         type="checkbox"
         checked={checked}
         disabled={disabled}
         onChange={(event) => onChange(event.target.checked)}
       />
+      <span className="sync-ended-switch" aria-hidden="true" />
       <span>Show ended courses</span>
     </label>
   )
@@ -642,7 +645,7 @@ function getSyncButtonLabel({
     return selectedCourseCount > 1 ? `Retry ${selectedCourseCount} courses` : 'Retry sync'
   }
 
-  return selectedCourseCount > 1 ? `Sync ${selectedCourseCount} courses` : 'Sync selected'
+  return 'Sync selected'
 }
 
 function getCourseSyncStateLabel(state: CourseSyncState) {
@@ -679,6 +682,36 @@ function groupCoursesForPicker(courses: CanvasCourse[]) {
     ...group,
     isLast: index === groups.length - 1,
   }))
+}
+
+function haveSameCourseIds(currentCourses: CanvasCourse[], nextCourses: CanvasCourse[]) {
+  if (currentCourses.length !== nextCourses.length) return false
+
+  const currentIds = currentCourses.map((course) => course.id).sort((a, b) => a - b)
+  const nextIds = nextCourses.map((course) => course.id).sort((a, b) => a - b)
+
+  return currentIds.every((id, index) => id === nextIds[index])
+}
+
+function pruneUnavailableSelectedCourseIds(
+  selectedIds: number[],
+  nextCourses: CanvasCourse[],
+  canvasUrl: string,
+  syncedCourseKeySet: Set<string>,
+) {
+  if (selectedIds.length === 0) return selectedIds
+
+  const availableIds = new Set(
+    nextCourses
+      .filter((course) => {
+        const key = buildCanvasCourseSyncKey(canvasUrl, course.id)
+        return !key || !syncedCourseKeySet.has(key)
+      })
+      .map((course) => course.id)
+  )
+  const nextSelectedIds = selectedIds.filter((id) => availableIds.has(id))
+
+  return nextSelectedIds.length === selectedIds.length ? selectedIds : nextSelectedIds
 }
 
 function getStatusSummary({

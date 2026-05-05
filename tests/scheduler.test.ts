@@ -1113,6 +1113,7 @@ test('/sync renders dedicated Sync Courses split page without primary connection
   assert.match(clientSource, /<h1 className="ui-page-title">Sync Courses<\/h1>/, 'page title is Sync Courses')
   assert.match(clientSource, /sync-summary-grid/, 'top summary grid exists')
   assert.match(clientSource, /sync-split-layout/, 'split layout exists')
+  assert.doesNotMatch(pageSource, /page-shell-narrow/, '/sync uses the wide page shell')
   assert.doesNotMatch(pageSource, /ConnectCanvasFlowWrapper/, '/sync does not wrap old Canvas settings flow')
   assert.doesNotMatch(clientSource, /eyebrow="Connection"/, '/sync does not render old full Connection section')
 })
@@ -1122,8 +1123,10 @@ test('/sync course controls use saved Canvas connection and no fake pagination',
 
   assert.match(source, /fetchCurrentUserCanvasCourses\(\{ includeEnded: nextIncludeEnded \}\)/, 'refresh uses saved Canvas connection')
   assert.match(source, /function handleToggleEndedCourses\(value: boolean\)[\s\S]*loadCourses\(value\)/, 'Show ended courses reloads courses immediately')
-  assert.match(source, /Refresh courses/, 'course refresh action is labeled Refresh courses')
+  assert.match(source, /Refresh Courses/, 'course refresh action is labeled Refresh Courses')
+  assert.match(source, /Refreshing courses\.\.\./, 'loading state says Refreshing courses...')
   assert.doesNotMatch(source, /Load more courses/, 'no Load more courses label without real pagination')
+  assert.doesNotMatch(source, /Load courses/, 'no Load courses label')
 })
 
 test('/sync disconnected state links to Settings Canvas setup', () => {

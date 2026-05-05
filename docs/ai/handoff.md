@@ -5,6 +5,65 @@ Last Updated: 2026-05-05
 
 ---
 
+## Session Update - 2026-05-05k (Polish Sync Courses layout and refresh behavior)
+
+### What changed
+
+**`app/sync/page.tsx`**
+- Removed `page-shell-narrow` from `/sync` signed-out, disconnected, and connected states so the page uses the same wide shell behavior as Home.
+
+**`components/SyncCoursesPageClient.tsx`**
+- Standardized refresh copy to `Refresh Courses` and loading copy to `Refreshing courses...`.
+- Moved `Show ended courses` into the search/actions row.
+- Changed the primary idle sync button label to `Sync selected`.
+- Refresh now preserves selected courses when the refreshed course list has the same IDs, and only prunes selections that are no longer available when the returned course list changes.
+- Kept mount behavior as an automatic saved-connection course refresh.
+
+**`app/globals.css`**
+- Widened the split grid to roughly 2fr / 1fr.
+- Added stable desktop min-heights for the available course picker and right status panel.
+- Made the course list the internal scroll area instead of letting the card grow endlessly.
+- Replaced the old checkbox-card styling with a compact pill switch.
+- Kept mobile one-column behavior and removed the forced full-width toggle so it does not wrap awkwardly.
+
+**`tests/scheduler.test.ts`**
+- Extended `/sync` route contract tests to confirm the wide shell, `Refresh Courses`, `Refreshing courses...`, and absence of fake load labels.
+
+### Why it changed
+
+Screenshots showed the dedicated `/sync` page still felt narrow, cramped, and slightly settings-like. The page now uses the available app width, keeps refresh behavior explicit, and presents the ended-course option as a compact control aligned with the main course tools.
+
+### Tests run
+
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- scheduler learn-resource-ui queue` - passed, 317/317
+- Browser smoke via Playwright against `/sync` at desktop and 390px mobile - passed for unauthenticated/disconnected rendering
+
+### Verification result
+
+- Static checks passed.
+- `/sync` signed-out/disconnected path loaded with no Next.js error overlay.
+- 390px mobile viewport had no horizontal overflow.
+- Connected-account visual verification was not fully possible in this local browser session because it was unauthenticated.
+
+### Known risks / blockers
+
+- Real connected-account QA is still needed to visually confirm the full split layout with actual Canvas courses, automatic refresh on entry, Show ended courses reload, stable picker height, and internal list scrolling.
+- Existing remote Supabase migration risk from prior sessions remains: `user_source_progress` still needs to be applied remotely if not already done.
+
+### Next recommended steps
+
+1. Sign in locally with a Canvas-connected account and verify the connected `/sync` layout on desktop and 390px mobile.
+2. Confirm Show ended courses refreshes immediately against real Canvas results.
+3. Confirm selected courses are preserved across refresh when the available course IDs do not change.
+
+### Suggested commit message
+
+polish sync courses layout and refresh behavior
+
+---
+
 ## Session Update - 2026-05-05j (Redesign Sync Courses split layout)
 
 ### What changed
