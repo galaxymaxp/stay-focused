@@ -5,6 +5,117 @@ Last Updated: 2026-05-05
 
 ---
 
+## Session Update — 2026-05-05h (Add reviewed home rows and dedicated sync page)
+
+### What changed
+
+**`supabase/migrations/20260505010000_add_user_source_progress.sql`** (new)
+- Added `user_source_progress` table: `user_id`, `source_table`, `source_id`, `status` (active/completed/reviewed/later), `reviewed_at`, `completed_at`, `updated_at`
+- Unique constraint on `(user_id, source_table, source_id)`
+- RLS policy: users manage their own rows
+
+**`actions/source-progress.ts`** (new)
+- `markSourceProgress(sourceTable, sourceId, status)` — server action that upserts a `user_source_progress` row and calls `revalidatePath('/')`
+
+**`lib/home-focus.ts`**
+- Added optional `sourceTable` field to `SyllabusFocusRow` and `LearnFocusRow`
+- `buildSyllabusFocusRows` now sets `sourceTable: 'task_items'` on all canonical rows
+- `buildLearnFocusRows` now sets `sourceTable: 'module_resources'` on all canonical rows
+
+**`components/TodayDashboard.tsx`**
+- Added `reviewedSourceIds?: string[]` prop; builds `reviewedIdSet` via useMemo
+- `activeFocusRows` now also filters out Learn rows whose id is in `reviewedIdSet`
+- Added `reviewedLearnRows` useMemo — fitted learn rows whose id is in `reviewedIdSet`
+- Added `reviewedExpanded` state
+- Replaced `handleMarkReviewed(scheduledBlockId)` with `handleMarkLearnReviewed(row)`:
+  - calls `markSourceProgress('module_resources', row.id, 'reviewed')` for canonical rows
+  - also calls `updateBlockStatus(scheduledBlockId, 'completed')` when a scheduled block is attached
+  - fires for ALL Learn rows, not just those with `scheduledBlockId`
+- Added `handleMarkSyllabusDone(row)`:
+  - calls `updateTaskCompletion({ taskItemId: row.id, ... })` for `sourceTable === 'task_items'` rows
+  - also calls `updateBlockStatus(scheduledBlockId, 'completed')` when a scheduled block is attached
+  - fires for ALL Syllabus rows, not just those with `scheduledBlockId`
+- `FocusScheduleTable` prop types updated: `onMarkDone: (row: FittedSyllabusRow) => void`, `onMarkReviewed: (row: FittedLearnRow) => void`
+- `SyllabusTableRow`: "Mark done" renders for every row (removed `blockId` guard)
+- `LearnTableRow`: removed `fileTypeLabel` chip, `readiness` chip, Study pack chip, and Quiz chip; "Mark reviewed" renders for every row; course name moved to top of details cell as plain muted text
+- Added `ReviewedSection` component — collapsible, shows fitted learn rows already reviewed
+- `ReviewedSection` rendered after `LaterSection` when `focusMode === 'learn'`
+
+**`app/(app)/page.tsx`** and **`app/page.tsx`**
+- Added 4th query to Promise.all: `user_source_progress` for `module_resources` with `status in ('reviewed', 'completed')`
+- Extracts `reviewedSourceIds: string[]` from the result
+- Passes `reviewedSourceIds` prop to `TodayDashboard`
+
+**`app/sync/page.tsx`** (new)
+- Dedicated Sync Courses page at `/sync`
+- Unauthenticated: sign-in prompt
+- Authenticated + Canvas not connected: connection-required card with link to Settings > Canvas
+- Authenticated + connected: renders `ConnectCanvasFlowWrapper` with `initialAction="sync"` so course list auto-loads on page mount
+
+**`components/shell/Sidebar.tsx`**
+- Added `{ href: '/sync', label: 'Sync Courses', icon: RefreshCcw }` to nav items
+
+**`components/SettingsPage.tsx`**
+- Canvas section "Go to Canvas Sync" → "Go to Sync Courses" linking to `/sync`
+- Canvas section description updated to mention Sync Courses page
+
+**`components/ConnectCanvasFlow.tsx`**
+- Removed `hasSyncedCourses` prop (was only used for button label ternary)
+- `handleToggleEndedCourses`: now calls `handleUseSavedConnection(value)` when `canLoadCourses` is true, not just `step === 'courses'` — toggle immediately reloads course list even when not yet loaded
+- "Load more courses" / "Load courses" button text simplified to "Refresh courses"
+
+**`components/ConnectCanvasFlowWrapper.tsx`**
+- Removed `hasSyncedCourses` prop pass-through (no longer accepted by ConnectCanvasFlow)
+
+**`tests/scheduler.test.ts`**
+- Added 9 new tests:
+  1. `canonical Learn resource carries sourceTable=module_resources for review action`
+  2. `canonical task_item row carries sourceTable=task_items for done action`
+  3. `reviewed resource IDs filter active Learn rows (UI contract)`
+  4. `reviewed Learn row absent from active list; present in Reviewed section`
+  5. `File, Ready, Study pack, and Quiz chips absent from Learn table row data (documented contract)`
+  6. `learning_items, deep_learn_notes, and drafts still do not appear as standalone Learn rows after chip removal`
+  7. `Show ended courses toggle triggers course reload when connection exists (documented contract)`
+  8. `Settings Canvas section links to /sync (documented contract)`
+  9. `Sync Courses nav route exists at /sync (documented contract)`
+
+### Why it changed
+
+- Learn rows only showed "Mark reviewed" when `scheduledBlockId` was present, so canonical module_resources that had never been scheduled couldn't be marked. The fix introduces source-level progress via `user_source_progress` so any canonical row can be acted on.
+- Syllabus "Mark done" only updated `scheduled_blocks.status`, not the underlying `task_items` row. It also only showed for rows with a scheduled block. The fix calls `updateTaskCompletion` for task_items rows and shows the button for all rows.
+- Learn table chips (File, Ready, Study pack, Quiz) were visually noisy and not adding enough information density to justify the space. Removed from table rows (still on the data type for clock/tooltip consumers).
+- Canvas sync was buried in Settings with no direct nav item. A dedicated `/sync` page with auto-load and clear UX is now the primary course sync entry point.
+- "Show ended courses" only reloaded when already on step=courses. Fixed to reload whenever a connection exists.
+
+### Tests run
+
+- `npm run typecheck` — ✅ clean
+- `npm run lint` — ✅ clean (0 errors, 0 warnings after removing unused `hasSyncedCourses`)
+- `npm test -- scheduler learn-resource-ui queue` — ✅ 314/314 pass (+9 new tests)
+
+### Known risks / blockers
+
+- `user_source_progress` migration has NOT been applied to the remote Supabase project yet. Run `supabase db push` or apply via the Supabase dashboard before deploying. Until applied, `markSourceProgress` will fail at runtime with a table-not-found error.
+- The `/canvas` route still exists and still works — it now points to the same `ConnectCanvasFlowWrapper`. Consider a redirect from `/canvas` to `/sync` in a future pass.
+- `ReviewedSection` shows rows from `fittedLearnRows` (rows fitted to the current free-time window). Reviewed rows from outside the window are not shown. This is acceptable for now since the Reviewed section is supplementary.
+- `handleMarkSyllabusDone` calls both `updateTaskCompletion` and `updateBlockStatus` in parallel. If `updateTaskCompletion` throws, the block status update may still complete. Both paths call `revalidatePath('/')` so the page will refresh regardless.
+
+### Next recommended steps
+
+1. Apply `20260505010000_add_user_source_progress.sql` to the remote Supabase project.
+2. Verify in browser: Learn tab shows "Mark reviewed" on all rows; marking a resource moves it out of the active list and into the Reviewed section.
+3. Verify in browser: Syllabus tab shows "Mark done" on all rows; marking a task_items row actually updates its status in the DB (check Tasks page after marking).
+4. Verify in browser: `/sync` auto-loads courses when Canvas is already connected.
+5. Verify in browser: "Show ended courses" toggle reloads immediately without needing to click "Refresh courses" first.
+6. Consider redirecting `/canvas` → `/sync` to clean up the legacy route.
+7. Future: add Syllabus "Completed" section using `user_source_progress` for task_items (mirroring the Learn Reviewed section).
+
+### Suggested commit message
+
+add reviewed home rows and dedicated sync page
+
+---
+
 ## Session Update — 2026-05-05g (Fix merged home schedule model)
 
 ### What changed
