@@ -1,7 +1,91 @@
 # Stay Focused — AI Session Handoff
 
 Author: galaxymaxp omgraythekid@gmail.com
-Last Updated: 2026-05-04
+Last Updated: 2026-05-05
+
+---
+
+## Session Update — 2026-05-05 (Reuse canonical Syllabus and Learn sources for Home schedule)
+
+### What changed
+
+**`lib/home-focus.ts`** — new file
+- Defines `SyllabusFocusRow` and `LearnFocusRow` types for canonical home focus rows.
+- `buildSyllabusFocusRows(taskItems)` — builds Syllabus rows directly from `task_items` (all pending tasks, not just scheduler-selected). Open href prefers `canvas_url` if available; falls back to module Do page.
+- `buildLearnFocusRows(resources, studyPacksMap, courseNameById)` — builds Learn rows from `module_resources` using the same readiness classification as `/modules/:id/learn`: Canvas pages always included; file/doc/slide types require usable text quality. Quiz resource types are excluded via `isSchedulableResourceType`. Open href uses `buildModuleLearnHref(moduleId, { resourceId })` when `module_id` is available.
+- `fitFocusRowsToWindow(rows, windowStartIso, windowEndIso, defaultMinutes)` — pure view/helper transform that assigns sequential `startAt`/`endAt` times to rows within the free-time window. No DB writes. Stops when the window is full.
+- `ModuleResourceRow` interface — minimal Supabase snake_case shape for module_resources query.
+
+**`components/InteractivePlannerClock.tsx`**
+- Added optional `href?: string | null` field to `ClockScheduleBlock`. When set, `TodayDashboard.getBlockHref()` returns this directly instead of computing from `sourceTable`/`sourceId`.
+
+**`components/TodayDashboard.tsx`**
+- New props: `syllabusFocusRows?: SyllabusFocusRow[]`, `learnFocusRows?: LearnFocusRow[]` (both optional with empty defaults for backward compatibility).
+- Plan list now renders from canonical focus rows (not filtered `scheduled_blocks`). `filteredNow/Next/Later` are replaced by `nowFocusRows/nextFocusRows/laterFocusRows` derived from `fitFocusRowsToWindow()` applied to the active tab's rows.
+- Clock `scheduleBlocks` now receives `clockBlocks` — the fitted focus rows converted to `ClockScheduleBlock` shape for the active focus tab. Syllabus tab → `sourceTable: 'task_items'`; Learn tab → `sourceTable: 'module_resources'`. Switching tabs immediately updates the clock.
+- **Segmented pill focus switcher**: replaced the small chip `role="tablist"` with a `home-focus-pill` container holding a sliding `home-focus-pill-track` background and two `home-focus-pill-btn` buttons. The track translates on `focusMode` change.
+- **Syllabus rows** (`SyllabusPlanRow`): Open/anchor uses `row.href` (canvas_url or Do page). Opens in new tab when `canvasUrl` is set. Urgency label shown inline.
+- **Learn rows** (`LearnPlanRow`): Open/anchor uses `row.href` (module learn path) with "Open" for ready resources and "Preview" for limited. Falls back to `originalHref` for external source. Study pack chips attach from `studyPacksByBlockId` lookup.
+- Hero (Start Here) block still sourced from `scheduledBlocks` (no change).
+- Completed section still sourced from `scheduledBlocks` (no change).
+- `isSyllabusBlock` and `isLearnBlock` are kept and exported for test contracts (still used by the old scheduled-blocks path if the hero block type is ever needed).
+- Removed old `filteredNow/Next/Later` and `PlanRow`/`PlanGroup` components (replaced by `FocusPlanGroup`, `SyllabusPlanRow`, `LearnPlanRow`).
+
+**`app/(app)/page.tsx`**
+- Added `module_resources` query (same fields as the scheduler query) for building Learn focus rows.
+- Builds `courseNameById` map from `workspace.courses` for Learn row course name display.
+- Calls `buildSyllabusFocusRows(workspace.taskItems)` — canonical Syllabus source.
+- Calls `buildLearnFocusRows(resourcesResult.data, studyPacksByResourceId, courseNameById)` — canonical Learn source.
+- Passes both as new props to `TodayDashboard`.
+
+**`tests/scheduler.test.ts`**
+- Added imports for `buildSyllabusFocusRows`, `buildLearnFocusRows`, `fitFocusRowsToWindow`, `ModuleResourceRow`, `TaskItem`.
+- Added 13 new tests:
+  1. Learn focus uses module_resources titles (not generated prompts)
+  2. Learn focus shows PDF/PPTX/DOCX/Canvas page rows from canonical module_resources
+  3. Syllabus focus uses task/assignment/quiz/due rows from task_items
+  4. Focus switch: syllabus rows ≠ learn rows (different source data)
+  5. Focus switch: clock input shape differs by tab (task_items vs module_resources)
+  6. Learn rows exclude quiz resource_type
+  7. "Check your understanding" not filtered by title (learning_items excluded at DB level)
+  8. Learn row href uses /modules/:id/learn path when module_id is available
+  9. Syllabus row href uses canvas_url, falls back to Do page
+  10. fitFocusRowsToWindow assigns start/end times inside window
+  11. fitFocusRowsToWindow stops when window is full
+  12. No separate Study Materials card (documented contract)
+  13. No duplicate IDs in canonical focus rows for unique inputs
+
+### Why it changed
+
+The previous session's Syllabus/Learn focus tabs were still built from `scheduled_blocks` — the scheduler's subset of task_items and module_resources. This caused two problems:
+1. **Wrong Learn rows**: The scheduler scores and limits which resources appear. The actual `/modules/:id/learn` page shows ALL "Ready for Deep Learn" resources. The two lists diverged.
+2. **Wrong Syllabus rows**: Only scheduler-selected tasks appeared, not the full Canvas task/assignment list the student actually has pending.
+
+The fix switches both tabs to canonical data sources (task_items and module_resources read directly) and uses `fitFocusRowsToWindow()` as a pure view transform to assign display times — no new scheduled_blocks are generated.
+
+### Tests run
+
+- `npm run typecheck` — ✅ clean
+- `npm run lint` — ✅ clean (0 errors, 0 warnings)
+- `npm test -- scheduler` — ✅ 294 pass, 0 fail (was 281; +13 new)
+
+### Known risks / blockers
+
+- The `fitFocusRowsToWindow()` fitting is sequential and greedy (fills slots in row order). It stops when the window is full. For large task/resource lists, later rows are silently cut off. A future improvement could add priority scoring to decide which rows to include when the window is limited.
+- Syllabus rows always open canvas_url in a new tab (`target="_blank"`). If the user is not logged into Canvas, the link will prompt for Canvas auth. This is intentional (same as clicking a Canvas link anywhere in the app).
+- Learn rows without a `module_id` fall back to `originalHref` (Canvas file URL or source URL). This opens the raw file rather than the in-app reader. Rows from the scheduler that lack `module_id` have always had this limitation — a `module_id` column on `scheduled_blocks` would fix routing for the hero block too.
+- The `home-focus-pill` segmented pill needs CSS rules in `globals.css` for the sliding track animation (`transform: translateX(...)` is set inline; the visual style depends on the design token variables already in place).
+
+### Next recommended steps
+
+1. Add CSS for `home-focus-pill`, `home-focus-pill-track`, `home-focus-pill-btn` to `globals.css` to complete the animated segmented pill visual.
+2. (Optional) Add a sort/priority option inside `buildLearnFocusRows` to surface the highest-readiness resources first (currently sorted alphabetically).
+3. (Optional) Limit `buildSyllabusFocusRows` to tasks with due dates within a configurable horizon (e.g., next 14 days) to reduce noise in the Syllabus tab for students with many pending tasks.
+4. (Optional) `fitFocusRowsToWindow` could accept a `limit` cap (e.g., max 8 rows) to avoid rendering a long list even when the window could technically fit many short tasks.
+
+### Suggested commit message
+
+reuse syllabus and learn sources for home schedule
 
 ---
 

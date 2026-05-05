@@ -3,6 +3,7 @@ import { SyncFirstEmptyState } from '@/components/SyncFirstEmptyState'
 import { createAuthenticatedSupabaseServerClient } from '@/lib/auth-server'
 import { getClarityWorkspace } from '@/lib/clarity-workspace'
 import { buildHomeOverview } from '@/lib/home-overview'
+import { buildLearnFocusRows, buildSyllabusFocusRows } from '@/lib/home-focus'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,7 +21,7 @@ export default async function Dashboard() {
   const overview = buildHomeOverview(workspace)
   const client = await createAuthenticatedSupabaseServerClient()
 
-  const [scheduledBlocksResult, studyPacksResult] = client
+  const [scheduledBlocksResult, studyPacksResult, resourcesResult] = client
     ? await Promise.all([
       client
         .from('scheduled_blocks')
@@ -31,8 +32,13 @@ export default async function Dashboard() {
         .from('deep_learn_notes')
         .select('id,module_id,resource_id,title,quiz_ready')
         .eq('status', 'ready'),
+      // Canonical Learn source: module_resources with quality fields
+      client
+        .from('module_resources')
+        .select('id,course_id,module_id,title,resource_type,extracted_text,extracted_text_preview,visual_extraction_status,visual_extracted_text,html_url,source_url,estimated_minutes')
+        .order('title', { ascending: true }),
     ])
-    : [{ data: [] }, { data: [] }]
+    : [{ data: [] }, { data: [] }, { data: [] }]
 
   const studyPacksByModuleId: Record<string, Array<{ id: string; title: string; quizReady: boolean }>> = {}
   const studyPacksByResourceId: Record<string, Array<{ id: string; title: string; quizReady: boolean }>> = {}
@@ -49,6 +55,22 @@ export default async function Dashboard() {
       studyPacksByResourceId[pack.resource_id] = list
     }
   }
+
+  // Build course name map for Learn focus rows
+  const courseNameById: Record<string, string> = {}
+  for (const course of workspace.courses) {
+    courseNameById[course.id] = course.name
+  }
+
+  // Canonical Syllabus focus rows from workspace task_items (all pending tasks, not just scheduled)
+  const syllabusFocusRows = buildSyllabusFocusRows(workspace.taskItems)
+
+  // Canonical Learn focus rows from module_resources (same classification as /modules/:id/learn)
+  const learnFocusRows = buildLearnFocusRows(
+    resourcesResult.data ?? [],
+    studyPacksByResourceId,
+    courseNameById,
+  )
 
   return (
     <main className="page-shell">
@@ -74,6 +96,8 @@ export default async function Dashboard() {
           estimateConfidence: normalizeEstimateConfidence(block.estimate_confidence),
           estimateReason: block.estimate_reason,
         }))}
+        syllabusFocusRows={syllabusFocusRows}
+        learnFocusRows={learnFocusRows}
         studyPacksByModuleId={studyPacksByModuleId}
         studyPacksByResourceId={studyPacksByResourceId}
       />

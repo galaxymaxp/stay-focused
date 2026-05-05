@@ -9,6 +9,7 @@ import { TaskStatusToggle } from '@/components/TaskStatusToggle'
 import { InteractivePlannerClock, type ClockScheduleBlock } from '@/components/InteractivePlannerClock'
 import { buildManualCopyBundle } from '@/lib/manual-copy-bundle'
 import type { HomeActivityItem, HomeCourseSnapshot, HomeDueSoonItem } from '@/lib/home-overview'
+import { fitFocusRowsToWindow, type LearnFocusRow, type SyllabusFocusRow } from '@/lib/home-focus'
 import type { TodayItem } from '@/lib/types'
 import { formatDuration, formatTime, getWindowDurationMinutes, isBlockInsideWindow, timeWindowToIsoRange } from '@/lib/scheduler/time'
 import { buildCourseLearnHref } from '@/lib/stay-focused-links'
@@ -27,6 +28,8 @@ export function TodayDashboard({
   courseSnapshots,
   undatedTaskCount,
   scheduledBlocks,
+  syllabusFocusRows = [],
+  learnFocusRows = [],
   studyPacksByModuleId = {},
   studyPacksByResourceId = {},
 }: {
@@ -37,6 +40,8 @@ export function TodayDashboard({
   courseSnapshots: HomeCourseSnapshot[]
   undatedTaskCount: number
   scheduledBlocks: ScheduleBlock[]
+  syllabusFocusRows?: SyllabusFocusRow[]
+  learnFocusRows?: LearnFocusRow[]
   studyPacksByModuleId?: Record<string, StudyPackRef[]>
   studyPacksByResourceId?: Record<string, StudyPackRef[]>
 }) {
@@ -92,42 +97,6 @@ export function TodayDashboard({
   const availableLabel = availableMinutes > 0 ? formatDuration(availableMinutes) : 'Invalid window'
   const windowLabel = `${formatTime(availableStart)} – ${formatTime(availableEnd)}`
 
-  const { nowBlocks, nextBlocks, laterBlocks } = useMemo(() => {
-    const now = new Date()
-    const nowMs = now.getTime()
-    const twoHoursMs = 2 * 60 * 60_000
-    const active = activeBlocks.filter((b) => b.status !== 'skipped')
-
-    const nowGroup = active.filter(
-      (b) =>
-        b.status === 'opened' ||
-        (b.status === 'scheduled' && new Date(b.startAt) <= now && new Date(b.endAt) > now),
-    )
-    const nowIds = new Set(nowGroup.map((b) => b.id))
-
-    const upcoming = active
-      .filter((b) => !nowIds.has(b.id) && new Date(b.startAt) >= now)
-      .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())
-
-    const nextGroup = upcoming
-      .filter((b) => new Date(b.startAt).getTime() - nowMs <= twoHoursMs)
-      .slice(0, 3)
-    const nextIds = new Set(nextGroup.map((b) => b.id))
-
-    const laterGroup = upcoming.filter((b) => !nextIds.has(b.id)).slice(0, 6)
-
-    return { nowBlocks: nowGroup, nextBlocks: nextGroup, laterBlocks: laterGroup }
-  }, [activeBlocks])
-
-  const studyPacksByBlockId = useMemo(() => {
-    const map: Record<string, StudyPackRef[]> = {}
-    for (const block of visibleSchedule) {
-      const packs = getBlockStudyPacks(block, studyPacksByModuleId, studyPacksByResourceId)
-      if (packs.length > 0) map[block.id] = packs
-    }
-    return map
-  }, [visibleSchedule, studyPacksByModuleId, studyPacksByResourceId])
-
   // The primary scheduled block: current if one is live, otherwise soonest upcoming
   const primaryScheduleBlock =
     currentBlock ??
@@ -136,18 +105,83 @@ export function TodayDashboard({
       .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime())[0] ??
     null
 
-  const { filteredNow, filteredNext, filteredLater } = useMemo(() => {
+  // ── Canonical focus rows fitted to the current free-time window ───────────
+  const windowRange = useMemo(() => timeWindowToIsoRange(availableStart, availableEnd), [availableStart, availableEnd])
+
+  const fittedSyllabusRows = useMemo(
+    () => fitFocusRowsToWindow(syllabusFocusRows, windowRange.start, windowRange.end, 20),
+    [syllabusFocusRows, windowRange],
+  )
+
+  const fittedLearnRows = useMemo(
+    () => fitFocusRowsToWindow(learnFocusRows, windowRange.start, windowRange.end, 30),
+    [learnFocusRows, windowRange],
+  )
+
+  // Active focus rows for the current tab (with fitted times)
+  const activeFocusRows = focusMode === 'syllabus' ? fittedSyllabusRows : fittedLearnRows
+
+  // Convert canonical focus rows to ClockScheduleBlock for the clock
+  const clockBlocks = useMemo((): ClockScheduleBlock[] => {
+    if (focusMode === 'syllabus') {
+      return fittedSyllabusRows.map((row) => ({
+        id: row.id,
+        title: row.title,
+        startAt: row.startAt,
+        endAt: row.endAt,
+        status: 'scheduled' as const,
+        sourceTable: 'task_items' as const,
+        context: row.courseName,
+        urgencyNote: row.urgencyLabel !== 'No due date' ? row.urgencyLabel : undefined,
+        href: row.href,
+      }))
+    }
+    return fittedLearnRows.map((row) => ({
+      id: row.id,
+      title: row.title,
+      startAt: row.startAt,
+      endAt: row.endAt,
+      status: 'scheduled' as const,
+      sourceTable: 'module_resources' as const,
+      context: row.courseName ?? undefined,
+      href: row.href ?? undefined,
+    }))
+  }, [focusMode, fittedSyllabusRows, fittedLearnRows])
+
+  // Group active focus rows into Now / Next / Later by fitted time
+  const { nowFocusRows, nextFocusRows, laterFocusRows } = useMemo(() => {
+    const now = new Date()
+    const nowMs = now.getTime()
+    const twoHoursMs = 2 * 60 * 60_000
     const heroId = primaryScheduleBlock?.id ?? null
-    const keep = (block: ScheduleBlock) => {
-      if (block.id === heroId) return false
-      return focusMode === 'syllabus' ? isSyllabusBlock(block) : isLearnBlock(block)
+    const rows = activeFocusRows.filter((r) => r.id !== heroId)
+
+    const nowGroup = rows.filter(
+      (r) => new Date(r.startAt) <= now && new Date(r.endAt) > now,
+    )
+    const nowIds = new Set(nowGroup.map((r) => r.id))
+
+    const upcoming = rows.filter((r) => !nowIds.has(r.id) && new Date(r.startAt) >= now)
+    const nextGroup = upcoming.filter((r) => new Date(r.startAt).getTime() - nowMs <= twoHoursMs).slice(0, 3)
+    const nextIds = new Set(nextGroup.map((r) => r.id))
+    const laterGroup = upcoming.filter((r) => !nextIds.has(r.id)).slice(0, 6)
+
+    return { nowFocusRows: nowGroup, nextFocusRows: nextGroup, laterFocusRows: laterGroup }
+  }, [activeFocusRows, primaryScheduleBlock])
+
+  const studyPacksByBlockId = useMemo(() => {
+    const map: Record<string, StudyPackRef[]> = {}
+    // Attach study packs for scheduled blocks (hero)
+    for (const block of visibleSchedule) {
+      const packs = getBlockStudyPacks(block, studyPacksByModuleId, studyPacksByResourceId)
+      if (packs.length > 0) map[block.id] = packs
     }
-    return {
-      filteredNow: nowBlocks.filter(keep),
-      filteredNext: nextBlocks.filter(keep),
-      filteredLater: laterBlocks.filter(keep),
+    // Attach study packs for learn focus rows
+    for (const row of fittedLearnRows) {
+      if (row.studyPackRefs.length > 0) map[row.id] = row.studyPackRefs
     }
-  }, [nowBlocks, nextBlocks, laterBlocks, focusMode, primaryScheduleBlock])
+    return map
+  }, [visibleSchedule, fittedLearnRows, studyPacksByModuleId, studyPacksByResourceId])
 
   function changeWindow(start: string, end: string) {
     setAvailableStart(start)
@@ -158,8 +192,8 @@ export function TodayDashboard({
   async function handleGenerate() {
     setIsGenerating(true)
     try {
-      const windowRange = timeWindowToIsoRange(availableStart, availableEnd)
-      await generateUserSchedule(windowRange.start, windowRange.end)
+      const range = timeWindowToIsoRange(availableStart, availableEnd)
+      await generateUserSchedule(range.start, range.end)
       setUseDemoSchedule(false)
       setIsPlanStale(false)
       requestAnimationFrame(() =>
@@ -201,6 +235,9 @@ export function TodayDashboard({
     )
   }
 
+  // Determine if there are any focus rows to show (either tab has content)
+  const hasFocusRows = activeFocusRows.length > 0
+
   return (
     <section className="home-page">
       <header className="home-page-header">
@@ -222,7 +259,7 @@ export function TodayDashboard({
 
       <div className="home-layout">
         <div className="home-main-column">
-          {/* ── PRIMARY CARD: Start here ─────────────────────────────── */}
+          {/* ── PRIMARY CARD: Start here ─────────────���───────────────── */}
           <section className="home-focus-card">
             <SectionHeading
               eyebrow="Start here"
@@ -284,7 +321,7 @@ export function TodayDashboard({
                     onClick={handleGenerate}
                     disabled={isGenerating || isPending || availableMinutes <= 0}
                   >
-                    {isGenerating ? 'Building your plan…' : "Generate today’s plan"}
+                    {isGenerating ? 'Building your plan…' : "Generate today's plan"}
                   </button>
                   {SHOW_DEMO_PREVIEW ? (
                     <button
@@ -300,128 +337,156 @@ export function TodayDashboard({
             ) : null}
           </section>
 
-          {/* ── TODAY PLAN: Now / Next / Later ───────────────────────── */}
-          {hasSchedule ? (
-            <section className="home-sheet" ref={planPanelRef}>
-              <SectionHeading
-                eyebrow="Today's Schedule"
-                title="Today's Schedule"
-                description="Switch between due work and study materials for this free-time window."
+          {/* ── TODAY PLAN: Syllabus / Learn focus ───────────────────── */}
+          <section className="home-sheet" ref={planPanelRef}>
+            <SectionHeading
+              eyebrow="Today's Schedule"
+              title="Today's Schedule"
+              description="Switch between due work and study materials for this free-time window."
+            />
+
+            {/* Segmented pill focus switcher */}
+            <div className="home-focus-pill" role="tablist" aria-label="Schedule focus">
+              <div
+                className="home-focus-pill-track"
+                aria-hidden="true"
+                style={{
+                  transform: focusMode === 'learn' ? 'translateX(100%)' : 'translateX(0)',
+                }}
               />
+              {(['syllabus', 'learn'] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  role="tab"
+                  aria-selected={focusMode === mode}
+                  className={`home-focus-pill-btn${focusMode === mode ? ' active' : ''}`}
+                  onClick={() => setFocusMode(mode)}
+                >
+                  {mode === 'syllabus' ? 'Syllabus' : 'Learn'}
+                </button>
+              ))}
+            </div>
 
-              <div className="home-plan-filter" role="tablist" aria-label="Schedule focus">
-                {(['syllabus', 'learn'] as const).map((mode) => (
-                  <button
-                    key={mode}
-                    type="button"
-                    role="tab"
-                    aria-selected={focusMode === mode}
-                    className={`home-plan-filter-chip${focusMode === mode ? ' active' : ''}`}
-                    onClick={() => setFocusMode(mode)}
-                  >
-                    {mode === 'syllabus' ? 'Syllabus' : 'Learn'}
-                  </button>
-                ))}
-              </div>
+            <div className="home-plan-list">
+              {focusMode === 'syllabus' ? (
+                <>
+                  <FocusPlanGroup
+                    label="Now"
+                    rows={nowFocusRows}
+                    kind="syllabus"
+                    selectedId={selectedBlockId}
+                    studyPacksByBlockId={studyPacksByBlockId}
+                    onSelect={setSelectedBlockId}
+                  />
+                  <FocusPlanGroup
+                    label="Next"
+                    rows={nextFocusRows}
+                    kind="syllabus"
+                    selectedId={selectedBlockId}
+                    studyPacksByBlockId={studyPacksByBlockId}
+                    onSelect={setSelectedBlockId}
+                  />
+                  <FocusPlanGroup
+                    label="Later"
+                    rows={laterFocusRows}
+                    kind="syllabus"
+                    selectedId={selectedBlockId}
+                    studyPacksByBlockId={studyPacksByBlockId}
+                    onSelect={setSelectedBlockId}
+                  />
+                </>
+              ) : (
+                <>
+                  <FocusPlanGroup
+                    label="Now"
+                    rows={nowFocusRows}
+                    kind="learn"
+                    selectedId={selectedBlockId}
+                    studyPacksByBlockId={studyPacksByBlockId}
+                    onSelect={setSelectedBlockId}
+                  />
+                  <FocusPlanGroup
+                    label="Next"
+                    rows={nextFocusRows}
+                    kind="learn"
+                    selectedId={selectedBlockId}
+                    studyPacksByBlockId={studyPacksByBlockId}
+                    onSelect={setSelectedBlockId}
+                  />
+                  <FocusPlanGroup
+                    label="Later"
+                    rows={laterFocusRows}
+                    kind="learn"
+                    selectedId={selectedBlockId}
+                    studyPacksByBlockId={studyPacksByBlockId}
+                    onSelect={setSelectedBlockId}
+                  />
+                </>
+              )}
 
-              <div className="home-plan-list">
-                <PlanGroup
-                  label="Now"
-                  blocks={filteredNow}
-                  focusMode={focusMode}
-                  selectedBlockId={selectedBlockId}
-                  studyPacksByBlockId={studyPacksByBlockId}
-                  onOpen={handleOpenBlock}
-                  onStatus={handleUpdateStatus}
-                  onSelect={setSelectedBlockId}
-                  onMoveLater={useDemoSchedule ? undefined : handleMoveLater}
-                />
-                <PlanGroup
-                  label="Next"
-                  blocks={filteredNext}
-                  focusMode={focusMode}
-                  selectedBlockId={selectedBlockId}
-                  studyPacksByBlockId={studyPacksByBlockId}
-                  onOpen={handleOpenBlock}
-                  onStatus={handleUpdateStatus}
-                  onSelect={setSelectedBlockId}
-                  onMoveLater={useDemoSchedule ? undefined : handleMoveLater}
-                />
-                <PlanGroup
-                  label="Later"
-                  blocks={filteredLater}
-                  focusMode={focusMode}
-                  selectedBlockId={selectedBlockId}
-                  studyPacksByBlockId={studyPacksByBlockId}
-                  onOpen={handleOpenBlock}
-                  onStatus={handleUpdateStatus}
-                  onSelect={setSelectedBlockId}
-                  onMoveLater={useDemoSchedule ? undefined : handleMoveLater}
-                />
-
-                {filteredNow.length === 0 &&
-                filteredNext.length === 0 &&
-                filteredLater.length === 0 ? (
-                  <p
-                    className="ui-section-copy"
-                    style={{ padding: '0.5rem 0', color: 'var(--text-muted)' }}
-                  >
-                    All active blocks are complete or skipped.
-                  </p>
-                ) : null}
-
-                {moveLaterMessage ? (
-                  <p
-                    className="home-plan-stale-note"
-                    style={{ padding: '0.25rem 0' }}
-                  >
-                    {moveLaterMessage}
-                  </p>
-                ) : null}
-              </div>
-
-              {completedBlocks.length > 0 ? (
-                <CompletedSection
-                  blocks={completedBlocks}
-                  isOpen={completedExpanded}
-                  onToggle={() => setCompletedExpanded((v) => !v)}
-                />
+              {!hasFocusRows ? (
+                <p
+                  className="ui-section-copy"
+                  style={{ padding: '0.5rem 0', color: 'var(--text-muted)' }}
+                >
+                  {focusMode === 'syllabus'
+                    ? 'No pending assignments or tasks found for this window.'
+                    : 'No ready study materials found for this window.'}
+                </p>
               ) : null}
 
-              <div
-                className="home-focus-actions"
-                style={{
-                  paddingTop: '0.6rem',
-                  borderTop: '1px solid color-mix(in srgb, var(--border-subtle) 60%, transparent)',
-                }}
+              {moveLaterMessage ? (
+                <p
+                  className="home-plan-stale-note"
+                  style={{ padding: '0.25rem 0' }}
+                >
+                  {moveLaterMessage}
+                </p>
+              ) : null}
+            </div>
+
+            {completedBlocks.length > 0 ? (
+              <CompletedSection
+                blocks={completedBlocks}
+                isOpen={completedExpanded}
+                onToggle={() => setCompletedExpanded((v) => !v)}
+              />
+            ) : null}
+
+            <div
+              className="home-focus-actions"
+              style={{
+                paddingTop: '0.6rem',
+                borderTop: '1px solid color-mix(in srgb, var(--border-subtle) 60%, transparent)',
+              }}
+            >
+              <button
+                type="button"
+                className="ui-button ui-button-secondary ui-button-xs"
+                onClick={handleGenerate}
+                disabled={isGenerating || isPending || availableMinutes <= 0}
               >
+                {isGenerating ? 'Rebuilding…' : 'Regenerate plan'}
+              </button>
+              {SHOW_DEMO_PREVIEW ? (
                 <button
                   type="button"
-                  className="ui-button ui-button-secondary ui-button-xs"
-                  onClick={handleGenerate}
-                  disabled={isGenerating || isPending || availableMinutes <= 0}
+                  className="ui-button ui-button-ghost ui-button-xs"
+                  onClick={() => setUseDemoSchedule((v) => !v)}
                 >
-                  {isGenerating ? 'Rebuilding…' : 'Regenerate plan'}
+                  {useDemoSchedule ? 'Use real schedule' : 'Preview demo'}
                 </button>
-                {SHOW_DEMO_PREVIEW ? (
-                  <button
-                    type="button"
-                    className="ui-button ui-button-ghost ui-button-xs"
-                    onClick={() => setUseDemoSchedule((v) => !v)}
-                  >
-                    {useDemoSchedule ? 'Use real schedule' : 'Preview demo'}
-                  </button>
-                ) : null}
-                {isPlanStale ? (
-                  <span className="home-plan-stale-note">
-                    Window changed — regenerate for a fresh plan.
-                  </span>
-                ) : null}
-              </div>
-            </section>
-          ) : null}
+              ) : null}
+              {isPlanStale ? (
+                <span className="home-plan-stale-note">
+                  Window changed — regenerate for a fresh plan.
+                </span>
+              ) : null}
+            </div>
+          </section>
 
-          {/* ── DUE SOON ─────────────────────────────────────────────── */}
+          {/* ── DUE SOON ─────────────────────���───────────────────────── */}
           <section className="home-sheet">
             <SectionHeading
               eyebrow="Due Soon"
@@ -455,7 +520,7 @@ export function TodayDashboard({
 
         {/* ── RAIL ─────────────────────────────────────────────────────── */}
         <aside className="home-rail">
-          {/* Clock planner */}
+          {/* Clock planner — renders from the active focus tab rows */}
           <section className="home-sheet home-clock-rail">
             <SectionHeading
               eyebrow="Free time"
@@ -467,7 +532,7 @@ export function TodayDashboard({
               availableStart={availableStart}
               availableEnd={availableEnd}
               currentBlock={currentBlock}
-              scheduleBlocks={visibleSchedule.filter((b) => b.status !== 'completed')}
+              scheduleBlocks={clockBlocks.filter((b) => b.status !== 'completed')}
               selectedBlockId={selectedBlockId}
               onWindowChange={changeWindow}
               onSelectBlock={selectClockBlock}
@@ -480,7 +545,7 @@ export function TodayDashboard({
               </span>
               <span>
                 <i className="clock-legend-swatch plan" />
-                Scheduled
+                {focusMode === 'syllabus' ? 'Syllabus' : 'Learn'}
               </span>
             </div>
 
@@ -561,7 +626,7 @@ export function TodayDashboard({
   )
 }
 
-// ── Sub-components ──────────────────────────────────────────────────────────
+// ── Sub-components ───────────────────────────���──────────────────────────────
 
 function SectionHeading({
   eyebrow,
@@ -825,96 +890,150 @@ function PrimaryActionHero({
   )
 }
 
-function PlanGroup({
+// ── Focus plan row components ────────────────────────────────────────────────
+
+type FittedSyllabusRow = SyllabusFocusRow & { startAt: string; endAt: string }
+type FittedLearnRow = LearnFocusRow & { startAt: string; endAt: string }
+type AnyFocusRow = FittedSyllabusRow | FittedLearnRow
+
+function FocusPlanGroup({
   label,
-  blocks,
-  focusMode,
-  selectedBlockId,
+  rows,
+  kind,
+  selectedId,
   studyPacksByBlockId,
-  onOpen,
-  onStatus,
   onSelect,
-  onMoveLater,
 }: {
   label: string
-  blocks: ScheduleBlock[]
-  focusMode: 'syllabus' | 'learn'
-  selectedBlockId: string | null
+  rows: AnyFocusRow[]
+  kind: 'syllabus' | 'learn'
+  selectedId: string | null
   studyPacksByBlockId: Record<string, StudyPackRef[]>
-  onOpen: (id: string) => void
-  onStatus: (id: string, status: 'opened' | 'completed' | 'skipped') => void
   onSelect: (id: string | null) => void
-  onMoveLater?: (id: string) => void
 }) {
-  if (blocks.length === 0) return null
+  if (rows.length === 0) return null
 
   return (
     <div className="home-plan-group">
       <p className="home-plan-group-label">{label}</p>
       <div className="home-compact-list">
-        {blocks.map((block) => (
-          <PlanRow
-            key={block.id}
-            block={block}
-            focusMode={focusMode}
-            selected={selectedBlockId === block.id}
-            studyPacks={studyPacksByBlockId[block.id] ?? []}
-            onOpen={onOpen}
-            onStatus={onStatus}
-            onSelect={onSelect}
-            onMoveLater={onMoveLater}
-          />
-        ))}
+        {rows.map((row) =>
+          kind === 'syllabus' ? (
+            <SyllabusPlanRow
+              key={row.id}
+              row={row as FittedSyllabusRow}
+              selected={selectedId === row.id}
+              onSelect={onSelect}
+            />
+          ) : (
+            <LearnPlanRow
+              key={row.id}
+              row={row as FittedLearnRow}
+              selected={selectedId === row.id}
+              studyPacks={studyPacksByBlockId[row.id] ?? []}
+              onSelect={onSelect}
+            />
+          ),
+        )}
       </div>
     </div>
   )
 }
 
-function PlanRow({
-  block,
-  focusMode,
+function SyllabusPlanRow({
+  row,
   selected,
-  studyPacks,
-  onOpen,
-  onStatus,
   onSelect,
-  onMoveLater,
 }: {
-  block: ScheduleBlock
-  focusMode: 'syllabus' | 'learn'
+  row: FittedSyllabusRow
   selected: boolean
-  studyPacks: StudyPackRef[]
-  onOpen: (id: string) => void
-  onStatus: (id: string, status: 'opened' | 'completed' | 'skipped') => void
   onSelect: (id: string | null) => void
-  onMoveLater?: (id: string) => void
 }) {
-  const typeLabel = getStudentTypeLabel(block)
-  const href = getBlockHref(block)
   const now = new Date()
-  const isNow =
-    block.status === 'opened' ||
-    (block.status === 'scheduled' &&
-      new Date(block.startAt) <= now &&
-      new Date(block.endAt) > now)
-  const hasQuizReady = studyPacks.some((p) => p.quizReady)
-
-  // Context hint: urgency note for Syllabus, course name for Learn
-  const contextHint =
-    focusMode === 'syllabus'
-      ? (block.urgencyNote ?? block.context ?? null)
-      : (block.context ?? null)
+  const isNow = new Date(row.startAt) <= now && new Date(row.endAt) > now
 
   return (
     <article className={`home-list-row home-plan-row${selected ? ' home-plan-row-selected' : ''}`}>
       <button
         type="button"
         className="home-plan-row-main"
-        onClick={() => onSelect(selected ? null : block.id)}
+        onClick={() => onSelect(selected ? null : row.id)}
         aria-expanded={selected}
       >
         <div className="home-row-meta">
-          <span className="planner-type-pill">{typeLabel}</span>
+          <span className="planner-type-pill">{row.typeLabel}</span>
+          {isNow ? <span className="now-pill">Now</span> : null}
+          {row.urgencyLabel !== 'No due date' && row.urgencyLabel !== 'Upcoming' ? (
+            <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>{row.urgencyLabel}</span>
+          ) : null}
+          <span style={{ color: 'var(--text-muted)' }}>{formatTimeRange(row.startAt, row.endAt)}</span>
+          <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>{row.courseName}</span>
+        </div>
+        <p className="home-row-title">{row.title}</p>
+      </button>
+
+      {selected ? (
+        <div className="home-plan-row-actions">
+          {row.href ? (
+            <a
+              href={row.href}
+              className="ui-button ui-button-primary ui-button-xs"
+              target={row.canvasUrl ? '_blank' : undefined}
+              rel={row.canvasUrl ? 'noreferrer' : undefined}
+            >
+              Open
+            </a>
+          ) : (
+            <span className="ui-button ui-button-primary ui-button-xs" aria-disabled="true" style={{ opacity: 0.5, cursor: 'default' }}>
+              Unavailable
+            </span>
+          )}
+        </div>
+      ) : row.href ? (
+        <a
+          href={row.href}
+          className="home-row-open"
+          target={row.canvasUrl ? '_blank' : undefined}
+          rel={row.canvasUrl ? 'noreferrer' : undefined}
+        >
+          Open
+        </a>
+      ) : (
+        <span className="home-row-open" style={{ color: 'var(--text-muted)', cursor: 'default' }} aria-disabled="true">
+          Unavailable
+        </span>
+      )}
+    </article>
+  )
+}
+
+function LearnPlanRow({
+  row,
+  selected,
+  studyPacks,
+  onSelect,
+}: {
+  row: FittedLearnRow
+  selected: boolean
+  studyPacks: StudyPackRef[]
+  onSelect: (id: string | null) => void
+}) {
+  const now = new Date()
+  const isNow = new Date(row.startAt) <= now && new Date(row.endAt) > now
+  const hasQuizReady = studyPacks.some((p) => p.quizReady)
+  const openTarget = row.originalHref && !row.href?.startsWith('/') ? '_blank' : undefined
+  const openRel = openTarget ? 'noreferrer' : undefined
+
+  return (
+    <article className={`home-list-row home-plan-row${selected ? ' home-plan-row-selected' : ''}`}>
+      <button
+        type="button"
+        className="home-plan-row-main"
+        onClick={() => onSelect(selected ? null : row.id)}
+        aria-expanded={selected}
+      >
+        <div className="home-row-meta">
+          <span className="planner-type-pill">{row.fileTypeLabel}</span>
           {isNow ? <span className="now-pill">Now</span> : null}
           {studyPacks.length > 0 ? (
             <span className="home-study-ready-chip">Study pack ready</span>
@@ -922,53 +1041,48 @@ function PlanRow({
           {hasQuizReady ? (
             <span className="home-study-ready-chip">Quiz ready</span>
           ) : null}
-          <span style={{ color: 'var(--text-muted)' }}>{formatTimeRange(block.startAt, block.endAt)}</span>
-          {contextHint ? (
-            <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>{contextHint}</span>
+          <span style={{ color: 'var(--text-muted)' }}>{formatTimeRange(row.startAt, row.endAt)}</span>
+          {row.courseName ? (
+            <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>{row.courseName}</span>
           ) : null}
         </div>
-        <p className="home-row-title">{block.title}</p>
+        <p className="home-row-title">{row.title}</p>
       </button>
 
       {selected ? (
         <div className="home-plan-row-actions">
-          <button
-            type="button"
-            className="ui-button ui-button-primary ui-button-xs"
-            onClick={() => onOpen(block.id)}
-            disabled={!href}
-            title={!href ? 'No destination available for this item' : undefined}
-          >
-            Open
-          </button>
-          <button
-            type="button"
-            className="ui-button ui-button-secondary ui-button-xs"
-            onClick={() => onStatus(block.id, 'completed')}
-          >
-            {getDoneLabel(block)}
-          </button>
-          <button
-            type="button"
-            className="ui-button ui-button-ghost ui-button-xs"
-            onClick={() => onStatus(block.id, 'skipped')}
-          >
-            Skip
-          </button>
-          {onMoveLater ? (
-            <button
-              type="button"
-              className="ui-button ui-button-ghost ui-button-xs"
-              onClick={() => onMoveLater(block.id)}
+          {row.href ? (
+            <a
+              href={row.href}
+              className="ui-button ui-button-primary ui-button-xs"
+              target={openTarget}
+              rel={openRel}
             >
-              Move later
-            </button>
-          ) : null}
+              {row.readiness === 'ready' ? 'Open' : 'Preview'}
+            </a>
+          ) : row.originalHref ? (
+            <a
+              href={row.originalHref}
+              className="ui-button ui-button-primary ui-button-xs"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Open source
+            </a>
+          ) : (
+            <span className="ui-button ui-button-primary ui-button-xs" aria-disabled="true" style={{ opacity: 0.5, cursor: 'default' }}>
+              Unavailable
+            </span>
+          )}
         </div>
-      ) : href ? (
-        <Link href={href} className="home-row-open">
-          Open
-        </Link>
+      ) : row.href ? (
+        <a href={row.href} className="home-row-open" target={openTarget} rel={openRel}>
+          {row.readiness === 'ready' ? 'Open' : 'Preview'}
+        </a>
+      ) : row.originalHref ? (
+        <a href={row.originalHref} className="home-row-open" target="_blank" rel="noreferrer">
+          Open source
+        </a>
       ) : (
         <span className="home-row-open" style={{ color: 'var(--text-muted)', cursor: 'default' }} aria-disabled="true">
           Unavailable
@@ -1188,24 +1302,7 @@ function FactItem({ label, value }: { label: string; value: string }) {
   )
 }
 
-// ── Utilities ───────────────────────────────────────────────────────────────
-
-// Syllabus focus: due/graded/actionable work
-function isSyllabusBlock(block: ScheduleBlock): boolean {
-  return (
-    block.sourceTable === 'task_items' ||
-    block.sourceTable === 'tasks' ||
-    block.sourceTable === 'deadlines'
-  )
-}
-
-// Learn focus: source materials — PDFs, PPTs, Canvas pages, modules
-function isLearnBlock(block: ScheduleBlock): boolean {
-  return (
-    block.sourceTable === 'module_resources' ||
-    block.sourceTable === 'modules'
-  )
-}
+// ── Utilities ───────────────────────────���───────────────────────────────────
 
 function resolveItemHref(item: TodayItem) {
   if (item.kind === 'task') return item.href
@@ -1249,12 +1346,14 @@ function formatBlockDuration(block: ScheduleBlock) {
 }
 
 function getBlockHref(block: ScheduleBlock): string | null {
+  // Honour direct href override (used for canonical focus rows)
+  if (block.href) return block.href
+
   const { sourceTable, sourceId, courseId } = block
   if (!sourceId) return null
 
   switch (sourceTable) {
     case 'task_items':
-      // Route to tasks list filtered by title — Do page requires moduleId which is not stored in blocks
       return `/tasks?taskTitle=${encodeURIComponent(block.title)}`
     case 'tasks':
       return `/tasks?task=${encodeURIComponent(sourceId)}`
@@ -1263,7 +1362,6 @@ function getBlockHref(block: ScheduleBlock): string | null {
     case 'modules':
       return `/modules/${encodeURIComponent(sourceId)}/learn`
     case 'module_resources':
-      // Open resource inside the course learn view; uses resource anchor for deep-link
       if (courseId)
         return buildCourseLearnHref(courseId, { resourceId: sourceId })
       return null
@@ -1310,6 +1408,26 @@ function getBlockStudyPacks(
   if (block.sourceTable === 'module_resources') return byResourceId[block.sourceId] ?? []
   return []
 }
+
+// Syllabus focus: due/graded/actionable work (kept for backwards compatibility with scheduled blocks)
+function isSyllabusBlock(block: ScheduleBlock): boolean {
+  return (
+    block.sourceTable === 'task_items' ||
+    block.sourceTable === 'tasks' ||
+    block.sourceTable === 'deadlines'
+  )
+}
+
+// Learn focus: source materials (kept for backwards compatibility with scheduled blocks)
+function isLearnBlock(block: ScheduleBlock): boolean {
+  return (
+    block.sourceTable === 'module_resources' ||
+    block.sourceTable === 'modules'
+  )
+}
+
+// Keep these exported for test contracts
+export { isSyllabusBlock, isLearnBlock }
 
 function buildDemoScheduleBlocks(): ScheduleBlock[] {
   const now = new Date()

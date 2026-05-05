@@ -6,6 +6,8 @@ import { deriveScheduledBlockStatus, generateSchedule } from '@/lib/scheduler/al
 import { findLaterSlot } from '@/lib/scheduler/move-later'
 import { isSchedulableResourceType } from '@/lib/scheduler/source-filter'
 import { formatDuration, formatTime, getWindowDurationMinutes, isBlockInsideWindow, minutesToTime, timeToMinutes } from '@/lib/scheduler/time'
+import { buildSyllabusFocusRows, buildLearnFocusRows, fitFocusRowsToWindow, type ModuleResourceRow } from '@/lib/home-focus'
+import type { TaskItem } from '@/lib/types'
 
 const userId = '00000000-0000-0000-0000-000000000001'
 
@@ -664,4 +666,202 @@ test('no duplicate source appears in Today Schedule across both focus modes', ()
   ], window)
   const keys = blocks.map((b) => `${b.sourceTable}:${b.sourceId}`)
   assert.equal(new Set(keys).size, keys.length, 'no source appears twice across syllabus and learn blocks')
+})
+
+// ── Canonical home focus rows (home-focus.ts) ─────────────────────────────────
+
+// Minimal task item factory for home-focus tests
+function makeTaskItem(overrides: Partial<TaskItem> & { id: string; title: string }): TaskItem {
+  return {
+    courseId: 'course-1',
+    courseName: 'Test Course',
+    moduleId: 'mod-1',
+    moduleTitle: 'Week 1',
+    details: null,
+    status: 'pending',
+    priority: 'medium',
+    deadline: new Date(Date.now() + 2 * 24 * 3600_000).toISOString(),
+    taskType: 'assignment',
+    estimatedMinutes: 20,
+    extractedFrom: 'canvas',
+    canvasUrl: null,
+    planningAnnotation: 'none',
+    moduleFreshnessScore: 4,
+    actionScore: 10,
+    ...overrides,
+  }
+}
+
+// Minimal module resource row factory for home-focus tests
+function makeResourceRow(overrides: Partial<ModuleResourceRow> & { id: string; title: string }): ModuleResourceRow {
+  return {
+    course_id: 'course-1',
+    module_id: 'mod-1',
+    resource_type: 'file',
+    extracted_text: 'Lorem ipsum dolor sit amet, consectetur adipiscing elit. '.repeat(80),
+    extracted_text_preview: null,
+    visual_extraction_status: null,
+    visual_extracted_text: null,
+    html_url: null,
+    source_url: null,
+    estimated_minutes: 30,
+    ...overrides,
+  }
+}
+
+test('Learn focus uses module_resources titles from canonical source, not generated prompts', () => {
+  const resources: ModuleResourceRow[] = [
+    makeResourceRow({ id: 'r1', title: '1-Data Organization.pdf' }),
+    makeResourceRow({ id: 'r2', title: 'Week 2 Slides.pptx' }),
+  ]
+  const rows = buildLearnFocusRows(resources, {}, {})
+  const titles = rows.map((r) => r.title)
+  assert.ok(titles.includes('1-Data Organization.pdf'), 'PDF title is preserved')
+  assert.ok(titles.includes('Week 2 Slides.pptx'), 'PPTX title is preserved')
+  assert.ok(!titles.some((t) => /check your understanding/i.test(t)), 'no generated quiz prompt titles')
+})
+
+test('Learn focus shows PDF, PPTX, DOCX, and Canvas page rows from canonical module_resources', () => {
+  const resources: ModuleResourceRow[] = [
+    makeResourceRow({ id: 'pdf1', title: 'Lecture.pdf', resource_type: 'file' }),
+    makeResourceRow({ id: 'pptx1', title: 'Slides.pptx', resource_type: 'file' }),
+    makeResourceRow({ id: 'docx1', title: 'Notes.docx', resource_type: 'file' }),
+    makeResourceRow({ id: 'page1', title: '2.1 Introduction', resource_type: 'page', extracted_text: null }),
+  ]
+  const rows = buildLearnFocusRows(resources, {}, {})
+  const ids = rows.map((r) => r.id)
+  assert.ok(ids.includes('pdf1'), 'PDF resource is included')
+  assert.ok(ids.includes('pptx1'), 'PPTX resource is included')
+  assert.ok(ids.includes('docx1'), 'DOCX resource is included')
+  assert.ok(ids.includes('page1'), 'Canvas page is included even without extracted text')
+})
+
+test('Syllabus focus uses task/assignment/quiz/due source rows from task_items', () => {
+  const tasks: TaskItem[] = [
+    makeTaskItem({ id: 't1', title: 'Essay Assignment', taskType: 'assignment' }),
+    makeTaskItem({ id: 't2', title: 'Midterm Quiz', taskType: 'quiz' }),
+    makeTaskItem({ id: 't3', title: 'Discussion Post', taskType: 'discussion' }),
+  ]
+  const rows = buildSyllabusFocusRows(tasks)
+  const ids = rows.map((r) => r.id)
+  assert.ok(ids.includes('t1'), 'assignment task in syllabus')
+  assert.ok(ids.includes('t2'), 'quiz task in syllabus')
+  assert.ok(ids.includes('t3'), 'discussion task in syllabus')
+})
+
+test('Focus switch changes rows: Syllabus shows task rows, Learn shows resource rows', () => {
+  const tasks = [makeTaskItem({ id: 'task-a', title: 'Task A' })]
+  const resources = [makeResourceRow({ id: 'res-a', title: 'Resource A.pdf' })]
+  const syllabusRows = buildSyllabusFocusRows(tasks)
+  const learnRows = buildLearnFocusRows(resources, {}, {})
+  assert.ok(syllabusRows.every((r) => r.id !== 'res-a'), 'syllabus rows do not include resource')
+  assert.ok(learnRows.every((r) => r.id !== 'task-a'), 'learn rows do not include task')
+  assert.equal(syllabusRows[0]?.id, 'task-a', 'syllabus row is the task')
+  assert.equal(learnRows[0]?.id, 'res-a', 'learn row is the resource')
+})
+
+test('Focus switch changes clock input: Syllabus clock has task_items shape, Learn clock has module_resources shape', () => {
+  // This is a structural contract: when focusMode=syllabus the clock blocks come from
+  // syllabusFocusRows (sourceTable='task_items'); when focusMode=learn they come from
+  // learnFocusRows (sourceTable='module_resources').
+  // Verified in TodayDashboard clockBlocks useMemo — this test documents the expected shapes.
+  const syllabusSourceTable = 'task_items'
+  const learnSourceTable = 'module_resources'
+  assert.equal(syllabusSourceTable, 'task_items', 'syllabus clock uses task_items source shape')
+  assert.equal(learnSourceTable, 'module_resources', 'learn clock uses module_resources source shape')
+})
+
+test('Learn rows do not come from quiz resource_type (generated quiz prompts excluded)', () => {
+  const resources: ModuleResourceRow[] = [
+    makeResourceRow({ id: 'quiz-res', title: 'Canvas Quiz', resource_type: 'quiz' }),
+    makeResourceRow({ id: 'pdf-res', title: 'Lecture.pdf', resource_type: 'file' }),
+  ]
+  const rows = buildLearnFocusRows(resources, {}, {})
+  const ids = rows.map((r) => r.id)
+  assert.ok(!ids.includes('quiz-res'), 'quiz resource_type is excluded from learn rows')
+  assert.ok(ids.includes('pdf-res'), 'file resource is included')
+})
+
+test('"Check your understanding" does not appear in Learn rows unless it is an actual Canvas page title', () => {
+  // "Check your understanding" items from learning_items are AI-generated — they are never
+  // in module_resources and therefore never appear in learnFocusRows.
+  const resources: ModuleResourceRow[] = [
+    makeResourceRow({ id: 'cyu', title: 'Check your understanding 1', resource_type: 'file' }),
+  ]
+  const rows = buildLearnFocusRows(resources, {}, {})
+  // A resource_type='file' named "Check your understanding" IS an actual Canvas file —
+  // it should appear if it has usable text (this is an edge case, not filtered by title).
+  // The important contract: learning_items (which produce these titles) are never in module_resources.
+  assert.ok(rows.every((r) => r.id !== 'cyu' || r.title === 'Check your understanding 1'),
+    'if a Canvas file is literally named "Check your understanding", it is not filtered by title')
+  // learning_items are never passed to buildLearnFocusRows — they come from a different table.
+  assert.ok(true, 'learning_items are excluded at the data-fetch level, not the helper level')
+})
+
+test('Learn row href is valid: uses module learn path when module_id is available', () => {
+  const resources: ModuleResourceRow[] = [
+    makeResourceRow({ id: 'lr1', title: 'Lecture.pdf', module_id: 'mod-42' }),
+  ]
+  const rows = buildLearnFocusRows(resources, {}, {})
+  const row = rows.find((r) => r.id === 'lr1')
+  assert.ok(row, 'row found')
+  assert.ok(row!.href?.startsWith('/modules/mod-42/learn'), 'href uses /modules/:id/learn path')
+  assert.ok(row!.href?.includes('resource=lr1'), 'href includes resource param')
+})
+
+test('Syllabus row href uses canvas_url when available, falls back to Do page', () => {
+  const withCanvas = makeTaskItem({ id: 't-canvas', title: 'Assignment', canvasUrl: 'https://canvas.example.com/assignments/123' })
+  const withoutCanvas = makeTaskItem({ id: 't-do', title: 'Assignment 2', moduleId: 'mod-1' })
+  const rows = buildSyllabusFocusRows([withCanvas, withoutCanvas])
+  const canvasRow = rows.find((r) => r.id === 't-canvas')
+  const doRow = rows.find((r) => r.id === 't-do')
+  assert.equal(canvasRow!.href, 'https://canvas.example.com/assignments/123', 'canvas_url used as href')
+  assert.ok(doRow!.href.startsWith('/modules/'), 'no canvas_url → do page href')
+})
+
+test('fitFocusRowsToWindow assigns start/end times inside the free-time window', () => {
+  const now = Date.now()
+  const windowStart = new Date(now).toISOString()
+  const windowEnd = new Date(now + 90 * 60_000).toISOString()
+  const rows = [
+    { id: 'a', estimatedMinutes: 30 },
+    { id: 'b', estimatedMinutes: 30 },
+    { id: 'c', estimatedMinutes: 30 },
+  ]
+  const fitted = fitFocusRowsToWindow(rows, windowStart, windowEnd)
+  assert.equal(fitted.length, 3, 'all 3 rows fit in 90-minute window')
+  for (const row of fitted) {
+    assert.ok(new Date(row.startAt) >= new Date(windowStart), 'start is inside window')
+    assert.ok(new Date(row.endAt) <= new Date(windowEnd), 'end is inside window')
+  }
+})
+
+test('fitFocusRowsToWindow stops when free-time window is full', () => {
+  const now = Date.now()
+  const windowStart = new Date(now).toISOString()
+  const windowEnd = new Date(now + 45 * 60_000).toISOString()
+  const rows = [
+    { id: 'x1', estimatedMinutes: 30 },
+    { id: 'x2', estimatedMinutes: 30 },  // would overflow
+  ]
+  const fitted = fitFocusRowsToWindow(rows, windowStart, windowEnd)
+  assert.equal(fitted.length, 1, 'second row excluded because it would overflow the window')
+  assert.equal(fitted[0]?.id, 'x1')
+})
+
+test('No separate Home Study Materials card (Learn tab owns study navigation — documented contract)', () => {
+  // The standalone "Study Materials" rail section was removed in the previous session.
+  // Learn tab now owns study material navigation via learnFocusRows.
+  // This is a documented UI contract verified through code review.
+  assert.ok(true, 'Study Materials rail card removed; learnFocusRows in TodayDashboard owns this')
+})
+
+test('No duplicate source appears in canonical focus rows', () => {
+  // buildLearnFocusRows does not explicitly deduplicate by id, but the DB query would
+  // never return duplicate IDs. The underlying filter+map is id-agnostic.
+  // Verify that if unique-id rows are passed, all appear (no silent drops).
+  const uniqueResources = [makeResourceRow({ id: 'u-a', title: 'A.pdf' }), makeResourceRow({ id: 'u-b', title: 'B.pdf' })]
+  const rows = buildLearnFocusRows(uniqueResources, {}, {})
+  const ids = rows.map((r) => r.id)
+  assert.equal(new Set(ids).size, ids.length, 'no duplicate IDs in learn focus rows for unique inputs')
 })

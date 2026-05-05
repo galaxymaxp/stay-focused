@@ -1,0 +1,212 @@
+import { buildModuleLearnHref, buildModuleDoHref } from '@/lib/stay-focused-links'
+import { classifyModuleResourceTextQuality } from '@/lib/extracted-text-quality'
+import { isSchedulableResourceType } from '@/lib/scheduler/source-filter'
+import { getTaskUrgencyLabel } from '@/lib/clarity-workspace'
+import type { TaskItem } from '@/lib/types'
+
+// ── Types ────────────────────────────────────────────────────────────────────
+
+export interface SyllabusFocusRow {
+  id: string
+  title: string
+  typeLabel: string
+  courseName: string
+  moduleId: string
+  moduleTitle: string
+  dueAt: string | null
+  urgencyLabel: string
+  canvasUrl: string | null
+  href: string
+  estimatedMinutes: number
+}
+
+export interface LearnFocusRow {
+  id: string
+  title: string
+  fileTypeLabel: string
+  readiness: 'ready' | 'limited'
+  courseName: string | null
+  moduleId: string | null
+  estimatedMinutes: number
+  originalHref: string | null
+  href: string | null
+  studyPackRefs: Array<{ id: string; title: string; quizReady: boolean }>
+}
+
+/**
+ * Minimal shape of a module_resources row as returned from a Supabase query.
+ * Matches the snake_case column names from the DB.
+ */
+export interface ModuleResourceRow {
+  id: string
+  course_id: string | null
+  module_id: string | null
+  title: string
+  resource_type: string | null
+  extracted_text: string | null
+  extracted_text_preview: string | null
+  visual_extraction_status: string | null
+  visual_extracted_text: string | null
+  html_url: string | null
+  source_url: string | null
+  estimated_minutes: number | null
+}
+
+const DEFAULT_TASK_MINUTES = 20
+const DEFAULT_LEARN_MINUTES = 30
+
+// ── Builders ─────────────────────────────────────────────────────────────────
+
+/**
+ * Build canonical Syllabus focus rows from task_items.
+ * These match the Canvas Syllabus / Course Summary view: assignments, quizzes,
+ * discussions, and any graded or due items.
+ */
+export function buildSyllabusFocusRows(taskItems: TaskItem[]): SyllabusFocusRow[] {
+  return taskItems
+    .filter((item) => item.status !== 'completed')
+    .sort(compareSyllabusRows)
+    .map((item) => ({
+      id: item.id,
+      title: item.title,
+      typeLabel: getTaskTypeLabel(item.taskType),
+      courseName: item.courseName,
+      moduleId: item.moduleId,
+      moduleTitle: item.moduleTitle,
+      dueAt: item.deadline,
+      urgencyLabel: getTaskUrgencyLabel(item),
+      canvasUrl: item.canvasUrl ?? null,
+      // Open Canvas directly when canvas_url is available; fall back to Do page
+      href: item.canvasUrl ?? buildModuleDoHref(item.moduleId, { taskTitle: item.title }),
+      estimatedMinutes: item.estimatedMinutes ?? DEFAULT_TASK_MINUTES,
+    }))
+}
+
+/**
+ * Build canonical Learn focus rows from module_resources.
+ * Only includes "Ready for Deep Learn" resources: PDFs, PPT/PPTX, DOC/DOCX,
+ * Canvas pages, and other readable files — matching the /modules/:id/learn page.
+ * Quiz-type Canvas resources are excluded.
+ */
+export function buildLearnFocusRows(
+  resources: ModuleResourceRow[],
+  studyPacksByResourceId: Record<string, Array<{ id: string; title: string; quizReady: boolean }>>,
+  courseNameById: Record<string, string>,
+): LearnFocusRow[] {
+  return resources
+    .filter(isReadyForLearn)
+    .sort((a, b) => a.title.localeCompare(b.title))
+    .map((resource) => {
+      const moduleLearnHref = resource.module_id
+        ? buildModuleLearnHref(resource.module_id, { resourceId: resource.id })
+        : null
+      const originalHref = resource.source_url ?? resource.html_url ?? null
+      return {
+        id: resource.id,
+        title: resource.title,
+        fileTypeLabel: getFileTypeLabel(resource.resource_type),
+        readiness: classifyLearnReadiness(resource),
+        courseName: resource.course_id ? (courseNameById[resource.course_id] ?? null) : null,
+        moduleId: resource.module_id ?? null,
+        estimatedMinutes: resource.estimated_minutes ?? DEFAULT_LEARN_MINUTES,
+        originalHref,
+        href: moduleLearnHref ?? originalHref,
+        studyPackRefs: studyPacksByResourceId[resource.id] ?? [],
+      }
+    })
+}
+
+/**
+ * Fit an ordered list of rows into a free-time window by assigning sequential
+ * start/end times. Stops when the window is full. This is a pure view transform —
+ * no DB writes occur. Existing rows without estimatedMinutes use defaultMinutes.
+ */
+export function fitFocusRowsToWindow<T extends { estimatedMinutes?: number }>(
+  rows: T[],
+  windowStartIso: string,
+  windowEndIso: string,
+  defaultMinutes = 25,
+): Array<T & { startAt: string; endAt: string }> {
+  const windowEndMs = new Date(windowEndIso).getTime()
+  let cursorMs = new Date(windowStartIso).getTime()
+  const result: Array<T & { startAt: string; endAt: string }> = []
+
+  for (const row of rows) {
+    const minutes = row.estimatedMinutes ?? defaultMinutes
+    const endMs = cursorMs + minutes * 60_000
+    if (endMs > windowEndMs) break
+    result.push({
+      ...row,
+      startAt: new Date(cursorMs).toISOString(),
+      endAt: new Date(endMs).toISOString(),
+    })
+    cursorMs = endMs
+  }
+
+  return result
+}
+
+// ── Internal helpers ─────────────────────────────────────────────────────────
+
+type VisualStatus = 'not_started' | 'available' | 'queued' | 'running' | 'completed' | 'failed' | 'skipped'
+
+function toVisualStatus(value: string | null | undefined): VisualStatus | undefined {
+  if (!value) return undefined
+  const allowed: VisualStatus[] = ['not_started', 'available', 'queued', 'running', 'completed', 'failed', 'skipped']
+  return (allowed as string[]).includes(value) ? (value as VisualStatus) : undefined
+}
+
+function isReadyForLearn(resource: ModuleResourceRow): boolean {
+  if (!isSchedulableResourceType(resource.resource_type)) return false
+  // Canvas pages are always in the Learn lane even without extracted text
+  const type = (resource.resource_type ?? '').toLowerCase()
+  if (type === 'page' || type === 'canvas_page') return true
+  const quality = classifyModuleResourceTextQuality({
+    extractedText: resource.extracted_text,
+    extractedTextPreview: resource.extracted_text_preview,
+    visualExtractionStatus: toVisualStatus(resource.visual_extraction_status),
+    visualExtractedText: resource.visual_extracted_text,
+    title: resource.title,
+  })
+  return quality.usable || quality.quality === 'too_short'
+}
+
+function classifyLearnReadiness(resource: ModuleResourceRow): 'ready' | 'limited' {
+  const type = (resource.resource_type ?? '').toLowerCase()
+  if (type === 'page' || type === 'canvas_page') return 'ready'
+  const quality = classifyModuleResourceTextQuality({
+    extractedText: resource.extracted_text,
+    extractedTextPreview: resource.extracted_text_preview,
+    visualExtractionStatus: toVisualStatus(resource.visual_extraction_status),
+    visualExtractedText: resource.visual_extracted_text,
+    title: resource.title,
+  })
+  return quality.usable ? 'ready' : 'limited'
+}
+
+function getFileTypeLabel(resourceType: string | null | undefined): string {
+  const type = (resourceType ?? '').toLowerCase()
+  if (type === 'page' || type === 'canvas_page') return 'Canvas page'
+  if (type.includes('pdf')) return 'PDF'
+  if (type.includes('pptx')) return 'Slides'
+  if (type.includes('ppt')) return 'Slides'
+  if (type.includes('docx')) return 'Document'
+  if (type.includes('doc')) return 'Document'
+  return 'File'
+}
+
+function getTaskTypeLabel(taskType: TaskItem['taskType']): string {
+  if (taskType === 'quiz') return 'Quiz'
+  if (taskType === 'discussion') return 'Discussion'
+  if (taskType === 'project') return 'Project'
+  if (taskType === 'reading') return 'Reading'
+  if (taskType === 'prep') return 'Prep'
+  return 'Assignment'
+}
+
+function compareSyllabusRows(a: TaskItem, b: TaskItem): number {
+  const aDue = a.deadline ? new Date(a.deadline).getTime() : Number.POSITIVE_INFINITY
+  const bDue = b.deadline ? new Date(b.deadline).getTime() : Number.POSITIVE_INFINITY
+  if (aDue !== bDue) return aDue - bDue
+  return b.actionScore - a.actionScore
+}

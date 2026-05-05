@@ -21,6 +21,8 @@ export type ClockScheduleBlock = {
   estimateReason?: string | null
   context?: string
   urgencyNote?: string
+  /** Direct href override — bypasses getBlockHref() in TodayDashboard when set. */
+  href?: string | null
 }
 
 type ClockSegment = {
