@@ -5,6 +5,58 @@ Last Updated: 2026-05-05
 
 ---
 
+## Session Update — 2026-05-05e (Fix home focus fitting and schedule controls)
+
+### What changed
+
+**`lib/home-focus.ts`**
+- Added `normalizeFocusDurationMinutes` — clamps task duration to [10, 60] minutes, substituting `defaultMinutes` for missing/invalid values.
+- `fitFocusRowsToWindow` loop rewritten: computes `remainingMinutes` first, breaks only if `< 10`, then uses `Math.min(requestedMinutes, remainingMinutes)` so the last row is shortened to fill the window instead of being dropped. A 15-minute free-time window now always shows at least one row even when the task's default duration is 20+ minutes.
+
+**`components/TodayDashboard.tsx`**
+- `PrimaryActionHero`: suppressed the primary `<Link>` (`Open task`) when `item.kind === 'task'`. `TaskDraftButton` already renders its own open action, so the duplicate "Open task" button is gone.
+
+**`app/globals.css`**
+- `.home-focus-pill` switched from `display: inline-flex` to `display: inline-grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: fit-content; min-width: 13.5rem` — fixes the "SyllabusLearn" glued-text rendering.
+- `.home-focus-pill-track` updated: uses `inset` shorthand, `var(--surface-elevated)` background, and 180 ms ease transition.
+- `.home-focus-pill-btn` / `.home-focus-pill-tab`: removed `flex: 1 / display: inline-flex`, added `text-align: center; font-weight: 800`. Added `[aria-selected='true']` selector alongside `.active`.
+- `.home-rail`: added `padding-top: 0.25rem` base + `padding-top: 2.85rem` at `min-width: 1025px` (two-column layout). Topbar height is `2.85rem`; this prevents the sticky topbar from overlapping the clock card on the right rail.
+
+**`tests/scheduler.test.ts`**
+- Replaced `fitFocusRowsToWindow stops when free-time window is full` (expected 1 row when 15 min remain) with three updated tests that assert the new contract:
+  1. Second row is shortened to fill remaining space when ≥ 10 min remain.
+  2. A 15-minute window with a 20-minute default row returns one shortened row.
+  3. Stop only when remaining window drops below 10 minutes.
+
+### Why it changed
+
+- Short free-time windows (15–20 min) produced an empty Today's Schedule because `fitFocusRowsToWindow` broke on the first row if `endMs > windowEndMs`, regardless of how much time remained.
+- The pill switcher had `display: inline-flex` with no explicit minimum width, causing the two buttons to collapse to zero-gap inline text.
+- `PrimaryActionHero` rendered both a primary `<Link>` (labeled "Open task") and `TaskDraftButton` (which also exposes an "Open task" action) when `item.kind === 'task'`.
+- The sticky topbar (`min-height: 2.85rem`) occupies the top of the viewport and was overlapping the first card in the right-rail column because `.home-rail` had no top offset.
+
+### Tests run
+
+- `npm run typecheck` — ✅ clean
+- `npm run lint` — ✅ clean
+- `npm test -- scheduler` — ✅ 296/296 pass
+
+### Suggested commit
+
+fix home focus fitting and schedule controls
+
+### Next recommended steps
+
+1. Remove `console.log('[home-focus]', ...)` in `app/(app)/page.tsx` once data-path is confirmed working in production.
+2. Verify the pill layout in a real browser — `var(--surface-elevated)` may need a fallback if the CSS variable is undefined in the active theme.
+3. Confirm TaskDraftButton renders an adequate primary CTA for task items in Start Here (no regression in action clarity).
+
+### Risks / blockers
+
+None — no DB, schema, scheduler, or auth changes.
+
+---
+
 ## Session Update — 2026-05-05d (Render home focus rows as Syllabus/Learn table)
 
 ### What changed

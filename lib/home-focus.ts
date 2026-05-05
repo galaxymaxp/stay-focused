@@ -134,6 +134,10 @@ export function buildLearnFocusRows(
  * Fit an ordered list of rows into a free-time window by assigning sequential
  * start/end times. Stops when the window is full. This is a pure view transform —
  * no DB writes occur. Existing rows without estimatedMinutes use defaultMinutes.
+ *
+ * Durations are clamped to [10, 60] minutes. If the remaining window is at least
+ * 10 minutes but shorter than the row duration, the row is shortened to fill the
+ * remaining time rather than being dropped.
  */
 export function fitFocusRowsToWindow<T extends { estimatedMinutes?: number }>(
   rows: T[],
@@ -146,9 +150,11 @@ export function fitFocusRowsToWindow<T extends { estimatedMinutes?: number }>(
   const result: Array<T & { startAt: string; endAt: string }> = []
 
   for (const row of rows) {
-    const minutes = row.estimatedMinutes ?? defaultMinutes
+    const remainingMinutes = (windowEndMs - cursorMs) / 60_000
+    if (remainingMinutes < 10) break
+    const requestedMinutes = normalizeFocusDurationMinutes(row.estimatedMinutes, defaultMinutes)
+    const minutes = Math.min(requestedMinutes, remainingMinutes)
     const endMs = cursorMs + minutes * 60_000
-    if (endMs > windowEndMs) break
     result.push({
       ...row,
       startAt: new Date(cursorMs).toISOString(),
@@ -158,6 +164,11 @@ export function fitFocusRowsToWindow<T extends { estimatedMinutes?: number }>(
   }
 
   return result
+}
+
+function normalizeFocusDurationMinutes(value: number | null | undefined, defaultMinutes: number): number {
+  if (!Number.isFinite(value) || !value || value <= 0) return defaultMinutes
+  return Math.min(Math.max(Math.round(value), 10), 60)
 }
 
 // ── Internal helpers ─────────────────────────────────────────────────────────

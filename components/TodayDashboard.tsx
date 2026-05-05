@@ -713,7 +713,7 @@ function PrimaryActionHero({
           ) : null}
 
           <div className="home-focus-actions">
-            {href ? (
+            {href && item.kind !== 'task' ? (
               <Link href={href} className="ui-button ui-button-primary">
                 {primaryButtonLabel(item)}
               </Link>

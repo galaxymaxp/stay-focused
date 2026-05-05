@@ -2346,6 +2346,16 @@ details[open] > .ui-interactive-summary,
   min-width: 0;
 }
 
+.home-rail {
+  padding-top: 0.25rem;
+}
+
+@media (min-width: 1025px) {
+  .home-rail {
+    padding-top: 2.85rem;
+  }
+}
+
 .home-focus-card {
   display: grid;
   gap: 1rem;
@@ -2669,26 +2679,26 @@ details[open] > .ui-interactive-summary,
 /* Segmented pill focus switcher (Syllabus / Learn tab selector) */
 .home-focus-pill {
   position: relative;
-  display: inline-flex;
-  align-items: stretch;
-  border-radius: 999px;
-  border: 1px solid var(--border-subtle);
-  background: var(--surface-soft);
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: fit-content;
+  min-width: 13.5rem;
   padding: 3px;
-  gap: 0;
-  margin-bottom: 0.75rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-soft) 88%, transparent);
+  overflow: hidden;
+  margin-top: 0.85rem;
 }
 
 .home-focus-pill-track {
   position: absolute;
-  inset-block: 3px;
+  inset: 3px auto 3px 3px;
   width: calc(50% - 3px);
-  left: 3px;
   border-radius: 999px;
-  background: var(--surface-0, var(--bg));
-  border: 1px solid var(--border-subtle);
-  box-shadow: 0 1px 3px color-mix(in srgb, var(--text-primary) 8%, transparent);
-  transition: transform 150ms ease;
+  background: var(--surface-elevated, var(--surface-0, var(--bg)));
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.16);
+  transition: transform 180ms ease;
   pointer-events: none;
 }
 
@@ -2696,25 +2706,23 @@ details[open] > .ui-interactive-summary,
 .home-focus-pill-btn {
   position: relative;
   z-index: 1;
-  flex: 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.28rem 1rem;
+  border: 0;
   border-radius: 999px;
-  border: none;
   background: transparent;
-  font-size: 13px;
-  font-weight: 600;
   color: var(--text-secondary);
+  padding: 0.42rem 1rem;
+  font-size: 13px;
+  font-weight: 800;
   cursor: pointer;
-  transition: color 120ms ease;
+  text-align: center;
   white-space: nowrap;
-  line-height: 1.4;
+  transition: color 120ms ease;
 }
 
 .home-focus-pill-tab.active,
-.home-focus-pill-btn.active {
+.home-focus-pill-btn.active,
+.home-focus-pill-tab[aria-selected='true'],
+.home-focus-pill-btn[aria-selected='true'] {
   color: var(--text-primary);
 }
 

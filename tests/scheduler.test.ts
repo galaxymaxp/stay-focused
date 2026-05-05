@@ -831,17 +831,42 @@ test('fitFocusRowsToWindow assigns start/end times inside the free-time window',
   }
 })
 
-test('fitFocusRowsToWindow stops when free-time window is full', () => {
+test('fitFocusRowsToWindow fits second row shortened when window has remaining space', () => {
   const now = Date.now()
   const windowStart = new Date(now).toISOString()
   const windowEnd = new Date(now + 45 * 60_000).toISOString()
   const rows = [
     { id: 'x1', estimatedMinutes: 30 },
-    { id: 'x2', estimatedMinutes: 30 },  // would overflow
+    { id: 'x2', estimatedMinutes: 30 },  // 15 min remaining — shortened to fit
   ]
   const fitted = fitFocusRowsToWindow(rows, windowStart, windowEnd)
-  assert.equal(fitted.length, 1, 'second row excluded because it would overflow the window')
+  assert.equal(fitted.length, 2, 'both rows included; second shortened to fill remaining window')
   assert.equal(fitted[0]?.id, 'x1')
+  assert.equal(fitted[1]?.id, 'x2')
+  assert.ok(new Date(fitted[1]!.endAt) <= new Date(windowEnd), 'second row ends at or before window end')
+})
+
+test('fitFocusRowsToWindow shows one row in a 15-minute window despite 20-minute default', () => {
+  const now = Date.now()
+  const windowStart = new Date(now).toISOString()
+  const windowEnd = new Date(now + 15 * 60_000).toISOString()
+  const rows = [{ id: 'short', estimatedMinutes: 20 }]
+  const fitted = fitFocusRowsToWindow(rows, windowStart, windowEnd, 20)
+  assert.equal(fitted.length, 1, '15-min window fits one shortened row')
+  assert.ok(new Date(fitted[0]!.endAt) <= new Date(windowEnd), 'row ends within window')
+})
+
+test('fitFocusRowsToWindow stops when remaining window drops below 10 minutes', () => {
+  const now = Date.now()
+  const windowStart = new Date(now).toISOString()
+  const windowEnd = new Date(now + 39 * 60_000).toISOString()  // 39 min
+  const rows = [
+    { id: 'y1', estimatedMinutes: 30 },  // fits, 9 min left
+    { id: 'y2', estimatedMinutes: 20 },  // only 9 min remain < 10 min threshold — excluded
+  ]
+  const fitted = fitFocusRowsToWindow(rows, windowStart, windowEnd)
+  assert.equal(fitted.length, 1, 'second row excluded because less than 10 minutes remain')
+  assert.equal(fitted[0]?.id, 'y1')
 })
 
 test('No separate Home Study Materials card (Learn tab owns study navigation — documented contract)', () => {
