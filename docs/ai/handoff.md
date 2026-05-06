@@ -5,6 +5,56 @@ Last Updated: 2026-05-07
 
 ---
 
+## Session Update - 2026-05-07 (Restore new Sync Courses page)
+
+### What changed
+
+**`app/sync/page.tsx`**
+- Restored the dedicated new Sync Courses page from commit `6afffac`.
+- `/sync` now renders `SyncCoursesPageClient` again instead of the old `ConnectCanvasFlowWrapper` Canvas sync workflow.
+- Restored the wide Sync Courses shell, compact signed-out/disconnected states, summary card data, available-course sync flow props, and synced module metadata (`courseTitle`, `contentCount`).
+
+**`tests/scheduler.test.ts`**
+- Updated route/UI contract tests so `/sync` is protected as the dedicated Sync Courses split page.
+- Kept later notification recipient and identity-linking tests intact.
+- Added/kept assertions for `/canvas` redirecting to `/sync`, sidebar `/sync` navigation, Settings Canvas `/sync` link, search/show-ended/refresh/sync-selected controls, and disconnected Settings Canvas setup link.
+
+### Files touched
+
+- `app/sync/page.tsx`
+- `tests/scheduler.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Commit `efe2afe` left `/sync` rendering the old Canvas connection/sync wrapper instead of the new course-selection experience from `6afffac`. This restored the student-facing Sync Courses page while preserving later unrelated notification recipient, cron, Resend, and identity-linking fixes.
+
+### Tests run
+
+- `npm run typecheck` — clean
+- `npm run lint` — clean
+- `npm run build` — passes
+- `npm test -- queue` — 408/408 pass
+
+### Verification result
+
+All requested quality gates passed. `/sync` now imports and renders `SyncCoursesPageClient`; `/canvas` remains a redirect to `/sync`; the sidebar still points Sync Courses to `/sync`; Settings → Canvas still links to `/sync`.
+
+### Known risks / blockers
+
+- Design reference URL (`https://api.anthropic.com/v1/design/h/UyLbU541E6l_gw8FuNb4Dg`) was not accessible in this environment, so the fallback was used: restore the existing `6afffac` Stay Focused UI exactly and avoid a new design language.
+- Pre-existing unrelated local edits remain in `AGENTS.md`, `CLAUDE.md`, and `docs/ai/design_system.md`; they were not part of this task and should not be staged with this commit.
+
+### Next recommended step
+
+Open `/sync` locally with a Canvas-connected account and confirm course refresh, search, show-ended toggle, sync selected, queue status, and synced modules behave as expected with real Canvas data.
+
+### Suggested commit message
+
+restore new Sync Courses page
+
+---
+
 ## Session Update - 2026-05-07 (Clarify identity linking setup errors)
 
 ### What changed

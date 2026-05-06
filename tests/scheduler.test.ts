@@ -1092,12 +1092,9 @@ test('learning_items, deep_learn_notes, and drafts still do not appear as standa
   assert.ok(!isSyllabusBlock('drafts') && !isLearnBlock('drafts'), 'drafts excluded from standalone rows')
 })
 
-test('Show ended courses toggle triggers course reload when connection exists (documented contract)', () => {
-  // ConnectCanvasFlow.handleToggleEndedCourses now calls handleUseSavedConnection(value)
-  // whenever canLoadCourses is true — even if step !== 'courses'.
-  // This means toggling Show ended courses immediately reloads the course list.
-  // Verified by code review in ConnectCanvasFlow.tsx handleToggleEndedCourses.
-  assert.ok(true, 'toggle fires handleUseSavedConnection when canLoadCourses — enforced in ConnectCanvasFlow.tsx')
+test('Show ended courses toggle triggers course reload on Sync Courses page', () => {
+  const source = readFileSync('components/SyncCoursesPageClient.tsx', 'utf8')
+  assert.match(source, /function handleToggleEndedCourses\(value: boolean\)[\s\S]*loadCourses\(value\)/, 'Show ended courses reloads courses immediately')
 })
 
 test('Settings Canvas section links to /sync (Go to Sync Courses)', () => {
@@ -1105,10 +1102,18 @@ test('Settings Canvas section links to /sync (Go to Sync Courses)', () => {
   assert.match(source, /href="\/sync"/, 'SettingsPage Canvas section has a Go to Sync Courses link to /sync')
 })
 
-test('/sync is the real Canvas sync workflow (not a redirect)', () => {
-  const source = readFileSync('app/sync/page.tsx', 'utf8')
-  assert.doesNotMatch(source, /^\s*redirect\(/, '/sync page must not be a redirect')
-  assert.match(source, /ConnectCanvasFlowWrapper/, '/sync renders the ConnectCanvasFlowWrapper sync workflow')
+test('/sync renders dedicated Sync Courses split page without primary connection card', () => {
+  const pageSource = readFileSync('app/sync/page.tsx', 'utf8')
+  const clientSource = readFileSync('components/SyncCoursesPageClient.tsx', 'utf8')
+
+  assert.match(pageSource, /SyncCoursesPageClient/, '/sync renders the dedicated SyncCoursesPageClient')
+  assert.match(clientSource, /<p className="ui-kicker">Sync Courses<\/p>/, 'dedicated Sync Courses eyebrow renders')
+  assert.match(clientSource, /<h1 className="ui-page-title">Sync Courses<\/h1>/, 'page title is Sync Courses')
+  assert.match(clientSource, /sync-summary-grid/, 'top summary grid exists')
+  assert.match(clientSource, /sync-split-layout/, 'split layout exists')
+  assert.doesNotMatch(pageSource, /page-shell-narrow/, '/sync uses the wide page shell')
+  assert.doesNotMatch(pageSource, /ConnectCanvasFlowWrapper/, '/sync does not wrap old Canvas settings flow')
+  assert.doesNotMatch(clientSource, /eyebrow="Connection"/, '/sync does not render old full Connection section')
 })
 
 test('Sync Courses sidebar nav item points to /sync', () => {
@@ -1172,6 +1177,13 @@ test('/sync course controls use saved Canvas connection and no fake pagination',
   assert.match(source, /Refreshing courses\.\.\./, 'loading state says Refreshing courses...')
   assert.doesNotMatch(source, /Load more courses/, 'no Load more courses label without real pagination')
   assert.doesNotMatch(source, /Load courses/, 'no Load courses label')
+})
+
+test('/sync disconnected state links to Settings Canvas setup', () => {
+  const source = readFileSync('app/sync/page.tsx', 'utf8')
+
+  assert.match(source, /href="\/settings\?section=canvas"/, 'disconnected state links to Settings > Canvas')
+  assert.match(source, /Connection required/, 'disconnected state is compact and explicit')
 })
 
 test('admin-only test email still gated by ADMIN_EMAILS', () => {
