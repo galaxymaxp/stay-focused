@@ -43,6 +43,7 @@ Stay Focused remains an action-first study workspace. The app should help a stud
 - OpenAI generation and Google/OpenAI OCR must stay out of the cron request.
 - Queue guards should prevent overlapping sync jobs, repeated per-course queueing inside the cooldown window, and daily cost spikes.
 - Sync work must preserve successful extracted/OCR text on resync unless the Canvas file identity changes.
+- External sync processing should refresh existing Canvas resources and assignment status without running OpenAI module extraction or OCR workers inline.
 
 ## Future Features
 

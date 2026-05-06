@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { createAuthenticatedSupabaseServerClient, requireAuthenticatedUserServer } from '@/lib/auth-server'
 import { resolveCanvasConfigFromUser } from '@/lib/canvas-user-config'
+import { createSupabaseServiceRoleClient } from '@/lib/supabase-service'
 import {
   compileCanvasContent,
   getCanvasAssignment,
@@ -58,8 +59,16 @@ import { generateSummariesForSyncedModule } from '@/lib/source-summaries'
 import { populateModuleTerms } from '@/actions/module-terms'
 import { autoEnqueueSourceOcrJobs } from '@/actions/queue-jobs'
 import { adaptModuleResourceRow } from '@/lib/module-resource-row'
-import type { QueuedJob } from '@/lib/queue'
-import type { AIResponse, Course, ModuleResourceExtractionStatus, Priority, TaskItem } from '@/lib/types'
+import { evaluateResourceTextPreservation } from '@/lib/canvas-resource-preservation'
+import { EXTERNAL_CANVAS_SYNC_MODE, getPositiveIntegerEnv } from '@/lib/external-sync-queue'
+import {
+  markQueuedJobCompleted,
+  markQueuedJobFailed,
+  markQueuedJobRunning,
+  updateQueuedJobStatus,
+  type QueuedJob,
+} from '@/lib/queue'
+import type { AIResponse, Course, ModuleResource, ModuleResourceExtractionStatus, Priority, TaskItem } from '@/lib/types'
 
 export interface CanvasConnectionResult {
   normalizedUrl: string
@@ -369,6 +378,633 @@ export async function syncCourses(input: {
     syncedCount: 1,
     syncedCourses: [result.courseName],
   }
+}
+
+export async function processPendingExternalCanvasSyncJobs(limit = getPositiveIntegerEnv('EXTERNAL_SYNC_PROCESS_LIMIT', 1)) {
+  const supabase = createSupabaseServiceRoleClient()
+  if (!supabase) {
+    console.error('[external-canvas-sync] service role client unavailable')
+    return { processed: 0, failed: 0, skipped: 0 }
+  }
+
+  const { data, error } = await supabase
+    .from('queued_jobs')
+    .select('*')
+    .eq('type', 'canvas_sync')
+    .eq('status', 'pending')
+    .order('created_at', { ascending: true })
+    .limit(Math.max(1, limit * 4))
+
+  if (error || !data) {
+    console.error('[external-canvas-sync] pending job lookup failed', {
+      code: error?.code ?? null,
+      message: error?.message ?? null,
+    })
+    return { processed: 0, failed: 0, skipped: 0 }
+  }
+
+  let processed = 0
+  let failed = 0
+  let skipped = 0
+
+  for (const row of data as Record<string, unknown>[]) {
+    if (processed >= limit) break
+    const job = rowToQueuedJobForExternalSync(row)
+    if (readString(job.payload?.mode) !== EXTERNAL_CANVAS_SYNC_MODE) {
+      skipped += 1
+      continue
+    }
+
+    const claimed = await markQueuedJobRunning(job.id, 4)
+    if (!claimed) {
+      skipped += 1
+      continue
+    }
+
+    try {
+      await runExternalCanvasSyncJob(job)
+      processed += 1
+    } catch (error) {
+      failed += 1
+      const message = error instanceof Error ? error.message : 'External Canvas sync failed.'
+      console.error('[external-canvas-sync] job failed', { jobId: job.id, message })
+      await markQueuedJobFailed(job.id, message)
+    }
+  }
+
+  return { processed, failed, skipped }
+}
+
+async function runExternalCanvasSyncJob(job: QueuedJob) {
+  const supabase = createSupabaseServiceRoleClient()
+  if (!supabase) throw new Error('Service database client unavailable.')
+
+  const payload = job.payload ?? {}
+  const canvasCourseId = readFirstNumberArrayValue(payload.courseIds)
+  if (!canvasCourseId) throw new Error('External Canvas sync job is missing a Canvas course id.')
+
+  await updateExternalCanvasJobStep(job.id, 8, 'Checking Canvas changes', 'checking')
+
+  const credentials = await loadCanvasCredentialsForExternalSync(job.userId)
+  const config: CanvasConfig = {
+    url: normalizeCanvasUrl(readString(payload.canvasUrl) ?? credentials.canvasApiUrl),
+    token: credentials.canvasAccessToken,
+  }
+
+  const { data: existingCourseRow, error: courseLookupError } = await supabase
+    .from('courses')
+    .select('*')
+    .eq('user_id', job.userId)
+    .eq('canvas_instance_url', config.url)
+    .eq('canvas_course_id', canvasCourseId)
+    .maybeSingle()
+
+  if (courseLookupError) {
+    throw createSupabaseStepError('external sync course lookup', courseLookupError, { userId: job.userId, canvasCourseId })
+  }
+  if (!existingCourseRow) {
+    throw new Error('This Canvas course is not synced yet. Sync it from Sync Courses first.')
+  }
+
+  const course = await resolveExternalCanvasCourse(canvasCourseId, config, existingCourseRow as Record<string, unknown>)
+  const normalizedCourse = normalizeCanvasCourseForSync(course, config.url)
+  const databaseSafeCourse: CanvasCourse = {
+    ...course,
+    id: normalizedCourse.canvasCourseId,
+    name: normalizedCourse.name,
+    course_code: normalizedCourse.courseCode,
+  }
+
+  await updateExternalCanvasJobStep(job.id, 18, 'Reading Canvas updates', 'reading', databaseSafeCourse.name)
+  const [assignments, announcements, modules] = await Promise.all([
+    getAssignments(canvasCourseId, config),
+    getAnnouncements(canvasCourseId, config),
+    getModules(canvasCourseId, config),
+  ])
+
+  await updateExternalCanvasJobStep(job.id, 38, 'Refreshing course resources', 'refreshing_resources', databaseSafeCourse.name)
+  const courseRecord = await upsertCanvasCourseRecord(supabase, normalizedCourse, job.userId, resolveInstructorName(course))
+  const existingModule = await findExistingSyncedModule(supabase, courseRecord.id, {
+    courseName: databaseSafeCourse.name,
+    courseCode: databaseSafeCourse.course_code,
+  })
+
+  if (!existingModule) {
+    throw new Error('This Canvas course does not have a synced module to refresh yet.')
+  }
+
+  const resourceIngestion = await ingestModuleResources(canvasCourseId, modules, config, assignments)
+  const resourceRefresh = await refreshExternalCanvasResources({
+    supabase,
+    userId: job.userId,
+    moduleId: existingModule.id,
+    courseId: courseRecord.id,
+    canvasInstanceUrl: normalizedCourse.canvasInstanceUrl,
+    canvasCourseId: normalizedCourse.canvasCourseId,
+    resources: resourceIngestion,
+  })
+
+  await updateExternalCanvasJobStep(job.id, 72, 'Refreshing task status', 'refreshing_tasks', databaseSafeCourse.name)
+  const taskRefresh = await refreshExternalCanvasTaskStatus({
+    supabase,
+    userId: job.userId,
+    courseId: courseRecord.id,
+    assignments,
+  })
+
+  const rawContent = stripDatabaseNullCharacters(compileCanvasContent(
+    databaseSafeCourse,
+    assignments,
+    announcements,
+    modules,
+    resourceIngestion
+      .filter((resource) => (resource.extractionStatus === 'extracted' || resource.extractionStatus === 'completed') && resource.extractedText)
+      .map((resource) => ({
+        title: resource.title,
+        resourceType: resource.resourceType,
+        extractedText: resource.extractedText!,
+      })),
+  ))
+
+  await supabase
+    .from('modules')
+    .update(sanitizeDatabaseValue({
+      raw_content: rawContent,
+      released_at: new Date().toISOString(),
+    }))
+    .eq('id', existingModule.id)
+    .eq('user_id', job.userId)
+
+  await updateExternalCanvasJobStep(job.id, 90, 'Queueing scanned PDFs when needed', 'queueing_ocr', databaseSafeCourse.name)
+  const autoOcrJobs = resourceRefresh.changedResources.length > 0
+    ? await autoEnqueueSourceOcrJobs({
+        userId: job.userId,
+        moduleId: existingModule.id,
+        courseId: courseRecord.id,
+        resources: resourceRefresh.changedResources,
+      })
+    : []
+
+  const result = {
+    statusMessage: autoOcrJobs.length > 0
+      ? 'Canvas sync complete. Preparing scanned PDFs in the background.'
+      : 'Canvas sync complete',
+    currentStep: 'done',
+    mode: EXTERNAL_CANVAS_SYNC_MODE,
+    courseCount: 1,
+    courseNames: [databaseSafeCourse.name],
+    courseIds: [canvasCourseId],
+    moduleIds: [existingModule.id],
+    href: `/courses/${courseRecord.id}`,
+    resourcesInserted: resourceRefresh.inserted,
+    resourcesUpdated: resourceRefresh.updated,
+    resourcesPreserved: resourceRefresh.preserved,
+    resourcesSkippedMissing: resourceRefresh.missing,
+    tasksUpdated: taskRefresh.updated,
+    queuedOcrJobIds: autoOcrJobs.map((ocrJob) => ocrJob.id),
+    queuedOcrJobCount: autoOcrJobs.length,
+  }
+
+  await markQueuedJobCompleted(job.id, result)
+  console.info('[external-canvas-sync] completed', {
+    jobId: job.id,
+    userId: job.userId,
+    canvasCourseId,
+    ...result,
+  })
+
+  revalidateCanvasSyncPaths(existingModule.id, courseRecord.id)
+}
+
+async function updateExternalCanvasJobStep(
+  jobId: string,
+  progress: number,
+  statusMessage: string,
+  currentStep: string,
+  activeCourseName?: string,
+) {
+  await updateQueuedJobStatus(jobId, 'running', {
+    progress: Math.max(0, Math.min(99, progress)),
+    result: {
+      statusMessage,
+      currentStep,
+      activeCourseName: activeCourseName ?? null,
+      mode: EXTERNAL_CANVAS_SYNC_MODE,
+    },
+  })
+}
+
+async function loadCanvasCredentialsForExternalSync(userId: string) {
+  const supabase = createSupabaseServiceRoleClient()
+  if (!supabase) throw new Error('Service database client unavailable.')
+
+  const { data, error } = await supabase
+    .from('user_settings')
+    .select('canvas_api_url, canvas_access_token')
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  if (error || !data) {
+    throw new Error('Canvas is not connected for this account.')
+  }
+
+  const canvasApiUrl = readString((data as Record<string, unknown>).canvas_api_url)
+  const canvasAccessToken = readString((data as Record<string, unknown>).canvas_access_token)
+  if (!canvasApiUrl || !canvasAccessToken) {
+    throw new Error('Canvas is not connected for this account.')
+  }
+
+  return { canvasApiUrl, canvasAccessToken }
+}
+
+async function resolveExternalCanvasCourse(
+  canvasCourseId: number,
+  config: CanvasConfig,
+  existingCourseRow: Record<string, unknown>,
+): Promise<CanvasCourse> {
+  const courses = await getCourses(config)
+  const match = courses.find((course) => course.id === canvasCourseId)
+  if (match) return match
+
+  return {
+    id: canvasCourseId,
+    name: readString(existingCourseRow.name) ?? `Canvas course ${canvasCourseId}`,
+    course_code: readString(existingCourseRow.code) ?? `canvas-${canvasCourseId}`,
+    enrollment_state: 'active',
+    term: {
+      id: 0,
+      name: readString(existingCourseRow.term) ?? 'Current term',
+      end_at: null,
+    },
+  }
+}
+
+async function refreshExternalCanvasResources(input: {
+  supabase: CanvasSyncSupabaseClient
+  userId: string
+  moduleId: string
+  courseId: string
+  canvasInstanceUrl: string | null
+  canvasCourseId: number | null
+  resources: ResourceIngestionRecord[]
+}) {
+  const resourceRows = buildModuleResourcesForSync(input.resources, {
+    moduleId: input.moduleId,
+    courseId: input.courseId,
+    userId: input.userId,
+    canvasInstanceUrl: input.canvasInstanceUrl,
+    canvasCourseId: input.canvasCourseId,
+  }) as Record<string, unknown>[]
+
+  const { data: existingRows, error: existingError } = await input.supabase
+    .from('module_resources')
+    .select('*')
+    .eq('user_id', input.userId)
+    .eq('course_id', input.courseId)
+
+  if (existingError) {
+    throw createSupabaseStepError('external sync load module resources', existingError, {
+      userId: input.userId,
+      courseId: input.courseId,
+    })
+  }
+
+  const existing = ((existingRows ?? []) as Record<string, unknown>[])
+  const matchedExistingIds = new Set<string>()
+  const changedResources: ModuleResource[] = []
+  let inserted = 0
+  let updated = 0
+  let preserved = 0
+
+  for (const row of resourceRows) {
+    const match = findExistingResourceForIncoming(existing, row, matchedExistingIds)
+
+    if (!match) {
+      const { data: insertedRows, error } = await input.supabase
+        .from('module_resources')
+        .insert(row)
+        .select('*')
+
+      if (error) {
+        console.error('[external-canvas-sync] resource insert failed', {
+          userId: input.userId,
+          moduleId: input.moduleId,
+          title: readString(row.title),
+          code: error.code,
+          message: error.message,
+        })
+        continue
+      }
+
+      inserted += 1
+      for (const insertedRow of (insertedRows ?? []) as Record<string, unknown>[]) {
+        changedResources.push(adaptModuleResourceRow(insertedRow))
+      }
+      continue
+    }
+
+    matchedExistingIds.add(String(match.id))
+    const patch = buildSafeExternalResourcePatch(match, row)
+    const { data: updatedRow, error } = await input.supabase
+      .from('module_resources')
+      .update(patch)
+      .eq('id', match.id as string)
+      .eq('user_id', input.userId)
+      .select('*')
+      .maybeSingle()
+
+    if (error) {
+      console.error('[external-canvas-sync] resource update failed', {
+        userId: input.userId,
+        resourceId: match.id,
+        title: readString(row.title),
+        code: error.code,
+        message: error.message,
+      })
+      continue
+    }
+
+    updated += 1
+    if (patch.metadata && typeof patch.metadata === 'object' && (patch.metadata as Record<string, unknown>).externalSyncPreservedText === true) {
+      preserved += 1
+    }
+    if (updatedRow) changedResources.push(adaptModuleResourceRow(updatedRow as Record<string, unknown>))
+  }
+
+  for (const missing of existing) {
+    const id = readString(missing.id)
+    if (!id || matchedExistingIds.has(id)) continue
+    await input.supabase
+      .from('module_resources')
+      .update({
+        metadata: {
+          ...asPlainRecord(missing.metadata),
+          externalSyncMissingAt: new Date().toISOString(),
+        },
+      })
+      .eq('id', id)
+      .eq('user_id', input.userId)
+  }
+
+  return {
+    inserted,
+    updated,
+    preserved,
+    missing: Math.max(0, existing.length - matchedExistingIds.size),
+    changedResources,
+  }
+}
+
+function buildSafeExternalResourcePatch(existingRow: Record<string, unknown>, incomingRow: Record<string, unknown>) {
+  const existing = adaptModuleResourceRow(existingRow)
+  const incoming = adaptModuleResourceRow({
+    ...incomingRow,
+    id: existing.id,
+    module_id: existing.moduleId,
+    course_id: existing.courseId,
+    created_at: existing.created_at,
+  })
+  const decision = evaluateResourceTextPreservation(existing, incoming)
+  const metadata = {
+    ...asPlainRecord(existingRow.metadata),
+    ...asPlainRecord(incomingRow.metadata),
+    externalSyncCheckedAt: new Date().toISOString(),
+    externalSyncPreservedText: decision.preserveExtractedText || decision.preserveVisualText,
+    externalSyncTextDecision: {
+      fileIdentityChanged: decision.fileIdentityChanged,
+      preserveExtractedText: decision.preserveExtractedText,
+      preserveVisualText: decision.preserveVisualText,
+      existingTextQuality: decision.existingTextQuality,
+      incomingTextQuality: decision.incomingTextQuality,
+      existingVisualQuality: decision.existingVisualQuality,
+    },
+  }
+  const patch: Record<string, unknown> = {
+    canvas_instance_url: incomingRow.canvas_instance_url ?? existingRow.canvas_instance_url ?? null,
+    canvas_course_id: incomingRow.canvas_course_id ?? existingRow.canvas_course_id ?? null,
+    canvas_module_id: incomingRow.canvas_module_id ?? existingRow.canvas_module_id ?? null,
+    canvas_item_id: incomingRow.canvas_item_id ?? existingRow.canvas_item_id ?? null,
+    canvas_file_id: incomingRow.canvas_file_id ?? existingRow.canvas_file_id ?? null,
+    title: incomingRow.title,
+    resource_type: incomingRow.resource_type,
+    content_type: incomingRow.content_type ?? null,
+    extension: incomingRow.extension ?? null,
+    source_url: incomingRow.source_url ?? null,
+    html_url: incomingRow.html_url ?? null,
+    extraction_status: incomingRow.extraction_status,
+    extracted_text: incomingRow.extracted_text ?? null,
+    extracted_text_preview: incomingRow.extracted_text_preview ?? null,
+    extracted_char_count: incomingRow.extracted_char_count ?? 0,
+    extraction_error: incomingRow.extraction_error ?? null,
+    visual_extraction_status: incomingRow.visual_extraction_status ?? 'not_started',
+    visual_extracted_text: incomingRow.visual_extracted_text ?? null,
+    visual_extraction_error: incomingRow.visual_extraction_error ?? null,
+    page_count: incomingRow.page_count ?? null,
+    pages_processed: incomingRow.pages_processed ?? 0,
+    extraction_provider: incomingRow.extraction_provider ?? null,
+    required: incomingRow.required ?? false,
+    metadata,
+  }
+
+  if (decision.preserveExtractedText) {
+    patch.extraction_status = existingRow.extraction_status
+    patch.extracted_text = existingRow.extracted_text ?? null
+    patch.extracted_text_preview = existingRow.extracted_text_preview ?? null
+    patch.extracted_char_count = existingRow.extracted_char_count ?? 0
+    patch.extraction_error = existingRow.extraction_error ?? null
+  }
+
+  const existingVisualStatus = readString(existingRow.visual_extraction_status)
+  const shouldPreserveActiveOcr = !decision.fileIdentityChanged
+    && (existingVisualStatus === 'queued' || existingVisualStatus === 'running')
+
+  if (decision.preserveVisualText || shouldPreserveActiveOcr) {
+    patch.visual_extraction_status = existingRow.visual_extraction_status ?? 'not_started'
+    patch.visual_extracted_text = existingRow.visual_extracted_text ?? null
+    patch.visual_extraction_error = existingRow.visual_extraction_error ?? null
+    patch.page_count = existingRow.page_count ?? incomingRow.page_count ?? null
+    patch.pages_processed = existingRow.pages_processed ?? incomingRow.pages_processed ?? 0
+    patch.extraction_provider = existingRow.extraction_provider ?? incomingRow.extraction_provider ?? null
+  }
+
+  return sanitizeDatabaseValue(patch)
+}
+
+function findExistingResourceForIncoming(
+  existingRows: Record<string, unknown>[],
+  incomingRow: Record<string, unknown>,
+  usedIds: Set<string>,
+) {
+  const incomingItemId = readNumber(incomingRow.canvas_item_id)
+  const incomingFileId = readNumber(incomingRow.canvas_file_id)
+  const incomingModuleId = readNumber(incomingRow.canvas_module_id)
+  const incomingSourceUrl = readString(incomingRow.source_url)
+  const incomingHtmlUrl = readString(incomingRow.html_url)
+  const incomingTitleKey = normalizeResourceMatchTitle(readString(incomingRow.title))
+  const incomingType = readString(incomingRow.resource_type)
+
+  const availableRows = existingRows.filter((row) => {
+    const id = readString(row.id)
+    return id && !usedIds.has(id)
+  })
+
+  if (incomingItemId !== null) {
+    const match = availableRows.find((row) => readNumber(row.canvas_item_id) === incomingItemId)
+    if (match) return match
+  }
+
+  if (incomingFileId !== null) {
+    const match = availableRows.find((row) => readNumber(row.canvas_file_id) === incomingFileId)
+    if (match) return match
+  }
+
+  if (incomingSourceUrl || incomingHtmlUrl) {
+    const match = availableRows.find((row) => {
+      const rowSourceUrl = readString(row.source_url)
+      const rowHtmlUrl = readString(row.html_url)
+      return Boolean(
+        (incomingSourceUrl && (incomingSourceUrl === rowSourceUrl || incomingSourceUrl === rowHtmlUrl))
+        || (incomingHtmlUrl && (incomingHtmlUrl === rowSourceUrl || incomingHtmlUrl === rowHtmlUrl)),
+      )
+    })
+    if (match) return match
+  }
+
+  if (incomingTitleKey) {
+    return availableRows.find((row) => (
+      normalizeResourceMatchTitle(readString(row.title)) === incomingTitleKey
+      && readString(row.resource_type) === incomingType
+      && (incomingModuleId === null || readNumber(row.canvas_module_id) === incomingModuleId)
+    )) ?? null
+  }
+
+  return null
+}
+
+async function refreshExternalCanvasTaskStatus(input: {
+  supabase: CanvasSyncSupabaseClient
+  userId: string
+  courseId: string
+  assignments: CanvasAssignment[]
+}) {
+  let updated = 0
+
+  for (const assignment of input.assignments) {
+    const taskState = deriveCanvasAssignmentTaskState(assignment)
+    const basePatch = sanitizeDatabaseValue({
+      deadline: normalizeOptionalCanvasSyncText(assignment.due_at),
+      canvas_url: normalizeOptionalCanvasSyncText(assignment.html_url ?? assignment.url ?? null),
+    })
+    const completePatch = sanitizeDatabaseValue({
+      ...basePatch,
+      status: taskState.taskStatus,
+      completion_origin: taskState.completionOrigin,
+    })
+
+    const taskItemsPatch = taskState.taskStatus === 'completed' ? completePatch : basePatch
+    const tasksPatch = taskState.taskStatus === 'completed' ? completePatch : basePatch
+
+    const { error: taskItemsError, count: taskItemsCount } = await input.supabase
+      .from('task_items')
+      .update(taskItemsPatch, { count: 'exact' })
+      .eq('user_id', input.userId)
+      .eq('course_id', input.courseId)
+      .eq('canvas_assignment_id', assignment.id)
+
+    if (taskItemsError) {
+      console.warn('[external-canvas-sync] task_items status refresh failed', {
+        userId: input.userId,
+        courseId: input.courseId,
+        canvasAssignmentId: assignment.id,
+        code: taskItemsError.code,
+        message: taskItemsError.message,
+      })
+    } else {
+      updated += taskItemsCount ?? 0
+    }
+
+    const { error: tasksError, count: tasksCount } = await input.supabase
+      .from('tasks')
+      .update(tasksPatch, { count: 'exact' })
+      .eq('user_id', input.userId)
+      .eq('canvas_assignment_id', assignment.id)
+
+    if (tasksError) {
+      console.warn('[external-canvas-sync] tasks status refresh failed', {
+        userId: input.userId,
+        courseId: input.courseId,
+        canvasAssignmentId: assignment.id,
+        code: tasksError.code,
+        message: tasksError.message,
+      })
+    } else {
+      updated += tasksCount ?? 0
+    }
+  }
+
+  return { updated }
+}
+
+function rowToQueuedJobForExternalSync(row: Record<string, unknown>): QueuedJob {
+  return {
+    id: row.id as string,
+    userId: row.user_id as string,
+    type: row.type as QueuedJob['type'],
+    title: row.title as string,
+    status: row.status as QueuedJob['status'],
+    progress: (row.progress as number) ?? 0,
+    payload: (row.payload as Record<string, unknown> | null) ?? null,
+    result: (row.result as Record<string, unknown> | null) ?? null,
+    error: (row.error as string | null) ?? null,
+    attempts: (row.attempts as number) ?? 0,
+    maxAttempts: (row.max_attempts as number) ?? 3,
+    createdAt: row.created_at as string,
+    updatedAt: row.updated_at as string,
+    startedAt: (row.started_at as string | null) ?? null,
+    completedAt: (row.completed_at as string | null) ?? null,
+    dismissedAt: (row.dismissed_at as string | null) ?? null,
+    cancelRequestedAt: (row.cancel_requested_at as string | null) ?? null,
+    canceledAt: (row.canceled_at as string | null) ?? null,
+  }
+}
+
+function readFirstNumberArrayValue(value: unknown) {
+  if (!Array.isArray(value)) return null
+  for (const item of value) {
+    const number = readNumber(item)
+    if (number !== null) return number
+  }
+  return null
+}
+
+function readString(value: unknown) {
+  return typeof value === 'string' && value.trim() ? value.trim() : null
+}
+
+function readNumber(value: unknown) {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number.parseInt(value, 10)
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return null
+}
+
+function asPlainRecord(value: unknown): Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? { ...value as Record<string, unknown> }
+    : {}
+}
+
+function normalizeResourceMatchTitle(value: string | null) {
+  if (!value) return null
+  const normalized = value
+    .toLowerCase()
+    .replace(/\.[a-z0-9]+$/i, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  return normalized || null
 }
 
 async function syncSingleCourse(
@@ -2218,7 +2854,9 @@ type SupabaseLikeError = {
   hint?: string | null
 }
 
-type CanvasSyncSupabaseClient = NonNullable<Awaited<ReturnType<typeof createAuthenticatedSupabaseServerClient>>>
+type CanvasSyncSupabaseClient =
+  | NonNullable<Awaited<ReturnType<typeof createAuthenticatedSupabaseServerClient>>>
+  | NonNullable<ReturnType<typeof createSupabaseServiceRoleClient>>
 
 function createSupabaseStepError(step: string, error: SupabaseLikeError | null | undefined, context?: Record<string, unknown>) {
   const code = error?.code ?? null

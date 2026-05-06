@@ -1,7 +1,67 @@
 # Stay Focused — AI Session Handoff
 
 Author: galaxymaxp omgraythekid@gmail.com
-Last Updated: 2026-05-05
+Last Updated: 2026-05-06
+
+---
+
+## Session Update - 2026-05-06 (Implement safe external Canvas sync processor)
+
+### What changed
+
+**`actions/canvas.ts`**
+- Added `processPendingExternalCanvasSyncJobs()` for queued `canvas_sync` jobs with `payload.mode === 'external_cron'`.
+- The processor claims a small number of pending external sync jobs, loads the user's saved Canvas credentials via service role, fetches assignments/announcements/modules, and refreshes existing synced course resources.
+- It does not call `processModuleContent`, does not generate Deep Learn, and does not run OCR directly.
+- Existing assignment rows get Canvas deadline/link/completion updates without regressing pending/manual work back from completed.
+- Resource refreshes match existing `module_resources` by Canvas item id, Canvas file id, URLs, then normalized title/type/module.
+- Missing resources are marked in internal metadata instead of being deleted.
+- Scanned/image-only PDFs are passed to `autoEnqueueSourceOcrJobs`, which keeps duplicate/running/completed checks and daily OCR caps; the OCR worker itself is not run by this processor.
+
+**`app/api/cron/external-sync/route.ts`**
+- Added `after()` background processing hook to run `processPendingExternalCanvasSyncJobs()` after the secured cron scan/queue response.
+
+**`lib/canvas-resource-preservation.ts`** (new)
+- Added pure preservation decisions for Canvas resource text.
+- Detects same Canvas module item pointing to a different Canvas file id as a file identity change.
+- Preserves meaningful existing extracted text and completed meaningful OCR text for unchanged file identities.
+
+**`tests/queue.test.ts`**
+- Added resource preservation tests proving meaningful extracted text is kept over weak incoming sync output, changed file identity clears preservation, and completed OCR text is preserved for unchanged Canvas files.
+
+**`README.md`, `docs/roadmap.md`**
+- Documented `EXTERNAL_SYNC_PROCESS_LIMIT` and clarified that external sync processing refreshes existing resources and queues OCR only when needed.
+
+### Why it changed
+
+External cron could already enqueue bounded `canvas_sync` jobs, but those jobs had no safe processor. The new processor gives external sync a path that refreshes Canvas signals without launching expensive OpenAI extraction or OCR work inline, while protecting good source text from being replaced by empty, metadata-only, failed, or weak extraction output.
+
+### Tests run
+
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- queue` - passed, 324/324
+- `npm test -- pdf-extractor source-ocr-updates deep-learn-readiness deep-learn-generation canvas-content-resolution learn-resource-ui queue` - passed, 324/324
+
+### Verification result
+
+All required static checks and focused extraction/OCR/deep-learn/queue tests passed.
+
+### Known risks / blockers
+
+- The external sync lock migration from the previous session (`20260506010000_add_external_sync_locks.sql`) still must be applied remotely before enabling cron.
+- Live Canvas/cron-job.org execution was not run in this local session.
+- The processor refreshes existing synced courses/modules; it does not create a first-time course/module import for unsynced courses.
+
+### Next recommended steps
+
+1. Apply pending Supabase migrations remotely.
+2. Enable cron-job.org against `/api/cron/external-sync` with `Authorization: Bearer <CRON_SECRET>`.
+3. Watch the first live run's `queued_jobs.result` for `resourcesInserted`, `resourcesUpdated`, `resourcesPreserved`, and `queuedOcrJobCount`.
+
+### Suggested commit message
+
+implement safe external Canvas sync processor
 
 ---
 

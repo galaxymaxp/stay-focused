@@ -1,4 +1,6 @@
 import { type NextRequest, NextResponse } from 'next/server'
+import { after } from 'next/server'
+import { processPendingExternalCanvasSyncJobs } from '@/actions/canvas'
 import { createQueuedJobAsService, type QueuedJob } from '@/lib/queue'
 import { createSupabaseServiceRoleClient } from '@/lib/supabase-service'
 import { getCourses, normalizeCanvasUrl, type CanvasCourse } from '@/lib/canvas'
@@ -211,6 +213,11 @@ export async function GET(req: NextRequest) {
   }
 
   console.info('[cron/external-sync] scan complete', stats)
+
+  after(async () => {
+    const processed = await processPendingExternalCanvasSyncJobs()
+    console.info('[cron/external-sync] background processing complete', processed)
+  })
 
   return NextResponse.json({
     ok: true,

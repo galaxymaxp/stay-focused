@@ -24,6 +24,7 @@ import {
   evaluateDailyCostQueueGuard,
   evaluateExternalCanvasSyncQueueGuard,
 } from '../lib/external-sync-queue'
+import { evaluateResourceTextPreservation } from '../lib/canvas-resource-preservation'
 
 test('source OCR queue helpers format labels and page progress', () => {
   assert.equal(buildSourceOcrQueueTitle('1-Data Organization.pdf'), 'Preparing scanned PDF: 1-Data Organization.pdf')
@@ -362,6 +363,64 @@ test('daily cost queue guard enforces OCR user and course caps', () => {
   )
 })
 
+test('Canvas resource preservation keeps meaningful extracted text when incoming sync is weak', () => {
+  const decision = evaluateResourceTextPreservation(
+    createResourceForPreservation({
+      extractedText: meaningfulAcademicText(),
+      canvasItemId: 10,
+      canvasFileId: 100,
+    }),
+    createResourceForPreservation({
+      extractedText: 'File title: Lecture.pdf\nUUID: 11111111-1111-4111-8111-111111111111',
+      canvasItemId: 10,
+      canvasFileId: 100,
+    }),
+  )
+
+  assert.equal(decision.fileIdentityChanged, false)
+  assert.equal(decision.preserveExtractedText, true)
+  assert.equal(decision.incomingTextQuality, 'metadata_only')
+})
+
+test('Canvas resource preservation drops old text when same item points to a new Canvas file', () => {
+  const decision = evaluateResourceTextPreservation(
+    createResourceForPreservation({
+      extractedText: meaningfulAcademicText(),
+      canvasItemId: 10,
+      canvasFileId: 100,
+    }),
+    createResourceForPreservation({
+      extractedText: 'File title: New Lecture.pdf',
+      canvasItemId: 10,
+      canvasFileId: 200,
+    }),
+  )
+
+  assert.equal(decision.fileIdentityChanged, true)
+  assert.equal(decision.preserveExtractedText, false)
+})
+
+test('Canvas resource preservation keeps completed OCR text for the same Canvas file', () => {
+  const decision = evaluateResourceTextPreservation(
+    createResourceForPreservation({
+      extractedText: meaningfulAcademicText(),
+      visualExtractionStatus: 'completed',
+      visualExtractedText: meaningfulAcademicText(),
+      canvasItemId: 10,
+      canvasFileId: 100,
+    }),
+    createResourceForPreservation({
+      extractedText: null,
+      canvasItemId: 10,
+      canvasFileId: 100,
+    }),
+  )
+
+  assert.equal(decision.preserveExtractedText, true)
+  assert.equal(decision.preserveVisualText, true)
+  assert.equal(decision.existingVisualQuality, 'meaningful')
+})
+
 function createJob(input: {
   id: string
   type: QueuedJob['type']
@@ -401,4 +460,32 @@ function createJob(input: {
     cancelRequestedAt: null,
     canceledAt: null,
   }
+}
+
+function createResourceForPreservation(input: {
+  extractedText?: string | null
+  visualExtractionStatus?: 'not_started' | 'available' | 'queued' | 'running' | 'completed' | 'failed' | 'skipped'
+  visualExtractedText?: string | null
+  canvasItemId?: number | null
+  canvasFileId?: number | null
+}) {
+  return {
+    title: 'Lecture.pdf',
+    canvasItemId: input.canvasItemId ?? null,
+    canvasFileId: input.canvasFileId ?? null,
+    extractedText: input.extractedText ?? null,
+    extractedTextPreview: null,
+    visualExtractionStatus: input.visualExtractionStatus ?? 'not_started',
+    visualExtractedText: input.visualExtractedText ?? null,
+    metadata: {},
+  }
+}
+
+function meaningfulAcademicText() {
+  return [
+    'Data organization describes how observations, variables, categories, and measurements are structured for analysis.',
+    'A dataset can be arranged in tables where each record represents an observation and each column represents a variable.',
+    'Researchers use classification, frequency distributions, sampling methods, measurement scales, and validation checks to prepare reliable evidence.',
+    'These concepts support statistical reasoning, interpretation, comparison, modeling, and decision making in academic research.',
+  ].join(' ')
 }
