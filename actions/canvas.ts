@@ -63,6 +63,17 @@ import { evaluateResourceTextPreservation } from '@/lib/canvas-resource-preserva
 import { classifyModuleResourceTextQuality } from '@/lib/extracted-text-quality'
 import { DEFAULT_EXTERNAL_CANVAS_FETCH_TIMEOUT_MS, EXTERNAL_CANVAS_SYNC_MODE, getPositiveIntegerEnv } from '@/lib/external-sync-queue'
 import {
+  buildAnnouncementEvent,
+  buildAssignmentEvent,
+  buildDueDateChangeEvent,
+  buildModuleEvent,
+  buildResourceEvent,
+  detectDueDateChanges,
+  insertCanvasUpdateEvents,
+  type CanvasUpdateEventContext,
+  type CanvasUpdateEventInput,
+} from '@/lib/canvas-update-events'
+import {
   markQueuedJobCompleted,
   markQueuedJobFailed,
   markQueuedJobRunning,
@@ -508,12 +519,55 @@ async function runExternalCanvasSyncJob(job: QueuedJob) {
   })
 
   await updateExternalCanvasJobStep(job.id, 72, 'Refreshing task status', 'refreshing_tasks', databaseSafeCourse.name)
+
+  // Load existing task deadlines before the refresh so we can detect changes.
+  const existingDeadlines = await loadExistingTaskDeadlines({
+    supabase,
+    userId: job.userId,
+    courseId: courseRecord.id,
+    canvasAssignmentIds: assignments.map((a) => a.id),
+  })
+
   const taskRefresh = await refreshExternalCanvasTaskStatus({
     supabase,
     userId: job.userId,
     courseId: courseRecord.id,
     assignments,
   })
+
+  const eventContext: CanvasUpdateEventContext = {
+    userId: job.userId,
+    courseId: courseRecord.id,
+    moduleId: existingModule.id,
+    canvasInstanceUrl: normalizedCourse.canvasInstanceUrl,
+    canvasCourseId: normalizedCourse.canvasCourseId,
+    courseHref: `/courses/${courseRecord.id}`,
+  }
+
+  const eventInputs: CanvasUpdateEventInput[] = []
+
+  for (const announcement of announcements) {
+    eventInputs.push(buildAnnouncementEvent(announcement, eventContext))
+  }
+
+  for (const assignment of assignments) {
+    eventInputs.push(buildAssignmentEvent(assignment, eventContext))
+  }
+
+  for (const canvasModule of modules) {
+    eventInputs.push(buildModuleEvent(canvasModule, eventContext))
+  }
+
+  for (const resource of resourceRefresh.newResources) {
+    const ev = buildResourceEvent(resource, eventContext)
+    if (ev) eventInputs.push(ev)
+  }
+
+  for (const { assignment, newDueAt } of detectDueDateChanges(assignments, existingDeadlines)) {
+    eventInputs.push(buildDueDateChangeEvent(assignment, newDueAt, eventContext))
+  }
+
+  const eventInsert = await insertCanvasUpdateEvents(supabase, eventInputs)
 
   const finalResourceExtracts = await loadFinalModuleResourceExtractsForRawContent({
     supabase,
@@ -567,6 +621,12 @@ async function runExternalCanvasSyncJob(job: QueuedJob) {
     tasksUpdated: taskRefresh.updated,
     queuedOcrJobIds: autoOcrJobs.map((ocrJob) => ocrJob.id),
     queuedOcrJobCount: autoOcrJobs.length,
+    canvasUpdateEventCount: eventInsert.inserted,
+    newAnnouncementCount: eventInsert.byType.new_announcement,
+    newAssignmentCount: eventInsert.byType.new_assignment,
+    dueDateChangeCount: eventInsert.byType.due_date_change,
+    newModuleCount: eventInsert.byType.new_module,
+    newResourceCount: eventInsert.byType.new_resource,
   }
 
   await markQueuedJobCompleted(job.id, result)
@@ -676,6 +736,7 @@ async function refreshExternalCanvasResources(input: {
   const existing = ((existingRows ?? []) as Record<string, unknown>[])
   const matchedExistingIds = new Set<string>()
   const changedResources: ModuleResource[] = []
+  const newResources: ModuleResource[] = []
   let inserted = 0
   let updated = 0
   let preserved = 0
@@ -702,7 +763,9 @@ async function refreshExternalCanvasResources(input: {
 
       inserted += 1
       for (const insertedRow of (insertedRows ?? []) as Record<string, unknown>[]) {
-        changedResources.push(adaptModuleResourceRow(insertedRow))
+        const adapted = adaptModuleResourceRow(insertedRow)
+        changedResources.push(adapted)
+        newResources.push(adapted)
       }
       continue
     }
@@ -756,6 +819,7 @@ async function refreshExternalCanvasResources(input: {
     preserved,
     missing: Math.max(0, existing.length - matchedExistingIds.size),
     changedResources,
+    newResources,
   }
 }
 
@@ -986,6 +1050,32 @@ async function refreshExternalCanvasTaskStatus(input: {
   }
 
   return { updated }
+}
+
+async function loadExistingTaskDeadlines(input: {
+  supabase: CanvasSyncSupabaseClient
+  userId: string
+  courseId: string
+  canvasAssignmentIds: number[]
+}): Promise<Map<number, string | null>> {
+  if (input.canvasAssignmentIds.length === 0) return new Map()
+
+  const { data, error } = await input.supabase
+    .from('task_items')
+    .select('canvas_assignment_id, deadline')
+    .eq('user_id', input.userId)
+    .eq('course_id', input.courseId)
+    .in('canvas_assignment_id', input.canvasAssignmentIds)
+
+  if (error || !data) return new Map()
+
+  const map = new Map<number, string | null>()
+  for (const row of data as { canvas_assignment_id: number | null; deadline: string | null }[]) {
+    if (typeof row.canvas_assignment_id === 'number') {
+      map.set(row.canvas_assignment_id, row.deadline ?? null)
+    }
+  }
+  return map
 }
 
 function rowToQueuedJobForExternalSync(row: Record<string, unknown>): QueuedJob {
