@@ -5,6 +5,87 @@ Last Updated: 2026-05-07
 
 ---
 
+## Session Update - 2026-05-07 (Track Canvas update events)
+
+### What changed
+
+**`supabase/migrations/20260507020000_add_canvas_update_events.sql`** (new)
+- Created `canvas_update_events` table with all suggested fields.
+- Added a unique expression index (`canvas_update_events_dedupe_idx`) using `COALESCE` on nullable columns to prevent duplicate events across repeated cron runs.
+- Enabled RLS: authenticated users can SELECT their own rows; service_role has full management access.
+
+**`lib/canvas-update-events.ts`** (new)
+- Pure builder functions for each event type: `buildAnnouncementEvent`, `buildAssignmentEvent`, `buildDueDateChangeEvent`, `buildModuleEvent`, `buildResourceEvent`.
+- Pure `detectDueDateChanges(assignments, existingDeadlines)` — takes a pre-loaded deadline map, returns only assignments whose `due_at` changed.
+- `insertCanvasUpdateEvents(supabase, events)` — inserts one at a time; silently skips 23505 unique-constraint violations (deduplication); returns `{ inserted, skipped, byType }` with per-type counts.
+- `sanitizeEventTitle` — strips UUID patterns, PostgREST error codes, and SQLSTATE codes from user-facing text.
+
+**`actions/canvas.ts`**
+- `refreshExternalCanvasResources` now returns `newResources: ModuleResource[]` alongside `changedResources`.
+- `runExternalCanvasSyncJob` now:
+  - Loads existing `task_items` deadlines keyed by `canvas_assignment_id` before the task refresh (for due-date change detection).
+  - Builds event inputs for all announcements, assignments, modules, new resources, and due-date changes.
+  - Inserts events via `insertCanvasUpdateEvents` using the service-role Supabase client.
+  - Adds `canvasUpdateEventCount`, `newAnnouncementCount`, `newAssignmentCount`, `dueDateChangeCount`, `newModuleCount`, `newResourceCount` to the completed job result.
+- Added `loadExistingTaskDeadlines` helper (async, scoped to course + assignment IDs).
+- No OpenAI, OCR, or email calls added.
+
+**`tests/queue.test.ts`**
+- Added 16 new tests covering:
+  - New assignment/announcement/module/resource events have correct types, source IDs, and source hashes.
+  - Due-date change detection fires only when deadline differs, skips unchanged, skips null incoming.
+  - Resource event returns null when both Canvas IDs are absent.
+  - Source hash is stable (same value across repeated sync calls → same dedupe key).
+  - `sanitizeEventTitle` strips UUIDs and PostgREST error codes.
+  - Preservation-only updated resources produce no new_resource event.
+  - OCR job types do not map to any Canvas update event type.
+
+### Files touched
+
+- `actions/canvas.ts`
+- `lib/canvas-update-events.ts`
+- `supabase/migrations/20260507020000_add_canvas_update_events.sql`
+- `tests/queue.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Email digests will be built later from stored Canvas update events. This phase detects and stores meaningful Canvas changes (new announcements, new assignments, due-date changes, new modules, new resources) during the external cron sync without sending any email or adding notification destination settings.
+
+### Tests run
+
+- `npm run typecheck` — passed
+- `npm run lint` — passed
+- `npm test -- queue` — passed, 341/341
+- `npm test -- pdf-extractor source-ocr-updates deep-learn-readiness deep-learn-generation canvas-content-resolution learn-resource-ui queue` — passed, 341/341
+
+### Verification result
+
+All checks passed. No `.env` files, secrets, local PDFs, build output, or logs were added.
+
+### Known risks
+
+- The new Supabase migration must be applied remotely before event insertion works.
+- Due-date change detection only fires for assignments that already have a `task_items` row for the user's course. Assignments with no task_items are not tracked for deadline changes (only `new_assignment` events are created on first sight).
+- Per-type counts in the job result reflect actual inserts (deduplicated correctly via `byType` in `insertCanvasUpdateEvents`).
+- Browser QA was not run this session.
+
+### Blockers
+
+None.
+
+### Next recommended step
+
+Apply the pending Supabase migration remotely (`supabase/migrations/20260507020000_add_canvas_update_events.sql`). Then trigger a live external cron run and inspect `canvas_update_events` rows and the job result `canvasUpdateEventCount` field to confirm events are being recorded and deduplicated.
+
+After that, the next natural phase is reading stored events to build email digest content — but do not add Resend or notification destination settings yet.
+
+### Suggested commit message
+
+track Canvas update events
+
+---
+
 ## Session Update - 2026-05-07 (Rename Do workspace to Tasks)
 
 ### What changed
