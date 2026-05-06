@@ -239,10 +239,28 @@ export async function updateQueuedJobStatus(
 }
 
 export async function markQueuedJobRunning(jobId: string, progress = 0): Promise<boolean> {
-  return updateQueuedJobStatus(jobId, 'running', {
-    progress,
-    startedAt: new Date().toISOString(),
-  })
+  const supabase = getServiceRoleClient()
+  if (!supabase) return false
+
+  const startedAt = new Date().toISOString()
+  const { data, error } = await supabase
+    .from('queued_jobs')
+    .update({
+      status: 'running',
+      progress,
+      started_at: startedAt,
+    })
+    .eq('id', jobId)
+    .eq('status', 'pending')
+    .select('id')
+    .maybeSingle()
+
+  if (error) {
+    console.error('[queue] markQueuedJobRunning failed', { jobId, error })
+    return false
+  }
+
+  return Boolean(data)
 }
 
 export async function markQueuedJobCompleted(
@@ -440,11 +458,16 @@ export async function claimNextPendingJob(type?: QueuedJobType): Promise<QueuedJ
   if (error || !data || data.length === 0) return null
 
   const job = rowToJob((data as Record<string, unknown>[])[0])
+  const startedAt = new Date().toISOString()
 
   const claimed = await markQueuedJobRunning(job.id)
   if (!claimed) return null
 
-  return job
+  return {
+    ...job,
+    status: 'running',
+    startedAt,
+  }
 }
 
 function getServiceRoleClient() {

@@ -60,7 +60,8 @@ import { populateModuleTerms } from '@/actions/module-terms'
 import { autoEnqueueSourceOcrJobs } from '@/actions/queue-jobs'
 import { adaptModuleResourceRow } from '@/lib/module-resource-row'
 import { evaluateResourceTextPreservation } from '@/lib/canvas-resource-preservation'
-import { EXTERNAL_CANVAS_SYNC_MODE, getPositiveIntegerEnv } from '@/lib/external-sync-queue'
+import { classifyModuleResourceTextQuality } from '@/lib/extracted-text-quality'
+import { DEFAULT_EXTERNAL_CANVAS_FETCH_TIMEOUT_MS, EXTERNAL_CANVAS_SYNC_MODE, getPositiveIntegerEnv } from '@/lib/external-sync-queue'
 import {
   markQueuedJobCompleted,
   markQueuedJobFailed,
@@ -446,9 +447,11 @@ async function runExternalCanvasSyncJob(job: QueuedJob) {
   await updateExternalCanvasJobStep(job.id, 8, 'Checking Canvas changes', 'checking')
 
   const credentials = await loadCanvasCredentialsForExternalSync(job.userId)
+  const canvasFetchTimeoutMs = getPositiveIntegerEnv('EXTERNAL_CANVAS_FETCH_TIMEOUT_MS', DEFAULT_EXTERNAL_CANVAS_FETCH_TIMEOUT_MS)
   const config: CanvasConfig = {
     url: normalizeCanvasUrl(readString(payload.canvasUrl) ?? credentials.canvasApiUrl),
     token: credentials.canvasAccessToken,
+    timeoutMs: canvasFetchTimeoutMs,
   }
 
   const { data: existingCourseRow, error: courseLookupError } = await supabase
@@ -512,18 +515,19 @@ async function runExternalCanvasSyncJob(job: QueuedJob) {
     assignments,
   })
 
+  const finalResourceExtracts = await loadFinalModuleResourceExtractsForRawContent({
+    supabase,
+    userId: job.userId,
+    moduleId: existingModule.id,
+    courseId: courseRecord.id,
+  })
+
   const rawContent = stripDatabaseNullCharacters(compileCanvasContent(
     databaseSafeCourse,
     assignments,
     announcements,
     modules,
-    resourceIngestion
-      .filter((resource) => (resource.extractionStatus === 'extracted' || resource.extractionStatus === 'completed') && resource.extractedText)
-      .map((resource) => ({
-        title: resource.title,
-        resourceType: resource.resourceType,
-        extractedText: resource.extractedText!,
-      })),
+    finalResourceExtracts,
   ))
 
   await supabase
@@ -753,6 +757,45 @@ async function refreshExternalCanvasResources(input: {
     missing: Math.max(0, existing.length - matchedExistingIds.size),
     changedResources,
   }
+}
+
+async function loadFinalModuleResourceExtractsForRawContent(input: {
+  supabase: CanvasSyncSupabaseClient
+  userId: string
+  moduleId: string
+  courseId: string
+}) {
+  const { data, error } = await input.supabase
+    .from('module_resources')
+    .select('*')
+    .eq('user_id', input.userId)
+    .eq('module_id', input.moduleId)
+    .eq('course_id', input.courseId)
+    .order('created_at', { ascending: true })
+
+  if (error || !data) {
+    console.warn('[external-canvas-sync] final resource text lookup failed', {
+      userId: input.userId,
+      moduleId: input.moduleId,
+      courseId: input.courseId,
+      code: error?.code ?? null,
+      message: error?.message ?? null,
+    })
+    return []
+  }
+
+  return ((data ?? []) as Record<string, unknown>[])
+    .map((row) => adaptModuleResourceRow(row))
+    .map((resource) => {
+      const quality = classifyModuleResourceTextQuality(resource)
+      if (!quality.usable) return null
+      return {
+        title: resource.title,
+        resourceType: resource.resourceType,
+        extractedText: quality.candidateText,
+      }
+    })
+    .filter((resource): resource is { title: string; resourceType: string; extractedText: string } => Boolean(resource))
 }
 
 function buildSafeExternalResourcePatch(existingRow: Record<string, unknown>, incomingRow: Record<string, unknown>) {

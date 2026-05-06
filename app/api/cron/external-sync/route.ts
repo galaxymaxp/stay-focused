@@ -9,6 +9,7 @@ import {
   DEFAULT_EXTERNAL_SYNC_COURSE_BATCH_LIMIT,
   DEFAULT_EXTERNAL_SYNC_COURSE_COOLDOWN_MS,
   DEFAULT_EXTERNAL_SYNC_DAILY_COURSE_CAP,
+  DEFAULT_EXTERNAL_CANVAS_FETCH_TIMEOUT_MS,
   DEFAULT_EXTERNAL_SYNC_LOCK_TTL_MS,
   DEFAULT_EXTERNAL_SYNC_USER_BATCH_LIMIT,
   EXTERNAL_CANVAS_SYNC_MODE,
@@ -65,7 +66,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       ok: true,
       skipped: true,
-      reason: 'sync_already_running',
+      reason: 'sync_lock_active',
+      legacyReason: 'sync_already_running',
     })
   }
 
@@ -73,6 +75,7 @@ export async function GET(req: NextRequest) {
   const courseLimit = getPositiveIntegerEnv('EXTERNAL_SYNC_COURSE_BATCH_LIMIT', DEFAULT_EXTERNAL_SYNC_COURSE_BATCH_LIMIT)
   const dailyCap = getPositiveIntegerEnv('EXTERNAL_SYNC_DAILY_COURSE_CAP', DEFAULT_EXTERNAL_SYNC_DAILY_COURSE_CAP)
   const courseCooldownMs = getPositiveIntegerEnv('EXTERNAL_SYNC_COURSE_COOLDOWN_MS', DEFAULT_EXTERNAL_SYNC_COURSE_COOLDOWN_MS)
+  const canvasFetchTimeoutMs = getPositiveIntegerEnv('EXTERNAL_CANVAS_FETCH_TIMEOUT_MS', DEFAULT_EXTERNAL_CANVAS_FETCH_TIMEOUT_MS)
 
   const { data: settingsRows, error: settingsError } = await supabase
     .from('user_settings')
@@ -123,6 +126,7 @@ export async function GET(req: NextRequest) {
       canvasCourses = await getCourses({
         url: normalizedCanvasUrl,
         token: row.canvas_access_token,
+        timeoutMs: canvasFetchTimeoutMs,
       })
     } catch (error) {
       stats.skipped.canvasFetchFailed += 1

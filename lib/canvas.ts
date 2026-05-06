@@ -26,6 +26,7 @@ const NON_ACADEMIC = [
 export interface CanvasConfig {
   url: string
   token: string
+  timeoutMs?: number
 }
 
 export interface CanvasCourse {
@@ -189,6 +190,9 @@ export interface CanvasResolvedLinkTarget {
 export function resolveCanvasConfig(override?: Partial<CanvasConfig>): CanvasConfig {
   const url = override?.url?.trim() || DEFAULT_CANVAS_URL?.trim()
   const token = override?.token?.trim() || DEFAULT_CANVAS_TOKEN?.trim()
+  const timeoutMs = typeof override?.timeoutMs === 'number' && Number.isFinite(override.timeoutMs) && override.timeoutMs > 0
+    ? override.timeoutMs
+    : undefined
 
   if (!url || !token) {
     throw new Error('Add your Canvas URL and access token to continue.')
@@ -202,6 +206,7 @@ export function resolveCanvasConfig(override?: Partial<CanvasConfig>): CanvasCon
     return {
       url: normalizeCanvasUrl(url),
       token,
+      timeoutMs,
     }
   } catch {
     throw new Error('Enter a valid Canvas URL, like https://school.instructure.com.')
@@ -220,6 +225,27 @@ export function normalizeCanvasUrl(value: string) {
   return url.toString().replace(/\/$/, '')
 }
 
+async function fetchCanvasWithTimeout(input: string, init: RequestInit, timeoutMs?: number) {
+  if (!timeoutMs) return fetch(input, init)
+
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), timeoutMs)
+
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal,
+    })
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new Error('Canvas request timed out before it finished.')
+    }
+    throw error
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
 async function canvasFetch<T>(path: string, configOverride?: Partial<CanvasConfig>): Promise<T> {
   const config = resolveCanvasConfig(configOverride)
   const url = new URL(`/api/v1${path}`, `${config.url}/`)
@@ -228,13 +254,13 @@ async function canvasFetch<T>(path: string, configOverride?: Partial<CanvasConfi
     url.searchParams.set('per_page', '100')
   }
 
-  const res = await fetch(url.toString(), {
+  const res = await fetchCanvasWithTimeout(url.toString(), {
     headers: {
       Authorization: `Bearer ${config.token}`,
       'Content-Type': 'application/json',
     },
     next: { revalidate: 0 },
-  })
+  }, config.timeoutMs)
 
   if (!res.ok) {
     if (res.status === 401 || (res.status === 403 && isCanvasCourseListPath(path))) {
@@ -257,13 +283,13 @@ async function canvasFetch<T>(path: string, configOverride?: Partial<CanvasConfi
 
 async function canvasFetchAbsolute<T>(url: string, configOverride?: Partial<CanvasConfig>): Promise<T> {
   const config = resolveCanvasConfig(configOverride)
-  const res = await fetch(url, {
+  const res = await fetchCanvasWithTimeout(url, {
     headers: {
       Authorization: `Bearer ${config.token}`,
       'Content-Type': 'application/json',
     },
     next: { revalidate: 0 },
-  })
+  }, config.timeoutMs)
 
   if (!res.ok) {
     throw new Error(`Canvas returned an unexpected error (${res.status}) while fetching a resource.`)
@@ -301,12 +327,12 @@ export async function downloadCanvasBinarySource(
 ): Promise<{ buffer: Buffer; contentType: string | null; url: string }> {
   const config = resolveCanvasConfig(configOverride)
   const resolvedUrl = await resolveCanvasBinaryUrl(url, configOverride)
-  const res = await fetch(resolvedUrl, {
+  const res = await fetchCanvasWithTimeout(resolvedUrl, {
     headers: {
       Authorization: `Bearer ${config.token}`,
     },
     next: { revalidate: 0 },
-  })
+  }, config.timeoutMs)
 
   if (!res.ok) {
     throw new Error(`Canvas returned an unexpected error (${res.status}) while downloading a file.`)
@@ -781,13 +807,13 @@ async function followCanvasResolutionTarget(url: string, config: CanvasConfig) {
   let currentUrl = url
 
   for (let attempt = 0; attempt < 4; attempt += 1) {
-    const response = await fetch(currentUrl, {
+    const response = await fetchCanvasWithTimeout(currentUrl, {
       headers: {
         Authorization: `Bearer ${config.token}`,
       },
       next: { revalidate: 0 },
       redirect: 'manual',
-    })
+    }, config.timeoutMs)
 
     if (isRedirectStatus(response.status)) {
       const location = response.headers.get('location')

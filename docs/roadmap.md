@@ -40,9 +40,10 @@ Stay Focused remains an action-first study workspace. The app should help a stud
 - The endpoint requires `Authorization: Bearer <CRON_SECRET>`.
 - cron-job.org should schedule GET requests at minutes `0, 15, 30, 45` with a custom `Authorization` header.
 - The endpoint must remain quick: detect configured/synced Canvas courses and queue small `canvas_sync` batches only.
+- External Canvas cron/sync fetches should use bounded timeouts so slow Canvas responses do not hang the route or background processor.
 - OpenAI generation and Google/OpenAI OCR must stay out of the cron request.
 - Queue guards should prevent overlapping sync jobs, repeated per-course queueing inside the cooldown window, and daily cost spikes.
-- Sync work must preserve successful extracted/OCR text on resync unless the Canvas file identity changes.
+- Sync work must preserve successful extracted/OCR text on resync unless the Canvas file identity changes, and module `raw_content` must be rebuilt from the final preserved resource text.
 - External sync processing should refresh existing Canvas resources and assignment status without running OpenAI module extraction or OCR workers inline.
 
 ## Future Features

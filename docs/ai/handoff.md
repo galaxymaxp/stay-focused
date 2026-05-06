@@ -1,7 +1,83 @@
 # Stay Focused — AI Session Handoff
 
 Author: galaxymaxp omgraythekid@gmail.com
-Last Updated: 2026-05-06
+Last Updated: 2026-05-07
+
+---
+
+## Session Update - 2026-05-07 (Harden external Canvas sync cron)
+
+### What changed
+
+**`supabase/migrations/20260507010000_harden_external_sync_lock_rpc.sql`** (new)
+- Recreated `try_acquire_external_sync_lock(text, text, timestamptz)` with an explicit `search_path`.
+- Revoked execute from `public`, `anon`, and `authenticated`.
+- Granted execute only to `service_role`.
+- Recreated the lock timestamp trigger function with an explicit `search_path`.
+
+**`lib/queue.ts`**
+- Made `markQueuedJobRunning()` claim jobs only when the current row status is `pending`.
+- Kept completed, failed, and cancelled updates on the existing shared status path.
+- `claimNextPendingJob()` now returns `null` if another worker wins the pending-to-running claim.
+
+**`lib/canvas.ts`, `lib/external-sync-queue.ts`, `app/api/cron/external-sync/route.ts`, `actions/canvas.ts`**
+- Added `CanvasConfig.timeoutMs` and a small `AbortController` fetch wrapper for Canvas calls.
+- Added `EXTERNAL_CANVAS_FETCH_TIMEOUT_MS`, defaulting to 8000ms, for external cron/sync Canvas requests.
+- Applied the timeout to the cron scan and external queued sync processor.
+- Changed the active-lock skip response reason to `sync_lock_active` while keeping `legacyReason: sync_already_running` for compatibility.
+
+**`actions/canvas.ts`**
+- Rebuilt external sync `modules.raw_content` from final `module_resources` rows after preservation decisions are applied.
+- Included only quality-classified usable academic resource text in rebuilt raw content, so metadata-only, refusal, debug, UUID, and file-title-only text stays out.
+- Preserved unchanged-file extracted/OCR text before raw content rebuild.
+
+**`README.md`, `docs/roadmap.md`**
+- Documented the external Canvas fetch timeout and final-resource raw content rebuild requirement.
+
+### Files touched
+
+- `README.md`
+- `actions/canvas.ts`
+- `app/api/cron/external-sync/route.ts`
+- `docs/ai/handoff.md`
+- `docs/roadmap.md`
+- `lib/canvas.ts`
+- `lib/external-sync-queue.ts`
+- `lib/queue.ts`
+- `supabase/migrations/20260507010000_harden_external_sync_lock_rpc.sql`
+
+### Why it changed
+
+The 15-minute external cron was functional, but it still had long-term reliability risks: broad RPC execute permissions, non-atomic queue claiming, slow Canvas fetches that could hang cron/background work, and module raw content being rebuilt from incoming extraction records instead of the final preserved source rows.
+
+### Tests run
+
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- queue` - passed, 324/324
+- `npm test -- pdf-extractor source-ocr-updates deep-learn-readiness deep-learn-generation canvas-content-resolution learn-resource-ui queue` - passed, 324/324
+
+### Verification result
+
+All requested checks passed locally. No `.env` files, secrets, local PDFs, private fixtures, build artifacts, or temporary logs were added.
+
+### Known risks
+
+- The new Supabase migration must be applied remotely before the hardened RPC permissions take effect.
+- Live cron-job.org and live Canvas timeout behavior were not exercised in this local session.
+- There is still one pre-existing local commit ahead of `origin/main` (`a33214c fix: grammar in task due date message`); pushing this branch will include it.
+
+### Blockers
+
+None.
+
+### Next recommended step
+
+Apply the pending Supabase migrations remotely, then run one live cron-job.org request and inspect queued job results for timeout/lock behavior and final resource preservation counts.
+
+### Suggested commit message
+
+harden external Canvas sync cron
 
 ---
 

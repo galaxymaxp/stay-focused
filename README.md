@@ -41,6 +41,7 @@ CRON_SECRET=
 EXTERNAL_SYNC_USER_BATCH_LIMIT=5
 EXTERNAL_SYNC_COURSE_BATCH_LIMIT=3
 EXTERNAL_SYNC_PROCESS_LIMIT=1
+EXTERNAL_CANVAS_FETCH_TIMEOUT_MS=8000
 EXTERNAL_SYNC_COURSE_COOLDOWN_MS=840000
 EXTERNAL_SYNC_DAILY_COURSE_CAP=24
 OCR_MAX_JOBS_PER_USER_PER_DAY=8
@@ -83,6 +84,7 @@ npm run dev
 - `EXTERNAL_SYNC_USER_BATCH_LIMIT`: max Canvas-connected users scanned per external sync request; defaults to `5`
 - `EXTERNAL_SYNC_COURSE_BATCH_LIMIT`: max Canvas course sync jobs queued per external sync request; defaults to `3`
 - `EXTERNAL_SYNC_PROCESS_LIMIT`: max externally queued Canvas sync jobs processed in the background after each external cron request; defaults to `1`
+- `EXTERNAL_CANVAS_FETCH_TIMEOUT_MS`: Canvas fetch timeout for external cron/sync requests; defaults to `8000`
 - `EXTERNAL_SYNC_COURSE_COOLDOWN_MS`: per-course external sync queue cooldown; defaults to `840000` (14 minutes)
 - `EXTERNAL_SYNC_DAILY_COURSE_CAP`: per-user daily cap for externally queued Canvas course sync jobs; defaults to `24`
 - `OCR_MAX_JOBS_PER_USER_PER_DAY`, `OCR_MAX_JOBS_PER_COURSE_PER_DAY`: automatic OCR daily queue caps; defaults to `8` and `4`
@@ -115,7 +117,7 @@ GET https://<your-domain>/api/cron/external-sync
 Authorization: Bearer <CRON_SECRET>
 ```
 
-cron-job.org supports custom request headers through `extendedData.headers` in its REST API and supports schedules with `minutes: [0, 15, 30, 45]`. The endpoint verifies the bearer token, takes a short database lock, scans a small batch of Canvas-connected users, and queues bounded `canvas_sync` work only. After the response is scheduled, the background processor handles a small number of externally queued sync jobs, refreshes existing Canvas resources, preserves good extracted/OCR text for unchanged file identities, and only queues OCR when scanned PDFs still need readable text.
+cron-job.org supports custom request headers through `extendedData.headers` in its REST API and supports schedules with `minutes: [0, 15, 30, 45]`. The endpoint verifies the bearer token, takes a short database lock, uses bounded Canvas fetch timeouts, scans a small batch of Canvas-connected users, and queues bounded `canvas_sync` work only. After the response is scheduled, the background processor handles a small number of externally queued sync jobs, refreshes existing Canvas resources, preserves good extracted/OCR text for unchanged file identities, rebuilds module content from the final preserved resource text, and only queues OCR when scanned PDFs still need readable text.
 
 ## Stack Snapshot
 
