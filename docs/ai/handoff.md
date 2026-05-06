@@ -5,6 +5,61 @@ Last Updated: 2026-05-07
 
 ---
 
+## Session Update - 2026-05-07 (Clarify identity linking setup errors)
+
+### What changed
+
+**`components/settings/NotificationSettings.tsx`**
+- Added `classifyLinkIdentityError(message)` module-level helper. Detects Supabase "manual linking disabled" error codes/messages (case-insensitive: `manual linking`, `linking is disabled`, `identity linking`, `manual_linking_disabled`) and returns a clear user-facing explanation: "Account linking is disabled in Supabase Auth. Enable manual identity linking in Supabase before connecting Google or Microsoft."
+- All other error messages pass through unchanged.
+- Connect Google / Connect Microsoft buttons are preserved; only the error text improves.
+
+### Files touched
+
+- `components/settings/NotificationSettings.tsx`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Clicking "Connect Google" or "Connect Microsoft" fails with a raw Supabase error message ("Manual linking is disabled.") if the Supabase project has manual identity linking turned off. The raw message is not actionable for the user. The new classifier maps it to a clear instruction.
+
+### Supabase setup requirements for Connect Google / Connect Microsoft
+
+For the Connect identity buttons to work end-to-end, two things must be configured in the Supabase project:
+
+1. **Manual identity linking must be enabled** — Supabase Auth → Auth Settings → Enable manual linking. Without this, `supabase.auth.linkIdentity()` returns the "Manual linking is disabled" error, which is now surfaced clearly to the user.
+
+2. **Google OAuth redirect URI** — In Google Cloud Console → OAuth 2.0 Client → Authorized redirect URIs, add:
+   `https://xglbmmiiprtfpowgckqd.supabase.co/auth/v1/callback`
+   This is the Supabase callback URL that the OAuth provider must be authorized to redirect to.
+
+### Tests run
+
+- `npm run typecheck` — clean
+- `npm run lint` — clean
+- `npm run build` — passes
+- `npm test -- notification` — 407/407 pass
+
+### Verification result
+
+All quality gates passed. 407 tests pass.
+
+### Known risks / blockers
+
+None. Pure error-message improvement — no routing, sending, or data changes.
+
+### Next recommended step
+
+1. Enable manual identity linking in Supabase Auth settings.
+2. Add the Supabase callback URI to Google Cloud OAuth client authorized redirect URIs.
+3. Test Connect Google flow end-to-end in a browser.
+
+### Suggested commit message
+
+clarify identity linking setup errors
+
+---
+
 ## Session Update - 2026-05-07 (Restore sync route and add linked email identity actions)
 
 ### What changed

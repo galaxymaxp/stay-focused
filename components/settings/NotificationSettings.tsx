@@ -132,7 +132,7 @@ export function NotificationSettings({
         : { redirectTo }
       const { error } = await supabase.auth.linkIdentity({ provider, options })
       if (error) {
-        setLinkError(error.message)
+        setLinkError(classifyLinkIdentityError(error.message))
         setLinkPending(null)
       }
       // On success the browser is redirected to the OAuth provider.
@@ -506,4 +506,17 @@ export function NotificationSettings({
       )}
     </div>
   )
+}
+
+function classifyLinkIdentityError(message: string): string {
+  const lower = message.toLowerCase()
+  if (
+    lower.includes('manual linking') ||
+    lower.includes('linking is disabled') ||
+    lower.includes('identity linking') ||
+    lower.includes('manual_linking_disabled')
+  ) {
+    return 'Account linking is disabled in Supabase Auth. Enable manual identity linking in Supabase before connecting Google or Microsoft.'
+  }
+  return message
 }
