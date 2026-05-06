@@ -294,7 +294,7 @@ export function TodayDashboard({
         {undatedTaskCount > 0 ? (
           <p className="home-page-note">
             {undatedTaskCount} task{undatedTaskCount === 1 ? '' : 's'} still need{undatedTaskCount === 1 ? 's' : ''} a due date and
-            stay out of today&apos;s first recommendation.
+            won&apos;t appear in today&apos;s first recommendation.
           </p>
         ) : null}
       </header>
