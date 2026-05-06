@@ -5,6 +5,67 @@ Last Updated: 2026-05-07
 
 ---
 
+## Session Update - 2026-05-07 (Fix NotificationEmailSource runtime build error)
+
+### What changed
+
+**`lib/notification-email-options.ts`**
+- Changed `NotificationEmailSource` from a plain type alias to a `typeof NOTIFICATION_EMAIL_SOURCES[number]` derived type.
+- Added `export const NOTIFICATION_EMAIL_SOURCES = [...] as const` so runtime checks can use the constant instead of the type name.
+
+**`actions/user-settings.ts`**
+- Removed `export type { NotificationEmailSource, NotificationEmailOption }` — Turbopack was treating these re-exports from a `'use server'` file as server action exports, trying to register them as `serverReference` at runtime and failing with `ReferenceError: NotificationEmailSource is not defined`.
+
+**`lib/canvas-digest.ts`**
+- Removed `const emailSource: NotificationEmailSource = ...` type annotation — Turbopack's SWC was not stripping this `const`-level type annotation, causing the same `ReferenceError` in the `lib_canvas-user-config_ts` chunk.
+- Removed now-unused `type NotificationEmailSource` from the import.
+
+**`actions/notifications.ts`**
+- Removed `Promise<NotificationEmailSource>` return type annotation from `loadNotificationEmailSource()`.
+- Removed now-unused `type NotificationEmailSource` from the import.
+
+**`components/SettingsPage.tsx`**
+- Updated import: `type NotificationEmailSource` now comes directly from `@/lib/notification-email-options` instead of being re-exported from `@/actions/user-settings`.
+
+### Root cause
+
+Turbopack/SWC does not correctly strip TypeScript type annotations in two specific scenarios within `'use server'` modules:
+1. **`export type { TypeName }` in a `'use server'` file** — Turbopack collects all named exports for `registerServerReference`, including type-only re-exports, and passes them as runtime values. When the type has no runtime representation, the reference is undefined.
+2. **`const x: TypeName = value` variable annotation** — SWC emits the type name as a runtime identifier in some Turbopack chunking contexts (specifically when a lib file is bundled into a server chunk alongside a `'use server'` action file).
+
+The fix is: never re-export types from `'use server'` files; never annotate `const` declarations with type names that have no runtime value. Use inferred types or `as const` instead.
+
+### Files touched
+
+- `lib/notification-email-options.ts`
+- `lib/canvas-digest.ts`
+- `actions/user-settings.ts`
+- `actions/notifications.ts`
+- `components/SettingsPage.tsx`
+- `docs/ai/handoff.md`
+
+### Tests run
+
+- `npm run typecheck` — clean
+- `npm run lint` — clean
+- `npm run build` — passes (all 42 routes collected without error)
+- `npm test` — 399/399 pass
+
+### Known risks / blockers
+
+None. Purely a build plumbing fix — no UI or runtime behavior changes.
+
+### Next recommended step
+
+1. Run `npx supabase db push` to apply the notification_email_source migration in staging/production.
+2. Add `ADMIN_EMAILS=omgraythekid@gmail.com` to Vercel environment variables if not done yet.
+
+### Suggested commit message
+
+fix notification email source runtime build error
+
+---
+
 ## Session Update - 2026-05-07 (Add notification email recipient selection + consolidate Canvas sync route)
 
 ### What changed
