@@ -161,10 +161,12 @@ export async function updateTaskCompletion(input: TaskCompletionInput) {
   revalidatePath('/')
   revalidatePath('/courses')
   revalidatePath('/learn')
+  revalidatePath('/tasks')
   revalidatePath('/do')
   revalidatePath('/calendar')
   revalidatePath(`/modules/${input.moduleId}`)
   revalidatePath(`/modules/${input.moduleId}/learn`)
+  revalidatePath(`/modules/${input.moduleId}/tasks`)
   revalidatePath(`/modules/${input.moduleId}/do`)
 }
 
@@ -248,10 +250,12 @@ export async function updateTaskPlanningAnnotation(input: TaskPlanningInput) {
   revalidatePath('/')
   revalidatePath('/courses')
   revalidatePath('/learn')
+  revalidatePath('/tasks')
   revalidatePath('/do')
   revalidatePath('/calendar')
   revalidatePath(`/modules/${input.moduleId}`)
   revalidatePath(`/modules/${input.moduleId}/learn`)
+  revalidatePath(`/modules/${input.moduleId}/tasks`)
   revalidatePath(`/modules/${input.moduleId}/do`)
 }
 

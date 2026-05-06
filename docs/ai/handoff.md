@@ -5,6 +5,92 @@ Last Updated: 2026-05-07
 
 ---
 
+## Session Update - 2026-05-07 (Rename Do workspace to Tasks)
+
+### What changed
+
+**Routes**
+- Added the module task execution workspace at `/modules/[id]/tasks`.
+- Changed `/modules/[id]/do` into a compatibility redirect that preserves query parameters and sends users to `/modules/[id]/tasks`.
+- Simplified legacy `/do` into a compatibility redirect to `/tasks`, preserving query parameters.
+- Kept internal `do-now`, `do_generation`, and `buildModuleDoHref` names where renaming would create broad risk.
+
+**Student-facing labels and links**
+- Updated module subnavigation and breadcrumbs to show `Learn / Tasks / Quiz`.
+- Updated Module Lens copy, Course task tabs, Home task callouts, Study Library resume copy, module bulletin links, source-reader task links, hourly due-soon notification copy, and task output panel eyebrow from Do/Do Now wording to Tasks/Task output wording.
+- Updated the shared module task href helper so existing task-targeted links now generate `/modules/[id]/tasks`.
+- Course `?tab=tasks` is now the visible Tasks tab URL; `?tab=do` still works as a compatibility fallback.
+
+**Docs and tests**
+- Updated README and roadmap wording for Task Drafts / Tasks execution language.
+- Added scheduler coverage proving module task workspace links use `/modules/:id/tasks`.
+
+### Files touched
+
+- `README.md`
+- `actions/drafts.ts`
+- `actions/module-resources.ts`
+- `actions/modules.ts`
+- `actions/queue-jobs.ts`
+- `actions/tasks.ts`
+- `app/(app)/library/[id]/page.tsx`
+- `app/api/cron/hourly/route.ts`
+- `app/courses/[id]/page.tsx`
+- `app/do/loading.tsx`
+- `app/do/page.tsx`
+- `app/modules/[id]/do/page.tsx`
+- `app/modules/[id]/tasks/page.tsx`
+- `app/modules/[id]/learn/resources/[resourceId]/page.tsx`
+- `components/AppShell.tsx`
+- `components/DoNowPanel.tsx`
+- `components/ModuleBulletin.tsx`
+- `components/ModuleLensShell.tsx`
+- `components/StudyFileReader.tsx`
+- `components/TodayDashboard.tsx`
+- `components/home/PrimaryTaskHero.tsx`
+- `docs/ai/handoff.md`
+- `docs/roadmap.md`
+- `lib/clarity-workspace.ts`
+- `lib/course-learn-overview.ts`
+- `lib/home-focus.ts`
+- `lib/module-learn-overview.ts`
+- `lib/module-workspace.ts`
+- `lib/stay-focused-links.ts`
+- `tests/scheduler.test.ts`
+
+### Why it changed
+
+The next roadmap phase is to make the student-facing execution model read as Learn, Tasks, Quiz instead of Learn, Do, Quiz while preserving old `/do` links and keeping risky internal queue/API names stable.
+
+### Tests run
+
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- scheduler learn-resource-ui queue` - passed, 325/325
+
+### Verification result
+
+All requested checks passed locally. A text scan shows remaining `Do` matches are internal `do-now` names, compatibility revalidation paths, historical docs, ordinary "do not" wording, or non-product content headings.
+
+### Known risks
+
+- Browser QA was not run in this session. Manually verify `/modules/:id/tasks`, `/modules/:id/do` redirect, `/tasks`, and `/do` redirect with a signed-in synced account.
+- Internal names such as `do-now`, `do_generation`, `DoNowPanel`, and `buildModuleDoHref` remain intentionally unchanged to avoid broad churn.
+
+### Blockers
+
+None.
+
+### Next recommended step
+
+Run a quick authenticated browser pass through Home, Courses, `/tasks`, module Tasks, Learn, Quiz, and Study Library task draft resume links to confirm navigation and copy feel coherent.
+
+### Suggested commit message
+
+rename Do workspace to Tasks
+
+---
+
 ## Session Update - 2026-05-07 (Harden external Canvas sync cron)
 
 ### What changed

@@ -119,11 +119,13 @@ export async function deleteModule(moduleId: string) {
   revalidatePath('/')
   revalidatePath('/courses')
   revalidatePath('/learn')
+  revalidatePath('/tasks')
   revalidatePath('/do')
   revalidatePath('/calendar')
   revalidatePath(`/modules/${moduleId}`)
   revalidatePath(`/modules/${moduleId}/learn`)
   revalidatePath(`/modules/${moduleId}/source`)
+  revalidatePath(`/modules/${moduleId}/tasks`)
   revalidatePath(`/modules/${moduleId}/do`)
 }
 
@@ -144,6 +146,7 @@ export async function setModuleLearnVisibility(input: { moduleId: string; showIn
   revalidatePath(`/modules/${input.moduleId}/learn`)
   revalidatePath(`/modules/${input.moduleId}/review`)
   revalidatePath(`/modules/${input.moduleId}/source`)
+  revalidatePath(`/modules/${input.moduleId}/tasks`)
   revalidatePath(`/modules/${input.moduleId}/do`)
 }
 

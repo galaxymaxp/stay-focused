@@ -58,7 +58,7 @@ export function ModuleBulletin({ module, course }: { module: Module; course: Cou
         <Link href={`/modules/${module.id}/learn`} className="ui-button ui-button-secondary" style={actionButtonStyle}>
           Open in Learn
         </Link>
-        <Link href={`/modules/${module.id}/do`} className="ui-button ui-button-ghost" style={actionButtonStyle}>
+        <Link href={`/modules/${module.id}/tasks`} className="ui-button ui-button-ghost" style={actionButtonStyle}>
           See tasks
         </Link>
       </div>

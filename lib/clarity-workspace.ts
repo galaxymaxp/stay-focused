@@ -146,7 +146,7 @@ function buildTodayTaskItem(task: TaskItem): TodayItem {
       taskId: task.id,
       panel: 'action-status',
     }),
-    actionLabel: 'Open in Do',
+    actionLabel: 'Open in Tasks',
     whyNow: buildTaskReason(task, daysUntil),
     effortLabel: `${task.estimatedMinutes} min`,
     completionStatus: task.status,

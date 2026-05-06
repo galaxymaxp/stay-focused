@@ -168,7 +168,7 @@ export default async function ResourceDetailPage({ params }: Props) {
                 Inspect resource
               </Link>
               {linkedTask && (
-                <Link href={`/modules/${module.id}/do#${linkedTask.id}`} className="ui-button ui-button-ghost">
+                <Link href={`/modules/${module.id}/tasks#${linkedTask.id}`} className="ui-button ui-button-ghost">
                   Open related task
                 </Link>
               )}

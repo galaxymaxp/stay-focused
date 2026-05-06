@@ -115,7 +115,7 @@ export function StudyFileReader({
               Inspect resource
             </Link>
             {linkedTask && (
-              <Link href={`/modules/${moduleId}/do#${linkedTask.id}`} className="ui-button ui-button-ghost">
+              <Link href={`/modules/${moduleId}/tasks#${linkedTask.id}`} className="ui-button ui-button-ghost">
                 Open related task
               </Link>
             )}

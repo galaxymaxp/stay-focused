@@ -194,7 +194,7 @@ export default async function LibraryItemPage({ params }: Props) {
           <h1 className="ui-page-title" style={{ marginTop: '0.45rem' }}>{draft.title}</h1>
           <p className="ui-page-copy" style={{ marginTop: '0.38rem', maxWidth: '48rem' }}>
             {isTaskDraft
-              ? `This saved task draft stays connected to ${workspace?.module.title ?? 'its module'} so you can jump back into the Do workflow with the source context nearby.`
+              ? `This saved task draft stays connected to ${workspace?.module.title ?? 'its module'} so you can jump back into the Tasks workflow with the source context nearby.`
               : `This saved study output belongs to ${workspace?.module.title ?? 'a saved source'} and stays connected to its course and module workflow.`}
           </p>
         </div>
@@ -248,7 +248,7 @@ export default async function LibraryItemPage({ params }: Props) {
         readerLabel={detailAction.label}
         blockedMessage={detailAction.note}
         statusSummary={isTaskDraft
-          ? 'This saved task draft resumes as a standalone working document while keeping its Do workspace one click away.'
+          ? 'This saved task draft resumes as a standalone working document while keeping its Tasks workspace one click away.'
           : 'This saved study output predates the pack-first Learn flow, so it resumes as a standalone document with its source context.'}
         legacyDraft={draft}
       />

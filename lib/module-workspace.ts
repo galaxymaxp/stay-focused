@@ -931,7 +931,7 @@ function buildAfterReadingSteps(resources: ModuleSourceResource[], doItems: Modu
   return uniqueLines([
     firstLearn ? `Close ${firstLearn.title} and restate its main point from memory before moving on.` : 'Close the resource and restate the main idea from memory.',
     'Turn the key terms into a short note, comparison, or mini-outline you can revisit quickly.',
-    firstDo ? `Open ${firstDo.title} next and mark exactly which concept from Learn it depends on.` : `Switch into Do and decide which of the ${taskCount} extracted task${taskCount === 1 ? '' : 's'} should move next.`,
+    firstDo ? `Open ${firstDo.title} next and mark exactly which concept from Learn it depends on.` : `Switch into Tasks and decide which of the ${taskCount} extracted task${taskCount === 1 ? '' : 's'} should move next.`,
   ], 4)
 }
 

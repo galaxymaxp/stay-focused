@@ -607,7 +607,7 @@ function buildActionStep(moduleId: string, item: ModuleSourceResource, tasks: Ta
       ? 'Open task'
       : canvasHref
         ? 'Canvas link'
-        : 'Open Do',
+        : 'Open Tasks',
     external: !matchedTask && Boolean(canvasHref),
   }
 }

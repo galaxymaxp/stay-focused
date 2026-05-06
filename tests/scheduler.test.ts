@@ -8,6 +8,7 @@ import { findLaterSlot } from '@/lib/scheduler/move-later'
 import { isSchedulableResourceType } from '@/lib/scheduler/source-filter'
 import { formatDuration, formatTime, getWindowDurationMinutes, isBlockInsideWindow, minutesToTime, timeToMinutes } from '@/lib/scheduler/time'
 import { buildSyllabusFocusRows, buildLearnFocusRows, fitFocusRowsToWindow, mergeScheduledBlocksIntoFocusRows, type ModuleResourceRow, type HomeSyllabusTaskInput, type ScheduledBlockInput } from '@/lib/home-focus'
+import { buildModuleDoHref } from '@/lib/stay-focused-links'
 
 const userId = '00000000-0000-0000-0000-000000000001'
 
@@ -805,14 +806,22 @@ test('Learn row href is valid: uses module learn path when module_id is availabl
   assert.ok(row!.href?.includes('resource=lr1'), 'href includes resource param')
 })
 
-test('Syllabus row href uses canvas_url when available, falls back to Do page', () => {
+test('Syllabus row href uses canvas_url when available, falls back to Tasks page', () => {
   const withCanvas = makeTaskItem({ id: 't-canvas', title: 'Assignment', canvasUrl: 'https://canvas.example.com/assignments/123' })
   const withoutCanvas = makeTaskItem({ id: 't-do', title: 'Assignment 2', moduleId: 'mod-1' })
   const rows = buildSyllabusFocusRows([withCanvas, withoutCanvas])
   const canvasRow = rows.find((r) => r.id === 't-canvas')
   const doRow = rows.find((r) => r.id === 't-do')
   assert.equal(canvasRow!.href, 'https://canvas.example.com/assignments/123', 'canvas_url used as href')
-  assert.ok(doRow!.href.startsWith('/modules/'), 'no canvas_url → do page href')
+  assert.ok(doRow!.href.startsWith('/modules/'), 'no canvas_url -> Tasks page href')
+  assert.ok(doRow!.href.includes('/tasks'), 'fallback href uses module Tasks route')
+})
+
+test('module task workspace links use Tasks route', () => {
+  const href = buildModuleDoHref('mod-1', { taskId: 'task-1' })
+
+  assert.ok(href.startsWith('/modules/mod-1/tasks'), 'module task links use /modules/:id/tasks')
+  assert.ok(href.includes('donow=1'), 'task-targeted links still auto-open the task output panel')
 })
 
 test('fitFocusRowsToWindow assigns start/end times inside the free-time window', () => {

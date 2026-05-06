@@ -289,6 +289,7 @@ function revalidateUnifiedDraftPaths(input: {
   if (input.moduleId) {
     revalidatePath(`/modules/${input.moduleId}`)
     revalidatePath(`/modules/${input.moduleId}/learn`)
+    revalidatePath(`/modules/${input.moduleId}/tasks`)
     revalidatePath(`/modules/${input.moduleId}/do`)
   }
 

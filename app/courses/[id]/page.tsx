@@ -15,7 +15,7 @@ export default async function CourseWorkspacePage({ params, searchParams }: Prop
   const { id } = await params
   const resolvedSearchParams = await searchParams
   const rawTab = getSearchParamValue(resolvedSearchParams?.tab)
-  const showDo   = rawTab === 'do'
+  const showDo   = rawTab === 'tasks' || rawTab === 'do'
   const showQuiz = rawTab === 'quiz'
 
   const workspace = await getClarityWorkspace()
@@ -70,7 +70,7 @@ export default async function CourseWorkspacePage({ params, searchParams }: Prop
             Modules
           </Link>
           <Link
-            href={`/courses/${id}?tab=do`}
+            href={`/courses/${id}?tab=tasks`}
             className={showDo ? 'ui-button ui-button-secondary ui-button-xs' : 'ui-button ui-button-ghost ui-button-xs'}
           >
             Tasks

@@ -16,7 +16,7 @@ Stay Focused is a **schedule-first student productivity app over Canvas**. The m
 2. Calendar (feeder)
 3. Tasks
 4. Deep Learn / Review / Quiz
-5. Do Draft / Outputs
+5. Task Drafts / Outputs
 
 ## Setup
 

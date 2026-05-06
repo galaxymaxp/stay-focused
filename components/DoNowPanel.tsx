@@ -239,7 +239,7 @@ export function TaskDraftPanel({
       >
         <div style={headerStyle}>
           <div style={{ minWidth: 0 }}>
-            <p className="ui-kicker" style={{ margin: 0 }}>Do output</p>
+            <p className="ui-kicker" style={{ margin: 0 }}>Task output</p>
             <h2 style={titleStyle}>{context.taskTitle}</h2>
             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.5rem' }}>
               <span className="ui-chip" style={courseChipStyle}>{context.courseName}</span>

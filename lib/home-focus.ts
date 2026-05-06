@@ -96,7 +96,7 @@ export function buildSyllabusFocusRows(taskItems: HomeSyllabusTaskInput[]): Syll
       dueAt: item.deadline ?? null,
       urgencyLabel: deriveUrgencyLabel(item),
       canvasUrl: item.canvasUrl ?? null,
-      // Open Canvas directly when canvas_url is available; fall back to Do page
+      // Open Canvas directly when canvas_url is available; fall back to the module Tasks page.
       href: item.canvasUrl ?? buildModuleDoHref(item.moduleId ?? '', { taskTitle: item.title }),
       estimatedMinutes: item.estimatedMinutes ?? DEFAULT_TASK_MINUTES,
       sourceTable: 'task_items',

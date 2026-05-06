@@ -30,7 +30,7 @@ Stay Focused remains an action-first study workspace. The app should help a stud
 2. Run external Canvas sync detection every 15 minutes through cron-job.org while the app is on Vercel Hobby.
 3. Keep sync cost-safe: small batches, duplicate guards, cooldowns, daily caps, and no OpenAI/OCR execution inside the cron request.
 4. Keep Study Library coherent as the single saved-output destination.
-5. Rename student-facing Do language to Tasks while preserving compatibility redirects from old `/do` links.
+5. Keep student-facing task execution language on Tasks while preserving compatibility redirects from old `/do` links.
 6. Add file-making and reviewer outputs from stored generated content before adding new token-heavy generation flows.
 7. Keep docs, schema, and implementation aligned with the shipped product direction.
 

@@ -106,7 +106,7 @@ function normalizeNavigationPath(pathname: string): string {
 function resolveTopbarSubLabel(pathname: string): string | null {
   if (/\/modules\/[^/]+\/learn/.test(pathname)) return 'Learn'
   if (/\/modules\/[^/]+\/quiz/.test(pathname)) return 'Quiz'
-  if (/\/modules\/[^/]+\/do/.test(pathname)) return 'Do'
+  if (/\/modules\/[^/]+\/(?:tasks|do)/.test(pathname)) return 'Tasks'
   if (/\/modules\/[^/]+\/review/.test(pathname)) return 'Review'
   if (/\/modules\/[^/]+\/inspect/.test(pathname)) return 'Inspect'
   if (/\/modules\/[^/]+\/source/.test(pathname)) return 'Source'
@@ -218,7 +218,7 @@ export function AppShell({
                     <div className="app-nav-sub-group">
                       {[
                         { label: 'Learn', href: `/modules/${currentModuleId}/learn` },
-                        { label: 'Do', href: `/modules/${currentModuleId}/do` },
+                        { label: 'Tasks', href: `/modules/${currentModuleId}/tasks` },
                         { label: 'Quiz', href: `/modules/${currentModuleId}/quiz` },
                       ].map((sub) => (
                         <Link

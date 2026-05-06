@@ -1,7 +1,7 @@
 import { PageLoadingStage } from '@/components/PageLoadingStage'
 
 /**
- * Do Now loading state.
+ * Legacy Tasks redirect loading state.
  * Keeps the preview focused on a single recommended action instead of the full task board.
  */
 export default function DoLoading() {

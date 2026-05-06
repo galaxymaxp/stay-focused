@@ -680,7 +680,7 @@ function applyOcrUpdateToResource(resource: ModuleResource, update: Partial<{
 }
 
 // ---------------------------------------------------------------------------
-// Queue: Do Now (task draft) generation
+// Queue: task draft generation
 // ---------------------------------------------------------------------------
 
 export async function queueDoGenerationAction(input: {
@@ -734,6 +734,7 @@ export async function queueDoGenerationAction(input: {
       taskId: input.taskId,
       context: input.context,
     })
+    revalidatePath(`/modules/${input.moduleId}/tasks`)
     revalidatePath(`/modules/${input.moduleId}/do`)
   })
 
@@ -1234,7 +1235,7 @@ export async function processSourceOcrJob(input: {
 }
 
 // ---------------------------------------------------------------------------
-// Internal: run Do Now AI and persist result
+// Internal: run task draft AI and persist result
 // ---------------------------------------------------------------------------
 
 async function processDoGenerationJob(input: {
@@ -1315,7 +1316,7 @@ async function processDoGenerationJob(input: {
       metadata: { jobId: input.jobId, jobType: 'task_output', taskId: input.taskId, dedupeKey: `task:${input.taskId}` },
     })
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unknown error during Do Now generation.'
+    const message = err instanceof Error ? err.message : 'Unknown error during task output generation.'
     console.error('[queue-jobs] processDoGenerationJob failed', { jobId: input.jobId, message })
     await markQueuedJobFailed(input.jobId, message)
 
@@ -1324,7 +1325,7 @@ async function processDoGenerationJob(input: {
       type: 'queue_failed',
       title: 'Task output failed',
       body: message,
-      href: `/modules/${input.moduleId}/do?task=${encodeURIComponent(input.taskId)}`,
+      href: `/modules/${input.moduleId}/tasks?task=${encodeURIComponent(input.taskId)}`,
       severity: 'error',
       metadata: { jobId: input.jobId, jobType: 'task_output', taskId: input.taskId, dedupeKey: `task-fail:${input.jobId}` },
     })
@@ -1344,7 +1345,7 @@ async function notifyTaskOutputFailed(
     type: 'queue_failed',
     title: 'Task output failed',
     body: `${taskTitle}: ${message}`,
-    href: `/modules/${moduleId}/do?task=${encodeURIComponent(taskId)}`,
+    href: `/modules/${moduleId}/tasks?task=${encodeURIComponent(taskId)}`,
     severity: 'error',
     metadata: { jobId, jobType: 'task_output', taskId, dedupeKey: `task-fail:${jobId}` },
   })

@@ -26,7 +26,7 @@ export function ModuleLensShell({
     ? 'Learn'
     : currentLens === 'quiz'
       ? 'Quiz'
-      : 'Do'
+      : 'Tasks'
   const lensCopy = currentLens === 'learn'
     ? 'Learning material and source files all together so the module makes sense in one pass.'
     : currentLens === 'quiz'
@@ -48,7 +48,7 @@ export function ModuleLensShell({
             </p>
             <nav className="module-lens-tabs" aria-label="Module sections">
               <LensTab href={`/modules/${moduleId}/learn`} label="Deep Learn" active={currentLens === 'learn'} />
-              <LensTab href={`/modules/${moduleId}/do`} label="Do" active={currentLens === 'do'} />
+              <LensTab href={`/modules/${moduleId}/tasks`} label="Tasks" active={currentLens === 'do'} />
               <LensTab href={`/modules/${moduleId}/quiz`} label="Quiz" active={currentLens === 'quiz'} />
             </nav>
           </div>

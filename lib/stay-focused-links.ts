@@ -12,12 +12,12 @@ interface ModuleQuizHrefOptions {
 }
 
 interface ModuleDoHrefOptions {
-  /** Use for links built from the tasks table (module workspace). Matches by ID on the Do page. */
+  /** Use for links built from the tasks table (module workspace). Matches by ID on the module Tasks page. */
   taskId?: string | null
   /**
-   * Use for links built from task_items (global workspace — Calendar, Today, global Do page).
+   * Use for links built from task_items (global workspace — Calendar, Today, global Tasks page).
    * task_items and tasks are separate tables with independent UUIDs, so taskId cannot be used
-   * for cross-table navigation. taskTitle triggers title-based matching on the Do page instead.
+   * for cross-table navigation. taskTitle triggers title-based matching on the Tasks page instead.
    */
   taskTitle?: string | null
   resourceId?: string | null
@@ -41,6 +41,25 @@ export function getSearchParamValue(value: SearchParamValue) {
   }
 
   return value ?? null
+}
+
+export function toSearchParamsString(searchParams: Record<string, string | string[] | undefined> | undefined) {
+  const params = new URLSearchParams()
+
+  for (const [key, value] of Object.entries(searchParams ?? {})) {
+    if (Array.isArray(value)) {
+      for (const entry of value) {
+        params.append(key, entry)
+      }
+      continue
+    }
+
+    if (typeof value === 'string') {
+      params.set(key, value)
+    }
+  }
+
+  return params
 }
 
 export function buildModuleLearnHref(moduleId: string, options: ModuleLearnHrefOptions = {}) {
@@ -74,14 +93,14 @@ export function buildModuleDoHref(moduleId: string, options: ModuleDoHrefOptions
   if (options.taskId) params.set('task', options.taskId)
   if (options.taskTitle) params.set('taskTitle', options.taskTitle)
   if (options.resourceId) params.set('resource', options.resourceId)
-  // Any task-targeted Do link auto-opens the draft output panel on arrival.
+  // Any task-targeted Tasks link auto-opens the draft output panel on arrival.
   // Resource-only links do not, since they target a content item rather than a specific task.
   if (options.taskId || options.taskTitle) params.set('donow', '1')
 
   // Hash anchors use task.id from the tasks table. taskTitle-based links skip the hash
-  // because the Do page derives the canonical Task.id only after title matching server-side.
+  // because the Tasks page derives the canonical Task.id only after title matching server-side.
   return appendHref(
-    `/modules/${moduleId}/do`,
+    `/modules/${moduleId}/tasks`,
     params,
     options.taskId ? getTaskElementId(options.taskId) : null,
   )

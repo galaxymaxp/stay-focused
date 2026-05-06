@@ -37,7 +37,7 @@ export function PrimaryTaskHero({ task }: Props) {
         <div className="flex items-center gap-2 mb-6">
           <Flame className="h-4 w-4 text-sf-accent-muted" />
           <span className="text-xs font-semibold uppercase tracking-widest text-sf-accent-muted">
-            Do Now
+            Tasks
           </span>
         </div>
 

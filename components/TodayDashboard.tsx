@@ -317,8 +317,8 @@ export function TodayDashboard({
                     ? 'Keep the first move obvious, then leave the rest in the background.'
                     : 'The queue is calm. Review a course or check the calendar at your own pace.'
               }
-              actionHref="/do"
-              actionLabel="Open Do Now"
+              actionHref="/tasks"
+              actionLabel="Open Tasks"
             />
 
             {primaryScheduleBlock ? (

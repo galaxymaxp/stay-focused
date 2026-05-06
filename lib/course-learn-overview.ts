@@ -444,7 +444,7 @@ function buildModuleCoverageHint(overview: {
       fragments.push(`${overview.unavailableStudyFileCount} source-first`)
     }
     if (overview.activityOverrideCount > 0) {
-      fragments.push(`${overview.activityOverrideCount} moved to Do`)
+      fragments.push(`${overview.activityOverrideCount} moved to Tasks`)
     }
     return fragments.join(' / ')
   }

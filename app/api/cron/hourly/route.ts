@@ -64,8 +64,8 @@ async function scanDueSoon(): Promise<number> {
       userId,
       type: 'due_soon',
       title: `Due in ${timeLabel}: ${task.title as string}`,
-      body: 'This task is due soon. Open it in Do Now to get a head start.',
-      href: task.module_id ? `/modules/${task.module_id as string}/do` : null,
+      body: 'This task is due soon. Open it in Tasks to get a head start.',
+      href: task.module_id ? `/modules/${task.module_id as string}/tasks` : null,
       severity: 'warning',
       metadata: { taskId: task.id as string, dedupeKey: `due-soon:${task.id as string}` },
     })

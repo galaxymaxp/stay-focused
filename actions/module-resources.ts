@@ -105,6 +105,7 @@ function revalidateModuleResourcePaths(moduleId: string, courseId: string | null
   }
   revalidatePath(`/modules/${moduleId}`)
   revalidatePath(`/modules/${moduleId}/learn`)
+  revalidatePath(`/modules/${moduleId}/tasks`)
   revalidatePath(`/modules/${moduleId}/do`)
   revalidatePath(`/modules/${moduleId}/quiz`)
   revalidatePath(`/modules/${moduleId}/review`)
