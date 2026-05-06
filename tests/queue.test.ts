@@ -19,6 +19,11 @@ import {
 import { groupQueueJobsForPanel } from '../lib/queue-view'
 import { buildCanvasSyncCompletionResult } from '../lib/canvas-sync-queue'
 import type { QueuedJob } from '../lib/queue'
+import {
+  EXTERNAL_CANVAS_SYNC_MODE,
+  evaluateDailyCostQueueGuard,
+  evaluateExternalCanvasSyncQueueGuard,
+} from '../lib/external-sync-queue'
 
 test('source OCR queue helpers format labels and page progress', () => {
   assert.equal(buildSourceOcrQueueTitle('1-Data Organization.pdf'), 'Preparing scanned PDF: 1-Data Organization.pdf')
@@ -244,12 +249,128 @@ test('canvas_sync completion remains successful even when OCR jobs later fail se
   assert.equal(grouped.activeJobs.length, 0)
 })
 
+test('external Canvas sync guard blocks active duplicates for the same Canvas course', () => {
+  const jobs = [
+    createJob({
+      id: 'canvas-active',
+      type: 'canvas_sync',
+      status: 'pending',
+      resourceId: 'canvas',
+      canvasCourseIds: [101],
+      createdAt: '2026-05-06T09:00:00.000Z',
+    }),
+  ]
+
+  const guard = evaluateExternalCanvasSyncQueueGuard(jobs, {
+    canvasCourseId: 101,
+    now: new Date('2026-05-06T09:05:00.000Z'),
+  })
+
+  assert.deepEqual(guard, { allowed: false, reason: 'active_duplicate' })
+})
+
+test('external Canvas sync guard applies per-course cooldown', () => {
+  const jobs = [
+    createJob({
+      id: 'canvas-recent',
+      type: 'canvas_sync',
+      status: 'completed',
+      resourceId: 'canvas',
+      canvasCourseIds: [101],
+      createdAt: '2026-05-06T09:00:00.000Z',
+    }),
+  ]
+
+  const guard = evaluateExternalCanvasSyncQueueGuard(jobs, {
+    canvasCourseId: 101,
+    now: new Date('2026-05-06T09:10:00.000Z'),
+    cooldownMs: 14 * 60 * 1000,
+  })
+
+  assert.deepEqual(guard, { allowed: false, reason: 'cooldown' })
+})
+
+test('external Canvas sync guard enforces daily external queue cap', () => {
+  const jobs = [
+    createJob({
+      id: 'canvas-a',
+      type: 'canvas_sync',
+      status: 'completed',
+      resourceId: 'canvas',
+      canvasCourseIds: [101],
+      createdAt: '2026-05-06T07:00:00.000Z',
+      mode: EXTERNAL_CANVAS_SYNC_MODE,
+    }),
+    createJob({
+      id: 'canvas-b',
+      type: 'canvas_sync',
+      status: 'completed',
+      resourceId: 'canvas',
+      canvasCourseIds: [102],
+      createdAt: '2026-05-06T08:00:00.000Z',
+      mode: EXTERNAL_CANVAS_SYNC_MODE,
+    }),
+  ]
+
+  const guard = evaluateExternalCanvasSyncQueueGuard(jobs, {
+    canvasCourseId: 103,
+    now: new Date('2026-05-06T09:00:00.000Z'),
+    dailyUserCap: 2,
+  })
+
+  assert.deepEqual(guard, { allowed: false, reason: 'daily_user_cap' })
+})
+
+test('daily cost queue guard enforces OCR user and course caps', () => {
+  const jobs = [
+    createJob({
+      id: 'ocr-a',
+      type: 'source_ocr',
+      status: 'completed',
+      resourceId: 'resource-a',
+      courseId: 'course-1',
+      createdAt: '2026-05-06T07:00:00.000Z',
+    }),
+    createJob({
+      id: 'ocr-b',
+      type: 'source_ocr',
+      status: 'failed',
+      resourceId: 'resource-b',
+      courseId: 'course-1',
+      createdAt: '2026-05-06T08:00:00.000Z',
+    }),
+  ]
+
+  assert.deepEqual(
+    evaluateDailyCostQueueGuard(jobs, {
+      types: ['source_ocr'],
+      courseId: 'course-1',
+      now: new Date('2026-05-06T09:00:00.000Z'),
+      dailyUserCap: 3,
+      dailyCourseCap: 2,
+    }),
+    { allowed: false, reason: 'daily_course_cap' },
+  )
+
+  assert.deepEqual(
+    evaluateDailyCostQueueGuard(jobs, {
+      types: ['source_ocr'],
+      now: new Date('2026-05-06T09:00:00.000Z'),
+      dailyUserCap: 2,
+    }),
+    { allowed: false, reason: 'daily_user_cap' },
+  )
+})
+
 function createJob(input: {
   id: string
   type: QueuedJob['type']
   status: QueuedJob['status']
   resourceId: string
   resourceTitle?: string
+  canvasCourseIds?: number[]
+  courseId?: string
+  mode?: string
   completedAt?: string | null
   createdAt?: string
   updatedAt?: string
@@ -261,7 +382,13 @@ function createJob(input: {
     title: input.id,
     status: input.status,
     progress: 0,
-    payload: { resourceId: input.resourceId, resourceTitle: input.resourceTitle ?? 'Study source' },
+    payload: {
+      resourceId: input.resourceId,
+      resourceTitle: input.resourceTitle ?? 'Study source',
+      ...(input.canvasCourseIds ? { courseIds: input.canvasCourseIds } : {}),
+      ...(input.courseId ? { courseId: input.courseId } : {}),
+      ...(input.mode ? { mode: input.mode } : {}),
+    },
     result: null,
     error: null,
     attempts: 0,

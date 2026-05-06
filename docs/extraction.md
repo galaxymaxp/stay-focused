@@ -18,6 +18,8 @@ Cost guardrails:
 - `OCR_MAX_PAGES_PER_JOB` defaults to `24`.
 - `OCR_MAX_JOBS_PER_SYNC` defaults to `1`.
 - `OCR_MAX_RETRIES_PER_RESOURCE` defaults to `1`.
+- `OCR_MAX_JOBS_PER_USER_PER_DAY` defaults to `8`.
+- `OCR_MAX_JOBS_PER_COURSE_PER_DAY` defaults to `4`.
 - `OPENAI_OCR_AUTO_RUN` defaults to `false`.
 - `OPENAI_OCR_MAX_PAGES` defaults to `5`, and OpenAI uses the stricter of that value and `OCR_MAX_PAGES_PER_JOB`.
 

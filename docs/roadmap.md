@@ -26,12 +26,23 @@ Stay Focused remains an action-first study workspace. The app should help a stud
 
 ## Current Priorities
 
-1. Keep Study Library coherent as the single saved-output destination.
-2. Keep the schedule-first Today Plan logically synchronized: selected free-time window, clock rings, current block, and schedule list must all describe the same blocks.
-3. Preserve compatibility for old Drafts links without restoring Drafts navigation.
-4. Make notifications visible in active tabs through native in-app toasts.
-5. Persist AI-derived course summaries so course pages do not trigger OpenAI on every render.
-6. Keep docs, schema, and implementation aligned with the shipped product direction.
+1. Keep the schedule-first Today Plan logically synchronized: selected free-time window, clock rings, current block, and schedule list must all describe the same blocks.
+2. Run external Canvas sync detection every 15 minutes through cron-job.org while the app is on Vercel Hobby.
+3. Keep sync cost-safe: small batches, duplicate guards, cooldowns, daily caps, and no OpenAI/OCR execution inside the cron request.
+4. Keep Study Library coherent as the single saved-output destination.
+5. Rename student-facing Do language to Tasks while preserving compatibility redirects from old `/do` links.
+6. Add file-making and reviewer outputs from stored generated content before adding new token-heavy generation flows.
+7. Keep docs, schema, and implementation aligned with the shipped product direction.
+
+## Phase 1-2 Implementation Notes
+
+- `/api/cron/external-sync` is the external 15-minute cron entrypoint.
+- The endpoint requires `Authorization: Bearer <CRON_SECRET>`.
+- cron-job.org should schedule GET requests at minutes `0, 15, 30, 45` with a custom `Authorization` header.
+- The endpoint must remain quick: detect configured/synced Canvas courses and queue small `canvas_sync` batches only.
+- OpenAI generation and Google/OpenAI OCR must stay out of the cron request.
+- Queue guards should prevent overlapping sync jobs, repeated per-course queueing inside the cooldown window, and daily cost spikes.
+- Sync work must preserve successful extracted/OCR text on resync unless the Canvas file identity changes.
 
 ## Future Features
 

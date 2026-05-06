@@ -37,6 +37,15 @@ OCR_PROVIDER=disabled
 OCR_MAX_PAGES_PER_JOB=24
 OPENAI_OCR_AUTO_RUN=false
 OPENAI_OCR_MAX_PAGES=5
+CRON_SECRET=
+EXTERNAL_SYNC_USER_BATCH_LIMIT=5
+EXTERNAL_SYNC_COURSE_BATCH_LIMIT=3
+EXTERNAL_SYNC_COURSE_COOLDOWN_MS=840000
+EXTERNAL_SYNC_DAILY_COURSE_CAP=24
+OCR_MAX_JOBS_PER_USER_PER_DAY=8
+OCR_MAX_JOBS_PER_COURSE_PER_DAY=4
+OPENAI_MAX_JOBS_PER_USER_PER_DAY=20
+OPENAI_MAX_JOBS_PER_COURSE_PER_DAY=10
 GOOGLE_VISION_API_KEY=
 GOOGLE_CLOUD_PROJECT=
 GOOGLE_VISION_CLIENT_EMAIL=
@@ -69,6 +78,13 @@ npm run dev
 - `OCR_MAX_PAGES_PER_JOB`: shared scanned-PDF OCR page cap per job; defaults to `24`
 - `OPENAI_OCR_AUTO_RUN`: must be explicitly set to `true` before OpenAI vision OCR can run automatically during sync
 - `OPENAI_OCR_MAX_PAGES`: safety cap for OpenAI OCR pages per job; defaults to `5`
+- `CRON_SECRET`: shared bearer token for secured cron endpoints
+- `EXTERNAL_SYNC_USER_BATCH_LIMIT`: max Canvas-connected users scanned per external sync request; defaults to `5`
+- `EXTERNAL_SYNC_COURSE_BATCH_LIMIT`: max Canvas course sync jobs queued per external sync request; defaults to `3`
+- `EXTERNAL_SYNC_COURSE_COOLDOWN_MS`: per-course external sync queue cooldown; defaults to `840000` (14 minutes)
+- `EXTERNAL_SYNC_DAILY_COURSE_CAP`: per-user daily cap for externally queued Canvas course sync jobs; defaults to `24`
+- `OCR_MAX_JOBS_PER_USER_PER_DAY`, `OCR_MAX_JOBS_PER_COURSE_PER_DAY`: automatic OCR daily queue caps; defaults to `8` and `4`
+- `OPENAI_MAX_JOBS_PER_USER_PER_DAY`, `OPENAI_MAX_JOBS_PER_COURSE_PER_DAY`: OpenAI-backed generation daily queue caps; defaults to `20` and `10`
 - `GOOGLE_CLOUD_PROJECT`, `GOOGLE_VISION_CLIENT_EMAIL`, `GOOGLE_VISION_PRIVATE_KEY`: preferred Vercel service-account configuration for `OCR_PROVIDER=google_vision`; private keys may use escaped `\n` newlines
 - `GOOGLE_VISION_CREDENTIALS_JSON`: optional single-env service-account JSON fallback for Google Vision
 - `GOOGLE_VISION_API_KEY`: optional API key fallback for `OCR_PROVIDER=google_vision`
@@ -87,6 +103,17 @@ npx tsx scripts/verify-canvas-flow.ts
 ```
 
 `ui-runtime-check.ts` covers runtime UI routes with Playwright. `verify-canvas-flow.ts` checks the lower-level sync and persistence path.
+
+## External Canvas Sync Cron
+
+Vercel Hobby cron is not suitable for 15-minute schedules, so use cron-job.org to call:
+
+```text
+GET https://<your-domain>/api/cron/external-sync
+Authorization: Bearer <CRON_SECRET>
+```
+
+cron-job.org supports custom request headers through `extendedData.headers` in its REST API and supports schedules with `minutes: [0, 15, 30, 45]`. The endpoint verifies the bearer token, takes a short database lock, scans a small batch of Canvas-connected users, and queues bounded `canvas_sync` work only. It does not run OpenAI generation or OCR inside the cron request.
 
 ## Stack Snapshot
 

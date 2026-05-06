@@ -5,6 +5,74 @@ Last Updated: 2026-05-05
 
 ---
 
+## Session Update - 2026-05-06 (Add external Canvas sync cron queue guards)
+
+### What changed
+
+**`app/api/cron/external-sync/route.ts`** (new)
+- Added secured external cron route at `/api/cron/external-sync`.
+- Requires `Authorization: Bearer ${CRON_SECRET}`.
+- Uses a short service-role lock before scanning, then scans a small batch of Canvas-connected users and already-synced active Canvas courses.
+- Queues bounded `canvas_sync` jobs with `mode: external_cron`; it does not run OpenAI generation, Google OCR, or OpenAI OCR inside the cron request.
+- Skips duplicate active jobs, courses inside cooldown, courses not returned by the active Canvas list, and users past the daily external sync queue cap.
+
+**`lib/external-sync-queue.ts`** (new)
+- Added pure queue guard helpers for external Canvas sync duplicate/cooldown/daily-cap decisions.
+- Added daily cost guard helper for OCR and OpenAI-backed queueing.
+- Centralized defaults and env parsing for external sync and queue caps.
+
+**`lib/external-sync-locks.ts`** (new)
+- Added service-role helper for acquiring external sync locks through Supabase RPC.
+
+**`supabase/migrations/20260506010000_add_external_sync_locks.sql`** (new)
+- Added `external_sync_locks` table.
+- Added `try_acquire_external_sync_lock(...)` RPC for atomic lock acquisition when no lock exists or the existing lock has expired.
+- Added service-role RLS policy for lock management.
+
+**`actions/queue-jobs.ts`**
+- Added automatic OCR daily user/course caps before auto-enqueueing `source_ocr` jobs.
+- Added OpenAI-backed daily user/course caps before queueing Deep Learn (`learn_generation`) and task output (`task_output` / `do_generation`) jobs.
+
+**`tests/queue.test.ts`**
+- Added guard coverage for active external sync duplicates, per-course cooldowns, daily external sync caps, and OCR daily cost caps.
+
+**`README.md`, `docs/roadmap.md`, `docs/extraction.md`**
+- Documented the cron-job.org setup, `Authorization` header, 15-minute schedule, and new queue/cost guard environment variables.
+- Updated roadmap Phase 1-2 notes around external sync and cost-safe queueing.
+
+### Why it changed
+
+The app needs a Vercel Hobby-compatible 15-minute Canvas sync trigger without doing expensive work inside the HTTP cron invocation. This adds the secured entrypoint and queue guard foundation so cron-job.org can trigger small, bounded sync detection and queue insertion while OCR/OpenAI work remains out of the cron request.
+
+### Tests run
+
+- `npm test -- queue` - passed, 321/321
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- pdf-extractor source-ocr-updates deep-learn-readiness deep-learn-generation canvas-content-resolution learn-resource-ui queue` - passed, 321/321
+
+### Verification result
+
+TypeScript, lint, focused queue guard coverage, and the broader extraction/OCR/deep-learn/queue test set passed.
+
+### Known risks / blockers
+
+- The new migration must be applied to Supabase before `/api/cron/external-sync` can acquire locks.
+- The endpoint queues `canvas_sync` jobs only; existing `canvas_sync` processing still needs a safe resync worker/path that preserves existing extracted/OCR text before these jobs should be processed automatically.
+- No live cron-job.org call was made in this session.
+
+### Next recommended steps
+
+1. Apply `20260506010000_add_external_sync_locks.sql` to the remote Supabase project before enabling the external cron.
+2. Implement the safe `canvas_sync` processor for externally queued jobs so resync uses deltas and preserves successful source text unless file identity changed.
+3. Configure cron-job.org with `GET /api/cron/external-sync`, custom `Authorization: Bearer <CRON_SECRET>`, and minutes `0, 15, 30, 45`.
+
+### Suggested commit message
+
+add external canvas sync cron guards
+
+---
+
 ## Session Update - 2026-05-05l (Fix Sync course list scrolling)
 
 ### What changed

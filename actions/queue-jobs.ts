@@ -70,6 +70,14 @@ import {
   findStaleRunningSourceOcrJobs,
   getSourceOcrJobResourceId,
 } from '@/lib/source-ocr-queue'
+import {
+  DEFAULT_OCR_DAILY_COURSE_CAP,
+  DEFAULT_OCR_DAILY_USER_CAP,
+  DEFAULT_OPENAI_DAILY_COURSE_CAP,
+  DEFAULT_OPENAI_DAILY_USER_CAP,
+  evaluateDailyCostQueueGuard,
+  getPositiveIntegerEnv,
+} from '@/lib/external-sync-queue'
 import { canAutoRunSourceOcr, canRunManualSourceOcr, getOcrMaxPagesForProvider, getSourceOcrConfig } from '@/lib/source-ocr-config'
 import type { ModuleResource } from '@/lib/types'
 
@@ -102,6 +110,22 @@ export async function queueLearnGenerationAction(input: {
 
   const activeDuplicate = await findActiveJob(user.id, 'learn_generation', 'resourceId', input.resourceId)
   if (activeDuplicate) return { jobId: activeDuplicate.id, job: activeDuplicate }
+
+  const costGuardJobs = await getUserQueuedJobs(user.id, { type: ['learn_generation'], limit: 100 })
+  const costGuard = evaluateDailyCostQueueGuard(costGuardJobs, {
+    types: ['learn_generation'],
+    courseId: input.courseId ?? null,
+    dailyUserCap: getPositiveIntegerEnv('OPENAI_MAX_JOBS_PER_USER_PER_DAY', DEFAULT_OPENAI_DAILY_USER_CAP),
+    dailyCourseCap: getPositiveIntegerEnv('OPENAI_MAX_JOBS_PER_COURSE_PER_DAY', DEFAULT_OPENAI_DAILY_COURSE_CAP),
+  })
+  if (!costGuard.allowed) {
+    return {
+      jobId: '',
+      error: costGuard.reason === 'daily_course_cap'
+        ? 'This course has reached today\'s study generation limit. Try again tomorrow.'
+        : 'Today\'s study generation limit has been reached. Try again tomorrow.',
+    }
+  }
 
   const job = await createQueuedJob(
     user.id,
@@ -282,6 +306,8 @@ export async function autoEnqueueSourceOcrJobs(input: {
 
   const existingJobs = ((existingRows ?? []) as Record<string, unknown>[]).map(rowToQueuedJobForAutoOcr)
   const jobs: QueuedJob[] = []
+  const dailyUserCap = getPositiveIntegerEnv('OCR_MAX_JOBS_PER_USER_PER_DAY', DEFAULT_OCR_DAILY_USER_CAP)
+  const dailyCourseCap = getPositiveIntegerEnv('OCR_MAX_JOBS_PER_COURSE_PER_DAY', DEFAULT_OCR_DAILY_COURSE_CAP)
 
   let queuedThisSync = 0
   for (const resource of candidates) {
@@ -309,6 +335,22 @@ export async function autoEnqueueSourceOcrJobs(input: {
 
     if (findRecentFailedSourceOcrJob(existingJobs, resource.id)) {
       logAutoOcrDecision('skip_recent_failure', diagnosticBase)
+      continue
+    }
+
+    const dailyGuard = evaluateDailyCostQueueGuard(existingJobs, {
+      types: ['source_ocr'],
+      courseId: input.courseId ?? resource.courseId ?? null,
+      dailyUserCap,
+      dailyCourseCap,
+    })
+
+    if (!dailyGuard.allowed) {
+      logAutoOcrDecision(dailyGuard.reason === 'daily_user_cap' ? 'skip_daily_user_limit' : 'skip_daily_course_limit', {
+        ...diagnosticBase,
+        dailyUserCap,
+        dailyCourseCap,
+      })
       continue
     }
 
@@ -654,6 +696,22 @@ export async function queueDoGenerationAction(input: {
     await findActiveJob(user.id, 'task_output', 'taskId', input.taskId)
     ?? await findActiveJob(user.id, 'do_generation', 'taskId', input.taskId)
   if (activeDuplicate) return { jobId: activeDuplicate.id, job: activeDuplicate }
+
+  const costGuardJobs = await getUserQueuedJobs(user.id, { type: ['task_output', 'do_generation'], limit: 100 })
+  const costGuard = evaluateDailyCostQueueGuard(costGuardJobs, {
+    types: ['task_output', 'do_generation'],
+    courseId: input.context.courseId ?? null,
+    dailyUserCap: getPositiveIntegerEnv('OPENAI_MAX_JOBS_PER_USER_PER_DAY', DEFAULT_OPENAI_DAILY_USER_CAP),
+    dailyCourseCap: getPositiveIntegerEnv('OPENAI_MAX_JOBS_PER_COURSE_PER_DAY', DEFAULT_OPENAI_DAILY_COURSE_CAP),
+  })
+  if (!costGuard.allowed) {
+    return {
+      jobId: '',
+      error: costGuard.reason === 'daily_course_cap'
+        ? 'This course has reached today\'s task generation limit. Try again tomorrow.'
+        : 'Today\'s task generation limit has been reached. Try again tomorrow.',
+    }
+  }
 
   const job = await createQueuedJob(
     user.id,
