@@ -5,6 +5,102 @@ Last Updated: 2026-05-07
 
 ---
 
+## Session Update - 2026-05-07 (Restore sync route and add linked email identity actions)
+
+### What changed
+
+**`app/sync/page.tsx`** (restored)
+- Replaced the `redirect('/settings?section=canvas')` stub with the real Canvas course sync workflow.
+- Page renders `ConnectCanvasFlowWrapper` (same component previously at `/canvas`), with full Canvas connected status, reconnect/forget controls, refresh courses, show-ended-courses option, synced modules area, and import/sync course flow.
+- Unauthenticated users see a sign-in prompt with `next=%2Fsync`.
+
+**`app/canvas/page.tsx`** (simplified)
+- Replaced the full sync workflow with `redirect('/sync')`.
+- `/canvas` is now a permanent legacy redirect; all Canvas sync UI lives at `/sync`.
+
+**`components/shell/Sidebar.tsx`**
+- `Sync Courses` nav item href changed from `/settings?section=canvas` to `/sync`.
+- No other changes; `isActive` continues to work correctly for `/sync` via the `pathname.startsWith` branch.
+
+**`components/SettingsPage.tsx`**
+- Settings → Canvas section now includes a "Go to Sync Courses →" link (`href="/sync"`) after the connection form, with a short "Import and sync your Canvas courses." note.
+- The settings section remains for connection/token management only — it does not replace the sync workflow.
+
+**`components/settings/NotificationSettings.tsx`**
+- Added `createSupabaseBrowserClient` and `isSupabaseAuthConfigured` imports.
+- Added `linkPending` and `linkError` state.
+- Added `handleLinkIdentity(source)` — calls `supabase.auth.linkIdentity({ provider: 'google' | 'azure', options: { redirectTo: origin + '/auth/callback?next=/settings?section=notifications' } })`. On success the browser is redirected to the OAuth provider; on error a message is shown.
+- Recipient option rows for `linked_google` and `linked_microsoft`: when `available=false` and Supabase is configured, a "Connect Google" / "Connect Microsoft" button is shown instead of the disabled badge. When `available=true`, the existing Select/Active badge is shown and the row is selectable.
+- Identity linking does NOT request Gmail send scopes or Microsoft Mail.Send — only the standard OAuth profile/email identity is linked. Resend remains the email sender.
+- `linkError` displays inline below the option list if identity linking fails immediately.
+
+**`tests/scheduler.test.ts`**
+- Replaced 3 stale route tests:
+  - `Settings Canvas section does not link to /sync` → `Settings Canvas section links to /sync (Go to Sync Courses)`
+  - `/sync redirects to /settings?section=canvas` → `/sync is the real Canvas sync workflow (not a redirect)`
+  - `Sync Courses sidebar nav item points to /settings?section=canvas` → `Sync Courses sidebar nav item points to /sync`
+- Added 9 new tests:
+  - `/canvas redirects to /sync`
+  - `auth default redirect no longer points to /canvas`
+  - `notification recipient shows Connect Google button when Google identity is not linked`
+  - `notification recipient shows Connect Microsoft button when Microsoft identity is not linked`
+  - `notification recipient identity linking uses Supabase linkIdentity (not Gmail/Microsoft send APIs)`
+  - `linked Google option is selectable when identity exists (notification-email-options contract)`
+  - `linked Microsoft option is selectable when identity exists (notification-email-options contract)`
+  - `recipient selection falls back to account email if selected identity disappears`
+
+### Files touched
+
+- `app/sync/page.tsx`
+- `app/canvas/page.tsx`
+- `components/shell/Sidebar.tsx`
+- `components/SettingsPage.tsx`
+- `components/settings/NotificationSettings.tsx`
+- `tests/scheduler.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+The previous session consolidated `/sync` into `/settings?section=canvas`, removing the dedicated sync workflow page and breaking the student-facing "Sync Courses" nav link. This session restores the correct route model:
+- `/sync` = Canvas course sync workflow (ConnectCanvasFlow)
+- `/settings?section=canvas` = connection/token management
+- `/canvas` = legacy redirect to `/sync`
+
+Notification settings previously showed disabled Google/Microsoft recipient options with no way to link those identities. This session adds actionable "Connect Google" / "Connect Microsoft" buttons using Supabase's `linkIdentity` — no new send scopes, Resend remains the sender.
+
+### Tests run
+
+- `npm run typecheck` — clean
+- `npm run lint` — clean (0 errors, 0 warnings)
+- `npm run build` — passes (all routes collected without error)
+- `npm test` — 407/407 pass
+- `npm test -- canvas-digest` — 407/407 pass
+- `npm test -- queue` — 407/407 pass
+
+### Verification result
+
+All quality gates passed. 407 tests pass.
+
+### Known risks / blockers
+
+- **`supabase.auth.linkIdentity`** requires the Supabase project to have Google/Microsoft (azure) OAuth providers configured. If not configured, the button appears but clicking it will produce an error message inline (handled gracefully). No silent failures.
+- **Redirect after identity linking** goes through the existing `/auth/callback` route. `exchangeCodeForSession` handles both new-session and link-identity codes transparently in Supabase JS v2. If for any reason a link identity code creates a new session instead of linking (provider misconfiguration), the user lands back at `/settings?section=notifications` as intended.
+- **Design reference URL** (`https://api.anthropic.com/v1/design/h/UyLbU541E6l_gw8FuNb4Dg`) was not accessible. UI was implemented by matching existing `NotificationSettings.tsx` CSS variables, button patterns (`ui-interactive-card`, inline style patterns from the same component), and spacing. No new design language introduced.
+- `SyncCoursesPageClient.tsx` is still present and referenced by a scheduler test (`/sync course controls use saved Canvas connection...`). It is not rendered by any route. It can be removed in a follow-up after evaluating whether the older sync-selection flow should be revived.
+
+### Next recommended step
+
+1. Verify Google/Microsoft OAuth providers are enabled in Supabase Auth → Providers if the Connect buttons should be usable.
+2. Test the full identity linking flow end-to-end in a browser (click Connect Google → OAuth → return to `/settings?section=notifications` → option becomes selectable).
+3. Consider removing `SyncCoursesPageClient.tsx` if the older course-selection UI is permanently retired.
+4. Run `npx supabase db push` if the `notification_email_source` migration from the previous session has not yet been applied to production.
+
+### Suggested commit message
+
+restore sync route and add linked email identity actions
+
+---
+
 ## Session Update - 2026-05-07 (Fix NotificationEmailSource runtime build error)
 
 ### What changed

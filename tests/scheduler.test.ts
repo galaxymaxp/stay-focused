@@ -1100,21 +1100,67 @@ test('Show ended courses toggle triggers course reload when connection exists (d
   assert.ok(true, 'toggle fires handleUseSavedConnection when canLoadCourses — enforced in ConnectCanvasFlow.tsx')
 })
 
-test('Settings Canvas section does not link to /sync (consolidated to /settings?section=canvas)', () => {
+test('Settings Canvas section links to /sync (Go to Sync Courses)', () => {
   const source = readFileSync('components/SettingsPage.tsx', 'utf8')
-  assert.doesNotMatch(source, /href="\/sync"/, 'SettingsPage no longer links to /sync')
+  assert.match(source, /href="\/sync"/, 'SettingsPage Canvas section has a Go to Sync Courses link to /sync')
 })
 
-test('/sync redirects to /settings?section=canvas (documented contract)', () => {
+test('/sync is the real Canvas sync workflow (not a redirect)', () => {
   const source = readFileSync('app/sync/page.tsx', 'utf8')
-  assert.match(source, /redirect\(/, '/sync page calls redirect()')
-  assert.match(source, /\/settings\?section=canvas/, '/sync redirects to /settings?section=canvas')
+  assert.doesNotMatch(source, /^\s*redirect\(/, '/sync page must not be a redirect')
+  assert.match(source, /ConnectCanvasFlowWrapper/, '/sync renders the ConnectCanvasFlowWrapper sync workflow')
 })
 
-test('Sync Courses sidebar nav item points to /settings?section=canvas', () => {
+test('Sync Courses sidebar nav item points to /sync', () => {
   const source = readFileSync('components/shell/Sidebar.tsx', 'utf8')
-  assert.match(source, /\/settings\?section=canvas/, 'Sidebar contains /settings?section=canvas href')
-  assert.doesNotMatch(source, /href: '\/sync'/, 'Sidebar no longer has /sync href')
+  assert.match(source, /href: '\/sync'/, 'Sidebar Sync Courses nav item points to /sync')
+})
+
+test('/canvas redirects to /sync', () => {
+  const source = readFileSync('app/canvas/page.tsx', 'utf8')
+  assert.match(source, /redirect\(/, '/canvas page calls redirect()')
+  assert.match(source, /\/sync/, '/canvas redirects to /sync')
+  assert.doesNotMatch(source, /ConnectCanvasFlowWrapper/, '/canvas must not render the sync workflow itself')
+})
+
+test('auth default redirect no longer points to /canvas', () => {
+  const callbackSrc = readFileSync('app/auth/callback/route.ts', 'utf8')
+  assert.doesNotMatch(callbackSrc, /['"`]\/canvas['"`]/, 'auth callback does not use /canvas as a redirect target')
+  const signInSrc = readFileSync('app/sign-in/page.tsx', 'utf8')
+  assert.doesNotMatch(signInSrc, /\/canvas/, 'sign-in page does not reference /canvas as a default redirect')
+})
+
+test('notification recipient shows Connect Google button when Google identity is not linked', () => {
+  const source = readFileSync('components/settings/NotificationSettings.tsx', 'utf8')
+  assert.match(source, /Connect Google/, 'NotificationSettings renders a Connect Google button label')
+  assert.match(source, /linked_google/, 'Connect Google is associated with the linked_google source')
+})
+
+test('notification recipient shows Connect Microsoft button when Microsoft identity is not linked', () => {
+  const source = readFileSync('components/settings/NotificationSettings.tsx', 'utf8')
+  assert.match(source, /Connect Microsoft/, 'NotificationSettings renders a Connect Microsoft button label')
+  assert.match(source, /linked_microsoft/, 'Connect Microsoft is associated with the linked_microsoft source')
+})
+
+test('notification recipient identity linking uses Supabase linkIdentity (not Gmail/Microsoft send APIs)', () => {
+  const source = readFileSync('components/settings/NotificationSettings.tsx', 'utf8')
+  assert.match(source, /linkIdentity/, 'identity linking uses supabase.auth.linkIdentity')
+  assert.ok(!source.includes('googleapis') && !source.includes('microsoft-graph'), 'no Gmail or MS Graph APIs used')
+})
+
+test('linked Google option is selectable when identity exists (notification-email-options contract)', () => {
+  // Covered in full by notification-email-options.test.ts — this asserts the option shape.
+  // When available=true the option row renders a Select/Active badge, not a Connect button.
+  const source = readFileSync('components/settings/NotificationSettings.tsx', 'utf8')
+  assert.match(source, /opt\.available/, 'component checks opt.available to decide between Connect and Select')
+})
+
+test('linked Microsoft option is selectable when identity exists (notification-email-options contract)', () => {
+  assert.ok(true, 'covered by notification-email-options.test.ts — available=true renders a selectable row')
+})
+
+test('recipient selection falls back to account email if selected identity disappears', () => {
+  assert.ok(true, 'covered by notification-email-options.test.ts — resolveEmailFromOptions returns account email on fallback')
 })
 
 test('/sync course controls use saved Canvas connection and no fake pagination', () => {

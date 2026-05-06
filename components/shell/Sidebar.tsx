@@ -10,7 +10,7 @@ const navItems = [
   { href: '/courses', label: 'Courses', icon: BookOpen },
   { href: '/library', label: 'Study Library', icon: Library },
   { href: '/calendar', label: 'Calendar', icon: Calendar },
-  { href: '/settings?section=canvas', label: 'Sync Courses', icon: RefreshCcw },
+  { href: '/sync', label: 'Sync Courses', icon: RefreshCcw },
   { href: '/settings', label: 'Settings', icon: Settings },
 ]
 

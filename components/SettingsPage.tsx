@@ -479,6 +479,13 @@ export function SettingsPage() {
                     <p className="settings-card-note" style={{ marginTop: '1rem' }}>
                       To create a Canvas access token: Go to Canvas → Account → Settings → New Access Token. Your token is stored securely and only used to sync your courses.
                     </p>
+
+                    <div style={{ marginTop: '1rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                      <Link href="/sync" className="ui-button ui-button-secondary" style={{ textDecoration: 'none' }}>
+                        Go to Sync Courses →
+                      </Link>
+                      <p className="settings-card-note" style={{ margin: 0 }}>Import and sync your Canvas courses.</p>
+                    </div>
                   </div>
 
                 </div>

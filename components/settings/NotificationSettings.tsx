@@ -6,6 +6,8 @@ import { Toggle } from '@/components/ui/Toggle'
 import { updateEmailPreferences, type EmailCategories } from '@/actions/user-settings'
 import { createTestNotificationAction, sendTestEmailAction } from '@/actions/notifications'
 import { dispatchInAppToast } from '@/lib/notifications'
+import { createSupabaseBrowserClient } from '@/lib/supabase-auth-browser'
+import { isSupabaseAuthConfigured } from '@/lib/supabase-auth-config'
 import type { NotificationEmailSource, NotificationEmailOption } from '@/lib/notification-email-options'
 
 type FrequencyOption = 'off' | 'instant' | 'daily_digest'
@@ -61,6 +63,8 @@ export function NotificationSettings({
     result: null,
   })
   const [sourceSaving, setSourceSaving] = useState(false)
+  const [linkPending, setLinkPending] = useState<NotificationEmailSource | null>(null)
+  const [linkError, setLinkError] = useState<string | null>(null)
 
   const masterEnabled = frequency !== 'off'
 
@@ -112,6 +116,30 @@ export function NotificationSettings({
       await onNotificationEmailSourceChange?.(source)
     } finally {
       setSourceSaving(false)
+    }
+  }
+
+  async function handleLinkIdentity(source: 'linked_google' | 'linked_microsoft') {
+    if (linkPending || !isSupabaseAuthConfigured) return
+    setLinkPending(source)
+    setLinkError(null)
+    try {
+      const supabase = createSupabaseBrowserClient()
+      const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent('/settings?section=notifications')}`
+      const provider = source === 'linked_google' ? 'google' as const : 'azure' as const
+      const options = provider === 'azure'
+        ? { redirectTo, scopes: 'email' }
+        : { redirectTo }
+      const { error } = await supabase.auth.linkIdentity({ provider, options })
+      if (error) {
+        setLinkError(error.message)
+        setLinkPending(null)
+      }
+      // On success the browser is redirected to the OAuth provider.
+      // linkPending stays set until navigation completes.
+    } catch {
+      setLinkError('Could not start identity linking.')
+      setLinkPending(null)
     }
   }
 
@@ -269,28 +297,19 @@ export function NotificationSettings({
           <div style={{ borderRadius: 'var(--radius-panel)', border: '1px solid var(--border-subtle)', background: 'var(--surface-base)', overflow: 'hidden', opacity: sourceSaving ? 0.7 : 1, transition: 'opacity 0.15s' }}>
             {notificationEmailOptions.map((opt, i) => {
               const selected = opt.source === notificationEmailSource
+              const canLink = !opt.available && (opt.source === 'linked_google' || opt.source === 'linked_microsoft') && isSupabaseAuthConfigured
               const disabled = !opt.available || sourceSaving
               return (
-                <button
+                <div
                   key={opt.source}
-                  type="button"
-                  onClick={() => opt.available && handleSourceChange(opt.source)}
-                  aria-pressed={selected}
-                  disabled={disabled}
-                  className="ui-interactive-card"
-                  data-hover="flat"
                   style={{
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
                     gap: '1.5rem',
-                    width: '100%',
                     padding: '0.85rem 1rem',
-                    textAlign: 'left',
-                    background: 'transparent',
-                    cursor: disabled ? 'not-allowed' : 'pointer',
                     borderBottom: i < notificationEmailOptions.length - 1 ? '1px solid var(--border-subtle)' : 'none',
-                    opacity: opt.available ? 1 : 0.5,
+                    opacity: opt.available ? 1 : 0.75,
                   }}
                 >
                   <div style={{ minWidth: 0 }}>
@@ -301,22 +320,67 @@ export function NotificationSettings({
                         : (opt.disabledReason ?? 'Not available')}
                     </p>
                   </div>
-                  <span style={{
-                    flexShrink: 0,
-                    fontSize: '11px',
-                    fontWeight: 700,
-                    padding: '0.2rem 0.6rem',
-                    borderRadius: '999px',
-                    border: `1px solid ${selected ? 'color-mix(in srgb, var(--accent) 40%, var(--border-subtle) 60%)' : 'var(--border-subtle)'}`,
-                    background: selected ? 'color-mix(in srgb, var(--accent) 12%, var(--surface-elevated) 88%)' : 'var(--surface-soft)',
-                    color: selected ? 'var(--accent)' : 'var(--text-muted)',
-                    transition: 'all 0.15s',
-                  }}>
-                    {selected ? 'Active' : 'Select'}
-                  </span>
-                </button>
+                  {canLink ? (
+                    <button
+                      type="button"
+                      onClick={() => handleLinkIdentity(opt.source as 'linked_google' | 'linked_microsoft')}
+                      disabled={linkPending !== null}
+                      style={{
+                        flexShrink: 0,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.3rem',
+                        padding: '0.28rem 0.7rem',
+                        borderRadius: 'var(--radius-control)',
+                        border: '1px solid var(--border-subtle)',
+                        background: 'var(--surface-soft)',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        color: 'var(--text-primary)',
+                        cursor: linkPending !== null ? 'not-allowed' : 'pointer',
+                        opacity: linkPending !== null ? 0.6 : 1,
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {linkPending === opt.source
+                        ? <Loader2 style={{ width: '11px', height: '11px', animation: 'spin 1s linear infinite' }} />
+                        : null}
+                      {linkPending === opt.source
+                        ? 'Connecting...'
+                        : opt.source === 'linked_google' ? 'Connect Google' : 'Connect Microsoft'}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => opt.available && handleSourceChange(opt.source)}
+                      aria-pressed={selected}
+                      disabled={disabled}
+                      className="ui-interactive-card"
+                      data-hover="flat"
+                      style={{
+                        flexShrink: 0,
+                        padding: '0.2rem 0.6rem',
+                        borderRadius: '999px',
+                        border: `1px solid ${selected ? 'color-mix(in srgb, var(--accent) 40%, var(--border-subtle) 60%)' : 'var(--border-subtle)'}`,
+                        background: selected ? 'color-mix(in srgb, var(--accent) 12%, var(--surface-elevated) 88%)' : 'var(--surface-soft)',
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        color: selected ? 'var(--accent)' : 'var(--text-muted)',
+                        cursor: disabled ? 'not-allowed' : 'pointer',
+                        transition: 'all 0.15s',
+                      }}
+                    >
+                      {selected ? 'Active' : 'Select'}
+                    </button>
+                  )}
+                </div>
               )
             })}
+            {linkError && (
+              <p style={{ margin: '0.4rem 1rem', fontSize: '12px', color: 'var(--red)', fontWeight: 600 }}>
+                {linkError}
+              </p>
+            )}
           </div>
         </section>
       )}
