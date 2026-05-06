@@ -2,7 +2,7 @@
 
 import { getAuthenticatedUserServer } from '@/lib/auth-server'
 import { createNotification } from '@/lib/notifications-server'
-import { isResendConfigured, sendTransactionalEmail } from '@/lib/resend'
+import { isResendConfigured, resolveTestEmailRecipient, classifyTestEmailError, sendTransactionalEmail } from '@/lib/resend'
 import { buildDigestHtml, buildDigestText } from '@/lib/email-templates/canvas-digest'
 import type { NotificationType, NotificationSeverity } from '@/lib/notifications-server'
 
@@ -48,6 +48,15 @@ export async function sendTestEmailAction(): Promise<{ ok: boolean; error?: stri
   if (!user) return { ok: false, error: 'Not authenticated.' }
   if (!user.email) return { ok: false, error: 'No email address on this account.' }
 
+  const isProduction = process.env.NODE_ENV === 'production'
+  const recipient = resolveTestEmailRecipient(user.email, isProduction)
+
+  console.info('[test-email] sending', {
+    to: recipient,
+    isProduction,
+    usingTestOverride: recipient !== user.email,
+  })
+
   const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL?.trim()
     || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://stayfocused.app')
 
@@ -73,14 +82,17 @@ export async function sendTestEmailAction(): Promise<{ ok: boolean; error?: stri
   })
 
   const result = await sendTransactionalEmail({
-    to: user.email,
+    to: recipient,
     subject: '✅ Stay Focused test email',
     html,
     text,
   })
 
   if (!result.ok) {
-    return { ok: false, error: 'Failed to send. Check that RESEND_API_KEY and EMAIL_FROM are configured correctly.' }
+    const emailFrom = process.env.EMAIL_FROM ?? ''
+    const friendlyError = classifyTestEmailError(emailFrom)
+    console.warn('[test-email] send failed', { to: recipient, emailFrom })
+    return { ok: false, error: friendlyError }
   }
 
   return { ok: true }

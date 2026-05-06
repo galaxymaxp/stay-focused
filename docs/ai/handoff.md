@@ -5,6 +5,61 @@ Last Updated: 2026-05-07
 
 ---
 
+## Session Update - 2026-05-07 (Improve Resend test email diagnostics)
+
+### What changed
+
+**`lib/resend.ts`**
+- `sendTransactionalEmail` now logs `errorName`, `errorMessage`, and `statusCode` from the Resend error object on failure, plus `to` and `subject` for context. Also adds `to`/`subject` to the unexpected-error log path.
+- New export `resolveTestEmailRecipient(userEmail, isProduction)` — pure helper: in non-production, returns `EMAIL_TEST_TO` if set; otherwise returns `userEmail`. In production, always returns `userEmail`.
+- New export `classifyTestEmailError(emailFrom)` — pure helper: if `emailFrom` contains `@resend.dev`, returns a specific message explaining the test-only restriction and pointing to the fix (add a verified domain); otherwise returns the generic config error message.
+
+**`actions/notifications.ts`** — `sendTestEmailAction`
+- Computes `recipient` using `resolveTestEmailRecipient` (respects `EMAIL_TEST_TO` in non-production).
+- Logs `{ to, isProduction, usingTestOverride }` server-side before sending.
+- On failure, calls `classifyTestEmailError(EMAIL_FROM)` to pick the right user-facing message — raw Resend errors are never forwarded to the client.
+
+**`tests/email-diagnostics.test.ts`** (new)
+- 5 tests: `EMAIL_TEST_TO` used in non-prod, ignored when absent, ignored in production; `classifyTestEmailError` returns restriction message for `@resend.dev` sender, generic message for other senders.
+
+**`README.md`**
+- Documented `EMAIL_TEST_TO` (dev/staging only, ignored in production).
+- Added note that `onboarding@resend.dev` is test-only and will be rejected for non-owner recipients; real app emails require a verified Resend domain and `EMAIL_FROM` on that domain.
+
+### Files touched
+
+- `lib/resend.ts`
+- `actions/notifications.ts`
+- `tests/email-diagnostics.test.ts`
+- `README.md`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Settings → Send test email was silently failing in local dev because `onboarding@resend.dev` can only deliver to the Resend account owner's email, but `user.email` from Supabase is a different address. The fix adds `EMAIL_TEST_TO` for non-production overrides, surfaces a domain-specific friendly error when the `resend.dev` sender is the culprit, and improves server-side logging so the actual Resend error code/message is visible in logs without leaking to users.
+
+### Tests run
+
+- `npm run typecheck`
+- `npm run lint`
+- `npm test`
+
+### Known risks / blockers
+
+- `EMAIL_TEST_TO` only redirects the Settings test email, not production digest emails. Production always sends to the resolved user email.
+- `onboarding@resend.dev` remains unsuitable for real users regardless of `EMAIL_TEST_TO`. A verified Resend domain is required before production rollout.
+
+### Next recommended step
+
+1. Add `EMAIL_TEST_TO=<your-resend-account-email>` to `.env.local` and confirm the test email button delivers successfully.
+2. Register a verified domain in Resend and update `EMAIL_FROM` to `Stay Focused <noreply@yourdomain.com>` for production.
+
+### Suggested commit message
+
+improve Resend test email diagnostics
+
+---
+
 ## Session Update - 2026-05-07 (Canvas update digest emails via Resend)
 
 ### What changed
