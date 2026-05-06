@@ -50,6 +50,8 @@ create index if not exists queued_jobs_canceled_at_idx
   on public.queued_jobs(canceled_at);
 
 drop policy if exists "Users can cancel own pending queued_jobs" on public.queued_jobs;
+drop policy if exists "Users can cancel own active queued_jobs" on public.queued_jobs;
+
 create policy "Users can cancel own active queued_jobs"
 on public.queued_jobs for update
 to authenticated
@@ -62,3 +64,4 @@ with check (
 );
 
 notify pgrst, 'reload schema';
+
