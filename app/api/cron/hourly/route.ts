@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from 'next/server'
 import { createNotification, deduplicateNotification } from '@/lib/notifications-server'
 import { createSupabaseServiceRoleClient } from '@/lib/supabase-service'
+import { sendDeadlineReminderEmails } from '@/lib/deadline-reminders'
 
 export const runtime = 'nodejs'
 export const maxDuration = 55
@@ -175,18 +176,26 @@ export async function GET(req: NextRequest) {
 
   const results = await Promise.allSettled([
     scanDueSoon(),
+    clientBackedDeadlineReminders(),
     scanNewAnnouncements(),
     cleanStuckJobs(),
   ])
 
-  const [dueSoon, announcements, stuckJobs] = results.map((r) =>
+  const [dueSoon, deadlineReminders, announcements, stuckJobs] = results.map((r) =>
     r.status === 'fulfilled' ? r.value : 0,
   )
 
-  console.info('[cron/hourly] daily scan complete', { dueSoon, announcements, stuckJobs })
+  console.info('[cron/hourly] daily scan complete', { dueSoon, deadlineReminders, announcements, stuckJobs })
 
   return NextResponse.json({
     ok: true,
-    scanned: { dueSoon, announcements, stuckJobs },
+    scanned: { dueSoon, deadlineReminders, announcements, stuckJobs },
   })
+}
+
+async function clientBackedDeadlineReminders(): Promise<number> {
+  const client = createSupabaseServiceRoleClient()
+  if (!client) return 0
+  const result = await sendDeadlineReminderEmails({ supabase: client })
+  return result.sent
 }

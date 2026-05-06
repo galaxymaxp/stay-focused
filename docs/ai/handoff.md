@@ -5,6 +5,73 @@ Last Updated: 2026-05-07
 
 ---
 
+## Session Update - 2026-05-07 (Fix digest retries and add deadline reminder emails)
+
+### What changed
+
+**Canvas digest retry reliability**
+- `actions/canvas.ts` now attempts the Canvas update digest after every successful external Canvas sync, even when the current sync inserted `0` new `canvas_update_events`.
+- `lib/canvas-digest.ts` still sends only unsent meaningful event types and still respects the existing cooldown, but now supports injected send/clock functions for focused retry tests.
+- Failed Resend sends leave events unsent; later successful syncs can retry those events.
+
+**Deadline reminder emails**
+- Added `lib/deadline-reminders.ts` to send Resend-only reminder emails for tasks/deadlines due today and due tomorrow.
+- Added `lib/email-templates/deadline-reminder.ts` for simple student-facing reminder HTML/text.
+- Hooked reminder sending into `app/api/cron/hourly/route.ts`, alongside the existing due-soon in-app notification scan.
+- Reused the existing notification recipient source resolution (`supabase_account`, `linked_google`, `linked_microsoft`) through `notification_email_source`.
+- Respected existing email preferences: `email_notifications='off'` disables reminders; exact category keys such as `deadline_reminders`, `deadlines`, `tasks`, or existing `due_soon` are honored when present; otherwise reminders default enabled for authenticated users with an email.
+- Added `supabase/migrations/20260507050000_add_deadline_reminder_email_logs.sql` with a unique key on `user_id + source_type + source_id + reminder_window` to prevent duplicate reminder emails.
+
+### Files touched
+
+- `actions/canvas.ts`
+- `app/api/cron/hourly/route.ts`
+- `lib/canvas-digest.ts`
+- `lib/deadline-reminders.ts`
+- `lib/email-templates/deadline-reminder.ts`
+- `supabase/migrations/20260507050000_add_deadline_reminder_email_logs.sql`
+- `tests/canvas-digest.test.ts`
+- `tests/deadline-reminders.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Canvas digest retry was gated on new event insertion, so a failed digest could leave unsent events stranded forever if later syncs found no new Canvas updates. Deadline reminders close the schedule-first loop by emailing students at the two highest-value windows: due tomorrow and due today.
+
+### Tests run
+
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm run build` - passed
+- `npm test -- canvas-digest` - 416/416 passed
+- `npm test -- deadline-reminders` - 416/416 passed
+- `npm test -- queue` - 416/416 passed
+- `npm test -- notification` - 416/416 passed
+
+### Verification result
+
+All requested quality gates passed. Digest tests cover failed send leaves events unsent, a later sync with `inserted=0` retries existing unsent events, and cooldown still blocks resend. Reminder tests cover due-window selection, preference behavior, dedupe, and failed-send log release.
+
+### Known risks
+
+- Deadline due-window selection uses UTC calendar days because no per-user timezone preference was found in the existing schema. If user timezone support is added later, reminder windows should use that setting.
+- The new reminder log migration must be applied before reminder sends can run in deployed environments.
+- Reminder querying currently covers `task_items` and `deadlines`, which are the visible student task/deadline sources. The legacy `tasks` table is not emailed separately to avoid duplicate Canvas assignment reminders from overlapping task tables.
+
+### Blockers
+
+None.
+
+### Next recommended step
+
+Apply the new Supabase migration in staging/production, then trigger `/api/cron/hourly` with a test account that has one task due today and one due tomorrow to verify delivered email content and recipient selection.
+
+### Suggested commit message
+
+fix digest retries and add deadline reminder emails
+
+---
+
 ## Session Update - 2026-05-07 (Restore new Sync Courses page)
 
 ### What changed

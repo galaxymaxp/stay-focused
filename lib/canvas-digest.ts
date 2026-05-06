@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { sendTransactionalEmail, isResendConfigured } from '@/lib/resend'
+import { sendTransactionalEmail, isResendConfigured, type TransactionalEmailInput, type TransactionalEmailResult } from '@/lib/resend'
 import {
   buildDigestSubject,
   buildDigestHtml,
@@ -154,10 +154,11 @@ export function groupEventsForDisplay(
 export async function markEventsDigestSent(
   supabase: SupabaseClient,
   eventIds: string[],
+  sentAt = new Date(),
 ): Promise<number> {
   if (eventIds.length === 0) return 0
 
-  const now = new Date().toISOString()
+  const now = sentAt.toISOString()
   const { error, count } = await supabase
     .from('canvas_update_events')
     .update({ digest_sent_at: now })
@@ -174,11 +175,11 @@ export async function markEventsDigestSent(
 }
 
 // Updates canvas_digest_last_sent_at in user_settings.
-async function recordDigestSentAt(supabase: SupabaseClient, userId: string): Promise<void> {
+async function recordDigestSentAt(supabase: SupabaseClient, userId: string, sentAt = new Date()): Promise<void> {
   const { error } = await supabase
     .from('user_settings')
     .upsert(
-      { user_id: userId, canvas_digest_last_sent_at: new Date().toISOString() },
+      { user_id: userId, canvas_digest_last_sent_at: sentAt.toISOString() },
       { onConflict: 'user_id' },
     )
 
@@ -246,8 +247,12 @@ async function loadUserDigestSettings(
 export async function attemptCanvasDigestForUser(input: {
   supabase: SupabaseClient
   userId: string
+  now?: Date
+  sendEmail?: (input: TransactionalEmailInput) => Promise<TransactionalEmailResult>
 }): Promise<DigestAttemptResult> {
   const { supabase, userId } = input
+  const now = input.now ?? new Date()
+  const sendEmail = input.sendEmail ?? sendTransactionalEmail
 
   if (!isResendConfigured()) {
     return { sent: false, skipped: true, skipReason: 'resend_not_configured', eventsIncluded: 0, eventsMarked: 0 }
@@ -271,7 +276,7 @@ export async function attemptCanvasDigestForUser(input: {
   const cooldownMinutes = getCooldownMinutes()
   if (userSettings.lastSentAt) {
     const lastSent = new Date(userSettings.lastSentAt).getTime()
-    const elapsed = Date.now() - lastSent
+    const elapsed = now.getTime() - lastSent
     if (elapsed < cooldownMinutes * 60 * 1000) {
       return { sent: false, skipped: true, skipReason: 'cooldown', eventsIncluded: 0, eventsMarked: 0 }
     }
@@ -332,7 +337,7 @@ export async function attemptCanvasDigestForUser(input: {
   const allEventIds = rows.map((r) => r.id)
   const idempotencyKey = buildDigestIdempotencyKey(userId, allEventIds)
 
-  const result = await sendTransactionalEmail({
+  const result = await sendEmail({
     to: userSettings.email,
     subject,
     html,
@@ -347,8 +352,8 @@ export async function attemptCanvasDigestForUser(input: {
   }
 
   // Mark ALL fetched events as sent (including overflow) since the email directs them to the app.
-  const marked = await markEventsDigestSent(supabase, allEventIds)
-  await recordDigestSentAt(supabase, userId)
+  const marked = await markEventsDigestSent(supabase, allEventIds, now)
+  await recordDigestSentAt(supabase, userId, now)
 
   console.info('[canvas-digest] digest sent', { userId, eventsMarked: marked, messageId: result.messageId })
 

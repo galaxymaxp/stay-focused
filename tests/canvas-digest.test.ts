@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  attemptCanvasDigestForUser,
   buildDigestIdempotencyKey,
   groupEventsForDisplay,
   markEventsDigestSent,
@@ -311,6 +312,74 @@ test('markEventsDigestSent with empty ids returns 0 without calling supabase', a
   assert.equal(called, false)
 })
 
+test('send failure leaves Canvas update events unsent', async () => {
+  const restore = configureResendForDigestTest()
+  const supabase = createDigestSupabase({
+    events: [makeEvent({ id: 'event-fail', user_id: 'user-1' })],
+  })
+
+  const result = await attemptCanvasDigestForUser({
+    supabase: supabase as never,
+    userId: 'user-1',
+    now: new Date('2026-05-07T10:00:00.000Z'),
+    sendEmail: async () => ({ ok: false }),
+  })
+
+  assert.equal(result.sent, false)
+  assert.equal(result.skipReason, 'send_failed')
+  assert.equal(supabase.events[0].digest_sent_at, null)
+  restore()
+})
+
+test('later sync with inserted=0 retries existing unsent Canvas update events', async () => {
+  const restore = configureResendForDigestTest()
+  const supabase = createDigestSupabase({
+    events: [makeEvent({ id: 'event-retry', user_id: 'user-1' })],
+  })
+  let sent = 0
+
+  const result = await attemptCanvasDigestForUser({
+    supabase: supabase as never,
+    userId: 'user-1',
+    now: new Date('2026-05-07T10:00:00.000Z'),
+    sendEmail: async () => {
+      sent += 1
+      return { ok: true, messageId: 'msg-1' }
+    },
+  })
+
+  assert.equal(sent, 1)
+  assert.equal(result.sent, true)
+  assert.equal(supabase.events[0].digest_sent_at, '2026-05-07T10:00:00.000Z')
+  assert.equal(supabase.settings.canvas_digest_last_sent_at, '2026-05-07T10:00:00.000Z')
+  restore()
+})
+
+test('cooldown still blocks Canvas digest resend for unsent events', async () => {
+  const restore = configureResendForDigestTest()
+  const supabase = createDigestSupabase({
+    settings: { canvas_digest_last_sent_at: '2026-05-07T09:45:00.000Z' },
+    events: [makeEvent({ id: 'event-cooldown', user_id: 'user-1' })],
+  })
+  let sent = 0
+
+  const result = await attemptCanvasDigestForUser({
+    supabase: supabase as never,
+    userId: 'user-1',
+    now: new Date('2026-05-07T10:00:00.000Z'),
+    sendEmail: async () => {
+      sent += 1
+      return { ok: true }
+    },
+  })
+
+  assert.equal(sent, 0)
+  assert.equal(result.skipped, true)
+  assert.equal(result.skipReason, 'cooldown')
+  assert.equal(supabase.events[0].digest_sent_at, null)
+  restore()
+})
+
 // ---------------------------------------------------------------------------
 // Recipient source resolution — digest-path guard tests
 // ---------------------------------------------------------------------------
@@ -325,6 +394,106 @@ function makeDigestUser(email: string, identities: UserIdentity[] = []): User {
     created_at: new Date().toISOString(),
     identities,
   } as User
+}
+
+function configureResendForDigestTest() {
+  const originalKey = process.env.RESEND_API_KEY
+  const originalFrom = process.env.EMAIL_FROM
+  process.env.RESEND_API_KEY = 'test-key'
+  process.env.EMAIL_FROM = 'Stay Focused <noreply@example.com>'
+  return () => {
+    if (originalKey === undefined) delete process.env.RESEND_API_KEY
+    else process.env.RESEND_API_KEY = originalKey
+    if (originalFrom === undefined) delete process.env.EMAIL_FROM
+    else process.env.EMAIL_FROM = originalFrom
+  }
+}
+
+function createDigestSupabase(input: {
+  settings?: Partial<Record<string, unknown>>
+  events: Array<DigestEventRow & { digest_sent_at?: string | null }>
+}) {
+  const state = {
+    settings: {
+      email_notifications: 'instant',
+      email_categories: { canvas_updates: true },
+      canvas_digest_last_sent_at: null as string | null,
+      notification_email: null,
+      notification_email_source: 'supabase_account',
+      ...input.settings,
+    },
+    events: input.events.map((event) => ({ ...event, digest_sent_at: event.digest_sent_at ?? null })),
+  }
+
+  return {
+    ...state,
+    auth: {
+      admin: {
+        getUserById: async (userId: string) => ({
+          data: { user: makeDigestUser(`${userId}@example.com`) },
+        }),
+      },
+    },
+    from(table: string) {
+      if (table === 'user_settings') {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: async () => ({ data: state.settings, error: null }),
+            }),
+          }),
+          upsert: async (row: Record<string, unknown>) => {
+            Object.assign(state.settings, row)
+            for (const event of state.events) {
+              if (event.digest_sent_at === null && typeof row.canvas_digest_last_sent_at === 'string') {
+                event.digest_sent_at = row.canvas_digest_last_sent_at
+              }
+            }
+            return { error: null }
+          },
+        }
+      }
+
+      if (table === 'canvas_update_events') {
+        return {
+          select: () => ({
+            eq: (_column: string, userId: string) => ({
+              in: () => ({
+                is: () => ({
+                  order: () => ({
+                    limit: async () => ({
+                      data: state.events
+                        .filter((event) => event.user_id === userId && event.digest_sent_at === null)
+                        .map((event) => ({ ...event, courses: { name: event.course_name } })),
+                      error: null,
+                    }),
+                  }),
+                }),
+              }),
+            }),
+          }),
+          update: (patch: Record<string, unknown>) => ({
+            in: (_column: string, ids: string[]) => ({
+              is: () => ({
+                select: async () => {
+                  let count = 0
+                  for (const event of state.events) {
+                    if (ids.includes(event.id) && event.digest_sent_at === null) {
+                      event.digest_sent_at = patch.digest_sent_at as string
+                      count += 1
+                    }
+                  }
+                  return { error: null, count }
+                },
+              }),
+            }),
+          }),
+        }
+      }
+
+      throw new Error(`Unexpected table ${table}`)
+    },
+  }
 }
 
 function makeDigestIdentity(provider: string, email: string): UserIdentity {
