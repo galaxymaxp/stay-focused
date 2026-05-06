@@ -46,6 +46,21 @@ Stay Focused remains an action-first study workspace. The app should help a stud
 - Sync work must preserve successful extracted/OCR text on resync unless the Canvas file identity changes, and module `raw_content` must be rebuilt from the final preserved resource text.
 - External sync processing should refresh existing Canvas resources and assignment status without running OpenAI module extraction or OCR workers inline.
 
+## Email Notifications
+
+Canvas update digest emails are live via Resend (`RESEND_API_KEY` + `EMAIL_FROM`).
+
+- Digests send after a successful external Canvas sync when at least one meaningful Canvas update event is inserted.
+- Meaningful types: `new_announcement`, `new_assignment`, `due_date_change`, `new_module`, `new_resource`.
+- OCR, Deep Learn, queue, and debug events are never emailed.
+- Events are grouped into one email per user (not one per item). Duplicate-looking rows collapse with a ×N count.
+- App-level cooldown: `CANVAS_UPDATE_EMAIL_COOLDOWN_MINUTES` (default 30) prevents repeated emails within the window.
+- Display cap: `CANVAS_UPDATE_EMAIL_MAX_ITEMS` (default 12) limits visible lines; overflow events are still marked sent.
+- Recipients: Supabase account email only for this phase. Google/Microsoft destination selection is not yet added.
+- User opt-in: Settings → Email Notifications → enable **Canvas updates digest** under Notification Types.
+- Default is disabled; users must explicitly enable it.
+- Test email in Settings uses the same Resend provider and sends to the Supabase account email.
+
 ## Future Features
 
 - richer Study Library filtering and sorting within the existing IA
@@ -53,3 +68,4 @@ Stay Focused remains an action-first study workspace. The app should help a stud
 - tighter runtime verification coverage for high-value routes
 - more grounded learning-output generation from extracted resource text
 - additional quality-of-life polish for multi-course planning and saved-output recovery
+- Google/Microsoft destination selection for Canvas update digest emails

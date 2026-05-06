@@ -56,6 +56,10 @@ GOOGLE_VISION_CREDENTIALS_JSON=
 GOOGLE_DOCUMENT_AI_PROCESSOR_NAME=
 CANVAS_API_URL=
 CANVAS_API_TOKEN=
+RESEND_API_KEY=
+EMAIL_FROM=
+CANVAS_UPDATE_EMAIL_COOLDOWN_MINUTES=30
+CANVAS_UPDATE_EMAIL_MAX_ITEMS=12
 ```
 
 3. Apply Supabase migrations:
@@ -95,6 +99,10 @@ npm run dev
 - `GOOGLE_DOCUMENT_AI_PROCESSOR_NAME`: processor resource for `OCR_PROVIDER=google_document_ai`; use `projects/<project>/locations/<location>/processors/<processor>`
 - `CANVAS_API_URL`: Canvas base URL used for sync
 - `CANVAS_API_TOKEN`: Canvas personal access token for sync
+- `RESEND_API_KEY`: Resend API key for transactional email (Canvas update digests and test emails)
+- `EMAIL_FROM`: Sender address for outgoing email, e.g. `Stay Focused <noreply@stayfocused.app>`
+- `CANVAS_UPDATE_EMAIL_COOLDOWN_MINUTES`: Minimum minutes between Canvas update digest emails per user; defaults to `30`
+- `CANVAS_UPDATE_EMAIL_MAX_ITEMS`: Maximum display lines in a single digest email; defaults to `12`
 
 ## Verification Commands
 

@@ -2,6 +2,8 @@
 
 import { getAuthenticatedUserServer } from '@/lib/auth-server'
 import { createNotification } from '@/lib/notifications-server'
+import { isResendConfigured, sendTransactionalEmail } from '@/lib/resend'
+import { buildDigestHtml, buildDigestText } from '@/lib/email-templates/canvas-digest'
 import type { NotificationType, NotificationSeverity } from '@/lib/notifications-server'
 
 const TEST_TEMPLATES: Record<string, { type: NotificationType; title: string; body: string; severity: NotificationSeverity }> = {
@@ -34,24 +36,52 @@ export async function createTestNotificationAction(templateKey: string): Promise
 }
 
 export async function isEmailProviderConfigured(): Promise<boolean> {
-  return Boolean(
-    process.env.RESEND_API_KEY ||
-    process.env.SENDGRID_API_KEY ||
-    process.env.SMTP_HOST ||
-    process.env.EMAIL_PROVIDER,
-  )
+  return isResendConfigured()
 }
 
 export async function sendTestEmailAction(): Promise<{ ok: boolean; error?: string }> {
-  const configured = await isEmailProviderConfigured()
-  if (!configured) {
+  if (!isResendConfigured()) {
     return { ok: false, error: 'Email provider not configured in environment variables.' }
   }
 
   const user = await getAuthenticatedUserServer()
   if (!user) return { ok: false, error: 'Not authenticated.' }
+  if (!user.email) return { ok: false, error: 'No email address on this account.' }
 
-  // Email sending is provider-specific; configure RESEND_API_KEY, SENDGRID_API_KEY,
-  // SMTP_HOST, or EMAIL_PROVIDER in Vercel environment variables to enable this.
-  return { ok: false, error: 'Email provider detected but sending is not yet implemented for this provider.' }
+  const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL?.trim()
+    || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://stayfocused.app')
+
+  const testSection = {
+    courseId: null,
+    courseName: 'Test course',
+    appHref: null,
+    lines: [{ eventType: 'new_announcement', label: 'This is a test notification', count: 1 }],
+  }
+
+  const html = buildDigestHtml({
+    courseSections: [testSection],
+    totalDisplayLines: 1,
+    maxItems: 12,
+    appBaseUrl,
+  })
+
+  const text = buildDigestText({
+    courseSections: [testSection],
+    totalDisplayLines: 1,
+    maxItems: 12,
+    appBaseUrl,
+  })
+
+  const result = await sendTransactionalEmail({
+    to: user.email,
+    subject: '✅ Stay Focused test email',
+    html,
+    text,
+  })
+
+  if (!result.ok) {
+    return { ok: false, error: 'Failed to send. Check that RESEND_API_KEY and EMAIL_FROM are configured correctly.' }
+  }
+
+  return { ok: true }
 }

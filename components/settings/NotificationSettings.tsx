@@ -180,6 +180,7 @@ export function NotificationSettings({
             { key: 'new_uploads' as const, label: 'New uploads', desc: 'New modules, resources, or study materials.' },
             { key: 'announcements' as const, label: 'Announcements', desc: 'New Canvas announcements from your courses.' },
             { key: 'queue_completed' as const, label: 'Queue completed', desc: 'When a background job finishes.' },
+            { key: 'canvas_updates' as const, label: 'Canvas updates digest', desc: 'Grouped digest of new Canvas assignments, announcements, modules, and resources.' },
           ] as const).map(({ key, label, desc }, i, arr) => (
             <div
               key={key}

@@ -5,6 +5,110 @@ Last Updated: 2026-05-07
 
 ---
 
+## Session Update - 2026-05-07 (Canvas update digest emails via Resend)
+
+### What changed
+
+**`package.json`** — added `resend` dependency.
+
+**`lib/resend.ts`** (new)
+- `sendTransactionalEmail({ to, subject, html, text, idempotencyKey, tags })` — Resend provider helper.
+- `isResendConfigured()` — checks `RESEND_API_KEY` and `EMAIL_FROM` only.
+- If either env var is missing, logs and returns `{ ok: false }` without throwing.
+- Never exposes raw Resend errors to callers.
+
+**`lib/email-templates/canvas-digest.ts`** (new)
+- `buildDigestSubject(sections)` — subject line with one emoji max.
+- `buildDigestHtml(input)` — warm ivory card email, grouped course sections, ×N duplicate collapse, overflow note, CTA button, footer, mobile-safe table layout.
+- `buildDigestText(input)` — plain-text fallback.
+
+**`lib/canvas-digest.ts`** (new)
+- `MEANINGFUL_EVENT_TYPES` — the exact set of event types eligible for digest.
+- `groupEventsForDisplay(events, maxItems)` — groups by course, collapses (course, event_type, title) tuples, returns `DigestCourseSection[]`, `totalDisplayLines`, and `includedEventIds`.
+- `buildDigestIdempotencyKey(userId, eventIds)` — deterministic key from sorted event IDs (stable across retries).
+- `markEventsDigestSent(supabase, eventIds)` — sets `digest_sent_at = now()` only after successful send.
+- `attemptCanvasDigestForUser({ supabase, userId })` — main entry point. Checks: Resend configured, user email present, `email_notifications != 'off'`, `canvas_updates` category enabled, cooldown not active. If all pass: loads unsent meaningful events, groups them, sends via Resend, marks ALL fetched events (including overflow) as sent, records `canvas_digest_last_sent_at`. Returns `DigestAttemptResult`.
+- **Overflow behaviour**: if more events exist than `CANVAS_UPDATE_EMAIL_MAX_ITEMS`, the email shows the first N display rows and includes "Open Stay Focused to see the rest." All fetched events (visible + overflow) are marked `digest_sent_at` after a successful send. This prevents overflow events from triggering a redundant immediate follow-up digest; the email already tells the user to check the app.
+- **Idempotency**: Resend `Idempotency-Key` header prevents duplicate delivery on retries within 24 hours. `digest_sent_at` ensures events are never re-selected after a successful run. `canvas_digest_last_sent_at` cooldown prevents over-sending between Resend's idempotency window.
+- **Failure safety**: if send fails, `digest_sent_at` is NOT marked, so events remain eligible for the next run.
+- **Missing env safety**: if `RESEND_API_KEY` or `EMAIL_FROM` is absent, the function returns `{ skipped: true }` without touching any DB state.
+
+**`supabase/migrations/20260507030000_add_canvas_digest_settings.sql`** (new)
+- Adds `canvas_digest_last_sent_at timestamptz` column to `user_settings` for per-user cooldown tracking.
+
+**`actions/notifications.ts`**
+- `isEmailProviderConfigured()` now delegates to `isResendConfigured()`.
+- `sendTestEmailAction()` now actually sends via Resend to the user's Supabase account email using the branded digest template with a test line. Subject: `✅ Stay Focused test email`. Does not touch `canvas_update_events` or mark any digest state. Returns friendly success/error message without exposing raw Resend errors.
+
+**`actions/user-settings.ts`**
+- Added `canvas_updates: boolean` to `EmailCategories` type and `DEFAULT_EMAIL_CATEGORIES` (default `false`).
+- `emailProviderConfigured` now uses `isResendConfigured()` instead of checking multiple legacy env vars.
+
+**`actions/canvas.ts`**
+- `runExternalCanvasSyncJob` now calls `attemptCanvasDigestForUser` after marking the job complete, but only if `eventInsert.inserted > 0`. Wrapped in try-catch so an email failure never fails the sync job.
+
+**`components/settings/NotificationSettings.tsx`**
+- Added `canvas_updates` toggle (label: "Canvas updates digest") to the Notification Types section.
+
+**`tests/canvas-digest.test.ts`** (new)
+- 30 tests covering: template rendering, course grouping, ×N collapse, overflow, max-items cap, subject variants, plain-text fallback, MEANINGFUL_EVENT_TYPES filter, idempotency key stability, `isResendConfigured` missing-env paths, empty markEventsDigestSent, debug content exclusion.
+
+**`README.md`** — added `RESEND_API_KEY`, `EMAIL_FROM`, `CANVAS_UPDATE_EMAIL_COOLDOWN_MINUTES`, `CANVAS_UPDATE_EMAIL_MAX_ITEMS` to env section.
+
+**`docs/roadmap.md`** — added Email Notifications section.
+
+### Files touched
+
+- `package.json`
+- `lib/resend.ts`
+- `lib/email-templates/canvas-digest.ts`
+- `lib/canvas-digest.ts`
+- `supabase/migrations/20260507030000_add_canvas_digest_settings.sql`
+- `actions/notifications.ts`
+- `actions/user-settings.ts`
+- `actions/canvas.ts`
+- `components/settings/NotificationSettings.tsx`
+- `tests/canvas-digest.test.ts`
+- `README.md`
+- `docs/roadmap.md`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Build Canvas update email digests from stored `canvas_update_events` rows using Resend. One grouped digest per user per cooldown window. Wire the existing Settings test email button to the Resend provider. No Google/Microsoft destination selection yet.
+
+### Tests run
+
+- `npm run typecheck` — see verification section
+- `npm run lint` — see verification section
+- `npm test -- canvas-digest` — see verification section
+- `npm test -- queue` — see verification section
+
+### Verification result
+
+See post-commit verification below.
+
+### Known risks / blockers
+
+- The new Supabase migration (`20260507030000_add_canvas_digest_settings.sql`) must be applied to the remote project before `canvas_digest_last_sent_at` writes work.
+- `canvas_update_events` migration (`20260507020000`) must also be applied if not yet done.
+- `attemptCanvasDigestForUser` calls `supabase.auth.admin.getUserById(userId)` to resolve the user's email. This requires the service-role key and will fail gracefully (no email found) if the service-role client is unavailable.
+- Canvas updates digest is disabled by default. Users must go to Settings → Email Notifications → enable "Canvas updates digest."
+- Test email in Settings sends to the Supabase account email (`user.email`), not `notification_email` from settings (which may differ). Intentional for this phase.
+
+### Next recommended step
+
+1. Apply the two pending Supabase migrations remotely.
+2. Add `RESEND_API_KEY`, `EMAIL_FROM`, `CANVAS_UPDATE_EMAIL_COOLDOWN_MINUTES`, and `CANVAS_UPDATE_EMAIL_MAX_ITEMS` to Vercel environment variables.
+3. In Settings → Email Notifications, set frequency to Instant or Daily digest, enable "Canvas updates digest," then use the Send test email button to verify the Resend integration.
+4. Trigger an external cron sync that inserts new events and confirm a digest email is delivered.
+
+### Suggested commit message
+
+add Canvas update email digests
+
+---
+
 ## Session Update - 2026-05-07 (Remove notification volume control)
 
 ### What changed

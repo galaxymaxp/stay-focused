@@ -73,6 +73,7 @@ import {
   type CanvasUpdateEventContext,
   type CanvasUpdateEventInput,
 } from '@/lib/canvas-update-events'
+import { attemptCanvasDigestForUser } from '@/lib/canvas-digest'
 import {
   markQueuedJobCompleted,
   markQueuedJobFailed,
@@ -638,6 +639,18 @@ async function runExternalCanvasSyncJob(job: QueuedJob) {
   })
 
   revalidateCanvasSyncPaths(existingModule.id, courseRecord.id)
+
+  // Attempt digest email after sync — must not throw or block the sync result.
+  if (eventInsert.inserted > 0) {
+    try {
+      await attemptCanvasDigestForUser({ supabase, userId: job.userId })
+    } catch (err) {
+      console.warn('[canvas-digest] digest attempt threw unexpectedly', {
+        userId: job.userId,
+        message: err instanceof Error ? err.message : String(err),
+      })
+    }
+  }
 }
 
 async function updateExternalCanvasJobStep(

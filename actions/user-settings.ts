@@ -1,6 +1,7 @@
 'use server'
 
 import { createAuthenticatedSupabaseServerClient, getAuthenticatedUserServer } from '@/lib/auth-server'
+import { isResendConfigured } from '@/lib/resend'
 import { revalidatePath } from 'next/cache'
 
 export interface EmailCategories {
@@ -8,6 +9,7 @@ export interface EmailCategories {
   new_uploads: boolean
   announcements: boolean
   queue_completed: boolean
+  canvas_updates: boolean
 }
 
 const DEFAULT_EMAIL_CATEGORIES: EmailCategories = {
@@ -15,6 +17,7 @@ const DEFAULT_EMAIL_CATEGORIES: EmailCategories = {
   new_uploads: true,
   announcements: false,
   queue_completed: true,
+  canvas_updates: false,
 }
 
 export interface UserSettings {
@@ -37,12 +40,7 @@ export async function getUserSettings() {
     return { ok: false as const, error: 'Not authenticated' }
   }
 
-  const emailProviderConfigured = Boolean(
-    process.env.RESEND_API_KEY ||
-    process.env.SENDGRID_API_KEY ||
-    process.env.SMTP_HOST ||
-    process.env.EMAIL_PROVIDER,
-  )
+  const emailProviderConfigured = isResendConfigured()
 
   try {
     const client = await createAuthenticatedSupabaseServerClient()
