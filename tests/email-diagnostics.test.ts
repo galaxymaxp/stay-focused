@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { resolveTestEmailRecipient, classifyTestEmailError } from '../lib/resend'
+import { resolveTestEmailRecipient, classifyTestEmailError, isResendDevSender } from '../lib/resend'
 
 // ---------------------------------------------------------------------------
 // resolveTestEmailRecipient
@@ -49,4 +49,31 @@ test('classifyTestEmailError returns generic message for non-resend.dev sender',
   const msg = classifyTestEmailError('Stay Focused <noreply@stayfocused.app>')
   assert.ok(msg.includes('RESEND_API_KEY'), 'should mention config vars')
   assert.ok(!msg.includes('resend.dev'), 'should not mention resend.dev restriction')
+})
+
+// ---------------------------------------------------------------------------
+// isResendDevSender
+// ---------------------------------------------------------------------------
+
+test('isResendDevSender returns true when EMAIL_FROM contains @resend.dev', () => {
+  const original = process.env.EMAIL_FROM
+  process.env.EMAIL_FROM = 'Stay Focused <onboarding@resend.dev>'
+  assert.equal(isResendDevSender(), true)
+  if (original === undefined) delete process.env.EMAIL_FROM
+  else process.env.EMAIL_FROM = original
+})
+
+test('isResendDevSender returns false when EMAIL_FROM is a real domain', () => {
+  const original = process.env.EMAIL_FROM
+  process.env.EMAIL_FROM = 'Stay Focused <noreply@stayfocused.app>'
+  assert.equal(isResendDevSender(), false)
+  if (original === undefined) delete process.env.EMAIL_FROM
+  else process.env.EMAIL_FROM = original
+})
+
+test('isResendDevSender returns false when EMAIL_FROM is not set', () => {
+  const original = process.env.EMAIL_FROM
+  delete process.env.EMAIL_FROM
+  assert.equal(isResendDevSender(), false)
+  if (original !== undefined) process.env.EMAIL_FROM = original
 })

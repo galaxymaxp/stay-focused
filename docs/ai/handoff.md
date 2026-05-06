@@ -5,6 +5,61 @@ Last Updated: 2026-05-07
 
 ---
 
+## Session Update - 2026-05-07 (Polish Canvas digest email settings)
+
+### What changed
+
+**`lib/resend.ts`**
+- New export `isResendDevSender()` — returns `true` when `EMAIL_FROM` contains `@resend.dev`. Used by settings to surface a configuration warning without requiring callers to read env directly.
+
+**`actions/user-settings.ts`**
+- Added `isResendDevSender: boolean` to `UserSettings` interface.
+- `getUserSettings()` computes it via `isResendDevSender()` and includes it in both return paths.
+
+**`components/settings/NotificationSettings.tsx`**
+- Added `isResendDevSender?: boolean` prop (defaults `false`).
+- Email Notifications section description now reads: "Digests are sent to your account email. Stay Focused sends through its notification service — it will not send mail from your personal inbox."
+- Canvas updates digest toggle description updated to: "Grouped digest of Canvas updates sent to your account email."
+- When `isAdmin && isResendDevSender`: shows a yellow warning banner — "Resend test sender is limited. Verify a domain in Resend and update EMAIL_FROM before sending to other users."
+
+**`components/SettingsPage.tsx`**
+- Passes `isResendDevSender={userSettings.isResendDevSender}` to `<NotificationSettings />`.
+
+**`tests/email-diagnostics.test.ts`**
+- Added 3 tests for `isResendDevSender`: returns true for `@resend.dev` sender, false for real domain, false when env is unset.
+
+### Files touched
+
+- `lib/resend.ts`
+- `actions/user-settings.ts`
+- `components/settings/NotificationSettings.tsx`
+- `components/SettingsPage.tsx`
+- `tests/email-diagnostics.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+The Settings Email Notifications section lacked clarity about where emails go (account email, not a custom inbox) and how they're sent (via Resend's notification service, not the user's personal Gmail/etc.). The resend.dev warning helps the admin understand why test sends may fail before verifying a domain.
+
+### Tests run
+
+- `npm run typecheck`
+- `npm run lint`
+- `npm test -- canvas-digest`
+- `npm test -- queue`
+- `npm test`
+
+### Next recommended step
+
+1. Verify a Resend domain and update `EMAIL_FROM` to `Stay Focused <noreply@yourdomain.com>` to remove the warning banner and unblock real sends.
+2. Add `ADMIN_EMAILS=omgraythekid@gmail.com` to Vercel env if not done yet.
+
+### Suggested commit message
+
+polish Canvas digest email settings
+
+---
+
 ## Session Update - 2026-05-07 (Restrict test email tools to admins)
 
 ### What changed

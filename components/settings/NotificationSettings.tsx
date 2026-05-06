@@ -32,6 +32,7 @@ interface Props {
   initialEmailCategories: EmailCategories
   notificationEmail: string | null
   emailProviderConfigured?: boolean
+  isResendDevSender?: boolean
   isAdmin?: boolean
 }
 
@@ -40,6 +41,7 @@ export function NotificationSettings({
   initialEmailCategories,
   notificationEmail,
   emailProviderConfigured = false,
+  isResendDevSender = false,
   isAdmin = false,
 }: Props) {
   const [frequency, setFrequency] = useState<FrequencyOption>(initialEmailNotifications)
@@ -114,7 +116,7 @@ export function NotificationSettings({
       <section>
         <div style={{ marginBottom: '0.65rem' }}>
           <h3 style={{ margin: 0, fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>Email Notifications</h3>
-          <p style={{ margin: '0.2rem 0 0', fontSize: '12px', color: 'var(--text-muted)' }}>Choose how often Stay Focused emails you about activity.</p>
+          <p style={{ margin: '0.2rem 0 0', fontSize: '12px', color: 'var(--text-muted)' }}>Choose how often Stay Focused emails you about activity. Digests are sent to your account email. Stay Focused sends through its notification service — it will not send mail from your personal inbox.</p>
         </div>
         <div style={{ borderRadius: 'var(--radius-panel)', border: '1px solid var(--border-subtle)', background: 'var(--surface-base)', overflow: 'hidden' }}>
           {frequencyOptions.map((opt, i) => (
@@ -160,6 +162,16 @@ export function NotificationSettings({
         </div>
       </section>
 
+      {/* resend.dev sender warning — admin only */}
+      {isAdmin && isResendDevSender && (
+        <div style={{ padding: '0.7rem 0.9rem', borderRadius: 'var(--radius-panel)', border: '1px solid color-mix(in srgb, var(--yellow, #ca8a04) 35%, var(--border-subtle) 65%)', background: 'color-mix(in srgb, var(--yellow, #ca8a04) 8%, var(--surface-base) 92%)' }}>
+          <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-primary)', fontWeight: 600 }}>Resend test sender is limited</p>
+          <p style={{ margin: '0.2rem 0 0', fontSize: '12px', color: 'var(--text-muted)' }}>
+            <code style={{ fontFamily: 'monospace' }}>onboarding@resend.dev</code> can only deliver to your Resend account email. Verify a domain in Resend and update <code style={{ fontFamily: 'monospace' }}>EMAIL_FROM</code> before sending to other users.
+          </p>
+        </div>
+      )}
+
       {/* Category toggles */}
       <section>
         <div style={{ marginBottom: '0.65rem' }}>
@@ -182,7 +194,7 @@ export function NotificationSettings({
             { key: 'new_uploads' as const, label: 'New uploads', desc: 'New modules, resources, or study materials.' },
             { key: 'announcements' as const, label: 'Announcements', desc: 'New Canvas announcements from your courses.' },
             { key: 'queue_completed' as const, label: 'Queue completed', desc: 'When a background job finishes.' },
-            { key: 'canvas_updates' as const, label: 'Canvas updates digest', desc: 'Grouped digest of new Canvas assignments, announcements, modules, and resources.' },
+            { key: 'canvas_updates' as const, label: 'Canvas updates digest', desc: 'Grouped digest of Canvas updates sent to your account email.' },
           ] as const).map(({ key, label, desc }, i, arr) => (
             <div
               key={key}

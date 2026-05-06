@@ -574,6 +574,7 @@ export function SettingsPage() {
                     initialEmailCategories={userSettings.emailCategories}
                     notificationEmail={userSettings.notificationEmail}
                     emailProviderConfigured={userSettings.emailProviderConfigured}
+                    isResendDevSender={userSettings.isResendDevSender}
                     isAdmin={userSettings.isAdmin}
                   />
                 </div>

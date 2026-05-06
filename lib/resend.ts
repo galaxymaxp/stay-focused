@@ -29,6 +29,15 @@ export function resolveTestEmailRecipient(userEmail: string, isProduction: boole
 }
 
 /**
+ * Returns true when EMAIL_FROM is using the Resend shared test sender (@resend.dev).
+ * That sender can only deliver to the Resend account owner's address; any other recipient
+ * will be rejected. Callers use this to surface configuration warnings in the UI.
+ */
+export function isResendDevSender(): boolean {
+  return (process.env.EMAIL_FROM ?? '').toLowerCase().includes('@resend.dev')
+}
+
+/**
  * Returns a user-facing error string for a failed test email send.
  * The onboarding@resend.dev sender can only deliver to the Resend account owner's email;
  * any other recipient will be rejected with 403. When that sender is detected, surface a
