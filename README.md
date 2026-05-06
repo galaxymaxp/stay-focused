@@ -60,6 +60,7 @@ RESEND_API_KEY=
 EMAIL_FROM=
 CANVAS_UPDATE_EMAIL_COOLDOWN_MINUTES=30
 CANVAS_UPDATE_EMAIL_MAX_ITEMS=12
+ADMIN_EMAILS=
 ```
 
 3. Apply Supabase migrations:
@@ -102,6 +103,7 @@ npm run dev
 - `RESEND_API_KEY`: Resend API key for transactional email (Canvas update digests and test emails)
 - `EMAIL_FROM`: Sender address for outgoing email, e.g. `Stay Focused <noreply@stayfocused.app>`. **Note:** `onboarding@resend.dev` is a Resend test-only sender that can only deliver to your Resend account email — it will be rejected for any other recipient. For real app emails, add a verified domain in Resend and set `EMAIL_FROM` to an address on that domain.
 - `EMAIL_TEST_TO`: *(development/staging only)* When set and `NODE_ENV !== production`, the Settings "Send test email" button delivers to this address instead of the signed-in user's account email. Ignored in production. Useful for testing with `onboarding@resend.dev` which only accepts the Resend account owner's address.
+- `ADMIN_EMAILS`: Comma-separated list of email addresses that have access to admin-only features (e.g. the "Send test email" button in Settings). Emails are compared case-insensitively. Safe default: no one is admin when this env var is missing or empty. Example: `ADMIN_EMAILS=you@example.com,colleague@example.com`
 - `CANVAS_UPDATE_EMAIL_COOLDOWN_MINUTES`: Minimum minutes between Canvas update digest emails per user; defaults to `30`
 - `CANVAS_UPDATE_EMAIL_MAX_ITEMS`: Maximum display lines in a single digest email; defaults to `12`
 

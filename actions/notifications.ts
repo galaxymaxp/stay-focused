@@ -3,6 +3,7 @@
 import { getAuthenticatedUserServer } from '@/lib/auth-server'
 import { createNotification } from '@/lib/notifications-server'
 import { isResendConfigured, resolveTestEmailRecipient, classifyTestEmailError, sendTransactionalEmail } from '@/lib/resend'
+import { isAdminEmail } from '@/lib/admin'
 import { buildDigestHtml, buildDigestText } from '@/lib/email-templates/canvas-digest'
 import type { NotificationType, NotificationSeverity } from '@/lib/notifications-server'
 
@@ -47,6 +48,7 @@ export async function sendTestEmailAction(): Promise<{ ok: boolean; error?: stri
   const user = await getAuthenticatedUserServer()
   if (!user) return { ok: false, error: 'Not authenticated.' }
   if (!user.email) return { ok: false, error: 'No email address on this account.' }
+  if (!isAdminEmail(user.email)) return { ok: false, error: 'Not authorized.' }
 
   const isProduction = process.env.NODE_ENV === 'production'
   const recipient = resolveTestEmailRecipient(user.email, isProduction)

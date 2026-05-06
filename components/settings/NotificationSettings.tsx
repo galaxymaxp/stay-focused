@@ -32,6 +32,7 @@ interface Props {
   initialEmailCategories: EmailCategories
   notificationEmail: string | null
   emailProviderConfigured?: boolean
+  isAdmin?: boolean
 }
 
 export function NotificationSettings({
@@ -39,6 +40,7 @@ export function NotificationSettings({
   initialEmailCategories,
   notificationEmail,
   emailProviderConfigured = false,
+  isAdmin = false,
 }: Props) {
   const [frequency, setFrequency] = useState<FrequencyOption>(initialEmailNotifications)
   const [categories, setCategories] = useState<EmailCategories>(initialEmailCategories)
@@ -229,8 +231,8 @@ export function NotificationSettings({
         )}
       </div>
 
-      {/* Email test — always visible, disabled when provider not configured */}
-      <section>
+      {/* Email test — admin only */}
+      {isAdmin && <section>
         <div style={{ marginBottom: '0.65rem' }}>
           <h3 style={{ margin: 0, fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>Test email</h3>
         </div>
@@ -276,7 +278,7 @@ export function NotificationSettings({
             </button>
           </div>
         </div>
-      </section>
+      </section>}
 
       {/* In-app notification tests — dev mode only */}
       {SHOW_IN_APP_TESTS && (

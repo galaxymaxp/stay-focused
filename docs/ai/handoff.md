@@ -5,6 +5,71 @@ Last Updated: 2026-05-07
 
 ---
 
+## Session Update - 2026-05-07 (Restrict test email tools to admins)
+
+### What changed
+
+**`lib/admin.ts`** (new)
+- `isAdminEmail(email)` — reads `ADMIN_EMAILS` env var (comma-separated), normalizes to lowercase/trimmed. Returns `false` when env is missing or email is null/undefined. Safe-default: no admins without config.
+
+**`actions/user-settings.ts`**
+- Added `isAdmin: boolean` to `UserSettings` interface.
+- `getUserSettings()` now computes `isAdmin` via `isAdminEmail(user.email)` and includes it in both return paths (no settings row and existing row).
+
+**`actions/notifications.ts`** — `sendTestEmailAction`
+- Server-side guard: returns `{ ok: false, error: 'Not authorized.' }` immediately if the authenticated user is not an admin. Does not send email or expose provider details.
+
+**`components/settings/NotificationSettings.tsx`**
+- Added `isAdmin?: boolean` prop (defaults `false`).
+- "Test email" section is now wrapped in `{isAdmin && ...}` — non-admin users do not see the section at all.
+
+**`components/SettingsPage.tsx`**
+- Passes `isAdmin={userSettings.isAdmin}` to `<NotificationSettings />`.
+
+**`tests/admin.test.ts`** (new, 7 tests)
+- `isAdminEmail` returns true for matching email; false for non-admin; false when `ADMIN_EMAILS` is missing; false for empty string; works with comma-separated list; normalizes case; handles null/undefined input.
+
+**`README.md`**
+- Added `ADMIN_EMAILS` to env var table and `.env.local` template.
+- Documents comma-separated format, case-insensitive comparison, and safe default behavior.
+
+### Files touched
+
+- `lib/admin.ts`
+- `actions/user-settings.ts`
+- `actions/notifications.ts`
+- `components/settings/NotificationSettings.tsx`
+- `components/SettingsPage.tsx`
+- `tests/admin.test.ts`
+- `README.md`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+The "Send test email" button directly exercises the Resend integration and can incur API calls. Restricting it to admin accounts prevents regular users from triggering test sends and avoids confusion about what the button does.
+
+### Tests run
+
+- `npm run typecheck`
+- `npm run lint`
+- `npm test`
+
+### Known risks / blockers
+
+- `ADMIN_EMAILS` must be set in both `.env.local` (development) and Vercel (production) for the admin account to have access.
+- If `ADMIN_EMAILS` is not set in Vercel, no one (including the account owner) will see the test email section in production.
+
+### Next recommended step
+
+1. Add `ADMIN_EMAILS=omgraythekid@gmail.com` to `.env.local`.
+2. Add `ADMIN_EMAILS=omgraythekid@gmail.com` to Vercel environment variables.
+
+### Suggested commit message
+
+restrict test email tools to admins
+
+---
+
 ## Session Update - 2026-05-07 (Improve Resend test email diagnostics)
 
 ### What changed

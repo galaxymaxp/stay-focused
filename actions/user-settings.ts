@@ -2,6 +2,7 @@
 
 import { createAuthenticatedSupabaseServerClient, getAuthenticatedUserServer } from '@/lib/auth-server'
 import { isResendConfigured } from '@/lib/resend'
+import { isAdminEmail } from '@/lib/admin'
 import { revalidatePath } from 'next/cache'
 
 export interface EmailCategories {
@@ -30,6 +31,7 @@ export interface UserSettings {
   emailNotifications: 'off' | 'instant' | 'daily_digest'
   emailCategories: EmailCategories
   emailProviderConfigured: boolean
+  isAdmin: boolean
   createdAt: string
   updatedAt: string
 }
@@ -41,6 +43,7 @@ export async function getUserSettings() {
   }
 
   const emailProviderConfigured = isResendConfigured()
+  const isAdmin = isAdminEmail(user.email)
 
   try {
     const client = await createAuthenticatedSupabaseServerClient()
@@ -70,6 +73,7 @@ export async function getUserSettings() {
           emailNotifications: 'off' as const,
           emailCategories: DEFAULT_EMAIL_CATEGORIES,
           emailProviderConfigured,
+          isAdmin,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         },
@@ -88,6 +92,7 @@ export async function getUserSettings() {
         emailNotifications: (data.email_notifications ?? 'off') as 'off' | 'instant' | 'daily_digest',
         emailCategories: { ...DEFAULT_EMAIL_CATEGORIES, ...(data.email_categories as Partial<EmailCategories> ?? {}) },
         emailProviderConfigured,
+        isAdmin,
         createdAt: data.created_at,
         updatedAt: data.updated_at,
       },
