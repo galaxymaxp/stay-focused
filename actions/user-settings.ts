@@ -3,7 +3,7 @@
 import { createAuthenticatedSupabaseServerClient, getAuthenticatedUserServer, getAuthenticatedUserWithIdentities } from '@/lib/auth-server'
 import { isResendConfigured, isResendDevSender } from '@/lib/resend'
 import { isAdminEmail } from '@/lib/admin'
-import { getNotificationEmailOptions, type NotificationEmailOption, type NotificationEmailSource } from '@/lib/notification-email-options'
+import { getNotificationEmailOptions, NOTIFICATION_EMAIL_SOURCES, type NotificationEmailOption, type NotificationEmailSource } from '@/lib/notification-email-options'
 import { revalidatePath } from 'next/cache'
 
 export interface EmailCategories {
@@ -22,7 +22,6 @@ const DEFAULT_EMAIL_CATEGORIES: EmailCategories = {
   canvas_updates: false,
 }
 
-export type { NotificationEmailSource, NotificationEmailOption }
 
 export interface UserSettings {
   userId: string
@@ -42,10 +41,8 @@ export interface UserSettings {
   updatedAt: string
 }
 
-const ALLOWED_EMAIL_SOURCES: NotificationEmailSource[] = ['supabase_account', 'linked_google', 'linked_microsoft']
-
 function toEmailSource(raw: unknown): NotificationEmailSource {
-  if (typeof raw === 'string' && (ALLOWED_EMAIL_SOURCES as string[]).includes(raw)) {
+  if (typeof raw === 'string' && (NOTIFICATION_EMAIL_SOURCES as readonly string[]).includes(raw)) {
     return raw as NotificationEmailSource
   }
   return 'supabase_account'
@@ -283,7 +280,7 @@ export async function updateNotificationEmailSource(input: { source: Notificatio
   const user = await getAuthenticatedUserServer()
   if (!user) return { ok: false as const, error: 'Not authenticated' }
 
-  if (!(ALLOWED_EMAIL_SOURCES as string[]).includes(input.source)) {
+  if (!(NOTIFICATION_EMAIL_SOURCES as readonly string[]).includes(input.source)) {
     return { ok: false as const, error: 'Invalid source' }
   }
 

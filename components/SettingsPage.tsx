@@ -10,7 +10,8 @@ import {
   setSoundEnabled,
   playNotificationSound,
 } from '@/lib/notifications'
-import { getUserSettings, updateCanvasSettings, updateNotificationEmailSource, type UserSettings, type NotificationEmailSource } from '@/actions/user-settings'
+import { getUserSettings, updateCanvasSettings, updateNotificationEmailSource, type UserSettings } from '@/actions/user-settings'
+import type { NotificationEmailSource } from '@/lib/notification-email-options'
 import { NotificationSettings } from '@/components/settings/NotificationSettings'
 import { useResolvedUserAvatar } from '@/components/useResolvedUserAvatar'
 import { UserAvatar } from '@/components/UserAvatar'

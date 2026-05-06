@@ -4,7 +4,7 @@ import { getAuthenticatedUserServer, getAuthenticatedUserWithIdentities, createA
 import { createNotification } from '@/lib/notifications-server'
 import { isResendConfigured, resolveTestEmailRecipient, classifyTestEmailError, sendTransactionalEmail } from '@/lib/resend'
 import { isAdminEmail } from '@/lib/admin'
-import { getNotificationEmailOptions, resolveEmailFromOptions, type NotificationEmailSource } from '@/lib/notification-email-options'
+import { getNotificationEmailOptions, resolveEmailFromOptions } from '@/lib/notification-email-options'
 import { buildDigestHtml, buildDigestText } from '@/lib/email-templates/canvas-digest'
 import type { NotificationType, NotificationSeverity } from '@/lib/notifications-server'
 
@@ -41,7 +41,7 @@ export async function isEmailProviderConfigured(): Promise<boolean> {
   return isResendConfigured()
 }
 
-async function loadNotificationEmailSource(userId: string): Promise<NotificationEmailSource> {
+async function loadNotificationEmailSource(userId: string) {
   try {
     const client = await createAuthenticatedSupabaseServerClient()
     if (!client) return 'supabase_account'

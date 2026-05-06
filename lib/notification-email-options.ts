@@ -1,6 +1,8 @@
 import type { User } from '@supabase/supabase-js'
 
-export type NotificationEmailSource = 'supabase_account' | 'linked_google' | 'linked_microsoft'
+export const NOTIFICATION_EMAIL_SOURCES = ['supabase_account', 'linked_google', 'linked_microsoft'] as const
+
+export type NotificationEmailSource = typeof NOTIFICATION_EMAIL_SOURCES[number]
 
 export interface NotificationEmailOption {
   source: NotificationEmailSource

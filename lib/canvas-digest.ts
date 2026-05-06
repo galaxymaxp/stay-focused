@@ -7,7 +7,7 @@ import {
   type DigestCourseSection,
   type DigestDisplayLine,
 } from '@/lib/email-templates/canvas-digest'
-import { getNotificationEmailOptions, resolveEmailFromOptions, type NotificationEmailSource } from '@/lib/notification-email-options'
+import { getNotificationEmailOptions, resolveEmailFromOptions } from '@/lib/notification-email-options'
 import type { CanvasUpdateEventType } from '@/lib/canvas-update-events'
 
 const DEFAULT_COOLDOWN_MINUTES = 30
@@ -213,10 +213,10 @@ async function loadUserDigestSettings(
 
   // Resolve which email to actually send to based on notification_email_source.
   const rawSource = (settingsRow as Record<string, unknown> | null)?.notification_email_source as string | null ?? 'supabase_account'
-  const emailSource: NotificationEmailSource =
+  const emailSource =
     rawSource === 'linked_google' || rawSource === 'linked_microsoft'
       ? rawSource
-      : 'supabase_account'
+      : ('supabase_account' as const)
 
   let resolvedEmail: string | null = null
   if (supabaseUser) {
