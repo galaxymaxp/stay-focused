@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useSearchParams } from 'next/navigation'
 import { Home, BookOpen, Calendar, Settings, X, GraduationCap, Library, RefreshCcw } from 'lucide-react'
 import { cn } from '@/lib/cn'
 
@@ -10,7 +10,7 @@ const navItems = [
   { href: '/courses', label: 'Courses', icon: BookOpen },
   { href: '/library', label: 'Study Library', icon: Library },
   { href: '/calendar', label: 'Calendar', icon: Calendar },
-  { href: '/sync', label: 'Sync Courses', icon: RefreshCcw },
+  { href: '/settings?section=canvas', label: 'Sync Courses', icon: RefreshCcw },
   { href: '/settings', label: 'Settings', icon: Settings },
 ]
 
@@ -21,10 +21,21 @@ type Props = {
 
 export function Sidebar({ open, onClose }: Props) {
   const pathname = usePathname()
+  const searchParams = useSearchParams()
 
   const isActive = (href: string) => {
     if (href === '/') return pathname === '/'
-    return pathname.startsWith(href)
+    const [basePath, rawQuery] = href.split('?')
+    if (rawQuery) {
+      // Only match if both the pathname and all query params in the href match.
+      if (!pathname.startsWith(basePath)) return false
+      const hrefParams = new URLSearchParams(rawQuery)
+      for (const [key, value] of hrefParams.entries()) {
+        if (searchParams.get(key) !== value) return false
+      }
+      return true
+    }
+    return pathname.startsWith(basePath)
   }
 
   return (

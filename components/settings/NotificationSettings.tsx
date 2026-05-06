@@ -6,6 +6,7 @@ import { Toggle } from '@/components/ui/Toggle'
 import { updateEmailPreferences, type EmailCategories } from '@/actions/user-settings'
 import { createTestNotificationAction, sendTestEmailAction } from '@/actions/notifications'
 import { dispatchInAppToast } from '@/lib/notifications'
+import type { NotificationEmailSource, NotificationEmailOption } from '@/lib/notification-email-options'
 
 type FrequencyOption = 'off' | 'instant' | 'daily_digest'
 
@@ -31,18 +32,24 @@ interface Props {
   initialEmailNotifications: FrequencyOption
   initialEmailCategories: EmailCategories
   notificationEmail: string | null
+  notificationEmailSource?: NotificationEmailSource
+  notificationEmailOptions?: NotificationEmailOption[]
   emailProviderConfigured?: boolean
   isResendDevSender?: boolean
   isAdmin?: boolean
+  onNotificationEmailSourceChange?: (source: NotificationEmailSource) => void
 }
 
 export function NotificationSettings({
   initialEmailNotifications,
   initialEmailCategories,
   notificationEmail,
+  notificationEmailSource = 'supabase_account',
+  notificationEmailOptions = [],
   emailProviderConfigured = false,
   isResendDevSender = false,
   isAdmin = false,
+  onNotificationEmailSourceChange,
 }: Props) {
   const [frequency, setFrequency] = useState<FrequencyOption>(initialEmailNotifications)
   const [categories, setCategories] = useState<EmailCategories>(initialEmailCategories)
@@ -53,6 +60,7 @@ export function NotificationSettings({
     pending: false,
     result: null,
   })
+  const [sourceSaving, setSourceSaving] = useState(false)
 
   const masterEnabled = frequency !== 'off'
 
@@ -97,18 +105,45 @@ export function NotificationSettings({
     }
   }
 
+  async function handleSourceChange(source: NotificationEmailSource) {
+    if (sourceSaving || source === notificationEmailSource) return
+    setSourceSaving(true)
+    try {
+      await onNotificationEmailSourceChange?.(source)
+    } finally {
+      setSourceSaving(false)
+    }
+  }
+
+  // Determine whether selected source's email is unavailable (warn the user).
+  const selectedOption = notificationEmailOptions.find((o) => o.source === notificationEmailSource)
+  const selectedSourceUnavailable = selectedOption && !selectedOption.available
+
+  // Derive the display email for the currently active source.
+  const activeDisplayEmail = selectedOption?.email ?? notificationEmail
+
   return (
     <div style={{ display: 'grid', gap: '1.5rem' }}>
 
       {/* Email address */}
-      {notificationEmail && (
+      {activeDisplayEmail && (
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', padding: '0.7rem 0.85rem', borderRadius: 'var(--radius-panel)', border: '1px solid var(--border-subtle)', background: 'var(--surface-soft)' }}>
           <div style={{ minWidth: 0 }}>
-            <p style={{ margin: 0, fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Notifications sent to</p>
+            <p style={{ margin: 0, fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Digests sent to</p>
             <p style={{ margin: '0.15rem 0 0', fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {notificationEmail}
+              {activeDisplayEmail}
             </p>
           </div>
+        </div>
+      )}
+
+      {/* Selected source unavailable warning */}
+      {selectedSourceUnavailable && (
+        <div style={{ padding: '0.7rem 0.9rem', borderRadius: 'var(--radius-panel)', border: '1px solid color-mix(in srgb, var(--yellow, #ca8a04) 35%, var(--border-subtle) 65%)', background: 'color-mix(in srgb, var(--yellow, #ca8a04) 8%, var(--surface-base) 92%)' }}>
+          <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-primary)', fontWeight: 600 }}>Selected email is no longer linked</p>
+          <p style={{ margin: '0.2rem 0 0', fontSize: '12px', color: 'var(--text-muted)' }}>
+            Digests will fall back to your account email until you re-link the provider or change your selection.
+          </p>
         </div>
       )}
 
@@ -222,6 +257,70 @@ export function NotificationSettings({
         )}
       </section>
 
+      {/* Canvas digest recipient */}
+      {notificationEmailOptions.length > 0 && (
+        <section>
+          <div style={{ marginBottom: '0.65rem' }}>
+            <h3 style={{ margin: 0, fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>Send Canvas update digests to</h3>
+            <p style={{ margin: '0.2rem 0 0', fontSize: '12px', color: 'var(--text-muted)' }}>
+              Stay Focused sends email through its notification service. It will not send mail from your personal inbox.
+            </p>
+          </div>
+          <div style={{ borderRadius: 'var(--radius-panel)', border: '1px solid var(--border-subtle)', background: 'var(--surface-base)', overflow: 'hidden', opacity: sourceSaving ? 0.7 : 1, transition: 'opacity 0.15s' }}>
+            {notificationEmailOptions.map((opt, i) => {
+              const selected = opt.source === notificationEmailSource
+              const disabled = !opt.available || sourceSaving
+              return (
+                <button
+                  key={opt.source}
+                  type="button"
+                  onClick={() => opt.available && handleSourceChange(opt.source)}
+                  aria-pressed={selected}
+                  disabled={disabled}
+                  className="ui-interactive-card"
+                  data-hover="flat"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '1.5rem',
+                    width: '100%',
+                    padding: '0.85rem 1rem',
+                    textAlign: 'left',
+                    background: 'transparent',
+                    cursor: disabled ? 'not-allowed' : 'pointer',
+                    borderBottom: i < notificationEmailOptions.length - 1 ? '1px solid var(--border-subtle)' : 'none',
+                    opacity: opt.available ? 1 : 0.5,
+                  }}
+                >
+                  <div style={{ minWidth: 0 }}>
+                    <p style={{ margin: 0, fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>{opt.label}</p>
+                    <p style={{ margin: '0.12rem 0 0', fontSize: '12px', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {opt.available && opt.email
+                        ? opt.email
+                        : (opt.disabledReason ?? 'Not available')}
+                    </p>
+                  </div>
+                  <span style={{
+                    flexShrink: 0,
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    padding: '0.2rem 0.6rem',
+                    borderRadius: '999px',
+                    border: `1px solid ${selected ? 'color-mix(in srgb, var(--accent) 40%, var(--border-subtle) 60%)' : 'var(--border-subtle)'}`,
+                    background: selected ? 'color-mix(in srgb, var(--accent) 12%, var(--surface-elevated) 88%)' : 'var(--surface-soft)',
+                    color: selected ? 'var(--accent)' : 'var(--text-muted)',
+                    transition: 'all 0.15s',
+                  }}>
+                    {selected ? 'Active' : 'Select'}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        </section>
+      )}
+
       {/* Save */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
         <button
@@ -254,7 +353,7 @@ export function NotificationSettings({
               <p style={{ margin: 0, fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>Send test email</p>
               <p style={{ margin: '0.12rem 0 0', fontSize: '12px', color: 'var(--text-muted)' }}>
                 {emailProviderConfigured
-                  ? `Send a test to ${notificationEmail ?? 'your notification address'}.`
+                  ? `Send a test to ${activeDisplayEmail ?? 'your notification address'}.`
                   : 'Email notifications require a provider configured in Vercel environment variables.'}
               </p>
               {emailTestState.result && (

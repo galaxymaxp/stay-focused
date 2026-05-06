@@ -7,6 +7,7 @@ import {
   type DigestCourseSection,
   type DigestDisplayLine,
 } from '@/lib/email-templates/canvas-digest'
+import { getNotificationEmailOptions, resolveEmailFromOptions, type NotificationEmailSource } from '@/lib/notification-email-options'
 import type { CanvasUpdateEventType } from '@/lib/canvas-update-events'
 
 const DEFAULT_COOLDOWN_MINUTES = 30
@@ -197,20 +198,34 @@ async function loadUserDigestSettings(
   supabase: SupabaseClient,
   userId: string,
 ): Promise<UserDigestSettings | null> {
-  // Load from user_settings and auth.users email in one query via a join approach.
-  // Supabase doesn't support cross-schema joins via the client, so load separately.
   const { data: settingsRow } = await supabase
     .from('user_settings')
-    .select('email_notifications, email_categories, canvas_digest_last_sent_at, notification_email')
+    .select('email_notifications, email_categories, canvas_digest_last_sent_at, notification_email, notification_email_source')
     .eq('user_id', userId)
     .maybeSingle()
 
-  // Fall back to auth.users email via admin API if no notification_email in settings.
+  // Use admin API to get the full user object including linked identities.
   const { data: userRow } = await supabase.auth.admin.getUserById(userId)
+  const supabaseUser = userRow?.user ?? null
 
-  const accountEmail = userRow?.user?.email ?? null
+  const accountEmail = supabaseUser?.email ?? null
   const rawNotificationEmail = (settingsRow as Record<string, unknown> | null)?.notification_email as string | null ?? null
-  const notificationEmail = rawNotificationEmail ?? accountEmail
+
+  // Resolve which email to actually send to based on notification_email_source.
+  const rawSource = (settingsRow as Record<string, unknown> | null)?.notification_email_source as string | null ?? 'supabase_account'
+  const emailSource: NotificationEmailSource =
+    rawSource === 'linked_google' || rawSource === 'linked_microsoft'
+      ? rawSource
+      : 'supabase_account'
+
+  let resolvedEmail: string | null = null
+  if (supabaseUser) {
+    const options = getNotificationEmailOptions(supabaseUser)
+    resolvedEmail = resolveEmailFromOptions(options, emailSource)
+  }
+
+  // Final fallback chain: source-resolved → notification_email column → account email.
+  const notificationEmail = resolvedEmail ?? rawNotificationEmail ?? accountEmail
 
   if (!notificationEmail) return null
 

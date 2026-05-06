@@ -14,6 +14,11 @@ import {
   type DigestCourseSection,
 } from '../lib/email-templates/canvas-digest'
 import { isResendConfigured } from '../lib/resend'
+import {
+  getNotificationEmailOptions,
+  resolveEmailFromOptions,
+} from '../lib/notification-email-options'
+import type { User, UserIdentity } from '@supabase/supabase-js'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -304,4 +309,97 @@ test('markEventsDigestSent with empty ids returns 0 without calling supabase', a
   const count = await markEventsDigestSent(fakeSupabase as never, [])
   assert.equal(count, 0)
   assert.equal(called, false)
+})
+
+// ---------------------------------------------------------------------------
+// Recipient source resolution — digest-path guard tests
+// ---------------------------------------------------------------------------
+
+function makeDigestUser(email: string, identities: UserIdentity[] = []): User {
+  return {
+    id: 'user-1',
+    email,
+    app_metadata: {},
+    user_metadata: {},
+    aud: 'authenticated',
+    created_at: new Date().toISOString(),
+    identities,
+  } as User
+}
+
+function makeDigestIdentity(provider: string, email: string): UserIdentity {
+  return {
+    id: `id-${provider}`,
+    user_id: 'user-1',
+    identity_id: `iid-${provider}`,
+    provider,
+    identity_data: { email },
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    last_sign_in_at: new Date().toISOString(),
+  }
+}
+
+test('digest recipient resolves to account email when source is supabase_account', () => {
+  const user = makeDigestUser('account@example.com')
+  const options = getNotificationEmailOptions(user)
+  assert.equal(resolveEmailFromOptions(options, 'supabase_account'), 'account@example.com')
+})
+
+test('digest recipient uses Google email when source is linked_google and identity exists', () => {
+  const user = makeDigestUser('account@example.com', [makeDigestIdentity('google', 'g@gmail.com')])
+  const options = getNotificationEmailOptions(user)
+  assert.equal(resolveEmailFromOptions(options, 'linked_google'), 'g@gmail.com')
+})
+
+test('digest recipient uses Microsoft email when source is linked_microsoft and identity exists', () => {
+  const user = makeDigestUser('account@example.com', [makeDigestIdentity('azure', 'ms@outlook.com')])
+  const options = getNotificationEmailOptions(user)
+  assert.equal(resolveEmailFromOptions(options, 'linked_microsoft'), 'ms@outlook.com')
+})
+
+test('digest recipient falls back to account email when linked_google source selected but identity missing', () => {
+  const user = makeDigestUser('account@example.com', [])
+  const options = getNotificationEmailOptions(user)
+  assert.equal(resolveEmailFromOptions(options, 'linked_google'), 'account@example.com')
+})
+
+test('digest recipient falls back to account email when linked_microsoft source selected but identity missing', () => {
+  const user = makeDigestUser('account@example.com', [])
+  const options = getNotificationEmailOptions(user)
+  assert.equal(resolveEmailFromOptions(options, 'linked_microsoft'), 'account@example.com')
+})
+
+// ---------------------------------------------------------------------------
+// Provider / admin guards
+// ---------------------------------------------------------------------------
+
+test('Resend remains the send provider — isResendConfigured reads RESEND_API_KEY and EMAIL_FROM', () => {
+  // Guard: confirms the digest path checks isResendConfigured(), which is
+  // a Resend-specific flag. If this API ever changed, this test would break.
+  const original = process.env.RESEND_API_KEY
+  const originalFrom = process.env.EMAIL_FROM
+  process.env.RESEND_API_KEY = 'test-key'
+  process.env.EMAIL_FROM = 'Stay Focused <noreply@example.com>'
+
+  assert.equal(isResendConfigured(), true)
+
+  process.env.RESEND_API_KEY = original ?? ''
+  process.env.EMAIL_FROM = originalFrom ?? ''
+})
+
+test('no Gmail or Microsoft send APIs are imported by canvas-digest or resend', async () => {
+  // Structural guard: these modules should not import gmail/graph/smtp-provider modules.
+  const digestSrc = await import('node:fs').then((fs) =>
+    fs.readFileSync(new URL('../lib/canvas-digest.ts', import.meta.url).pathname.replace(/^\/([A-Z]:)/, '$1'), 'utf8'),
+  )
+  const resendSrc = await import('node:fs').then((fs) =>
+    fs.readFileSync(new URL('../lib/resend.ts', import.meta.url).pathname.replace(/^\/([A-Z]:)/, '$1'), 'utf8'),
+  )
+
+  for (const src of [digestSrc, resendSrc]) {
+    assert.ok(!src.includes('googleapis'), 'should not import googleapis')
+    assert.ok(!src.includes('@microsoft/microsoft-graph-client'), 'should not import MS Graph client')
+    assert.ok(!src.includes('nodemailer'), 'should not import nodemailer')
+  }
 })

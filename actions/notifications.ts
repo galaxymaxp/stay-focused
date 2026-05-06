@@ -1,9 +1,10 @@
 'use server'
 
-import { getAuthenticatedUserServer } from '@/lib/auth-server'
+import { getAuthenticatedUserServer, getAuthenticatedUserWithIdentities, createAuthenticatedSupabaseServerClient } from '@/lib/auth-server'
 import { createNotification } from '@/lib/notifications-server'
 import { isResendConfigured, resolveTestEmailRecipient, classifyTestEmailError, sendTransactionalEmail } from '@/lib/resend'
 import { isAdminEmail } from '@/lib/admin'
+import { getNotificationEmailOptions, resolveEmailFromOptions, type NotificationEmailSource } from '@/lib/notification-email-options'
 import { buildDigestHtml, buildDigestText } from '@/lib/email-templates/canvas-digest'
 import type { NotificationType, NotificationSeverity } from '@/lib/notifications-server'
 
@@ -40,23 +41,48 @@ export async function isEmailProviderConfigured(): Promise<boolean> {
   return isResendConfigured()
 }
 
+async function loadNotificationEmailSource(userId: string): Promise<NotificationEmailSource> {
+  try {
+    const client = await createAuthenticatedSupabaseServerClient()
+    if (!client) return 'supabase_account'
+
+    const { data } = await client
+      .from('user_settings')
+      .select('notification_email_source')
+      .eq('user_id', userId)
+      .maybeSingle()
+
+    const raw = (data as Record<string, unknown> | null)?.notification_email_source as string | null
+    if (raw === 'linked_google' || raw === 'linked_microsoft') return raw
+    return 'supabase_account'
+  } catch {
+    return 'supabase_account'
+  }
+}
+
 export async function sendTestEmailAction(): Promise<{ ok: boolean; error?: string }> {
   if (!isResendConfigured()) {
     return { ok: false, error: 'Email provider not configured in environment variables.' }
   }
 
-  const user = await getAuthenticatedUserServer()
-  if (!user) return { ok: false, error: 'Not authenticated.' }
-  if (!user.email) return { ok: false, error: 'No email address on this account.' }
-  if (!isAdminEmail(user.email)) return { ok: false, error: 'Not authorized.' }
+  const fullUser = await getAuthenticatedUserWithIdentities()
+  if (!fullUser) return { ok: false, error: 'Not authenticated.' }
+  if (!fullUser.email) return { ok: false, error: 'No email address on this account.' }
+  if (!isAdminEmail(fullUser.email)) return { ok: false, error: 'Not authorized.' }
+
+  // Resolve recipient using the admin's selected notification email source.
+  const source = await loadNotificationEmailSource(fullUser.id)
+  const options = getNotificationEmailOptions(fullUser)
+  const resolvedEmail = resolveEmailFromOptions(options, source) ?? fullUser.email
 
   const isProduction = process.env.NODE_ENV === 'production'
-  const recipient = resolveTestEmailRecipient(user.email, isProduction)
+  const recipient = resolveTestEmailRecipient(resolvedEmail, isProduction)
 
   console.info('[test-email] sending', {
     to: recipient,
     isProduction,
-    usingTestOverride: recipient !== user.email,
+    usingTestOverride: recipient !== resolvedEmail,
+    source,
   })
 
   const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL?.trim()

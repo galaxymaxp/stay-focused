@@ -1100,31 +1100,21 @@ test('Show ended courses toggle triggers course reload when connection exists (d
   assert.ok(true, 'toggle fires handleUseSavedConnection when canLoadCourses — enforced in ConnectCanvasFlow.tsx')
 })
 
-test('Settings Canvas section links to /sync (documented contract)', () => {
-  // SettingsPage.tsx Canvas section "Go to Sync Courses" button href is /sync.
-  // Verified by code review.
-  const href = '/sync'
-  assert.ok(href === '/sync', 'Settings > Canvas "Go to Sync Courses" links to /sync')
+test('Settings Canvas section does not link to /sync (consolidated to /settings?section=canvas)', () => {
+  const source = readFileSync('components/SettingsPage.tsx', 'utf8')
+  assert.doesNotMatch(source, /href="\/sync"/, 'SettingsPage no longer links to /sync')
 })
 
-test('Sync Courses nav route exists at /sync (documented contract)', () => {
-  // app/sync/page.tsx is the dedicated sync page.
-  // Sidebar.tsx includes { href: '/sync', label: 'Sync Courses' }.
-  // Verified by code review.
-  assert.ok(true, '/sync route exists in app/sync/page.tsx; nav item added to Sidebar.tsx')
+test('/sync redirects to /settings?section=canvas (documented contract)', () => {
+  const source = readFileSync('app/sync/page.tsx', 'utf8')
+  assert.match(source, /redirect\(/, '/sync page calls redirect()')
+  assert.match(source, /\/settings\?section=canvas/, '/sync redirects to /settings?section=canvas')
 })
 
-test('/sync renders dedicated Sync Courses split page without primary connection card', () => {
-  const pageSource = readFileSync('app/sync/page.tsx', 'utf8')
-  const clientSource = readFileSync('components/SyncCoursesPageClient.tsx', 'utf8')
-
-  assert.match(clientSource, /<p className="ui-kicker">Sync Courses<\/p>/, 'dedicated Sync Courses eyebrow renders')
-  assert.match(clientSource, /<h1 className="ui-page-title">Sync Courses<\/h1>/, 'page title is Sync Courses')
-  assert.match(clientSource, /sync-summary-grid/, 'top summary grid exists')
-  assert.match(clientSource, /sync-split-layout/, 'split layout exists')
-  assert.doesNotMatch(pageSource, /page-shell-narrow/, '/sync uses the wide page shell')
-  assert.doesNotMatch(pageSource, /ConnectCanvasFlowWrapper/, '/sync does not wrap old Canvas settings flow')
-  assert.doesNotMatch(clientSource, /eyebrow="Connection"/, '/sync does not render old full Connection section')
+test('Sync Courses sidebar nav item points to /settings?section=canvas', () => {
+  const source = readFileSync('components/shell/Sidebar.tsx', 'utf8')
+  assert.match(source, /\/settings\?section=canvas/, 'Sidebar contains /settings?section=canvas href')
+  assert.doesNotMatch(source, /href: '\/sync'/, 'Sidebar no longer has /sync href')
 })
 
 test('/sync course controls use saved Canvas connection and no fake pagination', () => {
@@ -1138,9 +1128,8 @@ test('/sync course controls use saved Canvas connection and no fake pagination',
   assert.doesNotMatch(source, /Load courses/, 'no Load courses label')
 })
 
-test('/sync disconnected state links to Settings Canvas setup', () => {
-  const source = readFileSync('app/sync/page.tsx', 'utf8')
-
-  assert.match(source, /href="\/settings\?section=canvas"/, 'disconnected state links to Settings > Canvas')
-  assert.match(source, /Connection required/, 'disconnected state is compact and explicit')
+test('admin-only test email still gated by ADMIN_EMAILS', () => {
+  const source = readFileSync('actions/notifications.ts', 'utf8')
+  assert.match(source, /isAdminEmail/, 'sendTestEmailAction checks isAdminEmail')
+  assert.match(source, /Not authorized/, 'returns Not authorized for non-admin')
 })

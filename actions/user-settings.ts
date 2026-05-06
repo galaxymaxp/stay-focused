@@ -1,8 +1,9 @@
 'use server'
 
-import { createAuthenticatedSupabaseServerClient, getAuthenticatedUserServer } from '@/lib/auth-server'
+import { createAuthenticatedSupabaseServerClient, getAuthenticatedUserServer, getAuthenticatedUserWithIdentities } from '@/lib/auth-server'
 import { isResendConfigured, isResendDevSender } from '@/lib/resend'
 import { isAdminEmail } from '@/lib/admin'
+import { getNotificationEmailOptions, type NotificationEmailOption, type NotificationEmailSource } from '@/lib/notification-email-options'
 import { revalidatePath } from 'next/cache'
 
 export interface EmailCategories {
@@ -21,12 +22,16 @@ const DEFAULT_EMAIL_CATEGORIES: EmailCategories = {
   canvas_updates: false,
 }
 
+export type { NotificationEmailSource, NotificationEmailOption }
+
 export interface UserSettings {
   userId: string
   settingsRowExists: boolean
   canvasApiUrl: string | null
   canvasAccessToken: string | null
   notificationEmail: string | null
+  notificationEmailSource: NotificationEmailSource
+  notificationEmailOptions: NotificationEmailOption[]
   aiProvider: 'openai' | 'gemini' | 'nemotron'
   emailNotifications: 'off' | 'instant' | 'daily_digest'
   emailCategories: EmailCategories
@@ -37,15 +42,26 @@ export interface UserSettings {
   updatedAt: string
 }
 
+const ALLOWED_EMAIL_SOURCES: NotificationEmailSource[] = ['supabase_account', 'linked_google', 'linked_microsoft']
+
+function toEmailSource(raw: unknown): NotificationEmailSource {
+  if (typeof raw === 'string' && (ALLOWED_EMAIL_SOURCES as string[]).includes(raw)) {
+    return raw as NotificationEmailSource
+  }
+  return 'supabase_account'
+}
+
 export async function getUserSettings() {
-  const user = await getAuthenticatedUserServer()
-  if (!user) {
+  // Fetch the full user object (with identities) so we can build notification email options.
+  const fullUser = await getAuthenticatedUserWithIdentities()
+  if (!fullUser) {
     return { ok: false as const, error: 'Not authenticated' }
   }
 
   const emailProviderConfigured = isResendConfigured()
-  const isAdmin = isAdminEmail(user.email)
+  const isAdmin = isAdminEmail(fullUser.email ?? undefined)
   const resendDevSender = isResendDevSender()
+  const notificationEmailOptions = getNotificationEmailOptions(fullUser)
 
   try {
     const client = await createAuthenticatedSupabaseServerClient()
@@ -54,7 +70,7 @@ export async function getUserSettings() {
     const { data, error } = await client
       .from('user_settings')
       .select('*')
-      .eq('user_id', user.id)
+      .eq('user_id', fullUser.id)
       .maybeSingle()
 
     if (error) {
@@ -66,11 +82,13 @@ export async function getUserSettings() {
       return {
         ok: true as const,
         settings: {
-          userId: user.id,
+          userId: fullUser.id,
           settingsRowExists: false,
           canvasApiUrl: null,
           canvasAccessToken: null,
-          notificationEmail: user.email ?? null,
+          notificationEmail: fullUser.email ?? null,
+          notificationEmailSource: 'supabase_account' as NotificationEmailSource,
+          notificationEmailOptions,
           aiProvider: 'openai' as const,
           emailNotifications: 'off' as const,
           emailCategories: DEFAULT_EMAIL_CATEGORIES,
@@ -91,6 +109,8 @@ export async function getUserSettings() {
         canvasApiUrl: data.canvas_api_url,
         canvasAccessToken: data.canvas_access_token,
         notificationEmail: data.notification_email,
+        notificationEmailSource: toEmailSource((data as Record<string, unknown>).notification_email_source),
+        notificationEmailOptions,
         aiProvider: (data.ai_provider ?? 'openai') as 'openai' | 'gemini' | 'nemotron',
         emailNotifications: (data.email_notifications ?? 'off') as 'off' | 'instant' | 'daily_digest',
         emailCategories: { ...DEFAULT_EMAIL_CATEGORIES, ...(data.email_categories as Partial<EmailCategories> ?? {}) },
@@ -256,5 +276,41 @@ export async function getCanvasCredentials() {
     }
   } catch {
     return null
+  }
+}
+
+export async function updateNotificationEmailSource(input: { source: NotificationEmailSource }) {
+  const user = await getAuthenticatedUserServer()
+  if (!user) return { ok: false as const, error: 'Not authenticated' }
+
+  if (!(ALLOWED_EMAIL_SOURCES as string[]).includes(input.source)) {
+    return { ok: false as const, error: 'Invalid source' }
+  }
+
+  try {
+    const client = await createAuthenticatedSupabaseServerClient()
+    if (!client) return { ok: false as const, error: 'Supabase is not configured' }
+
+    const { error } = await client
+      .from('user_settings')
+      .upsert(
+        {
+          user_id: user.id,
+          notification_email_source: input.source,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'user_id' },
+      )
+
+    if (error) {
+      console.error('[updateNotificationEmailSource] Supabase error:', error)
+      return { ok: false as const, error: 'Could not save notification email source' }
+    }
+
+    revalidatePath('/settings')
+    return { ok: true as const }
+  } catch (err) {
+    console.error('[updateNotificationEmailSource] Unexpected error:', err)
+    return { ok: false as const, error: 'Unexpected error' }
   }
 }

@@ -1,5 +1,6 @@
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
+import type { User } from '@supabase/supabase-js'
 import { getRequiredSupabaseAuthEnv, isSupabaseAuthConfigured } from '@/lib/supabase-auth-config'
 
 export interface AuthenticatedUserSummary {
@@ -56,4 +57,14 @@ export async function requireAuthenticatedUserServer() {
     throw new Error('You need to sign in before using Canvas sync.')
   }
   return user
+}
+
+// Returns the full Supabase User object (including identities) for the current session.
+// Use this when you need linked-provider identity emails (e.g. Google, Microsoft).
+export async function getAuthenticatedUserWithIdentities(): Promise<User | null> {
+  const client = await createAuthenticatedSupabaseServerClient()
+  if (!client) return null
+
+  const { data: { user } } = await client.auth.getUser()
+  return user ?? null
 }

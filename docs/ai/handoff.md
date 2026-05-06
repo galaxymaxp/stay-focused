@@ -5,6 +5,129 @@ Last Updated: 2026-05-07
 
 ---
 
+## Session Update - 2026-05-07 (Add notification email recipient selection + consolidate Canvas sync route)
+
+### What changed
+
+**`supabase/migrations/20260507040000_add_notification_email_source.sql`** (new)
+- Adds `notification_email_source text not null default 'supabase_account'` with a `CHECK` constraint to `user_settings`.
+- Allowed values: `supabase_account`, `linked_google`, `linked_microsoft`.
+- Existing rows default to `supabase_account` — no behavior change for existing users.
+
+**`lib/notification-email-options.ts`** (new)
+- `getNotificationEmailOptions(user)` — derives available email options from a Supabase `User` object. Returns an array of `NotificationEmailOption` (source, label, email, available, disabledReason).
+- `resolveEmailFromOptions(options, source)` — returns the actual email string for a given source, with automatic fallback to account email if the selected source is unavailable.
+- Handles `google` and `azure`/`microsoft` provider names for linked identities.
+- Normalizes all emails to lowercase/trimmed for comparison.
+
+**`lib/auth-server.ts`**
+- Added `getAuthenticatedUserWithIdentities()` — returns the full Supabase `User` object including `identities`, needed to resolve linked provider emails server-side.
+
+**`actions/user-settings.ts`**
+- Added `notificationEmailSource: NotificationEmailSource` and `notificationEmailOptions: NotificationEmailOption[]` to the `UserSettings` interface.
+- `getUserSettings()` now calls `getAuthenticatedUserWithIdentities()` to build options and reads `notification_email_source` from the settings row.
+- Added `updateNotificationEmailSource({ source })` — server action to persist the selected source, with input validation.
+- Exports `NotificationEmailSource` and `NotificationEmailOption` types for consumers.
+
+**`lib/canvas-digest.ts`**
+- `loadUserDigestSettings()` now reads `notification_email_source` from the settings row.
+- Calls `getNotificationEmailOptions(supabaseUser)` and `resolveEmailFromOptions()` to pick the right recipient email based on the user's selection.
+- Fallback chain: source-resolved email → `notification_email` column → account email from admin API.
+- Canvas sync is not failed if recipient resolution fails — falls back gracefully.
+
+**`actions/notifications.ts`**
+- `sendTestEmailAction()` now resolves the recipient using the admin's saved `notification_email_source`, so test emails go to the same address the digest would use.
+- Added `loadNotificationEmailSource()` helper to load the setting from the DB.
+- Production still ignores `EMAIL_TEST_TO`.
+
+**`app/sync/page.tsx`**
+- Replaced the full sync page with a single-line `redirect('/settings?section=canvas')`. `/sync` is now a legacy compatibility redirect; all Canvas settings and sync live at `/settings?section=canvas`.
+
+**`components/shell/Sidebar.tsx`**
+- "Sync Courses" nav item href changed from `/sync` to `/settings?section=canvas`.
+- `isActive()` updated to handle query-param-based hrefs by parsing the query string and matching against `useSearchParams()`.
+- Added `useSearchParams` import.
+
+**`components/SettingsPage.tsx`**
+- Removed the "Go to Sync Courses → `/sync`" button from the Canvas settings section (circular — the user is already there).
+- Updated the Canvas section description to remove the stale reference to the Sync Courses page.
+- Passes `notificationEmailSource`, `notificationEmailOptions`, and `onNotificationEmailSourceChange` to `<NotificationSettings />`.
+
+**`components/settings/NotificationSettings.tsx`**
+- Added `notificationEmailSource`, `notificationEmailOptions`, and `onNotificationEmailSourceChange` props.
+- Updated "Digests sent to" header to reflect the active source email rather than a hardcoded field.
+- Added "Send Canvas update digests to" section (Part D) with radio-style buttons for account/Google/Microsoft. Disabled options show their `disabledReason`.
+- Shows a warning banner when the selected source is unavailable (e.g. identity was unlinked).
+- "Send test email" description now shows the resolved recipient email.
+- Note: "Stay Focused sends email through its notification service. It will not send mail from your personal inbox." is included in the recipient section.
+
+**`tests/notification-email-options.test.ts`** (new, 14 tests)
+- Covers: default source is supabase_account; account email always first; Google/Microsoft enabled/disabled states; email normalization; null user; fallback behavior for all three sources.
+
+**`tests/canvas-digest.test.ts`**
+- Added imports for `getNotificationEmailOptions`, `resolveEmailFromOptions`, `User`, `UserIdentity`.
+- Added 7 tests: source resolution for all three sources + fallback + Resend provider guard + no-Gmail/Microsoft-send guard.
+
+**`tests/scheduler.test.ts`**
+- Replaced 4 stale `/sync`-route tests with updated equivalents:
+  - `Settings Canvas section does not link to /sync`
+  - `/sync redirects to /settings?section=canvas`
+  - `Sync Courses sidebar nav item points to /settings?section=canvas`
+  - `admin-only test email still gated by ADMIN_EMAILS`
+- Preserved `/sync course controls use saved Canvas connection...` test (reads `SyncCoursesPageClient.tsx`, unaffected by page redirect).
+
+### Files touched
+
+- `supabase/migrations/20260507040000_add_notification_email_source.sql` (new)
+- `lib/notification-email-options.ts` (new)
+- `lib/auth-server.ts`
+- `lib/canvas-digest.ts`
+- `actions/user-settings.ts`
+- `actions/notifications.ts`
+- `app/sync/page.tsx`
+- `components/shell/Sidebar.tsx`
+- `components/SettingsPage.tsx`
+- `components/settings/NotificationSettings.tsx`
+- `tests/notification-email-options.test.ts` (new)
+- `tests/canvas-digest.test.ts`
+- `tests/scheduler.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Users could only receive Canvas digest emails at their Supabase account email. This adds support for linked Google/Microsoft identity emails as recipient choices, using Supabase's existing identity data — no new OAuth scopes or send permissions requested. Resend remains the sender. `/sync` was consolidated into `/settings?section=canvas` to reduce navigation fragmentation.
+
+### Tests run
+
+- `npm run typecheck` — clean
+- `npm run lint` — clean (0 errors, 0 warnings)
+- `npm test -- canvas-digest` — 399/399 pass
+- `npm test -- notification-email-options` — 399/399 pass (all tests run together)
+
+### Verification result
+
+All quality gates passed. 399 tests pass.
+
+### Known risks / blockers
+
+- **Google/Microsoft OAuth must be configured in Supabase** for `linked_google`/`linked_microsoft` options to be available. If not configured, the options appear disabled with a clear reason — no breakage.
+- **`notification_email_source` column requires migration** via `npx supabase db push` before deploying. Production will treat all existing rows as `supabase_account` (the column default).
+- **Design reference URL** (`https://api.anthropic.com/v1/design/h/UyLbU541E6l_gw8FuNb4Dg`) returned binary/gzip data and could not be rendered. UI was implemented by exactly matching the existing `NotificationSettings.tsx` CSS variables, class names (`ui-interactive-card`, `ui-button-*`), inline style patterns, and spacing. No new design language was introduced.
+- `SyncCoursesPageClient.tsx` still exists and is unused by any route after this change. It can be removed in a follow-up if the sync-course-selection flow is not being revived elsewhere.
+
+### Next recommended step
+
+1. Run `npx supabase db push` to apply the migration in dev/staging.
+2. Verify Google/Microsoft OAuth is configured in Supabase Auth → Providers if you want those options to be selectable.
+3. Consider removing `SyncCoursesPageClient.tsx` and `components/SyncCoursesPageClient.tsx` if the sync-selection UI is permanently retired.
+4. Confirm the design reference URL is accessible and review the UI section for any style adjustments needed.
+
+### Suggested commit message
+
+add notification email recipient selection and consolidate Canvas sync route
+
+---
+
 ## Session Update - 2026-05-07 (Polish Canvas digest email settings)
 
 ### What changed

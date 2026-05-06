@@ -10,7 +10,7 @@ import {
   setSoundEnabled,
   playNotificationSound,
 } from '@/lib/notifications'
-import { getUserSettings, updateCanvasSettings, type UserSettings } from '@/actions/user-settings'
+import { getUserSettings, updateCanvasSettings, updateNotificationEmailSource, type UserSettings, type NotificationEmailSource } from '@/actions/user-settings'
 import { NotificationSettings } from '@/components/settings/NotificationSettings'
 import { useResolvedUserAvatar } from '@/components/useResolvedUserAvatar'
 import { UserAvatar } from '@/components/UserAvatar'
@@ -365,7 +365,7 @@ export function SettingsPage() {
               id="canvas"
               eyebrow="Canvas"
               title="Canvas"
-              description="Configure your Canvas API connection. Course selection and sync are on the Sync Courses page."
+              description="Configure your Canvas API connection and access token. Stay Focused uses these to sync your coursework automatically."
             >
               {!authSummary.user ? (
                 <div className="settings-account-card">
@@ -480,13 +480,6 @@ export function SettingsPage() {
                     </p>
                   </div>
 
-                  {canvasConnected && (
-                    <div className="settings-card-actions">
-                      <Link href="/sync" className="ui-button ui-button-secondary">
-                        Go to Sync Courses
-                      </Link>
-                    </div>
-                  )}
                 </div>
               )}
             </SettingsSection>
@@ -573,9 +566,20 @@ export function SettingsPage() {
                     initialEmailNotifications={userSettings.emailNotifications}
                     initialEmailCategories={userSettings.emailCategories}
                     notificationEmail={userSettings.notificationEmail}
+                    notificationEmailSource={userSettings.notificationEmailSource}
+                    notificationEmailOptions={userSettings.notificationEmailOptions}
                     emailProviderConfigured={userSettings.emailProviderConfigured}
                     isResendDevSender={userSettings.isResendDevSender}
                     isAdmin={userSettings.isAdmin}
+                    onNotificationEmailSourceChange={async (source: NotificationEmailSource) => {
+                      const result = await updateNotificationEmailSource({ source })
+                      if (result.ok) {
+                        const refreshResult = await getUserSettings()
+                        if (refreshResult.ok) {
+                          setUserSettings(refreshResult.settings)
+                        }
+                      }
+                    }}
                   />
                 </div>
               )}
