@@ -7,7 +7,6 @@ import {
   isBrowserNotificationsEnabled,
   requestNotificationPermission,
   setBrowserNotificationsEnabled,
-  setNotificationVolume,
   setSoundEnabled,
   playNotificationSound,
 } from '@/lib/notifications'
@@ -57,7 +56,7 @@ const SECTION_LABELS: Record<Exclude<SettingsSectionId, 'advanced'>, SettingsSec
   notifications: {
     id: 'notifications',
     label: 'Notifications',
-    description: 'Browser permission, sound, and volume.',
+    description: 'Browser permission and sound.',
   },
 }
 
@@ -593,7 +592,7 @@ function BrowserNotificationsSection() {
     getNotificationSettingsSnapshot,
     getNotificationSettingsServerSnapshot,
   )
-  const { permission, soundEnabled, volume, browserEnabled } = settings
+  const { permission, soundEnabled, browserEnabled } = settings
   const [browserTestResult, setBrowserTestResult] = useState<'idle' | 'sent' | 'denied'>('idle')
 
   async function handleRequestPermission() {
@@ -609,11 +608,6 @@ function BrowserNotificationsSection() {
 
   function handleBrowserToggle() {
     setBrowserNotificationsEnabled(!browserEnabled)
-    emitNotificationSettingsChange()
-  }
-
-  function handleVolumeChange(value: number) {
-    setNotificationVolume(value / 100)
     emitNotificationSettingsChange()
   }
 
@@ -640,7 +634,7 @@ function BrowserNotificationsSection() {
       id="notifications"
       eyebrow="Notifications"
       title="Notifications"
-      description="Manage browser permission, sound playback, and notification volume for sync updates."
+      description="Manage browser permission and sound playback for sync updates."
     >
       <div className="settings-option-list">
         <div className="settings-option-row ui-interactive-card" style={{ cursor: 'default' }}>
@@ -733,29 +727,14 @@ function BrowserNotificationsSection() {
         </button>
 
         {soundEnabled && (
-          <div className="settings-option-row settings-option-row-stack ui-interactive-card" style={{ cursor: 'default' }}>
-            <div className="settings-inline-header">
-              <div style={{ minWidth: 0 }}>
-                <p className="settings-card-title">Volume</p>
-                <p className="settings-card-desc">Adjust how loud notification sounds play.</p>
-              </div>
-              <div className="settings-inline-actions">
-                <span className="settings-option-label" data-selected="false" style={{ minWidth: '3ch', textAlign: 'right' }}>
-                  {volume}%
-                </span>
-                <button type="button" className="ui-button ui-button-ghost" onClick={handleTestSound} style={{ padding: '4px 10px', fontSize: '12px' }}>
-                  Test
-                </button>
-              </div>
+          <div className="settings-option-row ui-interactive-card" style={{ cursor: 'default' }}>
+            <div style={{ minWidth: 0 }}>
+              <p className="settings-card-title">Test sound</p>
+              <p className="settings-card-desc">Play the notification sound at full volume.</p>
             </div>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              value={volume}
-              onChange={(e) => handleVolumeChange(Number(e.target.value))}
-              style={{ width: '100%', accentColor: 'var(--accent)' }}
-            />
+            <button type="button" className="ui-button ui-button-ghost" onClick={handleTestSound} style={{ padding: '4px 10px', fontSize: '12px' }}>
+              Test
+            </button>
           </div>
         )}
       </div>
@@ -845,27 +824,16 @@ function getStoredSoundEnabled() {
   return localStorage.getItem('stay-focused.sound-enabled') !== 'false'
 }
 
-function getStoredVolume() {
-  if (typeof window === 'undefined') return 50
-
-  const storedValue = localStorage.getItem('stay-focused.sound-volume')
-  const parsed = storedValue ? parseFloat(storedValue) : 0.5
-  return Number.isNaN(parsed) ? 50 : Math.round(parsed * 100)
-}
-
-
 type NotificationSettingsSnapshot = {
   permission: NotificationPermission | 'unsupported'
   browserEnabled: boolean
   soundEnabled: boolean
-  volume: number
 }
 
 const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettingsSnapshot = {
   permission: 'default',
   browserEnabled: true,
   soundEnabled: true,
-  volume: 50,
 }
 
 const notificationSettingsListeners = new Set<() => void>()
@@ -903,15 +871,13 @@ function getNotificationSettingsSnapshot(): NotificationSettingsSnapshot {
     permission: getNotificationPermissionState(),
     browserEnabled: isBrowserNotificationsEnabled(),
     soundEnabled: getStoredSoundEnabled(),
-    volume: getStoredVolume(),
   }
 
   if (
     lastNotificationSnapshot &&
     lastNotificationSnapshot.permission === nextSnapshot.permission &&
     lastNotificationSnapshot.browserEnabled === nextSnapshot.browserEnabled &&
-    lastNotificationSnapshot.soundEnabled === nextSnapshot.soundEnabled &&
-    lastNotificationSnapshot.volume === nextSnapshot.volume
+    lastNotificationSnapshot.soundEnabled === nextSnapshot.soundEnabled
   ) {
     return lastNotificationSnapshot
   }

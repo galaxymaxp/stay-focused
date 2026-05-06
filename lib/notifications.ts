@@ -50,20 +50,9 @@ export function dispatchInAppToast(detail: StayFocusedToastDetail) {
   )
 }
 
-function getNotificationVolume(): number {
-  if (typeof window === 'undefined') return 0.5
-  const stored = localStorage.getItem('stay-focused.sound-volume')
-  const parsed = stored ? parseFloat(stored) : 0.5
-  return isNaN(parsed) ? 0.5 : Math.max(0, Math.min(1, parsed))
-}
-
 function isSoundEnabled(): boolean {
   if (typeof window === 'undefined') return false
   return localStorage.getItem('stay-focused.sound-enabled') !== 'false'
-}
-
-export function setNotificationVolume(volume: number) {
-  localStorage.setItem('stay-focused.sound-volume', String(Math.max(0, Math.min(1, volume))))
 }
 
 export function setSoundEnabled(enabled: boolean) {
@@ -81,7 +70,7 @@ export function playNotificationSound(soundType: 'success' | 'error' | 'info' = 
   }
 
   const audio = new Audio(soundMap[soundType])
-  audio.volume = getNotificationVolume()
+  audio.volume = 1
   audio.play().catch(() => {
     // Autoplay may be blocked — silently ignore
   })

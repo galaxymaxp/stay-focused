@@ -5,6 +5,52 @@ Last Updated: 2026-05-07
 
 ---
 
+## Session Update - 2026-05-07 (Remove notification volume control)
+
+### What changed
+
+- Removed the visible notification sound volume setting from the Notifications settings UI.
+- Kept `Notification sounds` as a simple On/Off preference.
+- Kept the sound test action available when sounds are enabled, now labeled as a full-volume test rather than a volume control.
+- Removed UI/runtime reads of `stay-focused.sound-volume`.
+- Changed notification sound playback to always set `audio.volume = 1`.
+
+### Files touched
+
+- `components/SettingsPage.tsx`
+- `lib/notifications.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Notification sound volume is no longer user-configurable. Sounds should either be enabled or disabled, and enabled notification sounds should always play at 100%.
+
+### Tests run
+
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- Relevant notification/settings tests - none present (`tests/` only has `canvas-settings-state.test.ts` for settings-adjacent coverage)
+
+### Verification result
+
+Static checks passed. A code scan confirms no UI/runtime path still reads or writes `stay-focused.sound-volume`; playback now uses `audio.volume = 1`.
+
+### Known risks / blockers
+
+- Existing `stay-focused.sound-volume` values may remain in users' local storage, but the app no longer reads them for notification settings or sound playback.
+- Browser QA was not run in this session.
+- No focused automated notification settings test exists yet.
+
+### Next recommended step
+
+Manually open Settings -> Notifications in a browser and confirm only browser alerts, test browser notification, Notification sounds On/Off, and full-volume Test sound are visible.
+
+### Suggested commit message
+
+remove notification volume control
+
+---
+
 ## Session Update - 2026-05-07 (Track Canvas update events)
 
 ### What changed
