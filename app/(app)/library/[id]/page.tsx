@@ -4,6 +4,7 @@ import { DeepLearnWorkspace } from '@/components/DeepLearnWorkspace'
 import { LibraryDeleteButton } from '@/components/drafts/LibraryDeleteButton'
 import { GeneratedContentState } from '@/components/generated-content/GeneratedContentState'
 import { ModuleLensShell } from '@/components/ModuleLensShell'
+import { StudyOutputQuizPackPage } from '@/components/StudyOutputQuizPackPage'
 import { StudyOutputReviewerPage } from '@/components/StudyOutputReviewerPage'
 import { getAuthenticatedUserServer } from '@/lib/auth-server'
 import { extractCourseName, getModuleWorkspace, type ModuleSourceResource } from '@/lib/module-workspace'
@@ -161,7 +162,7 @@ export default async function LibraryItemPage({ params }: Props) {
   const draft = await getDraft(id)
   if (!draft) {
     const output = await getStudyOutputById(id)
-    if (output?.outputKind === 'reviewer') {
+    if (output?.outputKind === 'reviewer' || output?.outputKind === 'quiz_pack') {
       const workspace = output.moduleId ? await getModuleWorkspace(output.moduleId) : null
       const courseId = workspace?.module.courseId ?? output.courseId ?? null
       const courseName = extractCourseName(workspace?.module.raw_content)
@@ -192,6 +193,11 @@ export default async function LibraryItemPage({ params }: Props) {
                   Open Deep Learn pack
                 </Link>
               ) : null}
+              {output.outputKind === 'quiz_pack' && output.moduleId ? (
+                <Link href={`/modules/${output.moduleId}/quiz?resource=${encodeURIComponent(output.resourceId ?? '')}`} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+                  Open module quiz
+                </Link>
+              ) : null}
               {sourceWorkspaceHref ? (
                 <Link href={sourceWorkspaceHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
                   Open source workspace
@@ -207,11 +213,19 @@ export default async function LibraryItemPage({ params }: Props) {
             </div>
           </section>
 
-          <StudyOutputReviewerPage
-            output={output}
-            courseLabel={courseName ?? null}
-            moduleTitle={workspace?.module.title ?? null}
-          />
+          {output.outputKind === 'reviewer' ? (
+            <StudyOutputReviewerPage
+              output={output}
+              courseLabel={courseName ?? null}
+              moduleTitle={workspace?.module.title ?? null}
+            />
+          ) : (
+            <StudyOutputQuizPackPage
+              output={output}
+              courseLabel={courseName ?? null}
+              moduleTitle={workspace?.module.title ?? null}
+            />
+          )}
         </div>
       )
 

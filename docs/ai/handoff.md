@@ -5,6 +5,77 @@ Last Updated: 2026-05-09
 
 ---
 
+## Session Update - 2026-05-09 (Add Deep Learn quiz packs)
+
+### What changed
+
+- Added a persisted `quiz_pack` study-output path built strictly from existing Deep Learn structured content.
+- Added `makeDeepLearnQuizPackAction` so ready Deep Learn packs can create saved quiz packs without another OpenAI generation step.
+- Added a student-facing `Make Quiz Pack` action on ready Deep Learn notes.
+- Added a saved quiz-pack review page with:
+  - multiple choice
+  - identification
+  - matching
+  - true/false when grounded by likely quiz targets
+  - answer reveal mode
+  - self-review marking
+  - score tracking
+- Extended Study Library handling so saved quiz packs appear with a stable subtype label and open into the saved review flow.
+- Expanded study-output typing/storage so the output layer now supports both reviewer and quiz-pack content shapes.
+
+### Files touched
+
+- `actions/study-outputs.ts`
+- `app/(app)/library/[id]/page.tsx`
+- `components/DeepLearnNoteView.tsx`
+- `components/MakeQuizPackButton.tsx`
+- `components/StudyOutputQuizPackPage.tsx`
+- `components/StudyOutputReviewerPage.tsx`
+- `lib/study-outputs/quiz-pack.ts`
+- `lib/study-outputs/store.ts`
+- `lib/types.ts`
+- `tests/study-library.test.ts`
+- `tests/study-output-quiz-pack.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Phase 2 needed a reusable, cheap study-output path for quiz packs that stays grounded in the already-saved Deep Learn note instead of re-querying raw module text or calling a model again. The new quiz-pack builder keeps outputs deterministic by reusing only note-backed answer bank items, existing distractors, identification items, distinctions, and likely quiz targets. The saved output route also keeps Study Library as the single place students can reopen generated study materials.
+
+### Tests run
+
+- `npm run typecheck` — passed
+- `npm run lint` — passed
+- `npm test -- study-output-quiz-pack study-library deep-learn-quiz` — passed (458 tests, 0 failures)
+
+### Verification result
+
+All required checks passed. Quiz packs now save through the shared `study_outputs` layer, render in Study Library, and support print/review flows without adding any new generation step.
+
+### Known risks
+
+- True/false items are intentionally conservative and only created from grounded likely-quiz-target material; some notes may produce few or no true/false items.
+- The existing `/modules/[id]/quiz` route still exists separately from saved quiz-pack outputs, so there are now two quiz entry points with different persistence behavior.
+- Matching items currently use distinction pairs only; if a note has no distinctions, matching coverage will be sparse by design.
+
+### Blockers
+
+None.
+
+### Next recommended step
+
+1. Add a shared quiz-pack renderer for both saved Study Library outputs and the module quiz route so interaction behavior stays identical across entry points.
+2. Add subtype filters or grouped shelves in Study Library now that reviewer and quiz-pack outputs both persist there.
+3. Consider persisting review progress if students need to resume scored quiz-pack sessions across reloads.
+
+### Suggested commit message
+
+```bash
+add deep learn quiz packs
+```
+
+---
+
 ## Session Update - 2026-05-09 (Add Deep Learn reviewer maker)
 
 ### What changed

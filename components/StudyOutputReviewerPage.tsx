@@ -11,6 +11,9 @@ export function StudyOutputReviewerPage({
   moduleTitle: string | null
 }) {
   const reviewer = output.content
+  if (reviewer.version !== 'reviewer-v1') {
+    return null
+  }
 
   return (
     <section className="motion-card section-shell section-shell-elevated reviewer-sheet">

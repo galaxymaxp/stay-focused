@@ -361,6 +361,7 @@ export type DraftLoadAvailability = 'available' | 'unavailable' | 'failed'
 export type StudyOutputKind = 'reviewer' | 'quiz_pack' | 'task_output' | 'study_sheet'
 export type StudyOutputStatus = 'ready' | 'failed'
 export type StudyOutputSourceKind = 'deep_learn_note'
+export type StudyOutputQuizItemType = 'multiple_choice' | 'identification' | 'matching' | 'true_false'
 
 export interface DraftRefinementEntry {
   instruction: string
@@ -454,6 +455,34 @@ export interface StudyOutputReviewerContent {
   cautionNotes: string[]
 }
 
+export interface StudyOutputQuizPackItem {
+  id: string
+  type: StudyOutputQuizItemType
+  prompt: string
+  answer: string
+  choices: string[]
+  explanation: string
+  sourceLabel: string | null
+  matchingPrompt?: string | null
+  matchingAnswer?: string | null
+  truthValue?: boolean | null
+}
+
+export interface StudyOutputQuizPackContent {
+  version: 'quiz-pack-v1'
+  sourceNoteId: string
+  sourceResourceId: string
+  title: string
+  summary: string
+  intro: string
+  items: StudyOutputQuizPackItem[]
+  questionCountOptions: number[]
+  answerRevealLabel: string
+  selfReviewLabel: string
+}
+
+export type StudyOutputContent = StudyOutputReviewerContent | StudyOutputQuizPackContent
+
 export interface StudyOutput {
   id: string
   userId: string
@@ -466,7 +495,7 @@ export interface StudyOutput {
   status: StudyOutputStatus
   title: string
   summary: string
-  content: StudyOutputReviewerContent
+  content: StudyOutputContent
   createdAt: string
   updatedAt: string
   generatedAt: string | null

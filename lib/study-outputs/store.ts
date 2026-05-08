@@ -1,8 +1,8 @@
 import type {
   DraftShelfItem,
   StudyOutput,
+  StudyOutputContent,
   StudyOutputKind,
-  StudyOutputReviewerContent,
   StudyOutputSourceKind,
   StudyOutputStatus,
 } from '@/lib/types'
@@ -38,7 +38,7 @@ export async function saveStudyOutput(input: {
   status: StudyOutputStatus
   title: string
   summary: string
-  content: StudyOutputReviewerContent
+  content: StudyOutputContent
   generatedAt: string | null
 }) {
   const auth = await getAuthenticatedSupabaseServerContext()
@@ -148,7 +148,7 @@ function adaptStudyOutputRow(row: StudyOutputRow): StudyOutput {
     status: row.status,
     title: row.title ?? 'Study output',
     summary: row.summary ?? '',
-    content: row.content as StudyOutputReviewerContent,
+    content: row.content as StudyOutputContent,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     generatedAt: row.generated_at,

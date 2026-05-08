@@ -21,6 +21,10 @@ test('reviewer shelf subtitle is stable for study outputs', () => {
   assert.equal(getLibrarySubtitle(createShelfItem()), 'Reviewer')
 })
 
+test('quiz pack shelf subtitle is stable for study outputs', () => {
+  assert.equal(getLibrarySubtitle(createShelfItem({ studyOutputKind: 'quiz_pack' })), 'Quiz pack')
+})
+
 function createShelfItem(overrides: Partial<DraftShelfItem> = {}): DraftShelfItem {
   return {
     id: 'output-1',
