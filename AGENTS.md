@@ -65,7 +65,11 @@ If any check is skipped, explain why in handoff notes.
 4. Prefer improving existing architecture over random rewrites.
 5. Avoid unnecessary file churn.
 6. Preserve responsive, modern, 2026-quality UI standards.
+7. UI implementation rule:
+Any UI-facing work must first check the current Stay Focused design reference:
+https://api.anthropic.com/v1/design/h/UyLbU541E6l_gw8FuNb4Dg
 
+Do not introduce a different design language.
 ## Implementation Safety
 
 - Do not introduce runtime behavior changes during docs-only tasks.

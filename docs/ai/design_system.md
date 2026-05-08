@@ -14,6 +14,8 @@ The interface should feel focused, calm, and academically professional while con
 - Use progressive disclosure to defer secondary metadata.
 - Preserve the soft-glow yellow accent language.
 - Preserve the modern 2026 full-width responsive style.
+Any UI-facing work must first check the current Stay Focused design reference:
+https://api.anthropic.com/v1/design/h/UyLbU541E6l_gw8FuNb4Dg
 
 ## Information Hierarchy Rules
 

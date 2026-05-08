@@ -2,15 +2,15 @@
 
 import { useActionState } from 'react'
 import {
-  getNotificationLabInitialState,
+  INITIAL_NOTIFICATION_LAB_STATE,
   NOTIFICATION_LAB_PRESETS,
-  runNotificationLabAction,
-} from '@/actions/admin-notification-lab'
+} from '@/lib/notification-lab'
+import { runNotificationLabAction } from '@/actions/admin-notification-lab'
 
 export function NotificationLab() {
   const [state, formAction, pending] = useActionState(
     runNotificationLabAction,
-    getNotificationLabInitialState(),
+    INITIAL_NOTIFICATION_LAB_STATE,
   )
 
   return (

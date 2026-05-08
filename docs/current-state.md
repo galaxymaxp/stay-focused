@@ -25,3 +25,6 @@ This document reflects the codebase after the April 24, 2026 roadmap-alignment p
 - sync actions currently rely on summary fingerprint changes rather than explicitly clearing cached course summaries during course updates
 - toast interactions are intentionally minimal and do not yet include manual dismissal or action buttons
 - route verification should continue expanding around Study Library detail flows and course-specific shells
+
+
+

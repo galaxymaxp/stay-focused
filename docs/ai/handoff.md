@@ -5,6 +5,61 @@ Last Updated: 2026-05-08
 
 ---
 
+## Session Update - 2026-05-09 (Fix Vercel build failure from notification lab exports)
+
+### What changed
+
+- Removed the non-async exports from `actions/admin-notification-lab.ts` that Turbopack rejected in production builds.
+- Moved notification-lab shared data into a plain lib module:
+  - `INITIAL_NOTIFICATION_LAB_STATE`
+  - `NOTIFICATION_LAB_PRESETS`
+  - `NotificationLabActionState`
+  - `NotificationLabPresetKey`
+- Updated `components/admin/NotificationLab.tsx` to import the initial action state and presets from `lib/notification-lab.ts`, while keeping `runNotificationLabAction` as the only runtime export from the server action file.
+
+### Files touched
+
+- `actions/admin-notification-lab.ts`
+- `components/admin/NotificationLab.tsx`
+- `lib/notification-lab.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Next.js/Turbopack requires `"use server"` files to export only async server actions at runtime. The previous notification-lab module exported a synchronous helper and shared presets from the server file, which broke the Vercel build even though local tests passed.
+
+### Tests run
+
+- `npm run typecheck` - passed after the route types were regenerated.
+- `npm run lint` - passed.
+- `npm run build` - passed.
+- `npm test -- admin canvas-digest notification queue` - passed, 442/442 tests.
+
+### Verification result
+
+The build failure is resolved. The admin notification lab still works, and the server action file now exports only the async action entry point at runtime.
+
+### Known risks
+
+- The new `lib/notification-lab.ts` file imports the state type used by the client and server action. That keeps the runtime export surface clean, but any future shape changes need to stay in sync with the action state contract.
+
+### Blockers
+
+- No code blocker.
+- Pre-existing unrelated working-tree changes remain in `AGENTS.md`, `CLAUDE.md`, `docs/ai/design_system.md`, `docs/current-state.md`, plus an untracked nested `stay-focused/` directory.
+
+### Next recommended step
+
+Keep the notification lab as the only admin-facing delivery test entry point, then use it to validate inbox delivery on the selected Gmail recipient before trimming event volume.
+
+### Suggested commit message
+
+```
+fix notification lab server action exports
+```
+
+---
+
 ## Session Update - 2026-05-08 (Implement Gmail-first Canvas notification testing)
 
 ### What changed
