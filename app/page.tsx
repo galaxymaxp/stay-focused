@@ -10,7 +10,7 @@ export default async function Dashboard() {
 
   if (!workspace.hasSyncedData) {
     return (
-      <main className="page-shell">
+      <main className="page-shell home-page-shell">
         <SyncFirstEmptyState eyebrow="Home" />
       </main>
     )
@@ -95,7 +95,7 @@ export default async function Dashboard() {
   )
 
   return (
-    <main className="page-shell">
+    <main className="page-shell home-page-shell">
       <TodayDashboard
         primaryAction={overview.primaryAction}
         upNext={overview.upNext}

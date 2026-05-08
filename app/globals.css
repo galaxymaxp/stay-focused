@@ -608,6 +608,10 @@ select:focus-visible {
   padding: 0 0 max(4rem, var(--app-mobile-scroll-end-space));
 }
 
+.home-page-shell {
+  max-width: none;
+}
+
 .page-intro {
   display: grid;
   gap: 0.55rem;
@@ -2304,8 +2308,9 @@ details[open] > .ui-interactive-summary,
 .home-page {
   display: grid;
   gap: 1.1rem;
-  max-width: 1600px;
-  margin-inline: auto;
+  width: 100%;
+  max-width: none;
+  margin-inline: 0;
 }
 
 .home-page-header {
@@ -2334,7 +2339,7 @@ details[open] > .ui-interactive-summary,
 
 .home-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.38fr) minmax(21.5rem, 0.82fr);
+  grid-template-columns: minmax(0, 1.42fr) minmax(21.5rem, 0.8fr);
   gap: 1.1rem;
   align-items: start;
 }
@@ -3722,7 +3727,7 @@ details[open] > .ui-interactive-summary,
   }
 
   .home-layout {
-    grid-template-columns: minmax(0, 1.42fr) minmax(23rem, 0.78fr);
+    grid-template-columns: minmax(0, 1.55fr) minmax(24rem, 0.82fr);
     gap: 1.45rem;
   }
 

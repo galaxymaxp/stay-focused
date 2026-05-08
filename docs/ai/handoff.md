@@ -5,6 +5,78 @@ Last Updated: 2026-05-07
 
 ---
 
+## Session Update - 2026-05-08 (Fix announcement emails, Learn task leaks, and Home width)
+
+### What changed
+
+**Announcement email notifications**
+- `lib/canvas-digest.ts` now evaluates email categories per Canvas update event.
+- `new_announcement` events can send when `email_notifications` is enabled and the user has the `announcements` category enabled, even if the broader `canvas_updates` digest category is off.
+- `canvas_updates` still enables all meaningful Canvas update event types.
+- Disabled categories leave matching events unsent, so they are not incorrectly marked delivered.
+
+**Task-like Canvas items no longer leak into Learn**
+- `actions/canvas.ts` skips module resource persistence for Canvas module items that are assignment/quiz/discussion/assessment-like, have submit-style completion behavior, or have task/syllabus-like titles.
+- `lib/home-focus.ts` filters task-like `module_resources` out of Home Learn rows.
+- `lib/module-workspace.ts` stops building Learn/Do source resources from parsed assignment sections and filters assignment/quiz/discussion/syllabus-like parsed module items out of the Learn resource model.
+- Real study files/pages with academic content remain eligible for Learn.
+
+**Large Home layout**
+- `app/page.tsx` uses a Home-specific page shell class.
+- `app/globals.css` removes the Home max-width cap and adjusts Home grid ratios so the dashboard uses available desktop width while preserving the existing mobile single-column behavior.
+
+### Files touched
+
+- `actions/canvas.ts`
+- `app/globals.css`
+- `app/page.tsx`
+- `lib/canvas-digest.ts`
+- `lib/home-focus.ts`
+- `lib/module-workspace.ts`
+- `tests/canvas-digest.test.ts`
+- `tests/scheduler.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Announcements shown in Home/Updates are represented as Canvas update events, but the email digest path only honored the `canvas_updates` category. Users who enabled announcement emails could still miss announcement messages. Canvas assignment/syllabus-like module items could also be treated as Learn material when they should remain canonical task/syllabus work. Home was capped to a narrow dashboard width on large displays.
+
+### Tests run
+
+- `git status --short --branch` - reviewed before editing; existing unrelated local changes were present.
+- `npm test -- canvas-digest` - passed, 420/420 tests.
+- `npm test -- scheduler` - passed, 420/420 tests.
+- `npm test -- queue` - passed, 420/420 tests.
+- `npm run typecheck` - passed.
+- `npm run lint` - passed.
+- `npm test -- pdf-extractor source-ocr-updates deep-learn-readiness deep-learn-generation canvas-content-resolution learn-resource-ui queue` - passed, 420/420 tests.
+- `npx tsx scripts/validate-scanned-pdf.ts --pdf "C:\Users\omgra\Downloads\1.1-Data Organization.pdf"` - skipped because the local PDF fixture was not found.
+
+### Verification result
+
+All runnable verification passed. New tests cover announcement-category digest sending, disabled-category duplicate prevention, Home Learn task-like filtering, and module Learn parsed assignment/syllabus filtering.
+
+### Known risks
+
+- The task-like title filter intentionally treats titles containing "syllabus", "due", "submit", "assignment", "quiz", or "discussion" as non-Learn. A genuine study file with those words in the title may need a future explicit override if it should appear in Learn.
+- Existing rows already persisted as task-like `module_resources` are hidden from Home/module Learn by the new filters, but they are not deleted from the database.
+
+### Blockers
+
+- No code blocker.
+- The optional scanned-PDF validator could not run because `C:\Users\omgra\Downloads\1.1-Data Organization.pdf` was not present locally.
+- Pre-existing unrelated working-tree changes remain in `AGENTS.md`, `CLAUDE.md`, `docs/ai/design_system.md`, `docs/current-state.md`, plus an untracked nested `stay-focused/` directory.
+
+### Next recommended step
+
+Apply the fix in production, then trigger an external Canvas sync on a test account with `announcements` email enabled and confirm a newly posted Canvas announcement produces one digest email and only one `digest_sent_at` mark for that announcement event.
+
+### Suggested commit message
+
+fix announcement email notifications and task learn classification
+
+---
+
 ## Session Update - 2026-05-07 (Fix digest retries and add deadline reminder emails)
 
 ### What changed

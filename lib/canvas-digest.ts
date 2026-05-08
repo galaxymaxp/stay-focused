@@ -191,7 +191,7 @@ async function recordDigestSentAt(supabase: SupabaseClient, userId: string, sent
 interface UserDigestSettings {
   email: string
   emailNotifications: string
-  canvasUpdatesEnabled: boolean
+  emailCategories: Record<string, unknown>
   lastSentAt: string | null
 }
 
@@ -232,15 +232,28 @@ async function loadUserDigestSettings(
 
   const emailNotifications = (settingsRow as Record<string, unknown> | null)?.email_notifications as string ?? 'off'
   const emailCategories = (settingsRow as Record<string, unknown> | null)?.email_categories as Record<string, unknown> | null ?? {}
-  const canvasUpdatesEnabled = Boolean(emailCategories?.canvas_updates)
   const lastSentAt = (settingsRow as Record<string, unknown> | null)?.canvas_digest_last_sent_at as string | null ?? null
 
   return {
     email: notificationEmail,
     emailNotifications,
-    canvasUpdatesEnabled,
+    emailCategories,
     lastSentAt,
   }
+}
+
+function isDigestEventEnabled(eventType: string, categories: Record<string, unknown>): boolean {
+  if (Boolean(categories.canvas_updates)) return true
+
+  if (eventType === 'new_announcement') return Boolean(categories.announcements)
+  if (eventType === 'new_assignment' || eventType === 'due_date_change') {
+    return Boolean(categories.due_soon) || Boolean(categories.deadlines) || Boolean(categories.tasks)
+  }
+  if (eventType === 'new_module' || eventType === 'new_resource') {
+    return Boolean(categories.new_uploads)
+  }
+
+  return false
 }
 
 // Main entry point — called from external canvas sync after event insertion.
@@ -266,10 +279,6 @@ export async function attemptCanvasDigestForUser(input: {
 
   if (userSettings.emailNotifications === 'off') {
     return { sent: false, skipped: true, skipReason: 'email_notifications_off', eventsIncluded: 0, eventsMarked: 0 }
-  }
-
-  if (!userSettings.canvasUpdatesEnabled) {
-    return { sent: false, skipped: true, skipReason: 'canvas_updates_disabled', eventsIncluded: 0, eventsMarked: 0 }
   }
 
   // Cooldown check.
@@ -319,8 +328,14 @@ export async function attemptCanvasDigestForUser(input: {
     return { sent: false, skipped: true, skipReason: 'no_unsent_events', eventsIncluded: 0, eventsMarked: 0 }
   }
 
+  const enabledRows = rows.filter((row) => isDigestEventEnabled(row.event_type, userSettings.emailCategories))
+
+  if (enabledRows.length === 0) {
+    return { sent: false, skipped: true, skipReason: 'email_categories_disabled', eventsIncluded: 0, eventsMarked: 0 }
+  }
+
   const maxItems = getMaxItems()
-  const { courseSections, totalDisplayLines, includedEventIds } = groupEventsForDisplay(rows, maxItems)
+  const { courseSections, totalDisplayLines, includedEventIds } = groupEventsForDisplay(enabledRows, maxItems)
 
   if (courseSections.length === 0) {
     return { sent: false, skipped: true, skipReason: 'no_display_lines', eventsIncluded: 0, eventsMarked: 0 }
@@ -334,7 +349,7 @@ export async function attemptCanvasDigestForUser(input: {
   // All event IDs (not just displayed ones) should be marked sent after a successful send,
   // because the email tells the user to "open Stay Focused to see the rest."
   // This prevents the hidden overflow from triggering a duplicate digest next run.
-  const allEventIds = rows.map((r) => r.id)
+  const allEventIds = enabledRows.map((r) => r.id)
   const idempotencyKey = buildDigestIdempotencyKey(userId, allEventIds)
 
   const result = await sendEmail({

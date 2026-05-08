@@ -190,6 +190,7 @@ function toVisualStatus(value: string | null | undefined): VisualStatus | undefi
 }
 
 function isReadyForLearn(resource: ModuleResourceRow): boolean {
+  if (isTaskLikeCanvasResource(resource)) return false
   if (!isSchedulableResourceType(resource.resource_type)) return false
   // Canvas pages are always in the Learn lane even without extracted text
   const type = (resource.resource_type ?? '').toLowerCase()
@@ -224,6 +225,16 @@ function classifyLearnReadiness(resource: ModuleResourceRow): 'ready' | 'limited
     title: resource.title,
   })
   return quality.usable ? 'ready' : 'limited'
+}
+
+export function isTaskLikeCanvasResource(resource: Pick<ModuleResourceRow, 'title' | 'resource_type'>): boolean {
+  const type = (resource.resource_type ?? '').toLowerCase()
+  const title = resource.title.toLowerCase()
+
+  if (/\b(assignment|quiz|discussion|graded|submission|submit|syllabus)\b/.test(type)) return true
+  if (/\b(assignment|quiz|discussion|forum|due|submit|submission|syllabus)\b/.test(title)) return true
+
+  return false
 }
 
 function getFileTypeLabel(resourceType: string | null | undefined): string {

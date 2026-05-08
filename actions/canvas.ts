@@ -2071,6 +2071,10 @@ async function ingestModuleResources(
         },
       }
 
+      if (isCanvasTaskLikeModuleItem(item)) {
+        continue
+      }
+
       if (isCanvasPageModuleItem(item)) {
         try {
           const page = await getCanvasPage(courseId, {
@@ -2924,6 +2928,19 @@ function isCanvasAssignmentModuleItem(item: CanvasModuleItem) {
 function isCanvasDiscussionModuleItem(item: CanvasModuleItem) {
   const type = item.type?.toLowerCase() ?? ''
   return type.includes('discussion')
+}
+
+function isCanvasTaskLikeModuleItem(item: CanvasModuleItem) {
+  const type = item.type?.toLowerCase() ?? ''
+  const title = item.title.toLowerCase()
+  const completionType = item.completion_requirement?.type?.toLowerCase() ?? ''
+
+  return type.includes('assignment')
+    || type.includes('quiz')
+    || type.includes('discussion')
+    || type.includes('assessment')
+    || completionType.includes('submit')
+    || /\b(assignment|quiz|discussion|forum|submit|submission|due|syllabus)\b/.test(title)
 }
 
 function normalizeModuleItemSourceType(item: CanvasModuleItem) {

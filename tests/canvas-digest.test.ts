@@ -380,6 +380,55 @@ test('cooldown still blocks Canvas digest resend for unsent events', async () =>
   restore()
 })
 
+test('announcement category alone enables announcement digest emails', async () => {
+  const restore = configureResendForDigestTest()
+  const supabase = createDigestSupabase({
+    settings: { email_categories: { announcements: true, canvas_updates: false } },
+    events: [makeEvent({ id: 'ann-event', user_id: 'user-1', event_type: 'new_announcement', title: 'Room change' })],
+  })
+  let sent = 0
+
+  const result = await attemptCanvasDigestForUser({
+    supabase: supabase as never,
+    userId: 'user-1',
+    now: new Date('2026-05-07T10:00:00.000Z'),
+    sendEmail: async () => {
+      sent += 1
+      return { ok: true, messageId: 'msg-ann' }
+    },
+  })
+
+  assert.equal(sent, 1)
+  assert.equal(result.sent, true)
+  assert.equal(supabase.events[0].digest_sent_at, '2026-05-07T10:00:00.000Z')
+  restore()
+})
+
+test('disabled announcement and digest categories leave announcement event unsent', async () => {
+  const restore = configureResendForDigestTest()
+  const supabase = createDigestSupabase({
+    settings: { email_categories: { announcements: false, canvas_updates: false } },
+    events: [makeEvent({ id: 'ann-disabled', user_id: 'user-1', event_type: 'new_announcement', title: 'Room change' })],
+  })
+  let sent = 0
+
+  const result = await attemptCanvasDigestForUser({
+    supabase: supabase as never,
+    userId: 'user-1',
+    now: new Date('2026-05-07T10:00:00.000Z'),
+    sendEmail: async () => {
+      sent += 1
+      return { ok: true }
+    },
+  })
+
+  assert.equal(sent, 0)
+  assert.equal(result.skipped, true)
+  assert.equal(result.skipReason, 'email_categories_disabled')
+  assert.equal(supabase.events[0].digest_sent_at, null)
+  restore()
+})
+
 // ---------------------------------------------------------------------------
 // Recipient source resolution — digest-path guard tests
 // ---------------------------------------------------------------------------

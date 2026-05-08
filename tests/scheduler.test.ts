@@ -8,6 +8,7 @@ import { findLaterSlot } from '@/lib/scheduler/move-later'
 import { isSchedulableResourceType } from '@/lib/scheduler/source-filter'
 import { formatDuration, formatTime, getWindowDurationMinutes, isBlockInsideWindow, minutesToTime, timeToMinutes } from '@/lib/scheduler/time'
 import { buildSyllabusFocusRows, buildLearnFocusRows, fitFocusRowsToWindow, mergeScheduledBlocksIntoFocusRows, type ModuleResourceRow, type HomeSyllabusTaskInput, type ScheduledBlockInput } from '@/lib/home-focus'
+import { buildLearnExperience } from '@/lib/module-workspace'
 import { buildModuleDoHref } from '@/lib/stay-focused-links'
 
 const userId = '00000000-0000-0000-0000-000000000001'
@@ -777,6 +778,54 @@ test('Learn rows do not come from quiz resource_type (generated quiz prompts exc
   const ids = rows.map((r) => r.id)
   assert.ok(!ids.includes('quiz-res'), 'quiz resource_type is excluded from learn rows')
   assert.ok(ids.includes('pdf-res'), 'file resource is included')
+})
+
+test('assignment-like module resources stay out of Home Learn rows', () => {
+  const resources: ModuleResourceRow[] = [
+    makeResourceRow({ id: 'assign-res', title: 'Submit Syllabus Activity', resource_type: 'page' }),
+    makeResourceRow({ id: 'discussion-res', title: 'Week 1 Discussion', resource_type: 'discussion' }),
+    makeResourceRow({ id: 'pdf-res', title: 'Lecture Notes.pdf', resource_type: 'file' }),
+  ]
+  const rows = buildLearnFocusRows(resources, {}, {})
+  const ids = rows.map((r) => r.id)
+
+  assert.ok(!ids.includes('assign-res'), 'syllabus/task-like page is excluded from learn rows')
+  assert.ok(!ids.includes('discussion-res'), 'discussion resource is excluded from learn rows')
+  assert.ok(ids.includes('pdf-res'), 'actual study file remains in learn rows')
+})
+
+test('assignment and syllabus module items do not become Learn resources in module workspace', () => {
+  const experience = buildLearnExperience({
+    id: 'module-1',
+    courseId: 'course-1',
+    title: 'Week 1',
+    raw_content: [
+      'Course: Web Dev (WEB101)',
+      '',
+      'ASSIGNMENTS:',
+      '- Syllabus Quiz',
+      '  Due: May 10, 2026',
+      '',
+      'MODULES:',
+      '- Week 1',
+      '  * Syllabus Quiz (Assignment) [required]',
+      '  * Week 1 Discussion (Discussion) [required]',
+      '  * Lecture Notes.pdf (File) [required]',
+    ].join('\n'),
+    summary: null,
+    concepts: [],
+    study_prompts: [],
+    recommended_order: [],
+    status: 'processed',
+    order: 1,
+    created_at: '2026-05-07T00:00:00.000Z',
+  })
+
+  const learnTitles = experience.learnUnits.map((unit) => unit.resource.title)
+  const doTitles = experience.doItems.map((item) => item.title)
+
+  assert.deepEqual(learnTitles, ['Lecture Notes.pdf'])
+  assert.deepEqual(doTitles, [])
 })
 
 test('"Check your understanding" does not appear in Learn rows unless it is an actual Canvas page title', () => {

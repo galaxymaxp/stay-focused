@@ -565,25 +565,6 @@ function normalizeParsedAnnouncementTitle(value: string) {
 
 function buildSourceResources(parsed: ParsedCanvasContent): ModuleSourceResource[] {
   return [
-    ...parsed.assignments.map((assignment, index) => ({
-      id: `assignment-${index + 1}`,
-      title: assignment.title,
-      originalTitle: assignment.title,
-      type: 'Assignment',
-      required: Boolean(assignment.due),
-      moduleName: null,
-      category: 'assignment' as const,
-      dueDate: assignment.due,
-      kind: classifyLearnResourceKind({
-        title: assignment.title,
-        sourceType: 'assignment',
-        category: 'assignment',
-        extension: null,
-        contentType: null,
-        hasExtractedText: false,
-      }),
-      lane: 'do' as const,
-    })),
     ...parsed.announcements.map((announcement, index) => ({
       id: `announcement-${index + 1}`,
       title: announcement.title,
@@ -597,37 +578,51 @@ function buildSourceResources(parsed: ParsedCanvasContent): ModuleSourceResource
       canvasUrl: announcement.canvasUrl,
     })),
     ...parsed.modules.flatMap((moduleGroup, moduleIndex) =>
-      moduleGroup.items.map((item, itemIndex) => ({
-        id: `resource-${moduleIndex + 1}-${itemIndex + 1}`,
-        title: item.title,
-        originalTitle: item.title,
-        canvasModuleId: item.canvasModuleId,
-        canvasItemId: item.canvasItemId,
-        canvasFileId: item.canvasFileId,
-        metadata: item.metadata,
-        type: item.type,
-        required: item.required,
-        moduleName: moduleGroup.name,
-        category: 'resource' as const,
-        kind: classifyLearnResourceKind({
-          title: item.title,
-          sourceType: item.type,
-          category: 'resource',
-          extension: null,
-          contentType: null,
-          hasExtractedText: false,
-        }),
-        lane: classifyLearnResourceLane(classifyLearnResourceKind({
-          title: item.title,
-          sourceType: item.type,
-          category: 'resource',
-          extension: null,
-          contentType: null,
-          hasExtractedText: false,
-        })),
-      }))
+      moduleGroup.items
+        .filter((item) => !isTaskLikeParsedModuleItem(item))
+        .map((item, itemIndex) => {
+          const kind = classifyLearnResourceKind({
+            title: item.title,
+            sourceType: item.type,
+            category: 'resource',
+            extension: null,
+            contentType: null,
+            hasExtractedText: false,
+          })
+
+          return {
+            id: `resource-${moduleIndex + 1}-${itemIndex + 1}`,
+            title: item.title,
+            originalTitle: item.title,
+            canvasModuleId: item.canvasModuleId,
+            canvasItemId: item.canvasItemId,
+            canvasFileId: item.canvasFileId,
+            metadata: item.metadata,
+            type: item.type,
+            required: item.required,
+            moduleName: moduleGroup.name,
+            category: 'resource' as const,
+            kind,
+            lane: classifyLearnResourceLane(kind),
+          }
+        })
     ),
   ]
+}
+
+function isTaskLikeParsedModuleItem(item: { title: string; type: string; required: boolean; metadata?: Record<string, unknown> }) {
+  const type = item.type.toLowerCase()
+  const title = item.title.toLowerCase()
+  const completionType = typeof item.metadata?.completionRequirementType === 'string'
+    ? item.metadata.completionRequirementType.toLowerCase()
+    : ''
+
+  return type.includes('assignment')
+    || type.includes('quiz')
+    || type.includes('discussion')
+    || type.includes('assessment')
+    || completionType.includes('submit')
+    || /\b(assignment|quiz|discussion|forum|submit|submission|due|syllabus)\b/.test(title)
 }
 
 function adaptStoredResourceForLearn(resource: ModuleResource): ModuleSourceResource {
