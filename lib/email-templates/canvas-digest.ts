@@ -30,13 +30,24 @@ function escapeHtml(str: string): string {
 function eventTypeLabel(eventType: string): string {
   switch (eventType) {
     case 'new_announcement': return 'New announcement'
+    case 'edited_announcement': return 'Announcement updated'
     case 'new_assignment': return 'New assignment'
+    case 'edited_assignment': return 'Assignment updated'
     case 'new_quiz': return 'New quiz'
+    case 'edited_quiz': return 'Quiz updated'
     case 'new_discussion': return 'New discussion'
+    case 'edited_discussion': return 'Discussion updated'
     case 'due_date_change': return 'Due date updated'
     case 'new_module': return 'New module'
+    case 'edited_module': return 'Module updated'
     case 'new_module_item': return 'New module item'
+    case 'edited_module_item': return 'Module item updated'
     case 'new_resource': return 'New resource'
+    case 'edited_resource': return 'Resource updated'
+    case 'grade_update': return 'Grade updated'
+    case 'ocr_completed': return 'OCR completed'
+    case 'deep_learn_ready': return 'Deep Learn ready'
+    case 'generic_canvas_update': return 'Canvas update'
     default: return 'Update'
   }
 }

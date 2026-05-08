@@ -443,7 +443,7 @@ test('new assignment event has correct type and source fields', () => {
   assert.equal(event.event_type, 'new_assignment')
   assert.equal(event.source_type, 'assignment')
   assert.equal(event.source_canvas_id, '55')
-  assert.equal(event.source_hash, null)
+  assert.match(event.source_hash ?? '', /^st_/)
   assert.equal(event.title, 'Midterm Essay')
   assert.ok(event.summary?.includes('May'))
 })
@@ -663,6 +663,63 @@ test('external Canvas event selection emits new assignment, module, and resource
   assert.ok(events.some((event) => event.event_type === 'new_assignment' && event.source_canvas_id === '56'))
   assert.ok(events.some((event) => event.event_type === 'new_module' && event.source_canvas_id === '8'))
   assert.ok(events.some((event) => event.event_type === 'new_resource' && event.source_canvas_id === '2'))
+})
+
+test('external Canvas event selection emits edited announcement when Canvas state changed', () => {
+  const baseline = buildAnnouncementEvent(
+    { id: 12, title: 'Office hours canceled', message: 'No office hours this week.', posted_at: '2026-05-06T14:00:00Z' },
+    makeEventContext(),
+  )
+
+  const events = buildExternalCanvasSyncEvents({
+    announcements: [
+      { id: 12, title: 'Office hours canceled', message: 'No office hours this week. Rescheduled to Friday.', posted_at: '2026-05-06T14:00:00Z' },
+    ],
+    assignments: [],
+    modules: [],
+    newResources: [],
+    editedResources: [],
+    existingAssignmentIds: new Set(),
+    existingCanvasModuleIds: new Set(),
+    dueDateChanges: [],
+    seenStates: [{
+      stableCanvasKey: baseline.stable_canvas_key ?? '',
+      eventType: baseline.event_type,
+      sourceHash: baseline.source_hash,
+    }],
+    context: makeEventContext(),
+  })
+
+  assert.equal(events.length, 1)
+  assert.equal(events[0].event_type, 'edited_announcement')
+})
+
+test('external Canvas event selection skips edited announcement when Canvas state is unchanged', () => {
+  const baseline = buildAnnouncementEvent(
+    { id: 12, title: 'Office hours canceled', message: 'No office hours this week.', posted_at: '2026-05-06T14:00:00Z' },
+    makeEventContext(),
+  )
+
+  const events = buildExternalCanvasSyncEvents({
+    announcements: [
+      { id: 12, title: 'Office hours canceled', message: 'No office hours this week.', posted_at: '2026-05-06T14:00:00Z' },
+    ],
+    assignments: [],
+    modules: [],
+    newResources: [],
+    editedResources: [],
+    existingAssignmentIds: new Set(),
+    existingCanvasModuleIds: new Set(),
+    dueDateChanges: [],
+    seenStates: [{
+      stableCanvasKey: baseline.stable_canvas_key ?? '',
+      eventType: baseline.event_type,
+      sourceHash: baseline.source_hash,
+    }],
+    context: makeEventContext(),
+  })
+
+  assert.deepEqual(events, [])
 })
 
 test('sanitizeEventTitle strips UUID patterns from event titles', () => {

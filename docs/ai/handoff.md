@@ -5,6 +5,89 @@ Last Updated: 2026-05-08
 
 ---
 
+## Session Update - 2026-05-08 (Implement Gmail-first Canvas notification testing)
+
+### What changed
+
+- Changed Canvas notification sending so `email_notifications='instant'` sends immediately without the old digest cooldown gate.
+- Expanded the Canvas update email event model to cover edited states and test-oriented delivery paths:
+  - `edited_announcement`
+  - `edited_assignment`
+  - `edited_quiz`
+  - `edited_discussion`
+  - `edited_module`
+  - `edited_module_item`
+  - `edited_resource`
+  - `grade_update`
+  - `ocr_completed`
+  - `deep_learn_ready`
+  - `generic_canvas_update`
+- Added exact-state hashing for announcements, assignments, modules, resources, and grades so dedupe only suppresses the same Canvas state and does not suppress real edits.
+- External Canvas sync now:
+  - loads prior `canvas_update_events` state for the course,
+  - detects edited announcements/assignments/modules from state-hash changes,
+  - detects edited resources from real before/after resource state changes during refresh,
+  - emits grade update notifications when Canvas submission grade/score state changes.
+- Added admin-only notification testing route at `/admin/notification-lab`:
+  - gated with existing `ADMIN_EMAILS` logic,
+  - hidden from non-admins with `notFound()`,
+  - inserts realistic `canvas_update_events` test rows,
+  - triggers the same `attemptCanvasDigestForUser()` path used by real external sync,
+  - reports inserted/skipped, sent/skipped/failed, recipient, skip reason, and Resend configuration truthfully.
+- Updated email labels/templates and tests for the expanded event set and instant-mode behavior.
+
+### Files touched
+
+- `actions/admin-notification-lab.ts`
+- `actions/canvas.ts`
+- `app/admin/notification-lab/page.tsx`
+- `components/admin/NotificationLab.tsx`
+- `lib/canvas-digest.ts`
+- `lib/canvas-update-events.ts`
+- `lib/email-templates/canvas-digest.ts`
+- `tests/admin.test.ts`
+- `tests/canvas-digest.test.ts`
+- `tests/queue.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+The app needed Gmail-first delivery verification for Canvas changes, with instant mode treated as the primary path instead of a cooldown-gated digest. The existing implementation only covered a narrow new-item subset and could suppress the exact testing signal needed to verify Resend delivery on real Gmail notification addresses.
+
+### Tests run
+
+- `npm run typecheck` - passed.
+- `npm run lint` - passed.
+- `npm test -- canvas-digest notification queue admin` - passed, 442/442 tests.
+- `npm test -- canvas-digest notification queue` - passed, 442/442 tests.
+
+### Verification result
+
+All requested verification passed. Instant Canvas notification mode now bypasses cooldown, edited announcement state changes are covered by tests, exact-state dedupe is preserved, and the admin-only lab exercises the real `canvas_update_events -> attemptCanvasDigestForUser -> Resend` path.
+
+### Known risks
+
+- Edited announcement/module detection depends on prior event-state history. On courses/resources that existed before this rollout, the first changed state after rollout may establish the baseline rather than always surfacing as an edit event unless the sync can compare against another stored source of truth.
+- The admin notification lab intentionally uses fixed state hashes per preset, so re-running the same preset shows the dedupe behavior as `skipped` until a different preset/state is used.
+- `ocr_completed`, `deep_learn_ready`, and `generic_canvas_update` are currently admin/test-path event types. Real external Canvas sync does not emit the first two yet.
+
+### Blockers
+
+- No code blocker.
+- Pre-existing unrelated working-tree changes remain in `AGENTS.md`, `CLAUDE.md`, `docs/ai/design_system.md`, `docs/current-state.md`, plus an untracked nested `stay-focused/` directory.
+
+### Next recommended step
+
+Run `/admin/notification-lab` against an admin account with `email_notifications='instant'` and a linked Gmail recipient selected in settings, then verify real Resend delivery and inbox threading behavior before deciding how much notification volume to reduce.
+
+### Suggested commit message
+
+```
+harden gmail-first canvas notification testing
+```
+
+---
+
 ## Session Update - 2026-05-08 (Unify Canvas change notifications)
 
 ### What changed

@@ -63,11 +63,13 @@ import { evaluateResourceTextPreservation } from '@/lib/canvas-resource-preserva
 import { classifyModuleResourceTextQuality } from '@/lib/extracted-text-quality'
 import { DEFAULT_EXTERNAL_CANVAS_FETCH_TIMEOUT_MS, EXTERNAL_CANVAS_SYNC_MODE, getPositiveIntegerEnv } from '@/lib/external-sync-queue'
 import {
+  buildResourceStateHash,
   buildExternalCanvasSyncEvents,
   detectDueDateChanges,
   insertCanvasUpdateEvents,
   type CanvasUpdateEventContext,
   type CanvasUpdateEventInput,
+  type SeenCanvasState,
 } from '@/lib/canvas-update-events'
 import { attemptCanvasDigestForUser } from '@/lib/canvas-digest'
 import {
@@ -532,6 +534,12 @@ async function runExternalCanvasSyncJob(job: QueuedJob) {
     assignments,
   })
 
+  const seenCanvasStates = await loadSeenCanvasStates({
+    supabase,
+    userId: job.userId,
+    courseId: courseRecord.id,
+  })
+
   const eventContext: CanvasUpdateEventContext = {
     userId: job.userId,
     courseId: courseRecord.id,
@@ -547,9 +555,11 @@ async function runExternalCanvasSyncJob(job: QueuedJob) {
     assignments,
     modules,
     newResources: resourceRefresh.newResources,
+    editedResources: resourceRefresh.editedResources,
     existingAssignmentIds: new Set(existingDeadlines.keys()),
     existingCanvasModuleIds: resourceRefresh.existingCanvasModuleIds,
     dueDateChanges,
+    seenStates: seenCanvasStates,
     context: eventContext,
   })
 
@@ -739,6 +749,7 @@ async function refreshExternalCanvasResources(input: {
   const matchedExistingIds = new Set<string>()
   const changedResources: ModuleResource[] = []
   const newResources: ModuleResource[] = []
+  const editedResources: ModuleResource[] = []
   let inserted = 0
   let updated = 0
   let preserved = 0
@@ -770,11 +781,12 @@ async function refreshExternalCanvasResources(input: {
         newResources.push(adapted)
       }
       continue
-    }
+      }
 
-    matchedExistingIds.add(String(match.id))
-    const patch = buildSafeExternalResourcePatch(match, row)
-    const { data: updatedRow, error } = await input.supabase
+      const previousResource = adaptModuleResourceRow(match)
+      matchedExistingIds.add(String(match.id))
+      const patch = buildSafeExternalResourcePatch(match, row)
+      const { data: updatedRow, error } = await input.supabase
       .from('module_resources')
       .update(patch)
       .eq('id', match.id as string)
@@ -794,11 +806,17 @@ async function refreshExternalCanvasResources(input: {
     }
 
     updated += 1
-    if (patch.metadata && typeof patch.metadata === 'object' && (patch.metadata as Record<string, unknown>).externalSyncPreservedText === true) {
-      preserved += 1
+      if (patch.metadata && typeof patch.metadata === 'object' && (patch.metadata as Record<string, unknown>).externalSyncPreservedText === true) {
+        preserved += 1
+      }
+      if (updatedRow) {
+        const adapted = adaptModuleResourceRow(updatedRow as Record<string, unknown>)
+        changedResources.push(adapted)
+        if (buildResourceStateHash(previousResource) !== buildResourceStateHash(adapted)) {
+          editedResources.push(adapted)
+        }
+      }
     }
-    if (updatedRow) changedResources.push(adaptModuleResourceRow(updatedRow as Record<string, unknown>))
-  }
 
   for (const missing of existing) {
     const id = readString(missing.id)
@@ -819,12 +837,13 @@ async function refreshExternalCanvasResources(input: {
     inserted,
     updated,
     preserved,
-    missing: Math.max(0, existing.length - matchedExistingIds.size),
-    existingCanvasModuleIds,
-    changedResources,
-    newResources,
+      missing: Math.max(0, existing.length - matchedExistingIds.size),
+      existingCanvasModuleIds,
+      changedResources,
+      newResources,
+      editedResources,
+    }
   }
-}
 
 async function loadFinalModuleResourceExtractsForRawContent(input: {
   supabase: CanvasSyncSupabaseClient
@@ -1079,6 +1098,28 @@ async function loadExistingTaskDeadlines(input: {
     }
   }
   return map
+}
+
+async function loadSeenCanvasStates(input: {
+  supabase: CanvasSyncSupabaseClient
+  userId: string
+  courseId: string
+}): Promise<SeenCanvasState[]> {
+  const { data, error } = await input.supabase
+    .from('canvas_update_events')
+    .select('stable_canvas_key, event_type, source_hash')
+    .eq('user_id', input.userId)
+    .eq('course_id', input.courseId)
+
+  if (error || !data) return []
+
+  return (data as Array<Record<string, unknown>>)
+    .map((row) => ({
+      stableCanvasKey: typeof row.stable_canvas_key === 'string' ? row.stable_canvas_key : '',
+      eventType: row.event_type as SeenCanvasState['eventType'],
+      sourceHash: typeof row.source_hash === 'string' && row.source_hash.trim() ? row.source_hash : null,
+    }))
+    .filter((row) => Boolean(row.stableCanvasKey))
 }
 
 function rowToQueuedJobForExternalSync(row: Record<string, unknown>): QueuedJob {

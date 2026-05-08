@@ -15,13 +15,24 @@ const DEFAULT_MAX_ITEMS = 12
 
 export const MEANINGFUL_EVENT_TYPES: CanvasUpdateEventType[] = [
   'new_announcement',
+  'edited_announcement',
   'new_assignment',
+  'edited_assignment',
   'new_quiz',
+  'edited_quiz',
   'new_discussion',
+  'edited_discussion',
   'due_date_change',
   'new_module',
+  'edited_module',
   'new_module_item',
+  'edited_module_item',
   'new_resource',
+  'edited_resource',
+  'grade_update',
+  'ocr_completed',
+  'deep_learn_ready',
+  'generic_canvas_update',
 ]
 
 export interface DigestEventRow {
@@ -42,6 +53,9 @@ export interface DigestAttemptResult {
   skipReason?: string
   eventsIncluded: number
   eventsMarked: number
+  recipient?: string | null
+  resendConfigured?: boolean
+  emailNotifications?: string | null
 }
 
 function getAppBaseUrl(): string {
@@ -245,14 +259,38 @@ async function loadUserDigestSettings(
   }
 }
 
-function isDigestEventEnabled(eventType: string, categories: Record<string, unknown>): boolean {
+function isDigestEventEnabled(
+  eventType: string,
+  categories: Record<string, unknown>,
+  emailNotifications: string,
+): boolean {
+  if (emailNotifications === 'instant') return true
   if (Boolean(categories.canvas_updates)) return true
 
-  if (eventType === 'new_announcement') return Boolean(categories.announcements)
-  if (eventType === 'new_assignment' || eventType === 'new_quiz' || eventType === 'due_date_change') {
+  if (eventType === 'new_announcement' || eventType === 'edited_announcement') return Boolean(categories.announcements)
+  if (
+    eventType === 'new_assignment'
+    || eventType === 'edited_assignment'
+    || eventType === 'new_quiz'
+    || eventType === 'edited_quiz'
+    || eventType === 'due_date_change'
+    || eventType === 'grade_update'
+  ) {
     return Boolean(categories.due_soon) || Boolean(categories.deadlines) || Boolean(categories.tasks)
   }
-  if (eventType === 'new_module' || eventType === 'new_module_item' || eventType === 'new_resource' || eventType === 'new_discussion') {
+  if (
+    eventType === 'new_module'
+    || eventType === 'edited_module'
+    || eventType === 'new_module_item'
+    || eventType === 'edited_module_item'
+    || eventType === 'new_resource'
+    || eventType === 'edited_resource'
+    || eventType === 'new_discussion'
+    || eventType === 'edited_discussion'
+    || eventType === 'ocr_completed'
+    || eventType === 'deep_learn_ready'
+    || eventType === 'generic_canvas_update'
+  ) {
     return Boolean(categories.new_uploads)
   }
 
@@ -271,26 +309,26 @@ export async function attemptCanvasDigestForUser(input: {
   const sendEmail = input.sendEmail ?? sendTransactionalEmail
 
   if (!isResendConfigured()) {
-    return { sent: false, skipped: true, skipReason: 'resend_not_configured', eventsIncluded: 0, eventsMarked: 0 }
+    return { sent: false, skipped: true, skipReason: 'resend_not_configured', eventsIncluded: 0, eventsMarked: 0, resendConfigured: false, recipient: null, emailNotifications: null }
   }
 
   const userSettings = await loadUserDigestSettings(supabase, userId)
 
   if (!userSettings) {
-    return { sent: false, skipped: true, skipReason: 'no_email', eventsIncluded: 0, eventsMarked: 0 }
+    return { sent: false, skipped: true, skipReason: 'no_email', eventsIncluded: 0, eventsMarked: 0, resendConfigured: true, recipient: null, emailNotifications: null }
   }
 
   if (userSettings.emailNotifications === 'off') {
-    return { sent: false, skipped: true, skipReason: 'email_notifications_off', eventsIncluded: 0, eventsMarked: 0 }
+    return { sent: false, skipped: true, skipReason: 'email_notifications_off', eventsIncluded: 0, eventsMarked: 0, resendConfigured: true, recipient: userSettings.email, emailNotifications: userSettings.emailNotifications }
   }
 
   // Cooldown check.
   const cooldownMinutes = getCooldownMinutes()
-  if (userSettings.lastSentAt) {
+  if (userSettings.emailNotifications !== 'instant' && userSettings.lastSentAt) {
     const lastSent = new Date(userSettings.lastSentAt).getTime()
     const elapsed = now.getTime() - lastSent
     if (elapsed < cooldownMinutes * 60 * 1000) {
-      return { sent: false, skipped: true, skipReason: 'cooldown', eventsIncluded: 0, eventsMarked: 0 }
+      return { sent: false, skipped: true, skipReason: 'cooldown', eventsIncluded: 0, eventsMarked: 0, resendConfigured: true, recipient: userSettings.email, emailNotifications: userSettings.emailNotifications }
     }
   }
 
@@ -306,7 +344,7 @@ export async function attemptCanvasDigestForUser(input: {
 
   if (fetchError) {
     console.warn('[canvas-digest] event fetch failed', { userId, code: (fetchError as { code?: string }).code })
-    return { sent: false, skipped: true, skipReason: 'event_fetch_failed', eventsIncluded: 0, eventsMarked: 0 }
+    return { sent: false, skipped: true, skipReason: 'event_fetch_failed', eventsIncluded: 0, eventsMarked: 0, resendConfigured: true, recipient: userSettings.email, emailNotifications: userSettings.emailNotifications }
   }
 
   const rawRows = (eventRows ?? []) as Array<Record<string, unknown>>
@@ -328,20 +366,20 @@ export async function attemptCanvasDigestForUser(input: {
   })
 
   if (rows.length === 0) {
-    return { sent: false, skipped: true, skipReason: 'no_unsent_events', eventsIncluded: 0, eventsMarked: 0 }
+    return { sent: false, skipped: true, skipReason: 'no_unsent_events', eventsIncluded: 0, eventsMarked: 0, resendConfigured: true, recipient: userSettings.email, emailNotifications: userSettings.emailNotifications }
   }
 
-  const enabledRows = rows.filter((row) => isDigestEventEnabled(row.event_type, userSettings.emailCategories))
+  const enabledRows = rows.filter((row) => isDigestEventEnabled(row.event_type, userSettings.emailCategories, userSettings.emailNotifications))
 
   if (enabledRows.length === 0) {
-    return { sent: false, skipped: true, skipReason: 'email_categories_disabled', eventsIncluded: 0, eventsMarked: 0 }
+    return { sent: false, skipped: true, skipReason: 'email_categories_disabled', eventsIncluded: 0, eventsMarked: 0, resendConfigured: true, recipient: userSettings.email, emailNotifications: userSettings.emailNotifications }
   }
 
   const maxItems = getMaxItems()
   const { courseSections, totalDisplayLines, includedEventIds } = groupEventsForDisplay(enabledRows, maxItems)
 
   if (courseSections.length === 0) {
-    return { sent: false, skipped: true, skipReason: 'no_display_lines', eventsIncluded: 0, eventsMarked: 0 }
+    return { sent: false, skipped: true, skipReason: 'no_display_lines', eventsIncluded: 0, eventsMarked: 0, resendConfigured: true, recipient: userSettings.email, emailNotifications: userSettings.emailNotifications }
   }
 
   const appBaseUrl = getAppBaseUrl()
@@ -366,7 +404,7 @@ export async function attemptCanvasDigestForUser(input: {
 
   if (!result.ok) {
     console.warn('[canvas-digest] send failed — events not marked', { userId })
-    return { sent: false, skipped: false, skipReason: 'send_failed', eventsIncluded: includedEventIds.length, eventsMarked: 0 }
+    return { sent: false, skipped: false, skipReason: 'send_failed', eventsIncluded: includedEventIds.length, eventsMarked: 0, resendConfigured: true, recipient: userSettings.email, emailNotifications: userSettings.emailNotifications }
   }
 
   // Mark ALL fetched events as sent (including overflow) since the email directs them to the app.
@@ -375,5 +413,5 @@ export async function attemptCanvasDigestForUser(input: {
 
   console.info('[canvas-digest] digest sent', { userId, eventsMarked: marked, messageId: result.messageId })
 
-  return { sent: true, skipped: false, eventsIncluded: includedEventIds.length, eventsMarked: marked }
+  return { sent: true, skipped: false, eventsIncluded: includedEventIds.length, eventsMarked: marked, resendConfigured: true, recipient: userSettings.email, emailNotifications: userSettings.emailNotifications }
 }

@@ -211,7 +211,7 @@ test('groupEventsForDisplay returns all event ids for included display lines', (
 // MEANINGFUL_EVENT_TYPES filter
 // ---------------------------------------------------------------------------
 
-test('MEANINGFUL_EVENT_TYPES does not include OCR, deep learn, or debug event types', () => {
+test('MEANINGFUL_EVENT_TYPES does not include internal debug-only event types', () => {
   const invalid = [
     'source_ocr',
     'learn_generation',
@@ -231,7 +231,27 @@ test('MEANINGFUL_EVENT_TYPES does not include OCR, deep learn, or debug event ty
 })
 
 test('MEANINGFUL_EVENT_TYPES includes all required Canvas update types', () => {
-  for (const t of ['new_announcement', 'new_assignment', 'new_quiz', 'new_discussion', 'due_date_change', 'new_module', 'new_module_item', 'new_resource']) {
+  for (const t of [
+    'new_announcement',
+    'edited_announcement',
+    'new_assignment',
+    'edited_assignment',
+    'new_quiz',
+    'edited_quiz',
+    'new_discussion',
+    'edited_discussion',
+    'due_date_change',
+    'new_module',
+    'edited_module',
+    'new_module_item',
+    'edited_module_item',
+    'new_resource',
+    'edited_resource',
+    'grade_update',
+    'ocr_completed',
+    'deep_learn_ready',
+    'generic_canvas_update',
+  ]) {
     assert.ok((MEANINGFUL_EVENT_TYPES as string[]).includes(t), `${t} should be meaningful`)
   }
 })
@@ -364,10 +384,13 @@ test('later sync with inserted=0 retries existing unsent Canvas update events', 
   restore()
 })
 
-test('cooldown still blocks Canvas digest resend for unsent events', async () => {
+test('daily digest mode still blocks Canvas digest resend during cooldown', async () => {
   const restore = configureResendForDigestTest()
   const supabase = createDigestSupabase({
-    settings: { canvas_digest_last_sent_at: '2026-05-07T09:45:00.000Z' },
+    settings: {
+      email_notifications: 'daily_digest',
+      canvas_digest_last_sent_at: '2026-05-07T09:45:00.000Z',
+    },
     events: [makeEvent({ id: 'event-cooldown', user_id: 'user-1' })],
   })
   let sent = 0
@@ -386,6 +409,33 @@ test('cooldown still blocks Canvas digest resend for unsent events', async () =>
   assert.equal(result.skipped, true)
   assert.equal(result.skipReason, 'cooldown')
   assert.equal(supabase.events[0].digest_sent_at, null)
+  restore()
+})
+
+test('instant mode bypasses Canvas digest cooldown and sends immediately', async () => {
+  const restore = configureResendForDigestTest()
+  const supabase = createDigestSupabase({
+    settings: {
+      email_notifications: 'instant',
+      canvas_digest_last_sent_at: '2026-05-07T09:45:00.000Z',
+    },
+    events: [makeEvent({ id: 'event-instant', user_id: 'user-1' })],
+  })
+  let sent = 0
+
+  const result = await attemptCanvasDigestForUser({
+    supabase: supabase as never,
+    userId: 'user-1',
+    now: new Date('2026-05-07T10:00:00.000Z'),
+    sendEmail: async () => {
+      sent += 1
+      return { ok: true, messageId: 'msg-instant' }
+    },
+  })
+
+  assert.equal(sent, 1)
+  assert.equal(result.sent, true)
+  assert.equal(result.recipient, 'user-1@example.com')
   restore()
 })
 
@@ -413,7 +463,7 @@ test('announcement category alone enables announcement digest emails', async () 
   restore()
 })
 
-test('disabled announcement and digest categories leave announcement event unsent', async () => {
+test('instant mode sends announcement email even when announcement and digest categories are off', async () => {
   const restore = configureResendForDigestTest()
   const supabase = createDigestSupabase({
     settings: { email_categories: { announcements: false, canvas_updates: false } },
@@ -431,10 +481,9 @@ test('disabled announcement and digest categories leave announcement event unsen
     },
   })
 
-  assert.equal(sent, 0)
-  assert.equal(result.skipped, true)
-  assert.equal(result.skipReason, 'email_categories_disabled')
-  assert.equal(supabase.events[0].digest_sent_at, null)
+  assert.equal(sent, 1)
+  assert.equal(result.sent, true)
+  assert.equal(supabase.events[0].digest_sent_at, '2026-05-07T10:00:00.000Z')
   restore()
 })
 

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { existsSync, readFileSync } from 'node:fs'
 import test from 'node:test'
 import { isAdminEmail } from '../lib/admin'
 
@@ -66,4 +67,19 @@ test('isAdminEmail returns false for null or undefined input', () => {
     assert.equal(isAdminEmail(null), false)
     assert.equal(isAdminEmail(undefined), false)
   })
+})
+
+test('admin notification lab page exists and gates non-admins with notFound', () => {
+  const path = 'app/admin/notification-lab/page.tsx'
+  assert.equal(existsSync(path), true)
+  const source = readFileSync(path, 'utf8')
+  assert.match(source, /notFound\(/)
+  assert.match(source, /isAdminEmail\(/)
+})
+
+test('admin notification lab action checks ADMIN_EMAILS before sending', () => {
+  const source = readFileSync('actions/admin-notification-lab.ts', 'utf8')
+  assert.match(source, /isAdminEmail\(/)
+  assert.match(source, /Not authorized\./)
+  assert.match(source, /attemptCanvasDigestForUser/)
 })
