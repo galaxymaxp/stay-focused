@@ -5,6 +5,11 @@ import {
   buildDeepLearnGroundingWithDependencies,
   DeepLearnGenerationBlockedError,
 } from '../lib/deep-learn-generation'
+import {
+  DEEP_LEARN_REFINEMENT_BAD_SOURCE_MESSAGE,
+  getDeepLearnRefinementModel,
+  selectDeepLearnRefinementGrounding,
+} from '../lib/deep-learn-refinement'
 import type { ModuleSourceResource } from '../lib/module-workspace'
 import type { Module, ModuleResource } from '../lib/types'
 
@@ -521,6 +526,109 @@ test('buildDeepLearnGroundingWithDependencies blocks when source fetch still yie
       return true
     },
   )
+})
+
+test('Deep Learn refinement refuses empty selected source text', () => {
+  const result = selectDeepLearnRefinementGrounding({
+    resource: createLearnResource({
+      extractedText: null,
+      extractedTextPreview: null,
+      extractedCharCount: 0,
+      whyItMatters: 'Stale module context should not be used.',
+      linkedContext: 'Unrelated task context should not be used.',
+    }),
+    storedResource: createStoredResource({
+      extractedText: null,
+      extractedTextPreview: null,
+      extractedCharCount: 0,
+    }),
+    canonicalResourceId: 'stored-resource-1',
+  })
+
+  assert.equal(result.ok, false)
+  if (!result.ok) {
+    assert.equal(result.message, DEEP_LEARN_REFINEMENT_BAD_SOURCE_MESSAGE)
+  }
+})
+
+test('Deep Learn refinement refuses metadata refusal and debug text', () => {
+  const text = [
+    "I'm unable to transcribe text from images or scanned documents at this time.",
+    'Document Title: 1.1-Data Organization.pdf',
+    'Resource ID: 550e8400-e29b-41d4-a716-446655440000',
+    'Extraction Quality: too short',
+    'Grounding strategy used',
+  ].join('\n')
+
+  const result = selectDeepLearnRefinementGrounding({
+    resource: createLearnResource({
+      title: '1.1-Data Organization.pdf',
+      extractedText: text,
+      extractedTextPreview: text,
+      extractedCharCount: text.length,
+      extractionStatus: 'completed',
+    }),
+    storedResource: createStoredResource({
+      title: '1.1-Data Organization.pdf',
+      extractedText: text,
+      extractedTextPreview: text,
+      extractedCharCount: text.length,
+      extractionStatus: 'completed',
+    }),
+    canonicalResourceId: 'stored-resource-1',
+  })
+
+  assert.equal(result.ok, false)
+})
+
+test('Deep Learn refinement accepts meaningful selected academic source text', () => {
+  const text = buildLongText('Data organization explains OLTP, Online Transaction Processing, ODS, Operational Data Store, fields, records, and warehouse characteristics.')
+  const result = selectDeepLearnRefinementGrounding({
+    resource: createLearnResource({
+      title: '1.1-Data Organization.pdf',
+      extractedText: text,
+      extractedTextPreview: text.slice(0, 420),
+      extractedCharCount: text.length,
+      extractionStatus: 'completed',
+      whyItMatters: 'ERP SAP Learning Hub Gym Badge stale assignment context.',
+      linkedContext: 'Unrelated module/course context.',
+    }),
+    storedResource: createStoredResource({
+      title: '1.1-Data Organization.pdf',
+      extractedText: text,
+      extractedTextPreview: text.slice(0, 420),
+      extractedCharCount: text.length,
+      extractionStatus: 'completed',
+    }),
+    canonicalResourceId: 'stored-resource-1',
+  })
+
+  assert.equal(result.ok, true)
+  if (result.ok) {
+    assert.match(result.sourceText, /Data organization explains OLTP/i)
+    assert.doesNotMatch(result.sourceText, /ERP|SAP Learning Hub|Gym Badge|Unrelated module/i)
+  }
+})
+
+test('Deep Learn refinement model follows configured fallback order', () => {
+  assert.equal(getDeepLearnRefinementModel({
+    OPENAI_DEEP_LEARN_MODEL: '  gpt-5.1  ',
+    OPENAI_MODEL: 'gpt-4o',
+  } as unknown as NodeJS.ProcessEnv), 'gpt-5.1')
+  assert.equal(getDeepLearnRefinementModel({
+    OPENAI_MODEL: '  gpt-5-mini-custom  ',
+  } as unknown as NodeJS.ProcessEnv), 'gpt-5-mini-custom')
+  assert.equal(getDeepLearnRefinementModel({} as NodeJS.ProcessEnv), 'gpt-5-mini')
+})
+
+test('Deep Learn refinement action does not use hard-coded gpt-4o or empty source fallback', async () => {
+  const source = await import('node:fs/promises').then((fs) => fs.readFile('actions/deep-learn.ts', 'utf8'))
+
+  assert.doesNotMatch(source, /model:\s*['"`]gpt-4o['"`]/)
+  assert.match(source, /resolveLearnResourceSelection/)
+  assert.match(source, /selectDeepLearnRefinementGrounding/)
+  assert.match(source, /Selected resource source text/)
+  assert.doesNotMatch(source, /Source context:[\s\S]*extractedTextPreview \?\? ''/)
 })
 
 function createContext(resource: ModuleSourceResource, storedResource: ModuleResource) {

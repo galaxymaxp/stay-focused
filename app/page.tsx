@@ -3,7 +3,14 @@ import { SyncFirstEmptyState } from '@/components/SyncFirstEmptyState'
 import { createAuthenticatedSupabaseServerClient } from '@/lib/auth-server'
 import { getClarityWorkspace } from '@/lib/clarity-workspace'
 import { buildHomeOverview } from '@/lib/home-overview'
-import { buildLearnFocusRows, buildSyllabusFocusRows, mergeScheduledBlocksIntoFocusRows } from '@/lib/home-focus'
+import {
+  buildLearnFocusRows,
+  buildSyllabusFocusRows,
+  filterHomeActionableScheduledBlocks,
+  filterHomeRelevantScheduledBlocks,
+  getHomeScheduleWindow,
+  mergeScheduledBlocksIntoFocusRows,
+} from '@/lib/home-focus'
 
 export default async function Dashboard() {
   const workspace = await getClarityWorkspace()
@@ -18,14 +25,17 @@ export default async function Dashboard() {
 
   const overview = buildHomeOverview(workspace)
   const client = await createAuthenticatedSupabaseServerClient()
+  const scheduleWindow = getHomeScheduleWindow()
 
   const [scheduledBlocksResult, studyPacksResult, resourcesResult, sourceProgressResult] = client
     ? await Promise.all([
       client
         .from('scheduled_blocks')
         .select('id,title,subtitle,start_at,end_at,status,source_table,source_id,course_id,source_type,block_type,estimate_confidence,estimate_reason')
+        .gte('start_at', scheduleWindow.startAt)
+        .lt('start_at', scheduleWindow.endAt)
         .order('start_at', { ascending: true })
-        .limit(24),
+        .limit(48),
       client
         .from('deep_learn_notes')
         .select('id,module_id,resource_id,title,quiz_ready')
@@ -76,7 +86,7 @@ export default async function Dashboard() {
     title: block.title,
     startAt: block.start_at,
     endAt: block.end_at,
-    status: block.status,
+    status: normalizeScheduleStatus(block.status),
     sourceTable: block.source_table,
     sourceId: block.source_id,
     courseId: block.course_id,
@@ -87,10 +97,13 @@ export default async function Dashboard() {
     estimateReason: block.estimate_reason,
   }))
 
+  const relevantScheduledBlocks = filterHomeRelevantScheduledBlocks(rawScheduledBlocks)
+  const actionableScheduledBlocks = filterHomeActionableScheduledBlocks(rawScheduledBlocks)
+
   const { mergedSyllabus, mergedLearn } = mergeScheduledBlocksIntoFocusRows(
     syllabusFocusRows,
     learnFocusRows,
-    rawScheduledBlocks,
+    actionableScheduledBlocks,
     courseNameById,
   )
 
@@ -103,7 +116,7 @@ export default async function Dashboard() {
         recentActivity={overview.recentActivity}
         courseSnapshots={overview.courseSnapshots}
         undatedTaskCount={overview.undatedTaskCount}
-        scheduledBlocks={rawScheduledBlocks}
+        scheduledBlocks={relevantScheduledBlocks}
         syllabusFocusRows={mergedSyllabus}
         learnFocusRows={mergedLearn}
         reviewedSourceIds={reviewedSourceIds}
@@ -128,4 +141,9 @@ function numericToEstimateConfidence(value: number) {
   if (value >= 0.7) return 'high'
   if (value >= 0.5) return 'medium'
   return 'low'
+}
+
+function normalizeScheduleStatus(value: unknown): 'scheduled' | 'opened' | 'completed' | 'skipped' | 'missed' {
+  if (value === 'opened' || value === 'completed' || value === 'skipped' || value === 'missed') return value
+  return 'scheduled'
 }

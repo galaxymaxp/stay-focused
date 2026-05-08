@@ -10,7 +10,7 @@ export type ClockScheduleBlock = {
   title: string
   startAt: string
   endAt: string
-  status: 'scheduled' | 'opened' | 'completed' | 'skipped'
+  status: 'scheduled' | 'opened' | 'completed' | 'skipped' | 'missed'
   sourceTable: SchedulerSourceTable
   sourceId?: string | null
   courseId?: string | null

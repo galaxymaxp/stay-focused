@@ -74,6 +74,8 @@ export interface ModuleResourceRow {
 
 const DEFAULT_TASK_MINUTES = 20
 const DEFAULT_LEARN_MINUTES = 30
+const HOME_SCHEDULE_WINDOW_DAYS = 1
+const INACTIVE_HOME_BLOCK_STATUSES = new Set(['completed', 'skipped', 'missed'])
 
 // ── Builders ─────────────────────────────────────────────────────────────────
 
@@ -172,6 +174,50 @@ export function fitFocusRowsToWindow<T extends { estimatedMinutes?: number }>(
   }
 
   return result
+}
+
+export function getHomeScheduleWindow(now = new Date()): { startAt: string; endAt: string } {
+  const start = new Date(now)
+  start.setHours(0, 0, 0, 0)
+
+  const end = new Date(start)
+  end.setDate(end.getDate() + HOME_SCHEDULE_WINDOW_DAYS)
+
+  return {
+    startAt: start.toISOString(),
+    endAt: end.toISOString(),
+  }
+}
+
+export function isHomeActionableScheduledBlockStatus(status: string | null | undefined): boolean {
+  return !INACTIVE_HOME_BLOCK_STATUSES.has((status ?? '').toLowerCase())
+}
+
+export function filterHomeRelevantScheduledBlocks<T extends { startAt: string | null; endAt?: string | null }>(
+  blocks: T[],
+  now = new Date(),
+): T[] {
+  const window = getHomeScheduleWindow(now)
+  const windowStartMs = Date.parse(window.startAt)
+  const windowEndMs = Date.parse(window.endAt)
+
+  return blocks.filter((block) => {
+    const startMs = Date.parse(block.startAt ?? '')
+    if (!Number.isFinite(startMs)) return false
+
+    const endMs = Date.parse(block.endAt ?? '')
+    const effectiveEndMs = Number.isFinite(endMs) ? endMs : startMs
+
+    return effectiveEndMs > windowStartMs && startMs < windowEndMs
+  })
+}
+
+export function filterHomeActionableScheduledBlocks<T extends { startAt: string | null; endAt?: string | null; status?: string | null }>(
+  blocks: T[],
+  now = new Date(),
+): T[] {
+  return filterHomeRelevantScheduledBlocks(blocks, now)
+    .filter((block) => isHomeActionableScheduledBlockStatus(block.status))
 }
 
 function normalizeFocusDurationMinutes(value: number | null | undefined, defaultMinutes: number): number {
@@ -306,7 +352,7 @@ export interface ScheduledBlockInput {
  *   module_resources), add a fallback LearnFocusRow.
  * - learning_items, deep_learn_notes, and drafts are always skipped.
  *
- * Completed and skipped blocks do not get fallback rows (they only appear in
+ * Completed, skipped, and missed blocks do not get fallback rows (they only appear in
  * the Completed section via the scheduledBlocks prop in TodayDashboard).
  */
 export function mergeScheduledBlocksIntoFocusRows(
@@ -345,7 +391,7 @@ export function mergeScheduledBlocksIntoFocusRows(
       if (sourceId && syllabusMap.has(sourceId)) {
         const existing = syllabusMap.get(sourceId)!
         syllabusMap.set(sourceId, { ...existing, scheduledBlockId: blockId })
-      } else if (status !== 'completed' && status !== 'skipped') {
+      } else if (isHomeActionableScheduledBlockStatus(status)) {
         const courseName = block.courseId ? (courseNameById[block.courseId] ?? '') : ''
         fallbackSyllabus.push({
           id: blockId,
@@ -366,7 +412,7 @@ export function mergeScheduledBlocksIntoFocusRows(
       if (sourceId && learnMap.has(sourceId)) {
         const existing = learnMap.get(sourceId)!
         learnMap.set(sourceId, { ...existing, scheduledBlockId: blockId })
-      } else if (status !== 'completed' && status !== 'skipped') {
+      } else if (isHomeActionableScheduledBlockStatus(status)) {
         const courseName = block.courseId ? (courseNameById[block.courseId] ?? null) : null
         const href =
           sourceTable === 'modules' && sourceId

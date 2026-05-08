@@ -11,7 +11,7 @@ import { TaskStatusToggle } from '@/components/TaskStatusToggle'
 import { InteractivePlannerClock, type ClockScheduleBlock } from '@/components/InteractivePlannerClock'
 import { buildManualCopyBundle } from '@/lib/manual-copy-bundle'
 import type { HomeActivityItem, HomeCourseSnapshot, HomeDueSoonItem } from '@/lib/home-overview'
-import { fitFocusRowsToWindow, type LearnFocusRow, type SyllabusFocusRow } from '@/lib/home-focus'
+import { fitFocusRowsToWindow, isHomeActionableScheduledBlockStatus, type LearnFocusRow, type SyllabusFocusRow } from '@/lib/home-focus'
 import type { TodayItem } from '@/lib/types'
 import { formatDuration, formatTime, getWindowDurationMinutes, isBlockInsideWindow, timeWindowToIsoRange } from '@/lib/scheduler/time'
 import { buildCourseLearnHref } from '@/lib/stay-focused-links'
@@ -90,7 +90,7 @@ export function TodayDashboard({
     return {
       currentBlock: active,
       completedBlocks: sorted.filter((block) => block.status === 'completed'),
-      activeBlocks: sorted.filter((block) => block.status !== 'completed'),
+      activeBlocks: sorted.filter((block) => isHomeActionableScheduledBlockStatus(block.status)),
       totalScheduledCount: sorted.length,
     }
   }, [visibleSchedule])

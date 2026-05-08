@@ -1,7 +1,78 @@
 # Stay Focused — AI Session Handoff
 
 Author: galaxymaxp omgraythekid@gmail.com
-Last Updated: 2026-05-07
+Last Updated: 2026-05-08
+
+---
+
+## Session Update - 2026-05-08 (Harden Home schedule freshness and Deep Learn refinement)
+
+### What changed
+
+**Home schedule freshness**
+- Home now queries `scheduled_blocks` only within the current local-day schedule window instead of loading the first 24 blocks globally.
+- Home separates today-relevant blocks from actionable blocks:
+  - relevant blocks can still include today's completed history for display
+  - actionable command-center inputs exclude `completed`, `skipped`, and `missed`
+- `TodayDashboard` now uses the shared actionable-status helper so skipped/missed blocks cannot become active Start Here/current/next candidates.
+- Scheduled-block merge fallbacks now skip `missed` blocks in addition to completed/skipped blocks.
+
+**Deep Learn refinement grounding**
+- Refinement now resolves the selected resource through `resolveLearnResourceSelection`, matching the main Deep Learn generation path.
+- Refinement uses the stored canonical selected resource and `selectDeepLearnGroundingText`/meaningful-text checks before any OpenAI request.
+- Empty, metadata-only, refusal/debug, or otherwise weak selected source text is blocked with a clear student-facing message.
+- Refinement no longer falls back to module/course/task context when selected source text is bad.
+- Replaced the hard-coded `gpt-4o` refinement model with the existing Deep Learn model fallback order: `OPENAI_DEEP_LEARN_MODEL`, then `OPENAI_MODEL`, then `gpt-5-mini`.
+
+### Files touched
+
+- `actions/deep-learn.ts`
+- `app/(app)/page.tsx`
+- `app/page.tsx`
+- `components/InteractivePlannerClock.tsx`
+- `components/TodayDashboard.tsx`
+- `lib/deep-learn-refinement.ts`
+- `lib/home-focus.ts`
+- `tests/deep-learn-generation.test.ts`
+- `tests/scheduler.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+The P0 review found that old scheduled blocks could still influence Home's command center and that Deep Learn refinement could call OpenAI with empty source context if the selected resource was not resolved. Both issues could violate the schedule-first workflow and grounded-source contract.
+
+### Tests run
+
+- `git status --short --branch` - reviewed before editing; existing unrelated local changes were present.
+- `npm test -- scheduler` - passed, 428/428 tests.
+- `npm test -- deep-learn-readiness` - passed, 428/428 tests.
+- `npm test -- deep-learn-generation` - passed, 428/428 tests.
+- `npm test -- canvas-content-resolution` - passed, 428/428 tests.
+- `npm test -- pdf-extractor source-ocr-updates deep-learn-readiness deep-learn-generation canvas-content-resolution learn-resource-ui queue` - passed, 428/428 tests.
+- `npm run typecheck` - passed after fixing a test-only partial env cast.
+- `npm run lint` - passed.
+
+### Verification result
+
+All required verification passed. New tests cover yesterday schedule exclusion, completed/skipped/missed Home action exclusion, today actionable block preservation, Deep Learn refinement refusal for empty or metadata/refusal/debug text, successful refinement grounding with meaningful selected text, configured model fallback, and absence of the old empty-context/hard-coded-model path.
+
+### Known risks
+
+- The Home schedule DB query filters by `start_at` within the current local day. This matches how generated study blocks are created today, but a future overnight block that starts before local midnight and ends after midnight would require an overlap query to appear after midnight.
+- `app/page.tsx` and `app/(app)/page.tsx` still duplicate Home server-page logic. The fix was applied to both to avoid route drift, but a later consolidation would reduce maintenance risk.
+
+### Blockers
+
+- No code blocker.
+- Pre-existing unrelated working-tree changes remain in `AGENTS.md`, `CLAUDE.md`, `docs/ai/design_system.md`, `docs/current-state.md`, plus an untracked nested `stay-focused/` directory.
+
+### Next recommended step
+
+Consolidate the duplicated Home server data-loading logic so future schedule command-center fixes land in one place.
+
+### Suggested commit message
+
+harden home schedule freshness and deep learn refinement
 
 ---
 

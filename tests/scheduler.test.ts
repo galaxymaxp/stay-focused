@@ -7,7 +7,17 @@ import { deriveScheduledBlockStatus, generateSchedule } from '@/lib/scheduler/al
 import { findLaterSlot } from '@/lib/scheduler/move-later'
 import { isSchedulableResourceType } from '@/lib/scheduler/source-filter'
 import { formatDuration, formatTime, getWindowDurationMinutes, isBlockInsideWindow, minutesToTime, timeToMinutes } from '@/lib/scheduler/time'
-import { buildSyllabusFocusRows, buildLearnFocusRows, fitFocusRowsToWindow, mergeScheduledBlocksIntoFocusRows, type ModuleResourceRow, type HomeSyllabusTaskInput, type ScheduledBlockInput } from '@/lib/home-focus'
+import {
+  buildSyllabusFocusRows,
+  buildLearnFocusRows,
+  filterHomeActionableScheduledBlocks,
+  filterHomeRelevantScheduledBlocks,
+  fitFocusRowsToWindow,
+  mergeScheduledBlocksIntoFocusRows,
+  type ModuleResourceRow,
+  type HomeSyllabusTaskInput,
+  type ScheduledBlockInput,
+} from '@/lib/home-focus'
 import { buildLearnExperience } from '@/lib/module-workspace'
 import { buildModuleDoHref } from '@/lib/stay-focused-links'
 
@@ -223,6 +233,57 @@ test('completed group is collapsed by default (TodayDashboard initial state)', (
   // is always collapsed on first load. This test documents the contract.
   const initialCompletedExpanded = false
   assert.equal(initialCompletedExpanded, false, 'Completed accordion starts collapsed')
+})
+
+test('Home schedule filter excludes yesterday blocks from command center inputs', () => {
+  const now = new Date(2026, 4, 8, 12, 0, 0)
+  const blocks = [
+    makeHomeFilterBlock('yesterday', new Date(2026, 4, 7, 18, 0, 0), 'scheduled'),
+    makeHomeFilterBlock('today', new Date(2026, 4, 8, 18, 0, 0), 'scheduled'),
+  ]
+
+  const relevant = filterHomeRelevantScheduledBlocks(blocks, now)
+  const actionable = filterHomeActionableScheduledBlocks(blocks, now)
+
+  assert.deepEqual(relevant.map((block) => block.id), ['today'])
+  assert.deepEqual(actionable.map((block) => block.id), ['today'])
+})
+
+test('Home actionable schedule filter excludes completed skipped and missed blocks', () => {
+  const now = new Date(2026, 4, 8, 12, 0, 0)
+  const blocks = [
+    makeHomeFilterBlock('scheduled', new Date(2026, 4, 8, 13, 0, 0), 'scheduled'),
+    makeHomeFilterBlock('opened', new Date(2026, 4, 8, 14, 0, 0), 'opened'),
+    makeHomeFilterBlock('completed', new Date(2026, 4, 8, 15, 0, 0), 'completed'),
+    makeHomeFilterBlock('skipped', new Date(2026, 4, 8, 16, 0, 0), 'skipped'),
+    makeHomeFilterBlock('missed', new Date(2026, 4, 8, 17, 0, 0), 'missed'),
+  ]
+
+  const relevant = filterHomeRelevantScheduledBlocks(blocks, now)
+  const actionable = filterHomeActionableScheduledBlocks(blocks, now)
+
+  assert.deepEqual(relevant.map((block) => block.id), ['scheduled', 'opened', 'completed', 'skipped', 'missed'])
+  assert.deepEqual(actionable.map((block) => block.id), ['scheduled', 'opened'])
+})
+
+test('today actionable scheduled blocks still attach to Home focus rows', () => {
+  const now = new Date(2026, 4, 8, 12, 0, 0)
+  const task = makeTaskItem({ id: 'ti-home-today', title: 'Today Assignment' })
+  const block = makeScheduledBlock({
+    id: 'sb-home-today',
+    sourceTable: 'task_items',
+    sourceId: 'ti-home-today',
+    title: 'Today Assignment',
+    startAt: new Date(2026, 4, 8, 13, 0, 0).toISOString(),
+    endAt: new Date(2026, 4, 8, 13, 30, 0).toISOString(),
+    status: 'scheduled',
+  })
+
+  const actionable = filterHomeActionableScheduledBlocks([block], now)
+  const { mergedSyllabus } = mergeScheduledBlocksIntoFocusRows(buildSyllabusFocusRows([task]), [], actionable, {})
+
+  assert.equal(actionable.length, 1)
+  assert.equal(mergedSyllabus[0]?.scheduledBlockId, 'sb-home-today')
 })
 
 // ── Home hierarchy & clock integration contracts ─────────────────────────────
@@ -960,6 +1021,19 @@ function makeScheduledBlock(overrides: Partial<ScheduledBlockInput> & { id: stri
     subtitle: null,
     ...overrides,
   }
+}
+
+function makeHomeFilterBlock(id: string, start: Date, status: string): ScheduledBlockInput {
+  const end = new Date(start.getTime() + 30 * 60_000)
+  return makeScheduledBlock({
+    id,
+    sourceTable: 'task_items',
+    sourceId: id,
+    title: id,
+    startAt: start.toISOString(),
+    endAt: end.toISOString(),
+    status,
+  })
 }
 
 test('scheduled tasks fallback appears in Syllabus when workspace.taskItems is empty', () => {

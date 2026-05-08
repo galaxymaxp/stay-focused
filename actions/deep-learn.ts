@@ -7,6 +7,7 @@ import { buildLearnExperience, extractCourseName, getModuleWorkspace, resolveLea
 import { DeepLearnGenerationBlockedError, generateDeepLearnNoteForResource } from '@/lib/deep-learn-generation'
 import { DEEP_LEARN_PROMPT_VERSION, buildDeepLearnNoteBody, computeDeepLearnQuizReady } from '@/lib/deep-learn'
 import { classifyDeepLearnResourceReadiness } from '@/lib/deep-learn-readiness'
+import { getDeepLearnRefinementModel, selectDeepLearnRefinementGrounding } from '@/lib/deep-learn-refinement'
 import { getDeepLearnNoteForResource, saveDeepLearnNote } from '@/lib/deep-learn-store'
 import type { DeepLearnNoteSection } from '@/lib/types'
 
@@ -298,18 +299,33 @@ export async function refineDeepLearnBuildBodyAction(input: {
   if (!note) throw new Error('Draft needs a saved Deep Learn item before it can refine content.')
 
   const workspace = await getModuleWorkspace(input.moduleId)
-  const sourceContext = workspace
-    ? buildLearnExperience(workspace.module, {
-        taskCount: workspace.tasks.length,
-        deadlineCount: workspace.deadlines.length,
-        resources: workspace.resources,
-        resourceStudyStates: workspace.resourceStudyStates,
-      }).resources.find((resource) => resource.id === input.resourceId)
-    : null
+  if (!workspace) {
+    throw new Error('The module could not be loaded for Deep Learn.')
+  }
+
+  const experience = buildLearnExperience(workspace.module, {
+    taskCount: workspace.tasks.length,
+    deadlineCount: workspace.deadlines.length,
+    resources: workspace.resources,
+    resourceStudyStates: workspace.resourceStudyStates,
+  })
+  const selection = resolveLearnResourceSelection(experience, workspace.resources, input.resourceId)
+  if (!selection) {
+    throw new Error('The selected study resource is not available in Learn.')
+  }
+
+  const grounding = selectDeepLearnRefinementGrounding({
+    resource: selection.resource,
+    storedResource: selection.storedResource,
+    canonicalResourceId: selection.canonicalResourceId,
+  })
+  if (!grounding.ok) {
+    throw new Error(grounding.message)
+  }
 
   const openai = getOpenAIClient()
   const response = await openai.chat.completions.create({
-    model: 'gpt-4o',
+    model: getDeepLearnRefinementModel(),
     response_format: { type: 'json_object' },
     messages: [
       {
@@ -320,7 +336,7 @@ export async function refineDeepLearnBuildBodyAction(input: {
         role: 'user',
         content: [
           `Current Deep Learn build draft:\n\n${note.noteBody}`,
-          `Source context:\n\n${(sourceContext?.extractedText ?? sourceContext?.extractedTextPreview ?? '').slice(0, 20000)}`,
+          `Selected resource source text:\n\n${grounding.sourceText.slice(0, 20000)}`,
           `Instruction:\n\n${instruction}`,
         ].join('\n\n---\n\n'),
       },
