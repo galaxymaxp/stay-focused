@@ -249,6 +249,32 @@ test('Home schedule filter excludes yesterday blocks from command center inputs'
   assert.deepEqual(actionable.map((block) => block.id), ['today'])
 })
 
+test('Home schedule filter includes blocks overlapping the current local day', () => {
+  const now = new Date(2026, 4, 8, 12, 0, 0)
+  const overnight = makeScheduledBlock({
+    id: 'overnight',
+    sourceTable: 'task_items',
+    sourceId: 'overnight',
+    title: 'Overnight study block',
+    startAt: new Date(2026, 4, 7, 23, 30, 0).toISOString(),
+    endAt: new Date(2026, 4, 8, 0, 30, 0).toISOString(),
+    status: 'scheduled',
+  })
+  const old = makeScheduledBlock({
+    id: 'old',
+    sourceTable: 'task_items',
+    sourceId: 'old',
+    title: 'Old study block',
+    startAt: new Date(2026, 4, 7, 22, 30, 0).toISOString(),
+    endAt: new Date(2026, 4, 7, 23, 0, 0).toISOString(),
+    status: 'scheduled',
+  })
+
+  const relevant = filterHomeRelevantScheduledBlocks([old, overnight], now)
+
+  assert.deepEqual(relevant.map((block) => block.id), ['overnight'])
+})
+
 test('Home actionable schedule filter excludes completed skipped and missed blocks', () => {
   const now = new Date(2026, 4, 8, 12, 0, 0)
   const blocks = [
@@ -284,6 +310,19 @@ test('today actionable scheduled blocks still attach to Home focus rows', () => 
 
   assert.equal(actionable.length, 1)
   assert.equal(mergedSyllabus[0]?.scheduledBlockId, 'sb-home-today')
+})
+
+test('Home entry routes use the shared server data loader', () => {
+  const rootPage = readFileSync('app/page.tsx', 'utf8')
+  const appPage = readFileSync('app/(app)/page.tsx', 'utf8')
+  const loader = readFileSync('lib/home-data.ts', 'utf8')
+
+  assert.match(rootPage, /loadHomeDashboardData/)
+  assert.match(appPage, /loadHomeDashboardData/)
+  assert.doesNotMatch(rootPage, /from\('scheduled_blocks'\)/)
+  assert.doesNotMatch(appPage, /from\('scheduled_blocks'\)/)
+  assert.match(loader, /\.lt\('start_at', scheduleWindow\.endAt\)/)
+  assert.match(loader, /\.gt\('end_at', scheduleWindow\.startAt\)/)
 })
 
 // ── Home hierarchy & clock integration contracts ─────────────────────────────

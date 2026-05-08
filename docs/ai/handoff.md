@@ -5,6 +5,66 @@ Last Updated: 2026-05-08
 
 ---
 
+## Session Update - 2026-05-08 (Consolidate Home data loading)
+
+### What changed
+
+**Shared Home loader**
+- Added `lib/home-data.ts` with `loadHomeDashboardData()`.
+- `app/page.tsx` and `app/(app)/page.tsx` now call the shared loader and only keep route-shell differences locally.
+- Moved Home server data loading, study pack maps, course name maps, reviewed source ids, scheduled block normalization, and focus-row merge wiring out of both route files.
+
+**Overnight schedule overlap**
+- Updated the scheduled block query from "starts inside today" to overlap semantics:
+  - `start_at < dayEnd`
+  - `end_at > dayStart`
+- This keeps current local-day behavior while allowing a block that started before midnight and ends after midnight to appear on Home.
+- Existing actionable filtering still excludes completed, skipped, and missed blocks from command-center inputs.
+
+### Files touched
+
+- `app/page.tsx`
+- `app/(app)/page.tsx`
+- `lib/home-data.ts`
+- `tests/scheduler.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+The previous P0 fix had to update both Home entry points independently. Consolidating the loader prevents route drift and makes future command-center schedule fixes land in one place.
+
+### Tests run
+
+- `git status --short --branch` - reviewed before editing; existing unrelated local changes were present.
+- `npm run typecheck` - passed.
+- `npm run lint` - passed.
+- `npm test -- scheduler` - passed, 430/430 tests.
+- `npm test -- pdf-extractor source-ocr-updates deep-learn-readiness deep-learn-generation canvas-content-resolution learn-resource-ui queue` - passed, 430/430 tests.
+
+### Verification result
+
+All required and broader relevant verification passed. New tests cover current-day overlap inclusion for overnight blocks and assert both Home routes use the shared loader instead of querying `scheduled_blocks` directly.
+
+### Known risks
+
+- The overlap query assumes scheduled blocks have an `end_at` value. Generated schedule blocks do, and the existing Home/clock logic also expects `endAt`; legacy malformed rows with null `end_at` would not be returned by the DB query.
+- `lib/home-data.ts` now owns Home server data shape normalization. Future changes to `TodayDashboard` props should update this loader and its scheduler tests.
+
+### Blockers
+
+- No code blocker.
+- Pre-existing unrelated working-tree changes remain in `AGENTS.md`, `CLAUDE.md`, `docs/ai/design_system.md`, `docs/current-state.md`, plus an untracked nested `stay-focused/` directory.
+
+### Next recommended step
+
+Add a focused unit test around `loadHomeDashboardData()` with a mocked Supabase client if Home data logic grows further; current coverage is through pure helpers and route source contracts.
+
+### Suggested commit message
+
+consolidate home data loading
+
+---
+
 ## Session Update - 2026-05-08 (Harden Home schedule freshness and Deep Learn refinement)
 
 ### What changed
