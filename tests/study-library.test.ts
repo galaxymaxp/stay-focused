@@ -25,6 +25,24 @@ test('quiz pack shelf subtitle is stable for study outputs', () => {
   assert.equal(getLibrarySubtitle(createShelfItem({ studyOutputKind: 'quiz_pack' })), 'Quiz pack')
 })
 
+test('task outputs appear as task items in Study Library', () => {
+  const courseNames = new Map([
+    ['course-1', { id: 'course-1', name: 'Evidence', code: 'LAW-204' }],
+  ])
+
+  const item = toStudyLibraryItem(createShelfItem({
+    title: 'Case Digest Output',
+    sourceType: 'task',
+    studyOutputKind: 'task_output',
+    sourceTaskId: 'task-1',
+  }), courseNames)
+
+  assert.equal(item.kind, 'task')
+  assert.equal(item.subtitle, 'Task output')
+  assert.equal(item.taskTitle, 'Case Digest Output')
+  assert.equal(item.href, '/library/output-1')
+})
+
 test('study sheet shelf subtitle is stable for study outputs', () => {
   assert.equal(getLibrarySubtitle(createShelfItem({ studyOutputKind: 'study_sheet' })), 'Study sheet')
 })

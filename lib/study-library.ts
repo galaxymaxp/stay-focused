@@ -4,11 +4,7 @@ export function toStudyLibraryItem(
   draft: DraftShelfItem,
   courseNames: Map<string, { id: string; name: string; code: string }>,
 ): StudyLibraryItem {
-  const kind = draft.entryKind === 'deep_learn_note'
-    || draft.entryKind === 'study_output'
-    || draft.sourceType !== 'task'
-    ? 'learning'
-    : 'task'
+  const kind = draft.sourceType === 'task' ? 'task' : 'learning'
   const courseTitle = draft.courseId ? courseNames.get(draft.courseId)?.name : undefined
 
   return {

@@ -360,9 +360,13 @@ export type DraftSourceType = 'module_resource' | 'task' | 'module' | 'upload' |
 export type DraftLoadAvailability = 'available' | 'unavailable' | 'failed'
 export type StudyOutputKind = 'reviewer' | 'quiz_pack' | 'task_output' | 'study_sheet' | 'cram_sheet'
 export type StudyOutputStatus = 'ready' | 'failed'
-export type StudyOutputSourceKind = 'deep_learn_note'
+export type StudyOutputSourceKind = 'deep_learn_note' | 'task'
 export type StudyOutputQuizItemType = 'multiple_choice' | 'identification' | 'matching' | 'true_false'
 export type StudyOutputSheetMode = 'study_sheet' | 'cram_sheet'
+export type TaskOutputTargetType = 'docx' | 'pdf' | 'ppt' | 'html' | 'css' | 'js'
+export type TaskOutputPreset = 'report' | 'presentation' | 'reviewer' | 'webpage' | 'documentation'
+export type TaskOutputPreviewMode = 'rich_text' | 'html' | 'code'
+export type TaskOutputGroundingStatus = 'grounded' | 'limited'
 
 export interface DraftRefinementEntry {
   instruction: string
@@ -528,7 +532,51 @@ export interface StudyOutputSheetContent {
   likelyExamTraps: StudyOutputSheetTrapItem[]
 }
 
-export type StudyOutputContent = StudyOutputReviewerContent | StudyOutputQuizPackContent | StudyOutputSheetContent
+export interface StudyOutputTaskOutputRevision {
+  id: string
+  createdAt: string
+  label: string
+  summary: string
+  outputType: TaskOutputTargetType
+  preset: TaskOutputPreset
+  groundingStatus: TaskOutputGroundingStatus
+}
+
+export interface StudyOutputTaskOutputExportFile {
+  filename: string
+  mimeType: string
+  content: string
+  label: string
+}
+
+export interface StudyOutputTaskOutputContent {
+  version: 'task-output-v1'
+  sourceTaskId: string
+  taskTitle: string
+  preset: TaskOutputPreset
+  outputType: TaskOutputTargetType
+  previewMode: TaskOutputPreviewMode
+  title: string
+  summary: string
+  previewContent: string
+  stylesheet: string | null
+  script: string | null
+  requirementSummary: string
+  requirements: string[]
+  selectedContext: string[]
+  groundingStatus: TaskOutputGroundingStatus
+  groundingNote: string
+  limitationNote: string | null
+  warnings: string[]
+  exports: StudyOutputTaskOutputExportFile[]
+  revisionHistory: StudyOutputTaskOutputRevision[]
+}
+
+export type StudyOutputContent =
+  | StudyOutputReviewerContent
+  | StudyOutputQuizPackContent
+  | StudyOutputSheetContent
+  | StudyOutputTaskOutputContent
 
 export interface StudyOutput {
   id: string
@@ -538,6 +586,7 @@ export interface StudyOutput {
   resourceId: string | null
   sourceKind: StudyOutputSourceKind
   sourceNoteId: string | null
+  sourceTaskId: string | null
   outputKind: StudyOutputKind
   status: StudyOutputStatus
   title: string
@@ -570,6 +619,7 @@ export interface DraftShelfItem {
   summary: string | null
   studyOutputKind?: StudyOutputKind | null
   sourceNoteId?: string | null
+  sourceTaskId?: string | null
 }
 
 export interface StudyLibraryItem {

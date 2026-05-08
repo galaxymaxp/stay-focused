@@ -72,6 +72,7 @@ test('sheet output rendering keeps printable and mobile-friendly structure', () 
     resourceId: 'resource-1',
     sourceKind: 'deep_learn_note',
     sourceNoteId: 'note-1',
+    sourceTaskId: null,
     outputKind: 'cram_sheet',
     status: 'ready',
     title: content.title,

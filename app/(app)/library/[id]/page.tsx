@@ -7,6 +7,7 @@ import { ModuleLensShell } from '@/components/ModuleLensShell'
 import { StudyOutputQuizPackPage } from '@/components/StudyOutputQuizPackPage'
 import { StudyOutputReviewerPage } from '@/components/StudyOutputReviewerPage'
 import { StudyOutputSheetPage } from '@/components/StudyOutputSheetPage'
+import { StudyOutputTaskOutputPage } from '@/components/StudyOutputTaskOutputPage'
 import { getAuthenticatedUserServer } from '@/lib/auth-server'
 import { extractCourseName, getModuleWorkspace, type ModuleSourceResource } from '@/lib/module-workspace'
 import { getStudyOutputById } from '@/lib/study-outputs/store'
@@ -60,7 +61,7 @@ export default async function LibraryItemPage({ params }: Props) {
       <main className="page-shell">
         <GeneratedContentState
           title="Sign in to load your saved study content."
-          description="Your saved notes, task drafts, and exam prep packs will appear here after you sign in."
+          description="Your saved notes, task outputs, and exam prep packs will appear here after you sign in."
           tone="accent"
           action={(
             <Link href={`/sign-in?next=${encodeURIComponent(detailHref)}`} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
@@ -169,6 +170,7 @@ export default async function LibraryItemPage({ params }: Props) {
       || output?.outputKind === 'quiz_pack'
       || output?.outputKind === 'study_sheet'
       || output?.outputKind === 'cram_sheet'
+      || output?.outputKind === 'task_output'
     ) {
       const workspace = output.moduleId ? await getModuleWorkspace(output.moduleId) : null
       const courseId = workspace?.module.courseId ?? output.courseId ?? null
@@ -181,6 +183,9 @@ export default async function LibraryItemPage({ params }: Props) {
         ? buildLearnResourceWorkspaceHref(output.moduleId, output.resourceId)
         : null
       const outputLabel = getSavedOutputLabel(output.outputKind)
+      const taskWorkspaceHref = output.outputKind === 'task_output' && output.moduleId && output.sourceTaskId
+        ? buildModuleDoHref(output.moduleId, { taskId: output.sourceTaskId })
+        : null
 
       const reviewerContent = (
         <div className="command-page command-page-tight">
@@ -189,7 +194,9 @@ export default async function LibraryItemPage({ params }: Props) {
               <p className="ui-kicker">Study Library</p>
               <h1 className="ui-page-title" style={{ marginTop: '0.45rem' }}>{output.title}</h1>
               <p className="ui-page-copy" style={{ marginTop: '0.38rem', maxWidth: '48rem' }}>
-                This {outputLabel} is a printable study output built from your saved grounded Deep Learn pack.
+                {output.outputKind === 'task_output'
+                  ? 'This task output is a saved deliverable preview built from surfaced task instructions, readable source text, requirements, and selected context.'
+                  : `This ${outputLabel} is a printable study output built from your saved grounded Deep Learn pack.`}
               </p>
             </div>
             <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
@@ -199,6 +206,11 @@ export default async function LibraryItemPage({ params }: Props) {
               {noteHref ? (
                 <Link href={noteHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
                   Open Deep Learn pack
+                </Link>
+              ) : null}
+              {taskWorkspaceHref ? (
+                <Link href={taskWorkspaceHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+                  Open Tasks workspace
                 </Link>
               ) : null}
               {output.outputKind === 'quiz_pack' && output.moduleId ? (
@@ -233,6 +245,12 @@ export default async function LibraryItemPage({ params }: Props) {
               courseLabel={courseName ?? null}
               moduleTitle={workspace?.module.title ?? null}
             />
+          ) : output.outputKind === 'task_output' ? (
+            <StudyOutputTaskOutputPage
+              output={output}
+              courseLabel={courseName ?? null}
+              moduleTitle={workspace?.module.title ?? null}
+            />
           ) : (
             <StudyOutputSheetPage
               output={output}
@@ -249,7 +267,7 @@ export default async function LibraryItemPage({ params }: Props) {
 
       return (
         <ModuleLensShell
-          currentLens="learn"
+          currentLens={output.outputKind === 'task_output' ? 'do' : 'learn'}
           moduleId={workspace.module.id}
           courseId={workspace.module.courseId}
           courseName={courseName}
@@ -510,5 +528,6 @@ function getSavedOutputLabel(outputKind: StudyOutputKind) {
   if (outputKind === 'quiz_pack') return 'quiz pack'
   if (outputKind === 'cram_sheet') return 'cram sheet'
   if (outputKind === 'study_sheet') return 'study sheet'
+  if (outputKind === 'task_output') return 'task output'
   return 'study output'
 }

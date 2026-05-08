@@ -34,9 +34,10 @@ import {
 import { classifyDeepLearnResourceReadiness } from '@/lib/deep-learn-readiness'
 import { saveDeepLearnNote } from '@/lib/deep-learn-store'
 import { buildDeepLearnNoteHref } from '@/lib/stay-focused-links'
-import { buildTaskDraftRequestPayload, type TaskDraftContext, type TaskDraftResponse } from '@/lib/do-now'
+import { type TaskDraftContext } from '@/lib/do-now'
 import { createNotification } from '@/lib/notifications-server'
-import { saveDraftFromTaskOutput } from '@/actions/drafts'
+import { saveTaskOutputStudyOutputAction } from '@/actions/study-outputs'
+import { buildTaskOutputRequest, isTaskOutputApiResponse } from '@/lib/task-output'
 import { type PdfOcrPage, type PdfOcrResult } from '@/lib/extraction/pdf-ocr'
 import { getSourceOcrProvider } from '@/lib/extraction/source-ocr-provider'
 import {
@@ -687,6 +688,8 @@ export async function queueDoGenerationAction(input: {
   taskId: string
   moduleId: string
   context: TaskDraftContext
+  preset: 'report' | 'presentation' | 'reviewer' | 'webpage' | 'documentation'
+  outputType: 'docx' | 'pdf' | 'ppt' | 'html' | 'css' | 'js'
 }): Promise<QueueJobResult> {
   const user = await getAuthenticatedUserServer()
   if (!user) return { jobId: '', error: 'Not authenticated.' }
@@ -720,6 +723,8 @@ export async function queueDoGenerationAction(input: {
     {
       taskId: input.taskId,
       moduleId: input.moduleId,
+      preset: input.preset,
+      outputType: input.outputType,
       context: input.context as unknown as Record<string, unknown>,
     },
   )
@@ -733,6 +738,8 @@ export async function queueDoGenerationAction(input: {
       moduleId: input.moduleId,
       taskId: input.taskId,
       context: input.context,
+      preset: input.preset,
+      outputType: input.outputType,
     })
     revalidatePath(`/modules/${input.moduleId}/tasks`)
     revalidatePath(`/modules/${input.moduleId}/do`)
@@ -1244,6 +1251,8 @@ async function processDoGenerationJob(input: {
   moduleId: string
   taskId: string
   context: TaskDraftContext
+  preset: 'report' | 'presentation' | 'reviewer' | 'webpage' | 'documentation'
+  outputType: 'docx' | 'pdf' | 'ppt' | 'html' | 'css' | 'js'
 }) {
   await markQueuedJobRunning(input.jobId, 10)
 
@@ -1255,7 +1264,10 @@ async function processDoGenerationJob(input: {
 
   try {
     if (await canceled()) return
-    const apiPayload = buildTaskDraftRequestPayload(input.context)
+    const apiPayload = buildTaskOutputRequest(input.context, {
+      preset: input.preset,
+      outputType: input.outputType,
+    })
 
     await updateQueuedJobStatus(input.jobId, 'running', { progress: 20 })
     if (await canceled()) return
@@ -1264,7 +1276,7 @@ async function processDoGenerationJob(input: {
       || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null)
       || 'http://localhost:3000'
 
-    const resp = await fetch(`${baseUrl}/api/do-now`, {
+    const resp = await fetch(`${baseUrl}/api/task-output`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(apiPayload),
@@ -1281,29 +1293,36 @@ async function processDoGenerationJob(input: {
       return
     }
 
-    const data = await resp.json() as { ok: boolean; draft?: unknown; error?: string }
+    const data = await resp.json() as { ok: boolean; output?: unknown; error?: string }
     if (await canceled()) return
 
-    if (!data.ok || !data.draft) {
-      const message = data.error ?? 'Task output returned an empty draft.'
+    if (!data.ok || !isTaskOutputApiResponse(data)) {
+      const message = data.error ?? 'Task output returned an empty preview.'
       await markQueuedJobFailed(input.jobId, message)
       await notifyTaskOutputFailed(input.userId, input.jobId, input.taskId, input.moduleId, input.context.taskTitle, message)
       return
     }
 
-    const saved = await saveDraftFromTaskOutput({
-      context: input.context,
-      draft: data.draft as TaskDraftResponse,
+    const saved = await saveTaskOutputStudyOutputAction({
+      taskId: input.taskId,
+      moduleId: input.moduleId,
+      courseId: input.context.courseId ?? null,
+      taskTitle: input.context.taskTitle,
+      preset: input.preset,
+      outputType: input.outputType,
+      content: data.output,
     })
-    const resultHref = `/library/${saved.draftId}`
+    const resultHref = saved.href
 
     await markQueuedJobCompleted(input.jobId, {
       taskId: input.taskId,
       moduleId: input.moduleId,
       taskTitle: input.context.taskTitle,
       href: resultHref,
-      draftId: saved.draftId,
-      draft: data.draft as Record<string, unknown>,
+      outputId: saved.id,
+      output: data.output,
+      preset: input.preset,
+      outputType: input.outputType,
     })
 
     await createNotification({

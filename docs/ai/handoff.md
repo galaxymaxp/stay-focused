@@ -5,6 +5,95 @@ Last Updated: 2026-05-09
 
 ---
 
+## Session Update - 2026-05-09 (Add task output generator foundation)
+
+### What changed
+
+- Added task-output foundation support on the shared `study_outputs` layer with `source_kind = task` and saved `task_output` entries tied to `source_task_id`.
+- Added a reusable task-output contract in `lib/task-output.ts` for:
+  - request building
+  - strict grounding prompts
+  - weak-source scaffold fallback
+  - deterministic preview/export bundles
+  - lightweight revision history
+- Added a new `/api/task-output` route that generates task outputs from surfaced task instructions, readable source text, requirements, and selected context.
+- Reworked the task action flow so `Generate Output` now:
+  - lets students choose a preset and output type
+  - queues generation
+  - previews the saved result
+  - exposes export/download actions
+- Added saved Study Library detail support for task outputs, including task-output routing, task-output subtype filtering, and task-vs-learning classification.
+- Added compact preview styling for:
+  - printable HTML previews
+  - rich-text previews
+  - code previews
+- Added test coverage for:
+  - task-output grounding
+  - weak-source fallback
+  - deterministic export bundles
+  - metadata-leak rejection
+  - Study Library visibility for saved task outputs
+
+### Files touched
+
+- `actions/queue-jobs.ts`
+- `actions/study-outputs.ts`
+- `app/(app)/library/[id]/page.tsx`
+- `app/(app)/library/page.tsx`
+- `app/api/task-output/route.ts`
+- `app/globals.css`
+- `app/modules/[id]/tasks/page.tsx`
+- `components/DoNowButton.tsx`
+- `components/DoNowPanel.tsx`
+- `components/StudyOutputTaskOutputPage.tsx`
+- `docs/ai/handoff.md`
+- `lib/study-library.ts`
+- `lib/study-outputs/store.ts`
+- `lib/task-output.ts`
+- `lib/types.ts`
+- `supabase/migrations/20260509143000_extend_study_outputs_for_task_outputs.sql`
+- `tests/study-library.test.ts`
+- `tests/study-output-sheet.test.ts`
+- `tests/task-output-foundation.test.ts`
+
+### Why it changed
+
+Stay Focused already had reviewer, quiz-pack, and sheet outputs, but it did not yet have a grounded task deliverable flow that saved into the same output system. This foundation adds a student-facing output generator without falling back to generic task drafts, keeps the workflow cheap and deterministic, and makes weak-source behavior explicit by returning scaffolds instead of fabricated content.
+
+### Tests run
+
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- task-output study-library task-draft-contract` - passed (470 tests, 0 failures)
+
+### Verification result
+
+All required checks passed. Task outputs can now be queued from the Tasks workspace, saved into `study_outputs`, reopened from Study Library, previewed in the browser, and exported through honest export-ready bundles without pretending to generate unsupported binary formats.
+
+### Known risks
+
+- `docx`, `pdf`, and `ppt` currently save export-ready HTML/text bundles rather than real binary files. This is intentional for the foundation layer, but students still need a later true exporter if native file generation becomes a product requirement.
+- The generator contract is strict enough to reject noisy OCR/debug-style source text, so some thin tasks will correctly produce scaffold-first outputs that feel sparse.
+- Legacy `drafts` infrastructure still exists elsewhere in the app, so task outputs now coexist with older saved draft flows instead of fully replacing them in one pass.
+
+### Blockers
+
+None.
+
+### Next recommended step
+
+1. Add true binary export adapters for `docx`, `pdf`, and `ppt` only after choosing a supported export stack and explicit file-format scope.
+2. Unify older task-draft surfaces with the new saved `task_output` flow so Tasks and Library use one consistent deliverable model.
+3. Add revision-to-revision diff or restore controls if students need more than lightweight revision history metadata.
+
+### Suggested commit message
+
+```bash
+add task output generator foundation
+```
+
+---
+
 ## Session Update - 2026-05-09 (Add study sheet outputs)
 
 ### What changed

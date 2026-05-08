@@ -5701,6 +5701,61 @@ details[open] > .ui-interactive-summary,
 .command-empty-state h2 { margin: 0; font-size: 1.1rem; }
 .command-empty-state-success { border-color: color-mix(in srgb, var(--green) 35%, var(--border-subtle)); background: color-mix(in srgb, var(--green-light) 32%, var(--surface-elevated)); }
 
+.task-output-preview-frame {
+  width: 100%;
+  min-height: 34rem;
+  border: 1px solid color-mix(in srgb, var(--border-subtle) 84%, transparent);
+  border-radius: 14px;
+  background: #ffffff;
+}
+
+.task-output-code-block,
+.task-output-rich-block {
+  margin: 0;
+  padding: 1rem;
+  border: 1px solid color-mix(in srgb, var(--border-subtle) 84%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface-soft) 74%, var(--surface-elevated) 26%);
+  color: var(--text-primary);
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.task-output-code-block {
+  font-family: "Aptos Mono", "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  white-space: pre;
+  line-height: 1.6;
+}
+
+@media print {
+  .task-output-preview-frame {
+    min-height: auto;
+    border-color: rgba(0, 0, 0, 0.18);
+  }
+
+  .task-output-code-block,
+  .task-output-rich-block {
+    border-color: rgba(0, 0, 0, 0.18);
+    background: #ffffff;
+    box-shadow: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .task-output-preview-frame {
+    min-height: 24rem;
+  }
+
+  .task-output-code-block,
+  .task-output-rich-block {
+    padding: 0.8rem;
+    font-size: 12px;
+  }
+}
+
 @media (min-width: 960px) {
   .planner-shell { grid-template-columns: minmax(440px, 560px) minmax(0, 1fr); }
   .planner-clock-column { position: sticky; top: calc(var(--app-safe-top) + 5rem); }

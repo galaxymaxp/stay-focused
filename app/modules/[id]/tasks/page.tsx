@@ -110,13 +110,13 @@ export default async function ModuleTasksPage({ params, searchParams }: Props) {
             <p className="ui-kicker" style={{ margin: 0 }}>Study Library</p>
             <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.62, color: 'var(--text-secondary)' }}>
               {latestModuleDraft
-                ? 'Save task outputs from the output panel, then reopen them from the Study Library to continue right where you left off.'
-                : 'No task drafts yet. Start from a task and save a draft to keep it here.'}
+                ? 'Save task outputs from the output panel, then reopen them from Study Library to continue right where you left off.'
+                : 'No task outputs yet. Start from a task and generate one to keep it here.'}
             </p>
             <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
               {latestModuleDraft ? (
                 <Link href={`/library/${latestModuleDraft.id}`} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
-                  Resume latest saved item
+                  Open latest saved output
                 </Link>
               ) : (
                 <Link
