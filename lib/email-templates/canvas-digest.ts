@@ -31,8 +31,11 @@ function eventTypeLabel(eventType: string): string {
   switch (eventType) {
     case 'new_announcement': return 'New announcement'
     case 'new_assignment': return 'New assignment'
+    case 'new_quiz': return 'New quiz'
+    case 'new_discussion': return 'New discussion'
     case 'due_date_change': return 'Due date updated'
     case 'new_module': return 'New module'
+    case 'new_module_item': return 'New module item'
     case 'new_resource': return 'New resource'
     default: return 'Update'
   }

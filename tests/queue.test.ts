@@ -4,6 +4,7 @@ import {
   buildAnnouncementEvent,
   buildAssignmentEvent,
   buildDueDateChangeEvent,
+  buildExternalCanvasSyncEvents,
   buildModuleEvent,
   buildResourceEvent,
   detectDueDateChanges,
@@ -447,6 +448,18 @@ test('new assignment event has correct type and source fields', () => {
   assert.ok(event.summary?.includes('May'))
 })
 
+test('Canvas quiz assignment event uses quiz type and stable Canvas identity', () => {
+  const event = buildAssignmentEvent(
+    { id: 77, name: 'Chapter 4 Quiz', description: null, due_at: '2026-05-21T23:59:00Z', points_possible: 10, submission_types: ['online_quiz'] },
+    makeEventContext(),
+  )
+
+  assert.equal(event.event_type, 'new_quiz')
+  assert.equal(event.source_type, 'quiz')
+  assert.equal(event.source_canvas_id, '77')
+  assert.ok(event.stable_canvas_key?.includes('quiz:77'))
+})
+
 test('new announcement event has correct type and canvas id', () => {
   const event = buildAnnouncementEvent(
     { id: 12, title: 'Office hours canceled', message: 'No office hours this week.', posted_at: '2026-05-06T14:00:00Z' },
@@ -478,8 +491,39 @@ test('new resource event uses canvas_item_id as source', () => {
 
   assert.ok(event !== null)
   assert.equal(event!.event_type, 'new_resource')
-  assert.equal(event!.source_type, 'module_item')
+  assert.equal(event!.source_type, 'file')
   assert.equal(event!.source_canvas_id, '99')
+})
+
+test('new discussion resource event is distinct from generic resources', () => {
+  const event = buildResourceEvent(
+    createResourceForEvents({
+      canvasItemId: 88,
+      canvasFileId: null,
+      resourceType: 'discussion',
+      metadata: { normalizedSourceType: 'discussion' },
+    }),
+    makeEventContext(),
+  )
+
+  assert.ok(event !== null)
+  assert.equal(event!.event_type, 'new_discussion')
+  assert.equal(event!.source_type, 'discussion')
+  assert.equal(event!.source_canvas_id, '88')
+})
+
+test('assignable module resources do not create duplicate resource notifications', () => {
+  const event = buildResourceEvent(
+    createResourceForEvents({
+      canvasItemId: 89,
+      canvasFileId: null,
+      resourceType: 'assignment',
+      metadata: { normalizedSourceType: 'assignment' },
+    }),
+    makeEventContext(),
+  )
+
+  assert.equal(event, null)
 })
 
 test('new resource event falls back to canvas_file_id when item id is absent', () => {
@@ -573,6 +617,54 @@ test('assignment and announcement events share stable source_canvas_id across re
   assert.equal(ev1.user_id, ev2.user_id)
 })
 
+test('external Canvas event selection does not email-flood already imported assignments or modules', () => {
+  const events = buildExternalCanvasSyncEvents({
+    announcements: [],
+    assignments: [
+      { id: 55, name: 'Existing Essay', description: null, due_at: null, points_possible: 100, submission_types: [] },
+    ],
+    modules: [
+      { id: 7, name: 'Existing Module', items: [{ id: 1, title: 'Lecture', type: 'File' }] },
+    ],
+    newResources: [],
+    existingAssignmentIds: new Set([55]),
+    existingCanvasModuleIds: new Set([7]),
+    dueDateChanges: [],
+    context: makeEventContext(),
+  })
+
+  assert.deepEqual(events, [])
+})
+
+test('external Canvas event selection emits new assignment, module, and resource events once meaningful', () => {
+  const events = buildExternalCanvasSyncEvents({
+    announcements: [],
+    assignments: [
+      { id: 56, name: 'New Essay', description: null, due_at: null, points_possible: 100, submission_types: [] },
+    ],
+    modules: [
+      { id: 8, name: 'New Module', items: [{ id: 2, title: 'New Reading', type: 'Page' }] },
+    ],
+    newResources: [
+      createResourceForEvents({
+        canvasItemId: 2,
+        canvasFileId: null,
+        canvasModuleId: 8,
+        resourceType: 'page',
+        metadata: { normalizedSourceType: 'page' },
+      }),
+    ],
+    existingAssignmentIds: new Set(),
+    existingCanvasModuleIds: new Set(),
+    dueDateChanges: [],
+    context: makeEventContext(),
+  })
+
+  assert.ok(events.some((event) => event.event_type === 'new_assignment' && event.source_canvas_id === '56'))
+  assert.ok(events.some((event) => event.event_type === 'new_module' && event.source_canvas_id === '8'))
+  assert.ok(events.some((event) => event.event_type === 'new_resource' && event.source_canvas_id === '2'))
+})
+
 test('sanitizeEventTitle strips UUID patterns from event titles', () => {
   const dirty = 'Assignment 11111111-1111-4111-8111-111111111111 Recap'
   const clean = sanitizeEventTitle(dirty)
@@ -622,6 +714,9 @@ function makeEventContext(): CanvasUpdateEventContext {
 function createResourceForEvents(input: {
   canvasItemId: number | null
   canvasFileId: number | null
+  canvasModuleId?: number | null
+  resourceType?: string
+  metadata?: Record<string, unknown>
 }) {
   return {
     id: 'resource-1',
@@ -629,11 +724,11 @@ function createResourceForEvents(input: {
     courseId: 'course-1',
     canvasInstanceUrl: 'https://canvas.example.edu' as string | null,
     canvasCourseId: 101 as number | null,
-    canvasModuleId: 5 as number | null,
+    canvasModuleId: input.canvasModuleId ?? 5 as number | null,
     canvasItemId: input.canvasItemId,
     canvasFileId: input.canvasFileId,
     title: 'Lecture Notes.pdf',
-    resourceType: 'file',
+    resourceType: input.resourceType ?? 'file',
     contentType: 'application/pdf' as string | null,
     extension: 'pdf' as string | null,
     sourceUrl: null as string | null,
@@ -644,7 +739,7 @@ function createResourceForEvents(input: {
     extractedCharCount: 0,
     extractionError: null as string | null,
     required: false,
-    metadata: {},
+    metadata: input.metadata ?? {},
     created_at: '2026-05-07T00:00:00Z',
   }
 }

@@ -16,8 +16,11 @@ const DEFAULT_MAX_ITEMS = 12
 export const MEANINGFUL_EVENT_TYPES: CanvasUpdateEventType[] = [
   'new_announcement',
   'new_assignment',
+  'new_quiz',
+  'new_discussion',
   'due_date_change',
   'new_module',
+  'new_module_item',
   'new_resource',
 ]
 
@@ -161,7 +164,7 @@ export async function markEventsDigestSent(
   const now = sentAt.toISOString()
   const { error, count } = await supabase
     .from('canvas_update_events')
-    .update({ digest_sent_at: now })
+    .update({ digest_sent_at: now, sent_at: now })
     .in('id', eventIds)
     .is('digest_sent_at', null)
     .select('id')
@@ -246,10 +249,10 @@ function isDigestEventEnabled(eventType: string, categories: Record<string, unkn
   if (Boolean(categories.canvas_updates)) return true
 
   if (eventType === 'new_announcement') return Boolean(categories.announcements)
-  if (eventType === 'new_assignment' || eventType === 'due_date_change') {
+  if (eventType === 'new_assignment' || eventType === 'new_quiz' || eventType === 'due_date_change') {
     return Boolean(categories.due_soon) || Boolean(categories.deadlines) || Boolean(categories.tasks)
   }
-  if (eventType === 'new_module' || eventType === 'new_resource') {
+  if (eventType === 'new_module' || eventType === 'new_module_item' || eventType === 'new_resource' || eventType === 'new_discussion') {
     return Boolean(categories.new_uploads)
   }
 

@@ -222,7 +222,7 @@ test('MEANINGFUL_EVENT_TYPES does not include OCR, deep learn, or debug event ty
 })
 
 test('MEANINGFUL_EVENT_TYPES includes all required Canvas update types', () => {
-  for (const t of ['new_announcement', 'new_assignment', 'due_date_change', 'new_module', 'new_resource']) {
+  for (const t of ['new_announcement', 'new_assignment', 'new_quiz', 'new_discussion', 'due_date_change', 'new_module', 'new_module_item', 'new_resource']) {
     assert.ok((MEANINGFUL_EVENT_TYPES as string[]).includes(t), `${t} should be meaningful`)
   }
 })
@@ -426,6 +426,57 @@ test('disabled announcement and digest categories leave announcement event unsen
   assert.equal(result.skipped, true)
   assert.equal(result.skipReason, 'email_categories_disabled')
   assert.equal(supabase.events[0].digest_sent_at, null)
+  restore()
+})
+
+test('task category enables new quiz Canvas update emails', async () => {
+  const restore = configureResendForDigestTest()
+  const supabase = createDigestSupabase({
+    settings: { email_categories: { tasks: true, canvas_updates: false } },
+    events: [makeEvent({ id: 'quiz-event', user_id: 'user-1', event_type: 'new_quiz', title: 'Chapter quiz' })],
+  })
+  let sent = 0
+
+  const result = await attemptCanvasDigestForUser({
+    supabase: supabase as never,
+    userId: 'user-1',
+    now: new Date('2026-05-07T10:00:00.000Z'),
+    sendEmail: async () => {
+      sent += 1
+      return { ok: true, messageId: 'msg-quiz' }
+    },
+  })
+
+  assert.equal(sent, 1)
+  assert.equal(result.sent, true)
+  assert.equal(supabase.events[0].digest_sent_at, '2026-05-07T10:00:00.000Z')
+  restore()
+})
+
+test('new uploads category enables discussion and module item update emails', async () => {
+  const restore = configureResendForDigestTest()
+  const supabase = createDigestSupabase({
+    settings: { email_categories: { new_uploads: true, canvas_updates: false } },
+    events: [
+      makeEvent({ id: 'discussion-event', user_id: 'user-1', event_type: 'new_discussion', title: 'Week 4 discussion' }),
+      makeEvent({ id: 'module-item-event', user_id: 'user-1', event_type: 'new_module_item', title: 'Reference link' }),
+    ],
+  })
+  let sent = 0
+
+  const result = await attemptCanvasDigestForUser({
+    supabase: supabase as never,
+    userId: 'user-1',
+    now: new Date('2026-05-07T10:00:00.000Z'),
+    sendEmail: async () => {
+      sent += 1
+      return { ok: true, messageId: 'msg-upload' }
+    },
+  })
+
+  assert.equal(sent, 1)
+  assert.equal(result.sent, true)
+  assert.equal(supabase.events.every((event) => event.digest_sent_at === '2026-05-07T10:00:00.000Z'), true)
   restore()
 })
 

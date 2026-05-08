@@ -63,11 +63,7 @@ import { evaluateResourceTextPreservation } from '@/lib/canvas-resource-preserva
 import { classifyModuleResourceTextQuality } from '@/lib/extracted-text-quality'
 import { DEFAULT_EXTERNAL_CANVAS_FETCH_TIMEOUT_MS, EXTERNAL_CANVAS_SYNC_MODE, getPositiveIntegerEnv } from '@/lib/external-sync-queue'
 import {
-  buildAnnouncementEvent,
-  buildAssignmentEvent,
-  buildDueDateChangeEvent,
-  buildModuleEvent,
-  buildResourceEvent,
+  buildExternalCanvasSyncEvents,
   detectDueDateChanges,
   insertCanvasUpdateEvents,
   type CanvasUpdateEventContext,
@@ -545,28 +541,17 @@ async function runExternalCanvasSyncJob(job: QueuedJob) {
     courseHref: `/courses/${courseRecord.id}`,
   }
 
-  const eventInputs: CanvasUpdateEventInput[] = []
-
-  for (const announcement of announcements) {
-    eventInputs.push(buildAnnouncementEvent(announcement, eventContext))
-  }
-
-  for (const assignment of assignments) {
-    eventInputs.push(buildAssignmentEvent(assignment, eventContext))
-  }
-
-  for (const canvasModule of modules) {
-    eventInputs.push(buildModuleEvent(canvasModule, eventContext))
-  }
-
-  for (const resource of resourceRefresh.newResources) {
-    const ev = buildResourceEvent(resource, eventContext)
-    if (ev) eventInputs.push(ev)
-  }
-
-  for (const { assignment, newDueAt } of detectDueDateChanges(assignments, existingDeadlines)) {
-    eventInputs.push(buildDueDateChangeEvent(assignment, newDueAt, eventContext))
-  }
+  const dueDateChanges = detectDueDateChanges(assignments, existingDeadlines)
+  const eventInputs: CanvasUpdateEventInput[] = buildExternalCanvasSyncEvents({
+    announcements,
+    assignments,
+    modules,
+    newResources: resourceRefresh.newResources,
+    existingAssignmentIds: new Set(existingDeadlines.keys()),
+    existingCanvasModuleIds: resourceRefresh.existingCanvasModuleIds,
+    dueDateChanges,
+    context: eventContext,
+  })
 
   const eventInsert = await insertCanvasUpdateEvents(supabase, eventInputs)
 
@@ -746,6 +731,11 @@ async function refreshExternalCanvasResources(input: {
   }
 
   const existing = ((existingRows ?? []) as Record<string, unknown>[])
+  const existingCanvasModuleIds = new Set<number>()
+  for (const row of existing) {
+    const canvasModuleId = readNumber(row.canvas_module_id)
+    if (canvasModuleId !== null) existingCanvasModuleIds.add(canvasModuleId)
+  }
   const matchedExistingIds = new Set<string>()
   const changedResources: ModuleResource[] = []
   const newResources: ModuleResource[] = []
@@ -830,6 +820,7 @@ async function refreshExternalCanvasResources(input: {
     updated,
     preserved,
     missing: Math.max(0, existing.length - matchedExistingIds.size),
+    existingCanvasModuleIds,
     changedResources,
     newResources,
   }

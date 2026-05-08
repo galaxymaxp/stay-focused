@@ -5,6 +5,72 @@ Last Updated: 2026-05-08
 
 ---
 
+## Session Update - 2026-05-08 (Unify Canvas change notifications)
+
+### What changed
+
+- Extended the existing `canvas_update_events` pipeline instead of creating a second notification store.
+- Added stable event fields through migration: `stable_canvas_key`, `source_url`, `html_url`, `first_seen_at`, `sent_at`, and `skipped_reason`.
+- Added event support for Canvas quizzes, discussions, and generic module items alongside announcements, assignments, due-date changes, modules, and resources.
+- Moved external-sync event selection into `buildExternalCanvasSyncEvents()` so sync emits only meaningful new/changed Canvas identities:
+  - announcements always dedupe by Canvas announcement id;
+  - assignments/quizzes emit only when their Canvas assignment id is not already tracked by task rows;
+  - modules emit only when a newly inserted resource belongs to a previously unseen Canvas module id;
+  - resources emit only from newly inserted `module_resources`;
+  - assignment-like and quiz-like resources do not create duplicate resource notifications;
+  - due-date changes still dedupe by assignment id plus new due date.
+- Digest sending now includes `new_quiz`, `new_discussion`, and `new_module_item`, marks `sent_at` only after Resend succeeds, and leaves failed sends retryable.
+
+### Files touched
+
+- `actions/canvas.ts`
+- `lib/canvas-update-events.ts`
+- `lib/canvas-digest.ts`
+- `lib/email-templates/canvas-digest.ts`
+- `tests/canvas-digest.test.ts`
+- `tests/queue.test.ts`
+- `supabase/migrations/20260508090000_extend_canvas_update_events.sql`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Canvas update emails needed to cover meaningful course changes beyond announcements without using OpenAI or OCR. The old external sync path built events for every assignment and module on every check, relying mostly on DB dedupe; that could create a first-external-sync flood for content already imported during manual sync. The new selection uses stable Canvas identities and existing synced rows as the "already seen" boundary.
+
+### Tests run
+
+- `npm run typecheck` - passed.
+- `npm run lint` - passed.
+- `npm test -- canvas-digest` - passed, 437/437 tests.
+- `npm test -- queue` - passed, 437/437 tests.
+- `npm test -- pdf-extractor source-ocr-updates deep-learn-readiness deep-learn-generation canvas-content-resolution learn-resource-ui queue` - passed, 437/437 tests.
+
+### Verification result
+
+All required verification passed. New coverage checks quiz/discussion/module-item digest eligibility, send-failure retry behavior remains intact, assignable resources do not duplicate task notifications, first external sync does not flood already imported assignments/modules, and new assignment/module/resource events still emit when Canvas identities are genuinely new.
+
+### Known risks
+
+- Canvas conversations/inbox messages and instructor/submission comments are not implemented yet because the current Canvas client does not fetch those APIs. The event type union and schema are ready for future `new_message` / `new_submission_comment` support, but no fake support was added.
+- New empty Canvas modules without module items will not email until a real module item/resource appears. This avoids historical empty-module floods.
+- If legacy task rows are missing `canvas_assignment_id`, a previously imported assignment may look new to external sync. Existing synced Canvas assignments normally carry that id.
+
+### Blockers
+
+- No code blocker.
+- Pre-existing unrelated working-tree changes remain in `AGENTS.md`, `CLAUDE.md`, `docs/ai/design_system.md`, `docs/current-state.md`, plus an untracked nested `stay-focused/` directory.
+
+### Next recommended step
+
+Add Canvas conversation/comment fetching only after confirming the app's Canvas token scopes can read those endpoints. Keep it in the same `canvas_update_events` pipeline and add preference tests before enabling email sends.
+
+### Suggested commit message
+
+```
+unify canvas change notifications
+```
+
+---
+
 ## Session Update - 2026-05-08 (Consolidate Home data loading)
 
 ### What changed
