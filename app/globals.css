@@ -4243,6 +4243,223 @@ details[open] > .ui-interactive-summary,
   overflow-anchor: none;
 }
 
+.reviewer-sheet {
+  display: grid;
+  gap: 1rem;
+  padding: 1.1rem 1.15rem;
+}
+
+.reviewer-grid {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.reviewer-panel {
+  border: 1px solid color-mix(in srgb, var(--accent-border) 12%, var(--border-subtle) 88%);
+  border-radius: 14px;
+  padding: 1rem;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--surface-elevated) 96%, var(--amber-light) 4%), color-mix(in srgb, var(--surface-soft) 92%, transparent));
+}
+
+.reviewer-panel-hero {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--surface-selected) 74%, var(--surface-elevated) 26%), color-mix(in srgb, var(--surface-elevated) 96%, transparent));
+}
+
+.reviewer-section-label {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.2;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  font-weight: 750;
+  color: var(--text-muted);
+}
+
+.reviewer-intro {
+  margin: 0.55rem 0 0;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--text-primary);
+  max-width: 48rem;
+}
+
+.reviewer-meta-row {
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+  margin-top: 0.7rem;
+}
+
+.reviewer-meta-row span {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--border-subtle) 82%, transparent);
+  padding: 0.22rem 0.55rem;
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--surface-soft) 78%, transparent);
+}
+
+.reviewer-answer-list,
+.reviewer-target-list,
+.reviewer-caution-list {
+  display: grid;
+  gap: 0.72rem;
+  margin: 0.85rem 0 0;
+  padding-left: 1.1rem;
+}
+
+.reviewer-answer-list li,
+.reviewer-target-list li,
+.reviewer-caution-list li {
+  display: grid;
+  gap: 0.16rem;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.reviewer-answer-list strong,
+.reviewer-target-list strong {
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+.reviewer-two-column-list,
+.reviewer-block-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.7rem;
+  margin-top: 0.8rem;
+}
+
+.reviewer-mini-card {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+  padding: 0.8rem 0.85rem;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--border-subtle) 84%, transparent);
+  background: color-mix(in srgb, var(--surface-base) 82%, transparent);
+}
+
+.reviewer-mini-card h3,
+.reviewer-mini-card p,
+.reviewer-mini-card strong,
+.reviewer-mini-card ul {
+  margin: 0;
+}
+
+.reviewer-mini-card h3,
+.reviewer-mini-card strong {
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.reviewer-mini-card p,
+.reviewer-mini-card li {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.62;
+}
+
+.reviewer-mini-card ul {
+  padding-left: 1rem;
+  display: grid;
+  gap: 0.24rem;
+}
+
+.reviewer-muted {
+  color: var(--text-muted) !important;
+}
+
+.reviewer-print-only {
+  display: none;
+}
+
+@media (max-width: 840px) {
+  .reviewer-sheet {
+    padding: 0.95rem 1rem;
+  }
+}
+
+@media print {
+  :root {
+    --app-bg: #ffffff;
+    --surface-base: #ffffff;
+    --surface-soft: #ffffff;
+    --surface-elevated: #ffffff;
+    --surface-selected: #ffffff;
+    --text-primary: #111111;
+    --text-secondary: #2b2b2b;
+    --text-muted: #575757;
+    --border-subtle: rgba(0, 0, 0, 0.14);
+  }
+
+  body {
+    background: #ffffff !important;
+  }
+
+  .app-sidebar,
+  .app-topbar,
+  .app-bottom-nav,
+  .reviewer-print-hide {
+    display: none !important;
+  }
+
+  .app-frame,
+  .app-main,
+  .app-content,
+  .page-shell,
+  .command-page,
+  .section-shell,
+  .section-shell-elevated {
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: none !important;
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+  }
+
+  .motion-card,
+  .reviewer-panel,
+  .reviewer-mini-card {
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  .reviewer-sheet {
+    gap: 0.75rem;
+  }
+
+  .reviewer-grid {
+    gap: 0.55rem;
+  }
+
+  .reviewer-panel,
+  .reviewer-mini-card {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .reviewer-print-only {
+    display: grid;
+    gap: 0.1rem;
+    margin-bottom: 0.35rem;
+  }
+
+  .reviewer-print-meta p {
+    margin: 0;
+    color: #111111;
+    font-size: 11pt;
+    line-height: 1.4;
+  }
+}
+
 @media (max-width: 840px) {
   .deep-learn-build-grid {
     grid-template-columns: 1fr;

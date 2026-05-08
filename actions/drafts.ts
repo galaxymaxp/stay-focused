@@ -10,6 +10,7 @@ import { serializeErrorForLogging } from '@/lib/supabase'
 import { buildDeepLearnNoteRecord, DEEP_LEARN_PROMPT_VERSION } from '@/lib/deep-learn'
 import type { TaskDraftContext, TaskDraftResponse } from '@/lib/do-now'
 import { getDraftPrompt } from '@/lib/prompts/drafts/index'
+import { listStudyOutputShelfItems } from '@/lib/study-outputs/store'
 import type {
   Draft,
   DraftLoadAvailability,
@@ -263,6 +264,8 @@ function mapDeepLearnShelfRow(row: Record<string, unknown>): DraftShelfItem {
     moduleTitle: moduleRow?.title ?? null,
     quizReady: Boolean(row.quiz_ready),
     summary: (row.overview as string | null) ?? null,
+    studyOutputKind: null,
+    sourceNoteId: row.id as string,
   }
 }
 
@@ -415,7 +418,8 @@ export async function listDraftsForShelves(): Promise<{
   })
 
   const savedLearnOutputs = (noteRows ?? []).map((row) => mapDeepLearnShelfRow(row as Record<string, unknown>))
-  const drafts: DraftShelfItem[] = [...savedLearnOutputs, ...savedDraftOutputs]
+  const savedStudyOutputs = await listStudyOutputShelfItems()
+  const drafts: DraftShelfItem[] = [...savedLearnOutputs, ...savedStudyOutputs, ...savedDraftOutputs]
     .sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime())
 
   const courseIds = [...new Set(drafts.flatMap((d) => (d.courseId ? [d.courseId] : [])))]
@@ -819,7 +823,7 @@ export async function makeQuizzable(draftId: string): Promise<void> {
 
 export async function deleteLibraryItemAction(
   id: string,
-  entryKind: 'draft' | 'deep_learn_note',
+  entryKind: 'draft' | 'deep_learn_note' | 'study_output',
 ): Promise<{ ok: boolean; error?: string }> {
   if (!isSupabaseAuthConfigured) return { ok: false, error: 'Supabase not configured.' }
 
@@ -829,10 +833,16 @@ export async function deleteLibraryItemAction(
   } = await client.auth.getUser()
   if (!user) return { ok: false, error: 'Not authenticated.' }
 
-  const table = entryKind === 'draft' ? 'drafts' : 'deep_learn_notes'
+  const table = entryKind === 'draft'
+    ? 'drafts'
+    : entryKind === 'deep_learn_note'
+      ? 'deep_learn_notes'
+      : 'study_outputs'
   const selectFields = entryKind === 'draft'
     ? 'id, user_id, course_id, source_module_id, source_resource_id'
-    : 'id, user_id, course_id, module_id, resource_id'
+    : entryKind === 'deep_learn_note'
+      ? 'id, user_id, course_id, module_id, resource_id'
+      : 'id, user_id, course_id, module_id, resource_id'
   const { data: existing, error: lookupError } = await client
     .from(table)
     .select(selectFields)

@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { listDraftsForShelves } from '@/actions/drafts'
 import { GeneratedContentState } from '@/components/generated-content/GeneratedContentState'
 import { CourseShelf } from '@/components/drafts/CourseShelf'
-import { resolveStudyLibraryHref, type DraftShelfItem, type StudyLibraryItem } from '@/lib/types'
+import { groupItemsByCourse, toStudyLibraryItem } from '@/lib/study-library'
 
 interface Props {
   searchParams?: Promise<Record<string, string | string[] | undefined>>
@@ -142,61 +142,6 @@ export default async function StudyLibraryPage({ searchParams }: Props) {
 function getFirstSearchParamValue(value: string | string[] | undefined) {
   if (Array.isArray(value)) return value[0] ?? null
   return value ?? null
-}
-
-function toStudyLibraryItem(
-  draft: DraftShelfItem,
-  courseNames: Map<string, { id: string; name: string; code: string }>,
-): StudyLibraryItem {
-  const kind = draft.entryKind === 'deep_learn_note' || draft.sourceType !== 'task' ? 'learning' : 'task'
-  const courseTitle = draft.courseId ? courseNames.get(draft.courseId)?.name : undefined
-
-  return {
-    id: draft.id,
-    title: draft.title,
-    kind,
-    entryKind: draft.entryKind,
-    subtitle: getLibrarySubtitle(draft),
-    courseTitle,
-    moduleTitle: draft.moduleTitle ?? undefined,
-    taskTitle: kind === 'task' ? draft.title : undefined,
-    updatedAt: draft.updatedAt,
-    href: resolveStudyLibraryHref(draft),
-  }
-}
-
-function getLibrarySubtitle(draft: DraftShelfItem) {
-  if (draft.entryKind === 'deep_learn_note') return 'Exam prep pack'
-  if (draft.draftType === 'flashcard_set') return 'Flashcard set'
-  if (draft.draftType === 'study_notes' && draft.sourceType === 'task') return 'Task draft'
-  if (draft.draftType === 'study_notes') return 'Study notes'
-  if (draft.draftType === 'summary') return 'Summary'
-  return 'Study output'
-}
-
-function groupItemsByCourse(
-  items: StudyLibraryItem[],
-  draftById: Map<string, DraftShelfItem>,
-  courseNames: Map<string, { id: string; name: string; code: string }>,
-) {
-  const groups = new Map<string, StudyLibraryItem[]>()
-
-  items.forEach((item) => {
-    const courseId = draftById.get(item.id)?.courseId ?? null
-    const key = courseId ?? 'uncategorized'
-    groups.set(key, [...(groups.get(key) ?? []), item])
-  })
-
-  return Array.from(groups.entries())
-    .map(([courseKey, groupItems]) => {
-      const course = courseKey === 'uncategorized' ? null : courseNames.get(courseKey) ?? null
-      return {
-        courseTitle: course?.name ?? null,
-        courseCode: course?.code ?? '',
-        items: groupItems.sort((a, b) => new Date(b.updatedAt ?? 0).getTime() - new Date(a.updatedAt ?? 0).getTime()),
-      }
-    })
-    .sort((a, b) => new Date(b.items[0]?.updatedAt ?? 0).getTime() - new Date(a.items[0]?.updatedAt ?? 0).getTime())
 }
 
 function formatShortDate(value?: string) {

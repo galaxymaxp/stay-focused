@@ -4,10 +4,13 @@ import { DeepLearnWorkspace } from '@/components/DeepLearnWorkspace'
 import { LibraryDeleteButton } from '@/components/drafts/LibraryDeleteButton'
 import { GeneratedContentState } from '@/components/generated-content/GeneratedContentState'
 import { ModuleLensShell } from '@/components/ModuleLensShell'
+import { StudyOutputReviewerPage } from '@/components/StudyOutputReviewerPage'
 import { getAuthenticatedUserServer } from '@/lib/auth-server'
 import { extractCourseName, getModuleWorkspace, type ModuleSourceResource } from '@/lib/module-workspace'
+import { getStudyOutputById } from '@/lib/study-outputs/store'
 import {
   buildModuleDoHref,
+  buildDeepLearnNoteHref,
   buildModuleLearnHref,
 } from '@/lib/stay-focused-links'
 import { isSupabaseAuthConfigured } from '@/lib/supabase-auth-config'
@@ -156,6 +159,81 @@ export default async function LibraryItemPage({ params }: Props) {
   }
 
   const draft = await getDraft(id)
+  if (!draft) {
+    const output = await getStudyOutputById(id)
+    if (output?.outputKind === 'reviewer') {
+      const workspace = output.moduleId ? await getModuleWorkspace(output.moduleId) : null
+      const courseId = workspace?.module.courseId ?? output.courseId ?? null
+      const courseName = extractCourseName(workspace?.module.raw_content)
+      const courseLibraryHref = courseId ? `/library?course=${encodeURIComponent(courseId)}` : '/library'
+      const noteHref = output.moduleId && output.resourceId
+        ? buildDeepLearnNoteHref(output.moduleId, output.resourceId)
+        : null
+      const sourceWorkspaceHref = output.moduleId && output.resourceId
+        ? buildLearnResourceWorkspaceHref(output.moduleId, output.resourceId)
+        : null
+
+      const reviewerContent = (
+        <div className="command-page command-page-tight">
+          <section className="section-shell section-shell-elevated reviewer-print-hide" style={{ padding: '0.9rem 1rem', display: 'grid', gap: '0.65rem' }}>
+            <div>
+              <p className="ui-kicker">Study Library</p>
+              <h1 className="ui-page-title" style={{ marginTop: '0.45rem' }}>{output.title}</h1>
+              <p className="ui-page-copy" style={{ marginTop: '0.38rem', maxWidth: '48rem' }}>
+                This reviewer is a printable study output built from your saved grounded Deep Learn pack.
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+              <Link href={courseLibraryHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+                Study Library
+              </Link>
+              {noteHref ? (
+                <Link href={noteHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+                  Open Deep Learn pack
+                </Link>
+              ) : null}
+              {sourceWorkspaceHref ? (
+                <Link href={sourceWorkspaceHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+                  Open source workspace
+                </Link>
+              ) : null}
+              <LibraryDeleteButton
+                id={output.id}
+                entryKind="study_output"
+                title={output.title}
+                size="text"
+                redirectHref={courseLibraryHref}
+              />
+            </div>
+          </section>
+
+          <StudyOutputReviewerPage
+            output={output}
+            courseLabel={courseName ?? null}
+            moduleTitle={workspace?.module.title ?? null}
+          />
+        </div>
+      )
+
+      if (!workspace) {
+        return <main className="page-shell">{reviewerContent}</main>
+      }
+
+      return (
+        <ModuleLensShell
+          currentLens="learn"
+          moduleId={workspace.module.id}
+          courseId={workspace.module.courseId}
+          courseName={courseName}
+          title={workspace.module.title}
+          summary={output.title}
+        >
+          {reviewerContent}
+        </ModuleLensShell>
+      )
+    }
+  }
+
   if (!draft) {
     return (
       <main className="page-shell">

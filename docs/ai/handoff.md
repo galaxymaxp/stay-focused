@@ -5,6 +5,91 @@ Last Updated: 2026-05-09
 
 ---
 
+## Session Update - 2026-05-09 (Add Deep Learn reviewer maker)
+
+### What changed
+
+- Added a separate `study_outputs` layer for persisted study artifacts instead of extending the Deep Learn note table or bloating `actions/deep-learn.ts`.
+- Added a deterministic Deep Learn reviewer builder under `lib/study-outputs/` that creates printable reviewer content only from saved Deep Learn fields:
+  - `noteBody`
+  - `sections`
+  - `answerBank`
+  - `identificationItems`
+  - `distinctions`
+  - `likelyQuizTargets`
+  - `cautionNotes`
+- Added reviewer gating so pending, failed, metadata-only, refusal-grounded, or otherwise untrustworthy Deep Learn packs cannot become reviewers.
+- Added `makeDeepLearnReviewerAction` and a student-facing `Make Reviewer` button on ready Deep Learn note surfaces.
+- Added a printable reviewer page in Study Library with:
+  - high-yield concepts first
+  - identification review
+  - quick-answer blocks
+  - distinctions/confusing concepts
+  - likely quiz targets
+  - browser print / Save PDF support
+- Extended Study Library aggregation so saved reviewer outputs appear alongside packs and drafts, with their own `Reviewer` subtitle and delete support.
+- Added the `study_outputs` migration with RLS, indexes, and unique per-user/per-note/per-output-kind persistence.
+- Extracted shared Deep Learn bad-grounding detection so UI blocking and reviewer creation use the same metadata/refusal guardrail.
+
+### Files touched
+
+- `actions/drafts.ts`
+- `actions/study-outputs.ts`
+- `app/(app)/library/[id]/page.tsx`
+- `app/(app)/library/page.tsx`
+- `app/globals.css`
+- `components/DeepLearnNoteView.tsx`
+- `components/MakeReviewerButton.tsx`
+- `components/ReviewerPrintButton.tsx`
+- `components/StudyOutputReviewerPage.tsx`
+- `components/drafts/LibraryDeleteButton.tsx`
+- `docs/ai/handoff.md`
+- `lib/deep-learn-source-validation.ts`
+- `lib/deep-learn-ui.ts`
+- `lib/study-library.ts`
+- `lib/study-outputs/reviewer.ts`
+- `lib/study-outputs/store.ts`
+- `lib/types.ts`
+- `supabase/migrations/20260509110000_add_study_outputs.sql`
+- `tests/study-library.test.ts`
+- `tests/study-output-reviewer.test.ts`
+
+### Why it changed
+
+Phase 1 needed a reviewer maker that turns already-grounded Deep Learn content into a printable study packet without another OpenAI generation step. The new layer keeps reviewer persistence and rendering separate from Deep Learn generation, keeps the output student-facing and cram-friendly, and gives Study Library a reusable path for future reviewer / quiz pack / task output / study sheet artifacts.
+
+### Tests run
+
+```bash
+npm run typecheck
+npm run lint
+npm test -- deep-learn-generation deep-learn-ui study-output study-library
+```
+
+### Verification result
+
+Passed. Typecheck and lint both succeeded, and the targeted test run passed with 452 tests, 0 failures.
+
+### Known risks
+
+- `study_outputs` is a new table, so environments that have not applied `20260509110000_add_study_outputs.sql` will not persist reviewer outputs yet.
+- Reviewer creation currently upserts one reviewer per user + Deep Learn note. That is intentional for Phase 1, but later multi-variant reviewer formats would need either versioning or per-format parameters in the unique key.
+- The printable reviewer is deterministic formatting over saved Deep Learn content. If a pack is thin but still technically ready, the reviewer will stay thin rather than inventing filler, which is correct but may feel sparse on weaker sources.
+
+### Blockers
+
+None.
+
+### Next recommended step
+
+Use the same `study_outputs` layer to add Phase 2 quiz-pack and printable study-sheet variants, then add a small library filter or badge for output subtype once more than one saved reviewer-style artifact exists per module.
+
+### Suggested commit message
+
+```bash
+add deep learn reviewer maker
+```
+
 ## Session Update - 2026-05-09 (Allow linked identities for admin access)
 
 ### What changed

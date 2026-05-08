@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { DeepLearnGenerateButton } from '@/components/DeepLearnGenerateButton'
+import { MakeReviewerButton } from '@/components/MakeReviewerButton'
 import { DeepLearnWorkspace } from '@/components/DeepLearnWorkspace'
 import { OcrSourceButton } from '@/components/OcrSourceButton'
 import { WorkspacePanel } from '@/components/ui/WorkspacePanel'
@@ -97,6 +98,9 @@ export function DeepLearnNoteView({
             <Link href={quizHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
               Quiz this
             </Link>
+          )}
+          {note?.status === 'ready' && (
+            <MakeReviewerButton moduleId={moduleId} resourceId={resolvedDeepLearnResourceId} />
           )}
           {sourceHref && (
             <a href={sourceHref} target="_blank" rel="noreferrer" className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>

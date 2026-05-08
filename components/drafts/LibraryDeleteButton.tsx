@@ -8,7 +8,7 @@ import { dispatchInAppToast } from '@/lib/notifications'
 
 interface Props {
   id: string
-  entryKind: 'draft' | 'deep_learn_note'
+  entryKind: 'draft' | 'deep_learn_note' | 'study_output'
   title: string
   size?: 'icon' | 'text'
   redirectHref?: string
@@ -18,7 +18,11 @@ export function LibraryDeleteButton({ id, entryKind, title, size = 'icon', redir
   const router = useRouter()
   const [confirm, setConfirm] = useState(false)
   const [deleting, setDeleting] = useState(false)
-  const noun = entryKind === 'deep_learn_note' ? 'saved study pack' : 'draft'
+  const noun = entryKind === 'deep_learn_note'
+    ? 'saved study pack'
+    : entryKind === 'study_output'
+      ? 'saved study output'
+      : 'draft'
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {

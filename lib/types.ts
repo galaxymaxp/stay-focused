@@ -358,6 +358,9 @@ export type DraftType = 'exam_reviewer' | 'study_notes' | 'summary' | 'flashcard
 export type DraftStatus = 'generating' | 'ready' | 'refining' | 'failed'
 export type DraftSourceType = 'module_resource' | 'task' | 'module' | 'upload' | 'paste'
 export type DraftLoadAvailability = 'available' | 'unavailable' | 'failed'
+export type StudyOutputKind = 'reviewer' | 'quiz_pack' | 'task_output' | 'study_sheet'
+export type StudyOutputStatus = 'ready' | 'failed'
+export type StudyOutputSourceKind = 'deep_learn_note'
 
 export interface DraftRefinementEntry {
   instruction: string
@@ -404,15 +407,80 @@ export interface DraftSummary {
   updatedAt: string
 }
 
+export interface StudyOutputReviewerHighYieldItem {
+  cue: string
+  answer: string
+  importance: DeepLearnTermImportance
+  support: string | null
+}
+
+export interface StudyOutputReviewerIdentificationItem {
+  prompt: string
+  answer: string
+  importance: DeepLearnTermImportance
+  support: string | null
+}
+
+export interface StudyOutputReviewerQuickReviewBlock {
+  heading: string
+  points: string[]
+}
+
+export interface StudyOutputReviewerDistinctionItem {
+  conceptA: string
+  conceptB: string
+  difference: string
+  confusionNote: string | null
+}
+
+export interface StudyOutputReviewerQuizTargetItem {
+  target: string
+  reason: string
+  importance: DeepLearnTermImportance
+}
+
+export interface StudyOutputReviewerContent {
+  version: 'reviewer-v1'
+  sourceNoteId: string
+  sourceResourceId: string
+  title: string
+  summary: string
+  intro: string
+  highYieldConcepts: StudyOutputReviewerHighYieldItem[]
+  identificationReview: StudyOutputReviewerIdentificationItem[]
+  quickReviewBlocks: StudyOutputReviewerQuickReviewBlock[]
+  distinctions: StudyOutputReviewerDistinctionItem[]
+  likelyQuizTargets: StudyOutputReviewerQuizTargetItem[]
+  cautionNotes: string[]
+}
+
+export interface StudyOutput {
+  id: string
+  userId: string
+  courseId: string | null
+  moduleId: string | null
+  resourceId: string | null
+  sourceKind: StudyOutputSourceKind
+  sourceNoteId: string | null
+  outputKind: StudyOutputKind
+  status: StudyOutputStatus
+  title: string
+  summary: string
+  content: StudyOutputReviewerContent
+  createdAt: string
+  updatedAt: string
+  generatedAt: string | null
+}
+
 // Extended draft type used by the course-shelf view (includes module/course join data)
 export interface DraftShelfItem {
   id: string
-  entryKind: 'deep_learn_note' | 'draft'
+  entryKind: 'deep_learn_note' | 'draft' | 'study_output'
   userId: string
   courseId: string | null
   canonicalSourceId: string
   title: string
-  draftType: DraftType
+  draftType: DraftType | null
   status: DraftStatus
   sourceType: DraftSourceType
   sourceTitle: string
@@ -424,19 +492,22 @@ export interface DraftShelfItem {
   moduleTitle: string | null
   quizReady: boolean
   summary: string | null
+  studyOutputKind?: StudyOutputKind | null
+  sourceNoteId?: string | null
 }
 
 export interface StudyLibraryItem {
   id: string
   title: string
   kind: 'learning' | 'task'
-  entryKind: 'draft' | 'deep_learn_note'
+  entryKind: 'draft' | 'deep_learn_note' | 'study_output'
   subtitle?: string
   courseTitle?: string
   moduleTitle?: string
   taskTitle?: string
   updatedAt?: string
   href: string
+  studyOutputKind?: StudyOutputKind | null
 }
 
 interface CanonicalSourceReference {
