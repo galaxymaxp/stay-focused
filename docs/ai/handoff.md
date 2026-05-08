@@ -51,6 +51,7 @@ All required verification passed. New coverage checks quiz/discussion/module-ite
 ### Known risks
 
 - Canvas conversations/inbox messages and instructor/submission comments are not implemented yet because the current Canvas client does not fetch those APIs. The event type union and schema are ready for future `new_message` / `new_submission_comment` support, but no fake support was added.
+- Correction/guardrail: do not describe Canvas inbox messages or instructor comments as supported email triggers until dedicated Canvas API fetchers exist and tests prove those events are inserted and sent. Today they are schema/event-type readiness only, and digest meaningful-event tests intentionally exclude them.
 - New empty Canvas modules without module items will not email until a real module item/resource appears. This avoids historical empty-module floods.
 - If legacy task rows are missing `canvas_assignment_id`, a previously imported assignment may look new to external sync. Existing synced Canvas assignments normally carry that id.
 

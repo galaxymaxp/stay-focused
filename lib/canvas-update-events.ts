@@ -11,6 +11,8 @@ export type CanvasUpdateEventType =
   | 'new_module'
   | 'new_module_item'
   | 'new_resource'
+  // Reserved for future Canvas API integrations. The current sync code does
+  // not fetch Canvas inbox conversations or instructor/submission comments.
   | 'new_message'
   | 'new_submission_comment'
 

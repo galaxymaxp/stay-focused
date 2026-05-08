@@ -212,7 +212,16 @@ test('groupEventsForDisplay returns all event ids for included display lines', (
 // ---------------------------------------------------------------------------
 
 test('MEANINGFUL_EVENT_TYPES does not include OCR, deep learn, or debug event types', () => {
-  const invalid = ['source_ocr', 'learn_generation', 'queue_completed', 'debug', 'extraction', 'ocr_update']
+  const invalid = [
+    'source_ocr',
+    'learn_generation',
+    'queue_completed',
+    'debug',
+    'extraction',
+    'ocr_update',
+    'new_message',
+    'new_submission_comment',
+  ]
   for (const t of invalid) {
     assert.ok(
       !(MEANINGFUL_EVENT_TYPES as string[]).includes(t),
