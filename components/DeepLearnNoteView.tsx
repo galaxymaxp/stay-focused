@@ -1,7 +1,9 @@
 import Link from 'next/link'
+import { MakeCramSheetButton } from '@/components/MakeCramSheetButton'
 import { DeepLearnGenerateButton } from '@/components/DeepLearnGenerateButton'
 import { MakeQuizPackButton } from '@/components/MakeQuizPackButton'
 import { MakeReviewerButton } from '@/components/MakeReviewerButton'
+import { MakeStudySheetButton } from '@/components/MakeStudySheetButton'
 import { DeepLearnWorkspace } from '@/components/DeepLearnWorkspace'
 import { OcrSourceButton } from '@/components/OcrSourceButton'
 import { WorkspacePanel } from '@/components/ui/WorkspacePanel'
@@ -105,6 +107,12 @@ export function DeepLearnNoteView({
           )}
           {note?.status === 'ready' && (
             <MakeQuizPackButton moduleId={moduleId} resourceId={resolvedDeepLearnResourceId} />
+          )}
+          {note?.status === 'ready' && (
+            <MakeStudySheetButton moduleId={moduleId} resourceId={resolvedDeepLearnResourceId} />
+          )}
+          {note?.status === 'ready' && (
+            <MakeCramSheetButton moduleId={moduleId} resourceId={resolvedDeepLearnResourceId} />
           )}
           {sourceHref && (
             <a href={sourceHref} target="_blank" rel="noreferrer" className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>

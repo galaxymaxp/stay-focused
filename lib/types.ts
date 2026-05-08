@@ -358,10 +358,11 @@ export type DraftType = 'exam_reviewer' | 'study_notes' | 'summary' | 'flashcard
 export type DraftStatus = 'generating' | 'ready' | 'refining' | 'failed'
 export type DraftSourceType = 'module_resource' | 'task' | 'module' | 'upload' | 'paste'
 export type DraftLoadAvailability = 'available' | 'unavailable' | 'failed'
-export type StudyOutputKind = 'reviewer' | 'quiz_pack' | 'task_output' | 'study_sheet'
+export type StudyOutputKind = 'reviewer' | 'quiz_pack' | 'task_output' | 'study_sheet' | 'cram_sheet'
 export type StudyOutputStatus = 'ready' | 'failed'
 export type StudyOutputSourceKind = 'deep_learn_note'
 export type StudyOutputQuizItemType = 'multiple_choice' | 'identification' | 'matching' | 'true_false'
+export type StudyOutputSheetMode = 'study_sheet' | 'cram_sheet'
 
 export interface DraftRefinementEntry {
   instruction: string
@@ -481,7 +482,53 @@ export interface StudyOutputQuizPackContent {
   selfReviewLabel: string
 }
 
-export type StudyOutputContent = StudyOutputReviewerContent | StudyOutputQuizPackContent
+export interface StudyOutputSheetTermItem {
+  term: string
+  definition: string
+  importance: DeepLearnTermImportance
+}
+
+export interface StudyOutputSheetFormulaItem {
+  label: string
+  expression: string
+  note: string | null
+}
+
+export interface StudyOutputSheetFactItem {
+  cue: string
+  detail: string
+  importance: DeepLearnTermImportance
+}
+
+export interface StudyOutputSheetConfusingConceptItem {
+  conceptA: string
+  conceptB: string
+  difference: string
+  confusionNote: string | null
+}
+
+export interface StudyOutputSheetTrapItem {
+  trap: string
+  explanation: string
+  importance: DeepLearnTermImportance
+}
+
+export interface StudyOutputSheetContent {
+  version: 'study-sheet-v1'
+  mode: StudyOutputSheetMode
+  sourceNoteId: string
+  sourceResourceId: string
+  title: string
+  summary: string
+  intro: string
+  keyTerms: StudyOutputSheetTermItem[]
+  formulas: StudyOutputSheetFormulaItem[]
+  highYieldFacts: StudyOutputSheetFactItem[]
+  confusingConcepts: StudyOutputSheetConfusingConceptItem[]
+  likelyExamTraps: StudyOutputSheetTrapItem[]
+}
+
+export type StudyOutputContent = StudyOutputReviewerContent | StudyOutputQuizPackContent | StudyOutputSheetContent
 
 export interface StudyOutput {
   id: string

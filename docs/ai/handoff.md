@@ -5,6 +5,83 @@ Last Updated: 2026-05-09
 
 ---
 
+## Session Update - 2026-05-09 (Add study sheet outputs)
+
+### What changed
+
+- Added compact `study_sheet` and `cram_sheet` output kinds to the shared `study_outputs` layer.
+- Added a deterministic sheet builder under `lib/study-outputs/sheets.ts` that creates compact grounded study sheets from saved Deep Learn content only.
+- Added student-facing `Make Study Sheet` and `Make Cram Sheet` actions on ready Deep Learn notes.
+- Added a printable compact sheet page for saved Study Library outputs with:
+  - key terms
+  - one-line definitions
+  - formulas when grounded content actually exposes formula-like material
+  - high-yield facts
+  - confusing concepts
+  - likely exam traps
+- Added compact/mobile-friendly and print-friendly sheet styling while preserving the existing reviewer visual family.
+- Extended Study Library with saved-output subtype support for:
+  - `Reviewer`
+  - `Quiz pack`
+  - `Study sheet`
+  - `Cram sheet`
+- Added subtype filter chips in Study Library so saved outputs can be narrowed without changing the schedule-first product flow.
+
+### Files touched
+
+- `actions/study-outputs.ts`
+- `app/(app)/library/[id]/page.tsx`
+- `app/(app)/library/page.tsx`
+- `app/globals.css`
+- `components/DeepLearnNoteView.tsx`
+- `components/MakeCramSheetButton.tsx`
+- `components/MakeStudySheetButton.tsx`
+- `components/StudyOutputSheetPage.tsx`
+- `docs/ai/handoff.md`
+- `lib/study-library.ts`
+- `lib/study-outputs/sheets.ts`
+- `lib/types.ts`
+- `tests/study-library.test.ts`
+- `tests/study-output-sheet.test.ts`
+
+### Why it changed
+
+The reviewer and quiz-pack layers already covered long-form review and active recall, but the app still needed a fast scan-first artifact for last-minute studying. This change adds compact saved outputs that stay grounded in the saved Deep Learn pack, avoid another OpenAI step, and reuse the same storage/detail architecture instead of creating another parallel study system.
+
+### Tests run
+
+- `npm run typecheck` — passed
+- `npm run lint` — passed
+- `npm test -- study-output study-library deep-learn-quiz` — passed (466 tests, 0 failures)
+
+### Verification result
+
+All required checks passed. Study sheets and cram sheets now save through `study_outputs`, render in Study Library, expose printable/mobile-friendly compact layouts, and inherit the existing saved-output flow without adding another generation step.
+
+### Known risks
+
+- Formula extraction is intentionally conservative and only surfaces when note-backed content contains formula-like strings, so many packs will correctly show no formula section.
+- Study Library subtype filtering currently operates as a saved-output filter layer on top of the existing kind filter; it does not yet group outputs into separate shelves.
+- The compact sheet builder currently prefers existing answer bank, identification, distinction, likely-quiz-target, and caution-note structure. If a pack is thin, the sheet will stay sparse rather than padded with filler.
+
+### Blockers
+
+None.
+
+### Next recommended step
+
+1. Unify reviewer, quiz-pack, study-sheet, and cram-sheet actions behind a shared saved-output action button pattern to reduce repeated client button code.
+2. Consider a lightweight shared saved-output header shell so reviewer, quiz-pack, and sheet pages stop repeating the same Library detail chrome.
+3. If students need it, add persistence for quiz-pack and sheet review state separately from the saved output content.
+
+### Suggested commit message
+
+```bash
+add study sheet outputs
+```
+
+---
+
 ## Session Update - 2026-05-09 (Add Deep Learn quiz packs)
 
 ### What changed

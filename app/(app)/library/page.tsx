@@ -16,6 +16,7 @@ export default async function StudyLibraryPage({ searchParams }: Props) {
   const courseFilter = getFirstSearchParamValue(resolvedSearchParams?.course)
   const moduleFilter = getFirstSearchParamValue(resolvedSearchParams?.module)
   const kindFilter = getFirstSearchParamValue(resolvedSearchParams?.filter) // 'learning' | 'tasks' | null
+  const subtypeFilter = getFirstSearchParamValue(resolvedSearchParams?.subtype)
   const items = drafts.map((draft) => toStudyLibraryItem(draft, courseNames))
 
   const scopedItems = items.filter((item) => {
@@ -23,6 +24,7 @@ export default async function StudyLibraryPage({ searchParams }: Props) {
     if (moduleFilter && draftById.get(item.id)?.sourceModuleId !== moduleFilter) return false
     if (kindFilter === 'learning' && item.kind !== 'learning') return false
     if (kindFilter === 'tasks' && item.kind !== 'task') return false
+    if (subtypeFilter && item.studyOutputKind !== subtypeFilter) return false
     return true
   })
   const grouped = groupItemsByCourse(scopedItems, draftById, courseNames)
@@ -34,12 +36,19 @@ export default async function StudyLibraryPage({ searchParams }: Props) {
 
   const learningCount = items.filter((item) => item.kind === 'learning').length
   const tasksCount = items.filter((item) => item.kind === 'task').length
+  const subtypeCounts = {
+    reviewer: items.filter((item) => item.studyOutputKind === 'reviewer').length,
+    quiz_pack: items.filter((item) => item.studyOutputKind === 'quiz_pack').length,
+    study_sheet: items.filter((item) => item.studyOutputKind === 'study_sheet').length,
+    cram_sheet: items.filter((item) => item.studyOutputKind === 'cram_sheet').length,
+  }
 
-  function filterHref(filter: string | null) {
+  function filterHref(filter: string | null, subtype: string | null = subtypeFilter) {
     const params = new URLSearchParams()
     if (courseFilter) params.set('course', courseFilter)
     if (moduleFilter) params.set('module', moduleFilter)
     if (filter) params.set('filter', filter)
+    if (subtype) params.set('subtype', subtype)
     const qs = params.toString()
     return `/library${qs ? `?${qs}` : ''}`
   }
@@ -83,6 +92,39 @@ export default async function StudyLibraryPage({ searchParams }: Props) {
             Tasks {tasksCount > 0 ? `(${tasksCount})` : ''}
           </Link>
         </div>
+
+        <div className="home-plan-filter" style={{ paddingTop: 0 }}>
+          <Link
+            href={filterHref(kindFilter, null)}
+            className={`home-plan-filter-chip${!subtypeFilter ? ' active' : ''}`}
+          >
+            All outputs
+          </Link>
+          <Link
+            href={filterHref(kindFilter, 'reviewer')}
+            className={`home-plan-filter-chip${subtypeFilter === 'reviewer' ? ' active' : ''}`}
+          >
+            Reviewers {subtypeCounts.reviewer > 0 ? `(${subtypeCounts.reviewer})` : ''}
+          </Link>
+          <Link
+            href={filterHref(kindFilter, 'quiz_pack')}
+            className={`home-plan-filter-chip${subtypeFilter === 'quiz_pack' ? ' active' : ''}`}
+          >
+            Quiz packs {subtypeCounts.quiz_pack > 0 ? `(${subtypeCounts.quiz_pack})` : ''}
+          </Link>
+          <Link
+            href={filterHref(kindFilter, 'study_sheet')}
+            className={`home-plan-filter-chip${subtypeFilter === 'study_sheet' ? ' active' : ''}`}
+          >
+            Study sheets {subtypeCounts.study_sheet > 0 ? `(${subtypeCounts.study_sheet})` : ''}
+          </Link>
+          <Link
+            href={filterHref(kindFilter, 'cram_sheet')}
+            className={`home-plan-filter-chip${subtypeFilter === 'cram_sheet' ? ' active' : ''}`}
+          >
+            Cram sheets {subtypeCounts.cram_sheet > 0 ? `(${subtypeCounts.cram_sheet})` : ''}
+          </Link>
+        </div>
       </section>
 
       <section className="motion-card motion-delay-1 section-shell" style={{ padding: '1rem 1.05rem' }}>
@@ -103,15 +145,15 @@ export default async function StudyLibraryPage({ searchParams }: Props) {
           />
         ) : scopedItems.length === 0 ? (
           <GeneratedContentState
-            title={getEmptyStateTitle({ kindFilter, hasAnyItems: items.length > 0, hasScopedFilters: Boolean(courseFilter || moduleFilter) })}
-            description={getEmptyStateDescription({ kindFilter, hasAnyItems: items.length > 0, hasScopedFilters: Boolean(courseFilter || moduleFilter) })}
+            title={getEmptyStateTitle({ kindFilter, subtypeFilter, hasAnyItems: items.length > 0, hasScopedFilters: Boolean(courseFilter || moduleFilter) })}
+            description={getEmptyStateDescription({ kindFilter, subtypeFilter, hasAnyItems: items.length > 0, hasScopedFilters: Boolean(courseFilter || moduleFilter) })}
             action={(
               <Link
-                href={getEmptyStateHref({ kindFilter, hasAnyItems: items.length > 0, hasScopedFilters: Boolean(courseFilter || moduleFilter) })}
+                href={getEmptyStateHref({ hasAnyItems: items.length > 0, hasScopedFilters: Boolean(courseFilter || moduleFilter) })}
                 className="ui-button ui-button-secondary ui-button-xs"
                 style={{ textDecoration: 'none' }}
               >
-                {getEmptyStateActionLabel({ kindFilter, hasAnyItems: items.length > 0, hasScopedFilters: Boolean(courseFilter || moduleFilter) })}
+                {getEmptyStateActionLabel({ kindFilter, subtypeFilter, hasAnyItems: items.length > 0, hasScopedFilters: Boolean(courseFilter || moduleFilter) })}
               </Link>
             )}
           />
@@ -151,13 +193,19 @@ function formatShortDate(value?: string) {
 
 function getEmptyStateTitle({
   kindFilter,
+  subtypeFilter,
   hasAnyItems,
   hasScopedFilters,
 }: {
   kindFilter: string | null
+  subtypeFilter: string | null
   hasAnyItems: boolean
   hasScopedFilters: boolean
 }) {
+  if (subtypeFilter === 'study_sheet') return 'No study sheets yet.'
+  if (subtypeFilter === 'cram_sheet') return 'No cram sheets yet.'
+  if (subtypeFilter === 'reviewer') return 'No reviewers yet.'
+  if (subtypeFilter === 'quiz_pack') return 'No quiz packs yet.'
   if (kindFilter === 'learning') return 'No learning packs yet.'
   if (kindFilter === 'tasks') return 'No task drafts yet.'
   if (hasAnyItems && hasScopedFilters) return 'Nothing matches this view yet.'
@@ -166,13 +214,19 @@ function getEmptyStateTitle({
 
 function getEmptyStateDescription({
   kindFilter,
+  subtypeFilter,
   hasAnyItems,
   hasScopedFilters,
 }: {
   kindFilter: string | null
+  subtypeFilter: string | null
   hasAnyItems: boolean
   hasScopedFilters: boolean
 }) {
+  if (subtypeFilter === 'study_sheet') return 'Open a ready Deep Learn pack and save a compact study sheet to see it here.'
+  if (subtypeFilter === 'cram_sheet') return 'Open a ready Deep Learn pack and save a cram sheet to see it here.'
+  if (subtypeFilter === 'reviewer') return 'Open a ready Deep Learn pack and save a reviewer to see it here.'
+  if (subtypeFilter === 'quiz_pack') return 'Open a ready Deep Learn pack and save a quiz pack to see it here.'
   if (kindFilter === 'learning') return 'Open a module and generate a Learn item to save it here.'
   if (kindFilter === 'tasks') return 'Start from a task and save a draft to see it here.'
   if (hasAnyItems && hasScopedFilters) return 'Try a broader library view to reopen another saved item.'
@@ -181,14 +235,16 @@ function getEmptyStateDescription({
 
 function getEmptyStateActionLabel({
   kindFilter,
+  subtypeFilter,
   hasAnyItems,
   hasScopedFilters,
 }: {
   kindFilter: string | null
+  subtypeFilter: string | null
   hasAnyItems: boolean
   hasScopedFilters: boolean
 }) {
-  if (hasAnyItems && hasScopedFilters && !kindFilter) return 'View all generated content'
+  if (hasAnyItems && hasScopedFilters && !kindFilter && !subtypeFilter) return 'View all generated content'
   return hasAnyItems && hasScopedFilters ? 'View all generated content' : 'Go to Courses'
 }
 
@@ -196,7 +252,6 @@ function getEmptyStateHref({
   hasAnyItems,
   hasScopedFilters,
 }: {
-  kindFilter: string | null
   hasAnyItems: boolean
   hasScopedFilters: boolean
 }) {

@@ -4265,6 +4265,40 @@ details[open] > .ui-interactive-summary,
   background: linear-gradient(180deg, color-mix(in srgb, var(--surface-selected) 74%, var(--surface-elevated) 26%), color-mix(in srgb, var(--surface-elevated) 96%, transparent));
 }
 
+.study-sheet-shell {
+  gap: 0.9rem;
+}
+
+.cram-sheet-shell {
+  gap: 0.75rem;
+}
+
+.study-sheet-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+  align-items: start;
+}
+
+.study-sheet-term-grid,
+.study-sheet-formula-list,
+.study-sheet-trap-list {
+  display: grid;
+  gap: 0.65rem;
+  margin-top: 0.8rem;
+}
+
+.study-sheet-term-grid {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.study-sheet-formula-card strong {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+  line-height: 1.6;
+  word-break: break-word;
+}
+
 .reviewer-section-label {
   margin: 0;
   font-size: 11px;
@@ -4383,6 +4417,14 @@ details[open] > .ui-interactive-summary,
   .reviewer-sheet {
     padding: 0.95rem 1rem;
   }
+
+  .study-sheet-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .study-sheet-term-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media print {
@@ -4438,6 +4480,11 @@ details[open] > .ui-interactive-summary,
 
   .reviewer-grid {
     gap: 0.55rem;
+  }
+
+  .study-sheet-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
   }
 
   .reviewer-panel,

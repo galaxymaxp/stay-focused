@@ -6,6 +6,7 @@ import { GeneratedContentState } from '@/components/generated-content/GeneratedC
 import { ModuleLensShell } from '@/components/ModuleLensShell'
 import { StudyOutputQuizPackPage } from '@/components/StudyOutputQuizPackPage'
 import { StudyOutputReviewerPage } from '@/components/StudyOutputReviewerPage'
+import { StudyOutputSheetPage } from '@/components/StudyOutputSheetPage'
 import { getAuthenticatedUserServer } from '@/lib/auth-server'
 import { extractCourseName, getModuleWorkspace, type ModuleSourceResource } from '@/lib/module-workspace'
 import { getStudyOutputById } from '@/lib/study-outputs/store'
@@ -19,6 +20,7 @@ import {
   buildStudyLibraryDetailHref,
   getTaskIdFromCanonicalSourceId,
   parseCanonicalSourceId,
+  type StudyOutputKind,
 } from '@/lib/types'
 
 interface Props {
@@ -162,7 +164,12 @@ export default async function LibraryItemPage({ params }: Props) {
   const draft = await getDraft(id)
   if (!draft) {
     const output = await getStudyOutputById(id)
-    if (output?.outputKind === 'reviewer' || output?.outputKind === 'quiz_pack') {
+    if (
+      output?.outputKind === 'reviewer'
+      || output?.outputKind === 'quiz_pack'
+      || output?.outputKind === 'study_sheet'
+      || output?.outputKind === 'cram_sheet'
+    ) {
       const workspace = output.moduleId ? await getModuleWorkspace(output.moduleId) : null
       const courseId = workspace?.module.courseId ?? output.courseId ?? null
       const courseName = extractCourseName(workspace?.module.raw_content)
@@ -173,6 +180,7 @@ export default async function LibraryItemPage({ params }: Props) {
       const sourceWorkspaceHref = output.moduleId && output.resourceId
         ? buildLearnResourceWorkspaceHref(output.moduleId, output.resourceId)
         : null
+      const outputLabel = getSavedOutputLabel(output.outputKind)
 
       const reviewerContent = (
         <div className="command-page command-page-tight">
@@ -181,7 +189,7 @@ export default async function LibraryItemPage({ params }: Props) {
               <p className="ui-kicker">Study Library</p>
               <h1 className="ui-page-title" style={{ marginTop: '0.45rem' }}>{output.title}</h1>
               <p className="ui-page-copy" style={{ marginTop: '0.38rem', maxWidth: '48rem' }}>
-                This reviewer is a printable study output built from your saved grounded Deep Learn pack.
+                This {outputLabel} is a printable study output built from your saved grounded Deep Learn pack.
               </p>
             </div>
             <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
@@ -219,8 +227,14 @@ export default async function LibraryItemPage({ params }: Props) {
               courseLabel={courseName ?? null}
               moduleTitle={workspace?.module.title ?? null}
             />
-          ) : (
+          ) : output.outputKind === 'quiz_pack' ? (
             <StudyOutputQuizPackPage
+              output={output}
+              courseLabel={courseName ?? null}
+              moduleTitle={workspace?.module.title ?? null}
+            />
+          ) : (
+            <StudyOutputSheetPage
               output={output}
               courseLabel={courseName ?? null}
               moduleTitle={workspace?.module.title ?? null}
@@ -489,4 +503,12 @@ function resolveDraftPrimaryAction(
 
 function buildLearnResourceWorkspaceHref(moduleId: string, resourceId: string) {
   return `/modules/${moduleId}/learn/resources/${encodeURIComponent(resourceId)}`
+}
+
+function getSavedOutputLabel(outputKind: StudyOutputKind) {
+  if (outputKind === 'reviewer') return 'reviewer'
+  if (outputKind === 'quiz_pack') return 'quiz pack'
+  if (outputKind === 'cram_sheet') return 'cram sheet'
+  if (outputKind === 'study_sheet') return 'study sheet'
+  return 'study output'
 }

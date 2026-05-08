@@ -32,6 +32,7 @@ export function getLibrarySubtitle(draft: DraftShelfItem) {
     if (draft.studyOutputKind === 'quiz_pack') return 'Quiz pack'
     if (draft.studyOutputKind === 'task_output') return 'Task output'
     if (draft.studyOutputKind === 'study_sheet') return 'Study sheet'
+    if (draft.studyOutputKind === 'cram_sheet') return 'Cram sheet'
     return 'Study output'
   }
 
