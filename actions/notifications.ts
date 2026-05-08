@@ -3,7 +3,7 @@
 import { getAuthenticatedUserServer, getAuthenticatedUserWithIdentities, createAuthenticatedSupabaseServerClient } from '@/lib/auth-server'
 import { createNotification } from '@/lib/notifications-server'
 import { isResendConfigured, resolveTestEmailRecipient, classifyTestEmailError, sendTransactionalEmail } from '@/lib/resend'
-import { isAdminEmail } from '@/lib/admin'
+import { isAdminUser } from '@/lib/admin'
 import { getNotificationEmailOptions, resolveEmailFromOptions } from '@/lib/notification-email-options'
 import { buildDigestHtml, buildDigestText } from '@/lib/email-templates/canvas-digest'
 import type { NotificationType, NotificationSeverity } from '@/lib/notifications-server'
@@ -68,7 +68,7 @@ export async function sendTestEmailAction(): Promise<{ ok: boolean; error?: stri
   const fullUser = await getAuthenticatedUserWithIdentities()
   if (!fullUser) return { ok: false, error: 'Not authenticated.' }
   if (!fullUser.email) return { ok: false, error: 'No email address on this account.' }
-  if (!isAdminEmail(fullUser.email)) return { ok: false, error: 'Not authorized.' }
+  if (!isAdminUser(fullUser)) return { ok: false, error: 'Not authorized.' }
 
   // Resolve recipient using the admin's selected notification email source.
   const source = await loadNotificationEmailSource(fullUser.id)

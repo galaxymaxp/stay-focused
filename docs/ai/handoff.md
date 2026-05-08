@@ -1,9 +1,70 @@
 # Stay Focused — AI Session Handoff
 
 Author: galaxymaxp omgraythekid@gmail.com
-Last Updated: 2026-05-08
+Last Updated: 2026-05-09
 
 ---
+
+## Session Update - 2026-05-09 (Allow linked identities for admin access)
+
+### What changed
+
+- Expanded the shared admin helper in `lib/admin.ts` so admin checks now accept:
+  - the primary Supabase account email
+  - any linked Google identity email
+  - any linked Microsoft/Azure identity email
+  - any other available `user.identities[].identity_data.email`
+- Normalized all admin email comparisons with trim + lowercase.
+- Updated the admin notification lab page and server action to use the shared identity-aware helper instead of one-off email-only checks.
+- Updated the settings loader and admin test-email action to use the same shared admin helper for consistent access rules.
+- Added runtime tests for primary email, linked Google, linked Azure/Microsoft, and no-match denial.
+
+### Files touched
+
+- `lib/admin.ts`
+- `app/admin/notification-lab/page.tsx`
+- `actions/admin-notification-lab.ts`
+- `actions/notifications.ts`
+- `actions/user-settings.ts`
+- `tests/admin.test.ts`
+- `tests/scheduler.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+The active Supabase account email can differ from the linked identity email that is actually listed in `ADMIN_EMAILS`. Admin-only pages were returning 404 for users whose verified linked Google or Microsoft identity should have granted access.
+
+### Tests run
+
+```
+npm run typecheck
+npm run lint
+npm run build
+npm test -- admin notification queue canvas-digest
+```
+
+### Verification result
+
+Passed. `next build` completed successfully, and the full targeted test run passed with 446 tests, 0 failures.
+
+### Known risks
+
+- Admin checks still depend on Supabase exposing linked identities in `user.identities`; if a provider omits email from identity data, that identity will not grant access.
+- `ADMIN_EMAILS` remains environment-driven, so misconfiguration still means no admin access.
+
+### Blockers
+
+None.
+
+### Next recommended step
+
+Verify `/admin/notification-lab` in a real session where the primary account email differs from the linked Google or Microsoft identity email, and confirm the page no longer 404s.
+
+### Suggested commit message
+
+```
+allow linked identities for admin access
+```
 
 ## Session Update - 2026-05-09 (Fix Vercel build failure from notification lab exports)
 

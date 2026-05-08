@@ -1350,6 +1350,6 @@ test('/sync disconnected state links to Settings Canvas setup', () => {
 
 test('admin-only test email still gated by ADMIN_EMAILS', () => {
   const source = readFileSync('actions/notifications.ts', 'utf8')
-  assert.match(source, /isAdminEmail/, 'sendTestEmailAction checks isAdminEmail')
+  assert.match(source, /isAdminUser/, 'sendTestEmailAction checks isAdminUser')
   assert.match(source, /Not authorized/, 'returns Not authorized for non-admin')
 })

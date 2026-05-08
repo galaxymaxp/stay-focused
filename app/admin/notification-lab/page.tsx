@@ -1,12 +1,12 @@
 import { notFound } from 'next/navigation'
-import { getAuthenticatedUserServer } from '@/lib/auth-server'
-import { isAdminEmail } from '@/lib/admin'
+import { getAuthenticatedUserWithIdentities } from '@/lib/auth-server'
+import { isAdminUser } from '@/lib/admin'
 import { NotificationLab } from '@/components/admin/NotificationLab'
 
 export default async function NotificationLabPage() {
-  const user = await getAuthenticatedUserServer()
+  const user = await getAuthenticatedUserWithIdentities()
 
-  if (!user?.email || !isAdminEmail(user.email)) {
+  if (!isAdminUser(user)) {
     notFound()
   }
 

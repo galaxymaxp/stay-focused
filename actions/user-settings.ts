@@ -2,7 +2,7 @@
 
 import { createAuthenticatedSupabaseServerClient, getAuthenticatedUserServer, getAuthenticatedUserWithIdentities } from '@/lib/auth-server'
 import { isResendConfigured, isResendDevSender } from '@/lib/resend'
-import { isAdminEmail } from '@/lib/admin'
+import { isAdminUser } from '@/lib/admin'
 import { getNotificationEmailOptions, NOTIFICATION_EMAIL_SOURCES, type NotificationEmailOption, type NotificationEmailSource } from '@/lib/notification-email-options'
 import { revalidatePath } from 'next/cache'
 
@@ -56,7 +56,7 @@ export async function getUserSettings() {
   }
 
   const emailProviderConfigured = isResendConfigured()
-  const isAdmin = isAdminEmail(fullUser.email ?? undefined)
+  const isAdmin = isAdminUser(fullUser)
   const resendDevSender = isResendDevSender()
   const notificationEmailOptions = getNotificationEmailOptions(fullUser)
 

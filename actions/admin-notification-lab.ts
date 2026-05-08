@@ -1,7 +1,7 @@
 'use server'
 
-import { getAuthenticatedUserServer } from '@/lib/auth-server'
-import { isAdminEmail } from '@/lib/admin'
+import { getAuthenticatedUserWithIdentities } from '@/lib/auth-server'
+import { isAdminUser } from '@/lib/admin'
 import { createSupabaseServiceRoleClient } from '@/lib/supabase-service'
 import {
   buildGenericCanvasUpdateEvent,
@@ -18,11 +18,11 @@ export async function runNotificationLabAction(
   _prevState: NotificationLabActionState,
   formData: FormData,
 ): Promise<NotificationLabActionState> {
-  const user = await getAuthenticatedUserServer()
+  const user = await getAuthenticatedUserWithIdentities()
   if (!user?.id) {
     return { ok: false, error: 'Not authenticated.' }
   }
-  if (!isAdminEmail(user.email)) {
+  if (!isAdminUser(user)) {
     return { ok: false, error: 'Not authorized.' }
   }
 
