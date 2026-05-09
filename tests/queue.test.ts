@@ -36,6 +36,7 @@ import {
   evaluateExternalCanvasSyncQueueGuard,
 } from '../lib/external-sync-queue'
 import { evaluateResourceTextPreservation } from '../lib/canvas-resource-preservation'
+import { describeStudyOutputSaveFailure } from '../lib/study-output-errors'
 
 test('source OCR queue helpers format labels and page progress', () => {
   assert.equal(buildSourceOcrQueueTitle('1-Data Organization.pdf'), 'Preparing scanned PDF: 1-Data Organization.pdf')
@@ -430,6 +431,18 @@ test('Canvas resource preservation keeps completed OCR text for the same Canvas 
   assert.equal(decision.preserveExtractedText, true)
   assert.equal(decision.preserveVisualText, true)
   assert.equal(decision.existingVisualQuality, 'meaningful')
+})
+
+test('task output save failure classification keeps student copy clean and diagnostics specific', () => {
+  const failure = describeStudyOutputSaveFailure({
+    code: '42703',
+    message: 'column study_outputs.source_task_id does not exist',
+    hint: 'Run the latest migration.',
+  })
+
+  assert.equal(failure.diagnosticCode, 'schema_outdated')
+  assert.match(failure.userMessage, /latest saved-output database update/i)
+  assert.match(failure.diagnosticMessage, /source_task_id/i)
 })
 
 // Canvas update event tests

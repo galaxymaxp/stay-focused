@@ -1,7 +1,9 @@
 'use client'
 
 import { useState } from 'react'
+import { GeneratedContentState } from '@/components/generated-content/GeneratedContentState'
 import { ReviewerPrintButton } from '@/components/ReviewerPrintButton'
+import { isQuizPackStudyOutputContent } from '@/lib/study-output-content'
 import type { StudyOutput, StudyOutputQuizPackContent, StudyOutputQuizPackItem } from '@/lib/types'
 
 type SelfReviewState = 'correct' | 'needs_review' | null
@@ -15,14 +17,26 @@ export function StudyOutputQuizPackPage({
   courseLabel: string | null
   moduleTitle: string | null
 }) {
-  const quizPack = output.content as StudyOutputQuizPackContent
-  const [selectedCount, setSelectedCount] = useState<number | null>(quizPack.questionCountOptions[0] ?? null)
+  const quizPack = isQuizPackStudyOutputContent(output.content)
+    ? output.content as StudyOutputQuizPackContent
+    : null
+  const [selectedCount, setSelectedCount] = useState<number | null>(quizPack?.questionCountOptions[0] ?? null)
   const [activeCount, setActiveCount] = useState<number | null>(null)
   const [activeIndex, setActiveIndex] = useState(0)
   const [selectedChoice, setSelectedChoice] = useState<string | null>(null)
   const [draftAnswer, setDraftAnswer] = useState('')
   const [revealed, setRevealed] = useState(false)
   const [selfReview, setSelfReview] = useState<Record<string, SelfReviewState>>({})
+
+  if (!quizPack) {
+    return (
+      <GeneratedContentState
+        title="This quiz pack could not be rendered safely."
+        description="The saved quiz payload is incomplete or uses a version this app build does not support."
+        tone="warning"
+      />
+    )
+  }
 
   const resolvedSelectedCount = selectedCount && quizPack.questionCountOptions.includes(selectedCount)
     ? selectedCount
@@ -34,10 +48,6 @@ export function StudyOutputQuizPackPage({
   const currentItem = activeItems[activeIndex] ?? null
   const reviewedCount = activeItems.filter((item: StudyOutputQuizPackItem) => selfReview[item.id]).length
   const correctCount = activeItems.filter((item: StudyOutputQuizPackItem) => selfReview[item.id] === 'correct').length
-
-  if (quizPack.version !== 'quiz-pack-v1') {
-    return null
-  }
 
   function resetQuestionState() {
     setSelectedChoice(null)

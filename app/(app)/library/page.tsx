@@ -55,22 +55,22 @@ export default async function StudyLibraryPage({ searchParams }: Props) {
   }
 
   return (
-    <main className="page-shell command-page">
-      <section className="motion-card section-shell" style={{ padding: '1rem 1.1rem', display: 'grid', gap: '0.9rem' }}>
-        <div className="home-section-heading">
-          <div style={{ minWidth: 0 }}>
-            <p className="ui-kicker">{scopedLabel}</p>
-            <h1 className="ui-page-title" style={{ marginTop: '0.4rem', fontSize: 'clamp(1.6rem, 2.5vw, 2.1rem)' }}>Study Library</h1>
-            <p className="ui-section-copy" style={{ marginTop: '0.4rem', maxWidth: '44rem' }}>
-              Learning packs and saved outputs grouped by course.
-            </p>
+      <main className="page-shell command-page">
+        <section className="motion-card section-shell" style={{ padding: '1rem 1.1rem', display: 'grid', gap: '0.9rem' }}>
+          <div className="home-section-heading">
+            <div style={{ minWidth: 0 }}>
+              <p className="ui-kicker">{scopedLabel}</p>
+              <h1 className="ui-page-title" style={{ marginTop: '0.4rem', fontSize: 'clamp(1.6rem, 2.5vw, 2.1rem)' }}>Study Library</h1>
+              <p className="ui-section-copy" style={{ marginTop: '0.4rem', maxWidth: '44rem' }}>
+                Learning packs and saved outputs grouped by course.
+              </p>
+            </div>
+            {(courseFilter || moduleFilter) && (
+              <Link href="/library" className="home-subtle-link">
+                View all
+              </Link>
+            )}
           </div>
-          {(courseFilter || moduleFilter) && (
-            <Link href="/library" className="home-subtle-link">
-              View all
-            </Link>
-          )}
-        </div>
 
         {/* Filter chips */}
         <div className="home-plan-filter" style={{ paddingBottom: 0 }}>
@@ -132,59 +132,59 @@ export default async function StudyLibraryPage({ searchParams }: Props) {
             Cram sheets {subtypeCounts.cram_sheet > 0 ? `(${subtypeCounts.cram_sheet})` : ''}
           </Link>
         </div>
-      </section>
+        </section>
 
-      <section className="motion-card motion-delay-1 section-shell" style={{ padding: '1rem 1.05rem' }}>
-        {availability !== 'available' ? (
-          <GeneratedContentState
-            title={getUnavailableStateTitle(message)}
-            description={getUnavailableStateDescription(message)}
-            tone={isSignedOutMessage(message) ? 'accent' : 'warning'}
-            action={(
-              <Link
-                href={isSignedOutMessage(message) ? '/sign-in?next=/library' : '/courses'}
-                className="ui-button ui-button-secondary ui-button-xs"
-                style={{ textDecoration: 'none' }}
-              >
-                {isSignedOutMessage(message) ? 'Sign in' : 'Go to Courses'}
-              </Link>
-            )}
-          />
-        ) : scopedItems.length === 0 ? (
-          <GeneratedContentState
-            title={getEmptyStateTitle({ kindFilter, subtypeFilter, hasAnyItems: items.length > 0, hasScopedFilters: Boolean(courseFilter || moduleFilter) })}
-            description={getEmptyStateDescription({ kindFilter, subtypeFilter, hasAnyItems: items.length > 0, hasScopedFilters: Boolean(courseFilter || moduleFilter) })}
-            action={(
-              <Link
-                href={getEmptyStateHref({ hasAnyItems: items.length > 0, hasScopedFilters: Boolean(courseFilter || moduleFilter) })}
-                className="ui-button ui-button-secondary ui-button-xs"
-                style={{ textDecoration: 'none' }}
-              >
-                {getEmptyStateActionLabel({ kindFilter, subtypeFilter, hasAnyItems: items.length > 0, hasScopedFilters: Boolean(courseFilter || moduleFilter) })}
-              </Link>
-            )}
-          />
-        ) : (
-          <div style={{ display: 'grid', gap: '0.9rem' }}>
-            {grouped.map((group) => {
-              const latestItem = group.items[0]
+        <section className="motion-card motion-delay-1 section-shell" style={{ padding: '1rem 1.05rem' }}>
+          {availability !== 'available' ? (
+            <GeneratedContentState
+              title={getUnavailableStateTitle(message)}
+              description={getUnavailableStateDescription(message)}
+              tone={isSignedOutMessage(message) ? 'accent' : 'warning'}
+              action={(
+                <Link
+                  href={isSignedOutMessage(message) ? '/sign-in?next=/library' : '/courses'}
+                  className="ui-button ui-button-secondary ui-button-xs"
+                  style={{ textDecoration: 'none' }}
+                >
+                  {isSignedOutMessage(message) ? 'Sign in' : 'Go to Courses'}
+                </Link>
+              )}
+            />
+          ) : scopedItems.length === 0 ? (
+            <GeneratedContentState
+              title={getEmptyStateTitle({ kindFilter, subtypeFilter, hasAnyItems: items.length > 0, hasScopedFilters: Boolean(courseFilter || moduleFilter) })}
+              description={getEmptyStateDescription({ kindFilter, subtypeFilter, hasAnyItems: items.length > 0, hasScopedFilters: Boolean(courseFilter || moduleFilter) })}
+              action={(
+                <Link
+                  href={getEmptyStateHref({ hasAnyItems: items.length > 0, hasScopedFilters: Boolean(courseFilter || moduleFilter) })}
+                  className="ui-button ui-button-secondary ui-button-xs"
+                  style={{ textDecoration: 'none' }}
+                >
+                  {getEmptyStateActionLabel({ kindFilter, subtypeFilter, hasAnyItems: items.length > 0, hasScopedFilters: Boolean(courseFilter || moduleFilter) })}
+                </Link>
+              )}
+            />
+          ) : (
+            <div style={{ display: 'grid', gap: '0.9rem' }}>
+              {grouped.map((group) => {
+                const latestItem = group.items[0]
 
-              return (
-                <CourseShelf
-                  key={group.courseTitle ?? 'uncategorized'}
-                  courseName={group.courseTitle ?? 'Unassigned content'}
-                  courseCode={group.courseCode ?? ''}
-                  items={group.items}
-                  latestItemHref={latestItem.href}
-                  totalCount={group.items.length}
-                  lastUpdated={formatShortDate(latestItem.updatedAt)}
-                />
-              )
-            })}
-          </div>
-        )}
-      </section>
-    </main>
+                return (
+                  <CourseShelf
+                    key={group.courseTitle ?? 'uncategorized'}
+                    courseName={group.courseTitle ?? 'Unassigned content'}
+                    courseCode={group.courseCode ?? ''}
+                    items={group.items}
+                    latestItemHref={latestItem.href}
+                    totalCount={group.items.length}
+                    lastUpdated={formatShortDate(latestItem.updatedAt)}
+                  />
+                )
+              })}
+            </div>
+          )}
+        </section>
+      </main>
   )
 }
 

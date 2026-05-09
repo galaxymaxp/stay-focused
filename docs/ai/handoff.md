@@ -5,6 +5,92 @@ Last Updated: 2026-05-09
 
 ---
 
+## Session Update - 2026-05-09 (Fix blank app routes and task output save failure)
+
+### What changed
+
+- Hardened the Courses, Study Library, and Calendar routes so they no longer fail into a blank body when workspace or Supabase-backed data loading breaks.
+- Added explicit student-facing loading, empty, and error states for the affected routes, with retry guidance instead of an empty shell.
+- Split route-state decisions into shared helpers so `/courses` and `/calendar` treat valid empty arrays as empty states rather than rendering nothing.
+- Hardened Study Library saved-output handling so malformed or unsupported `study_outputs` rows no longer crash the whole page or detail view.
+- Added safe unsupported-output rendering for unknown or malformed saved outputs while keeping valid reviewer, quiz pack, study sheet, cram sheet, and task output entries visible.
+- Added validation and classified diagnostics to the task-output save path so production failures now distinguish schema-mismatch, permission, and constraint problems internally while keeping student-facing queue copy clean.
+- Updated queue failure persistence so internal diagnostics survive on the queue job result for debugging instead of collapsing to the same generic save failure.
+- Added targeted tests for:
+  - library empty-state handling
+  - malformed/unsupported saved outputs
+  - route empty-state helpers
+  - task-output save validation
+  - queue diagnostics for task-output save failures
+
+### Files touched
+
+- `actions/queue-jobs.ts`
+- `app/(app)/courses/error.tsx`
+- `app/(app)/courses/loading.tsx`
+- `app/(app)/courses/page.tsx`
+- `app/(app)/library/error.tsx`
+- `app/(app)/library/loading.tsx`
+- `app/(app)/library/page.tsx`
+- `app/(app)/library/[id]/error.tsx`
+- `app/(app)/library/[id]/page.tsx`
+- `app/calendar/error.tsx`
+- `app/calendar/page.tsx`
+- `components/StudyOutputQuizPackPage.tsx`
+- `components/StudyOutputReviewerPage.tsx`
+- `components/StudyOutputSheetPage.tsx`
+- `components/StudyOutputTaskOutputPage.tsx`
+- `docs/ai/handoff.md`
+- `lib/app-route-states.ts`
+- `lib/study-library.ts`
+- `lib/study-output-content.ts`
+- `lib/study-output-errors.ts`
+- `lib/study-output-validation.ts`
+- `lib/study-outputs/store.ts`
+- `tests/queue.test.ts`
+- `tests/study-library.test.ts`
+- `tests/task-output-save.test.ts`
+
+### Why it changed
+
+Production was showing route shells with blank bodies on `/courses`, `/library`, and `/calendar`, and task-output generation failures were surfacing only as a generic queue save error. The app needed honest student-facing fallbacks and stronger runtime guards so one bad row, missing production column, or save-path mismatch would not collapse major student workflows.
+
+### Tests run
+
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- task-output study-library task-draft-contract` - passed (478 tests, 0 failures)
+- `npm test -- queue` - passed (478 tests, 0 failures)
+- `npm test -- app-route-states` - passed (478 tests, 0 failures)
+
+### Verification result
+
+All required checks passed. Courses, Study Library, and Calendar now render a visible state for loading, empty, error, and ready cases instead of leaving the route body blank, and task-output save failures now preserve actionable internal diagnostics without exposing technical details to students.
+
+### Known risks
+
+- Route-level loading states rely on Next.js segment loading behavior, so very fast responses may still skip the loading UI in practice. The important change is that slow or suspended requests now have a visible fallback.
+- The save-failure classifier targets the current known production failure modes (`schema_outdated`, permissions/RLS, and constraint mismatch). New PostgREST failure shapes may still fall through to the generic diagnostic bucket until seen in logs.
+- Unsupported saved outputs now stay visible with a safe fallback card, but they are still not recoverable in-place; repair still requires fixing the underlying row or re-generating the output.
+
+### Blockers
+
+None.
+
+### Next recommended step
+
+1. Confirm production has the `20260509143000_extend_study_outputs_for_task_outputs.sql` migration applied and inspect new queue job `result.internalDiagnostic` values for any remaining failed task-output saves.
+2. Add a small admin/debug surface for queue failure diagnostics so support does not need raw database inspection to confirm whether a save failure was schema, RLS, or constraint related.
+3. If blank route reports continue, capture the first server log entry from the new route error boundaries so the remaining failure source can be isolated quickly.
+
+### Suggested commit message
+
+```bash
+fix blank app routes and task output save failure
+```
+
+---
+
 ## Session Update - 2026-05-09 (Add task output generator foundation)
 
 ### What changed

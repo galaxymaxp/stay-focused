@@ -6,6 +6,8 @@ import type {
   StudyOutputSourceKind,
   StudyOutputStatus,
 } from '@/lib/types'
+import { describeStudyOutputSaveFailure, StudyOutputSaveError } from '@/lib/study-output-errors'
+import { validateStudyOutputSaveInput } from '@/lib/study-output-validation'
 import { getAuthenticatedSupabaseServerContext } from '@/lib/supabase-auth-app'
 
 const TABLE_NAME = 'study_outputs'
@@ -19,7 +21,7 @@ interface StudyOutputRow {
   source_kind: StudyOutputSourceKind
   source_note_id: string | null
   source_task_id: string | null
-  output_kind: StudyOutputKind
+  output_kind: string
   status: StudyOutputStatus
   title: string | null
   summary: string | null
@@ -47,6 +49,11 @@ export async function saveStudyOutput(input: {
   const auth = await getAuthenticatedSupabaseServerContext()
   if (!auth) {
     throw new Error('You need to sign in before saving this study output.')
+  }
+
+  const validationError = validateStudyOutputSaveInput(input)
+  if (validationError) {
+    throw new StudyOutputSaveError(validationError)
   }
 
   const row = {
@@ -89,7 +96,16 @@ export async function saveStudyOutput(input: {
   const { data, error } = await query
 
   if (error || !data) {
-    throw new Error('Could not save the study output.')
+    const failure = describeStudyOutputSaveFailure(error ?? new Error('Study output save returned no row.'))
+    console.error('[study-outputs] saveStudyOutput failed', {
+      failureCode: failure.diagnosticCode,
+      diagnostic: failure.diagnosticMessage,
+      sourceKind: input.sourceKind,
+      outputKind: input.outputKind,
+      sourceNoteId: input.sourceNoteId,
+      sourceTaskId: input.sourceTaskId,
+    })
+    throw new StudyOutputSaveError(failure, { cause: error ?? undefined })
   }
 
   return adaptStudyOutputRow(data as StudyOutputRow)
@@ -129,8 +145,8 @@ export async function listStudyOutputShelfItems(): Promise<DraftShelfItem[]> {
     const record = row as Record<string, unknown>
     const moduleRow = record.modules as { title: string } | null
     const taskRow = record.tasks as { title: string } | null
-    const outputKind = record.output_kind as StudyOutputKind
-    const isTaskOutput = outputKind === 'task_output'
+    const outputKind = typeof record.output_kind === 'string' ? record.output_kind : null
+    const isTaskOutput = outputKind === 'task_output' || typeof record.source_task_id === 'string'
 
     return {
       id: record.id as string,
@@ -153,7 +169,7 @@ export async function listStudyOutputShelfItems(): Promise<DraftShelfItem[]> {
       moduleTitle: moduleRow?.title ?? null,
       quizReady: false,
       summary: (record.summary as string | null) ?? null,
-      studyOutputKind: outputKind,
+      studyOutputKind: outputKind as StudyOutputKind,
       sourceNoteId: (record.source_note_id as string | null) ?? null,
       sourceTaskId: (record.source_task_id as string | null) ?? null,
     } satisfies DraftShelfItem
@@ -170,7 +186,7 @@ function adaptStudyOutputRow(row: StudyOutputRow): StudyOutput {
     sourceKind: row.source_kind,
     sourceNoteId: row.source_note_id,
     sourceTaskId: row.source_task_id,
-    outputKind: row.output_kind,
+    outputKind: row.output_kind as StudyOutputKind,
     status: row.status,
     title: row.title ?? 'Study output',
     summary: row.summary ?? '',

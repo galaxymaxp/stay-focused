@@ -16,6 +16,12 @@ import {
   buildDeepLearnNoteHref,
   buildModuleLearnHref,
 } from '@/lib/stay-focused-links'
+import {
+  getStudyOutputKindLabel,
+  getUnsupportedStudyOutputMessage,
+  isRenderableStudyOutput,
+  isStudyOutputKind,
+} from '@/lib/study-output-content'
 import { isSupabaseAuthConfigured } from '@/lib/supabase-auth-config'
 import {
   buildStudyLibraryDetailHref,
@@ -162,16 +168,10 @@ export default async function LibraryItemPage({ params }: Props) {
     )
   }
 
-  const draft = await getDraft(id)
-  if (!draft) {
-    const output = await getStudyOutputById(id)
-    if (
-      output?.outputKind === 'reviewer'
-      || output?.outputKind === 'quiz_pack'
-      || output?.outputKind === 'study_sheet'
-      || output?.outputKind === 'cram_sheet'
-      || output?.outputKind === 'task_output'
-    ) {
+    const draft = await getDraft(id)
+    if (!draft) {
+      const output = await getStudyOutputById(id)
+      if (output && (isStudyOutputKind(output.outputKind) || !isRenderableStudyOutput(output))) {
       const workspace = output.moduleId ? await getModuleWorkspace(output.moduleId) : null
       const courseId = workspace?.module.courseId ?? output.courseId ?? null
       const courseName = extractCourseName(workspace?.module.raw_content)
@@ -233,7 +233,13 @@ export default async function LibraryItemPage({ params }: Props) {
             </div>
           </section>
 
-          {output.outputKind === 'reviewer' ? (
+          {!isRenderableStudyOutput(output) ? (
+            <GeneratedContentState
+              title={`${getStudyOutputKindLabel(output.outputKind)} unavailable`}
+              description={getUnsupportedStudyOutputMessage(output)}
+              tone="warning"
+            />
+          ) : output.outputKind === 'reviewer' ? (
             <StudyOutputReviewerPage
               output={output}
               courseLabel={courseName ?? null}
@@ -524,10 +530,6 @@ function buildLearnResourceWorkspaceHref(moduleId: string, resourceId: string) {
 }
 
 function getSavedOutputLabel(outputKind: StudyOutputKind) {
-  if (outputKind === 'reviewer') return 'reviewer'
-  if (outputKind === 'quiz_pack') return 'quiz pack'
-  if (outputKind === 'cram_sheet') return 'cram sheet'
-  if (outputKind === 'study_sheet') return 'study sheet'
-  if (outputKind === 'task_output') return 'task output'
-  return 'study output'
+  const label = getStudyOutputKindLabel(outputKind).toLowerCase()
+  return label === 'unsupported output' ? 'study output' : label
 }

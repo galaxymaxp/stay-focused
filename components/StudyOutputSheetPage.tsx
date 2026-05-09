@@ -1,4 +1,6 @@
+import { GeneratedContentState } from '@/components/generated-content/GeneratedContentState'
 import { ReviewerPrintButton } from '@/components/ReviewerPrintButton'
+import { isSheetStudyOutputContent } from '@/lib/study-output-content'
 import type { StudyOutput, StudyOutputSheetContent } from '@/lib/types'
 
 export function StudyOutputSheetPage({
@@ -10,10 +12,16 @@ export function StudyOutputSheetPage({
   courseLabel: string | null
   moduleTitle: string | null
 }) {
-  const sheet = output.content as StudyOutputSheetContent
-  if (sheet.version !== 'study-sheet-v1') {
-    return null
+  if (!isSheetStudyOutputContent(output.content)) {
+    return (
+      <GeneratedContentState
+        title="This study sheet could not be rendered safely."
+        description="The saved sheet payload is incomplete or uses a version this app build does not support."
+        tone="warning"
+      />
+    )
   }
+  const sheet = output.content as StudyOutputSheetContent
 
   const isCramSheet = sheet.mode === 'cram_sheet'
 

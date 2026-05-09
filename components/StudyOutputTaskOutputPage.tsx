@@ -1,6 +1,8 @@
 'use client'
 
 import { Download, Printer } from 'lucide-react'
+import { GeneratedContentState } from '@/components/generated-content/GeneratedContentState'
+import { isTaskOutputStudyOutputContent } from '@/lib/study-output-content'
 import type { StudyOutput, StudyOutputTaskOutputContent } from '@/lib/types'
 
 export function StudyOutputTaskOutputPage({
@@ -12,14 +14,20 @@ export function StudyOutputTaskOutputPage({
   courseLabel: string | null
   moduleTitle: string | null
 }) {
+  if (!isTaskOutputStudyOutputContent(output.content)) {
+    return (
+      <GeneratedContentState
+        title="This task output could not be rendered safely."
+        description="The saved task output payload is incomplete or uses a version this app build does not support."
+        tone="warning"
+      />
+    )
+  }
+
   const taskOutput = output.content as StudyOutputTaskOutputContent
   const printableHtml = taskOutput.version === 'task-output-v1'
     ? taskOutput.exports.find((item) => item.filename.endsWith('.html'))?.content ?? null
     : null
-
-  if (taskOutput.version !== 'task-output-v1') {
-    return null
-  }
 
   return (
     <section className="motion-card section-shell section-shell-elevated reviewer-sheet">

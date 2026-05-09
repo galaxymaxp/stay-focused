@@ -37,6 +37,7 @@ import { buildDeepLearnNoteHref } from '@/lib/stay-focused-links'
 import { type TaskDraftContext } from '@/lib/do-now'
 import { createNotification } from '@/lib/notifications-server'
 import { saveTaskOutputStudyOutputAction } from '@/actions/study-outputs'
+import { StudyOutputSaveError } from '@/lib/study-output-errors'
 import { buildTaskOutputRequest, isTaskOutputApiResponse } from '@/lib/task-output'
 import { type PdfOcrPage, type PdfOcrResult } from '@/lib/extraction/pdf-ocr'
 import { getSourceOcrProvider } from '@/lib/extraction/source-ocr-provider'
@@ -1336,8 +1337,28 @@ async function processDoGenerationJob(input: {
     })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error during task output generation.'
-    console.error('[queue-jobs] processDoGenerationJob failed', { jobId: input.jobId, message })
-    await markQueuedJobFailed(input.jobId, message)
+    const diagnostic = err instanceof StudyOutputSaveError
+      ? {
+          diagnosticCode: err.diagnosticCode,
+          diagnosticMessage: err.diagnosticMessage,
+        }
+      : null
+    console.error('[queue-jobs] processDoGenerationJob failed', {
+      jobId: input.jobId,
+      message,
+      diagnostic,
+    })
+    await updateQueuedJobStatus(input.jobId, 'failed', {
+      error: message,
+      completedAt: new Date().toISOString(),
+      result: {
+        taskId: input.taskId,
+        moduleId: input.moduleId,
+        taskTitle: input.context.taskTitle,
+        failureCode: diagnostic?.diagnosticCode ?? 'unknown',
+        internalDiagnostic: diagnostic?.diagnosticMessage ?? message,
+      },
+    })
 
     await createNotification({
       userId: input.userId,

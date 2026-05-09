@@ -1,16 +1,17 @@
 import Link from 'next/link'
 import { SyncFirstEmptyState } from '@/components/SyncFirstEmptyState'
+import { GeneratedContentState } from '@/components/generated-content/GeneratedContentState'
 import { createAuthenticatedSupabaseServerClient } from '@/lib/auth-server'
+import { getCoursesPageState } from '@/lib/app-route-states'
 import { getClarityWorkspace } from '@/lib/clarity-workspace'
 import { buildCourseSummaries, type CourseSummary } from '@/lib/course-summary'
 
 export const revalidate = 300
 
 export default async function CoursesPage() {
-  const workspace = await getClarityWorkspace()
-  const supabase = await createAuthenticatedSupabaseServerClient()
+  const data = await loadCoursesPageData()
 
-  if (!workspace.hasSyncedData) {
+  if (data.status === 'sync_first') {
     return (
       <main className="page-shell page-stack">
         <SyncFirstEmptyState eyebrow="Courses" />
@@ -18,9 +19,53 @@ export default async function CoursesPage() {
     )
   }
 
-  const summaries = await buildCourseSummaries(workspace, supabase)
-  const totalPendingTasks = summaries.reduce((sum, s) => sum + s.pendingTaskCount, 0)
-  const totalReadyPacks = summaries.reduce((sum, s) => sum + s.readyPackCount, 0)
+  if (data.status === 'empty') {
+    return (
+      <main className="page-shell command-page">
+        <GeneratedContentState
+          kicker="Courses"
+          title="No courses are ready to show yet."
+          description="Your Canvas connection is active, but there are no visible course cards yet. Run a sync from Courses or Calendar and check again in a moment."
+          action={(
+            <>
+              <Link href="/courses" className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
+                Retry courses
+              </Link>
+              <Link href="/calendar" className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+                Open Calendar
+              </Link>
+            </>
+          )}
+        />
+      </main>
+    )
+  }
+
+  if (data.status === 'error') {
+    return (
+      <main className="page-shell command-page">
+        <GeneratedContentState
+          kicker="Courses"
+          title="Couldn&apos;t load your courses right now."
+          description="Try reloading this page. If it keeps happening, open Calendar or Home while Stay Focused reconnects to your saved course data."
+          tone="warning"
+          action={(
+            <>
+              <Link href="/courses" className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
+                Retry courses
+              </Link>
+              <Link href="/" className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
+                Go to Home
+              </Link>
+            </>
+          )}
+        />
+      </main>
+    )
+  }
+
+  const totalPendingTasks = data.summaries.reduce((sum, s) => sum + s.pendingTaskCount, 0)
+  const totalReadyPacks = data.summaries.reduce((sum, s) => sum + s.readyPackCount, 0)
 
   return (
     <main className="page-shell command-page">
@@ -34,7 +79,7 @@ export default async function CoursesPage() {
             </p>
           </div>
           <div className="command-stat-grid" style={{ flex: '0 1 auto' }}>
-            <StatTile label="Courses" value={String(summaries.length)} />
+            <StatTile label="Courses" value={String(data.summaries.length)} />
             <StatTile label="Pending tasks" value={String(totalPendingTasks)} tone="warning" />
             <StatTile label="Ready packs" value={String(totalReadyPacks)} tone="accent" />
           </div>
@@ -42,13 +87,33 @@ export default async function CoursesPage() {
       </section>
 
       <div className="courses-grid">
-        {summaries.map((summary, index) => (
+        {data.summaries.map((summary, index) => (
           <CourseCard key={summary.course.id} summary={summary} index={index} />
         ))}
       </div>
-
     </main>
   )
+}
+
+async function loadCoursesPageData() {
+  try {
+    const workspace = await getClarityWorkspace()
+    const supabase = await createAuthenticatedSupabaseServerClient()
+    const summaries = workspace.hasSyncedData
+      ? await buildCourseSummaries(workspace, supabase)
+      : []
+    const pageState = getCoursesPageState({
+      hasSyncedData: workspace.hasSyncedData,
+      summaryCount: summaries.length,
+    })
+
+    if (pageState === 'sync_first') return { status: 'sync_first' as const }
+    if (pageState === 'empty') return { status: 'empty' as const }
+    return { status: 'ready' as const, summaries }
+  } catch (error) {
+    console.error('[courses] failed to load page data', error)
+    return { status: 'error' as const }
+  }
 }
 
 function CourseCard({ summary, index }: { summary: CourseSummary; index: number }) {

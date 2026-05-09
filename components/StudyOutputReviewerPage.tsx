@@ -1,3 +1,5 @@
+import { GeneratedContentState } from '@/components/generated-content/GeneratedContentState'
+import { isReviewerStudyOutputContent } from '@/lib/study-output-content'
 import { ReviewerPrintButton } from '@/components/ReviewerPrintButton'
 import type { StudyOutput } from '@/lib/types'
 
@@ -10,10 +12,16 @@ export function StudyOutputReviewerPage({
   courseLabel: string | null
   moduleTitle: string | null
 }) {
-  const reviewer = output.content
-  if (reviewer.version !== 'reviewer-v1') {
-    return null
+  if (!isReviewerStudyOutputContent(output.content)) {
+    return (
+      <GeneratedContentState
+        title="This reviewer could not be rendered safely."
+        description="The saved reviewer payload is missing fields this app version expects."
+        tone="warning"
+      />
+    )
   }
+  const reviewer = output.content
 
   return (
     <section className="motion-card section-shell section-shell-elevated reviewer-sheet">

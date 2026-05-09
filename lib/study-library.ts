@@ -1,4 +1,5 @@
 import { resolveStudyLibraryHref, type DraftShelfItem, type StudyLibraryItem } from '@/lib/types'
+import { getStudyOutputKindLabel } from '@/lib/study-output-content'
 
 export function toStudyLibraryItem(
   draft: DraftShelfItem,
@@ -24,12 +25,7 @@ export function toStudyLibraryItem(
 
 export function getLibrarySubtitle(draft: DraftShelfItem) {
   if (draft.entryKind === 'study_output') {
-    if (draft.studyOutputKind === 'reviewer') return 'Reviewer'
-    if (draft.studyOutputKind === 'quiz_pack') return 'Quiz pack'
-    if (draft.studyOutputKind === 'task_output') return 'Task output'
-    if (draft.studyOutputKind === 'study_sheet') return 'Study sheet'
-    if (draft.studyOutputKind === 'cram_sheet') return 'Cram sheet'
-    return 'Study output'
+    return getStudyOutputKindLabel(draft.studyOutputKind)
   }
 
   if (draft.entryKind === 'deep_learn_note') return 'Exam prep pack'

@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { getCalendarPageState, getCoursesPageState } from '../lib/app-route-states'
+import { getStudyOutputKindLabel, getUnsupportedStudyOutputMessage, isRenderableStudyOutput } from '../lib/study-output-content'
 import { getLibrarySubtitle, toStudyLibraryItem } from '../lib/study-library'
 import type { DraftShelfItem } from '../lib/types'
 
@@ -49,6 +51,33 @@ test('study sheet shelf subtitle is stable for study outputs', () => {
 
 test('cram sheet shelf subtitle is stable for study outputs', () => {
   assert.equal(getLibrarySubtitle(createShelfItem({ studyOutputKind: 'cram_sheet' })), 'Cram sheet')
+})
+
+test('unsupported study output subtype stays visible with a safe subtitle', () => {
+  assert.equal(getLibrarySubtitle(createShelfItem({ studyOutputKind: 'unknown_kind' as never })), 'Unsupported output')
+  assert.equal(getStudyOutputKindLabel('unknown_kind'), 'Unsupported output')
+})
+
+test('malformed saved study output reports a safe unsupported message', () => {
+  const output = {
+    outputKind: 'reviewer',
+    content: null,
+  } as unknown as { outputKind: 'reviewer'; content: never }
+
+  assert.equal(isRenderableStudyOutput(output), false)
+  assert.match(getUnsupportedStudyOutputMessage(output), /does not have a readable content payload/i)
+})
+
+test('courses route state returns empty instead of blank body when synced data has no summaries', () => {
+  assert.equal(getCoursesPageState({ hasSyncedData: true, summaryCount: 0 }), 'empty')
+  assert.equal(getCoursesPageState({ hasSyncedData: false, summaryCount: 0 }), 'sync_first')
+  assert.equal(getCoursesPageState({ hasSyncedData: true, summaryCount: 2 }), 'ready')
+})
+
+test('calendar route state returns empty instead of blank body when there are no dated or undated tasks', () => {
+  assert.equal(getCalendarPageState({ hasSyncedData: true, scheduledCount: 0, undatedTaskCount: 0 }), 'empty')
+  assert.equal(getCalendarPageState({ hasSyncedData: false, scheduledCount: 0, undatedTaskCount: 0 }), 'sync_first')
+  assert.equal(getCalendarPageState({ hasSyncedData: true, scheduledCount: 1, undatedTaskCount: 0 }), 'ready')
 })
 
 function createShelfItem(overrides: Partial<DraftShelfItem> = {}): DraftShelfItem {
