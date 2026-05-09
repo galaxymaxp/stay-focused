@@ -5,6 +5,82 @@ Last Updated: 2026-05-09
 
 ---
 
+## Session Update - 2026-05-09 (Fix sign-in redirect loop and auth layout boundary)
+
+### What changed
+
+- Added shared auth-route helpers so public auth routes, protected app routes, safe `next` normalization, and auth-entry redirects all use one source of truth.
+- Updated `proxy.ts` to enforce real auth boundaries:
+  - unauthenticated protected routes now redirect to `/sign-in?next=<original-path>`
+  - `/sign-in` and `/sign-up` stay public
+  - authenticated visits to `/sign-in` or `/sign-up` now redirect to the normalized destination instead of leaving the user on auth entry pages
+  - recursive auth `next` values like `/sign-in`, `/sign-up`, and `/auth/callback` are normalized back to `/`
+- Split the root layout so public auth pages no longer mount the protected app shell or load shell announcement/workspace data.
+- Removed `/sign-in` and `/sign-up` from the shell’s Settings matching logic so auth pages cannot inherit stale Settings chrome.
+- Added explicit sign-in loading and error fallbacks so the auth route never degrades into an empty body.
+- Hardened the auth form for missing Supabase auth config:
+  - student-facing message stays clean
+  - internal config error is still visible for debugging
+  - email/password and OAuth actions are disabled instead of failing into a blank screen
+- Added targeted auth regression tests for redirect normalization, middleware/proxy routing, and shell visibility on auth routes.
+
+### Files touched
+
+- `app/auth/callback/route.ts`
+- `app/layout.tsx`
+- `app/sign-in/error.tsx`
+- `app/sign-in/loading.tsx`
+- `app/sign-in/page.tsx`
+- `app/sign-up/page.tsx`
+- `components/AppShell.tsx`
+- `components/AuthForm.tsx`
+- `docs/ai/handoff.md`
+- `lib/auth-routing.ts`
+- `lib/auth.ts`
+- `lib/supabase-auth-middleware.ts`
+- `proxy.ts`
+- `tests/auth-sign-in-middleware.test.ts`
+
+### Why it changed
+
+Production was still sending signed-out users into `/sign-in?next=/sign-in` while rendering the protected shell around the auth page. That meant the earlier blank-route fix treated the symptom but not the routing boundary itself. The app needed an actual public-vs-protected route split, safe `next` handling, and a sign-in route that can fail honestly instead of rendering a blank body inside authenticated chrome.
+
+### Tests run
+
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- auth sign-in middleware app-route-states` - passed (485 tests, 0 failures)
+- `npm test -- task-output study-library task-draft-contract` - passed (485 tests, 0 failures)
+- `npm test -- queue` - passed (485 tests, 0 failures)
+
+### Verification result
+
+All required checks passed. Public auth routes now stay outside the app shell, recursive sign-in redirects normalize back to `/`, authenticated users no longer remain on `/sign-in`, and protected routes now redirect signed-out users through a single proxy path with the original destination preserved.
+
+### Known risks
+
+- The protected-route allowlist is explicit. If a new protected top-level route is added later and not included in `lib/auth-routing.ts`, it will remain publicly reachable until that list is updated.
+- The root layout’s public-route decision relies on the proxy-injected request header for the server-side shell split. `AppShell` also has a client-side guard now, but the header contract still matters for avoiding unnecessary server data loading on auth pages.
+- There are no dedicated runtime browser checks in this session, so final production confidence still depends on verifying the real `/sign-in` route in deployment.
+
+### Blockers
+
+None.
+
+### Next recommended step
+
+1. Verify production manually on `/sign-in`, `/courses`, and `/settings` while signed out and signed in to confirm the loop is gone and the auth card renders without shell chrome.
+2. Add a small integration/runtime auth smoke test once the team decides whether to keep route protection in `proxy.ts` long-term or move it deeper into page/data boundaries.
+3. Review any future password-reset or OAuth recovery routes against `lib/auth-routing.ts` so they stay public and inherit the same `next` normalization rules.
+
+### Suggested commit message
+
+```bash
+fix sign-in redirect loop and auth layout boundary
+```
+
+---
+
 ## Session Update - 2026-05-09 (Fix blank app routes and task output save failure)
 
 ### What changed

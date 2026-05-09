@@ -6,7 +6,7 @@ import { createSupabaseRouteClient } from '@/lib/supabase-auth-server'
 
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url)
-  const nextPath = getSafeRedirectPath(requestUrl.searchParams.get('next'), '/settings')
+  const nextPath = getSafeRedirectPath(requestUrl.searchParams.get('next'), '/')
   const redirectUrl = new URL(nextPath, requestUrl.origin)
   const code = requestUrl.searchParams.get('code')
   const error = requestUrl.searchParams.get('error')

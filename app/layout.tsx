@@ -1,9 +1,15 @@
 import type { Metadata } from 'next'
+import { headers } from 'next/headers'
 import Script from 'next/script'
 import { AppShell } from '@/components/AppShell'
 import { ThemeProvider } from '@/components/ThemeProvider'
 import { ToastHost } from '@/components/ToastHost'
 import { getRecentAnnouncements } from '@/lib/announcements'
+import {
+  APP_SHELL_PATHNAME_HEADER,
+  APP_SHELL_PUBLIC_HEADER,
+  shouldRenderAppShell,
+} from '@/lib/auth-routing'
 import { loadWorkspaceSource } from '@/lib/workspace-source'
 import './globals.css'
 
@@ -47,11 +53,24 @@ const THEME_INIT_SCRIPT = `
 `
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  const source = await loadWorkspaceSource()
-  const recentAnnouncements = getRecentAnnouncements(
-    source.modules,
-    new Map(source.courses.map((course) => [course.id, course])),
-  )
+  const requestHeaders = await headers()
+  const currentPathname = requestHeaders.get(APP_SHELL_PATHNAME_HEADER) ?? '/'
+  const renderAppShell =
+    requestHeaders.get(APP_SHELL_PUBLIC_HEADER) === '1'
+      ? false
+      : shouldRenderAppShell(currentPathname)
+
+  let shellChildren = children
+
+  if (renderAppShell) {
+    const source = await loadWorkspaceSource()
+    const recentAnnouncements = getRecentAnnouncements(
+      source.modules,
+      new Map(source.courses.map((course) => [course.id, course])),
+    )
+
+    shellChildren = <AppShell recentAnnouncements={recentAnnouncements}>{children}</AppShell>
+  }
 
   return (
     <html lang="en" suppressHydrationWarning>
@@ -63,7 +82,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         />
         <ThemeProvider>
           <ToastHost />
-          <AppShell recentAnnouncements={recentAnnouncements}>{children}</AppShell>
+          {shellChildren}
         </ThemeProvider>
       </body>
     </html>

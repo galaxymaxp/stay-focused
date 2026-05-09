@@ -2,6 +2,8 @@ import type { NextRequest } from 'next/server'
 import { isSupabaseAuthConfigured } from '@/lib/supabase-auth-config'
 import { createSupabaseRouteClient } from '@/lib/supabase-auth-server'
 
+export { getSafeRedirectPath } from '@/lib/auth-routing'
+
 export interface AuthSummary {
   isConfigured: boolean
   user: {
@@ -9,13 +11,6 @@ export interface AuthSummary {
     email: string | null
     googleAvatarUrl: string | null
   } | null
-}
-
-export function getSafeRedirectPath(value: string | null | undefined, fallback = '/settings') {
-  if (!value) return fallback
-  if (!value.startsWith('/')) return fallback
-  if (value.startsWith('//')) return fallback
-  return value
 }
 
 export async function getAuthenticatedUserIdFromRequest(request: NextRequest) {

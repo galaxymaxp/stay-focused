@@ -7,6 +7,7 @@ import { AnnouncementsMenu } from '@/components/AnnouncementsMenu'
 import { AuthStatus } from '@/components/AuthStatus'
 import { StayFocusedIcon } from '@/components/StayFocusedIcon'
 import { QueuePanel } from '@/components/shell/QueuePanel'
+import { shouldRenderAppShell } from '@/lib/auth-routing'
 import type { ParsedAnnouncement } from '@/lib/announcements'
 
 const NAV_ITEMS = [
@@ -83,7 +84,7 @@ const NAV_ITEMS = [
     href: '/settings',
     label: 'Settings',
     mobileLabel: 'Settings',
-    matches: (pathname: string) => pathname.startsWith('/settings') || pathname.startsWith('/sign-in') || pathname.startsWith('/sign-up'),
+    matches: (pathname: string) => pathname.startsWith('/settings'),
     icon: (
       <>
         <path d="M12 4.75v2.1M12 17.15v2.1M6.9 6.9l1.48 1.48M15.62 15.62l1.48 1.48M4.75 12h2.1M17.15 12h2.1M6.9 17.1l1.48-1.48M15.62 8.38l1.48-1.48" />
@@ -124,6 +125,7 @@ export function AppShell({
 }) {
   const pathname = usePathname()
   const normalizedPathname = normalizeNavigationPath(pathname)
+  const renderShell = shouldRenderAppShell(normalizedPathname)
   const activeSection = NAV_ITEMS.find((item) => item.matches(normalizedPathname)) ?? NAV_ITEMS[0]
   const subLabel = resolveTopbarSubLabel(normalizedPathname)
   const [scrolled, setScrolled] = useState(false)
@@ -187,6 +189,10 @@ export function AppShell({
     document.addEventListener('click', onExpansionClick, true)
     return () => document.removeEventListener('click', onExpansionClick, true)
   }, [])
+
+  if (!renderShell) {
+    return <>{children}</>
+  }
 
   return (
     <div className="app-frame">

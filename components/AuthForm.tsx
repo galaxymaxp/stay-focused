@@ -18,10 +18,14 @@ export function AuthForm({
   mode,
   nextPath,
   initialError,
+  authAvailable = true,
+  authConfigError = null,
 }: {
   mode: AuthMode
   nextPath: string
   initialError?: string | null
+  authAvailable?: boolean
+  authConfigError?: string | null
 }) {
   const router = useRouter()
   const [email, setEmail] = useState('')
@@ -55,6 +59,11 @@ export function AuthForm({
   const subtitle = mode === 'sign-in'
     ? 'Welcome back. Sign in to pick up where you left off and keep your progress saved across devices.'
     : 'Create a free account to save your progress and access Stay Focused from any device.'
+  const studentFacingConfigMessage = mode === 'sign-in'
+    ? 'Sign-in is temporarily unavailable in this environment. Please try again later or contact support if this keeps happening.'
+    : 'Account creation is temporarily unavailable in this environment. Please try again later or contact support if this keeps happening.'
+  const isAuthDisabled = !authAvailable
+  const displayErrorMessage = errorMessage ?? (isAuthDisabled ? studentFacingConfigMessage : null)
 
   return (
     <main className="page-shell page-shell-narrow page-stack" style={{ gap: '1rem' }}>
@@ -71,6 +80,11 @@ export function AuthForm({
             event.preventDefault()
             setMessage(null)
             setErrorMessage(null)
+
+            if (isAuthDisabled) {
+              setErrorMessage(studentFacingConfigMessage)
+              return
+            }
 
             if (mode === 'sign-up' && password !== confirmPassword) {
               setErrorMessage('Passwords do not match.')
@@ -127,6 +141,7 @@ export function AuthForm({
                 autoComplete="email"
                 className="ui-input"
                 style={inputStyle}
+                disabled={isAuthDisabled}
               />
               {email.length === 0 && !emailFocused ? (
                 <span
@@ -161,12 +176,14 @@ export function AuthForm({
                 autoComplete={mode === 'sign-in' ? 'current-password' : 'new-password'}
                 className="ui-input"
                 style={{ ...inputStyle, paddingRight: '2.5rem' }}
+                disabled={isAuthDisabled}
               />
               <button
                 type="button"
                 onClick={() => setShowPassword((prev) => !prev)}
                 aria-label={showPassword ? 'Hide password' : 'Show password'}
                 style={passwordToggleStyle}
+                disabled={isAuthDisabled}
               >
                 {showPassword ? <EyeClosedIcon /> : <EyeOpenIcon />}
               </button>
@@ -186,12 +203,14 @@ export function AuthForm({
                   autoComplete="new-password"
                   className="ui-input"
                   style={{ ...inputStyle, paddingRight: '2.5rem' }}
+                  disabled={isAuthDisabled}
                 />
                 <button
                   type="button"
                   onClick={() => setShowConfirmPassword((prev) => !prev)}
                   aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
                   style={passwordToggleStyle}
+                  disabled={isAuthDisabled}
                 >
                   {showConfirmPassword ? <EyeClosedIcon /> : <EyeOpenIcon />}
                 </button>
@@ -214,7 +233,7 @@ export function AuthForm({
             </Link>
           ) : null}
 
-          <button type="submit" className="ui-button ui-button-primary" style={{ minHeight: '2.7rem' }} disabled={isPending}>
+          <button type="submit" className="ui-button ui-button-primary" style={{ minHeight: '2.7rem' }} disabled={isPending || isAuthDisabled}>
             {isPending ? 'Working...' : title}
           </button>
         </form>
@@ -240,10 +259,15 @@ export function AuthForm({
         <button
           type="button"
           style={oauthButtonStyle}
-          disabled={isPending}
+          disabled={isPending || isAuthDisabled}
           onClick={() => {
             setMessage(null)
             setErrorMessage(null)
+
+            if (isAuthDisabled) {
+              setErrorMessage(studentFacingConfigMessage)
+              return
+            }
 
             startTransition(async () => {
               try {
@@ -267,10 +291,15 @@ export function AuthForm({
         <button
           type="button"
           style={oauthButtonStyle}
-          disabled={isPending}
+          disabled={isPending || isAuthDisabled}
           onClick={() => {
             setMessage(null)
             setErrorMessage(null)
+
+            if (isAuthDisabled) {
+              setErrorMessage(studentFacingConfigMessage)
+              return
+            }
 
             startTransition(async () => {
               try {
@@ -291,8 +320,32 @@ export function AuthForm({
           <span>Continue with Google</span>
         </button>
 
+        {isAuthDisabled ? (
+          <div
+            role="status"
+            className="ui-card-soft"
+            style={{
+              borderRadius: '12px',
+              padding: '0.85rem 0.9rem',
+              border: '1px solid color-mix(in srgb, var(--amber) 28%, var(--border-subtle) 72%)',
+              background: 'color-mix(in srgb, var(--surface-soft) 86%, transparent)',
+              display: 'grid',
+              gap: '0.35rem',
+            }}
+          >
+            <p style={{ margin: 0, fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
+              {studentFacingConfigMessage}
+            </p>
+            {authConfigError ? (
+              <p style={{ margin: 0, fontSize: '12px', lineHeight: 1.55, color: 'var(--text-secondary)' }}>
+                Internal auth config error: {authConfigError}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+
         {message ? <p style={{ margin: 0, fontSize: '13px', color: 'var(--blue)' }}>{message}</p> : null}
-        {errorMessage ? <p style={{ margin: 0, fontSize: '13px', color: 'var(--red)' }}>{errorMessage}</p> : null}
+        {displayErrorMessage ? <p style={{ margin: 0, fontSize: '13px', color: 'var(--red)' }}>{displayErrorMessage}</p> : null}
       </section>
     </main>
   )
