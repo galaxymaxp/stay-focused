@@ -5,6 +5,67 @@ Last Updated: 2026-05-10
 
 ---
 
+## Session Update - 2026-05-10 (Add canvas ambient background animation)
+
+### What changed
+
+- Added a root-mounted `AmbientBackgroundCanvas` client component inside the existing `.app-ambient` layer.
+- Preserved the accepted static CSS ambient background and layered the canvas transparently over it as progressive enhancement.
+- Implemented canvas `requestAnimationFrame` animation with:
+  - four edge-anchored blobs that pulse and drift along the top, bottom, left, and right perimeter
+  - six independent interior blobs with separate origin, radius, speed, phase, and wobble behavior
+  - radial gradients derived from the active `--accent` CSS variable
+  - 40-48px canvas blur for fluid blob edges
+- Added device pixel ratio-aware canvas sizing with `ResizeObserver`.
+- Added reduced-motion handling: one static canvas frame renders and the animation loop does not run.
+- Added theme/accent mutation handling so the canvas palette follows root theme/accent CSS variable changes.
+- Kept dark mode restrained with lower canvas opacity and reduced draw intensity.
+
+### Files touched
+
+- `app/globals.css`
+- `app/layout.tsx`
+- `components/AmbientBackgroundCanvas.tsx`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+The static accent-aware ambient background was accepted, and the next step was to add motion without replacing that foundation. The new canvas layer keeps one root ambient system, avoids CSS keyframe blob animation, avoids route/auth-specific background systems, and keeps motion subtle enough to preserve card and text readability.
+
+### Tests run
+
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+
+### Verification result
+
+- Required validation checks passed.
+- The app still mounts a single root `.app-ambient` background system.
+- The canvas is fixed, inset `0`, pointer-events none, and layout-neutral.
+- The animation uses `performance.now()` time via `requestAnimationFrame`.
+- Reduced-motion mode renders a static frame and skips the animation loop.
+
+### Known risks
+
+- Browser visual QA was not automated in this session, so final subjective tuning of blob opacity, radius, and motion strength should still be checked manually on Home, auth, and shell pages in light and dark mode.
+- Canvas blur support is browser-dependent; modern Chromium/WebKit/Firefox support `CanvasRenderingContext2D.filter`, but very old browsers would render softer gradients without the blur effect.
+
+### Blockers
+
+None.
+
+### Next recommended step
+
+Run manual browser QA across Home, Courses, Library, Calendar, Settings, and auth routes in light mode, dark mode, and reduced-motion mode. Tune only the canvas blob constants if the motion feels too bright or too active; do not add another page background system.
+
+### Suggested commit message
+
+```bash
+add canvas ambient background animation
+```
+
+---
+
 ## Session Update - 2026-05-10 (Add static accent ambient background foundation)
 
 ### What changed

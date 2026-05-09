@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { headers } from 'next/headers'
 import Script from 'next/script'
+import { AmbientBackgroundCanvas } from '@/components/AmbientBackgroundCanvas'
 import { AppShell } from '@/components/AppShell'
 import { ThemeProvider } from '@/components/ThemeProvider'
 import { ToastHost } from '@/components/ToastHost'
@@ -80,7 +81,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           strategy="beforeInteractive"
           dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }}
         />
-        <div className="app-ambient" aria-hidden="true" />
+        <div className="app-ambient" aria-hidden="true">
+          <AmbientBackgroundCanvas />
+        </div>
         <ThemeProvider>
           <ToastHost />
           {shellChildren}
