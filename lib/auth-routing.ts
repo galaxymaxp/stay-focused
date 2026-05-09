@@ -88,6 +88,19 @@ export function getAuthProxyRedirect(pathname: string, search: string, userId: s
   return null
 }
 
+export function resolveAuthEntryParams(
+  searchParams: Record<string, string | string[] | undefined> | undefined,
+  fallback = '/',
+) {
+  const nextValue = searchParams?.next
+  const errorValue = searchParams?.error
+
+  return {
+    nextPath: getSafeRedirectPath(Array.isArray(nextValue) ? nextValue[0] : nextValue, fallback),
+    initialError: Array.isArray(errorValue) ? errorValue[0] : errorValue ?? null,
+  }
+}
+
 function matchesRoutePrefix(pathname: string, prefixes: readonly string[]) {
   return prefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
 }

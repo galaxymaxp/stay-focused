@@ -5,6 +5,104 @@ Last Updated: 2026-05-09
 
 ---
 
+## Session Update - 2026-05-09 (Harden blank sign-in page fallbacks)
+
+### What changed
+
+- Added a shared full-viewport auth frame so public auth pages always render a visible centered panel with a small production-safe diagnostic marker (`Auth page loaded`).
+- Refactored `components/AuthForm.tsx` so the sign-in/sign-up surface is harder to blank:
+  - wrapped the interactive form in a client error boundary
+  - guarded Supabase browser client creation behind explicit try/catch
+  - guarded OAuth/email redirect callback URL building so `window.location` is never assumed before mount
+  - added a visible provider-preparing state instead of leaving OAuth in an ambiguous loading state
+  - kept missing-config and runtime error copy visible inside the auth page instead of failing silently
+- Updated `app/sign-in/loading.tsx` and `app/sign-in/error.tsx` to use the same shared auth frame instead of lighter route-local markup, so loading and route failure states are visually consistent and never blank.
+- Added a real `/forgot-password` public route so the sign-in page no longer prefetches a missing route and logs 404 console errors during browser verification.
+- Added focused auth rendering tests covering:
+  - visible sign-in auth frame rendering
+  - normalized `/sign-in?next=%2F`
+  - visible missing-config fallback copy in `AuthForm`
+  - runtime fallback boundary presence
+  - visible forgot-password route rendering
+- Investigated current production status:
+  - latest production deployment at time of verification: `dpl_DEANSrnC4c3eWdjK95XytoBM9QM9`
+  - Vercel alias `https://stay-focused-ten.vercel.app/sign-in` rendered the sign-in card successfully in headless browser verification
+  - historical Vercel logs for that deployment showed `GET /sign-in` traffic without thrown route errors during the verification window
+
+### Files touched
+
+- `app/forgot-password/page.tsx`
+- `app/globals.css`
+- `app/sign-in/error.tsx`
+- `app/sign-in/loading.tsx`
+- `app/sign-in/page.tsx`
+- `app/sign-up/page.tsx`
+- `components/AuthForm.tsx`
+- `components/AuthPageFrame.tsx`
+- `docs/ai/handoff.md`
+- `lib/auth-routing.ts`
+- `tests/auth-sign-in-page.test.ts`
+
+### Why it changed
+
+The previous auth-boundary fix removed the protected shell from public auth routes, but the sign-in page still did not have a strong guarantee that it would render a visible student-facing surface if the client form crashed, provider setup lagged, or auth-adjacent routes were missing. This pass makes the sign-in route fail visibly instead of blanking and removes the `/forgot-password` console 404 that was still present during browser checks.
+
+### Tests run
+
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- auth sign-in middleware app-route-states` - passed (490 tests, 0 failures)
+
+### Browser verification result
+
+- Local signed-out verification passed for:
+  - `/sign-in`
+  - `/sign-in?next=%2F`
+  - `/sign-in?next=%2Fcourses`
+  - `/courses` redirecting to `/sign-in?next=%2Fcourses`
+  - `/forgot-password`
+- Results:
+  - auth card rendered visibly on each sign-in route
+  - `data-auth-diagnostic="loaded"` marker rendered on each auth page
+  - AppShell/sidebar/topbar did not render on public auth routes
+  - no browser console errors
+  - no page runtime errors
+- Production headless verification against `stay-focused-ten.vercel.app` also rendered the sign-in card visibly, and current Vercel logs did not show thrown sign-in route errors during the check window.
+
+### Known risks
+
+- The temporary diagnostic marker is intentionally visible on auth pages for production confirmation. It should be removed or softened further once the team is satisfied the blank-page report is fully retired.
+- The new `/forgot-password` route is a safe placeholder, not a full reset-password implementation.
+- The auth form error boundary guarantees a visible fallback for client render failures inside the form subtree, but it cannot protect against unrelated global layout/provider failures above the route segment.
+
+### Blockers
+
+- Full signed-in browser verification for `/courses` and `/settings` was not completed in this session because no safe test account/session was available in automation, and creating or guessing production credentials would be risky.
+
+### Next recommended step
+
+1. Manually verify the live production domain in a normal browser session, specifically:
+   - signed out `/sign-in`
+   - signed out `/sign-in?next=%2F`
+   - signed out `/courses`
+   - signed in `/courses`
+   - signed in `/settings`
+2. If a user still reports a blank auth surface after this deploy, capture:
+   - exact deployment alias/domain
+   - browser + version
+   - screenshot
+   - console output
+   - whether the `Auth page loaded` marker is visible
+3. Replace the placeholder `/forgot-password` route with a real Supabase password-reset flow once the auth surface is confirmed stable.
+
+### Suggested commit message
+
+```bash
+fix blank sign-in page render
+```
+
+---
+
 ## Session Update - 2026-05-09 (Fix sign-in redirect loop and auth layout boundary)
 
 ### What changed

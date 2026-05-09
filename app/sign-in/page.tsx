@@ -1,5 +1,5 @@
 import { AuthForm } from '@/components/AuthForm'
-import { getSafeRedirectPath } from '@/lib/auth'
+import { resolveAuthEntryParams } from '@/lib/auth-routing'
 import { isSupabaseAuthConfigured, supabaseAuthConfigError } from '@/lib/supabase-auth-config'
 
 interface SignInPageProps {
@@ -8,10 +8,7 @@ interface SignInPageProps {
 
 export default async function SignInPage({ searchParams }: SignInPageProps = {}) {
   const resolvedSearchParams = searchParams ? await searchParams : {}
-  const nextValue = resolvedSearchParams.next
-  const errorValue = resolvedSearchParams.error
-  const nextPath = getSafeRedirectPath(Array.isArray(nextValue) ? nextValue[0] : nextValue, '/')
-  const initialError = Array.isArray(errorValue) ? errorValue[0] : errorValue ?? null
+  const { nextPath, initialError } = resolveAuthEntryParams(resolvedSearchParams, '/')
 
   return (
     <AuthForm

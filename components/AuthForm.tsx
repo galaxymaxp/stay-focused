@@ -1,8 +1,9 @@
 'use client'
 
-import { useState, useTransition, useEffect } from 'react'
+import { Component, type CSSProperties, type ReactNode, useEffect, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { AuthPageFrame, AuthStatusNotice } from '@/components/AuthPageFrame'
 import { createSupabaseBrowserClient } from '@/lib/supabase-auth-browser'
 
 type AuthMode = 'sign-in' | 'sign-up'
@@ -14,7 +15,21 @@ const EMAIL_PLACEHOLDERS = [
   'you@icloud.com',
 ]
 
-export function AuthForm({
+export function AuthForm(props: {
+  mode: AuthMode
+  nextPath: string
+  initialError?: string | null
+  authAvailable?: boolean
+  authConfigError?: string | null
+}) {
+  return (
+    <AuthFormErrorBoundary mode={props.mode}>
+      <AuthFormContent {...props} />
+    </AuthFormErrorBoundary>
+  )
+}
+
+function AuthFormContent({
   mode,
   nextPath,
   initialError,
@@ -40,6 +55,13 @@ export function AuthForm({
   const [placeholderIndex, setPlaceholderIndex] = useState(0)
   const [placeholderVisible, setPlaceholderVisible] = useState(true)
   const [emailFocused, setEmailFocused] = useState(false)
+  const [browserOrigin, setBrowserOrigin] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && typeof window.location?.origin === 'string') {
+      setBrowserOrigin(window.location.origin)
+    }
+  }, [])
 
   useEffect(() => {
     if (emailFocused || email.length > 0) return
@@ -63,306 +85,357 @@ export function AuthForm({
     ? 'Sign-in is temporarily unavailable in this environment. Please try again later or contact support if this keeps happening.'
     : 'Account creation is temporarily unavailable in this environment. Please try again later or contact support if this keeps happening.'
   const isAuthDisabled = !authAvailable
+  const isProviderPreparing = browserOrigin == null
   const displayErrorMessage = errorMessage ?? (isAuthDisabled ? studentFacingConfigMessage : null)
 
+  function resetFeedback() {
+    setMessage(null)
+    setErrorMessage(null)
+  }
+
+  function resolveSupabaseClient() {
+    try {
+      return createSupabaseBrowserClient()
+    } catch (error) {
+      throw new Error(
+        error instanceof Error && error.message
+          ? error.message
+          : 'Stay Focused could not prepare sign-in in this browser.',
+      )
+    }
+  }
+
+  function buildCallbackUrl() {
+    if (!browserOrigin) {
+      throw new Error('Sign-in is still preparing in this browser. Try again in a moment.')
+    }
+
+    return `${browserOrigin}/auth/callback?next=${encodeURIComponent(nextPath)}`
+  }
+
+  async function handlePasswordSubmit() {
+    const supabase = resolveSupabaseClient()
+
+    if (mode === 'sign-in') {
+      const { error } = await supabase.auth.signInWithPassword({ email, password })
+      if (error) throw error
+
+      router.push(nextPath)
+      router.refresh()
+      return
+    }
+
+    const emailRedirectTo = buildCallbackUrl()
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        emailRedirectTo,
+      },
+    })
+
+    if (error) throw error
+
+    if (data.session) {
+      router.push(nextPath)
+      router.refresh()
+      return
+    }
+
+    setMessage('Account created. Check your email if confirmation is enabled for this Supabase project.')
+  }
+
+  function handleOAuthSignIn(provider: 'azure' | 'google') {
+    resetFeedback()
+
+    if (isAuthDisabled) {
+      setErrorMessage(studentFacingConfigMessage)
+      return
+    }
+
+    startTransition(async () => {
+      try {
+        const supabase = resolveSupabaseClient()
+        const redirectTo = buildCallbackUrl()
+        const { error } = await supabase.auth.signInWithOAuth({
+          provider,
+          options: provider === 'azure'
+            ? { redirectTo, scopes: 'email' }
+            : { redirectTo },
+        })
+
+        if (error) throw error
+      } catch (error) {
+        const providerLabel = provider === 'azure' ? 'Microsoft' : 'Google'
+        setErrorMessage(
+          error instanceof Error && error.message
+            ? error.message
+            : `Could not start ${providerLabel} sign-in.`,
+        )
+      }
+    })
+  }
+
   return (
-    <main className="page-shell page-shell-narrow page-stack" style={{ gap: '1rem' }}>
-      <section className="glass-panel glass-strong motion-card" style={{ padding: '1.35rem', display: 'grid', gap: '1rem', borderRadius: 'var(--radius-panel)' }}>
-        <header style={{ display: 'grid', gap: '0.45rem' }}>
-          <p className="ui-kicker">Account</p>
-          <h1 className="ui-page-title" style={{ fontSize: '2rem' }}>{title}</h1>
-          <p className="ui-page-copy" style={{ maxWidth: '42rem', marginTop: 0 }}>{subtitle}</p>
-        </header>
+    <AuthPageFrame
+      title={title}
+      description={subtitle}
+      diagnosticLabel="Auth page loaded"
+    >
+      <form
+        style={{ display: 'grid', gap: '0.8rem' }}
+        onSubmit={(event) => {
+          event.preventDefault()
+          resetFeedback()
 
-        <form
-          style={{ display: 'grid', gap: '0.8rem' }}
-          onSubmit={(event) => {
-            event.preventDefault()
-            setMessage(null)
-            setErrorMessage(null)
+          if (isAuthDisabled) {
+            setErrorMessage(studentFacingConfigMessage)
+            return
+          }
 
-            if (isAuthDisabled) {
-              setErrorMessage(studentFacingConfigMessage)
-              return
+          if (mode === 'sign-up' && password !== confirmPassword) {
+            setErrorMessage('Passwords do not match.')
+            return
+          }
+
+          startTransition(async () => {
+            try {
+              await handlePasswordSubmit()
+            } catch (error) {
+              setErrorMessage(error instanceof Error ? error.message : 'Authentication failed.')
             }
+          })
+        }}
+      >
+        <label style={fieldStyle}>
+          <span style={labelStyle}>Email</span>
+          <div style={{ position: 'relative' }}>
+            <input
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              onFocus={() => setEmailFocused(true)}
+              onBlur={() => setEmailFocused(false)}
+              required
+              autoComplete="email"
+              className="ui-input"
+              style={inputStyle}
+              disabled={isAuthDisabled}
+            />
+            {email.length === 0 && !emailFocused ? (
+              <span
+                aria-hidden="true"
+                style={{
+                  position: 'absolute',
+                  left: '0.85rem',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  color: 'var(--text-muted)',
+                  fontSize: '14px',
+                  pointerEvents: 'none',
+                  opacity: placeholderVisible ? 1 : 0,
+                  transition: 'opacity 0.22s ease',
+                }}
+              >
+                {EMAIL_PLACEHOLDERS[placeholderIndex]}
+              </span>
+            ) : null}
+          </div>
+        </label>
 
-            if (mode === 'sign-up' && password !== confirmPassword) {
-              setErrorMessage('Passwords do not match.')
-              return
-            }
+        <label style={fieldStyle}>
+          <span style={labelStyle}>Password</span>
+          <div style={{ position: 'relative' }}>
+            <input
+              type={showPassword ? 'text' : 'password'}
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              required
+              minLength={6}
+              autoComplete={mode === 'sign-in' ? 'current-password' : 'new-password'}
+              className="ui-input"
+              style={{ ...inputStyle, paddingRight: '2.5rem' }}
+              disabled={isAuthDisabled}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((prev) => !prev)}
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+              style={passwordToggleStyle}
+              disabled={isAuthDisabled}
+            >
+              {showPassword ? <EyeClosedIcon /> : <EyeOpenIcon />}
+            </button>
+          </div>
+        </label>
 
-            startTransition(async () => {
-              try {
-                const supabase = createSupabaseBrowserClient()
-
-                if (mode === 'sign-in') {
-                  const { error } = await supabase.auth.signInWithPassword({ email, password })
-                  if (error) throw error
-
-                  router.push(nextPath)
-                  router.refresh()
-                  return
-                }
-
-                const emailRedirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`
-                const { data, error } = await supabase.auth.signUp({
-                  email,
-                  password,
-                  options: {
-                    emailRedirectTo,
-                  },
-                })
-
-                if (error) throw error
-
-                if (data.session) {
-                  router.push(nextPath)
-                  router.refresh()
-                  return
-                }
-
-                setMessage('Account created. Check your email if confirmation is enabled for this Supabase project.')
-              } catch (error) {
-                setErrorMessage(error instanceof Error ? error.message : 'Authentication failed.')
-              }
-            })
-          }}
-        >
+        {mode === 'sign-up' ? (
           <label style={fieldStyle}>
-            <span style={labelStyle}>Email</span>
+            <span style={labelStyle}>Confirm password</span>
             <div style={{ position: 'relative' }}>
               <input
-                type="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                onFocus={() => setEmailFocused(true)}
-                onBlur={() => setEmailFocused(false)}
-                required
-                autoComplete="email"
-                className="ui-input"
-                style={inputStyle}
-                disabled={isAuthDisabled}
-              />
-              {email.length === 0 && !emailFocused ? (
-                <span
-                  aria-hidden="true"
-                  style={{
-                    position: 'absolute',
-                    left: '0.85rem',
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    color: 'var(--text-muted)',
-                    fontSize: '14px',
-                    pointerEvents: 'none',
-                    opacity: placeholderVisible ? 1 : 0,
-                    transition: 'opacity 0.22s ease',
-                  }}
-                >
-                  {EMAIL_PLACEHOLDERS[placeholderIndex]}
-                </span>
-              ) : null}
-            </div>
-          </label>
-
-          <label style={fieldStyle}>
-            <span style={labelStyle}>Password</span>
-            <div style={{ position: 'relative' }}>
-              <input
-                type={showPassword ? 'text' : 'password'}
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
+                type={showConfirmPassword ? 'text' : 'password'}
+                value={confirmPassword}
+                onChange={(event) => setConfirmPassword(event.target.value)}
                 required
                 minLength={6}
-                autoComplete={mode === 'sign-in' ? 'current-password' : 'new-password'}
+                autoComplete="new-password"
                 className="ui-input"
                 style={{ ...inputStyle, paddingRight: '2.5rem' }}
                 disabled={isAuthDisabled}
               />
               <button
                 type="button"
-                onClick={() => setShowPassword((prev) => !prev)}
-                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                onClick={() => setShowConfirmPassword((prev) => !prev)}
+                aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
                 style={passwordToggleStyle}
                 disabled={isAuthDisabled}
               >
-                {showPassword ? <EyeClosedIcon /> : <EyeOpenIcon />}
+                {showConfirmPassword ? <EyeClosedIcon /> : <EyeOpenIcon />}
               </button>
             </div>
           </label>
-
-          {mode === 'sign-up' ? (
-            <label style={fieldStyle}>
-              <span style={labelStyle}>Confirm password</span>
-              <div style={{ position: 'relative' }}>
-                <input
-                  type={showConfirmPassword ? 'text' : 'password'}
-                  value={confirmPassword}
-                  onChange={(event) => setConfirmPassword(event.target.value)}
-                  required
-                  minLength={6}
-                  autoComplete="new-password"
-                  className="ui-input"
-                  style={{ ...inputStyle, paddingRight: '2.5rem' }}
-                  disabled={isAuthDisabled}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowConfirmPassword((prev) => !prev)}
-                  aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
-                  style={passwordToggleStyle}
-                  disabled={isAuthDisabled}
-                >
-                  {showConfirmPassword ? <EyeClosedIcon /> : <EyeOpenIcon />}
-                </button>
-              </div>
-            </label>
-          ) : null}
-
-          {mode === 'sign-in' ? (
-            <Link
-              href="/forgot-password"
-              style={{
-                justifySelf: 'end',
-                fontSize: '12px',
-                color: 'var(--accent)',
-                fontWeight: 500,
-                marginTop: '-0.2rem',
-              }}
-            >
-              Forgot password?
-            </Link>
-          ) : null}
-
-          <button type="submit" className="ui-button ui-button-primary" style={{ minHeight: '2.7rem' }} disabled={isPending || isAuthDisabled}>
-            {isPending ? 'Working...' : title}
-          </button>
-        </form>
-
-        <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-secondary)', textAlign: 'center' }}>
-          {mode === 'sign-in' ? "Don't have an account?" : 'Already have an account?'}{' '}
-          <Link
-            href={`${mode === 'sign-in' ? '/sign-up' : '/sign-in'}?next=${encodeURIComponent(nextPath)}`}
-            style={{ color: 'var(--accent)', fontWeight: 600 }}
-          >
-            {mode === 'sign-in' ? 'Create one' : 'Sign in'}
-          </Link>
-        </p>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <div style={dividerStyle} />
-          <span style={{ fontSize: '12px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-            Or
-          </span>
-          <div style={dividerStyle} />
-        </div>
-
-        <button
-          type="button"
-          style={oauthButtonStyle}
-          disabled={isPending || isAuthDisabled}
-          onClick={() => {
-            setMessage(null)
-            setErrorMessage(null)
-
-            if (isAuthDisabled) {
-              setErrorMessage(studentFacingConfigMessage)
-              return
-            }
-
-            startTransition(async () => {
-              try {
-                const supabase = createSupabaseBrowserClient()
-                const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`
-                const { error } = await supabase.auth.signInWithOAuth({
-                  provider: 'azure',
-                  options: { redirectTo, scopes: 'email' },
-                })
-                if (error) throw error
-              } catch (error) {
-                setErrorMessage(error instanceof Error ? error.message : 'Could not start Microsoft sign-in.')
-              }
-            })
-          }}
-        >
-          <MicrosoftLogo />
-          <span>Continue with Microsoft</span>
-        </button>
-
-        <button
-          type="button"
-          style={oauthButtonStyle}
-          disabled={isPending || isAuthDisabled}
-          onClick={() => {
-            setMessage(null)
-            setErrorMessage(null)
-
-            if (isAuthDisabled) {
-              setErrorMessage(studentFacingConfigMessage)
-              return
-            }
-
-            startTransition(async () => {
-              try {
-                const supabase = createSupabaseBrowserClient()
-                const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`
-                const { error } = await supabase.auth.signInWithOAuth({
-                  provider: 'google',
-                  options: { redirectTo },
-                })
-                if (error) throw error
-              } catch (error) {
-                setErrorMessage(error instanceof Error ? error.message : 'Could not start Google sign-in.')
-              }
-            })
-          }}
-        >
-          <GoogleLogo />
-          <span>Continue with Google</span>
-        </button>
-
-        {isAuthDisabled ? (
-          <div
-            role="status"
-            className="ui-card-soft"
-            style={{
-              borderRadius: '12px',
-              padding: '0.85rem 0.9rem',
-              border: '1px solid color-mix(in srgb, var(--amber) 28%, var(--border-subtle) 72%)',
-              background: 'color-mix(in srgb, var(--surface-soft) 86%, transparent)',
-              display: 'grid',
-              gap: '0.35rem',
-            }}
-          >
-            <p style={{ margin: 0, fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
-              {studentFacingConfigMessage}
-            </p>
-            {authConfigError ? (
-              <p style={{ margin: 0, fontSize: '12px', lineHeight: 1.55, color: 'var(--text-secondary)' }}>
-                Internal auth config error: {authConfigError}
-              </p>
-            ) : null}
-          </div>
         ) : null}
 
-        {message ? <p style={{ margin: 0, fontSize: '13px', color: 'var(--blue)' }}>{message}</p> : null}
-        {displayErrorMessage ? <p style={{ margin: 0, fontSize: '13px', color: 'var(--red)' }}>{displayErrorMessage}</p> : null}
-      </section>
-    </main>
+        {mode === 'sign-in' ? (
+          <Link
+            href="/forgot-password"
+            prefetch={false}
+            style={{
+              justifySelf: 'end',
+              fontSize: '12px',
+              color: 'var(--accent)',
+              fontWeight: 500,
+              marginTop: '-0.2rem',
+            }}
+          >
+            Forgot password?
+          </Link>
+        ) : null}
+
+        <button type="submit" className="ui-button ui-button-primary" style={{ minHeight: '2.7rem' }} disabled={isPending || isAuthDisabled}>
+          {isPending ? 'Working...' : title}
+        </button>
+      </form>
+
+      <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-secondary)', textAlign: 'center' }}>
+        {mode === 'sign-in' ? "Don't have an account?" : 'Already have an account?'}{' '}
+        <Link
+          href={`${mode === 'sign-in' ? '/sign-up' : '/sign-in'}?next=${encodeURIComponent(nextPath)}`}
+          style={{ color: 'var(--accent)', fontWeight: 600 }}
+        >
+          {mode === 'sign-in' ? 'Create one' : 'Sign in'}
+        </Link>
+      </p>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+        <div style={dividerStyle} />
+        <span style={{ fontSize: '12px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          Or
+        </span>
+        <div style={dividerStyle} />
+      </div>
+
+      <button
+        type="button"
+        style={oauthButtonStyle}
+        disabled={isPending || isAuthDisabled || isProviderPreparing}
+        onClick={() => handleOAuthSignIn('azure')}
+      >
+        <MicrosoftLogo />
+        <span>Continue with Microsoft</span>
+      </button>
+
+      <button
+        type="button"
+        style={oauthButtonStyle}
+        disabled={isPending || isAuthDisabled || isProviderPreparing}
+        onClick={() => handleOAuthSignIn('google')}
+      >
+        <GoogleLogo />
+        <span>Continue with Google</span>
+      </button>
+
+      {isProviderPreparing ? (
+        <AuthStatusNotice
+          title="Preparing provider sign-in"
+          description="Microsoft and Google sign-in will unlock as soon as this browser finishes mounting the auth page."
+        />
+      ) : null}
+
+      {isAuthDisabled ? (
+        <AuthStatusNotice
+          title="Auth configuration required"
+          description={studentFacingConfigMessage}
+          tone="warning"
+          detail={authConfigError ? `Internal auth config error: ${authConfigError}` : null}
+        />
+      ) : null}
+
+      {message ? <p style={{ margin: 0, fontSize: '13px', color: 'var(--blue)' }}>{message}</p> : null}
+      {displayErrorMessage ? <p style={{ margin: 0, fontSize: '13px', color: 'var(--red)' }}>{displayErrorMessage}</p> : null}
+    </AuthPageFrame>
   )
 }
 
-const dividerStyle: React.CSSProperties = {
+class AuthFormErrorBoundary extends Component<{
+  mode: AuthMode
+  children: ReactNode
+}, {
+  errorMessage: string | null
+}> {
+  state = {
+    errorMessage: null,
+  }
+
+  static getDerivedStateFromError(error: unknown) {
+    return {
+      errorMessage: error instanceof Error && error.message
+        ? error.message
+        : 'Stay Focused could not finish rendering the auth form.',
+    }
+  }
+
+  componentDidCatch(error: unknown) {
+    console.error('[auth] AuthForm render failed.', error)
+  }
+
+  render() {
+    if (this.state.errorMessage) {
+      const actionLabel = this.props.mode === 'sign-in' ? 'sign-in' : 'account creation'
+
+      return (
+        <AuthPageFrame
+          title={this.props.mode === 'sign-in' ? 'Sign in' : 'Create account'}
+          description={`Stay Focused hit a runtime issue while preparing ${actionLabel}.`}
+          diagnosticLabel="Auth page loaded"
+        >
+          <AuthStatusNotice
+            title="Auth page is available"
+            description={`The page loaded, but the interactive auth form hit a runtime problem. Refresh and try again.`}
+            tone="error"
+            detail={`Internal auth runtime error: ${this.state.errorMessage}`}
+          />
+        </AuthPageFrame>
+      )
+    }
+
+    return this.props.children
+  }
+}
+
+const dividerStyle: CSSProperties = {
   height: '1px',
   flex: 1,
   background: 'color-mix(in srgb, var(--border-subtle) 90%, transparent)',
 }
 
-const fieldStyle: React.CSSProperties = {
+const fieldStyle: CSSProperties = {
   display: 'grid',
   gap: '0.4rem',
 }
 
-const labelStyle: React.CSSProperties = {
+const labelStyle: CSSProperties = {
   fontSize: '12px',
   fontWeight: 700,
   letterSpacing: '0.04em',
@@ -370,7 +443,7 @@ const labelStyle: React.CSSProperties = {
   color: 'var(--text-muted)',
 }
 
-const inputStyle: React.CSSProperties = {
+const inputStyle: CSSProperties = {
   width: '100%',
   minHeight: '2.7rem',
   borderRadius: 'var(--radius-control)',
@@ -380,7 +453,7 @@ const inputStyle: React.CSSProperties = {
   color: 'var(--text-primary)',
 }
 
-const passwordToggleStyle: React.CSSProperties = {
+const passwordToggleStyle: CSSProperties = {
   position: 'absolute',
   right: '0.5rem',
   top: '50%',
@@ -396,7 +469,7 @@ const passwordToggleStyle: React.CSSProperties = {
   borderRadius: 'var(--radius-control)',
 }
 
-const oauthButtonStyle: React.CSSProperties = {
+const oauthButtonStyle: CSSProperties = {
   minHeight: '2.7rem',
   borderRadius: 'var(--radius-control)',
   border: '1px solid var(--border-subtle)',
