@@ -5,6 +5,55 @@ Last Updated: 2026-05-10
 
 ---
 
+## Session Update - 2026-05-10 (Retune ambient canvas motion speed again)
+
+### What changed
+
+- Kept the time-based `performance.now() / 1000` animation model and `periodSeconds`, but retuned the ambient canvas motion to feel visibly active while idle.
+- Added `const MOTION_SPEED_MULTIPLIER = 2.5` near the top of `components/AmbientBackgroundCanvas.tsx` and applied it through `motionTime` in the blob angle calculations.
+- Tightened interior blob periods into the 14-34 second range and edge blob periods into the 7-18 second range.
+- Slightly increased edge travel while keeping all four edge blobs anchored to their respective edges.
+
+### Files touched
+
+- `components/AmbientBackgroundCanvas.tsx`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+The prior retune fixed the timing model but still left the animation feeling too static during idle viewing. This pass increases perceived motion without changing layout, colors, or the static ambient foundation.
+
+### Tests run
+
+- Not run by request.
+- `npm run typecheck` - pending
+- `npm run lint` - pending
+
+### Verification result
+
+- Code patch only; browser/runtime verification pending.
+- Commit and push are still pending by request.
+
+### Known risks
+
+- The higher motion speed may still need minor visual tuning if any route feels too active in practice.
+
+### Blockers
+
+None.
+
+### Next recommended step
+
+Visually confirm the idle canvas now feels alive without becoming distracting, then run the usual validation checks before any later commit.
+
+### Suggested commit message
+
+```bash
+retune ambient canvas motion speed
+```
+
+---
+
 ## Session Update - 2026-05-10 (Retune ambient canvas motion timing)
 
 ### What changed
