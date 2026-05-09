@@ -13,9 +13,6 @@ export function AuthPageFrame({
 }) {
   return (
     <main className="auth-page">
-      <div className="auth-page-orb auth-page-orb-primary" aria-hidden="true" />
-      <div className="auth-page-orb auth-page-orb-secondary" aria-hidden="true" />
-
       <section className="auth-page-panel glass-panel glass-strong motion-card">
         <header className="auth-page-header">
           <p className="ui-kicker">Account</p>

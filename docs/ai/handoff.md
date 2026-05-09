@@ -1,7 +1,66 @@
 # Stay Focused — AI Session Handoff
 
 Author: galaxymaxp omgraythekid@gmail.com
-Last Updated: 2026-05-09
+Last Updated: 2026-05-10
+
+---
+
+## Session Update - 2026-05-10 (Add static accent ambient background foundation)
+
+### What changed
+
+- Added a single site-wide ambient background layer at the root layout with a fixed `app-ambient` element behind the app content.
+- Introduced light and dark ambient background tokens in `app/globals.css` using existing theme variables and accent tokens instead of hard-coded color themes.
+- Removed competing full-page background treatments so the root ambient layer is the only page-scale background system:
+  - removed the animated `app-main::before` spotlight layer
+  - removed auth route orb elements and auth-page background gradients
+- Softened the shell sidebar background so it reads as a surface over the ambient field instead of a separate opaque slab.
+- Kept cards, panels, and shells on their existing surface tokens so readability stays stable.
+
+### Files touched
+
+- `app/globals.css`
+- `app/layout.tsx`
+- `components/AuthPageFrame.tsx`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+The app had multiple page-scale background systems competing with each other: an animated spotlight in the app shell, dedicated auth-page gradients/orbs, and stronger shell slabs that reduced the effect of the root theme. This pass establishes a stable static ambient foundation first, keeps it accent-aware, and avoids animation/canvas work until the base visual system is settled.
+
+### Tests run
+
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+
+### Verification result
+
+- Required checks passed.
+- The root layout now mounts one fixed ambient background layer for the whole app.
+- App-shell and auth routes no longer introduce their own separate full-page ambient effects.
+- No layout structure or route composition changed.
+
+### Known risks
+
+- This session did not run browser visual QA, so final tuning of ambient strength across all pages still needs manual review in both light and dark mode.
+- Some route-level panels still use strong surface fills by design; this pass only removed page-scale competing backgrounds, not component-level surfaces.
+- The UI guidance URL referenced by project instructions was not usable from this session environment, so implementation followed the existing in-repo visual token system and current app patterns.
+
+### Blockers
+
+None.
+
+### Next recommended step
+
+1. Run manual browser QA on Home, Courses, Library, Calendar, Settings, and auth routes in both light and dark mode.
+2. If any surface still feels too slab-like, tune surface opacity token usage selectively without adding new page-scale backgrounds.
+3. Only after the static foundation is approved, layer in any future motion treatment deliberately from the root background system.
+
+### Suggested commit message
+
+```bash
+add static accent ambient background foundation
+```
 
 ---
 

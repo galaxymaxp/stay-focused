@@ -74,12 +74,13 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className="app-shell" style={{ background: 'var(--bg)', minHeight: '100dvh' }}>
+      <body className="app-shell">
         <Script
           id="theme-init"
           strategy="beforeInteractive"
           dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }}
         />
+        <div className="app-ambient" aria-hidden="true" />
         <ThemeProvider>
           <ToastHost />
           {shellChildren}

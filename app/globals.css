@@ -103,6 +103,12 @@
   --app-mobile-content-inset: max(0.65rem, calc(var(--app-safe-top) + 0.35rem));
   --app-mobile-scroll-end-space: max(1rem, calc(var(--app-mobile-nav-clearance) - 2.35rem));
   --app-mobile-header-height: calc(var(--app-safe-top) + 3.35rem);
+  --ambient-base:
+    radial-gradient(circle at 18% 14%, color-mix(in srgb, var(--accent) 12%, transparent) 0%, transparent 34%),
+    radial-gradient(circle at 82% 18%, color-mix(in srgb, var(--blue) 10%, transparent) 0%, transparent 30%),
+    radial-gradient(circle at 50% 100%, color-mix(in srgb, var(--surface-selected) 70%, transparent) 0%, transparent 42%);
+  --ambient-overlay:
+    linear-gradient(180deg, color-mix(in srgb, var(--app-bg) 82%, transparent) 0%, color-mix(in srgb, var(--app-bg) 94%, transparent) 100%);
 
   color-scheme: light;
 }
@@ -154,6 +160,12 @@
   --green-light: rgba(34, 57, 41, 0.72);
   --blue: #9cb6d5;
   --blue-light: rgba(34, 45, 60, 0.72);
+  --ambient-base:
+    radial-gradient(circle at 16% 12%, color-mix(in srgb, var(--accent) 18%, transparent) 0%, transparent 34%),
+    radial-gradient(circle at 84% 16%, color-mix(in srgb, var(--blue) 14%, transparent) 0%, transparent 28%),
+    radial-gradient(circle at 50% 100%, color-mix(in srgb, var(--surface-selected) 34%, transparent) 0%, transparent 40%);
+  --ambient-overlay:
+    linear-gradient(180deg, color-mix(in srgb, var(--app-bg) 62%, transparent) 0%, color-mix(in srgb, var(--app-bg) 90%, transparent) 100%);
 
   color-scheme: dark;
 }
@@ -169,6 +181,7 @@ html {
 }
 
 body {
+  position: relative;
   min-height: 100dvh;
   margin: 0;
   background: var(--app-bg);
@@ -283,6 +296,22 @@ select:focus-visible {
   padding: 0;
 }
 
+.app-shell > *:not(.app-ambient) {
+  position: relative;
+  z-index: 1;
+}
+
+.app-ambient {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    var(--ambient-base),
+    var(--ambient-overlay),
+    var(--app-bg);
+}
+
 .app-frame {
   min-height: 100dvh;
   display: grid;
@@ -295,7 +324,7 @@ select:focus-visible {
   top: 0;
   height: 100vh;
   padding: 0.8rem 0.65rem;
-  background: color-mix(in srgb, var(--app-bg) 92%, rgba(255, 255, 255, 0.52));
+  background: color-mix(in srgb, var(--surface-soft) 72%, transparent);
   border-right: 1px solid color-mix(in srgb, var(--border-subtle) 78%, transparent);
 }
 
@@ -438,30 +467,6 @@ select:focus-visible {
   background: color-mix(in srgb, var(--accent-shadow) 80%, transparent);
 }
 
-@keyframes spotlight-breathe {
-  0%   { opacity: 0.07; }
-  5%   { opacity: 0.08; }
-  10%  { opacity: 0.09; }
-  15%  { opacity: 0.10; }
-  20%  { opacity: 0.11; }
-  25%  { opacity: 0.13; }
-  30%  { opacity: 0.15; }
-  35%  { opacity: 0.17; }
-  40%  { opacity: 0.18; }
-  45%  { opacity: 0.19; }
-  50%  { opacity: 0.20; }
-  55%  { opacity: 0.19; }
-  60%  { opacity: 0.18; }
-  65%  { opacity: 0.16; }
-  70%  { opacity: 0.15; }
-  75%  { opacity: 0.13; }
-  80%  { opacity: 0.12; }
-  85%  { opacity: 0.11; }
-  90%  { opacity: 0.10; }
-  95%  { opacity: 0.08; }
-  100% { opacity: 0.07; }
-}
-
 .app-main {
   position: relative;
   min-height: 100dvh;
@@ -471,24 +476,6 @@ select:focus-visible {
   gap: 0.2rem;
   padding: 0.4rem 1.25rem 1.8rem;
   overflow: visible;
-}
-
-.app-main::before {
-  content: '';
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 55vh;
-  pointer-events: none;
-  z-index: 999;
-  mix-blend-mode: screen;
-  background: radial-gradient(
-    ellipse 70% 52% at 50% 0%,
-    color-mix(in srgb, var(--accent) 40%, transparent) 0%,
-    transparent 100%
-  );
-  animation: spotlight-breathe 18s cubic-bezier(0.45, 0, 0.55, 1) infinite;
 }
 
 .app-main > * {
@@ -609,33 +596,7 @@ select:focus-visible {
   justify-content: center;
   padding: clamp(1rem, 2vw, 1.5rem);
   overflow: hidden;
-  background:
-    radial-gradient(circle at top, color-mix(in srgb, var(--accent) 10%, transparent) 0%, transparent 44%),
-    linear-gradient(180deg, color-mix(in srgb, var(--surface-soft) 54%, transparent), transparent 100%);
-}
-
-.auth-page-orb {
-  position: absolute;
-  border-radius: 999px;
-  pointer-events: none;
-  filter: blur(0px);
-  opacity: 0.7;
-}
-
-.auth-page-orb-primary {
-  width: min(42rem, 56vw);
-  height: min(42rem, 56vw);
-  top: -12rem;
-  right: -10rem;
-  background: radial-gradient(circle, color-mix(in srgb, var(--accent) 18%, transparent) 0%, transparent 72%);
-}
-
-.auth-page-orb-secondary {
-  width: min(26rem, 46vw);
-  height: min(26rem, 46vw);
-  left: -7rem;
-  bottom: -9rem;
-  background: radial-gradient(circle, color-mix(in srgb, var(--blue) 12%, transparent) 0%, transparent 78%);
+  background: transparent;
 }
 
 .auth-page-panel {
