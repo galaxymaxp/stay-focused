@@ -5,6 +5,56 @@ Last Updated: 2026-05-10
 
 ---
 
+## Session Update - 2026-05-10 (Retune ambient canvas motion timing)
+
+### What changed
+
+- Replaced the ambient canvas blob timing model in `components/AmbientBackgroundCanvas.tsx` from tiny frame-style `speed` constants to explicit `periodSeconds`.
+- Updated both interior and edge blob angle calculation to use `performance.now() / 1000` with full-cycle radians:
+  - `angle = (timeSeconds / periodSeconds) * Math.PI * 2 + phase`
+- Kept the existing six interior blobs and four edge blobs, with only their motion periods retuned so idle movement is visible at normal runtime.
+- Left the existing `requestAnimationFrame` loop behavior intact for non-reduced-motion mode.
+
+### Files touched
+
+- `components/AmbientBackgroundCanvas.tsx`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+The animation timing was using very small constants that behave like frame-based increments, while the runtime clock is based on `performance.now()` milliseconds. That made the ambient motion effectively far too slow during idle viewing and more noticeable only after resize/zoom-driven redraws.
+
+### Tests run
+
+- Not run by request.
+- `npm run typecheck` - pending
+- `npm run lint` - pending
+
+### Verification result
+
+- Code patch only; browser/runtime verification pending.
+- No layout, color, auth, shell, or static ambient foundation changes were made.
+
+### Known risks
+
+- Motion strength now depends on the chosen period constants; visual QA is still needed to confirm the new idle movement remains subtle enough across light and dark themes.
+
+### Blockers
+
+None.
+
+### Next recommended step
+
+Run the app in a browser and confirm the canvas drifts continuously while idle without looking busy, then run the usual typecheck/lint checks before any later commit.
+
+### Suggested commit message
+
+```bash
+retune ambient canvas motion timing
+```
+
+---
+
 ## Session Update - 2026-05-10 (Add canvas ambient background animation)
 
 ### What changed

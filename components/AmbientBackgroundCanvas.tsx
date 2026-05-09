@@ -12,7 +12,7 @@ type InteriorBlob = {
   ox: number
   oy: number
   radius: number
-  speed: number
+  periodSeconds: number
   phase: number
   wobbleX: number
   wobbleY: number
@@ -22,7 +22,7 @@ type InteriorBlob = {
 
 type EdgeBlob = {
   edge: 'top' | 'bottom' | 'left' | 'right'
-  speed: number
+  periodSeconds: number
   phase: number
   travel: number
   anchor: number
@@ -32,19 +32,19 @@ type EdgeBlob = {
 }
 
 const INTERIOR_BLOBS: InteriorBlob[] = [
-  { ox: 0.16, oy: 0.18, radius: 0.34, speed: 0.00011, phase: 0.2, wobbleX: 0.09, wobbleY: 0.07, hueOffset: 0, alpha: 0.24 },
-  { ox: 0.82, oy: 0.16, radius: 0.29, speed: 0.00008, phase: 2.3, wobbleX: 0.07, wobbleY: 0.09, hueOffset: -10, alpha: 0.18 },
-  { ox: 0.12, oy: 0.78, radius: 0.27, speed: 0.0001, phase: 4.1, wobbleX: 0.08, wobbleY: 0.06, hueOffset: 12, alpha: 0.17 },
-  { ox: 0.88, oy: 0.72, radius: 0.32, speed: 0.00007, phase: 1.4, wobbleX: 0.06, wobbleY: 0.08, hueOffset: -18, alpha: 0.2 },
-  { ox: 0.5, oy: 0.1, radius: 0.24, speed: 0.00013, phase: 3.6, wobbleX: 0.1, wobbleY: 0.05, hueOffset: 18, alpha: 0.15 },
-  { ox: 0.48, oy: 0.9, radius: 0.26, speed: 0.00009, phase: 5.2, wobbleX: 0.07, wobbleY: 0.06, hueOffset: -24, alpha: 0.16 },
+  { ox: 0.16, oy: 0.18, radius: 0.34, periodSeconds: 35, phase: 0.2, wobbleX: 0.09, wobbleY: 0.07, hueOffset: 0, alpha: 0.24 },
+  { ox: 0.82, oy: 0.16, radius: 0.29, periodSeconds: 52, phase: 2.3, wobbleX: 0.07, wobbleY: 0.09, hueOffset: -10, alpha: 0.18 },
+  { ox: 0.12, oy: 0.78, radius: 0.27, periodSeconds: 44, phase: 4.1, wobbleX: 0.08, wobbleY: 0.06, hueOffset: 12, alpha: 0.17 },
+  { ox: 0.88, oy: 0.72, radius: 0.32, periodSeconds: 68, phase: 1.4, wobbleX: 0.06, wobbleY: 0.08, hueOffset: -18, alpha: 0.2 },
+  { ox: 0.5, oy: 0.1, radius: 0.24, periodSeconds: 39, phase: 3.6, wobbleX: 0.1, wobbleY: 0.05, hueOffset: 18, alpha: 0.15 },
+  { ox: 0.48, oy: 0.9, radius: 0.26, periodSeconds: 75, phase: 5.2, wobbleX: 0.07, wobbleY: 0.06, hueOffset: -24, alpha: 0.16 },
 ]
 
 const EDGE_BLOBS: EdgeBlob[] = [
-  { edge: 'top', speed: 0.00008, phase: 0.4, travel: 0.28, anchor: 0.48, radius: 0.2, hueOffset: 4, alpha: 0.2 },
-  { edge: 'bottom', speed: 0.00007, phase: 2.5, travel: 0.3, anchor: 0.5, radius: 0.22, hueOffset: -12, alpha: 0.18 },
-  { edge: 'left', speed: 0.00009, phase: 4.4, travel: 0.22, anchor: 0.52, radius: 0.19, hueOffset: 16, alpha: 0.16 },
-  { edge: 'right', speed: 0.000075, phase: 1.7, travel: 0.24, anchor: 0.5, radius: 0.2, hueOffset: -20, alpha: 0.17 },
+  { edge: 'top', periodSeconds: 20, phase: 0.4, travel: 0.28, anchor: 0.48, radius: 0.2, hueOffset: 4, alpha: 0.2 },
+  { edge: 'bottom', periodSeconds: 32, phase: 2.5, travel: 0.3, anchor: 0.5, radius: 0.22, hueOffset: -12, alpha: 0.18 },
+  { edge: 'left', periodSeconds: 24, phase: 4.4, travel: 0.22, anchor: 0.52, radius: 0.19, hueOffset: 16, alpha: 0.16 },
+  { edge: 'right', periodSeconds: 40, phase: 1.7, travel: 0.24, anchor: 0.5, radius: 0.2, hueOffset: -20, alpha: 0.17 },
 ]
 
 function clamp(value: number, min: number, max: number) {
@@ -196,7 +196,7 @@ export function AmbientBackgroundCanvas() {
       context.restore()
     }
 
-    const draw = (time: number) => {
+    const draw = (timeMilliseconds: number) => {
       context.clearRect(0, 0, width, height)
 
       if (width <= 0 || height <= 0) {
@@ -204,9 +204,10 @@ export function AmbientBackgroundCanvas() {
       }
 
       const base = Math.min(width, height)
+      const timeSeconds = timeMilliseconds / 1000
 
       INTERIOR_BLOBS.forEach((blob) => {
-        const angle = time * blob.speed + blob.phase
+        const angle = (timeSeconds / blob.periodSeconds) * Math.PI * 2 + blob.phase
         const wobbleX = Math.sin(angle * 1.37 + blob.phase) * width * blob.wobbleX
         const wobbleY = Math.cos(angle * 0.91 + blob.phase * 1.23) * height * blob.wobbleY
         const pulse = 1 + Math.sin(angle * 2.05 + blob.phase * 0.7) * 0.08
@@ -221,7 +222,7 @@ export function AmbientBackgroundCanvas() {
       })
 
       EDGE_BLOBS.forEach((blob) => {
-        const angle = time * blob.speed + blob.phase
+        const angle = (timeSeconds / blob.periodSeconds) * Math.PI * 2 + blob.phase
         const drift = Math.sin(angle) * blob.travel
         const pulse = 1 + Math.sin(angle * 1.8 + blob.phase) * 0.1
         const radius = base * blob.radius * pulse
