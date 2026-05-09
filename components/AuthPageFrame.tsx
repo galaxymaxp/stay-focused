@@ -4,12 +4,12 @@ export function AuthPageFrame({
   title,
   description,
   children,
-  diagnosticLabel = 'Auth page loaded',
+  diagnosticLabel = null,
 }: {
   title: string
   description: string
   children: ReactNode
-  diagnosticLabel?: string
+  diagnosticLabel?: string | null
 }) {
   return (
     <main className="auth-page">
@@ -27,11 +27,13 @@ export function AuthPageFrame({
           {children}
         </div>
 
-        <footer className="auth-page-footer">
-          <p className="auth-page-diagnostic" data-auth-diagnostic="loaded">
-            {diagnosticLabel}
-          </p>
-        </footer>
+        {diagnosticLabel ? (
+          <footer className="auth-page-footer">
+            <p className="auth-page-diagnostic" data-auth-diagnostic="loaded">
+              {diagnosticLabel}
+            </p>
+          </footer>
+        ) : null}
       </section>
     </main>
   )

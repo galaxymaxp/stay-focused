@@ -13,7 +13,6 @@ export default function SignInError({
     <AuthPageFrame
       title="Sign-in could not load"
       description="Stay Focused could not prepare the sign-in page right now. Try again in a moment."
-      diagnosticLabel="Auth page loaded"
     >
       <AuthStatusNotice
         title="Auth page is available"

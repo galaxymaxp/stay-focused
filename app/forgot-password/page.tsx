@@ -6,7 +6,6 @@ export default function ForgotPasswordPage() {
     <AuthPageFrame
       title="Reset your password"
       description="Password reset is not wired into Stay Focused yet, but this route now stays visible and student-friendly instead of failing into a blank or missing page."
-      diagnosticLabel="Auth page loaded"
     >
       <AuthStatusNotice
         title="Password reset is coming soon"

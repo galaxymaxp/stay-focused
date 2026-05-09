@@ -180,7 +180,6 @@ function AuthFormContent({
     <AuthPageFrame
       title={title}
       description={subtitle}
-      diagnosticLabel="Auth page loaded"
     >
       <form
         style={{ display: 'grid', gap: '0.8rem' }}
@@ -408,7 +407,6 @@ class AuthFormErrorBoundary extends Component<{
         <AuthPageFrame
           title={this.props.mode === 'sign-in' ? 'Sign in' : 'Create account'}
           description={`Stay Focused hit a runtime issue while preparing ${actionLabel}.`}
-          diagnosticLabel="Auth page loaded"
         >
           <AuthStatusNotice
             title="Auth page is available"

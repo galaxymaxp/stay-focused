@@ -5,7 +5,6 @@ export default function SignInLoading() {
     <AuthPageFrame
       title="Loading sign-in"
       description="Preparing the sign-in page now."
-      diagnosticLabel="Auth page loaded"
     >
       <AuthStatusNotice
         title="Preparing account access"

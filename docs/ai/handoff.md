@@ -5,6 +5,72 @@ Last Updated: 2026-05-09
 
 ---
 
+## Session Update - 2026-05-09 (Fix blank sign-in render under reduced motion)
+
+### What changed
+
+- Fixed the real blank-page regression by making `motion-card` visible when `prefers-reduced-motion: reduce` is active. The previous global CSS disabled entry animations but left `opacity: 0`, which made auth and other card-based routes render only the background while the DOM still existed.
+- Removed the visible `Auth page loaded` footer marker from auth pages so the sign-in/sign-up surface stays student-facing in production while preserving the existing loading/error/runtime fallbacks.
+- Updated auth regression coverage to assert:
+  - sign-in source still exposes visible auth heading and provider buttons
+  - `/sign-in?next=%2F` still resolves and renders
+  - reduced-motion CSS keeps motion cards visible instead of blank
+  - forgot-password still renders a visible auth fallback route
+- Reproduced and verified locally with Playwright against:
+  - `/sign-in`
+  - `/sign-in?next=%2F`
+  - signed-out `/settings` redirecting to `/sign-in?next=%2Fsettings`
+  - both normal motion and `reducedMotion: 'reduce'`
+
+### Files touched
+
+- `app/globals.css`
+- `app/forgot-password/page.tsx`
+- `app/sign-in/error.tsx`
+- `app/sign-in/loading.tsx`
+- `components/AuthForm.tsx`
+- `components/AuthPageFrame.tsx`
+- `docs/ai/handoff.md`
+- `tests/auth-sign-in-page.test.ts`
+
+### Why it changed
+
+The sign-in route was not actually returning `null`; it was being rendered inside a card that starts at `opacity: 0`. On browsers or environments that request reduced motion, the global CSS removed the animation that would normally raise that opacity to `1`, so the page looked blank locally and in production even though the auth form existed in the DOM. Fixing the reduced-motion fallback resolves the sign-in blank render and protects other `motion-card` surfaces from the same failure.
+
+### Tests run
+
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- auth-sign-in-page auth-sign-in-middleware` - passed (script runs the repo test suite; 492 tests, 0 failures)
+
+### Verification result
+
+- Local Playwright verification passed for `/sign-in`, `/sign-in?next=%2F`, and signed-out `/settings`.
+- With `reducedMotion: 'reduce'`, the auth card now renders visibly with `opacity: 1`, the heading and sign-in button remain present, and the app shell does not render on public auth routes.
+- The fix is CSS-level and therefore applies the same way to Vercel production builds.
+
+### Known risks
+
+- This patch intentionally changes the reduced-motion behavior for every `.motion-card`, not only auth. That is the right fix for the underlying bug, but any route that implicitly relied on reduced-motion cards staying visually hidden would now behave differently.
+- The auth surface still depends on the existing loading and error boundaries above the form. Those boundaries are intact, but this session did not change higher-level provider behavior.
+
+### Blockers
+
+None.
+
+### Next recommended step
+
+1. Verify the live Vercel deployment in a browser with reduced-motion enabled on the OS/browser and confirm `/sign-in` and signed-out `/settings` render visible auth content.
+2. Add a small runtime smoke script for reduced-motion auth rendering if this regression class shows up again on other card-based pages.
+
+### Suggested commit message
+
+```bash
+fix blank sign-in render
+```
+
+---
+
 ## Session Update - 2026-05-09 (Harden blank sign-in page fallbacks)
 
 ### What changed

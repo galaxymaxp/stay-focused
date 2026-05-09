@@ -12,16 +12,20 @@ function renderSignInFrame(searchParams?: Record<string, string | string[] | und
 
   return renderToStaticMarkup(
     createElement(
-      AuthPageFrame,
+      AuthPageFrame as (props: {
+        title: string
+        description: string
+        diagnosticLabel?: string | null
+        children?: ReturnType<typeof createElement>
+      }) => ReturnType<typeof createElement>,
       {
         title: 'Sign in',
         description: 'Welcome back. Sign in to pick up where you left off and keep your progress saved across devices.',
-        diagnosticLabel: 'Auth page loaded',
-        children: createElement(AuthStatusNotice, {
-          title: 'Auth card ready',
-          description: `Resolved next path: ${nextPath}`,
-        }),
       },
+      createElement(AuthStatusNotice, {
+        title: 'Auth card ready',
+        description: `Resolved next path: ${nextPath}`,
+      }),
     ),
   )
 }
@@ -30,7 +34,6 @@ test('/sign-in renders a visible auth card frame', () => {
   const markup = renderSignInFrame()
 
   assert.match(markup, /Sign in/)
-  assert.match(markup, /Auth page loaded/)
   assert.match(markup, /Auth card ready/)
   assert.match(markup, /Resolved next path: \//)
   assert.doesNotMatch(markup, /app-sidebar|app-topbar|app-frame/)
@@ -42,7 +45,15 @@ test('/sign-in\\?next=%2F renders the auth card with normalized root redirect', 
 
   assert.equal(params.nextPath, '/')
   assert.match(markup, /Resolved next path: \//)
-  assert.match(markup, /data-auth-diagnostic="loaded"/)
+})
+
+test('sign-in form source keeps visible auth heading and provider buttons', () => {
+  const source = readFileSync('components/AuthForm.tsx', 'utf8')
+
+  assert.match(source, /const title = mode === 'sign-in' \? 'Sign in' : 'Create account'/)
+  assert.match(source, /Continue with Microsoft/)
+  assert.match(source, /Continue with Google/)
+  assert.match(source, /Forgot password\?/)
 })
 
 test('missing Supabase public auth config has a visible fallback in AuthForm source', () => {
@@ -62,11 +73,18 @@ test('AuthForm bad config or runtime failure does not blank the page', () => {
   assert.match(source, /Preparing provider sign-in/)
 })
 
+test('reduced-motion fallback keeps motion cards visible instead of leaving auth pages blank', () => {
+  const source = readFileSync('app/globals.css', 'utf8')
+
+  assert.match(source, /@media \(prefers-reduced-motion: reduce\)/)
+  assert.match(source, /\.motion-card \{[\s\S]*opacity: 1 !important;/)
+  assert.match(source, /\.motion-card \{[\s\S]*visibility: visible !important;/)
+})
+
 test('forgot-password route renders a visible auth-state page instead of 404', () => {
   const markup = renderToStaticMarkup(createElement(ForgotPasswordPage))
 
   assert.match(markup, /Reset your password/)
   assert.match(markup, /Password reset is coming soon/)
   assert.match(markup, /Back to sign in/)
-  assert.match(markup, /Auth page loaded/)
 })

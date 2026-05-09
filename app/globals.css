@@ -4744,6 +4744,11 @@ details[open] > .ui-interactive-summary,
     transition: none !important;
     transform: none !important;
   }
+
+  .motion-card {
+    opacity: 1 !important;
+    visibility: visible !important;
+  }
 }
 
 /* ── Settings page ─────────────────────────────────────────── */
