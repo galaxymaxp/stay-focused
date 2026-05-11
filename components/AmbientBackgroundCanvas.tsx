@@ -31,7 +31,7 @@ type EdgeBlob = {
   alpha: number
 }
 
-const MOTION_SPEED_MULTIPLIER = 4
+const MOTION_SPEED_MULTIPLIER = 3
 
 const INTERIOR_BLOBS: InteriorBlob[] = [
   { ox: 0.16, oy: 0.18, radius: 0.34, periodSeconds: 14, phase: 0.2, wobbleX: 0.09, wobbleY: 0.07, hueOffset: 0, alpha: 0.24 },
