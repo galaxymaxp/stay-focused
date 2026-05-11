@@ -5,7 +5,49 @@ Last Updated: 2026-05-12
 
 ---
 
-## Session Update - 2026-05-12 (Fix resource refresh course loading)
+## Session Update - 2026-05-12 (Fix resource refresh courses query ordering)
+
+### What changed
+
+- Fixed the bug in `app/api/cron/resource-refresh/route.ts` where the courses query was ordering by a non-existent `updated_at` column.
+- Removed `.order('updated_at', { ascending: true })` from the courses query (line 93), which was causing database errors.
+- Enhanced error logging to include full error details (`code`, `message`, `details`, `hint`) for better production debugging.
+- The courses table uses `created_at` for ordering in other parts of the codebase; the order is now omitted entirely as courses are already filtered by user and Canvas URL.
+
+### Files touched
+
+- `app/api/cron/resource-refresh/route.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Production `/api/cron/resource-refresh` was returning "could not load synced courses" warnings for all Canvas-connected users. The root cause was the `.order('updated_at')` clause in the courses query attempting to order by a column that doesn't exist in the table, causing the entire query to error. This prevented any courses from being loaded and processed for resource refresh. The fix removes the unnecessary ordering (which doesn't affect correctness since the query is already scoped to user and Canvas URL) and adds detailed error logging for future diagnosis.
+
+### Tests run
+
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- canvas-resource-refresh` - passed (73 passing tests)
+
+### Verification result
+
+- Route compiles without TypeScript errors.
+- ESLint reports no issues.
+- All canvas-resource-refresh tests pass.
+- The fix allows courses to be loaded successfully when courses table exists.
+- Error logging now includes full Supabase error fields for debugging.
+
+### Known risks
+
+- None. Removing an unsupported column reference is a safe fix.
+
+### Blockers
+
+None.
+
+---
+
+## Previous Session Update - 2026-05-12 (Fix resource refresh course loading)
 
 ### What changed
 

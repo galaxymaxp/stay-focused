@@ -90,11 +90,15 @@ export async function GET(req: NextRequest) {
       .eq('user_id', row.user_id)
       .eq('canvas_instance_url', normalizedCanvasUrl)
       .not('canvas_course_id', 'is', null)
-      .order('updated_at', { ascending: true })
       .limit(courseLimit)
 
     if (courseError) {
-      console.error(`[resource-refresh] DB error loading courses for user ${row.user_id}:`, courseError)
+      console.error(`[resource-refresh] DB error loading courses for user ${row.user_id}:`, {
+        code: courseError.code,
+        message: courseError.message,
+        details: courseError.details,
+        hint: courseError.hint,
+      })
       summary.warnings.push(`User ${row.user_id}: could not load synced courses.`)
       continue
     }
