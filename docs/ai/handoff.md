@@ -5,6 +5,80 @@ Last Updated: 2026-05-10
 
 ---
 
+## Session Update - 2026-05-12 (Add daily resource refresh cron)
+
+### What changed
+
+- Added a new protected cron route at `app/api/cron/resource-refresh/route.ts`.
+- The route requires `Authorization: Bearer <CRON_SECRET>` and returns a bounded JSON summary with:
+  - `usersChecked`
+  - `coursesChecked`
+  - `modulesChecked`
+  - `moduleItemsChecked`
+  - `resourcesInserted`
+  - `resourcesUpdated`
+  - `skipped`
+  - `warnings`
+- Added `refreshCanvasModuleResourceMetadataForCourse` in `actions/canvas.ts`.
+- The new refresh path:
+  - scans bounded batches of Canvas-connected users and locally synced courses
+  - skips courses whose `module_resources.updated_at` already shows a recent refresh within the configured window
+  - fetches Canvas modules and module items only
+  - builds lightweight metadata-only `module_resources` candidates without running file downloads, page extraction, OCR, OpenAI, Deep Learn, or full manual sync
+  - upserts by existing local Canvas identity matches (`canvas_item_id` first, then `canvas_file_id`)
+  - preserves existing extracted text, OCR text, previews, counts, provider info, and OCR state when the Canvas file identity did not change
+  - resets stored extraction/OCR fields back to metadata-only when the same Canvas module item now points to a different `canvas_file_id`
+- Added `lib/canvas-resource-refresh.ts` to centralize the preservation and change-detection logic for metadata refresh rows.
+- Added `tests/canvas-resource-refresh.test.ts` covering:
+  - preserving extracted/OCR state for unchanged file identity
+  - clearing stale extraction/OCR state when the file identity changes
+  - skipping writes when the normalized refreshed row is unchanged
+
+### Files touched
+
+- `actions/canvas.ts`
+- `app/api/cron/resource-refresh/route.ts`
+- `lib/canvas-resource-refresh.ts`
+- `tests/canvas-resource-refresh.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+External cron was intentionally made lightweight to avoid timeouts, but that left a gap where instructors could add module file items like PDFs without Stay Focused learning resources updating unless a heavier manual sync ran. This change adds a separate safe daily metadata refresh path that discovers missing Canvas module resources without reintroducing heavy inline extraction work.
+
+### Tests run
+
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- canvas-resource-refresh canvas-content-resolution module-resource-resolution queue learn-resource-ui source-ocr-updates` - passed
+
+### Verification result
+
+- The new route compiles and passes lint.
+- The metadata refresh helper preserves existing extracted/OCR state for unchanged Canvas files.
+- The helper drops stale extracted/OCR state when a Canvas module item changes to a different underlying file id.
+- No OCR, OpenAI, Deep Learn generation, or inline PDF extraction is invoked by the new route.
+
+### Known risks
+
+- New file resources inserted by this route are metadata-only until a later extraction/reprocess path runs; this session did not add a separate extraction queue worker for non-scanned files.
+- Recent-refresh skipping currently uses `module_resources.updated_at` as the local freshness signal because there is no dedicated per-course resource-refresh timestamp yet.
+- Existing rows without `canvas_item_id` and `canvas_file_id` depend on fallback matching from prior sync quality; this route does not repair identity-poor legacy rows beyond file-id fallback.
+
+### Blockers
+
+None in local verification.
+
+### Next recommended step
+
+Deploy and trigger `/api/cron/resource-refresh` against a course with newly uploaded Canvas PDFs, then confirm the new file rows appear in Learn within the returned batch limits and decide whether a separate lightweight extraction queue should be added for newly discovered non-scanned file resources.
+
+### Suggested commit message
+
+```bash
+add daily resource refresh cron
+```
+
 ## Session Update - 2026-05-11 (Make external cron Canvas sync lightweight)
 
 ### What changed
@@ -6231,6 +6305,23 @@ Additional live verification:
 - `/api/cron/hourly` successfully reset stuck running jobs, but the job was later manually marked failed at `attempts: 3/3` to unblock future external cron runs.
 - The route-level queueing fix remains verified: external cron no longer skips locally synced courses missing from Canvas `getCourses()`.
 - Remaining blocker: external cron worker can hang during resource/task refresh. Next fix should make external cron resource/task refresh timeout-bounded or non-blocking so announcement sync can still complete.
+
+### Live verification result
+
+Production verification passed. `/api/cron/external-sync` returned `processedInline: true` and queued external cron job `99c5a1f5-33ed-418c-a7bc-b1abfd039f65`.
+
+The job completed successfully:
+- `status: completed`
+- `progress: 100`
+- `currentStep: done`
+- `error: null`
+- completed in about 14 seconds
+
+The job result included:
+- `resourceRefreshWarning: "Skipped during external cron to keep announcement sync responsive."`
+- `taskRefreshWarning: "Skipped during external cron to keep announcement sync responsive."`
+
+This confirms the lightweight external cron path works and avoids the previous `refreshing_resources` / `refreshing_tasks` hang.
 
 ### Live verification result
 

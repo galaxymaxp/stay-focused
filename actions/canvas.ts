@@ -25,6 +25,12 @@ import {
 } from '@/lib/canvas'
 import { normalizeExtension } from '@/lib/canvas-resource-extraction'
 import {
+  hasCanvasResourceRefreshRowChanged,
+  prepareCanvasResourceRefreshRow,
+  type CanvasResourceRefreshInput,
+  type ExistingCanvasResourceSnapshot,
+} from '@/lib/canvas-resource-refresh'
+import {
   buildCanvasContentPlaceholderResult,
   resolveCanvasContentForWorkspaceItem,
   type ResolveCanvasAttachmentDownloadInput,
@@ -152,6 +158,15 @@ interface ResourceIngestionRecord {
   extractionProvider?: string | null
   required: boolean
   metadata: Record<string, unknown>
+}
+
+interface ResourceMetadataRefreshSummary {
+  modulesChecked: number
+  moduleItemsChecked: number
+  resourcesInserted: number
+  resourcesUpdated: number
+  skipped: number
+  warnings: string[]
 }
 
 interface TaskCanvasLink {
@@ -442,6 +457,147 @@ export async function processPendingExternalCanvasSyncJobs(limit = getPositiveIn
   }
 
   return { processed, failed, skipped }
+}
+
+export async function refreshCanvasModuleResourceMetadataForCourse(input: {
+  userId: string
+  courseId: string
+  canvasUrl: string
+  canvasAccessToken: string
+  canvasCourseId: number
+  courseName: string
+  maxModules?: number
+  maxModuleItems?: number
+}): Promise<ResourceMetadataRefreshSummary> {
+  const supabase = createSupabaseServiceRoleClient()
+  if (!supabase) throw new Error('Service database client unavailable.')
+
+  const config: CanvasConfig = {
+    url: normalizeCanvasUrl(input.canvasUrl),
+    token: input.canvasAccessToken,
+    timeoutMs: getPositiveIntegerEnv('EXTERNAL_CANVAS_FETCH_TIMEOUT_MS', DEFAULT_EXTERNAL_CANVAS_FETCH_TIMEOUT_MS),
+  }
+
+  const existingModule = await findExistingSyncedModule(supabase, input.courseId, {
+    courseName: input.courseName,
+    courseCode: undefined,
+  })
+
+  if (!existingModule) {
+    return {
+      modulesChecked: 0,
+      moduleItemsChecked: 0,
+      resourcesInserted: 0,
+      resourcesUpdated: 0,
+      skipped: 1,
+      warnings: [`${input.courseName}: synced module not found locally.`],
+    }
+  }
+
+  const modules = await getModules(input.canvasCourseId, config)
+  const moduleLimit = Math.max(1, input.maxModules ?? 40)
+  const itemLimit = Math.max(1, input.maxModuleItems ?? 400)
+  const warnings: string[] = []
+
+  const limitedModules = modules.slice(0, moduleLimit)
+  if (modules.length > limitedModules.length) {
+    warnings.push(`${input.courseName}: stopped after ${limitedModules.length} modules.`)
+  }
+
+  const refreshInput = buildLightweightModuleResourcesForRefresh({
+    canvasUrl: config.url,
+    canvasCourseId: input.canvasCourseId,
+    modules: limitedModules,
+    maxModuleItems: itemLimit,
+    warnings,
+  })
+  const resources = refreshInput.resources
+
+  const { data: existingRows, error: existingError } = await supabase
+    .from('module_resources')
+    .select('*')
+    .eq('user_id', input.userId)
+    .eq('course_id', input.courseId)
+    .eq('module_id', existingModule.id)
+
+  if (existingError) {
+    throw createSupabaseStepError('resource refresh load existing resources', existingError, {
+      userId: input.userId,
+      courseId: input.courseId,
+      moduleId: existingModule.id,
+    })
+  }
+
+  const existingResources = ((existingRows ?? []) as Record<string, unknown>[]).map((row) => adaptModuleResourceRow(row))
+  const byCanvasItemId = new Map<number, ModuleResource>()
+  const byCanvasFileId = new Map<number, ModuleResource>()
+  for (const resource of existingResources) {
+    if (typeof resource.canvasItemId === 'number') byCanvasItemId.set(resource.canvasItemId, resource)
+    if (typeof resource.canvasFileId === 'number') byCanvasFileId.set(resource.canvasFileId, resource)
+  }
+
+  let resourcesInserted = 0
+  let resourcesUpdated = 0
+  let skipped = 0
+
+  for (const resource of resources) {
+    const existing = (
+      (typeof resource.canvasItemId === 'number' ? byCanvasItemId.get(resource.canvasItemId) : null)
+      ?? (typeof resource.canvasFileId === 'number' ? byCanvasFileId.get(resource.canvasFileId) : null)
+      ?? null
+    )
+
+    const prepared = prepareCanvasResourceRefreshRow(resource, existing ? toExistingCanvasResourceSnapshot(existing) : null)
+
+    if (!existing) {
+      const { error: insertError } = await supabase
+        .from('module_resources')
+        .insert({
+          user_id: input.userId,
+          module_id: existingModule.id,
+          course_id: input.courseId,
+          ...prepared.row,
+        })
+
+      if (insertError) {
+        warnings.push(`${input.courseName}: failed to insert ${resource.title}.`)
+        continue
+      }
+
+      resourcesInserted += 1
+      continue
+    }
+
+    if (!hasCanvasResourceRefreshRowChanged(toExistingCanvasResourceSnapshot(existing), prepared.row)) {
+      skipped += 1
+      continue
+    }
+
+    const { error: updateError } = await supabase
+      .from('module_resources')
+      .update({
+        ...prepared.row,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', existing.id)
+      .eq('user_id', input.userId)
+
+    if (updateError) {
+      warnings.push(`${input.courseName}: failed to update ${resource.title}.`)
+      continue
+    }
+
+    resourcesUpdated += 1
+  }
+
+  return {
+    modulesChecked: limitedModules.length,
+    moduleItemsChecked: refreshInput.moduleItemsChecked,
+    resourcesInserted,
+    resourcesUpdated,
+    skipped,
+    warnings,
+  }
 }
 
 async function runExternalCanvasSyncJob(job: QueuedJob) {
@@ -1559,6 +1715,73 @@ function buildModuleResourcesForSync(
   }))
 }
 
+function buildLightweightModuleResourcesForRefresh(input: {
+  canvasUrl: string
+  canvasCourseId: number
+  modules: Awaited<ReturnType<typeof getModules>>
+  maxModuleItems: number
+  warnings: string[]
+}): { resources: CanvasResourceRefreshInput[]; moduleItemsChecked: number } {
+  const resources: CanvasResourceRefreshInput[] = []
+  let moduleItemsChecked = 0
+  let truncated = false
+
+  for (const moduleItem of input.modules) {
+    for (const item of moduleItem.items ?? []) {
+      moduleItemsChecked += 1
+      if (resources.length >= input.maxModuleItems) {
+        truncated = true
+        break
+      }
+
+      if (isCanvasTaskLikeModuleItem(item)) continue
+
+      const normalizedType = normalizeModuleItemSourceType(item)
+      const contentId = typeof item.content_id === 'number' ? item.content_id : null
+      const htmlUrl = buildCanvasModuleItemHtmlUrl(input.canvasUrl, input.canvasCourseId, item.id ?? null, item.html_url ?? null)
+      resources.push({
+        canvasInstanceUrl: input.canvasUrl,
+        canvasCourseId: input.canvasCourseId,
+        canvasModuleId: moduleItem.id,
+        canvasItemId: item.id ?? null,
+        canvasFileId: normalizedType === 'file' ? contentId : null,
+        title: item.content_details?.display_name?.trim() || item.title,
+        resourceType: normalizedType,
+        contentType: item.content_details?.content_type ?? inferContentTypeForModuleItem(item),
+        extension: normalizeExtension(null, item.content_details?.display_name?.trim() || item.title),
+        sourceUrl: resolveCanvasUrl(input.canvasUrl, item.content_details?.url ?? item.url ?? null),
+        htmlUrl,
+        required: Boolean(item.completion_requirement),
+        metadata: {
+          canvasModuleName: moduleItem.name,
+          canvasModuleUrl: buildCanvasModuleUrl(input.canvasUrl, input.canvasCourseId, moduleItem.id),
+          completionRequirementType: item.completion_requirement?.type ?? null,
+          normalizedSourceType: normalizedType,
+          canvasInstanceUrl: input.canvasUrl,
+          canvasCourseId: input.canvasCourseId,
+          canvasModuleId: moduleItem.id,
+          canvasModuleItemId: item.id ?? null,
+          canvasItemId: item.id ?? null,
+          canvasFileId: normalizedType === 'file' ? contentId : null,
+          contentId,
+          canvasUrl: htmlUrl,
+          sourceUrl: resolveCanvasUrl(input.canvasUrl, item.content_details?.url ?? item.url ?? null),
+          externalUrl: resolveCanvasUrl(input.canvasUrl, item.content_details?.url ?? null),
+          originalResourceKind: item.type,
+        },
+      })
+    }
+
+    if (truncated) break
+  }
+
+  if (truncated) {
+    input.warnings.push(`Stopped after ${input.maxModuleItems} module items to keep the refresh bounded.`)
+  }
+
+  return { resources, moduleItemsChecked }
+}
+
 function buildSyncedTaskDrafts(
   aiResult: AIResponse,
   context: { taskCanvasLinks: TaskCanvasLink[] },
@@ -2673,6 +2896,14 @@ function normalizeModuleItemSourceType(item: CanvasModuleItem) {
   return (item.type?.toLowerCase() ?? 'resource').replace(/\s+/g, '_')
 }
 
+function inferContentTypeForModuleItem(item: CanvasModuleItem) {
+  const normalizedType = normalizeModuleItemSourceType(item)
+  if (normalizedType === 'page' || normalizedType === 'assignment' || normalizedType === 'discussion') {
+    return 'text/html'
+  }
+  return null
+}
+
 function buildModuleItemCapabilityNote(item: CanvasModuleItem) {
   const type = item.type?.trim() || 'resource'
   const locked = item.content_details?.locked_for_user
@@ -2688,6 +2919,35 @@ function buildModuleItemCapabilityNote(item: CanvasModuleItem) {
   }
 
   return `This ${type} is linked from the module, but Stay Focused does not yet have direct readable extraction for this source type.${locked}`
+}
+
+function toExistingCanvasResourceSnapshot(resource: ModuleResource): ExistingCanvasResourceSnapshot {
+  return {
+    canvasInstanceUrl: resource.canvasInstanceUrl ?? null,
+    canvasCourseId: resource.canvasCourseId ?? null,
+    canvasModuleId: resource.canvasModuleId,
+    canvasItemId: resource.canvasItemId,
+    canvasFileId: resource.canvasFileId,
+    title: resource.title,
+    resourceType: resource.resourceType,
+    contentType: resource.contentType,
+    extension: resource.extension,
+    sourceUrl: resource.sourceUrl,
+    htmlUrl: resource.htmlUrl,
+    required: resource.required,
+    metadata: resource.metadata,
+    extractionStatus: resource.extractionStatus,
+    extractedText: resource.extractedText,
+    extractedTextPreview: resource.extractedTextPreview,
+    extractedCharCount: resource.extractedCharCount,
+    extractionError: resource.extractionError,
+    visualExtractionStatus: resource.visualExtractionStatus ?? 'not_started',
+    visualExtractedText: resource.visualExtractedText ?? null,
+    visualExtractionError: resource.visualExtractionError ?? null,
+    pageCount: resource.pageCount ?? null,
+    pagesProcessed: resource.pagesProcessed ?? 0,
+    extractionProvider: resource.extractionProvider ?? null,
+  }
 }
 
 function matchesCanvasTaskTitle(taskTitle: string, sourceTitle: string) {
