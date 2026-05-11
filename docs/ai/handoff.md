@@ -1,7 +1,63 @@
 # Stay Focused — AI Session Handoff
 
 Author: galaxymaxp omgraythekid@gmail.com
-Last Updated: 2026-05-10
+Last Updated: 2026-05-12
+
+---
+
+## Session Update - 2026-05-12 (Fix resource refresh course loading)
+
+### What changed
+
+- Fixed the bug in `app/api/cron/resource-refresh/route.ts` where courses were not being loaded from the local database.
+- The issue was that the route was comparing `canvas_instance_url` (normalized, like `https://canvas.example.com`) with `canvas_api_url` (with `/api/v1` appended) without normalization.
+- Added import of `normalizeCanvasUrl` from `lib/canvas.ts`.
+- Updated the courses query to normalize `row.canvas_api_url` before comparing it with `canvas_instance_url`:
+  - `const normalizedCanvasUrl = normalizeCanvasUrl(row.canvas_api_url)`
+  - `.eq('canvas_instance_url', normalizedCanvasUrl)`
+- Separated the "no courses found" case (silent skip) from actual database query errors (warning logged).
+- Added server-side logging of actual database errors for debugging.
+
+### Files touched
+
+- `app/api/cron/resource-refresh/route.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Production `/api/cron/resource-refresh` was failing to load any synced courses for Canvas-connected users, causing the route to return only warnings for all users. The root cause was the URL format mismatch: `canvas_api_url` from user_settings includes the `/api/v1` path, while `canvas_instance_url` in the courses table is normalized to just the base domain. The query was correctly structured but had no way to match these mismatched URLs.
+
+### Tests run
+
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- canvas-resource-refresh` - passed
+
+### Verification result
+
+- Route now compiles without type errors.
+- ESLint passes with no warnings.
+- All existing canvas-resource-refresh unit tests pass.
+- The resource refresh helper functions for preservation and change detection remain unchanged.
+- Empty course lists are no longer reported as "could not load synced courses"; only actual database errors are warned.
+
+### Known risks
+
+- None in code. The fix is minimal and only affects the course loading query.
+
+### Blockers
+
+None.
+
+### Next recommended step
+
+Trigger `/api/cron/resource-refresh` against a Canvas-connected user with local synced courses and verify the response now shows `coursesChecked > 0` instead of warnings.
+
+### Suggested commit message
+
+```bash
+fix resource refresh course loading
+```
 
 ---
 

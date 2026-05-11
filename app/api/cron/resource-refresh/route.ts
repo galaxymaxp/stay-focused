@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from 'next/server'
 import { refreshCanvasModuleResourceMetadataForCourse } from '@/actions/canvas'
 import { createSupabaseServiceRoleClient } from '@/lib/supabase-service'
+import { normalizeCanvasUrl } from '@/lib/canvas'
 
 export const runtime = 'nodejs'
 export const maxDuration = 55
@@ -82,17 +83,23 @@ export async function GET(req: NextRequest) {
     if (!row.user_id || !row.canvas_api_url || !row.canvas_access_token) continue
     summary.usersChecked += 1
 
+    const normalizedCanvasUrl = normalizeCanvasUrl(row.canvas_api_url)
     const { data: courseRows, error: courseError } = await supabase
       .from('courses')
       .select('id, user_id, name, canvas_instance_url, canvas_course_id')
       .eq('user_id', row.user_id)
-      .eq('canvas_instance_url', row.canvas_api_url)
+      .eq('canvas_instance_url', normalizedCanvasUrl)
       .not('canvas_course_id', 'is', null)
       .order('updated_at', { ascending: true })
       .limit(courseLimit)
 
     if (courseError) {
+      console.error(`[resource-refresh] DB error loading courses for user ${row.user_id}:`, courseError)
       summary.warnings.push(`User ${row.user_id}: could not load synced courses.`)
+      continue
+    }
+
+    if (!courseRows || courseRows.length === 0) {
       continue
     }
 
