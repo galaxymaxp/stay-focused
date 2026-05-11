@@ -20,7 +20,7 @@ import {
 } from '@/lib/external-sync-queue'
 
 export const runtime = 'nodejs'
-export const maxDuration = 20
+export const maxDuration = 55
 
 interface UserSettingsRow {
   user_id: string
@@ -263,4 +263,5 @@ function toQueueGuardJob(job: QueuedJob): QueueGuardJob {
     result: job.result,
   }
 }
+
 

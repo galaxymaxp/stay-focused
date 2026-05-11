@@ -6045,3 +6045,11 @@ Deploy, trigger `/api/cron/external-sync`, and confirm `jobsQueued: 1` or `cours
 
 ### Suggested commit message
 fix external cron synced course queueing
+
+Live verification: `/api/cron/external-sync` now returned `jobsQueued: 1`, `courseListMissQueued: 1`, and `skipped.notInCanvasList: 0`. The queued external job reached `refreshing_resources` but stayed running for 12+ minutes; `/api/cron/hourly` cleanup reset it to pending with `attempts: 1`, confirming stuck-job recovery works but external resource refresh may still need hardening if it stalls again.
+
+Additional live verification:
+- `/api/cron/external-sync` successfully returned `jobsQueued: 1`, `courseListMissQueued: 1`, and `skipped.notInCanvasList: 0`, proving the course-list skip fix works.
+- The existing pending external cron job was detected as `activeDuplicate: 1`, then picked up again by the background worker.
+- The job repeatedly stalled at `currentStep: refreshing_resources`, `progress: 38`.
+- Raised `/api/cron/external-sync` `maxDuration` from `20` to `55` seconds to reduce the chance that Vercel cuts off `after()` background processing during resource refresh.
