@@ -5,6 +5,71 @@ Last Updated: 2026-05-10
 
 ---
 
+## Session Update - 2026-05-11 (Make external cron Canvas sync lightweight)
+
+### What changed
+
+- Updated `actions/canvas.ts` so `runExternalCanvasSyncJob` no longer runs heavy inline resource refresh during `external_cron`.
+- Removed the `refreshExternalCanvasTaskStatus` call from `external_cron`, so task status refresh is no longer part of the cron worker path.
+- External cron now records the required safe fallback counts in the completed job result:
+  - `resourcesInserted: 0`
+  - `resourcesUpdated: 0`
+  - `resourcesPreserved: 0`
+  - `resourcesSkippedMissing: 0`
+  - `tasksUpdated: 0`
+- External cron now records the required warning fields in the completed job result:
+  - `resourceRefreshWarning: "Skipped during external cron to keep announcement sync responsive."`
+  - `taskRefreshWarning: "Skipped during external cron to keep announcement sync responsive."`
+- Kept lightweight work intact for `external_cron`:
+  - fetch announcements, assignments, and modules
+  - load existing assignment deadlines for due-date-change events
+  - load existing module ids for module event state comparison
+  - insert Canvas update events
+  - rebuild module `raw_content` from existing preserved readable resource text
+- Left `app/api/cron/external-sync/route.ts` unchanged. Inline processing stays in place because the worker is now reduced to lightweight Canvas fetch + event/update work and should fit the existing `maxDuration = 55` budget more reliably.
+- Removed dead external-cron-only timeout/preservation helper code that became unused after the skip change.
+
+### Files touched
+
+- `actions/canvas.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Production `/api/cron/external-sync` hit `FUNCTION_INVOCATION_TIMEOUT` after the route was changed to process pending jobs inline. The root cause was that `external_cron` still performed heavy resource refresh and task status refresh after the main Canvas fetch, so the function could remain alive long enough to time out even when Promise-race guards were present. This change makes external cron prioritize announcements, modules, assignments, and update events, then finish quickly.
+
+### Tests run
+
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- queue canvas-digest` - passed
+
+### Verification result
+
+- Required checks passed after the change.
+- `external_cron` now skips heavy resource/task refresh entirely instead of starting work that can outlive the timeout guard.
+- The queued job can still reach `currentStep: done` / `completed` when the main Canvas sync succeeds, with explicit warning fields explaining the skipped work.
+
+### Known risks
+
+- External cron no longer updates `module_resources` or task completion/deadline rows directly, so new/changed files and task-status drift now depend on manual selected-course sync or another future lightweight follow-up path.
+- `new_resource` event creation is effectively deferred in external cron because no resource refresh runs, so announcement/module/assignment visibility is prioritized over resource-level freshness.
+- Raw content rebuild still uses already-stored readable resource text; if those stored resources are stale, the rebuilt module content can remain stale until a full manual selected-course sync runs.
+
+### Blockers
+
+None in local verification.
+
+### Next recommended step
+
+Deploy and trigger `/api/cron/external-sync` against the previously timing-out course, then confirm the response returns before the 55-second budget, the queued job reaches `completed` with `currentStep: done`, and the result includes the two new warning fields while announcements/modules/assignment update events still land.
+
+### Suggested commit message
+
+```bash
+make external cron canvas sync lightweight
+```
+
 ## Session Update - 2026-05-11 (Process external cron sync inline)
 
 ### What changed

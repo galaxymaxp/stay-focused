@@ -59,11 +59,9 @@ import { generateSummariesForSyncedModule } from '@/lib/source-summaries'
 import { populateModuleTerms } from '@/actions/module-terms'
 import { autoEnqueueSourceOcrJobs } from '@/actions/queue-jobs'
 import { adaptModuleResourceRow } from '@/lib/module-resource-row'
-import { evaluateResourceTextPreservation } from '@/lib/canvas-resource-preservation'
 import { classifyModuleResourceTextQuality } from '@/lib/extracted-text-quality'
 import { DEFAULT_EXTERNAL_CANVAS_FETCH_TIMEOUT_MS, EXTERNAL_CANVAS_SYNC_MODE, getPositiveIntegerEnv } from '@/lib/external-sync-queue'
 import {
-  buildResourceStateHash,
   buildExternalCanvasSyncEvents,
   detectDueDateChanges,
   insertCanvasUpdateEvents,
@@ -178,35 +176,6 @@ interface SyncedTaskDraft {
 }
 
 const STUCK_PROCESSING_MODULE_THRESHOLD_MS = 15 * 60 * 1000
-const EXTERNAL_CRON_REFRESH_PHASE_TIMEOUT_MS = 20 * 1000
-
-async function withExternalCronPhaseTimeout<T>(input: {
-  phase: 'resource_refresh' | 'task_refresh'
-  timeoutMs?: number
-  operation: Promise<T>
-  onTimeout: () => T
-}) {
-  const timeoutMs = input.timeoutMs ?? EXTERNAL_CRON_REFRESH_PHASE_TIMEOUT_MS
-
-  return await Promise.race([
-    input.operation.then((value) => ({
-      timedOut: false as const,
-      value,
-      warning: null,
-    })),
-    new Promise<{ timedOut: true; value: T; warning: string }>((resolve) => {
-      setTimeout(() => {
-        resolve({
-          timedOut: true,
-          value: input.onTimeout(),
-          warning: input.phase === 'resource_refresh'
-            ? 'Some course files are still preparing and will finish later.'
-            : 'Some task updates are still finishing and will appear later.',
-        })
-      }, timeoutMs)
-    }),
-  ])
-}
 
 export async function fetchCourses(input: { includeEnded?: boolean } = {}): Promise<CanvasCourse[]> {
   await requireAuthenticatedUserServer()
@@ -535,30 +504,22 @@ async function runExternalCanvasSyncJob(job: QueuedJob) {
     throw new Error('This Canvas course does not have a synced module to refresh yet.')
   }
 
-  const resourceIngestion = await ingestModuleResources(canvasCourseId, modules, config, assignments)
-  const resourceRefreshResult = await withExternalCronPhaseTimeout({
-    phase: 'resource_refresh',
-    operation: refreshExternalCanvasResources({
-      supabase,
-      userId: job.userId,
-      moduleId: existingModule.id,
-      courseId: courseRecord.id,
-      canvasInstanceUrl: normalizedCourse.canvasInstanceUrl,
-      canvasCourseId: normalizedCourse.canvasCourseId,
-      resources: resourceIngestion,
-    }),
-    onTimeout: () => ({
-      inserted: 0,
-      updated: 0,
-      preserved: 0,
-      missing: 0,
-      newResources: [],
-      editedResources: [],
-      changedResources: [],
-      existingCanvasModuleIds: new Set<number>(),
-    }),
+  const existingCanvasModuleIds = await loadExistingCanvasModuleIdsForExternalSync({
+    supabase,
+    userId: job.userId,
+    courseId: courseRecord.id,
   })
-  const resourceRefresh = resourceRefreshResult.value
+  const resourceRefresh = {
+    inserted: 0,
+    updated: 0,
+    preserved: 0,
+    missing: 0,
+    newResources: [] as ModuleResource[],
+    editedResources: [] as ModuleResource[],
+    changedResources: [] as ModuleResource[],
+    existingCanvasModuleIds,
+  }
+  const resourceRefreshWarning = 'Skipped during external cron to keep announcement sync responsive.'
 
   await updateExternalCanvasJobStep(job.id, 72, 'Refreshing task status', 'refreshing_tasks', databaseSafeCourse.name)
 
@@ -570,19 +531,10 @@ async function runExternalCanvasSyncJob(job: QueuedJob) {
     canvasAssignmentIds: assignments.map((a) => a.id),
   })
 
-  const taskRefreshResult = await withExternalCronPhaseTimeout({
-    phase: 'task_refresh',
-    operation: refreshExternalCanvasTaskStatus({
-      supabase,
-      userId: job.userId,
-      courseId: courseRecord.id,
-      assignments,
-    }),
-    onTimeout: () => ({
-      updated: 0,
-    }),
-  })
-  const taskRefresh = taskRefreshResult.value
+  const taskRefresh = {
+    updated: 0,
+  }
+  const taskRefreshWarning = 'Skipped during external cron to keep announcement sync responsive.'
 
   const seenCanvasStates = await loadSeenCanvasStates({
     supabase,
@@ -665,8 +617,8 @@ async function runExternalCanvasSyncJob(job: QueuedJob) {
     resourcesPreserved: resourceRefresh.preserved,
     resourcesSkippedMissing: resourceRefresh.missing,
     tasksUpdated: taskRefresh.updated,
-    resourceRefreshWarning: resourceRefreshResult.warning,
-    taskRefreshWarning: taskRefreshResult.warning,
+    resourceRefreshWarning,
+    taskRefreshWarning,
     queuedOcrJobIds: autoOcrJobs.map((ocrJob) => ocrJob.id),
     queuedOcrJobCount: autoOcrJobs.length,
     canvasUpdateEventCount: eventInsert.inserted,
@@ -762,141 +714,6 @@ async function resolveExternalCanvasCourse(
   }
 }
 
-async function refreshExternalCanvasResources(input: {
-  supabase: CanvasSyncSupabaseClient
-  userId: string
-  moduleId: string
-  courseId: string
-  canvasInstanceUrl: string | null
-  canvasCourseId: number | null
-  resources: ResourceIngestionRecord[]
-}) {
-  const resourceRows = buildModuleResourcesForSync(input.resources, {
-    moduleId: input.moduleId,
-    courseId: input.courseId,
-    userId: input.userId,
-    canvasInstanceUrl: input.canvasInstanceUrl,
-    canvasCourseId: input.canvasCourseId,
-  }) as Record<string, unknown>[]
-
-  const { data: existingRows, error: existingError } = await input.supabase
-    .from('module_resources')
-    .select('*')
-    .eq('user_id', input.userId)
-    .eq('course_id', input.courseId)
-
-  if (existingError) {
-    throw createSupabaseStepError('external sync load module resources', existingError, {
-      userId: input.userId,
-      courseId: input.courseId,
-    })
-  }
-
-  const existing = ((existingRows ?? []) as Record<string, unknown>[])
-  const existingCanvasModuleIds = new Set<number>()
-  for (const row of existing) {
-    const canvasModuleId = readNumber(row.canvas_module_id)
-    if (canvasModuleId !== null) existingCanvasModuleIds.add(canvasModuleId)
-  }
-  const matchedExistingIds = new Set<string>()
-  const changedResources: ModuleResource[] = []
-  const newResources: ModuleResource[] = []
-  const editedResources: ModuleResource[] = []
-  let inserted = 0
-  let updated = 0
-  let preserved = 0
-
-  for (const row of resourceRows) {
-    const match = findExistingResourceForIncoming(existing, row, matchedExistingIds)
-
-    if (!match) {
-      const { data: insertedRows, error } = await input.supabase
-        .from('module_resources')
-        .insert(row)
-        .select('*')
-
-      if (error) {
-        console.error('[external-canvas-sync] resource insert failed', {
-          userId: input.userId,
-          moduleId: input.moduleId,
-          title: readString(row.title),
-          code: error.code,
-          message: error.message,
-        })
-        continue
-      }
-
-      inserted += 1
-      for (const insertedRow of (insertedRows ?? []) as Record<string, unknown>[]) {
-        const adapted = adaptModuleResourceRow(insertedRow)
-        changedResources.push(adapted)
-        newResources.push(adapted)
-      }
-      continue
-      }
-
-      const previousResource = adaptModuleResourceRow(match)
-      matchedExistingIds.add(String(match.id))
-      const patch = buildSafeExternalResourcePatch(match, row)
-      const { data: updatedRow, error } = await input.supabase
-      .from('module_resources')
-      .update(patch)
-      .eq('id', match.id as string)
-      .eq('user_id', input.userId)
-      .select('*')
-      .maybeSingle()
-
-    if (error) {
-      console.error('[external-canvas-sync] resource update failed', {
-        userId: input.userId,
-        resourceId: match.id,
-        title: readString(row.title),
-        code: error.code,
-        message: error.message,
-      })
-      continue
-    }
-
-    updated += 1
-      if (patch.metadata && typeof patch.metadata === 'object' && (patch.metadata as Record<string, unknown>).externalSyncPreservedText === true) {
-        preserved += 1
-      }
-      if (updatedRow) {
-        const adapted = adaptModuleResourceRow(updatedRow as Record<string, unknown>)
-        changedResources.push(adapted)
-        if (buildResourceStateHash(previousResource) !== buildResourceStateHash(adapted)) {
-          editedResources.push(adapted)
-        }
-      }
-    }
-
-  for (const missing of existing) {
-    const id = readString(missing.id)
-    if (!id || matchedExistingIds.has(id)) continue
-    await input.supabase
-      .from('module_resources')
-      .update({
-        metadata: {
-          ...asPlainRecord(missing.metadata),
-          externalSyncMissingAt: new Date().toISOString(),
-        },
-      })
-      .eq('id', id)
-      .eq('user_id', input.userId)
-  }
-
-  return {
-    inserted,
-    updated,
-    preserved,
-      missing: Math.max(0, existing.length - matchedExistingIds.size),
-      existingCanvasModuleIds,
-      changedResources,
-      newResources,
-      editedResources,
-    }
-  }
-
 async function loadFinalModuleResourceExtractsForRawContent(input: {
   supabase: CanvasSyncSupabaseClient
   userId: string
@@ -936,194 +753,32 @@ async function loadFinalModuleResourceExtractsForRawContent(input: {
     .filter((resource): resource is { title: string; resourceType: string; extractedText: string } => Boolean(resource))
 }
 
-function buildSafeExternalResourcePatch(existingRow: Record<string, unknown>, incomingRow: Record<string, unknown>) {
-  const existing = adaptModuleResourceRow(existingRow)
-  const incoming = adaptModuleResourceRow({
-    ...incomingRow,
-    id: existing.id,
-    module_id: existing.moduleId,
-    course_id: existing.courseId,
-    created_at: existing.created_at,
-  })
-  const decision = evaluateResourceTextPreservation(existing, incoming)
-  const metadata = {
-    ...asPlainRecord(existingRow.metadata),
-    ...asPlainRecord(incomingRow.metadata),
-    externalSyncCheckedAt: new Date().toISOString(),
-    externalSyncPreservedText: decision.preserveExtractedText || decision.preserveVisualText,
-    externalSyncTextDecision: {
-      fileIdentityChanged: decision.fileIdentityChanged,
-      preserveExtractedText: decision.preserveExtractedText,
-      preserveVisualText: decision.preserveVisualText,
-      existingTextQuality: decision.existingTextQuality,
-      incomingTextQuality: decision.incomingTextQuality,
-      existingVisualQuality: decision.existingVisualQuality,
-    },
-  }
-  const patch: Record<string, unknown> = {
-    canvas_instance_url: incomingRow.canvas_instance_url ?? existingRow.canvas_instance_url ?? null,
-    canvas_course_id: incomingRow.canvas_course_id ?? existingRow.canvas_course_id ?? null,
-    canvas_module_id: incomingRow.canvas_module_id ?? existingRow.canvas_module_id ?? null,
-    canvas_item_id: incomingRow.canvas_item_id ?? existingRow.canvas_item_id ?? null,
-    canvas_file_id: incomingRow.canvas_file_id ?? existingRow.canvas_file_id ?? null,
-    title: incomingRow.title,
-    resource_type: incomingRow.resource_type,
-    content_type: incomingRow.content_type ?? null,
-    extension: incomingRow.extension ?? null,
-    source_url: incomingRow.source_url ?? null,
-    html_url: incomingRow.html_url ?? null,
-    extraction_status: incomingRow.extraction_status,
-    extracted_text: incomingRow.extracted_text ?? null,
-    extracted_text_preview: incomingRow.extracted_text_preview ?? null,
-    extracted_char_count: incomingRow.extracted_char_count ?? 0,
-    extraction_error: incomingRow.extraction_error ?? null,
-    visual_extraction_status: incomingRow.visual_extraction_status ?? 'not_started',
-    visual_extracted_text: incomingRow.visual_extracted_text ?? null,
-    visual_extraction_error: incomingRow.visual_extraction_error ?? null,
-    page_count: incomingRow.page_count ?? null,
-    pages_processed: incomingRow.pages_processed ?? 0,
-    extraction_provider: incomingRow.extraction_provider ?? null,
-    required: incomingRow.required ?? false,
-    metadata,
-  }
-
-  if (decision.preserveExtractedText) {
-    patch.extraction_status = existingRow.extraction_status
-    patch.extracted_text = existingRow.extracted_text ?? null
-    patch.extracted_text_preview = existingRow.extracted_text_preview ?? null
-    patch.extracted_char_count = existingRow.extracted_char_count ?? 0
-    patch.extraction_error = existingRow.extraction_error ?? null
-  }
-
-  const existingVisualStatus = readString(existingRow.visual_extraction_status)
-  const shouldPreserveActiveOcr = !decision.fileIdentityChanged
-    && (existingVisualStatus === 'queued' || existingVisualStatus === 'running')
-
-  if (decision.preserveVisualText || shouldPreserveActiveOcr) {
-    patch.visual_extraction_status = existingRow.visual_extraction_status ?? 'not_started'
-    patch.visual_extracted_text = existingRow.visual_extracted_text ?? null
-    patch.visual_extraction_error = existingRow.visual_extraction_error ?? null
-    patch.page_count = existingRow.page_count ?? incomingRow.page_count ?? null
-    patch.pages_processed = existingRow.pages_processed ?? incomingRow.pages_processed ?? 0
-    patch.extraction_provider = existingRow.extraction_provider ?? incomingRow.extraction_provider ?? null
-  }
-
-  return sanitizeDatabaseValue(patch)
-}
-
-function findExistingResourceForIncoming(
-  existingRows: Record<string, unknown>[],
-  incomingRow: Record<string, unknown>,
-  usedIds: Set<string>,
-) {
-  const incomingItemId = readNumber(incomingRow.canvas_item_id)
-  const incomingFileId = readNumber(incomingRow.canvas_file_id)
-  const incomingModuleId = readNumber(incomingRow.canvas_module_id)
-  const incomingSourceUrl = readString(incomingRow.source_url)
-  const incomingHtmlUrl = readString(incomingRow.html_url)
-  const incomingTitleKey = normalizeResourceMatchTitle(readString(incomingRow.title))
-  const incomingType = readString(incomingRow.resource_type)
-
-  const availableRows = existingRows.filter((row) => {
-    const id = readString(row.id)
-    return id && !usedIds.has(id)
-  })
-
-  if (incomingItemId !== null) {
-    const match = availableRows.find((row) => readNumber(row.canvas_item_id) === incomingItemId)
-    if (match) return match
-  }
-
-  if (incomingFileId !== null) {
-    const match = availableRows.find((row) => readNumber(row.canvas_file_id) === incomingFileId)
-    if (match) return match
-  }
-
-  if (incomingSourceUrl || incomingHtmlUrl) {
-    const match = availableRows.find((row) => {
-      const rowSourceUrl = readString(row.source_url)
-      const rowHtmlUrl = readString(row.html_url)
-      return Boolean(
-        (incomingSourceUrl && (incomingSourceUrl === rowSourceUrl || incomingSourceUrl === rowHtmlUrl))
-        || (incomingHtmlUrl && (incomingHtmlUrl === rowSourceUrl || incomingHtmlUrl === rowHtmlUrl)),
-      )
-    })
-    if (match) return match
-  }
-
-  if (incomingTitleKey) {
-    return availableRows.find((row) => (
-      normalizeResourceMatchTitle(readString(row.title)) === incomingTitleKey
-      && readString(row.resource_type) === incomingType
-      && (incomingModuleId === null || readNumber(row.canvas_module_id) === incomingModuleId)
-    )) ?? null
-  }
-
-  return null
-}
-
-async function refreshExternalCanvasTaskStatus(input: {
+async function loadExistingCanvasModuleIdsForExternalSync(input: {
   supabase: CanvasSyncSupabaseClient
   userId: string
   courseId: string
-  assignments: CanvasAssignment[]
 }) {
-  let updated = 0
+  const { data, error } = await input.supabase
+    .from('module_resources')
+    .select('canvas_module_id')
+    .eq('user_id', input.userId)
+    .eq('course_id', input.courseId)
 
-  for (const assignment of input.assignments) {
-    const taskState = deriveCanvasAssignmentTaskState(assignment)
-    const basePatch = sanitizeDatabaseValue({
-      deadline: normalizeOptionalCanvasSyncText(assignment.due_at),
-      canvas_url: normalizeOptionalCanvasSyncText(assignment.html_url ?? assignment.url ?? null),
+  if (error || !data) {
+    console.warn('[external-canvas-sync] existing module ids lookup failed', {
+      userId: input.userId,
+      courseId: input.courseId,
+      code: error?.code ?? null,
+      message: error?.message ?? null,
     })
-    const completePatch = sanitizeDatabaseValue({
-      ...basePatch,
-      status: taskState.taskStatus,
-      completion_origin: taskState.completionOrigin,
-    })
-
-    const taskItemsPatch = taskState.taskStatus === 'completed' ? completePatch : basePatch
-    const tasksPatch = taskState.taskStatus === 'completed' ? completePatch : basePatch
-
-    const { error: taskItemsError, count: taskItemsCount } = await input.supabase
-      .from('task_items')
-      .update(taskItemsPatch, { count: 'exact' })
-      .eq('user_id', input.userId)
-      .eq('course_id', input.courseId)
-      .eq('canvas_assignment_id', assignment.id)
-
-    if (taskItemsError) {
-      console.warn('[external-canvas-sync] task_items status refresh failed', {
-        userId: input.userId,
-        courseId: input.courseId,
-        canvasAssignmentId: assignment.id,
-        code: taskItemsError.code,
-        message: taskItemsError.message,
-      })
-    } else {
-      updated += taskItemsCount ?? 0
-    }
-
-    const { error: tasksError, count: tasksCount } = await input.supabase
-      .from('tasks')
-      .update(tasksPatch, { count: 'exact' })
-      .eq('user_id', input.userId)
-      .eq('canvas_assignment_id', assignment.id)
-
-    if (tasksError) {
-      console.warn('[external-canvas-sync] tasks status refresh failed', {
-        userId: input.userId,
-        courseId: input.courseId,
-        canvasAssignmentId: assignment.id,
-        code: tasksError.code,
-        message: tasksError.message,
-      })
-    } else {
-      updated += tasksCount ?? 0
-    }
+    return new Set<number>()
   }
 
-  return { updated }
+  const ids = new Set<number>()
+  for (const row of data as Array<{ canvas_module_id: number | null }>) {
+    if (typeof row.canvas_module_id === 'number') ids.add(row.canvas_module_id)
+  }
+  return ids
 }
 
 async function loadExistingTaskDeadlines(input: {
@@ -1217,23 +872,6 @@ function readNumber(value: unknown) {
     if (Number.isFinite(parsed)) return parsed
   }
   return null
-}
-
-function asPlainRecord(value: unknown): Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? { ...value as Record<string, unknown> }
-    : {}
-}
-
-function normalizeResourceMatchTitle(value: string | null) {
-  if (!value) return null
-  const normalized = value
-    .toLowerCase()
-    .replace(/\.[a-z0-9]+$/i, '')
-    .replace(/[^a-z0-9]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-  return normalized || null
 }
 
 async function syncSingleCourse(
