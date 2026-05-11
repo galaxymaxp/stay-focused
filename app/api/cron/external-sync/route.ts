@@ -1,4 +1,4 @@
-import { type NextRequest, NextResponse } from 'next/server'
+﻿import { type NextRequest, NextResponse } from 'next/server'
 import { after } from 'next/server'
 import { processPendingExternalCanvasSyncJobs } from '@/actions/canvas'
 import { createQueuedJobAsService, type QueuedJob } from '@/lib/queue'
@@ -97,6 +97,7 @@ export async function GET(req: NextRequest) {
     usersScanned: 0,
     coursesChecked: 0,
     jobsQueued: 0,
+    courseListMissQueued: 0,
     skipped: {
       noSyncedCourses: 0,
       notInCanvasList: 0,
@@ -173,8 +174,7 @@ export async function GET(req: NextRequest) {
       stats.coursesChecked += 1
 
       if (!canvasCourseIds.has(canvasCourseId)) {
-        stats.skipped.notInCanvasList += 1
-        continue
+        stats.courseListMissQueued += 1
       }
 
       const guard = evaluateExternalCanvasSyncQueueGuard(recentJobs, {
@@ -263,3 +263,4 @@ function toQueueGuardJob(job: QueuedJob): QueueGuardJob {
     result: job.result,
   }
 }
+

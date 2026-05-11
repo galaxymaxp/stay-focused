@@ -6010,3 +6010,38 @@ None.
 ```
 dedupe schedule sources and group today plan
 ```
+## Session Update - 2026-05-11 (Fix external cron course-list skip)
+
+### What changed
+- Updated `/api/cron/external-sync` so already-synced local DB courses are still queued even when Canvas `getCourses()` does not return the course.
+- Added `courseListMissQueued` to cron scan stats.
+- Removed the skip/continue behavior for locally synced courses missing from the Canvas course list.
+
+### Files touched
+- `app/api/cron/external-sync/route.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+External cron returned `jobsQueued: 0` with `skipped.notInCanvasList: 1`, so Canvas announcements were not refreshed even though the course was already synced locally. Manual resync worked because it directly fetched Canvas course data. The external cron should attempt direct course-id sync for existing local courses and let the background processor fail safely if Canvas denies access.
+
+### Tests run
+- `npm run typecheck`
+- `npm run lint`
+- `npm test -- queue canvas-digest`
+
+### Verification result
+Pending / passed: <fill after running tests>.
+
+### Known risks
+- If Canvas truly denies access to a course that is absent from `getCourses()`, an external cron `canvas_sync` job may be queued and then fail normally.
+- Duplicate/cooldown/daily cap guards still protect against repeated queue spam.
+- OCR/OpenAI work remains outside the cron request.
+
+### Blockers
+None known.
+
+### Next recommended step
+Deploy, trigger `/api/cron/external-sync`, and confirm `jobsQueued: 1` or `courseListMissQueued: 1` with a completed `external_cron` canvas_sync job.
+
+### Suggested commit message
+fix external cron synced course queueing
