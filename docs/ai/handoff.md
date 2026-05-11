@@ -5,6 +5,59 @@ Last Updated: 2026-05-10
 
 ---
 
+## Session Update - 2026-05-11 (Process external cron sync inline)
+
+### What changed
+
+- Updated `app/api/cron/external-sync/route.ts` so it now awaits `processPendingExternalCanvasSyncJobs()` inline before returning the cron response.
+- Kept `EXTERNAL_SYNC_PROCESS_LIMIT` behavior unchanged; the processing call still uses the existing default limit of `1`.
+- Preserved `maxDuration = 55`.
+- Preserved duplicate, cooldown, daily-cap, and course-list-miss queueing behavior.
+- Kept `after()` only as a fallback path if inline processing throws before completion.
+- Added response fields:
+  - `processedInline: true`
+  - `inlineProcessingError: string | null`
+
+### Files touched
+
+- `app/api/cron/external-sync/route.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Production evidence showed external cron jobs could still remain stuck in `running` at `refreshing_tasks` even after the timeout-bounded worker change, which strongly suggests Vercel `after()` execution was not reliably surviving long enough for the worker to write its timeout fallback or final completion state. Running the worker inline keeps the cron request alive while the job processor finishes.
+
+### Tests run
+
+- `npm run typecheck`
+- `npm run lint`
+- `npm test -- queue canvas-digest`
+
+### Verification result
+
+- Route patch applied.
+- Verification commands are being run after the edit.
+- Expected behavior: `/api/cron/external-sync` now queues and processes the external cron job inline before returning, with `processedInline: true` in the response and `inlineProcessingError` populated only if inline processing throws.
+
+### Known risks
+
+- Inline processing increases the amount of work done during the request, so the route now depends more directly on the existing `55` second `maxDuration`.
+- If the worker throws after queueing, the response can still return successfully with `inlineProcessingError` set while the fallback `after()` retry attempts to continue processing.
+
+### Blockers
+
+None so far.
+
+### Next recommended step
+
+Trigger `/api/cron/external-sync` against the previously stuck course and confirm the response includes `processedInline: true`, the job reaches `completed`, and `currentStep` no longer remains at `refreshing_tasks`.
+
+### Suggested commit message
+
+```bash
+process external cron sync inline
+```
+
 ## Session Update - 2026-05-11 (Bound external cron refresh phases)
 
 ### What changed

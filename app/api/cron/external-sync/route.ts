@@ -218,14 +218,27 @@ export async function GET(req: NextRequest) {
 
   console.info('[cron/external-sync] scan complete', stats)
 
-  after(async () => {
+  let inlineProcessingError: string | null = null
+  try {
     const processed = await processPendingExternalCanvasSyncJobs()
-    console.info('[cron/external-sync] background processing complete', processed)
-  })
+    console.info('[cron/external-sync] inline processing complete', processed)
+  } catch (error) {
+    inlineProcessingError = error instanceof Error ? error.message : String(error)
+    console.error('[cron/external-sync] inline processing failed', {
+      message: inlineProcessingError,
+    })
+
+    after(async () => {
+      const processed = await processPendingExternalCanvasSyncJobs()
+      console.info('[cron/external-sync] fallback background processing complete', processed)
+    })
+  }
 
   return NextResponse.json({
     ok: true,
     scanned: stats,
+    processedInline: true,
+    inlineProcessingError,
   })
 }
 
