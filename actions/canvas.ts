@@ -178,6 +178,35 @@ interface SyncedTaskDraft {
 }
 
 const STUCK_PROCESSING_MODULE_THRESHOLD_MS = 15 * 60 * 1000
+const EXTERNAL_CRON_REFRESH_PHASE_TIMEOUT_MS = 20 * 1000
+
+async function withExternalCronPhaseTimeout<T>(input: {
+  phase: 'resource_refresh' | 'task_refresh'
+  timeoutMs?: number
+  operation: Promise<T>
+  onTimeout: () => T
+}) {
+  const timeoutMs = input.timeoutMs ?? EXTERNAL_CRON_REFRESH_PHASE_TIMEOUT_MS
+
+  return await Promise.race([
+    input.operation.then((value) => ({
+      timedOut: false as const,
+      value,
+      warning: null,
+    })),
+    new Promise<{ timedOut: true; value: T; warning: string }>((resolve) => {
+      setTimeout(() => {
+        resolve({
+          timedOut: true,
+          value: input.onTimeout(),
+          warning: input.phase === 'resource_refresh'
+            ? 'Some course files are still preparing and will finish later.'
+            : 'Some task updates are still finishing and will appear later.',
+        })
+      }, timeoutMs)
+    }),
+  ])
+}
 
 export async function fetchCourses(input: { includeEnded?: boolean } = {}): Promise<CanvasCourse[]> {
   await requireAuthenticatedUserServer()
@@ -507,15 +536,29 @@ async function runExternalCanvasSyncJob(job: QueuedJob) {
   }
 
   const resourceIngestion = await ingestModuleResources(canvasCourseId, modules, config, assignments)
-  const resourceRefresh = await refreshExternalCanvasResources({
-    supabase,
-    userId: job.userId,
-    moduleId: existingModule.id,
-    courseId: courseRecord.id,
-    canvasInstanceUrl: normalizedCourse.canvasInstanceUrl,
-    canvasCourseId: normalizedCourse.canvasCourseId,
-    resources: resourceIngestion,
+  const resourceRefreshResult = await withExternalCronPhaseTimeout({
+    phase: 'resource_refresh',
+    operation: refreshExternalCanvasResources({
+      supabase,
+      userId: job.userId,
+      moduleId: existingModule.id,
+      courseId: courseRecord.id,
+      canvasInstanceUrl: normalizedCourse.canvasInstanceUrl,
+      canvasCourseId: normalizedCourse.canvasCourseId,
+      resources: resourceIngestion,
+    }),
+    onTimeout: () => ({
+      inserted: 0,
+      updated: 0,
+      preserved: 0,
+      missing: 0,
+      newResources: [],
+      editedResources: [],
+      changedResources: [],
+      existingCanvasModuleIds: new Set<number>(),
+    }),
   })
+  const resourceRefresh = resourceRefreshResult.value
 
   await updateExternalCanvasJobStep(job.id, 72, 'Refreshing task status', 'refreshing_tasks', databaseSafeCourse.name)
 
@@ -527,12 +570,19 @@ async function runExternalCanvasSyncJob(job: QueuedJob) {
     canvasAssignmentIds: assignments.map((a) => a.id),
   })
 
-  const taskRefresh = await refreshExternalCanvasTaskStatus({
-    supabase,
-    userId: job.userId,
-    courseId: courseRecord.id,
-    assignments,
+  const taskRefreshResult = await withExternalCronPhaseTimeout({
+    phase: 'task_refresh',
+    operation: refreshExternalCanvasTaskStatus({
+      supabase,
+      userId: job.userId,
+      courseId: courseRecord.id,
+      assignments,
+    }),
+    onTimeout: () => ({
+      updated: 0,
+    }),
   })
+  const taskRefresh = taskRefreshResult.value
 
   const seenCanvasStates = await loadSeenCanvasStates({
     supabase,
@@ -615,6 +665,8 @@ async function runExternalCanvasSyncJob(job: QueuedJob) {
     resourcesPreserved: resourceRefresh.preserved,
     resourcesSkippedMissing: resourceRefresh.missing,
     tasksUpdated: taskRefresh.updated,
+    resourceRefreshWarning: resourceRefreshResult.warning,
+    taskRefreshWarning: taskRefreshResult.warning,
     queuedOcrJobIds: autoOcrJobs.map((ocrJob) => ocrJob.id),
     queuedOcrJobCount: autoOcrJobs.length,
     canvasUpdateEventCount: eventInsert.inserted,

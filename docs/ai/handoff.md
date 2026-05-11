@@ -5,6 +5,58 @@ Last Updated: 2026-05-10
 
 ---
 
+## Session Update - 2026-05-11 (Bound external cron refresh phases)
+
+### What changed
+
+- Added a narrow timeout helper in `actions/canvas.ts` for external Canvas cron refresh phases.
+- Wrapped the `refreshing_resources` phase in `runExternalCanvasSyncJob` with a 20-second timeout fallback.
+- Wrapped the `refreshing_tasks` phase in `runExternalCanvasSyncJob` with a 20-second timeout fallback.
+- Kept manual selected-course sync behavior unchanged; only the external cron job path uses the timeout guard.
+- When a timeout happens, the external cron job now continues to completion with safe fallback counts and warning fields in the queued job result:
+  - `resourceRefreshWarning`
+  - `taskRefreshWarning`
+
+### Files touched
+
+- `actions/canvas.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+External cron Canvas sync jobs could stall for long periods during resource or task refresh even after the main Canvas announcements/modules/events sync had already succeeded. The change bounds those two post-sync phases so external cron can still complete instead of hanging indefinitely.
+
+### Tests run
+
+- `npm run typecheck`
+- `npm run lint`
+- `npm test -- queue canvas-digest`
+
+### Verification result
+
+- Code patch applied.
+- Verification commands are being run after the edit.
+- Expected behavior: external cron can still reach `completed` / `currentStep: done` when the main sync succeeds, even if resource/task refresh times out.
+
+### Known risks
+
+- A timed-out resource refresh can defer some resource insert/update detection to a later sync, so event counts and changed-resource follow-up work for that run may be lower than a full refresh.
+- The timed-out phase continues in the background at the runtime level if the underlying work does not cancel cooperatively; this patch prevents the job from waiting forever but does not actively abort the underlying async work.
+
+### Blockers
+
+None so far.
+
+### Next recommended step
+
+Verify the external cron path against a course that previously stalled and confirm the queued job now finishes with warning fields instead of remaining stuck in `refreshing_resources` or `refreshing_tasks`.
+
+### Suggested commit message
+
+```bash
+bound external cron refresh phases
+```
+
 ## Session Update - 2026-05-10 (Retune ambient canvas motion speed again)
 
 ### What changed
@@ -6053,3 +6105,11 @@ Additional live verification:
 - The existing pending external cron job was detected as `activeDuplicate: 1`, then picked up again by the background worker.
 - The job repeatedly stalled at `currentStep: refreshing_resources`, `progress: 38`.
 - Raised `/api/cron/external-sync` `maxDuration` from `20` to `55` seconds to reduce the chance that Vercel cuts off `after()` background processing during resource refresh.
+
+The previously stuck external cron job advanced past `refreshing_resources` on retry attempt 2 and reached `refreshing_tasks` at progress 72, suggesting the resource refresh stage can complete but may be slow enough to require timeout/stale-job recovery monitoring.
+
+Additional live verification:
+- External cron job `d49e0e59-7480-4ad1-9084-5392b48931fe` reached max attempts after repeated stalls at `refreshing_resources` / `refreshing_tasks`.
+- `/api/cron/hourly` successfully reset stuck running jobs, but the job was later manually marked failed at `attempts: 3/3` to unblock future external cron runs.
+- The route-level queueing fix remains verified: external cron no longer skips locally synced courses missing from Canvas `getCourses()`.
+- Remaining blocker: external cron worker can hang during resource/task refresh. Next fix should make external cron resource/task refresh timeout-bounded or non-blocking so announcement sync can still complete.
