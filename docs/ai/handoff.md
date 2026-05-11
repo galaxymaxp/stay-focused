@@ -6231,3 +6231,20 @@ Additional live verification:
 - `/api/cron/hourly` successfully reset stuck running jobs, but the job was later manually marked failed at `attempts: 3/3` to unblock future external cron runs.
 - The route-level queueing fix remains verified: external cron no longer skips locally synced courses missing from Canvas `getCourses()`.
 - Remaining blocker: external cron worker can hang during resource/task refresh. Next fix should make external cron resource/task refresh timeout-bounded or non-blocking so announcement sync can still complete.
+
+### Live verification result
+
+Production verification passed. `/api/cron/external-sync` returned `processedInline: true` and queued external cron job `99c5a1f5-33ed-418c-a7bc-b1abfd039f65`.
+
+The job completed successfully:
+- `status: completed`
+- `progress: 100`
+- `currentStep: done`
+- `error: null`
+- completed in about 14 seconds
+
+The job result included:
+- `resourceRefreshWarning: "Skipped during external cron to keep announcement sync responsive."`
+- `taskRefreshWarning: "Skipped during external cron to keep announcement sync responsive."`
+
+This confirms the lightweight external cron path works and avoids the previous `refreshing_resources` / `refreshing_tasks` hang.
