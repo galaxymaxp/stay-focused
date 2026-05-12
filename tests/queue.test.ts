@@ -27,6 +27,11 @@ import {
   isStaleRunningCanvasSyncJob,
   isStaleRunningSourceOcrJob,
 } from '../lib/source-ocr-queue'
+import {
+  buildResourceExtractionQueueTitle,
+  buildResourceExtractionStatusMessage,
+  findActiveResourceExtractionJob,
+} from '../lib/resource-extraction-queue'
 import { groupQueueJobsForPanel } from '../lib/queue-view'
 import { buildCanvasSyncCompletionResult } from '../lib/canvas-sync-queue'
 import type { QueuedJob } from '../lib/queue'
@@ -45,6 +50,20 @@ test('source OCR queue helpers format labels and page progress', () => {
   assert.equal(buildSourceOcrStatusMessage({ pagesProcessed: 8, pageCount: 51 }), 'Scanning page 8 of 51')
   assert.equal(buildSourceOcrStatusMessage({}), 'Extracting readable text from scanned PDF')
   assert.equal(calculateSourceOcrProgress(8, 51), 16)
+})
+
+test('resource extraction queue helpers format labels and dedupe active jobs by resource id', () => {
+  assert.equal(buildResourceExtractionQueueTitle('Week 4 Reading.pdf'), 'Preparing source: Week 4 Reading.pdf')
+  assert.equal(buildResourceExtractionStatusMessage({ queued: true }), 'Source is queued for readable-text preparation.')
+  assert.equal(buildResourceExtractionStatusMessage({ queued: false }), 'Preparing readable text from the source.')
+
+  const jobs = [
+    createJob({ id: 'extract-1', type: 'resource_extraction', status: 'pending', resourceId: 'resource-1' }),
+    createJob({ id: 'extract-2', type: 'resource_extraction', status: 'completed', resourceId: 'resource-2' }),
+  ]
+
+  assert.equal(findActiveResourceExtractionJob(jobs, 'resource-1')?.id, 'extract-1')
+  assert.equal(findActiveResourceExtractionJob(jobs, 'resource-2'), null)
 })
 
 test('source OCR duplicate guard finds active resource jobs only', () => {

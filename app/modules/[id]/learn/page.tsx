@@ -17,6 +17,7 @@ import { getSourceReadinessBucket, normalizeSourceReadiness } from '@/lib/source
 import { getAuthenticatedUserServer } from '@/lib/auth-server'
 import { getUserQueuedJobs, type QueuedJob } from '@/lib/queue'
 import { buildSourceOcrStatusMessage } from '@/lib/source-ocr-queue'
+import { buildResourceExtractionStatusMessage } from '@/lib/resource-extraction-queue'
 import { buildModuleDoHref, getSearchParamValue, getTaskElementId } from '@/lib/stay-focused-links'
 import { buildStudyLibraryDetailHref, type DraftShelfItem } from '@/lib/types'
 import {
@@ -58,7 +59,7 @@ export default async function LearnPage({ params, searchParams }: Props) {
   const deepLearnNotesResult = await listDeepLearnNotesForModule(module.id)
   const libraryResult = await listDraftsForShelves()
   const user = await getAuthenticatedUserServer()
-  const queuedJobs = user ? await getUserQueuedJobs(user.id, { type: ['learn_generation', 'source_ocr'], limit: 75 }) : []
+  const queuedJobs = user ? await getUserQueuedJobs(user.id, { type: ['learn_generation', 'resource_extraction', 'source_ocr'], limit: 75 }) : []
   const deepLearnNotes = deepLearnNotesResult.notes
   const deepLearnNoteByResourceId = new Map(deepLearnNotes.map((note) => [note.resourceId, note]))
   const savedLegacyDrafts = libraryResult.availability === 'available'
@@ -129,8 +130,10 @@ export default async function LearnPage({ params, searchParams }: Props) {
           canonicalSourceId: selection?.canonicalResourceId ?? null,
         })
     const queueJob = findLatestResourceJob(queuedJobs, deepLearnResourceId, material.resource.id, 'learn_generation')
+    const extractionQueueJob = findLatestResourceJob(queuedJobs, deepLearnResourceId, material.resource.id, 'resource_extraction')
     const ocrQueueJob = findLatestResourceJob(queuedJobs, deepLearnResourceId, material.resource.id, 'source_ocr')
     const queuedDeepLearn = buildDeepLearnQueueState(queueJob, Boolean(savedNote || savedLegacyDraft))
+    const queuedExtraction = buildResourceExtractionQueueState(extractionQueueJob)
     const queuedOcr = buildSourceOcrQueueState(ocrQueueJob)
     const sourceReadiness = normalizeSourceReadiness({
       resource: material.resource,
@@ -181,8 +184,8 @@ export default async function LearnPage({ params, searchParams }: Props) {
       canvasHref: getResourceCanvasHref(material.resource),
       originalFileHref: getResourceOriginalFileHref(material.resource),
       sourceReadinessState: sourceReadiness.state,
-      sourceReadinessStatusLabel: getSourceGenerationStatusLabel(sourceReadiness.statusLabel, readiness, queuedDeepLearn, queuedOcr),
-      sourceReadinessMessage: getSourceGenerationStatusMessage(sourceReadiness.message, readiness, queuedDeepLearn, queuedOcr),
+      sourceReadinessStatusLabel: getSourceGenerationStatusLabel(sourceReadiness.statusLabel, readiness, queuedExtraction, queuedDeepLearn, queuedOcr),
+      sourceReadinessMessage: getSourceGenerationStatusMessage(sourceReadiness.message, readiness, queuedExtraction, queuedDeepLearn, queuedOcr),
       sourceReadinessActions: sourceReadiness.actions,
       sourceReadinessBucket: generationBlockedReason ? 'needs_action' : getSourceReadinessBucket(sourceReadiness.state),
       pageCount: sourceReadiness.pageCount,
@@ -736,13 +739,41 @@ function buildSourceOcrQueueState(job: QueuedJob | null) {
   return null
 }
 
+function buildResourceExtractionQueueState(job: QueuedJob | null) {
+  if (!job) return null
+  if (job.status === 'pending') {
+    return {
+      status: 'queued' as const,
+      label: 'Preparing',
+      summary: buildResourceExtractionStatusMessage({ queued: true }),
+    }
+  }
+  if (job.status === 'running') {
+    return {
+      status: 'running' as const,
+      label: 'Preparing',
+      summary: buildResourceExtractionStatusMessage({ queued: false }),
+    }
+  }
+  if (job.status === 'failed') {
+    return {
+      status: 'failed' as const,
+      label: 'Could not extract enough readable text',
+      summary: job.error ?? 'Could not extract enough readable text from this source.',
+    }
+  }
+  return null
+}
+
 function getSourceGenerationStatusLabel(
   fallback: string,
   readiness: ReturnType<typeof classifyDeepLearnResourceReadiness>,
+  queuedExtraction: ReturnType<typeof buildResourceExtractionQueueState>,
   queuedDeepLearn: ReturnType<typeof buildDeepLearnQueueState>,
   queuedOcr: ReturnType<typeof buildSourceOcrQueueState>,
 ) {
   if (queuedOcr?.label) return queuedOcr.label
+  if (queuedExtraction?.label) return queuedExtraction.label
   if (queuedDeepLearn?.status === 'pending') return queuedDeepLearn.primaryLabel === 'Added to queue' ? 'Preparing' : 'Preparing'
   if (queuedDeepLearn?.status === 'failed') return 'Failed'
   if (queuedDeepLearn?.status === 'ready') return 'Ready'
@@ -754,10 +785,12 @@ function getSourceGenerationStatusLabel(
 function getSourceGenerationStatusMessage(
   fallback: string,
   readiness: ReturnType<typeof classifyDeepLearnResourceReadiness>,
+  queuedExtraction: ReturnType<typeof buildResourceExtractionQueueState>,
   queuedDeepLearn: ReturnType<typeof buildDeepLearnQueueState>,
   queuedOcr: ReturnType<typeof buildSourceOcrQueueState>,
 ) {
   if (queuedOcr?.summary) return queuedOcr.summary
+  if (queuedExtraction?.summary) return queuedExtraction.summary
   if (queuedDeepLearn?.summary) return queuedDeepLearn.summary
   if (!readiness.canGenerate && readiness.state === 'partial_text') {
     return 'This source does not have enough readable text to create a trustworthy study pack.'

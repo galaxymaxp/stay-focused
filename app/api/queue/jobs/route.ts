@@ -2,7 +2,13 @@ import { NextResponse } from 'next/server'
 import { after } from 'next/server'
 import { getAuthenticatedUserServer } from '@/lib/auth-server'
 import { cancelQueuedJob, dismissCompletedQueuedJobs, dismissQueuedJob, getUserQueuedJobs } from '@/lib/queue'
-import { applyQueueCancellationEffects, processNextPendingSourceOcrJobForUser, recoverStaleCanvasSyncJobs, recoverStaleSourceOcrJobs } from '@/actions/queue-jobs'
+import {
+  applyQueueCancellationEffects,
+  processNextPendingResourceExtractionJobForUser,
+  processNextPendingSourceOcrJobForUser,
+  recoverStaleCanvasSyncJobs,
+  recoverStaleSourceOcrJobs,
+} from '@/actions/queue-jobs'
 
 export const runtime = 'nodejs'
 
@@ -15,6 +21,7 @@ export async function GET() {
   await recoverStaleCanvasSyncJobs(user.id)
   await recoverStaleSourceOcrJobs(user.id)
   after(async () => {
+    await processNextPendingResourceExtractionJobForUser(user.id)
     await processNextPendingSourceOcrJobForUser(user.id)
   })
 
@@ -47,6 +54,7 @@ export async function PATCH(request: Request) {
     const ok = await cancelQueuedJob(user.id, body.jobId)
     after(async () => {
       if (ok) await applyQueueCancellationEffects(user.id, body.jobId as string)
+      await processNextPendingResourceExtractionJobForUser(user.id)
       await processNextPendingSourceOcrJobForUser(user.id)
     })
     return NextResponse.json({ ok }, { status: ok ? 200 : 500 })

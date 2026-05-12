@@ -41,6 +41,7 @@ import { StudyOutputSaveError } from '@/lib/study-output-errors'
 import { buildTaskOutputRequest, isTaskOutputApiResponse } from '@/lib/task-output'
 import { type PdfOcrPage, type PdfOcrResult } from '@/lib/extraction/pdf-ocr'
 import { getSourceOcrProvider } from '@/lib/extraction/source-ocr-provider'
+import { reprocessStoredModuleResource } from '@/lib/module-resource-reprocess'
 import {
   buildMergedOcrResult,
   buildMergedOcrText,
@@ -73,6 +74,13 @@ import {
   getSourceOcrJobResourceId,
 } from '@/lib/source-ocr-queue'
 import {
+  RESOURCE_EXTRACTION_JOB_TYPE,
+  buildResourceExtractionQueueTitle,
+  buildResourceExtractionStatusMessage,
+  canStartNextResourceExtractionJob,
+  findActiveResourceExtractionJob,
+} from '@/lib/resource-extraction-queue'
+import {
   DEFAULT_OCR_DAILY_COURSE_CAP,
   DEFAULT_OCR_DAILY_USER_CAP,
   DEFAULT_OPENAI_DAILY_COURSE_CAP,
@@ -82,6 +90,7 @@ import {
 } from '@/lib/external-sync-queue'
 import { canAutoRunSourceOcr, canRunManualSourceOcr, getOcrMaxPagesForProvider, getSourceOcrConfig } from '@/lib/source-ocr-config'
 import type { ModuleResource } from '@/lib/types'
+import { isProcessableReadableSource, normalizeSourceProcessingResult } from '@/lib/source-processing'
 
 export interface QueueJobResult {
   jobId: string
@@ -95,6 +104,13 @@ export interface AutoSourceOcrJobInput {
   courseId: string | null
   resource: ModuleResource
   manualRetry?: boolean
+}
+
+interface AutoResourceExtractionJobInput {
+  userId: string
+  moduleId: string
+  courseId: string | null
+  resource: ModuleResource
 }
 
 // ---------------------------------------------------------------------------
@@ -394,6 +410,82 @@ export async function autoEnqueueSourceOcrJobs(input: {
   return jobs
 }
 
+export async function queueResourceExtractionJobs(input: {
+  userId: string
+  moduleId: string
+  courseId: string | null
+  resources: ModuleResource[]
+}): Promise<QueuedJob[]> {
+  const candidates = input.resources.filter(shouldQueueResourceExtraction)
+  if (candidates.length === 0) return []
+
+  const supabase = createSupabaseServiceRoleClient()
+  if (!supabase) {
+    console.error('[resource-extraction] service role client unavailable', {
+      userId: input.userId,
+      moduleId: input.moduleId,
+      candidateCount: candidates.length,
+    })
+    return []
+  }
+
+  const { data: existingRows, error: existingError } = await supabase
+    .from('queued_jobs')
+    .select('*')
+    .eq('user_id', input.userId)
+    .eq('type', RESOURCE_EXTRACTION_JOB_TYPE)
+    .order('created_at', { ascending: false })
+    .limit(150)
+
+  if (existingError) {
+    console.error('[resource-extraction] queued_jobs lookup failed', {
+      userId: input.userId,
+      moduleId: input.moduleId,
+      code: getErrorField(existingError, 'code'),
+      message: getErrorField(existingError, 'message'),
+    })
+    return []
+  }
+
+  const existingJobs = ((existingRows ?? []) as Record<string, unknown>[]).map(rowToQueuedJobForAutoOcr)
+  const jobs: QueuedJob[] = []
+
+  for (const resource of candidates) {
+    if (findActiveResourceExtractionJob(existingJobs, resource.id)) {
+      continue
+    }
+
+    const job = await createResourceExtractionQueueJob({
+      userId: input.userId,
+      moduleId: input.moduleId,
+      courseId: input.courseId ?? resource.courseId ?? null,
+      resource,
+      useServiceRole: true,
+    })
+
+    if (!job) continue
+
+    const { error: updateError } = await supabase
+      .from('module_resources')
+      .update(buildResourceExtractionQueuedUpdate(resource, new Date().toISOString()))
+      .eq('id', resource.id)
+
+    if (updateError) {
+      console.error('[resource-extraction] resource queued-state update failed', {
+        resourceId: resource.id,
+        jobId: job.id,
+        code: getErrorField(updateError, 'code'),
+        message: getErrorField(updateError, 'message'),
+      })
+    }
+
+    jobs.push(job)
+    existingJobs.unshift(job)
+  }
+
+  return jobs
+}
+
 // ---------------------------------------------------------------------------
 // Stale-running source_ocr recovery
 // ---------------------------------------------------------------------------
@@ -566,9 +658,80 @@ export async function processNextPendingSourceOcrJobForUser(userId: string): Pro
   })
 }
 
+export async function processNextPendingResourceExtractionJobForUser(userId: string): Promise<void> {
+  const supabase = createSupabaseServiceRoleClient()
+  if (!supabase) return
+
+  const { data: runningRows } = await supabase
+    .from('queued_jobs')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('type', RESOURCE_EXTRACTION_JOB_TYPE)
+    .eq('status', 'running')
+    .limit(1)
+  const runningJobs = ((runningRows ?? []) as Record<string, unknown>[]).map(rowToQueuedJobForAutoOcr)
+  if (!canStartNextResourceExtractionJob(runningJobs)) return
+
+  const { data, error } = await supabase
+    .from('queued_jobs')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('type', RESOURCE_EXTRACTION_JOB_TYPE)
+    .eq('status', 'pending')
+    .order('created_at', { ascending: true })
+    .limit(1)
+
+  if (error || !data || data.length === 0) return
+  const job = rowToQueuedJobForAutoOcr((data as Record<string, unknown>[])[0])
+  const resourceId = getStringFromJobField(job, 'resourceId')
+  const moduleId = getStringFromJobField(job, 'moduleId')
+  if (!resourceId || !moduleId) return
+
+  await processResourceExtractionJob({
+    jobId: job.id,
+    userId,
+    moduleId,
+    resourceId,
+    courseId: getStringFromJobField(job, 'courseId'),
+    resourceTitle: getStringFromJobField(job, 'resourceTitle') ?? 'Study source',
+  })
+}
+
 export async function applyQueueCancellationEffects(userId: string, jobId: string): Promise<void> {
   const job = await getQueuedJobById(jobId)
   if (!job || job.userId !== userId) return
+
+  if (job.type === RESOURCE_EXTRACTION_JOB_TYPE) {
+    const resourceId = getStringFromJobField(job, 'resourceId')
+    if (!resourceId) return
+    const supabase = createSupabaseServiceRoleClient()
+    if (!supabase) return
+
+    const { data } = await supabase
+      .from('module_resources')
+      .select('*')
+      .eq('id', resourceId)
+      .eq('user_id', userId)
+      .maybeSingle()
+
+    if (!data) return
+    const resource = adaptModuleResourceRow(data as Record<string, unknown>)
+    if (resource.extractionStatus === 'processing') {
+      await supabase
+        .from('module_resources')
+        .update({
+          extraction_status: 'pending',
+          extraction_error: 'Source preparation was canceled.',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', resourceId)
+        .eq('user_id', userId)
+    }
+
+    const moduleId = getStringFromJobField(job, 'moduleId') ?? resource.moduleId
+    revalidateLearnQueuePaths(moduleId, resource.courseId ?? null, resourceId)
+    return
+  }
 
   if (job.type === 'source_ocr') {
     const resourceId = getSourceOcrJobResourceId(job)
@@ -1432,6 +1595,19 @@ async function createSourceOcrQueueJob(input: AutoSourceOcrJobInput & { useServi
     : createQueuedJob(input.userId, 'source_ocr', buildSourceOcrQueueTitle(input.resource.title), payload)
 }
 
+async function createResourceExtractionQueueJob(input: AutoResourceExtractionJobInput & { useServiceRole: boolean }) {
+  const payload = {
+    moduleId: input.moduleId,
+    resourceId: input.resource.id,
+    courseId: input.courseId ?? input.resource.courseId ?? null,
+    resourceTitle: input.resource.title,
+  }
+
+  return input.useServiceRole
+    ? createQueuedJobAsService(input.userId, RESOURCE_EXTRACTION_JOB_TYPE, buildResourceExtractionQueueTitle(input.resource.title), payload)
+    : createQueuedJob(input.userId, RESOURCE_EXTRACTION_JOB_TYPE, buildResourceExtractionQueueTitle(input.resource.title), payload)
+}
+
 function rowToQueuedJobForAutoOcr(row: Record<string, unknown>): QueuedJob {
   return {
     id: row.id as string,
@@ -1501,6 +1677,208 @@ function buildAutoOcrDiagnosticBase(resource: ModuleResource) {
     ocrQueueJobStatus: null,
     readinessResult: readiness.state,
     readinessCanGenerate: readiness.canGenerate,
+  }
+}
+
+function shouldQueueResourceExtraction(resource: ModuleResource) {
+  if (!isProcessableReadableSource(resource)) return false
+  if (resource.extractionStatus === 'completed' || resource.extractionStatus === 'extracted' || resource.extractionStatus === 'unsupported') {
+    return false
+  }
+  if (resource.extractionStatus === 'processing') return false
+  if (resource.visualExtractionStatus === 'queued' || resource.visualExtractionStatus === 'running') return false
+  return true
+}
+
+function buildResourceExtractionQueuedUpdate(resource: ModuleResource, now: string) {
+  return {
+    extraction_status: resource.extractionStatus === 'completed' || resource.extractionStatus === 'extracted'
+      ? resource.extractionStatus
+      : 'pending',
+    extraction_error: 'Source is queued for readable-text preparation.',
+    updated_at: now,
+  }
+}
+
+async function processResourceExtractionJob(input: {
+  jobId: string
+  userId: string
+  moduleId: string
+  resourceId: string
+  courseId: string | null
+  resourceTitle: string
+}) {
+  const started = await markQueuedJobRunning(input.jobId, 8)
+  if (!started) return
+
+  const supabase = createSupabaseServiceRoleClient()
+  if (!supabase) {
+    await markQueuedJobFailed(input.jobId, 'Database connection is unavailable.')
+    return
+  }
+  const supabaseClient = supabase
+
+  async function cancel(resource: ModuleResource | null) {
+    if (!await isQueuedJobCancelled(input.jobId)) return false
+    await markQueuedJobCancelled(input.jobId)
+    if (resource) {
+      await supabaseClient
+        .from('module_resources')
+        .update({
+          extraction_status: 'pending',
+          extraction_error: 'Source preparation was canceled.',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', resource.id)
+      revalidateLearnQueuePaths(input.moduleId, input.courseId, resource.id)
+    }
+    return true
+  }
+
+  let resource: ModuleResource | null = null
+
+  try {
+    resource = await getOwnedModuleResource(supabaseClient, input.resourceId, input.userId)
+    if (!resource) {
+      await markQueuedJobFailed(input.jobId, 'You do not have access to this source.')
+      return
+    }
+
+    if (!shouldQueueResourceExtraction(resource)) {
+      await markQueuedJobCompleted(input.jobId, {
+        resourceId: resource.id,
+        moduleId: input.moduleId,
+        resourceTitle: resource.title,
+        statusMessage: 'Readable text is already available.',
+        href: `/modules/${input.moduleId}/learn?resource=${encodeURIComponent(resource.id)}`,
+      })
+      return
+    }
+
+    if (await cancel(resource)) return
+
+    await supabaseClient
+      .from('module_resources')
+      .update({
+        extraction_status: 'processing',
+        extraction_error: 'Preparing readable text from the source.',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', resource.id)
+
+    await updateQueuedJobStatus(input.jobId, 'running', {
+      progress: 18,
+      result: {
+        resourceId: resource.id,
+        moduleId: input.moduleId,
+        resourceTitle: resource.title,
+        statusMessage: buildResourceExtractionStatusMessage({ queued: false }),
+      },
+    })
+    revalidateLearnQueuePaths(input.moduleId, input.courseId, resource.id)
+
+    if (await cancel(resource)) return
+
+    const result = await reprocessStoredModuleResource(resource, { triggeredBy: 'learn' })
+    const normalized = normalizeSourceProcessingResult({
+      resource,
+      extractionStatus: result.update.extractionStatus,
+      extractedText: result.update.extractedText,
+      extractedTextPreview: result.update.extractedTextPreview,
+      extractedCharCount: result.update.extractedCharCount,
+      extractionError: result.update.extractionError,
+      metadata: result.update.metadata,
+    })
+
+    const updatePayload = {
+      extraction_status: normalized.extractionStatus,
+      extracted_text: normalized.extractedText,
+      extracted_text_preview: normalized.extractedTextPreview,
+      extracted_char_count: normalized.extractedCharCount,
+      extraction_error: normalized.extractionError,
+      visual_extraction_status: result.update.visualExtractionStatus,
+      visual_extracted_text: result.update.visualExtractedText,
+      visual_extraction_error: result.update.visualExtractionError,
+      page_count: result.update.pageCount,
+      pages_processed: result.update.pagesProcessed,
+      extraction_provider: result.update.extractionProvider,
+      metadata: normalized.metadata,
+      updated_at: new Date().toISOString(),
+    }
+
+    const { error: updateError, data: updatedRow } = await supabaseClient
+      .from('module_resources')
+      .update(updatePayload)
+      .eq('id', resource.id)
+      .select('*')
+      .single()
+
+    if (updateError || !updatedRow) {
+      throw new Error(updateError?.message ?? 'Failed to persist prepared source.')
+    }
+
+    const updatedResource = adaptModuleResourceRow(updatedRow as Record<string, unknown>)
+    if (await cancel(updatedResource)) return
+
+    if (normalized.outcome === 'ready') {
+      await markQueuedJobCompleted(input.jobId, {
+        resourceId: updatedResource.id,
+        moduleId: input.moduleId,
+        resourceTitle: updatedResource.title,
+        charCount: normalized.extractedCharCount,
+        statusMessage: 'Readable text is ready.',
+        href: `/modules/${input.moduleId}/learn?resource=${encodeURIComponent(updatedResource.id)}`,
+      })
+      revalidateLearnQueuePaths(input.moduleId, input.courseId, updatedResource.id)
+      return
+    }
+
+    const queuedOcrJobs = result.update.visualExtractionStatus === 'available'
+      ? await autoEnqueueSourceOcrJobs({
+          userId: input.userId,
+          moduleId: input.moduleId,
+          courseId: input.courseId ?? updatedResource.courseId ?? null,
+          resources: [updatedResource],
+        })
+      : []
+
+    if (queuedOcrJobs.length > 0) {
+      await markQueuedJobCompleted(input.jobId, {
+        resourceId: updatedResource.id,
+        moduleId: input.moduleId,
+        resourceTitle: updatedResource.title,
+        queuedOcrJobIds: queuedOcrJobs.map((job) => job.id),
+        statusMessage: 'Source prepared. Scanning image-based PDF next.',
+        href: `/modules/${input.moduleId}/learn?resource=${encodeURIComponent(updatedResource.id)}`,
+      })
+      revalidateLearnQueuePaths(input.moduleId, input.courseId, updatedResource.id)
+      await processNextPendingSourceOcrJobForUser(input.userId)
+      return
+    }
+
+    const failureMessage = normalized.extractionError?.trim()
+      || (result.update.visualExtractionStatus === 'available'
+        ? 'This PDF needs visual text extraction before Deep Learn.'
+        : 'Could not extract enough readable text from this source.')
+    await markQueuedJobFailed(input.jobId, failureMessage)
+    revalidateLearnQueuePaths(input.moduleId, input.courseId, updatedResource.id)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Source preparation failed.'
+    console.error('[queue-jobs] processResourceExtractionJob failed', { jobId: input.jobId, message })
+    await markQueuedJobFailed(input.jobId, message)
+    if (resource) {
+      await supabaseClient
+        .from('module_resources')
+        .update({
+          extraction_status: 'failed',
+          extraction_error: message,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', resource.id)
+      revalidateLearnQueuePaths(input.moduleId, input.courseId, resource.id)
+    }
+  } finally {
+    await processNextPendingResourceExtractionJobForUser(input.userId)
   }
 }
 

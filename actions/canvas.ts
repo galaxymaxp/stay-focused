@@ -63,7 +63,7 @@ import {
 } from '@/lib/source-repair'
 import { generateSummariesForSyncedModule } from '@/lib/source-summaries'
 import { populateModuleTerms } from '@/actions/module-terms'
-import { autoEnqueueSourceOcrJobs } from '@/actions/queue-jobs'
+import { autoEnqueueSourceOcrJobs, queueResourceExtractionJobs } from '@/actions/queue-jobs'
 import { adaptModuleResourceRow } from '@/lib/module-resource-row'
 import { classifyModuleResourceTextQuality } from '@/lib/extracted-text-quality'
 import { DEFAULT_EXTERNAL_CANVAS_FETCH_TIMEOUT_MS, EXTERNAL_CANVAS_SYNC_MODE, getPositiveIntegerEnv } from '@/lib/external-sync-queue'
@@ -539,6 +539,7 @@ export async function refreshCanvasModuleResourceMetadataForCourse(input: {
   let resourcesInserted = 0
   let resourcesUpdated = 0
   let skipped = 0
+  const resourcesNeedingPreparation: ModuleResource[] = []
 
   for (const resource of resources) {
     const existing = (
@@ -550,7 +551,7 @@ export async function refreshCanvasModuleResourceMetadataForCourse(input: {
     const prepared = prepareCanvasResourceRefreshRow(resource, existing ? toExistingCanvasResourceSnapshot(existing) : null)
 
     if (!existing) {
-      const { error: insertError } = await supabase
+      const { data: insertedRow, error: insertError } = await supabase
         .from('module_resources')
         .insert({
           user_id: input.userId,
@@ -558,10 +559,19 @@ export async function refreshCanvasModuleResourceMetadataForCourse(input: {
           course_id: input.courseId,
           ...prepared.row,
         })
+        .select('*')
+        .single()
 
       if (insertError) {
         warnings.push(`${input.courseName}: failed to insert ${resource.title}.`)
         continue
+      }
+
+      if (insertedRow) {
+        const insertedResource = adaptModuleResourceRow(insertedRow as Record<string, unknown>)
+        if (shouldQueueRefreshedResourcePreparation(insertedResource)) {
+          resourcesNeedingPreparation.push(insertedResource)
+        }
       }
 
       resourcesInserted += 1
@@ -573,7 +583,7 @@ export async function refreshCanvasModuleResourceMetadataForCourse(input: {
       continue
     }
 
-    const { error: updateError } = await supabase
+    const { data: updatedRow, error: updateError } = await supabase
       .from('module_resources')
       .update({
         ...prepared.row,
@@ -581,13 +591,41 @@ export async function refreshCanvasModuleResourceMetadataForCourse(input: {
       })
       .eq('id', existing.id)
       .eq('user_id', input.userId)
+      .select('*')
+      .single()
 
     if (updateError) {
       warnings.push(`${input.courseName}: failed to update ${resource.title}.`)
       continue
     }
 
+    if (updatedRow) {
+      const updatedResource = adaptModuleResourceRow(updatedRow as Record<string, unknown>)
+      if (shouldQueueRefreshedResourcePreparation(updatedResource)) {
+        resourcesNeedingPreparation.push(updatedResource)
+      }
+    }
+
     resourcesUpdated += 1
+  }
+
+  if (resourcesNeedingPreparation.length > 0) {
+    try {
+      await queueResourceExtractionJobs({
+        userId: input.userId,
+        moduleId: existingModule.id,
+        courseId: input.courseId,
+        resources: resourcesNeedingPreparation,
+      })
+    } catch (error) {
+      warnings.push(`${input.courseName}: failed to queue refreshed resource preparation.`)
+      console.error('[resource-refresh] queue preparation failed', {
+        userId: input.userId,
+        courseId: input.courseId,
+        moduleId: existingModule.id,
+        message: error instanceof Error ? error.message : String(error),
+      })
+    }
   }
 
   return {
@@ -1780,6 +1818,18 @@ function buildLightweightModuleResourcesForRefresh(input: {
   }
 
   return { resources, moduleItemsChecked }
+}
+
+function shouldQueueRefreshedResourcePreparation(resource: ModuleResource) {
+  if (resource.extractionStatus === 'completed' || resource.extractionStatus === 'extracted' || resource.extractionStatus === 'unsupported') {
+    return false
+  }
+
+  if (!resource.sourceUrl && !resource.htmlUrl) {
+    return false
+  }
+
+  return true
 }
 
 function buildSyncedTaskDrafts(

@@ -6,6 +6,7 @@ import { ListTodo, X, CheckCircle, XCircle, Loader2, Clock, RefreshCw, AlertCirc
 import { cn } from '@/lib/cn'
 import type { QueuedJob, QueuedJobStatus } from '@/lib/queue'
 import { groupQueueJobsForPanel } from '@/lib/queue-view'
+import { RESOURCE_EXTRACTION_JOB_TYPE, buildResourceExtractionStatusMessage } from '@/lib/resource-extraction-queue'
 import { buildSourceOcrStatusMessage, SOURCE_OCR_JOB_TYPE } from '@/lib/source-ocr-queue'
 
 const PILL_BASE = 'queue-panel-pill relative isolate inline-flex items-center gap-1.5 h-8 rounded-full px-3 overflow-hidden transition-colors hover:opacity-90'
@@ -507,6 +508,9 @@ function formatQueueTitle(job: QueuedJob) {
   if (job.type === SOURCE_OCR_JOB_TYPE) {
     return cleanJobTitle(job.title)
   }
+  if (job.type === RESOURCE_EXTRACTION_JOB_TYPE) {
+    return cleanJobTitle(job.title)
+  }
   return cleanJobTitle(job.title)
 }
 
@@ -590,6 +594,9 @@ function getActiveStatus(job: QueuedJob, progress: number) {
       queued: job.status === 'pending',
     })
   }
+  if (job.type === RESOURCE_EXTRACTION_JOB_TYPE) {
+    return buildResourceExtractionStatusMessage({ queued: job.status === 'pending' })
+  }
   if (job.type === 'task_output' || job.type === 'do_generation') {
     if (progress < 30) return 'Reading task details'
     if (progress < 80) return 'Drafting the first output'
@@ -605,6 +612,7 @@ function getActiveStatus(job: QueuedJob, progress: number) {
 function getCompletedTitle(job: QueuedJob) {
   if (job.type === 'canvas_sync') return 'Canvas sync complete'
   if (job.type === SOURCE_OCR_JOB_TYPE) return 'Scanned PDF prepared'
+  if (job.type === RESOURCE_EXTRACTION_JOB_TYPE) return 'Source prepared'
   if (job.type === 'learn_generation') return 'Study pack ready'
   if (job.type === 'task_output' || job.type === 'do_generation') return 'Task output ready'
   return 'Job complete'
@@ -613,6 +621,7 @@ function getCompletedTitle(job: QueuedJob) {
 function getFailedTitle(job: QueuedJob) {
   if (job.type === 'canvas_sync') return 'Canvas sync failed'
   if (job.type === SOURCE_OCR_JOB_TYPE) return 'Scanned PDF preparation failed'
+  if (job.type === RESOURCE_EXTRACTION_JOB_TYPE) return 'Source preparation failed'
   if (job.type === 'learn_generation') return 'Study pack failed'
   if (job.type === 'task_output' || job.type === 'do_generation') return 'Task output failed'
   return `Failed: ${getJobSourceName(job)}`
@@ -621,6 +630,7 @@ function getFailedTitle(job: QueuedJob) {
 function getCanceledTitle(job: QueuedJob) {
   if (job.type === 'canvas_sync') return 'Canvas sync canceled'
   if (job.type === SOURCE_OCR_JOB_TYPE) return 'Scanning canceled'
+  if (job.type === RESOURCE_EXTRACTION_JOB_TYPE) return 'Preparation canceled'
   if (job.type === 'learn_generation') return 'Study pack canceled'
   if (job.type === 'task_output' || job.type === 'do_generation') return 'Task output canceled'
   return 'Job canceled'
@@ -629,8 +639,10 @@ function getCanceledTitle(job: QueuedJob) {
 function getQueuePillLabel(activeJobs: QueuedJob[], runningCount: number, activeCount: number) {
   const canvasCount = activeJobs.filter((job) => job.type === 'canvas_sync').length
   const ocrCount = activeJobs.filter((job) => job.type === SOURCE_OCR_JOB_TYPE).length
+  const extractionCount = activeJobs.filter((job) => job.type === RESOURCE_EXTRACTION_JOB_TYPE).length
   if (canvasCount === activeCount) return `Syncing ${activeCount}`
   if (ocrCount === activeCount) return `Scanning ${activeCount}`
+  if (extractionCount === activeCount) return `Preparing ${activeCount}`
   if (runningCount > 0) return `Processing ${activeCount}`
   return `Queue: ${activeCount}`
 }

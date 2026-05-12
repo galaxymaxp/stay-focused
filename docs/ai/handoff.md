@@ -5,6 +5,78 @@ Last Updated: 2026-05-12
 
 ---
 
+## Session Update - 2026-05-12 (Queue refreshed resources for extraction)
+
+### What changed
+
+- Added a real background `resource_extraction` queue path for refreshed Canvas resources.
+- Updated `refreshCanvasModuleResourceMetadataForCourse` so newly inserted or changed `module_resources` rows from `/api/cron/resource-refresh` are queued for readable-text preparation when they still need processing.
+- Kept cron lightweight: the refresh route still only discovers, updates, and queues work. It does not run heavy extraction, OCR, or Deep Learn inline.
+- Added `lib/resource-extraction-queue.ts` for resource-extraction queue titles, status copy, and duplicate detection helpers.
+- Extended `actions/queue-jobs.ts` with:
+  - `queueResourceExtractionJobs`
+  - `processNextPendingResourceExtractionJobForUser`
+  - `processResourceExtractionJob`
+- The new extraction worker:
+  - reprocesses queued readable sources in the background
+  - persists normalized extraction results safely
+  - auto-queues `source_ocr` only after the refreshed source proves to be image-only / scanned
+  - avoids duplicate `resource_extraction` jobs for the same resource
+- Updated `/api/queue/jobs` background polling so signed-in queue activity can start pending `resource_extraction` jobs before OCR jobs.
+- Updated Learn queue/status presentation so queued extraction work appears as `Preparing`, OCR continues to appear as `Scanning` / `OCR queued`, and extraction failures surface the student-facing `Could not extract enough readable text` state.
+- Updated queue tests to cover the new `resource_extraction` queue helper behavior.
+
+### Files touched
+
+- `actions/canvas.ts`
+- `actions/queue-jobs.ts`
+- `app/api/queue/jobs/route.ts`
+- `app/modules/[id]/learn/page.tsx`
+- `components/shell/QueuePanel.tsx`
+- `lib/resource-extraction-queue.ts`
+- `tests/queue.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+`/api/cron/resource-refresh` was discovering new and changed Canvas resources correctly, but those rows could stay stuck as metadata-only unless a heavier manual sync or manual source action happened later. This left refreshed PDFs without a reliable preparation path and made Study Queue / Learn states less honest. The new queue path closes that gap without violating the cron constraint: refresh discovers and queues, while extraction and OCR happen later through the existing background queue flow.
+
+### Tests run
+
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- canvas-resource-refresh canvas-content-resolution module-resource-resolution queue learn-resource-ui source-ocr-updates` - passed
+
+### Verification result
+
+- Refreshed resources that still need readable-text preparation now enter a background queue path instead of remaining metadata-only indefinitely.
+- Existing good extracted/OCR text is still preserved when Canvas file identity is unchanged.
+- File-identity changes still reset only the extraction/OCR fields that must be reset.
+- OCR remains out of the cron route and is only queued after background extraction determines it is needed.
+- Learn and Queue surfaces now have a dedicated `Preparing` state for queued extraction work.
+
+### Known risks
+
+- `resource_extraction` jobs created by cron are started by the normal signed-in queue polling path; this phase does not add a separate always-on worker for those jobs outside the existing app-driven queue flow.
+- Very large refresh batches could still create many pending extraction jobs over time, although the cron route remains bounded and duplicate guards are in place.
+- The resource detail page still relies primarily on stored extraction state and does not yet show the same queue-aware `Preparing` overlay as the main Learn list.
+
+### Blockers
+
+None.
+
+### Next recommended step
+
+Phase 2: harden `/api/cron/resource-refresh` batching and course prioritization so large or concluded Canvas courses do not dominate refresh time near end-of-term.
+
+### Suggested commit message
+
+```bash
+queue refreshed resources for extraction
+```
+
+---
+
 ## Session Update - 2026-05-12 (Fix resource refresh courses query ordering)
 
 ### What changed
