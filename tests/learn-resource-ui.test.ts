@@ -165,6 +165,22 @@ test('image-only PDFs without an active OCR job do not show preparing', () => {
   assert.equal(state.summary, 'This PDF needs visual text extraction before Deep Learn.')
 })
 
+test('active resource preparation jobs show preparing before OCR is needed', () => {
+  const state = getLearnResourceUiState(createResource({
+    extractionStatus: 'pending',
+    extractedText: null,
+    extractedTextPreview: null,
+    previewState: 'no_text_available',
+  }), {
+    hasOriginalFile: true,
+    activeResourceExtractionJobStatus: 'running',
+  })
+
+  assert.equal(state.statusKey, 'loading')
+  assert.equal(state.statusLabel, 'Preparing')
+  assert.equal(state.summary, 'Preparing readable text from this source.')
+})
+
 test('queued OCR shows queued copy only when an active OCR job exists', () => {
   const state = getLearnResourceUiState(createResource({
     extractionStatus: 'empty',

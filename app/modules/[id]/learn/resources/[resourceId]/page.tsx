@@ -5,12 +5,14 @@ import { DeepLearnNoteView } from '@/components/DeepLearnNoteView'
 import { ModuleLensShell } from '@/components/ModuleLensShell'
 import { StudyFileReader } from '@/components/StudyFileReader'
 import { StudyModeSwitcher } from '@/components/StudyModeSwitcher'
+import { getAuthenticatedUserServer } from '@/lib/auth-server'
 import { classifyDeepLearnResourceReadiness } from '@/lib/deep-learn-readiness'
 import { getDeepLearnNoteForResource } from '@/lib/deep-learn-store'
 import { getLearnResourceUiState } from '@/lib/learn-resource-ui'
 import { buildManualCopyBundle } from '@/lib/manual-copy-bundle'
 import { formatNormalizedModuleResourceSourceType, getModuleResourceCapabilityInfo } from '@/lib/module-resource-capability'
 import { getModuleResourceQualityInfo } from '@/lib/module-resource-quality'
+import { getUserQueuedJobs, type QueuedJob } from '@/lib/queue'
 import { buildModuleInspectHref } from '@/lib/stay-focused-links'
 import { getLearnResourceKindLabel } from '@/lib/study-resource'
 import {
@@ -50,9 +52,26 @@ export default async function ResourceDetailPage({ params }: Props) {
 
   const canvasHref = getResourceCanvasHref(resource)
   const originalFileHref = getResourceOriginalFileHref(resource)
+  const user = await getAuthenticatedUserServer()
+  const queuedJobs = user
+    ? await getUserQueuedJobs(user.id, { type: ['resource_extraction', 'source_ocr'], limit: 40 })
+    : []
+  const queueResourceId = resourceSelection?.canonicalResourceId ?? resource.id
+  const extractionQueueJob = findLatestResourceJob(queuedJobs, queueResourceId, resource.id, 'resource_extraction')
+  const ocrQueueJob = findLatestResourceJob(queuedJobs, queueResourceId, resource.id, 'source_ocr')
   const uiState = getLearnResourceUiState(resource, {
     hasOriginalFile: Boolean(originalFileHref),
     hasCanvasLink: Boolean(canvasHref),
+    activeResourceExtractionJobStatus: extractionQueueJob?.status === 'pending'
+      ? 'pending'
+      : extractionQueueJob?.status === 'running'
+        ? 'running'
+        : null,
+    activeSourceOcrJobStatus: ocrQueueJob?.status === 'pending'
+      ? 'pending'
+      : ocrQueueJob?.status === 'running'
+        ? 'running'
+        : null,
   })
   const sourceHref = originalFileHref ?? canvasHref
   const showSourceAsPrimary = uiState.primaryAction === 'source' && Boolean(sourceHref)
@@ -391,4 +410,16 @@ function matchesByTitle(left: string, right: string) {
   return normalizedLeft === normalizedRight
     || normalizedLeft.includes(normalizedRight)
     || normalizedRight.includes(normalizedLeft)
+}
+
+function findLatestResourceJob(jobs: QueuedJob[], canonicalResourceId: string | null, displayResourceId: string, type: QueuedJob['type']) {
+  return jobs.find((job) => {
+    if (job.type !== type) return false
+    const payloadResourceId = typeof job.payload?.resourceId === 'string' ? job.payload.resourceId : null
+    const resultResourceId = typeof job.result?.resourceId === 'string' ? job.result.resourceId : null
+    return payloadResourceId === canonicalResourceId
+      || payloadResourceId === displayResourceId
+      || resultResourceId === canonicalResourceId
+      || resultResourceId === displayResourceId
+  }) ?? null
 }

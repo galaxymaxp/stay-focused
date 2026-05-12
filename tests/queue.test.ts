@@ -31,6 +31,7 @@ import {
   buildResourceExtractionQueueTitle,
   buildResourceExtractionStatusMessage,
   findActiveResourceExtractionJob,
+  findNextPendingResourceExtractionJob,
 } from '../lib/resource-extraction-queue'
 import { groupQueueJobsForPanel } from '../lib/queue-view'
 import { buildCanvasSyncCompletionResult } from '../lib/canvas-sync-queue'
@@ -64,6 +65,7 @@ test('resource extraction queue helpers format labels and dedupe active jobs by 
 
   assert.equal(findActiveResourceExtractionJob(jobs, 'resource-1')?.id, 'extract-1')
   assert.equal(findActiveResourceExtractionJob(jobs, 'resource-2'), null)
+  assert.equal(findNextPendingResourceExtractionJob(jobs)?.id, 'extract-1')
 })
 
 test('source OCR duplicate guard finds active resource jobs only', () => {

@@ -1,7 +1,96 @@
 # Stay Focused — AI Session Handoff
 
 Author: galaxymaxp omgraythekid@gmail.com
-Last Updated: 2026-05-12
+Last Updated: 2026-05-13
+
+---
+
+## Session Update - 2026-05-13 (Harden refreshed resource queue processing)
+
+### What changed
+
+- Added a bounded automatic `resource_extraction` worker path so refreshed Canvas resources can start processing without depending only on signed-in queue polling.
+- Extended `actions/queue-jobs.ts` with `processPendingResourceExtractionJobs(limit)` and refactored the single-job extraction processor so cron-safe callers can:
+  - process only a small bounded batch
+  - avoid per-user self-chaining
+  - queue OCR when needed without auto-draining OCR inline
+- Kept the signed-in queue polling behavior intact for normal in-app queue progress.
+- Updated `/api/cron/resource-refresh` so it now:
+  - prioritizes currently active Canvas courses ahead of older local synced courses
+  - scans a bounded local course candidate pool before slicing down to the per-run course limit
+  - skips recently refreshed courses with a single batched lookup instead of repeated per-course checks
+  - kicks off a tiny post-refresh background preparation pass through the new bounded worker
+- Updated `/api/cron/hourly` to reuse the new bounded `resource_extraction` worker as a daily safety net and return `resourcePreparation` stats:
+  - `jobsChecked`
+  - `jobsStarted`
+  - `jobsCompleted`
+  - `jobsFailed`
+  - `jobsSkipped`
+  - `warnings`
+- Added `lib/resource-refresh-priority.ts` to centralize bounded candidate-limit and active-course prioritization helpers for resource refresh.
+- Made the Learn resource detail page queue-aware so it now matches the Learn list for source preparation states:
+  - `Preparing` for active `resource_extraction`
+  - `Scanning` / OCR states for `source_ocr`
+  - `Ready` only when meaningful readable text exists
+  - `Could not extract enough readable text` when preparation finishes without usable academic text
+- Added tests for:
+  - resource refresh course prioritization and candidate bounding
+  - resource extraction queue pending selection helper
+  - queue-aware `Preparing` resource UI state
+
+### Files touched
+
+- `actions/queue-jobs.ts`
+- `app/api/cron/hourly/route.ts`
+- `app/api/cron/resource-refresh/route.ts`
+- `app/modules/[id]/learn/resources/[resourceId]/page.tsx`
+- `lib/learn-resource-ui.ts`
+- `lib/resource-extraction-queue.ts`
+- `lib/resource-refresh-priority.ts`
+- `tests/canvas-resource-refresh.test.ts`
+- `tests/learn-resource-ui.test.ts`
+- `tests/queue.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Phase 1 closed the discovery-to-queue gap, but refreshed `resource_extraction` jobs could still sit idle until a student opened the app, and large local course lists could still waste refresh time on older courses before current ones. This phase hardens the post-refresh path without making `/api/cron/resource-refresh` heavy: refresh still discovers, updates, and queues, while a separate bounded worker starts a few preparation jobs safely and leaves OCR as queued follow-up work when needed.
+
+### Tests run
+
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- canvas-resource-refresh canvas-content-resolution module-resource-resolution queue learn-resource-ui source-ocr-updates` - passed
+- `npm test -- pdf-extractor source-ocr-updates deep-learn-readiness deep-learn-generation canvas-content-resolution learn-resource-ui queue` - passed
+
+### Verification result
+
+- Refreshed `resource_extraction` jobs now have an automatic bounded processing path outside signed-in queue polling.
+- `/api/cron/resource-refresh` remains lightweight: it still does discovery, metadata updates, and queueing only.
+- OCR is only queued when the prepared source still resolves as scanned / image-only; the new cron-safe worker does not auto-drain OCR inline.
+- Current active Canvas courses are prioritized ahead of older local synced courses during refresh selection.
+- Recently refreshed courses are skipped through a single batched freshness lookup.
+- Learn list and resource detail page now agree on `Preparing` vs `Scanning` queue states.
+
+### Known risks
+
+- The new automatic safety net currently runs from the post-refresh background hook plus the existing daily `/api/cron/hourly` route; there is still no separate high-frequency dedicated cron schedule just for resource preparation.
+- Active-course prioritization depends on a bounded Canvas course-list fetch per user; if that lookup fails, refresh falls back to local course order with a warning.
+- Large active courses are now better prioritized, but very large individual courses can still consume their per-course module/item budget within one refresh pass.
+
+### Blockers
+
+None.
+
+### Next recommended step
+
+Phase 3: harden Deep Learn source readiness and generation gating so only meaningful academic text from the selected resource can unlock study-pack generation after extraction/OCR changes.
+
+### Suggested commit message
+
+```bash
+harden refreshed resource queue processing
+```
 
 ---
 

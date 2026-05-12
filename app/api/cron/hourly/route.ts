@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from 'next/server'
+import { processPendingResourceExtractionJobs } from '@/actions/queue-jobs'
 import { createNotification, deduplicateNotification } from '@/lib/notifications-server'
 import { createSupabaseServiceRoleClient } from '@/lib/supabase-service'
 import { sendDeadlineReminderEmails } from '@/lib/deadline-reminders'
@@ -23,6 +24,13 @@ function validateCronSecret(req: NextRequest): boolean {
 
 // Vercel Hobby cron runs once daily. This is a cleanup and notification
 // safety net; normal queue progress is handled by app logic.
+
+function getPositiveIntegerEnv(name: string, fallback: number) {
+  const raw = process.env[name]?.trim()
+  if (!raw) return fallback
+  const parsed = Number.parseInt(raw, 10)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
+}
 
 async function scanDueSoon(): Promise<number> {
   const client = createSupabaseServiceRoleClient()
@@ -184,12 +192,22 @@ export async function GET(req: NextRequest) {
   const [dueSoon, deadlineReminders, announcements, stuckJobs] = results.map((r) =>
     r.status === 'fulfilled' ? r.value : 0,
   )
+  const resourcePreparation = await processPendingResourceExtractionJobs(
+    getPositiveIntegerEnv('RESOURCE_EXTRACTION_HOURLY_JOB_LIMIT', 2),
+  )
 
-  console.info('[cron/hourly] daily scan complete', { dueSoon, deadlineReminders, announcements, stuckJobs })
+  console.info('[cron/hourly] daily scan complete', {
+    dueSoon,
+    deadlineReminders,
+    announcements,
+    stuckJobs,
+    resourcePreparation,
+  })
 
   return NextResponse.json({
     ok: true,
     scanned: { dueSoon, deadlineReminders, announcements, stuckJobs },
+    resourcePreparation,
   })
 }
 

@@ -54,6 +54,7 @@ export function getLearnResourceUiState(
     readerState?: StudyFileReaderState
     hasOriginalFile?: boolean
     hasCanvasLink?: boolean
+    activeResourceExtractionJobStatus?: 'pending' | 'running' | null
     activeSourceOcrJobStatus?: 'pending' | 'running' | null
   },
 ): LearnResourceUiState {
@@ -83,13 +84,18 @@ export function getLearnResourceUiState(
         : 'Open original source'
   const textAvailabilityLabel = formatTextAvailability(resource.previewState)
 
-  if (resource.extractionStatus === 'pending') {
+  if (
+    options?.activeResourceExtractionJobStatus === 'pending'
+    || options?.activeResourceExtractionJobStatus === 'running'
+    || resource.extractionStatus === 'pending'
+    || (resource.extractionStatus === 'processing' && resource.visualExtractionStatus !== 'running')
+  ) {
     return {
       statusKey: 'loading',
-      statusLabel: 'Loading',
+      statusLabel: 'Preparing',
       tone: 'muted',
       primaryAction: 'source',
-      summary: 'This item is still loading into the reader.',
+      summary: 'Preparing readable text from this source.',
       detail: `The app is still preparing this ${sourceNoun}. Open the original ${sourceLabel} if you need it right away.`,
       sourceActionLabel,
       textAvailabilityLabel,

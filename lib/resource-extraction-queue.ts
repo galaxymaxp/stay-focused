@@ -31,3 +31,6 @@ export function canStartNextResourceExtractionJob(jobs: QueuedJob[]) {
   return countRunningResourceExtractionJobs(jobs) === 0
 }
 
+export function findNextPendingResourceExtractionJob(jobs: QueuedJob[]) {
+  return jobs.find((job) => job.type === RESOURCE_EXTRACTION_JOB_TYPE && job.status === 'pending') ?? null
+}

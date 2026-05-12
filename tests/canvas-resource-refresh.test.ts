@@ -6,6 +6,10 @@ import {
   type CanvasResourceRefreshInput,
   type ExistingCanvasResourceSnapshot,
 } from '../lib/canvas-resource-refresh'
+import {
+  getResourceRefreshCourseCandidateLimit,
+  prioritizeResourceRefreshCourses,
+} from '../lib/resource-refresh-priority'
 
 test('resource refresh preserves extracted and OCR state when Canvas file identity is unchanged', () => {
   const incoming = createIncomingResource({ canvasItemId: 10, canvasFileId: 100 })
@@ -61,6 +65,22 @@ test('resource refresh change detector skips identical metadata rows', () => {
   })
 
   assert.equal(hasCanvasResourceRefreshRowChanged(existing, prepared.row), false)
+})
+
+test('resource refresh prioritizes active Canvas courses ahead of older concluded courses', () => {
+  const prioritized = prioritizeResourceRefreshCourses([
+    { id: 'course-old', name: 'Old Stats', canvasCourseId: 10 },
+    { id: 'course-current', name: 'Current Biology', canvasCourseId: 20 },
+    { id: 'course-other', name: 'Current History', canvasCourseId: 30 },
+  ], new Set([20, 30]))
+
+  assert.deepEqual(prioritized.map((course) => course.id), ['course-current', 'course-other', 'course-old'])
+})
+
+test('resource refresh candidate limit stays bounded for large course batches', () => {
+  assert.equal(getResourceRefreshCourseCandidateLimit(1), 4)
+  assert.equal(getResourceRefreshCourseCandidateLimit(6), 24)
+  assert.equal(getResourceRefreshCourseCandidateLimit(20), 24)
 })
 
 function createIncomingResource(input: { canvasItemId: number; canvasFileId: number }) {

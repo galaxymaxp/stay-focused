@@ -1,7 +1,9 @@
-import { type NextRequest, NextResponse } from 'next/server'
+import { after, type NextRequest, NextResponse } from 'next/server'
+import { processPendingResourceExtractionJobs } from '@/actions/queue-jobs'
 import { refreshCanvasModuleResourceMetadataForCourse } from '@/actions/canvas'
+import { getCourses, normalizeCanvasUrl } from '@/lib/canvas'
+import { getResourceRefreshCourseCandidateLimit, prioritizeResourceRefreshCourses } from '@/lib/resource-refresh-priority'
 import { createSupabaseServiceRoleClient } from '@/lib/supabase-service'
-import { normalizeCanvasUrl } from '@/lib/canvas'
 
 export const runtime = 'nodejs'
 export const maxDuration = 55
@@ -11,6 +13,8 @@ const DEFAULT_USER_LIMIT = 4
 const DEFAULT_COURSE_LIMIT = 6
 const DEFAULT_MODULE_LIMIT = 40
 const DEFAULT_MODULE_ITEM_LIMIT = 400
+const DEFAULT_CANVAS_FETCH_TIMEOUT_MS = 8000
+const DEFAULT_POST_REFRESH_JOB_LIMIT = 1
 
 interface UserSettingsRow {
   user_id: string
@@ -54,6 +58,9 @@ export async function GET(req: NextRequest) {
   const moduleLimit = getPositiveIntegerEnv('RESOURCE_REFRESH_MODULE_LIMIT', DEFAULT_MODULE_LIMIT)
   const moduleItemLimit = getPositiveIntegerEnv('RESOURCE_REFRESH_MODULE_ITEM_LIMIT', DEFAULT_MODULE_ITEM_LIMIT)
   const refreshWindowMs = getPositiveIntegerEnv('RESOURCE_REFRESH_MIN_INTERVAL_MS', DAILY_REFRESH_WINDOW_MS)
+  const canvasFetchTimeoutMs = getPositiveIntegerEnv('RESOURCE_REFRESH_CANVAS_FETCH_TIMEOUT_MS', DEFAULT_CANVAS_FETCH_TIMEOUT_MS)
+  const postRefreshJobLimit = getPositiveIntegerEnv('RESOURCE_REFRESH_POST_QUEUE_JOB_LIMIT', DEFAULT_POST_REFRESH_JOB_LIMIT)
+  const courseCandidateLimit = getResourceRefreshCourseCandidateLimit(courseLimit)
 
   const summary = {
     usersChecked: 0,
@@ -84,13 +91,30 @@ export async function GET(req: NextRequest) {
     summary.usersChecked += 1
 
     const normalizedCanvasUrl = normalizeCanvasUrl(row.canvas_api_url)
+    let activeCanvasCourseIds = new Set<number>()
+    try {
+      const activeCanvasCourses = await getCourses({
+        url: normalizedCanvasUrl,
+        token: row.canvas_access_token,
+        timeoutMs: canvasFetchTimeoutMs,
+      })
+      activeCanvasCourseIds = new Set(activeCanvasCourses.map((course) => course.id))
+    } catch (error) {
+      summary.warnings.push(`User ${row.user_id}: could not load current Canvas course list; using local course order.`)
+      console.warn('[resource-refresh] Canvas active course lookup failed', {
+        userId: row.user_id,
+        message: error instanceof Error ? error.message : String(error),
+      })
+    }
+
     const { data: courseRows, error: courseError } = await supabase
       .from('courses')
       .select('id, user_id, name, canvas_instance_url, canvas_course_id')
       .eq('user_id', row.user_id)
       .eq('canvas_instance_url', normalizedCanvasUrl)
       .not('canvas_course_id', 'is', null)
-      .limit(courseLimit)
+      .order('created_at', { ascending: false })
+      .limit(courseCandidateLimit)
 
     if (courseError) {
       console.error(`[resource-refresh] DB error loading courses for user ${row.user_id}:`, {
@@ -107,18 +131,24 @@ export async function GET(req: NextRequest) {
       continue
     }
 
-    for (const course of (courseRows ?? []) as CourseRow[]) {
+    const prioritizedCourses = prioritizeResourceRefreshCourses(
+      (courseRows ?? []).map((course) => ({
+        ...(course as CourseRow),
+        canvasCourseId: (course as CourseRow).canvas_course_id,
+      })),
+      activeCanvasCourseIds,
+    )
+    const recentlyRefreshedCourseIds = await loadRecentlyRefreshedCourseIds({
+      supabase,
+      userId: row.user_id,
+      courseIds: prioritizedCourses.map((course) => course.id),
+      refreshWindowMs,
+    })
+
+    for (const course of prioritizedCourses) {
       if (summary.coursesChecked >= courseLimit) break
-      if (typeof course.canvas_course_id !== 'number' || !course.canvas_instance_url) continue
-
-      const shouldSkip = await hasRecentResourceRefresh({
-        supabase,
-        userId: row.user_id,
-        courseId: course.id,
-        refreshWindowMs,
-      })
-
-      if (shouldSkip) {
+      if (typeof course.canvasCourseId !== 'number' || !course.canvas_instance_url) continue
+      if (recentlyRefreshedCourseIds.has(course.id)) {
         summary.skipped += 1
         continue
       }
@@ -132,7 +162,7 @@ export async function GET(req: NextRequest) {
           courseName: course.name,
           canvasUrl: row.canvas_api_url,
           canvasAccessToken: row.canvas_access_token,
-          canvasCourseId: course.canvas_course_id,
+          canvasCourseId: course.canvasCourseId,
           maxModules: moduleLimit,
           maxModuleItems: moduleItemLimit,
         })
@@ -149,6 +179,13 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  after(async () => {
+    const workerStats = await processPendingResourceExtractionJobs(postRefreshJobLimit)
+    if (workerStats.jobsStarted > 0 || workerStats.warnings.length > 0) {
+      console.info('[resource-refresh] post-refresh resource preparation worker', workerStats)
+    }
+  })
+
   return NextResponse.json({
     ok: true,
     usersChecked: summary.usersChecked,
@@ -162,20 +199,28 @@ export async function GET(req: NextRequest) {
   })
 }
 
-async function hasRecentResourceRefresh(input: {
+async function loadRecentlyRefreshedCourseIds(input: {
   supabase: NonNullable<ReturnType<typeof createSupabaseServiceRoleClient>>
   userId: string
-  courseId: string
+  courseIds: string[]
   refreshWindowMs: number
 }) {
+  if (input.courseIds.length === 0) return new Set<string>()
+
   const cutoff = new Date(Date.now() - input.refreshWindowMs).toISOString()
   const { data, error } = await input.supabase
     .from('module_resources')
-    .select('updated_at')
+    .select('course_id')
     .eq('user_id', input.userId)
-    .eq('course_id', input.courseId)
+    .in('course_id', input.courseIds)
     .gte('updated_at', cutoff)
-    .limit(1)
+    .limit(Math.min(input.courseIds.length, 200))
 
-  return !error && Boolean(data && data.length > 0)
+  if (error || !data) return new Set<string>()
+
+  return new Set(
+    (data as Array<{ course_id: string | null }>)
+      .map((row) => row.course_id)
+      .filter((courseId): courseId is string => typeof courseId === 'string' && courseId.length > 0),
+  )
 }
