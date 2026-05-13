@@ -1,6 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { useState, useTransition } from 'react'
 import { ListChecks } from 'lucide-react'
 import { makeDeepLearnQuizPackAction } from '@/actions/study-outputs'
@@ -8,9 +9,11 @@ import { makeDeepLearnQuizPackAction } from '@/actions/study-outputs'
 export function MakeQuizPackButton({
   moduleId,
   resourceId,
+  existingHref = null,
 }: {
   moduleId: string
   resourceId: string
+  existingHref?: string | null
 }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -28,16 +31,25 @@ export function MakeQuizPackButton({
         router.push(result.href)
         router.refresh()
       } catch {
-        setErrorMessage('Could not open this quiz pack right now.')
+        setErrorMessage('Could not open this quiz right now.')
       }
     })
+  }
+
+  if (existingHref) {
+    return (
+      <Link href={existingHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
+        <ListChecks className="h-3.5 w-3.5" />
+        Open Quiz
+      </Link>
+    )
   }
 
   return (
     <>
       <button type="button" onClick={handleClick} className="ui-button ui-button-secondary ui-button-xs" disabled={isPending}>
         <ListChecks className="h-3.5 w-3.5" />
-        {isPending ? 'Making quiz pack...' : 'Make Quiz Pack'}
+        {isPending ? 'Starting quiz...' : 'Start Quiz'}
       </button>
       {errorMessage ? (
         <span style={{ fontSize: '12px', lineHeight: 1.5, color: 'var(--red)' }}>

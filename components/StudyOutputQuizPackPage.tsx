@@ -32,7 +32,7 @@ export function StudyOutputQuizPackPage({
   if (!quizPack) {
     return (
       <GeneratedContentState
-        title="This quiz pack could not be rendered safely."
+        title="This quiz could not be rendered safely."
         description="The saved quiz payload is incomplete or uses a version this app build does not support."
         tone="warning"
       />
@@ -84,7 +84,7 @@ export function StudyOutputQuizPackPage({
       <section className="motion-card section-shell section-shell-elevated reviewer-sheet study-output-document">
         <div className="reviewer-print-hide study-output-screen-header" style={{ display: 'flex', justifyContent: 'space-between', gap: '0.8rem', flexWrap: 'wrap', alignItems: 'flex-start' }}>
           <div>
-            <p className="ui-kicker">Saved quiz pack</p>
+            <p className="ui-kicker">Saved Quiz</p>
             <h2 className="ui-section-title" style={{ marginTop: '0.42rem' }}>{quizPack.title}</h2>
             <p className="ui-section-copy" style={{ marginTop: '0.45rem', maxWidth: '48rem' }}>
               {quizPack.summary}
@@ -95,7 +95,7 @@ export function StudyOutputQuizPackPage({
 
         <StudyOutputPrintHeader
           title={quizPack.title}
-          outputLabel="Quiz Pack"
+          outputLabel="Quiz"
           courseLabel={courseLabel}
           moduleTitle={moduleTitle}
           generatedAt={output.generatedAt ?? output.createdAt}
@@ -137,7 +137,7 @@ export function StudyOutputQuizPackPage({
           </div>
           <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', marginTop: '0.8rem' }}>
             <button type="button" onClick={startQuiz} className="ui-button ui-button-secondary ui-button-xs" disabled={!resolvedSelectedCount}>
-              Start quiz pack
+              Start Quiz
             </button>
           </div>
         </section>
@@ -156,7 +156,7 @@ export function StudyOutputQuizPackPage({
     <section className="motion-card section-shell section-shell-elevated reviewer-sheet study-output-document">
       <div className="reviewer-print-hide study-output-screen-header" style={{ display: 'flex', justifyContent: 'space-between', gap: '0.8rem', flexWrap: 'wrap', alignItems: 'flex-start' }}>
         <div>
-          <p className="ui-kicker">Saved quiz pack</p>
+          <p className="ui-kicker">Saved Quiz</p>
           <h2 className="ui-section-title" style={{ marginTop: '0.42rem' }}>{quizPack.title}</h2>
           <p className="ui-section-copy" style={{ marginTop: '0.45rem', maxWidth: '48rem' }}>
             {quizPack.summary}
@@ -171,7 +171,7 @@ export function StudyOutputQuizPackPage({
 
       <StudyOutputPrintHeader
         title={quizPack.title}
-        outputLabel="Quiz Pack"
+        outputLabel="Quiz"
         courseLabel={courseLabel}
         moduleTitle={moduleTitle}
         generatedAt={output.generatedAt ?? output.createdAt}
@@ -314,7 +314,7 @@ function labelForQuizItemType(type: StudyOutputQuizPackItem['type']) {
 function QuizPackPrintDocument({ quizPack }: { quizPack: StudyOutputQuizPackContent }) {
   return (
     <section className="reviewer-print-only reviewer-panel study-output-keep-together">
-      <p className="reviewer-section-label">Printable quiz pack</p>
+      <p className="reviewer-section-label">Printable Quiz</p>
       <p className="reviewer-intro">{quizPack.summary}</p>
       <ol className="study-output-quiz-print-list">
         {quizPack.items.map((item, index) => (

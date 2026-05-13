@@ -17,6 +17,8 @@ test('quiz pack generation builds deterministic mixed question types from a read
   assert.ok(first.items.some((item) => item.type === 'matching'))
   assert.ok(first.items.some((item) => item.type === 'true_false'))
   assert.ok(first.questionCountOptions.length > 0)
+  assert.ok(first.items.length <= 15)
+  assert.doesNotMatch(first.title, /Quiz Pack/)
 })
 
 test('blocked pending and failed notes cannot make quiz packs', () => {

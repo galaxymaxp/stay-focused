@@ -59,7 +59,7 @@ export function SourceSummaryBadge({
     return (
       <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.72rem 0.78rem', display: 'grid', gap: '0.38rem' }}>
         <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', alignItems: 'center' }}>
-          <span className="ui-kicker" style={{ margin: 0 }}>Source summary</span>
+          <span className="ui-kicker" style={{ margin: 0 }}>Study Pack preview</span>
           {state.studyValue && <SmallPill label={`${state.studyValue} value`} />}
           {state.suggestedUse && <SmallPill label={state.suggestedUse} />}
         </div>
@@ -78,13 +78,13 @@ export function SourceSummaryBadge({
   return (
     <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.72rem 0.78rem', display: 'grid', gap: '0.45rem', justifyItems: 'start' }}>
       <div>
-        <p className="ui-kicker" style={{ margin: 0 }}>Source summary</p>
+        <p className="ui-kicker" style={{ margin: 0 }}>Study Pack preview</p>
         <p style={{ margin: '0.28rem 0 0', fontSize: '12px', lineHeight: 1.55, color: 'var(--text-secondary)' }}>
-          Create a quick source summary before building the study pack.
+          Prepare a compact source preview before generating the Study Pack.
         </p>
       </div>
       <button type="button" onClick={summarize} disabled={busy || !resourceId} className="ui-button ui-button-ghost ui-button-xs">
-        {busy ? 'Creating source summary...' : 'Create source summary'}
+        {busy ? 'Preparing preview...' : 'Prepare preview'}
       </button>
       {error && <p style={{ margin: 0, fontSize: '11px', lineHeight: 1.45, color: 'var(--red)' }}>{error}</p>}
     </div>

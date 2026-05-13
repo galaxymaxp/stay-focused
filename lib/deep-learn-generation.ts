@@ -23,11 +23,12 @@ import type { DeepLearnBlockedReason, DeepLearnSourceGrounding } from '@/lib/typ
 
 const DEFAULT_DEEP_LEARN_MODEL = 'gpt-5-mini'
 const MAX_GROUNDING_CHARS = 12000
-const DEEP_LEARN_MAX_OUTPUT_TOKENS = 16384
+const DEEP_LEARN_MAX_OUTPUT_TOKENS = 8192
 
 const DEEP_LEARN_SYSTEM_PROMPT = [
-  'You create saved Deep Learn exam prep packs from academic source material.',
-  'Optimize for quiz-ready study material instead of narrative notes.',
+  'You create saved Deep Learn Study Packs from academic source material.',
+  'Study Pack is for understanding and application; Reviewer is for memorization and exact source wording; Quiz is for practice.',
+  'Optimize this generation for a compact Study Pack plus structured source-faithful items that Reviewer and Quiz can reuse.',
   'Prioritize identification, multiple choice, timeline, law recognition, term-definition recall, and confusable exam targets.',
   'Use a two-layer output model: exact source wording first for memorization, then separate plain-English explanation only when helpful.',
   'For terms, definitions, enumerations, listed items, formulas, and process steps, preserve source wording as closely as possible in wording.exact and wording.examSafe.',
@@ -480,7 +481,7 @@ export function buildDeepLearnPrompt(input: DeepLearnGenerationContext & {
 }) {
   return [
     `Prompt version: ${DEEP_LEARN_PROMPT_VERSION}`,
-    'Build a saved Deep Learn exam prep pack for a single study resource.',
+    'Build a saved Deep Learn Study Pack for a single study resource.',
     'Use only the selected resource extracted text as factual grounding. Do not use module summaries, course context, assignment metadata, deadlines, prior packs, or surrounding Canvas/module context as study facts.',
     '',
     'Selected resource source text:',
@@ -488,6 +489,11 @@ export function buildDeepLearnPrompt(input: DeepLearnGenerationContext & {
     '',
     'Output requirements:',
     '- Make answerBank the primary output. Each item should be a short student-facing answer, not a paragraph.',
+    '- Keep the Study Pack compact: overview plus no more than 6 to 8 main support sections. Focus on big picture, plain-English explanation, concept relationships, examples/application only when source-grounded, process flows, comparison tables, visual/diagram-ready structure, and why it matters.',
+    '- Do not generate Reviewer, Quiz, Study Sheet, Cram Sheet, and Source Summary as separate documents in this pass.',
+    '- Reviewer will reuse answerBank and identificationItems: preserve exact source wording first for definitions, enumerations, lists, formulas, terms, and quick recall.',
+    '- Quiz will reuse exact wording for definition answers and Study Pack relationships for application questions; each quiz item must have a source basis.',
+    '- Default output limits: answerBank 12 to 16 items, identificationItems no more than 16, likelyQuizTargets no more than 8, distinctions no more than 8.',
     '- Favor one-line exam answers such as date -> event, law -> effect, term -> definition, place -> meaning, province -> capital, person -> role, and count recall.',
     '- For definitions and listed items, wording.exact must keep the teacher/source wording nearly 1:1. wording.examSafe should stay the same unless only tiny cleanup is needed.',
     '- Put plain-English explanations only in wording.simplified, simplifiedWording, draftExplanation, or supportingContext. Never blend them into wording.exact.',

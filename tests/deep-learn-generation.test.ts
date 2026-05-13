@@ -431,6 +431,34 @@ test('buildDeepLearnPrompt does not inject metadata or debug labels into model g
   assert.match(prompt, /Do not use module summaries, course context, assignment metadata/i)
 })
 
+test('buildDeepLearnPrompt describes compact three-output Deep Learn contract', () => {
+  const prompt = buildDeepLearnPrompt({
+    ...createContext(createLearnResource({
+      extractedText: buildLongText('Information security explains confidentiality, integrity, availability, vulnerabilities, threats, and controls.'),
+      extractedTextPreview: buildLongText('Information security explains confidentiality, integrity, availability, vulnerabilities, threats, and controls.'),
+      extractedCharCount: buildLongText('Information security explains confidentiality, integrity, availability, vulnerabilities, threats, and controls.').length,
+      extractionStatus: 'completed',
+    }), createStoredResource()),
+    promptGrounding: 'Information security explains confidentiality, integrity, availability, vulnerabilities, threats, and controls.',
+    sourceGrounding: {
+      sourceType: 'PDF',
+      extractionQuality: 'usable',
+      sourceTextQuality: 'meaningful',
+      groundingStrategy: 'stored_extract',
+      usedAiFallback: false,
+      qualityReason: null,
+      warning: null,
+      charCount: 200,
+    },
+    generationMode: 'text',
+  })
+
+  assert.match(prompt.replace(/\n/g, ' '), /Study Pack.*compact/i)
+  assert.match(prompt, /Do not generate Reviewer, Quiz, Study Sheet, Cram Sheet, and Source Summary as separate documents/i)
+  assert.match(prompt, /answerBank 12 to 16 items/i)
+  assert.match(prompt, /identificationItems no more than 16/i)
+})
+
 test('buildDeepLearnGroundingWithDependencies blocks when source fetch still yields unusable text', async () => {
   const resource = createLearnResource({
     extractionStatus: 'metadata_only',

@@ -4,14 +4,14 @@ import { getDeepLearnResourceUiState } from '../lib/deep-learn-ui'
 import { buildDeepLearnNoteRecord } from '../lib/deep-learn'
 import type { DeepLearnNote } from '../lib/types'
 
-test('resources without a pack default to answer-first generation', () => {
+test('resources without a pack default to Study Pack generation', () => {
   const state = getDeepLearnResourceUiState('module-1', 'resource-1', null)
 
   assert.equal(state.status, 'not_started')
   assert.equal(state.statusLabel, 'Pack')
-  assert.equal(state.primaryLabel, 'Generate pack')
+  assert.equal(state.primaryLabel, 'Generate Study Pack')
   assert.equal(state.quizReady, false)
-  assert.match(state.summary, /answer-first exam prep pack/i)
+  assert.match(state.summary, /Study Pack/i)
 })
 
 test('ready packs surface quiz-ready state and pack-first actions', () => {
@@ -23,9 +23,9 @@ test('ready packs surface quiz-ready state and pack-first actions', () => {
 
   assert.equal(state.status, 'ready')
   assert.equal(state.statusLabel, 'Review Ready')
-  assert.equal(state.primaryLabel, 'Open workspace')
+  assert.equal(state.primaryLabel, 'Open Study Pack')
   assert.equal(state.quizReady, true)
-  assert.match(state.detail, /answer-bank review/i)
+  assert.match(state.detail, /Reviewer.*Quiz/i)
 })
 
 test('packs generated from bad source grounding are blocked in the UI', () => {
@@ -88,18 +88,18 @@ test('packs generated from metadata/debug answer content are blocked in the UI',
 test('failed packs shift the action to rebuild', () => {
   const state = getDeepLearnResourceUiState('module-1', 'resource-1', createNote({
     status: 'failed',
-    errorMessage: 'Source grounding stayed too weak to trust a generated exam prep pack.',
+    errorMessage: 'Source grounding stayed too weak to trust a generated Study Pack.',
   }))
 
   assert.equal(state.status, 'failed')
-  assert.equal(state.primaryLabel, 'Generate pack')
+  assert.equal(state.primaryLabel, 'Generate Study Pack')
   assert.match(state.summary, /too weak/i)
 })
 
 test('unavailable pack loading is distinct from having no pack yet', () => {
   const state = getDeepLearnResourceUiState('module-1', 'resource-1', null, {
     notesAvailability: 'unavailable',
-    unavailableMessage: 'Saved Deep Learn exam prep packs are unavailable because the deep_learn_notes table is missing in this environment.',
+    unavailableMessage: 'Saved Deep Learn Study Packs are unavailable because the deep_learn_notes table is missing in this environment.',
   })
 
   assert.equal(state.status, 'unavailable')
@@ -137,8 +137,8 @@ function createNote(overrides: Partial<DeepLearnNote> = {}): DeepLearnNote {
     courseId: 'course-1',
     resourceId: 'resource-1',
     status: 'pending',
-    title: 'Exam Prep Pack',
-    overview: 'Deep Learn is preparing the exam prep pack.',
+    title: 'Study Pack',
+    overview: 'Deep Learn is preparing the Study Pack.',
     sections: [],
     noteBody: '',
     answerBank: [],

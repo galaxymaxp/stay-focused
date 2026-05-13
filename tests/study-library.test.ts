@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { readFileSync } from 'node:fs'
 import { getCalendarPageState, getCoursesPageState } from '../lib/app-route-states'
 import { getStudyOutputKindLabel, getUnsupportedStudyOutputMessage, isRenderableStudyOutput } from '../lib/study-output-content'
 import { getLibrarySubtitle, toStudyLibraryItem } from '../lib/study-library'
@@ -24,7 +25,7 @@ test('reviewer shelf subtitle is stable for study outputs', () => {
 })
 
 test('quiz pack shelf subtitle is stable for study outputs', () => {
-  assert.equal(getLibrarySubtitle(createShelfItem({ studyOutputKind: 'quiz_pack' })), 'Quiz pack')
+  assert.equal(getLibrarySubtitle(createShelfItem({ studyOutputKind: 'quiz_pack' })), 'Quiz')
 })
 
 test('task outputs appear as task items in Study Library', () => {
@@ -46,11 +47,29 @@ test('task outputs appear as task items in Study Library', () => {
 })
 
 test('study sheet shelf subtitle is stable for study outputs', () => {
-  assert.equal(getLibrarySubtitle(createShelfItem({ studyOutputKind: 'study_sheet' })), 'Study sheet')
+  assert.equal(getLibrarySubtitle(createShelfItem({ studyOutputKind: 'study_sheet' })), 'Reviewer')
 })
 
 test('cram sheet shelf subtitle is stable for study outputs', () => {
-  assert.equal(getLibrarySubtitle(createShelfItem({ studyOutputKind: 'cram_sheet' })), 'Cram sheet')
+  assert.equal(getLibrarySubtitle(createShelfItem({ studyOutputKind: 'cram_sheet' })), 'Reviewer')
+})
+
+test('legacy sheet and quiz database kinds map to three student-facing Deep Learn outputs', () => {
+  assert.equal(getStudyOutputKindLabel('reviewer'), 'Reviewer')
+  assert.equal(getStudyOutputKindLabel('study_sheet'), 'Reviewer')
+  assert.equal(getStudyOutputKindLabel('cram_sheet'), 'Reviewer')
+  assert.equal(getStudyOutputKindLabel('quiz_pack'), 'Quiz')
+})
+
+test('Deep Learn source card exposes only Study Pack Reviewer and Quiz actions', () => {
+  const source = readFileSync('components/DeepLearnNoteView.tsx', 'utf8')
+
+  assert.match(source, /Open Study Pack/)
+  assert.match(source, /MakeReviewerButton/)
+  assert.match(source, /MakeQuizPackButton/)
+  assert.doesNotMatch(source, /MakeStudySheetButton/)
+  assert.doesNotMatch(source, /MakeCramSheetButton/)
+  assert.doesNotMatch(source, /Quiz this/)
 })
 
 test('unsupported study output subtype stays visible with a safe subtitle', () => {

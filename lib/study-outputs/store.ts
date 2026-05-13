@@ -126,6 +126,24 @@ export async function getStudyOutputById(id: string): Promise<StudyOutput | null
   return adaptStudyOutputRow(data as StudyOutputRow)
 }
 
+export async function listDeepLearnStudyOutputsForNote(noteId: string): Promise<StudyOutput[]> {
+  const auth = await getAuthenticatedSupabaseServerContext()
+  if (!auth) return []
+
+  const { data, error } = await auth.client
+    .from(TABLE_NAME)
+    .select('*')
+    .eq('user_id', auth.user.id)
+    .eq('source_note_id', noteId)
+    .eq('source_kind', 'deep_learn_note')
+    .eq('status', 'ready')
+    .order('updated_at', { ascending: false })
+
+  if (error || !data) return []
+
+  return (data as StudyOutputRow[]).map(adaptStudyOutputRow)
+}
+
 export async function listStudyOutputShelfItems(): Promise<DraftShelfItem[]> {
   const auth = await getAuthenticatedSupabaseServerContext()
   if (!auth) return []

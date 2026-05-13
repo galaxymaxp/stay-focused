@@ -21,7 +21,7 @@ test('reviewer page renders dedicated print metadata and keeps screen controls p
   assert.match(markup, /reviewer-print-hide study-output-screen-header/)
 })
 
-test('quiz pack page renders print-only answer document without interactive controls in the print scaffold', () => {
+test('quiz page renders print-only answer document without interactive controls in the print scaffold', () => {
   const output = createQuizPackOutput()
   const markup = renderToStaticMarkup(createElement(StudyOutputQuizPackPage, {
     output,
@@ -29,7 +29,7 @@ test('quiz pack page renders print-only answer document without interactive cont
     moduleTitle: 'Cells',
   }))
 
-  assert.match(markup, /Printable quiz pack/)
+  assert.match(markup, /Printable Quiz/)
   assert.match(markup, /study-output-quiz-print-list/)
   assert.match(markup, /Question 1 - Multiple choice/)
   assert.match(markup, /study-output-print-answer-label\">Answer/)

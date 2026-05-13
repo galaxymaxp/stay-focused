@@ -30,7 +30,7 @@ export function StudyOutputSheetPage({
     <section className={`motion-card section-shell section-shell-elevated reviewer-sheet study-sheet-shell study-output-document${isCramSheet ? ' cram-sheet-shell' : ''}`}>
       <div className="reviewer-print-hide study-output-screen-header" style={{ display: 'flex', justifyContent: 'space-between', gap: '0.8rem', flexWrap: 'wrap', alignItems: 'flex-start' }}>
         <div>
-          <p className="ui-kicker">{isCramSheet ? 'Printable cram sheet' : 'Printable study sheet'}</p>
+          <p className="ui-kicker">Reviewer / {isCramSheet ? 'Cram' : 'Full Review'}</p>
           <h2 className="ui-section-title" style={{ marginTop: '0.42rem' }}>{sheet.title}</h2>
           <p className="ui-section-copy" style={{ marginTop: '0.45rem', maxWidth: '48rem' }}>
             {sheet.summary}
@@ -41,7 +41,7 @@ export function StudyOutputSheetPage({
 
       <StudyOutputPrintHeader
         title={sheet.title}
-        outputLabel={isCramSheet ? 'Cram Sheet' : 'Study Sheet'}
+        outputLabel={isCramSheet ? 'Reviewer - Cram' : 'Reviewer - Full Review'}
         courseLabel={courseLabel}
         moduleTitle={moduleTitle}
         generatedAt={output.generatedAt ?? output.createdAt}
@@ -51,12 +51,12 @@ export function StudyOutputSheetPage({
         <div className="reviewer-meta-row reviewer-print-hide">
           {courseLabel ? <span>{courseLabel}</span> : null}
           {moduleTitle ? <span>{moduleTitle}</span> : null}
-          <span>{isCramSheet ? 'Cram-first format' : 'Compact sheet'}</span>
+          <span>{isCramSheet ? 'Cram mode' : 'Full Review mode'}</span>
         </div>
       ) : null}
 
       <section className="reviewer-panel reviewer-panel-hero study-output-keep-together">
-        <p className="reviewer-section-label">{isCramSheet ? 'Last-minute pass' : 'Scan-first study pass'}</p>
+        <p className="reviewer-section-label">{isCramSheet ? 'Cram mode' : 'Full Review mode'}</p>
         <p className="reviewer-intro">{sheet.intro}</p>
         <div className="reviewer-print-hide" style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', marginTop: '0.8rem' }}>
           <span className="ui-chip ui-chip-soft">{sheet.keyTerms.length} key terms</span>

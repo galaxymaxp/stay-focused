@@ -9,6 +9,8 @@ import type {
   StudyOutputQuizItemType,
 } from '@/lib/types'
 
+const MAX_QUIZ_PACK_ITEMS = 15
+
 export interface QuizPackBuildReadiness {
   ok: boolean
   reason: 'missing' | 'pending' | 'failed' | 'metadata_only' | 'empty'
@@ -20,7 +22,7 @@ export function getDeepLearnQuizPackReadiness(note: DeepLearnNote | null): QuizP
     return {
       ok: false,
       reason: 'missing',
-      message: 'Deep Learn needs a saved ready pack before it can make a quiz pack.',
+      message: 'Deep Learn needs a saved ready Study Pack before it can start a Quiz.',
     }
   }
 
@@ -28,7 +30,7 @@ export function getDeepLearnQuizPackReadiness(note: DeepLearnNote | null): QuizP
     return {
       ok: false,
       reason: 'pending',
-      message: 'Deep Learn is still preparing this pack. The quiz pack unlocks after the pack is ready.',
+      message: 'Deep Learn is still preparing this Study Pack. The Quiz unlocks after the pack is ready.',
     }
   }
 
@@ -36,7 +38,7 @@ export function getDeepLearnQuizPackReadiness(note: DeepLearnNote | null): QuizP
     return {
       ok: false,
       reason: 'failed',
-      message: 'Deep Learn could not build a trustworthy pack from this source, so a quiz pack cannot be made yet.',
+      message: 'Deep Learn could not build a trustworthy Study Pack from this source, so a Quiz cannot be made yet.',
     }
   }
 
@@ -44,7 +46,7 @@ export function getDeepLearnQuizPackReadiness(note: DeepLearnNote | null): QuizP
     return {
       ok: false,
       reason: 'metadata_only',
-      message: 'This Deep Learn pack is not grounded in enough readable academic source text for a quiz pack.',
+      message: 'This Study Pack is not grounded in enough readable academic source text for a Quiz.',
     }
   }
 
@@ -53,7 +55,7 @@ export function getDeepLearnQuizPackReadiness(note: DeepLearnNote | null): QuizP
     return {
       ok: false,
       reason: 'empty',
-      message: 'This Deep Learn pack does not yet have enough academic source content for a useful quiz pack.',
+      message: 'This Study Pack does not yet have enough academic source content for a useful Quiz.',
     }
   }
 
@@ -136,7 +138,7 @@ export function buildQuizPackItems(note: DeepLearnNote): StudyOutputQuizPackItem
   return uniqueBy(
     [...baseItems, ...matchingItems, ...trueFalseItems],
     (item) => `${normalizeLookup(item.prompt)}::${normalizeLookup(item.answer)}::${item.type}`,
-  )
+  ).slice(0, MAX_QUIZ_PACK_ITEMS)
 }
 
 function buildMatchingPairItems(note: DeepLearnNote, item: DeepLearnDistinction, index: number): StudyOutputQuizPackItem[] {
@@ -179,17 +181,17 @@ function buildMatchingPairItems(note: DeepLearnNote, item: DeepLearnDistinction,
 
 function buildQuizPackTitle(noteTitle: string) {
   const trimmed = noteTitle.trim()
-  if (!trimmed) return 'Deep Learn Quiz Pack'
-  if (/\bquiz pack\b/i.test(trimmed)) return trimmed
-  if (/\bexam prep pack\b/i.test(trimmed)) return trimmed.replace(/\bexam prep pack\b/i, 'Quiz Pack')
-  if (/\breviewer\b/i.test(trimmed)) return trimmed.replace(/\breviewer\b/i, 'Quiz Pack')
-  return `${trimmed} Quiz Pack`
+  if (!trimmed) return 'Deep Learn Quiz'
+  if (/\bquiz\b/i.test(trimmed)) return trimmed.replace(/\bquiz pack\b/i, 'Quiz')
+  if (/\bexam prep pack\b/i.test(trimmed)) return trimmed.replace(/\bexam prep pack\b/i, 'Quiz')
+  if (/\breviewer\b/i.test(trimmed)) return trimmed.replace(/\breviewer\b/i, 'Quiz')
+  return `${trimmed} Quiz`
 }
 
 function buildQuizPackSummary(note: DeepLearnNote, itemCount: number) {
   const lane = note.quizReady
-    ? 'Deterministic quiz pack built from the saved Deep Learn pack.'
-    : 'Compact quiz pack built from the saved Deep Learn pack.'
+    ? 'Deterministic quiz built from the saved Study Pack.'
+    : 'Compact quiz built from the saved Study Pack.'
   return `${lane} ${itemCount} source-backed question${itemCount === 1 ? '' : 's'} are ready for self-review without another AI generation step.`
 }
 

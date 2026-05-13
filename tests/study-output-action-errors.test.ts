@@ -8,7 +8,7 @@ test('study output action errors hide raw server component wrapper text', () => 
     new Error('An error occurred in the Server Components render. The specific message is omitted in production builds.'),
   )
 
-  assert.equal(message, 'Could not make this quiz pack right now.')
+  assert.equal(message, 'Could not make this quiz right now.')
 })
 
 test('study output action errors hide raw database diagnostics from the UI', () => {
@@ -23,8 +23,8 @@ test('study output action errors hide raw database diagnostics from the UI', () 
 test('study output action errors keep clean student-facing messages', () => {
   const message = getSafeStudyOutputActionErrorMessage(
     'study_sheet',
-    new Error('Deep Learn needs a saved ready pack before it can make a study sheet.'),
+    new Error('Deep Learn needs a saved ready Study Pack before it can generate a Reviewer Full Review variant.'),
   )
 
-  assert.equal(message, 'Deep Learn needs a saved ready pack before it can make a study sheet.')
+  assert.equal(message, 'Deep Learn needs a saved ready Study Pack before it can generate a Reviewer Full Review variant.')
 })

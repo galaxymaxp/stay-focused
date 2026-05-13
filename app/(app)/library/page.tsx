@@ -24,7 +24,8 @@ export default async function StudyLibraryPage({ searchParams }: Props) {
     if (moduleFilter && draftById.get(item.id)?.sourceModuleId !== moduleFilter) return false
     if (kindFilter === 'learning' && item.kind !== 'learning') return false
     if (kindFilter === 'tasks' && item.kind !== 'task') return false
-    if (subtypeFilter && item.studyOutputKind !== subtypeFilter) return false
+    if (subtypeFilter === 'reviewer' && !['reviewer', 'study_sheet', 'cram_sheet'].includes(item.studyOutputKind ?? '')) return false
+    if (subtypeFilter && subtypeFilter !== 'reviewer' && item.studyOutputKind !== subtypeFilter) return false
     return true
   })
   const grouped = groupItemsByCourse(scopedItems, draftById, courseNames)
@@ -38,10 +39,8 @@ export default async function StudyLibraryPage({ searchParams }: Props) {
   const tasksCount = items.filter((item) => item.kind === 'task').length
   const subtypeCounts = {
     task_output: items.filter((item) => item.studyOutputKind === 'task_output').length,
-    reviewer: items.filter((item) => item.studyOutputKind === 'reviewer').length,
+    reviewer: items.filter((item) => ['reviewer', 'study_sheet', 'cram_sheet'].includes(item.studyOutputKind ?? '')).length,
     quiz_pack: items.filter((item) => item.studyOutputKind === 'quiz_pack').length,
-    study_sheet: items.filter((item) => item.studyOutputKind === 'study_sheet').length,
-    cram_sheet: items.filter((item) => item.studyOutputKind === 'cram_sheet').length,
   }
 
   function filterHref(filter: string | null, subtype: string | null = subtypeFilter) {
@@ -117,19 +116,7 @@ export default async function StudyLibraryPage({ searchParams }: Props) {
             href={filterHref(kindFilter, 'quiz_pack')}
             className={`home-plan-filter-chip${subtypeFilter === 'quiz_pack' ? ' active' : ''}`}
           >
-            Quiz packs {subtypeCounts.quiz_pack > 0 ? `(${subtypeCounts.quiz_pack})` : ''}
-          </Link>
-          <Link
-            href={filterHref(kindFilter, 'study_sheet')}
-            className={`home-plan-filter-chip${subtypeFilter === 'study_sheet' ? ' active' : ''}`}
-          >
-            Study sheets {subtypeCounts.study_sheet > 0 ? `(${subtypeCounts.study_sheet})` : ''}
-          </Link>
-          <Link
-            href={filterHref(kindFilter, 'cram_sheet')}
-            className={`home-plan-filter-chip${subtypeFilter === 'cram_sheet' ? ' active' : ''}`}
-          >
-            Cram sheets {subtypeCounts.cram_sheet > 0 ? `(${subtypeCounts.cram_sheet})` : ''}
+            Quizzes {subtypeCounts.quiz_pack > 0 ? `(${subtypeCounts.quiz_pack})` : ''}
           </Link>
         </div>
         </section>
@@ -210,10 +197,8 @@ function getEmptyStateTitle({
   hasScopedFilters: boolean
 }) {
   if (subtypeFilter === 'task_output') return 'No task outputs yet.'
-  if (subtypeFilter === 'study_sheet') return 'No study sheets yet.'
-  if (subtypeFilter === 'cram_sheet') return 'No cram sheets yet.'
   if (subtypeFilter === 'reviewer') return 'No reviewers yet.'
-  if (subtypeFilter === 'quiz_pack') return 'No quiz packs yet.'
+  if (subtypeFilter === 'quiz_pack') return 'No quizzes yet.'
   if (kindFilter === 'learning') return 'No learning packs yet.'
   if (kindFilter === 'tasks') return 'No task outputs yet.'
   if (hasAnyItems && hasScopedFilters) return 'Nothing matches this view yet.'
@@ -232,14 +217,12 @@ function getEmptyStateDescription({
   hasScopedFilters: boolean
 }) {
   if (subtypeFilter === 'task_output') return 'Open a task and generate an output to see it here.'
-  if (subtypeFilter === 'study_sheet') return 'Open a ready Deep Learn pack and save a compact study sheet to see it here.'
-  if (subtypeFilter === 'cram_sheet') return 'Open a ready Deep Learn pack and save a cram sheet to see it here.'
-  if (subtypeFilter === 'reviewer') return 'Open a ready Deep Learn pack and save a reviewer to see it here.'
-  if (subtypeFilter === 'quiz_pack') return 'Open a ready Deep Learn pack and save a quiz pack to see it here.'
+  if (subtypeFilter === 'reviewer') return 'Open a ready Study Pack and generate a Reviewer to see it here. Older Study Sheet and Cram Sheet items appear here too.'
+  if (subtypeFilter === 'quiz_pack') return 'Open a ready Study Pack and start a Quiz to see it here.'
   if (kindFilter === 'learning') return 'Open a module and generate a Learn item to save it here.'
   if (kindFilter === 'tasks') return 'Start from a task and generate an output to see it here.'
   if (hasAnyItems && hasScopedFilters) return 'Try a broader library view to reopen another saved item.'
-  return "Generate notes, task outputs, or exam prep packs and they'll appear here."
+  return "Generate Study Packs, Reviewers, Quizzes, or task outputs and they'll appear here."
 }
 
 function getEmptyStateActionLabel({
@@ -278,7 +261,7 @@ function getUnavailableStateTitle(message: string | null) {
 }
 
 function getUnavailableStateDescription(message: string | null) {
-  if (isSignedOutMessage(message)) return 'Your saved notes, task outputs, and exam prep packs will appear here after you sign in.'
+  if (isSignedOutMessage(message)) return 'Your saved Study Packs, Reviewers, Quizzes, and task outputs will appear here after you sign in.'
   if ((message ?? '').toLowerCase().includes('supabase')) return 'Saved study content is not available in this local setup yet.'
   return 'Try again in a moment, or head back to Courses while this catches up.'
 }

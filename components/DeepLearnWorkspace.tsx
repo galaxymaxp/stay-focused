@@ -74,7 +74,7 @@ export function DeepLearnWorkspace({
               moduleId={moduleId}
               resourceId={deepLearnResourceId}
               courseId={courseId}
-              label={note?.status === 'failed' ? 'Generate again' : 'Generate study pack'}
+              label={note?.status === 'failed' ? 'Generate again' : 'Generate Study Pack'}
               className="ui-button ui-button-secondary ui-button-xs"
               resourceTitle={resource.title}
             />
@@ -256,7 +256,7 @@ function LegacyDraftWorkspace({
           <p className="ui-kicker">Saved study output</p>
           <h2 className="ui-section-title" style={{ marginTop: '0.42rem' }}>{legacyDraft.title}</h2>
           <p className="ui-section-copy" style={{ marginTop: '0.45rem', maxWidth: '48rem' }}>
-            This older saved document still resumes here with its source context, but Learn now saves the exam prep pack itself instead of a second draft document.
+            This older saved document still resumes here with its source context, but Learn now saves the Study Pack itself instead of a second draft document.
           </p>
         </div>
 

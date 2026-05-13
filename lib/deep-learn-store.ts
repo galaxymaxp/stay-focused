@@ -233,7 +233,7 @@ export async function saveDeepLearnNote(input: {
 }) {
   const auth = await getAuthenticatedSupabaseServerContext()
   if (!auth) {
-    throw new Error('You need to sign in before saving Deep Learn exam prep packs.')
+    throw new Error('You need to sign in before saving Deep Learn Study Packs.')
   }
 
   const sections = input.sections ?? []
@@ -290,7 +290,7 @@ export async function saveDeepLearnNote(input: {
       failureReason: failure.reason,
       error: serializeErrorForLogging(error),
     })
-    throw new Error('Could not save the exam prep pack.')
+    throw new Error('Could not save the Study Pack.')
   }
 
   return adaptDeepLearnNoteRow(data as DeepLearnNoteRow)
@@ -400,26 +400,26 @@ function classifyDeepLearnStoreFailure(error: unknown): { reason: Exclude<DeepLe
 
 function messageForDeepLearnLoadReason(reason: Exclude<DeepLearnNoteLoadReason, 'ok' | 'missing'>) {
   if (reason === 'not_configured') {
-    return 'Saved Deep Learn exam prep packs are unavailable because Supabase auth is not configured in this environment.'
+    return 'Saved Deep Learn Study Packs are unavailable because Supabase auth is not configured in this environment.'
   }
 
   if (reason === 'unauthenticated') {
-    return 'Saved Deep Learn exam prep packs are unavailable until you are signed in.'
+    return 'Saved Deep Learn Study Packs are unavailable until you are signed in.'
   }
 
   if (reason === 'table_missing') {
-    return 'Saved Deep Learn exam prep packs are unavailable because the deep_learn_notes table is missing in this environment.'
+    return 'Saved Deep Learn Study Packs are unavailable because the deep_learn_notes table is missing in this environment.'
   }
 
   if (reason === 'column_missing') {
-    return 'Saved Deep Learn exam prep packs are unavailable because the database schema is behind the current code.'
+    return 'Saved Deep Learn Study Packs are unavailable because the database schema is behind the current code.'
   }
 
   if (reason === 'permission_denied') {
-    return 'Saved Deep Learn exam prep packs are unavailable because this session cannot read them right now.'
+    return 'Saved Deep Learn Study Packs are unavailable because this session cannot read them right now.'
   }
 
-  return 'Saved Deep Learn exam prep packs are temporarily unavailable right now.'
+  return 'Saved Deep Learn Study Packs are temporarily unavailable right now.'
 }
 
 function logDeepLearnStoreFailure(

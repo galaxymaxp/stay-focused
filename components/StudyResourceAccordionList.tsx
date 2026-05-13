@@ -294,7 +294,7 @@ export function StudyResourceAccordionList({
                         moduleId={item.moduleId}
                         resourceId={item.canonicalResourceId ?? item.id}
                         courseId={item.courseId ?? null}
-                        label="Generate study pack"
+                        label="Generate Study Pack"
                         disabledReason={item.deepLearnDisabledReason}
                         resourceTitle={item.title}
                       />

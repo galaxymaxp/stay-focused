@@ -337,7 +337,7 @@ function describeDeepLearnBlockedReason(input: {
     return {
       summary: 'This source opens outside Canvas. Use the original link for now.',
       detail: sourceNote
-        ?? 'Stay Focused can keep the original link available, but it cannot ground the destination content as a trustworthy exam prep pack yet.',
+        ?? 'Stay Focused can keep the original link available, but it cannot ground the destination content as a trustworthy Study Pack yet.',
     }
   }
 
@@ -345,7 +345,7 @@ function describeDeepLearnBlockedReason(input: {
     return {
       summary: 'The original source could not be recovered cleanly.',
       detail: sourceNote
-        ?? 'The app could not fetch the original source strongly enough to ground a trustworthy exam prep pack.',
+        ?? 'The app could not fetch the original source strongly enough to ground a trustworthy Study Pack.',
     }
   }
 

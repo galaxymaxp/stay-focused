@@ -17,7 +17,7 @@ export interface QuizSection {
 /**
  * Client-side quiz workspace for a module.
  * Receives pre-computed quiz sections (serialised from the server page)
- * and handles exam prep pack selection + quiz rendering.
+ * and handles Study Pack selection + quiz rendering.
  */
 export function ModuleQuizWorkspace({
   quizSections,
@@ -53,9 +53,9 @@ export function ModuleQuizWorkspace({
         <div className="ui-empty" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem 1.1rem', fontSize: '14px', lineHeight: 1.68 }}>
           {withheldMaterialCount > 0
             ? notReadyDeepLearnCount > 0
-              ? 'Quiz only opens from saved exam prep packs that keep enough answer-bank coverage, identification prompts, MCQ contrast, or timeline structure. This module has packs, but they are still too thin for quiz.'
-              : 'Quiz only opens after an exam prep pack exists. Build a pack from Learn first, then come back once the pack is ready.'
-            : 'No saved exam prep packs are ready for quiz yet. Open Learn to build one, or inspect the resource state if the source grounding is still too weak.'}
+              ? 'Quiz only opens from saved Study Packs that keep enough answer-bank coverage, identification prompts, MCQ contrast, or timeline structure. This module has packs, but they are still too thin for Quiz.'
+              : 'Quiz only opens after a Study Pack exists. Build a pack from Learn first, then come back once the pack is ready.'
+            : 'No saved Study Packs are ready for Quiz yet. Open Learn to build one, or inspect the resource state if the source grounding is still too weak.'}
         </div>
         {noteAvailabilityMessage && (
           <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
@@ -85,7 +85,7 @@ export function ModuleQuizWorkspace({
       <section className="motion-card motion-delay-1 section-shell section-shell-elevated" style={{ padding: '1rem 1.05rem', display: 'grid', gap: '0.85rem' }}>
         <div className="command-header">
           <div className="command-header-main">
-            <p className="ui-kicker">Select an exam prep pack to quiz</p>
+            <p className="ui-kicker">Select a Study Pack to quiz</p>
             <h2 className="ui-section-title" style={{ marginTop: '0.42rem' }}>
               {quizSections.length} quiz-ready pack{quizSections.length === 1 ? '' : 's'}
             </h2>
@@ -96,7 +96,7 @@ export function ModuleQuizWorkspace({
               <p style={{ margin: '0.55rem 0 0', fontSize: '13px', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
                 {notReadyDeepLearnCount > 0
                   ? `${notReadyDeepLearnCount} saved pack${notReadyDeepLearnCount === 1 ? ' is' : 's are'} still below the quiz-ready threshold because the current answer-bank, identification, MCQ, or distinction structure is too thin.`
-                  : `${withheldMaterialCount} study source${withheldMaterialCount === 1 ? ' is' : 's are'} still outside the quiz lane because no saved exam prep pack is ready yet.`}
+                  : `${withheldMaterialCount} study source${withheldMaterialCount === 1 ? ' is' : 's are'} still outside the quiz lane because no saved Study Pack is ready yet.`}
               </p>
             )}
           </div>
@@ -185,8 +185,8 @@ export function ModuleQuizWorkspace({
               quizItems={selected.quizItems}
               questionCountOptions={selected.questionCountOptions}
               title={`Quiz: ${selected.title}`}
-              description={`Questions drawn from the saved exam prep pack for "${selected.resourceTitle}". Pick a count and start.`}
-              emptyMessage="This exam prep pack does not have enough quiz-ready structure yet."
+              description={`Questions drawn from the saved Study Pack for "${selected.resourceTitle}". Pick a count and start.`}
+              emptyMessage="This Study Pack does not have enough quiz-ready structure yet."
             />
           )}
         </div>

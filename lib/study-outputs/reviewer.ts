@@ -9,6 +9,8 @@ import type {
   StudyOutputReviewerContent,
 } from '@/lib/types'
 
+const REVIEWER_MEMORIZATION_ITEM_LIMIT = 16
+
 export interface ReviewerBuildReadiness {
   ok: boolean
   reason: 'missing' | 'pending' | 'failed' | 'metadata_only' | 'empty'
@@ -20,7 +22,7 @@ export function getDeepLearnReviewerReadiness(note: DeepLearnNote | null): Revie
     return {
       ok: false,
       reason: 'missing',
-      message: 'Deep Learn needs a saved ready pack before it can make a reviewer.',
+      message: 'Deep Learn needs a saved ready Study Pack before it can generate a Reviewer.',
     }
   }
 
@@ -28,7 +30,7 @@ export function getDeepLearnReviewerReadiness(note: DeepLearnNote | null): Revie
     return {
       ok: false,
       reason: 'pending',
-      message: 'Deep Learn is still preparing this pack. The reviewer unlocks after the pack is ready.',
+      message: 'Deep Learn is still preparing this Study Pack. The Reviewer unlocks after the pack is ready.',
     }
   }
 
@@ -36,7 +38,7 @@ export function getDeepLearnReviewerReadiness(note: DeepLearnNote | null): Revie
     return {
       ok: false,
       reason: 'failed',
-      message: 'Deep Learn could not build a trustworthy pack from this source, so a reviewer cannot be made yet.',
+      message: 'Deep Learn could not build a trustworthy Study Pack from this source, so a Reviewer cannot be generated yet.',
     }
   }
 
@@ -44,7 +46,7 @@ export function getDeepLearnReviewerReadiness(note: DeepLearnNote | null): Revie
     return {
       ok: false,
       reason: 'metadata_only',
-      message: 'This Deep Learn pack is not grounded in enough readable academic source text for a reviewer.',
+      message: 'This Study Pack is not grounded in enough readable academic source text for a Reviewer.',
     }
   }
 
@@ -59,7 +61,7 @@ export function getDeepLearnReviewerReadiness(note: DeepLearnNote | null): Revie
     return {
       ok: false,
       reason: 'empty',
-      message: 'This Deep Learn pack does not yet have enough structured study content for a reviewer.',
+      message: 'This Study Pack does not yet have enough structured study content for a Reviewer.',
     }
   }
 
@@ -102,7 +104,7 @@ export function buildDeepLearnReviewerContent(note: DeepLearnNote): StudyOutputR
       sourceWording: exactMemorizeText(item.answer),
       plainExplanation: plainExplanation(item),
     }))
-    .slice(0, 14)
+    .slice(0, Math.max(4, REVIEWER_MEMORIZATION_ITEM_LIMIT - highYieldConcepts.length))
 
   return {
     version: 'reviewer-v1',
@@ -146,8 +148,8 @@ function buildReviewerTitle(noteTitle: string) {
 
 function buildReviewerSummary(note: DeepLearnNote, answerCount: number, identificationCount: number) {
   const lead = note.quizReady
-    ? 'Printable exam-first reviewer built from the saved Deep Learn pack.'
-    : 'Printable reviewer built from the saved Deep Learn pack.'
+    ? 'Exam-first Reviewer built from the saved Study Pack.'
+    : 'Reviewer built from the saved Study Pack.'
 
   return `${lead} ${answerCount} high-yield answer cue${answerCount === 1 ? '' : 's'} and ${identificationCount} identification item${identificationCount === 1 ? '' : 's'} are ready for cram review.`
 }

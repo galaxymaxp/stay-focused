@@ -75,7 +75,7 @@ export function computeDeepLearnQuizReady(input: {
   const timeline = buildDeepLearnTimeline(answerBank)
   const mcqDrill = buildDeepLearnMcqDrill({
     answerBank,
-    identificationItems,
+    identificationItems: identificationItems.slice(0, 16),
     distinctions: input.distinctions,
   })
   const likelyQuizTargets = input.likelyQuizTargets.filter((item) => item.importance !== 'low')
@@ -470,7 +470,7 @@ function normalizeIdentificationItems(value: unknown): DeepLearnIdentificationIt
       } satisfies DeepLearnIdentificationItem
     })
     .filter((entry): entry is DeepLearnIdentificationItem => Boolean(entry))
-    .slice(0, 18)
+    .slice(0, 16)
 }
 
 function normalizeDistinctions(value: unknown): DeepLearnDistinction[] {

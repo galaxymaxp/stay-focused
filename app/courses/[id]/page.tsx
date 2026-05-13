@@ -169,13 +169,13 @@ export default async function CourseWorkspacePage({ params, searchParams }: Prop
             <p className="ui-kicker">Quiz</p>
             <h2 className="ui-section-title" style={{ marginTop: '0.45rem' }}>Course quiz options</h2>
             <p className="ui-section-copy" style={{ marginTop: '0.45rem', maxWidth: '46rem' }}>
-              Modules with ready exam prep packs or term quizzes.
+              Modules with ready Study Packs or term quizzes.
             </p>
           </div>
 
           {quizModules.length === 0 ? (
             <div className="ui-empty" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem', fontSize: '14px', lineHeight: 1.68 }}>
-              No quiz-ready packs in this course yet. Build exam prep packs from the Modules view first.
+              No quiz-ready packs in this course yet. Build Study Packs from the Modules view first.
             </div>
           ) : (
             <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: '0.55rem' }}>

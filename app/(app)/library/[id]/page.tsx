@@ -18,6 +18,7 @@ import {
 } from '@/lib/stay-focused-links'
 import {
   getStudyOutputKindLabel,
+  getStudyOutputVariantLabel,
   getUnsupportedStudyOutputMessage,
   isRenderableStudyOutput,
   isStudyOutputKind,
@@ -67,7 +68,7 @@ export default async function LibraryItemPage({ params }: Props) {
       <main className="page-shell">
         <GeneratedContentState
           title="Sign in to load your saved study content."
-          description="Your saved notes, task outputs, and exam prep packs will appear here after you sign in."
+          description="Your saved Study Packs, Reviewers, Quizzes, and task outputs will appear here after you sign in."
           tone="accent"
           action={(
             <Link href={`/sign-in?next=${encodeURIComponent(detailHref)}`} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
@@ -98,7 +99,7 @@ export default async function LibraryItemPage({ params }: Props) {
             <p className="ui-kicker">Study Library</p>
             <h1 className="ui-page-title" style={{ marginTop: '0.45rem' }}>{note.title}</h1>
             <p className="ui-page-copy" style={{ marginTop: '0.38rem', maxWidth: '48rem' }}>
-              This saved exam prep pack stays tied to its course, module, canonical source, and review surface.
+              This saved Study Pack stays tied to its course, module, canonical source, and review surface.
             </p>
           </div>
           <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
@@ -145,7 +146,7 @@ export default async function LibraryItemPage({ params }: Props) {
           readerHref={primaryAction.href ?? detailHref}
           readerLabel={primaryAction.label}
           blockedMessage={primaryAction.note}
-          statusSummary="This saved exam prep pack reopens the same Deep Learn review surface with its pinned source beside it."
+          statusSummary="This saved Study Pack reopens the same Deep Learn review surface with its pinned source beside it."
         />
       </div>
     )
@@ -196,8 +197,13 @@ export default async function LibraryItemPage({ params }: Props) {
               <p className="ui-page-copy" style={{ marginTop: '0.38rem', maxWidth: '48rem' }}>
                 {output.outputKind === 'task_output'
                   ? 'This task output is a saved deliverable preview built from surfaced task instructions, readable source text, requirements, and selected context.'
-                  : `This ${outputLabel} is a printable study output built from your saved grounded Deep Learn pack.`}
+                  : `This ${outputLabel} is built from your saved grounded Deep Learn pack.`}
               </p>
+              {output.outputKind !== 'task_output' && getStudyOutputVariantLabel(output.outputKind) ? (
+                <p className="ui-kicker" style={{ marginTop: '0.45rem' }}>
+                  {getStudyOutputKindLabel(output.outputKind)} / {getStudyOutputVariantLabel(output.outputKind)}
+                </p>
+              ) : null}
             </div>
             <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
               <Link href={courseLibraryHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
@@ -205,7 +211,7 @@ export default async function LibraryItemPage({ params }: Props) {
               </Link>
               {noteHref ? (
                 <Link href={noteHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-                  Open Deep Learn pack
+                  Open Study Pack
                 </Link>
               ) : null}
               {taskWorkspaceHref ? (
@@ -215,7 +221,7 @@ export default async function LibraryItemPage({ params }: Props) {
               ) : null}
               {output.outputKind === 'quiz_pack' && output.moduleId ? (
                 <Link href={`/modules/${output.moduleId}/quiz?resource=${encodeURIComponent(output.resourceId ?? '')}`} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-                  Open module quiz
+                  Start practice
                 </Link>
               ) : null}
               {sourceWorkspaceHref ? (

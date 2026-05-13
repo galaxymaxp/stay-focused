@@ -23,7 +23,7 @@ export async function makeDeepLearnReviewerAction(input: {
     moduleId: input.moduleId,
     resourceId: input.resourceId,
     outputKind: 'reviewer',
-    missingNoteMessage: 'Deep Learn needs a saved ready pack before it can make a reviewer.',
+    missingNoteMessage: 'Deep Learn needs a saved ready Study Pack before it can generate a Reviewer.',
     buildContent: buildDeepLearnReviewerContent,
   })
 }
@@ -36,7 +36,7 @@ export async function makeDeepLearnQuizPackAction(input: {
     moduleId: input.moduleId,
     resourceId: input.resourceId,
     outputKind: 'quiz_pack',
-    missingNoteMessage: 'Deep Learn needs a saved ready pack before it can make a quiz pack.',
+    missingNoteMessage: 'Deep Learn needs a saved ready Study Pack before it can start a Quiz.',
     buildContent: buildDeepLearnQuizPackContent,
   })
 }
@@ -50,7 +50,7 @@ export async function makeDeepLearnSheetAction(input: {
     moduleId: input.moduleId,
     resourceId: input.resourceId,
     outputKind: input.mode,
-    missingNoteMessage: `Deep Learn needs a saved ready pack before it can make a ${input.mode === 'cram_sheet' ? 'cram sheet' : 'study sheet'}.`,
+    missingNoteMessage: `Deep Learn needs a saved ready Study Pack before it can generate a Reviewer ${input.mode === 'cram_sheet' ? 'Cram' : 'Full Review'} variant.`,
     buildContent: (note) => buildDeepLearnSheetContent(note, input.mode),
   })
 }

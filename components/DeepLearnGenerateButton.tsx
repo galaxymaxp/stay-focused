@@ -11,7 +11,7 @@ export function DeepLearnGenerateButton({
   resourceId,
   courseId = null,
   resourceTitle = '',
-  label = 'Generate study pack',
+  label = 'Generate Study Pack',
   className = 'ui-button ui-button-secondary ui-button-xs',
   disabledReason = null,
 }: {

@@ -46,12 +46,13 @@ test('metadata-only grounded Deep Learn packs are rejected', () => {
   assert.equal(blocked.reason, 'metadata_only')
 })
 
-test('reviewer structure stays printable and exam-oriented', () => {
+test('reviewer structure stays exam-oriented and limited', () => {
   const reviewer = buildDeepLearnReviewerContent(createNote())
 
-  assert.match(reviewer.summary, /printable/i)
+  assert.match(reviewer.summary, /Study Pack/i)
   assert.equal(reviewer.quickReviewBlocks[0]?.heading, 'Core doctrines')
   assert.ok(reviewer.quickReviewBlocks.every((block) => block.points.length > 0 && block.points.length <= 4))
+  assert.ok(reviewer.highYieldConcepts.length + reviewer.identificationReview.length <= 16)
   assert.ok(reviewer.highYieldConcepts[0]?.cue)
   assert.ok(reviewer.identificationReview[0]?.prompt)
 })

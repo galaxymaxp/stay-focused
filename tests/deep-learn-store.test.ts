@@ -56,7 +56,7 @@ test('listDeepLearnNotesForModule degrades gracefully when the deep_learn_notes 
   assert.equal(result.availability, 'unavailable')
   assert.equal(result.reason, 'table_missing')
   assert.equal(result.notes.length, 0)
-  assert.match(result.message ?? '', /exam prep packs/i)
+  assert.match(result.message ?? '', /Study Packs/i)
 })
 
 test('getDeepLearnNoteForResource returns missing without logging when no pack exists yet', async () => {
@@ -117,7 +117,7 @@ test('getDeepLearnNoteForResource treats no-row query errors as missing instead 
   }
 })
 
-test('course learn overview still builds when exam prep pack listing is unavailable', async () => {
+test('course learn overview still builds when Study Pack listing is unavailable', async () => {
   const course = createCourse()
   const moduleRecord = createModule(course.id)
   const workspace = createClarityWorkspace(course, moduleRecord)
@@ -129,7 +129,7 @@ test('course learn overview still builds when exam prep pack listing is unavaila
       notes: [],
       availability: 'unavailable',
       reason: 'table_missing',
-      message: 'Saved Deep Learn exam prep packs are unavailable because the deep_learn_notes table is missing in this environment.',
+      message: 'Saved Deep Learn Study Packs are unavailable because the deep_learn_notes table is missing in this environment.',
       userId: 'user-1',
     }),
   })

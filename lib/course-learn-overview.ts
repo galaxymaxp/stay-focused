@@ -81,7 +81,7 @@ export interface CourseLearnStudyMaterialRow {
   deepLearnTone: 'accent' | 'warning' | 'muted'
   deepLearnSummary: string
   deepLearnDetail: string
-  deepLearnPrimaryLabel: 'Generate pack' | 'Open workspace' | 'Open Source'
+  deepLearnPrimaryLabel: 'Generate Study Pack' | 'Open Study Pack' | 'Open Source'
   deepLearnNoteHref: string
   deepLearnQuizHref: string
   deepLearnQuizReady: boolean
@@ -478,7 +478,7 @@ function buildModuleSummaryFallback(overview: {
   actionItems: unknown[]
 }) {
   if (overview.readyStudyFileCount > 0) {
-    return 'Grounded study material is available here, so Deep Learn can turn it into answer-first exam prep packs before you switch into action.'
+    return 'Grounded study material is available here, so Deep Learn can turn it into Study Packs before you switch into Reviewer or Quiz.'
   }
 
   if (overview.limitedStudyFileCount > 0) {
@@ -486,7 +486,7 @@ function buildModuleSummaryFallback(overview: {
   }
 
   if (overview.totalStudyFileCount > 0) {
-    return 'This module still depends heavily on the original sources, so Deep Learn treats the saved exam prep pack as the main destination and keeps the reader light and honest.'
+    return 'This module still depends heavily on the original sources, so Deep Learn treats the saved Study Pack as the main destination and keeps the reader light and honest.'
   }
 
   if (overview.actionItems.length > 0 || overview.activityOverrideCount > 0) {

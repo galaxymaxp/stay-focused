@@ -25,11 +25,19 @@ export function isStudyOutputKind(value: unknown): value is StudyOutputKind {
 
 export function getStudyOutputKindLabel(value: unknown) {
   if (value === 'reviewer') return 'Reviewer'
-  if (value === 'quiz_pack') return 'Quiz pack'
+  if (value === 'quiz_pack') return 'Quiz'
   if (value === 'task_output') return 'Task output'
-  if (value === 'study_sheet') return 'Study sheet'
-  if (value === 'cram_sheet') return 'Cram sheet'
+  if (value === 'study_sheet') return 'Reviewer'
+  if (value === 'cram_sheet') return 'Reviewer'
   return 'Unsupported output'
+}
+
+export function getStudyOutputVariantLabel(value: unknown) {
+  if (value === 'study_sheet') return 'Full Review'
+  if (value === 'cram_sheet') return 'Cram'
+  if (value === 'reviewer') return 'Full Review'
+  if (value === 'quiz_pack') return 'Mixed'
+  return null
 }
 
 export function isReviewerStudyOutputContent(value: unknown): value is StudyOutputReviewerContent {

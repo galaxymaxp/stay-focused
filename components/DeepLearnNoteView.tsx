@@ -1,19 +1,18 @@
 import Link from 'next/link'
-import { MakeCramSheetButton } from '@/components/MakeCramSheetButton'
 import { DeepLearnGenerateButton } from '@/components/DeepLearnGenerateButton'
 import { MakeQuizPackButton } from '@/components/MakeQuizPackButton'
 import { MakeReviewerButton } from '@/components/MakeReviewerButton'
-import { MakeStudySheetButton } from '@/components/MakeStudySheetButton'
 import { DeepLearnWorkspace } from '@/components/DeepLearnWorkspace'
 import { OcrSourceButton } from '@/components/OcrSourceButton'
 import { WorkspacePanel } from '@/components/ui/WorkspacePanel'
 import type { DeepLearnResourceReadiness } from '@/lib/deep-learn-readiness'
 import { getDeepLearnResourceUiState } from '@/lib/deep-learn-ui'
-import { buildModuleQuizHref } from '@/lib/stay-focused-links'
+import { buildDeepLearnNoteHref } from '@/lib/stay-focused-links'
+import { listDeepLearnStudyOutputsForNote } from '@/lib/study-outputs/store'
 import type { DeepLearnNote, DeepLearnNoteLoadAvailability } from '@/lib/types'
 import type { ModuleSourceResource } from '@/lib/module-workspace'
 
-export function DeepLearnNoteView({
+export async function DeepLearnNoteView({
   moduleId,
   courseId,
   resource,
@@ -46,7 +45,17 @@ export function DeepLearnNoteView({
     unavailableMessage: effectiveAvailabilityMessage,
     readiness,
   })
-  const quizHref = buildModuleQuizHref(moduleId, { resourceId: resolvedDeepLearnResourceId })
+  const existingOutputs = note?.status === 'ready'
+    ? await listDeepLearnStudyOutputsForNote(note.id)
+    : []
+  const reviewerOutput = existingOutputs.find((output) => output.outputKind === 'reviewer')
+    ?? existingOutputs.find((output) => output.outputKind === 'study_sheet')
+    ?? existingOutputs.find((output) => output.outputKind === 'cram_sheet')
+    ?? null
+  const quizOutput = existingOutputs.find((output) => output.outputKind === 'quiz_pack') ?? null
+  const studyPackHref = buildDeepLearnNoteHref(moduleId, resolvedDeepLearnResourceId)
+  const reviewerHref = reviewerOutput ? `/library/${encodeURIComponent(reviewerOutput.id)}` : null
+  const quizHref = quizOutput ? `/library/${encodeURIComponent(quizOutput.id)}` : null
   const visualExtractionAvailable = resource.visualExtractionStatus === 'available'
   const visualExtractionRunning = resource.visualExtractionStatus === 'running' || resource.extractionStatus === 'processing'
   const disabledReason = readiness && !readiness.canGenerate ? readiness.detail : null
@@ -87,7 +96,7 @@ export function DeepLearnNoteView({
               moduleId={moduleId}
               resourceId={resolvedDeepLearnResourceId}
               courseId={courseId}
-              label={ui.primaryLabel}
+              label={ui.status === 'failed' ? 'Generate Study Pack' : ui.primaryLabel}
               className="ui-button ui-button-secondary ui-button-xs"
               disabledReason={disabledReason}
             />
@@ -97,22 +106,16 @@ export function DeepLearnNoteView({
               Reading scanned pages...
             </span>
           )}
-          {note?.status === 'ready' && note.quizReady && (
-            <Link href={quizHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-              Quiz this
+          {note?.status === 'ready' && (
+            <Link href={studyPackHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
+              Open Study Pack
             </Link>
           )}
           {note?.status === 'ready' && (
-            <MakeReviewerButton moduleId={moduleId} resourceId={resolvedDeepLearnResourceId} />
+            <MakeReviewerButton moduleId={moduleId} resourceId={resolvedDeepLearnResourceId} existingHref={reviewerHref} />
           )}
           {note?.status === 'ready' && (
-            <MakeQuizPackButton moduleId={moduleId} resourceId={resolvedDeepLearnResourceId} />
-          )}
-          {note?.status === 'ready' && (
-            <MakeStudySheetButton moduleId={moduleId} resourceId={resolvedDeepLearnResourceId} />
-          )}
-          {note?.status === 'ready' && (
-            <MakeCramSheetButton moduleId={moduleId} resourceId={resolvedDeepLearnResourceId} />
+            <MakeQuizPackButton moduleId={moduleId} resourceId={resolvedDeepLearnResourceId} existingHref={quizHref} />
           )}
           {sourceHref && (
             <a href={sourceHref} target="_blank" rel="noreferrer" className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>

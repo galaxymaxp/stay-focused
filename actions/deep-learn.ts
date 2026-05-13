@@ -115,10 +115,10 @@ export async function generateDeepLearnNoteAction(input: {
     status: 'pending',
     title: resource.title,
     overview: readiness.state === 'scan_fallback'
-      ? 'Deep Learn is preparing an exam prep pack from scan fallback.'
+      ? 'Deep Learn is preparing a Study Pack from scan fallback.'
       : readiness.state === 'partial_text'
-        ? 'Deep Learn is tightening the source before it builds the exam prep pack.'
-        : 'Deep Learn is preparing the exam prep pack.',
+        ? 'Deep Learn is tightening the source before it builds the Study Pack.'
+        : 'Deep Learn is preparing the Study Pack.',
     sections: [],
     noteBody: '',
     answerBank: [],
@@ -211,8 +211,8 @@ export async function generateDeepLearnNoteAction(input: {
       status: 'failed',
       title: resource.title,
       overview: error instanceof DeepLearnGenerationBlockedError
-        ? 'Deep Learn could not recover enough trustworthy source evidence for this exam prep pack.'
-        : 'Deep Learn could not build a trustworthy exam prep pack from the current source evidence.',
+        ? 'Deep Learn could not recover enough trustworthy source evidence for this Study Pack.'
+        : 'Deep Learn could not build a trustworthy Study Pack from the current source evidence.',
       sections: [],
       noteBody: '',
       answerBank: [],

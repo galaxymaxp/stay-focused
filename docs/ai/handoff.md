@@ -5,6 +5,133 @@ Last Updated: 2026-05-13
 
 ---
 
+## Session Update - 2026-05-13 (Simplify Deep Learn outputs)
+
+### What changed
+
+- Collapsed student-facing Deep Learn outputs into three labels:
+  - `Study Pack`
+  - `Reviewer`
+  - `Quiz`
+- Kept existing `study_outputs.output_kind` values for compatibility:
+  - `reviewer`
+  - `quiz_pack`
+  - `study_sheet`
+  - `cram_sheet`
+  - `task_output`
+- Updated saved-output labels so:
+  - `quiz_pack` displays as `Quiz`
+  - `study_sheet` and `cram_sheet` display as `Reviewer` variants
+  - old Study Sheet/Cram Sheet rows remain openable through their existing renderer
+- Updated Deep Learn source-card actions to show only:
+  - `Open Study Pack`
+  - `Generate Reviewer` / `Open Reviewer`
+  - `Start Quiz` / `Open Quiz`
+- Removed the old source-card top-level Study Sheet and Cram Sheet buttons.
+- Updated Study Library filters to group reviewer, study sheet, and cram sheet rows under `Reviewers`, and to show `Quizzes` instead of `Quiz packs`.
+- Relabeled the old source-summary surface as a `Study Pack preview` so it no longer presents a separate source-summary workflow to students.
+- Tightened generation contracts and output caps:
+  - Study Pack prompt now explicitly describes understanding/application structure and says not to generate Reviewer/Quiz/Study Sheet/Cram Sheet/Source Summary as separate documents in one pass.
+  - Deep Learn max output tokens reduced from `16384` to `8192`.
+  - Deep Learn normalization caps identification items at `16`.
+  - Reviewer memorization items are capped at `16` by default.
+  - Saved Quiz output is capped at `15` questions.
+- Updated copy across Learn, Library, Quiz, and unavailable-storage states from “exam prep pack” / “quiz pack” toward `Study Pack`, `Reviewer`, and `Quiz`.
+
+### Files touched
+
+- `actions/deep-learn.ts`
+- `actions/study-outputs.ts`
+- `app/(app)/library/[id]/page.tsx`
+- `app/(app)/library/page.tsx`
+- `app/courses/[id]/page.tsx`
+- `components/DeepLearnGenerateButton.tsx`
+- `components/DeepLearnNoteView.tsx`
+- `components/DeepLearnWorkspace.tsx`
+- `components/MakeCramSheetButton.tsx` - removed
+- `components/MakeQuizPackButton.tsx`
+- `components/MakeReviewerButton.tsx`
+- `components/MakeStudySheetButton.tsx` - removed
+- `components/ModuleQuizWorkspace.tsx`
+- `components/SourceSummaryBadge.tsx`
+- `components/StudyOutputQuizPackPage.tsx`
+- `components/StudyOutputSheetPage.tsx`
+- `components/StudyResourceAccordionList.tsx`
+- `lib/course-learn-overview.ts`
+- `lib/deep-learn-generation.ts`
+- `lib/deep-learn-readiness.ts`
+- `lib/deep-learn-store.ts`
+- `lib/deep-learn-ui.ts`
+- `lib/deep-learn.ts`
+- `lib/study-output-content.ts`
+- `lib/study-outputs/quiz-pack.ts`
+- `lib/study-outputs/reviewer.ts`
+- `lib/study-outputs/store.ts`
+- `tests/deep-learn-generation.test.ts`
+- `tests/deep-learn-store.test.ts`
+- `tests/deep-learn-ui.test.ts`
+- `tests/study-library.test.ts`
+- `tests/study-output-action-errors.test.ts`
+- `tests/study-output-print.test.ts`
+- `tests/study-output-quiz-pack.test.ts`
+- `tests/study-output-reviewer.test.ts`
+- `tests/study-output-sheet.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+The app had too many overlapping Deep Learn saved-output surfaces: Study Pack / Deep Learn Pack, Reviewer, Quiz Pack, Study Sheet, Cram Sheet, and Source Summary. This made the product feel heavier than needed and encouraged duplicated saved outputs. The new path keeps the database compatible but collapses the student-facing model into Study Pack for understanding/application, Reviewer for source-faithful memorization/exam prep, and Quiz for practice.
+
+### Tests run
+
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- deep-learn-generation deep-learn-quiz study-library study-output-action-errors study-output-reviewer study-output-quiz-pack study-output-print study-output-sheet` - passed
+- `npm test -- deep-learn-generation deep-learn-quiz study-outputs study-output-sheet study-output-reviewer study-output-quiz-pack study-output-print` - passed
+
+### Verification result
+
+- Passed:
+  - typecheck
+  - lint
+  - targeted Deep Learn generation, quiz, study-library, reviewer, quiz, sheet, print, and action-error coverage
+- Verified in tests/code:
+  - Deep Learn source card no longer imports or renders Study Sheet/Cram Sheet actions
+  - saved `study_sheet` and `cram_sheet` rows label as Reviewer
+  - saved `quiz_pack` rows label as Quiz
+  - Study Library reviewer filter includes old reviewer/sheet/cram rows
+  - old sheet/cram rows still render through the saved-output detail route
+  - generation prompt describes the compact three-output contract
+  - Reviewer and Quiz default output caps are enforced
+- Not completed:
+  - authenticated browser QA with `1. Intro-To-IT-Security.pdf`
+  - manual confirmation of exact source-card button rendering and generated output quality in a signed-in local app session
+
+### Known risks
+
+- Existing saved Study Sheet and Cram Sheet titles still contain their old names because rows are not migrated. They now appear under Reviewer labeling/filtering, but the saved title itself is preserved for compatibility.
+- The Study Library grouping is light only. It reduces top-level filters but does not yet fully group rows as `Source -> Study Pack / Reviewer / Quiz`.
+- Reviewer/Quiz still build from the saved Deep Learn structured content. If an older Study Pack lacks exact wording fields, outputs can only use the best existing saved fields.
+- `SourceSummaryBadge` still calls the existing internal summary endpoint, but student-facing copy now frames it as a Study Pack preview rather than a separate Source Summary output.
+
+### Blockers
+
+- No code blocker remains.
+- Manual QA requires a signed-in app session and the real `1. Intro-To-IT-Security.pdf` source available in the workspace.
+
+### Next recommended step
+
+1. Run authenticated browser QA on a real saved source card for `1. Intro-To-IT-Security.pdf`.
+2. Confirm the card shows only Study Pack, Reviewer, and Quiz actions.
+3. Generate/open each output and verify Reviewer exact wording, Study Pack understanding/application structure, and Quiz source-basis behavior.
+4. Plan a later Library grouping pass if product wants the full `Source -> Study Pack / Reviewer / Quiz` shelf.
+
+### Suggested commit message
+
+```bash
+simplify Deep Learn outputs
+```
+
 ## Session Update - 2026-05-13 (Make Deep Learn outputs source faithful)
 
 ### What changed
