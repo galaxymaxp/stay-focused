@@ -5,6 +5,96 @@ Last Updated: 2026-05-13
 
 ---
 
+## Session Update - 2026-05-13 (Fix Canvas PDF extraction retry)
+
+### What changed
+
+- Fixed stored Canvas PDF reprocessing so normal extraction now carries stable Canvas file identity into the downloader:
+  - `canvas_file_id`
+  - `canvas_course_id`
+- Updated the file reprocess path to prefer the Canvas file API + authenticated binary download over stale stored file URLs when a resource already has Canvas file identity.
+- Added server-side PDF download validation before extraction:
+  - accepts `application/pdf`
+  - accepts byte streams that start with `%PDF-`
+  - rejects HTML/login/preview responses returned in place of a PDF
+- Replaced the student-facing HTML/login download failure copy with:
+  - `Canvas connection is missing or expired. Reconnect Canvas in Settings, then retry.`
+- Preserved diagnostics server-side only for bad Canvas downloads:
+  - content type
+  - byte length
+  - whether the response looked like HTML
+  - requested host
+  - Canvas file id
+- Kept normal PDF extraction first on retry/reprocess; OCR remains fallback-only when extracted text is truly too weak or the PDF is image-only.
+- Added regression tests covering:
+  - file reprocessing passes `canvasFileId` and `canvasCourseId` into the downloader
+  - reprocessing prefers Canvas file API download over a stale stored source URL
+  - HTML/login download responses are rejected with reconnect guidance and without env-var wording
+  - queue extraction path still runs normal reprocessing before OCR fallback queueing
+
+### Files touched
+
+- `lib/canvas-content-resolution.ts`
+- `lib/canvas-resource-extraction.ts`
+- `lib/module-resource-reprocess.ts`
+- `tests/canvas-content-resolution.test.ts`
+- `tests/module-resource-reprocess.test.ts`
+- `tests/queue.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Production still had a P0 split between metadata refresh and binary extraction: Canvas resource refresh could see the PDF metadata, but retry/reprocess could still download the wrong thing for a stored Canvas file URL, such as a stale preview/login response instead of authenticated PDF bytes. That made readable PDFs appear as `Could not extract enough readable text` even though they already contained embedded text. The fix makes reprocessing use stable Canvas file identity and validates the downloaded bytes before the extractor decides the source is unreadable.
+
+### Tests run
+
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- pdf-extractor source-ocr-updates deep-learn-readiness canvas-content-resolution learn-resource-ui queue` - passed
+- `npm test -- sync-activity canvas-resource-refresh` - passed
+
+### Verification result
+
+- Passed:
+  - typecheck
+  - lint
+  - required extraction / readiness / queue / sync activity test bundles
+- Verified in code/tests:
+  - readable PDF reprocessing now routes through Canvas file identity when available
+  - bad HTML/login downloads are rejected before extraction with clean reconnect guidance
+  - normal file extraction remains ahead of OCR fallback in the queue flow
+  - readable PDF fixture extraction populates extracted text and char count
+- Not completed in this session:
+  - live deploy verification of the affected Canvas PDF
+  - browser verification that the source card clears the unreadable state after `Retry extraction`
+  - live cron-job.org / Vercel log verification for stale `Last background sync`
+
+### Known risks
+
+- This fix depends on the stored resource having correct `canvas_file_id` and `canvas_course_id`. If a legacy row is missing those identifiers, reprocessing may still fall back to the stored URL.
+- The stale `Last background sync` issue does not currently look like a local query bug; it still likely needs deploy-side verification of cron-job.org traffic and `CRON_SECRET`.
+- I did not add a broad fallback rewrite for every stored attachment shape; this is a focused P0 fix for Canvas-owned file reprocessing.
+
+### Blockers
+
+- No code blocker remains.
+- Production verification is still required for:
+  - the affected `1. Intro-To-IT-Security.pdf`
+  - Deep Learn unlock after normal extraction succeeds
+  - whether `Last background sync` advances after the next real cron run
+
+### Next recommended step
+
+1. Deploy this commit and retry extraction on the affected Canvas PDF.
+2. Confirm the source card clears `Could not extract enough readable text` and Deep Learn unlocks from extracted text without OCR.
+3. Open `/sync` after the next scheduled cron run. If `Last background sync` is still stale, inspect cron-job.org request history and Vercel logs for `/api/cron/external-sync` authorization or delivery failures.
+
+### Suggested commit message
+
+```bash
+fix Canvas PDF extraction retry
+```
+
 ## Session Update - 2026-05-13 (Fix Canvas auth for OCR queue)
 
 ### What changed

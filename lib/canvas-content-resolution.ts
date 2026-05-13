@@ -91,6 +91,8 @@ export interface CanvasFileContentInput {
   title?: string | null
   mimeType?: string | null
   extension?: string | null
+  canvasFileId?: number | null
+  canvasCourseId?: number | null
   buffer?: Buffer | null
 }
 
@@ -120,6 +122,7 @@ export interface ResolveCanvasAttachmentDownloadInput {
   title: string | null
   mimeType: string | null
   canvasFileId: number | null
+  canvasCourseId?: number | null
 }
 
 export interface ResolveCanvasContentDependencies {
@@ -381,7 +384,8 @@ async function resolveFileContent(
       url: file.url,
       title: resolvedTitle,
       mimeType: resolvedMimeType,
-      canvasFileId: null,
+      canvasFileId: file.canvasFileId ?? null,
+      canvasCourseId: file.canvasCourseId ?? null,
     })
 
     buffer = downloaded.buffer

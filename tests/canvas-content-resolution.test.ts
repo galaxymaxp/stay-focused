@@ -104,6 +104,38 @@ test('module item linking to a pdf extracts readable text through the shared fil
   assert.ok(resolved.content.textContent.length > 0)
 })
 
+test('file extraction passes Canvas file identity into the downloader before parsing the PDF', async () => {
+  const resolved = await resolveCanvasContentForWorkspaceItem({
+    title: '1. Intro-To-IT-Security.pdf',
+    sourceType: 'file',
+    mimeType: 'application/pdf',
+    extension: 'pdf',
+    file: {
+      title: '1. Intro-To-IT-Security.pdf',
+      mimeType: 'application/pdf',
+      extension: 'pdf',
+      url: 'https://canvas.example/courses/42/files/10910070',
+      canvasFileId: 10910070,
+      canvasCourseId: 42,
+    },
+  }, {
+    downloadAttachment: async (input) => {
+      assert.equal(input.canvasFileId, 10910070)
+      assert.equal(input.canvasCourseId, 42)
+      return {
+        buffer: await createTextPdfBuffer(),
+        contentType: 'application/pdf',
+        title: '1. Intro-To-IT-Security.pdf',
+        extension: 'pdf',
+      }
+    },
+  })
+
+  assert.equal(resolved.persisted.extractionStatus, 'extracted')
+  assert.ok((resolved.persisted.extractedCharCount ?? 0) > 120)
+  assert.match(resolved.persisted.extractedText ?? '', /Stay Focused PDF extraction test/i)
+})
+
 test('image-only pdfs become OCR-available instead of failed', async () => {
   const resolved = await resolveCanvasContentForWorkspaceItem({
     title: 'Scanned Notes.pdf',

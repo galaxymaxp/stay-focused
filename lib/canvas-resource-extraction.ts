@@ -1,4 +1,5 @@
 import type { ModuleResourceExtractionStatus } from '@/lib/types'
+import { CANVAS_RECONNECT_MESSAGE } from './canvas-user-config'
 import { extractPdfTextFromBuffer, type PdfExtractionResult as ServerPdfExtractionResult } from './extraction/pdf-extractor'
 
 export interface ExtractedCanvasResourceContent {
@@ -435,6 +436,10 @@ function buildPdfExtractionMetadata(result: ServerPdfExtractionResult) {
 }
 
 function formatPdfExtractionMessage(result: ServerPdfExtractionResult) {
+  if (result.errorCode === 'pdf_downloaded_html_instead_of_pdf') {
+    return CANVAS_RECONNECT_MESSAGE
+  }
+
   if (result.errorCode && result.message) {
     return `${result.errorCode}: ${result.message}`
   }

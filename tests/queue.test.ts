@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import {
   buildAnnouncementEvent,
@@ -394,6 +395,11 @@ test('daily cost queue guard enforces OCR user and course caps', () => {
     }),
     { allowed: false, reason: 'daily_user_cap' },
   )
+})
+
+test('resource extraction retries normal source reprocessing before OCR fallback queueing', () => {
+  const source = readFileSync('actions/queue-jobs.ts', 'utf8')
+  assert.match(source, /const result = await reprocessStoredModuleResource\(resource,[\s\S]*const queuedOcrJobs = result\.update\.visualExtractionStatus === 'available'/)
 })
 
 test('Canvas resource preservation keeps meaningful extracted text when incoming sync is weak', () => {

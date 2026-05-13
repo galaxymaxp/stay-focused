@@ -14,7 +14,7 @@ import {
   resolveCanvasContentForWorkspaceItem,
   type ResolveCanvasAttachmentDownloadInput,
 } from './canvas-content-resolution'
-import { resolveCanvasConfig, resolveCanvasLinkedTarget, type CanvasConfig } from './canvas'
+import { downloadCanvasBinarySource, getCanvasFile, resolveCanvasConfig, resolveCanvasLinkedTarget, type CanvasConfig } from './canvas'
 import { CANVAS_RECONNECT_MESSAGE } from './canvas-user-config'
 import type { ModuleResource, ModuleResourceExtractionStatus, ModuleResourceVisualExtractionStatus } from './types'
 
@@ -279,6 +279,8 @@ export async function reprocessStoredModuleResource(
             title: resource.title,
             mimeType: resource.contentType,
             extension: resource.extension ?? normalizeExtension(null, resource.title),
+            canvasFileId: resource.canvasFileId ?? null,
+            canvasCourseId: resource.canvasCourseId ?? null,
           },
           courseId: resource.courseId,
           moduleId: resource.moduleId,
@@ -830,12 +832,54 @@ async function resolveStoredBinaryUrl(url: string, canvasConfig: CanvasConfig | 
 
 function createStoredAttachmentDownloader(canvasConfig: CanvasConfig | null) {
   return async (input: ResolveCanvasAttachmentDownloadInput) => {
+    if (canvasConfig && typeof input.canvasFileId === 'number' && typeof input.canvasCourseId === 'number') {
+      try {
+        const file = await getCanvasFile(input.canvasCourseId, input.canvasFileId, canvasConfig)
+        const sourceUrl = file.url ?? input.url
+        if (!sourceUrl) {
+          throw new Error('Canvas returned a linked file without a downloadable URL.')
+        }
+
+        const downloaded = await downloadCanvasBinarySource(sourceUrl, canvasConfig)
+        const title = file.display_name?.trim() || file.filename?.trim() || input.title
+        const extension = normalizeExtension(null, title ?? input.title ?? 'Canvas attachment')
+        const contentType = file.content_type ?? file['content-type'] ?? downloaded.contentType
+        ensureDownloadedPdfLooksValid({
+          url: sourceUrl,
+          title,
+          contentType,
+          buffer: downloaded.buffer,
+          extension,
+          canvasFileId: input.canvasFileId,
+        })
+
+        return {
+          buffer: downloaded.buffer,
+          contentType,
+          title,
+          extension,
+        }
+      } catch (error) {
+        if (!input.url) {
+          throw error
+        }
+      }
+    }
+
     if (!input.url) {
       throw new Error('Stored attachment download is missing a URL.')
     }
 
     const resolvedUrl = await resolveStoredBinaryUrl(input.url, canvasConfig)
     const downloaded = await fetchStoredBinary(resolvedUrl, canvasConfig)
+    ensureDownloadedPdfLooksValid({
+      url: resolvedUrl,
+      title: input.title,
+      contentType: downloaded.contentType,
+      buffer: downloaded.buffer,
+      extension: normalizeExtension(null, input.title ?? 'Canvas attachment'),
+      canvasFileId: input.canvasFileId,
+    })
 
     return {
       buffer: downloaded.buffer,
@@ -843,6 +887,48 @@ function createStoredAttachmentDownloader(canvasConfig: CanvasConfig | null) {
       title: input.title,
       extension: normalizeExtension(null, input.title ?? 'Canvas attachment'),
     }
+  }
+}
+
+function ensureDownloadedPdfLooksValid(input: {
+  url: string
+  title: string | null
+  contentType: string | null
+  buffer: Buffer
+  extension: string | null
+  canvasFileId: number | null
+}) {
+  const expectsPdf = input.extension === 'pdf'
+    || input.contentType?.toLowerCase().includes('pdf')
+    || /\bpdf\b/i.test(input.title ?? '')
+
+  if (!expectsPdf) return
+
+  const startsLikePdf = input.buffer.subarray(0, 16).toString('utf8').trimStart().startsWith('%PDF-')
+  const contentType = input.contentType?.toLowerCase() ?? ''
+  const looksHtml = contentType.includes('text/html')
+    || input.buffer.subarray(0, Math.min(input.buffer.length, 256)).toString('utf8').toLowerCase().includes('<html')
+
+  if (input.buffer.length === 0 || (!startsLikePdf && !contentType.includes('pdf'))) {
+    console.warn('[module-resource-reprocess] downloaded file was not a PDF', {
+      canvasFileId: input.canvasFileId,
+      title: input.title,
+      contentType: input.contentType,
+      byteLength: input.buffer.length,
+      requestedUrlHost: safeUrlHost(input.url),
+      htmlLike: looksHtml,
+    })
+    throw new Error(looksHtml
+      ? 'The file download did not return a PDF. Reconnect Canvas in Settings, then retry.'
+      : 'The downloaded file was not a readable PDF. Retry extraction, or open the original file.')
+  }
+}
+
+function safeUrlHost(value: string) {
+  try {
+    return new URL(value).host
+  } catch {
+    return null
   }
 }
 
