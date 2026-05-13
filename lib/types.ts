@@ -527,6 +527,8 @@ export interface StudyOutputSheetContent {
   intro: string
   keyTerms: StudyOutputSheetTermItem[]
   formulas: StudyOutputSheetFormulaItem[]
+  supplementalSectionTitle: string | null
+  supplementalSectionItems: StudyOutputSheetFactItem[]
   highYieldFacts: StudyOutputSheetFactItem[]
   confusingConcepts: StudyOutputSheetConfusingConceptItem[]
   likelyExamTraps: StudyOutputSheetTrapItem[]

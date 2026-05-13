@@ -63,6 +63,7 @@ test('quiz pack items do not leak debug or metadata labels', () => {
   assert.doesNotMatch(combined, /\bfile title\b/i)
   assert.doesNotMatch(combined, /\bgrounding strategy used\b/i)
   assert.doesNotMatch(combined, /\bsource type of the file\b/i)
+  assert.doesNotMatch(combined, /\banswer-ready fact\b|\bcompact answer unit\b|\bpreserved for direct recall\b/i)
 })
 
 function createNote(overrides: Partial<DeepLearnNote> = {}): DeepLearnNote {

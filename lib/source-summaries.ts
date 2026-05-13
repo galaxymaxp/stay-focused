@@ -179,10 +179,12 @@ export async function summarizeResourceForUserId(resourceId: string, userId: str
 
   const model = getSummaryModel()
   const promptText = cleanStudyTextForOverview(quality.meaningfulText).slice(0, 18000)
-  if (promptText.trim().length < MIN_RESOURCE_SUMMARY_TEXT) {
-    throw new Error('This source does not have enough clean readable text to summarize yet.')
+  const hasMeaningfulGroundedText = quality.meaningfulText.trim().length >= MIN_RESOURCE_SUMMARY_TEXT
+  const hasCleanOverviewText = promptText.trim().length >= MIN_RESOURCE_SUMMARY_TEXT
+  if (!hasCleanOverviewText && !hasMeaningfulGroundedText) {
+    throw new Error('This source does not have enough readable text to summarize yet.')
   }
-  const generated = await generateResourceSummaryJson(resource.title, promptText, model)
+  const generated = await generateResourceSummaryJson(resource.title, hasCleanOverviewText ? promptText : quality.meaningfulText.slice(0, 18000), model)
   const now = new Date().toISOString()
 
   const { data, error } = await client

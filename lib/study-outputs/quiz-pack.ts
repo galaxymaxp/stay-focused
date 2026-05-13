@@ -53,7 +53,7 @@ export function getDeepLearnQuizPackReadiness(note: DeepLearnNote | null): QuizP
     return {
       ok: false,
       reason: 'empty',
-      message: 'This Deep Learn pack does not yet have enough grounded quiz structure for a quiz pack.',
+      message: 'This Deep Learn pack does not yet have enough academic source content for a useful quiz pack.',
     }
   }
 
@@ -182,7 +182,7 @@ function buildQuizPackSummary(note: DeepLearnNote, itemCount: number) {
   const lane = note.quizReady
     ? 'Deterministic quiz pack built from the saved Deep Learn pack.'
     : 'Compact quiz pack built from the saved Deep Learn pack.'
-  return `${lane} ${itemCount} grounded question${itemCount === 1 ? '' : 's'} are ready for self-review without another AI generation step.`
+  return `${lane} ${itemCount} source-backed question${itemCount === 1 ? '' : 's'} are ready for self-review without another AI generation step.`
 }
 
 function mapQuizStyleToOutputType(style: 'multiple_choice' | 'identification' | 'short_answer'): StudyOutputQuizItemType {

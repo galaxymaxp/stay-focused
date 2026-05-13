@@ -5,6 +5,109 @@ Last Updated: 2026-05-13
 
 ---
 
+## Session Update - 2026-05-13 (Improve study output quality)
+
+### What changed
+
+- Removed internal/debug phrasing from student-facing Deep Learn quiz and study output builders so saved quizzes, explanations, and sheet text no longer surface phrases like:
+  - `answer-ready fact`
+  - `compact answer unit`
+  - `preserved for direct recall`
+- Reworked Deep Learn quiz wording to read more naturally and filter out admin/course-metadata prompts from quiz generation.
+- Added formula-aware quiz behavior for real formula content so formula questions can ask for the correct formula and include source-backed usage notes when available.
+- Tightened sheet formula detection so plain definitions, symptoms, and security concept relationships are no longer misclassified as formulas just because they contain `=` or `/`.
+- Added a study-sheet fallback section when no real formulas exist:
+  - hides the `Formulas` section
+  - avoids fake formula counts in the summary/chips
+  - replaces the slot with a more appropriate student-facing section such as `Key definitions`
+- Preserved formula rendering more cleanly in study sheets by keeping source expressions intact and rendering them in a monospace, pre-wrapped block.
+- Relaxed source-summary eligibility so a source with meaningful grounded text can be summarized even when the stricter cleaned overview text is shorter than the old summary threshold, which fixes the contradictory `Ready` / `not enough clean readable text` state for meaningful extracted sources.
+- Added regression tests covering:
+  - internal wording never appearing in quiz/study outputs
+  - admin metadata not becoming quiz content
+  - real formula-aware quiz prompts
+  - cybersecurity definitions staying out of the `Formulas` section
+  - summary fallback behavior when no formulas exist
+  - source-summary readiness with meaningful academic extracted text
+
+### Files touched
+
+- `components/StudyOutputSheetPage.tsx`
+- `lib/deep-learn-generation.ts`
+- `lib/deep-learn-quiz.ts`
+- `lib/deep-learn.ts`
+- `lib/source-summaries.ts`
+- `lib/study-outputs/quiz-pack.ts`
+- `lib/study-outputs/sheets.ts`
+- `lib/types.ts`
+- `tests/deep-learn-generation.test.ts`
+- `tests/deep-learn-quiz.test.ts`
+- `tests/source-summary-readiness.test.ts`
+- `tests/study-output-quiz-pack.test.ts`
+- `tests/study-output-sheet.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Production output quality still had three visible failures after the earlier extraction/retry fixes:
+
+- quiz wording could leak internal generation language
+- IT/security definitions and symptoms were being mislabeled as formulas
+- the Source Summary area could contradict a `Ready` source by using a stricter hidden summary threshold than the saved-study-pack path
+
+This pass fixes those output-quality issues without broad sync/path rewrites and keeps grounding strict to the selected source text.
+
+### Tests run
+
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- quiz deep-learn-generation deep-learn-readiness study-outputs` - passed
+- `npm test -- study-output-sheet study-output-reviewer study-output-quiz-pack source-summary-readiness` - passed
+
+### Verification result
+
+- Passed:
+  - typecheck
+  - lint
+  - required Deep Learn / quiz / study-output targeted test bundle
+  - extra study-sheet / reviewer / source-summary readiness coverage
+- Verified in code/tests:
+  - internal builder phrasing no longer reaches student-facing quiz/study output strings
+  - admin metadata like course title does not become quiz content by default
+  - formula detection now rejects security definitions and similar plain-language relations
+  - study sheets hide formula counts/sections when no real formulas exist and replace them with a better fallback section
+  - real formula content still produces formula sections and formula-aware quiz prompts
+  - source summary gating now accepts meaningful extracted source text instead of failing solely on the old clean-text threshold mismatch
+- Not completed in this session:
+  - production browser verification on `1. Intro-To-IT-Security.pdf`
+  - deploy/manual verification of the updated Study Sheet, Cram Sheet, Quiz Pack, and Source Summary UI in production
+
+### Known risks
+
+- The new formula detector is intentionally heuristic. It is much stricter than before and correctly rejects the reported security definitions, but additional edge cases from other quantitative subjects may still need tuning once more real source samples are reviewed.
+- The source-summary fix now allows fallback to meaningful grounded text when the cleaner trims too aggressively. That resolves the contradiction, but some summaries may include slightly noisier academic text until further cleaner refinement is needed.
+- Quiz-worthiness filtering now suppresses admin/course metadata by default. If a source is truly only administrative overview content, the current path will tend toward thinner quiz output rather than a specialized `Course facts quiz` label; that would be a reasonable follow-up if product still wants that mode.
+
+### Blockers
+
+- No code blocker remains.
+- Production/manual verification is still needed for the affected IT Security PDF after deploy.
+
+### Next recommended step
+
+1. Deploy this change.
+2. Open `1. Intro-To-IT-Security.pdf` in production and verify:
+   - Source Summary no longer contradicts `Ready`
+   - Study Sheet and Cram Sheet do not show fake formulas
+   - Quiz Pack wording is natural and free of internal phrasing
+3. If production still shows thin or awkward output for formula-heavy subjects, collect one real math/science source and tune the formula-aware quiz heuristics separately from this IT/security cleanup.
+
+### Suggested commit message
+
+```bash
+improve study output quality
+```
+
 ## Session Update - 2026-05-13 (Fix manual Canvas PDF retry auth path)
 
 ### What changed

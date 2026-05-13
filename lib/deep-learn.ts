@@ -19,6 +19,32 @@ import type { ExtractedTextQuality } from '@/lib/types'
 
 export const DEEP_LEARN_PROMPT_VERSION = 'v2-exam-prep'
 
+const STUDENT_FACING_REPLACEMENTS: Array<[RegExp, string]> = [
+  [/\banswer-ready fact\b/gi, 'key fact'],
+  [/\bcompact answer unit\b/gi, 'short answer'],
+  [/\bpreserved for direct recall\b/gi, 'kept for quick review'],
+  [/\bsource unit\b/gi, 'source passage'],
+  [/\bgrounded item\b/gi, 'source-backed item'],
+  [/\bmetadata item\b/gi, 'metadata entry'],
+  [/\binternal label\b/gi, 'label'],
+  [/\bdebug label\b/gi, 'label'],
+]
+
+const QUIZ_WORTHY_ALLOWED_KINDS = new Set<DeepLearnAnswerKind>([
+  'term_definition',
+  'timeline',
+  'compare',
+  'fact',
+  'count',
+  'date_event',
+  'law_effect',
+  'place_meaning',
+  'province_capital',
+  'person_role',
+])
+
+const ADMIN_METADATA_PATTERN = /\b(?:course\s+title|course\s+code|academic\s+year|credits?|credit\s+hours?|meeting\s+schedule|room\s+link|zoom|google\s+meet|instructor|teacher|professor|admin(?:istrative)?|section|semester|term|prepared by|file title)\b/i
+
 export interface DeepLearnGeneratedContent {
   title: string
   overview: string
@@ -236,13 +262,15 @@ export function buildDeepLearnMcqDrill(input: {
   identificationItems: DeepLearnIdentificationItem[]
   distinctions: DeepLearnDistinction[]
 }): DeepLearnMultipleChoiceItem[] {
-  const answerPool = uniqueTextList(input.answerBank.map((item) => resolveDeepLearnWording(item.compactAnswer)))
-  const identificationPool = uniqueTextList(input.identificationItems.map((item) => resolveDeepLearnWording(item.answer)))
+  const quizWorthyAnswerBank = input.answerBank.filter((item) => isQuizWorthyAnswerBankItem(item))
+  const quizWorthyIdentificationItems = input.identificationItems.filter((item) => isQuizWorthyIdentificationItem(item))
+  const answerPool = uniqueTextList(quizWorthyAnswerBank.map((item) => resolveDeepLearnWording(item.compactAnswer)))
+  const identificationPool = uniqueTextList(quizWorthyIdentificationItems.map((item) => resolveDeepLearnWording(item.answer)))
   const distinctionPool = uniqueTextList(input.distinctions.map((item) => item.difference))
 
   const mcqItems = [
-    ...input.answerBank.map((item) => buildAnswerBankMcq(item, answerPool)),
-    ...input.identificationItems.map((item) => buildIdentificationMcq(item, identificationPool)),
+    ...quizWorthyAnswerBank.map((item) => buildAnswerBankMcq(item, answerPool)),
+    ...quizWorthyIdentificationItems.map((item) => buildIdentificationMcq(item, identificationPool)),
     ...input.distinctions.map((item) => buildDistinctionMcq(item, distinctionPool)),
   ]
     .filter((item): item is DeepLearnMultipleChoiceItem => item !== null)
@@ -333,8 +361,12 @@ function buildAnswerBankQuestion(item: DeepLearnAnswerBankItem) {
   if (item.kind === 'person_role') return `What role is linked to ${item.cue}?`
   if (item.kind === 'place_meaning') return `What does ${item.cue} mean?`
   if (item.kind === 'count') return `What count is linked to ${item.cue}?`
-  if (item.kind === 'compare') return `Which comparison is linked to ${item.cue}?`
-  return `Which answer-ready fact matches ${item.cue}?`
+  if (item.kind === 'compare') return `Which comparison best matches ${item.cue}?`
+  if (item.kind === 'term_definition') return `Which statement best describes ${item.cue}?`
+  if (looksFormulaLikeCue(item.cue, resolveDeepLearnWording(item.answer, 'exact_source'))) {
+    return `Which formula should you use for ${item.cue}?`
+  }
+  return `Which statement from the source best matches ${item.cue}?`
 }
 
 function buildIdentificationQuestion(item: DeepLearnIdentificationItem) {
@@ -344,17 +376,18 @@ function buildIdentificationQuestion(item: DeepLearnIdentificationItem) {
   if (item.kind === 'place_meaning') return `Which meaning matches ${item.prompt}?`
   if (item.kind === 'person_role') return `Which role matches ${item.prompt}?`
   if (item.kind === 'count') return `Which count matches ${item.prompt}?`
-  return `Which answer matches ${item.prompt}?`
+  return `Which answer best matches this clue: ${item.prompt}?`
 }
 
 function buildMcqExplanation(kind: DeepLearnAnswerKind) {
   if (kind === 'date_event') return 'This stays in date-to-event form because that is a common exam pattern.'
-  if (kind === 'law_effect') return 'This keeps the law/order-to-effect relationship explicit for fast recall.'
+  if (kind === 'law_effect') return 'This matches the effect stated in the source.'
   if (kind === 'province_capital' || kind === 'person_role' || kind === 'place_meaning') {
-    return 'This stays compact so the review pack behaves like an exam-ready lookup, not a narrative summary.'
+    return 'This answer is stated directly in the source.'
   }
-
-  return 'This came from a compact answer unit that was preserved for direct recall.'
+  if (kind === 'term_definition') return 'This choice best matches the source definition.'
+  if (kind === 'compare') return 'This comparison follows the distinction given in the source.'
+  return 'This answer is supported directly by the selected source.'
 }
 
 function normalizeSections(value: unknown) {
@@ -654,7 +687,7 @@ function normalizePositiveNumber(value: unknown) {
 function cleanShortText(value: unknown) {
   if (typeof value !== 'string') return null
 
-  const cleaned = value.replace(/\s+/g, ' ').trim()
+  const cleaned = sanitizeStudentFacingText(value).replace(/\s+/g, ' ').trim()
   if (!cleaned) return null
 
   return cleaned.slice(0, 180)
@@ -663,7 +696,7 @@ function cleanShortText(value: unknown) {
 function cleanSentence(value: unknown) {
   if (typeof value !== 'string') return null
 
-  const cleaned = value.replace(/\s+/g, ' ').trim()
+  const cleaned = sanitizeStudentFacingText(value).replace(/\s+/g, ' ').trim()
   if (!cleaned) return null
 
   return cleaned.slice(0, 420)
@@ -672,7 +705,7 @@ function cleanSentence(value: unknown) {
 function cleanParagraph(value: unknown) {
   if (typeof value !== 'string') return null
 
-  const cleaned = value
+  const cleaned = sanitizeStudentFacingText(value)
     .replace(/\r\n/g, '\n')
     .replace(/[ \t]+\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
@@ -683,6 +716,42 @@ function cleanParagraph(value: unknown) {
 
 function normalizeLookup(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+}
+
+function sanitizeStudentFacingText(value: string) {
+  return STUDENT_FACING_REPLACEMENTS.reduce(
+    (current, [pattern, replacement]) => current.replace(pattern, replacement),
+    value,
+  )
+}
+
+function isQuizWorthyAnswerBankItem(item: DeepLearnAnswerBankItem) {
+  if (!QUIZ_WORTHY_ALLOWED_KINDS.has(item.kind)) return false
+  if (item.importance === 'low') return false
+
+  const cue = item.cue.trim()
+  const answer = resolveDeepLearnWording(item.answer, 'exam_safe')
+  return isAcademicPromptText(cue) && isAcademicPromptText(answer)
+}
+
+function isQuizWorthyIdentificationItem(item: DeepLearnIdentificationItem) {
+  if (!QUIZ_WORTHY_ALLOWED_KINDS.has(item.kind)) return false
+  if (item.importance === 'low') return false
+
+  return isAcademicPromptText(item.prompt) && isAcademicPromptText(resolveDeepLearnWording(item.answer, 'exam_safe'))
+}
+
+function isAcademicPromptText(value: string) {
+  const cleaned = value.trim()
+  if (!cleaned) return false
+  if (ADMIN_METADATA_PATTERN.test(cleaned)) return false
+  return true
+}
+
+function looksFormulaLikeCue(cue: string, answer: string) {
+  const combined = `${cue} ${answer}`
+  return /\b(?:formula|equation|calculate|solve|speed|velocity|density|force|energy|voltage|current|resistance|mass|volume)\b/i.test(combined)
+    && /[=/%^*()0-9]|(?:\bper\b)|(?:\bdivided by\b)/i.test(answer)
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

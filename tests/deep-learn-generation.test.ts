@@ -425,6 +425,7 @@ test('buildDeepLearnPrompt does not inject metadata or debug labels into model g
   assert.doesNotMatch(prompt, /\bUsed AI fallback\b/i)
   assert.doesNotMatch(prompt, /\bCourse:\s*Contracts\b/i)
   assert.doesNotMatch(prompt, /\bModule:\s*Week 1\b/i)
+  assert.doesNotMatch(prompt, /\banswer-ready\b|\bcompact answer unit\b/i)
   assert.match(prompt, /DATA ORGANIZATION covers OLTP/i)
 })
 

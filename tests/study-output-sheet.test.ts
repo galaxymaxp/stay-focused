@@ -19,6 +19,7 @@ test('study sheet generation builds compact grounded sections', () => {
   assert.ok(sheet.confusingConcepts.length > 0)
   assert.ok(sheet.likelyExamTraps.length > 0)
   assert.match(sheet.summary, /printable/i)
+  assert.equal(sheet.supplementalSectionTitle, null)
 })
 
 test('cram sheet generation stays tighter than study sheet', () => {
@@ -104,6 +105,62 @@ test('sheet outputs do not leak metadata or debug labels', () => {
   assert.equal(joined.includes('metadata only'), false)
   assert.equal(joined.includes('file id'), false)
   assert.equal(joined.includes('uuid'), false)
+})
+
+test('definition-style security content is not misclassified as formulas', () => {
+  const sheet = buildDeepLearnSheetContent(createNote({
+    title: 'IT Security exam prep pack',
+    overview: 'Definitions, attacker types, malware symptoms, and security domains.',
+    sections: [
+      {
+        heading: 'Definitions',
+        body: [
+          'InfoSec = processes and tools to protect sensitive business info.',
+          'Vulnerability = flaw or weakness in hardware/software.',
+          'Breach = a successful exploit of a vulnerability.',
+          'Increase in CPU usage; decrease in speed; crashes are common malware symptoms.',
+        ].join(' '),
+      },
+    ],
+    noteBody: '',
+    answerBank: [
+      {
+        cue: 'InfoSec',
+        kind: 'term_definition',
+        answer: { exact: 'InfoSec = processes and tools to protect sensitive business information.', examSafe: 'Processes and tools used to protect sensitive business information.', simplified: null },
+        compactAnswer: { exact: 'InfoSec = processes and tools to protect sensitive business information.', examSafe: 'Protects sensitive business information.', simplified: null },
+        importance: 'high',
+        sortKey: null,
+        distractors: [],
+        supportingContext: 'InfoSec = processes and tools to protect sensitive business information.',
+      },
+      {
+        cue: 'Vulnerability',
+        kind: 'term_definition',
+        answer: { exact: 'Vulnerability = flaw or weakness in hardware/software.', examSafe: 'A flaw or weakness in hardware or software.', simplified: null },
+        compactAnswer: { exact: 'Vulnerability = flaw or weakness in hardware/software.', examSafe: 'A flaw or weakness in hardware or software.', simplified: null },
+        importance: 'high',
+        sortKey: null,
+        distractors: [],
+      },
+    ],
+    identificationItems: [],
+    distinctions: [],
+    likelyQuizTargets: [],
+    cautionNotes: [],
+  }), 'study_sheet')
+
+  assert.equal(sheet.formulas.length, 0)
+  assert.equal(sheet.supplementalSectionTitle, 'Key definitions')
+  assert.ok(sheet.supplementalSectionItems.some((item) => /InfoSec/i.test(item.cue)))
+  assert.doesNotMatch(sheet.summary, /\b0 formulas\b|\b\d+ formulas\b/i)
+})
+
+test('sheet formulas preserve readable expressions when real formulas exist', () => {
+  const sheet = buildDeepLearnSheetContent(createNote(), 'study_sheet')
+
+  assert.ok(sheet.formulas.some((item) => /density = mass \/ volume/i.test(item.expression)))
+  assert.doesNotMatch(JSON.stringify(sheet.formulas), /4\/3sin\^2/i)
 })
 
 function createNote(overrides: Partial<DeepLearnNote> = {}): DeepLearnNote {

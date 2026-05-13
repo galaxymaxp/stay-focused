@@ -57,7 +57,11 @@ export function StudyOutputSheetPage({
         <p className="reviewer-intro">{sheet.intro}</p>
         <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', marginTop: '0.8rem' }}>
           <span className="ui-chip ui-chip-soft">{sheet.keyTerms.length} key terms</span>
-          <span className="ui-chip ui-chip-soft">{sheet.formulas.length} formulas</span>
+          {sheet.formulas.length > 0 ? (
+            <span className="ui-chip ui-chip-soft">{sheet.formulas.length} formulas</span>
+          ) : sheet.supplementalSectionTitle && sheet.supplementalSectionItems.length > 0 ? (
+            <span className="ui-chip ui-chip-soft">{sheet.supplementalSectionItems.length} {sheet.supplementalSectionTitle.toLowerCase()}</span>
+          ) : null}
           <span className="ui-chip ui-chip-soft">{sheet.likelyExamTraps.length} exam traps</span>
         </div>
       </section>
@@ -82,11 +86,25 @@ export function StudyOutputSheetPage({
               {sheet.formulas.map((item) => (
                 <article key={`${item.label}-${item.expression}`} className="reviewer-mini-card study-sheet-formula-card">
                   <p>{item.label}</p>
-                  <strong>{item.expression}</strong>
-                  {item.note ? <p className="reviewer-muted">{item.note}</p> : null}
+                  <strong style={{ whiteSpace: 'pre-wrap', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace' }}>{item.expression}</strong>
+                  {item.note ? <p className="reviewer-muted" style={{ whiteSpace: 'pre-wrap' }}>{item.note}</p> : null}
                 </article>
               ))}
             </div>
+          </section>
+        ) : null}
+
+        {sheet.formulas.length === 0 && sheet.supplementalSectionTitle && sheet.supplementalSectionItems.length > 0 ? (
+          <section className="reviewer-panel">
+            <p className="reviewer-section-label">{sheet.supplementalSectionTitle}</p>
+            <ul className="reviewer-answer-list">
+              {sheet.supplementalSectionItems.map((item) => (
+                <li key={`${item.cue}-${item.detail}`}>
+                  <strong>{item.cue}</strong>
+                  <span>{item.detail}</span>
+                </li>
+              ))}
+            </ul>
           </section>
         ) : null}
 

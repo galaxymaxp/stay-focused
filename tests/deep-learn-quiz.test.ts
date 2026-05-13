@@ -56,6 +56,86 @@ test('thin packs stay below the quiz-ready threshold', () => {
   }), false)
 })
 
+test('deep learn quiz builder removes internal wording and admin-only course metadata prompts', () => {
+  const note = createNote({
+    answerBank: [
+      ...createNote().answerBank,
+      {
+        cue: 'Course title',
+        kind: 'fact',
+        answer: wording('Introduction to Information Security'),
+        compactAnswer: wording('Introduction to Information Security'),
+        importance: 'high',
+        sortKey: null,
+        distractors: ['Room 203', 'Monday 8:00 AM', '3 credits'],
+      },
+    ],
+  })
+
+  const items = buildDeepLearnQuizItems(note)
+  const combined = items.map((item) => `${item.prompt} ${item.explanation}`).join(' ')
+
+  assert.doesNotMatch(combined, /answer-ready fact|compact answer unit|preserved for direct recall/i)
+  assert.doesNotMatch(combined, /course title/i)
+})
+
+test('deep learn quiz builder adds formula-aware prompts when real formulas exist', () => {
+  const note = createNote({
+    title: 'Physics exam prep pack',
+    answerBank: [
+      {
+        cue: 'Density',
+        kind: 'fact',
+        answer: wording('density = mass / volume'),
+        compactAnswer: wording('density = mass / volume'),
+        importance: 'high',
+        sortKey: null,
+        distractors: ['speed = distance / time', 'force = mass x acceleration', 'power = work / time'],
+        supportingContext: 'Use this formula when you need to calculate density from mass and volume.',
+      },
+      {
+        cue: 'Speed',
+        kind: 'fact',
+        answer: wording('speed = distance / time'),
+        compactAnswer: wording('speed = distance / time'),
+        importance: 'high',
+        sortKey: null,
+        distractors: ['density = mass / volume', 'power = work / time', 'force = mass x acceleration'],
+      },
+      {
+        cue: 'Force',
+        kind: 'fact',
+        answer: wording('force = mass x acceleration'),
+        compactAnswer: wording('force = mass x acceleration'),
+        importance: 'high',
+        sortKey: null,
+        distractors: ['density = mass / volume', 'speed = distance / time', 'power = work / time'],
+      },
+      {
+        cue: 'Power',
+        kind: 'fact',
+        answer: wording('power = work / time'),
+        compactAnswer: wording('power = work / time'),
+        importance: 'high',
+        sortKey: null,
+        distractors: ['speed = distance / time', 'density = mass / volume', 'force = mass x acceleration'],
+      },
+    ],
+    identificationItems: [],
+    distinctions: [],
+    likelyQuizTargets: [],
+    sections: [],
+    noteBody: '',
+  })
+
+  const items = buildDeepLearnQuizItems(note)
+  const formulaItem = items.find((item) => /Which formula should you use for Density/i.test(item.prompt))
+
+  assert.ok(formulaItem)
+  assert.match(formulaItem?.answer ?? '', /density = mass \/ volume/i)
+  assert.match(formulaItem?.explanation ?? '', /provided for the calculation|use this formula/i)
+})
+
 function createNote(overrides: Partial<DeepLearnNote> = {}): DeepLearnNote {
   return buildDeepLearnNoteRecord({
     id: 'note-1',
