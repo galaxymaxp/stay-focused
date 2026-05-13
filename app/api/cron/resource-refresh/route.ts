@@ -2,6 +2,7 @@ import { after, type NextRequest, NextResponse } from 'next/server'
 import { processPendingResourceExtractionJobs } from '@/actions/queue-jobs'
 import { refreshCanvasModuleResourceMetadataForCourse } from '@/actions/canvas'
 import { getCourses, normalizeCanvasUrl } from '@/lib/canvas'
+import { buildResourceRefreshActivityDetail, recordResourceRefreshActivity } from '@/lib/resource-refresh-activity'
 import { getResourceRefreshCourseCandidateLimit, prioritizeResourceRefreshCourses } from '@/lib/resource-refresh-priority'
 import { createSupabaseServiceRoleClient } from '@/lib/supabase-service'
 
@@ -173,8 +174,35 @@ export async function GET(req: NextRequest) {
         summary.resourcesUpdated += result.resourcesUpdated
         summary.skipped += result.skipped
         summary.warnings.push(...result.warnings)
+        await recordResourceRefreshActivity({
+          userId: row.user_id,
+          courseId: course.id,
+          status: result.warnings.length > 0 ? 'warning' : 'completed',
+          detail: buildResourceRefreshActivityDetail({
+            courseName: course.name,
+            resourcesInserted: result.resourcesInserted,
+            resourcesUpdated: result.resourcesUpdated,
+            warnings: result.warnings,
+          }),
+          warnings: result.warnings,
+          metadata: {
+            modulesChecked: result.modulesChecked,
+            moduleItemsChecked: result.moduleItemsChecked,
+            resourcesInserted: result.resourcesInserted,
+            resourcesUpdated: result.resourcesUpdated,
+            skipped: result.skipped,
+          },
+        })
       } catch (error) {
         summary.warnings.push(`${course.name}: ${error instanceof Error ? error.message : 'refresh failed'}`)
+        await recordResourceRefreshActivity({
+          userId: row.user_id,
+          courseId: course.id,
+          status: 'failed',
+          detail: `${course.name} refresh failed.`,
+          warnings: [error instanceof Error ? error.message : 'refresh failed'],
+          metadata: {},
+        })
       }
     }
   }

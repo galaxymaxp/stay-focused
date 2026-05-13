@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { CourseLearnExplorer } from '@/components/CourseLearnExplorer'
+import { RefreshCourseResourcesButton } from '@/components/RefreshCourseResourcesButton'
 import { getClarityWorkspace } from '@/lib/clarity-workspace'
 import { buildCourseLearnOverview, type CourseLearnModuleCard, type CourseLearnTaskRow } from '@/lib/course-learn-overview'
 import { getPersistedCoursePageSummary } from '@/lib/course-page-summary'
@@ -84,6 +85,7 @@ export default async function CourseWorkspacePage({ params, searchParams }: Prop
           <Link href={`/library?course=${encodeURIComponent(id)}`} className="ui-button ui-button-ghost ui-button-xs">
             Study library
           </Link>
+          <RefreshCourseResourcesButton courseId={id} />
         </div>
       </section>
 

@@ -6670,6 +6670,71 @@ The job result included:
 
 This confirms the lightweight external cron path works and avoids the previous `refreshing_resources` / `refreshing_tasks` hang.
 
+## Session Update - 2026-05-13 (Fix sync timestamp reporting)
+
+### What changed
+- Replaced the misleading `/sync` "Last sync" model with a derived activity summary that separates:
+  - `Last Canvas update`
+  - `Last full manual sync`
+  - `Last background sync`
+  - `Last resource refresh`
+- Added a small `resource_refresh_activity` table plus logging so background resource refreshes have a durable, per-user visible timestamp instead of being invisible to the Sync Courses page.
+- Updated `/api/cron/resource-refresh` to record completed and failed refresh activity rows.
+- Updated the Sync Courses page to show honest labels, latest-update details, and a warning state when the newest background sync completed with warnings instead of claiming the workspace is simply "Up to date".
+- Added a bounded `Refresh resources` action for individual synced courses on `/sync` and `/courses/[id]` using the existing course-level metadata refresh path instead of a global sync.
+
+### Files touched
+- `app/api/cron/resource-refresh/route.ts`
+- `app/courses/[id]/page.tsx`
+- `app/sync/page.tsx`
+- `actions/course-resource-refresh.ts`
+- `components/RefreshCourseResourcesButton.tsx`
+- `components/SyncCoursesPageClient.tsx`
+- `lib/resource-refresh-activity.ts`
+- `lib/sync-activity.ts`
+- `supabase/migrations/20260513130000_add_resource_refresh_activity.sql`
+- `tests/sync-activity.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+The Sync Courses page was deriving "Last sync" from imported module timestamps, which effectively reflected the last full manual course import and ignored newer successful background syncs and resource refreshes. That made the UI claim stale update times even when cron jobs had refreshed the workspace more recently. The new summary keeps manual sync, background sync, and resource refresh timestamps separate and uses the latest successful visible update as the "Last Canvas update" timestamp.
+
+### Tests run
+- `npm run typecheck`
+- `npm run lint`
+- `npm test -- external sync resource refresh sync queue canvas update events`
+- `npm test -- canvas-resource-refresh canvas-content-resolution queue`
+- `npx supabase db push`
+
+### Verification result
+- Passed:
+  - `typecheck`
+  - `lint`
+  - targeted sync/resource refresh/queue/canvas update tests
+  - remote Supabase migration push
+- Verified in code and tests:
+  - failed background syncs do not become `Last Canvas update`
+  - manual sync, background sync, and resource refresh timestamps stay distinct
+  - `/sync` now reads queue activity plus resource refresh activity instead of old module import timestamps
+- Not completed in this session:
+  - authenticated browser verification of the production Sync Courses page and course-level refresh button
+
+### Known risks
+- Existing historical resource refreshes from before this migration will not backfill `resource_refresh_activity`, so `Last resource refresh` starts being accurate from this deployment forward.
+- The background sync warning state depends on `queued_jobs.result` warning metadata staying consistent with the current external sync job shape.
+- Manual browser confirmation is still needed to validate the exact student-facing copy and spacing with real account data.
+
+### Blockers
+- No authenticated production browser session was available here to complete the requested live UI verification against `/sync`.
+
+### Next recommended step
+1. Open `/sync` in production with a real student account and confirm `Last Canvas update` reflects the newest successful background sync or resource refresh instead of the older manual import time.
+2. Trigger `Refresh resources` on a synced course and confirm the page updates `Last resource refresh` without starting a global sync.
+3. If desired later, backfill `resource_refresh_activity` from older queue/job history so existing users immediately see a pre-deployment resource refresh timestamp.
+
+### Suggested commit message
+fix sync timestamp reporting
+
 ### Live verification result
 
 Production verification passed. `/api/cron/external-sync` returned `processedInline: true` and queued external cron job `99c5a1f5-33ed-418c-a7bc-b1abfd039f65`.

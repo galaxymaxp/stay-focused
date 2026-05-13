@@ -3,8 +3,7 @@ import Link from 'next/link'
 import { SyncCoursesPageClient } from '@/components/SyncCoursesPageClient'
 import { createAuthenticatedSupabaseServerClient, getAuthenticatedUserServer } from '@/lib/auth-server'
 import { buildCanvasCourseSyncKey } from '@/lib/canvas-sync'
-
-type SyncTone = 'success' | 'neutral' | 'warning'
+import { buildSyncActivitySummary, type QueueActivityRow, type ResourceRefreshActivityRow } from '@/lib/sync-activity'
 
 export default async function SyncCoursesPage() {
   const user = await getAuthenticatedUserServer()
@@ -103,7 +102,7 @@ export default async function SyncCoursesPage() {
   const syncedModules = db
     ? ownedCourseIds.length > 0
       ? (await db
-          .from('modules')
+        .from('modules')
           .select('id, course_id, title, summary, status, created_at')
           .in('course_id', ownedCourseIds)
           .order('created_at', { ascending: false })).data
@@ -118,7 +117,6 @@ export default async function SyncCoursesPage() {
       : []
     : []
 
-  const latestModule = syncedModules?.[0]
   const initialConnectionUrl = userSettings?.canvas_api_url ?? ''
   const processedCourseIds = new Set(
     (syncedModules ?? [])
@@ -134,17 +132,28 @@ export default async function SyncCoursesPage() {
         .filter((value): value is string => Boolean(value))
     )
   )
-  const lastSync = latestModule
-    ? {
-        label:
-          latestModule.status === 'processed'
-            ? `Last sync finished on ${new Date(latestModule.created_at).toLocaleString()}`
-            : latestModule.status === 'error'
-              ? `Last sync ran into a problem on ${new Date(latestModule.created_at).toLocaleString()}`
-              : `A sync started on ${new Date(latestModule.created_at).toLocaleString()}`,
-        tone: getSyncTone(latestModule.status),
-      }
-    : null
+  const [queueRowsResult, resourceRefreshRowsResult] = db
+    ? await Promise.all([
+        db
+          .from('queued_jobs')
+          .select('status, payload, result, error, created_at, completed_at')
+          .eq('user_id', user.id)
+          .eq('type', 'canvas_sync')
+          .order('created_at', { ascending: false })
+          .limit(100),
+        db
+          .from('resource_refresh_activity')
+          .select('status, detail, created_at')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false })
+          .limit(50),
+      ])
+    : [{ data: [] }, { data: [] }]
+
+  const syncActivity = buildSyncActivitySummary({
+    queueRows: (queueRowsResult.data ?? []) as QueueActivityRow[],
+    resourceRefreshRows: (resourceRefreshRowsResult.data ?? []) as ResourceRefreshActivityRow[],
+  })
   const courseNameById = new Map(
     (ownedCourses ?? [])
       .map((course) => [course.id, course.name] as const)
@@ -159,18 +168,19 @@ export default async function SyncCoursesPage() {
     .filter((module) => module.status === 'processed')
     .map((module) => ({
       id: module.id,
+      courseId: module.course_id,
       title: module.title,
       summary: module.summary,
       courseTitle: courseNameById.get(module.course_id) ?? null,
       contentCount: resourceCountByModuleId.get(module.id) ?? 0,
       createdAt: module.created_at,
-    }))
+      }))
 
   return (
     <main className="page-shell page-stack">
       <SyncCoursesPageClient
         initialConnectionUrl={initialConnectionUrl}
-        lastSync={lastSync}
+        syncActivity={syncActivity}
         syncedCourseKeys={syncedCourseKeys}
         syncedModules={syncedModulesForFlow}
         syncedCourseCount={processedCourseIds.size}
@@ -193,10 +203,4 @@ const messageCardStyle: CSSProperties = {
   border: '1px solid color-mix(in srgb, var(--border-subtle) 88%, transparent)',
   background: 'var(--surface-elevated)',
   padding: '0.95rem',
-}
-
-function getSyncTone(status: string): SyncTone {
-  if (status === 'processed') return 'success'
-  if (status === 'error') return 'warning'
-  return 'neutral'
 }

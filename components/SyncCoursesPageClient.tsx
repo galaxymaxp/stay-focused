@@ -6,17 +6,20 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { fetchCurrentUserCanvasCourses } from '@/actions/canvas'
 import { queueCanvasSyncAction } from '@/actions/queue-canvas'
+import { RefreshCourseResourcesButton } from '@/components/RefreshCourseResourcesButton'
 import { CanvasSyncStatusCard } from '@/components/CanvasSyncStatusCard'
 import { UnsyncButton } from '@/components/UnsyncButton'
-import type { CanvasSyncPhase, SyncActivitySnapshot } from '@/components/useCanvasSyncStatus'
+import type { CanvasSyncPhase } from '@/components/useCanvasSyncStatus'
 import type { CanvasCourse } from '@/lib/canvas'
 import { deriveCanvasCourseStatus } from '@/lib/canvas-course-status'
 import { buildCanvasCourseSyncKey } from '@/lib/canvas-sync'
 import { dispatchInAppToast } from '@/lib/notifications'
 import type { QueuedJob } from '@/lib/queue'
+import type { SyncActivitySummary } from '@/lib/sync-activity'
 
 interface SyncedCanvasModule {
   id: string
+  courseId: string
   title: string
   summary: string | null
   courseTitle: string | null
@@ -33,13 +36,13 @@ interface CourseSyncProgress {
 
 export function SyncCoursesPageClient({
   initialConnectionUrl,
-  lastSync,
+  syncActivity,
   syncedCourseKeys,
   syncedModules,
   syncedCourseCount,
 }: {
   initialConnectionUrl: string
-  lastSync: SyncActivitySnapshot | null
+  syncActivity: SyncActivitySummary
   syncedCourseKeys: string[]
   syncedModules: SyncedCanvasModule[]
   syncedCourseCount: number
@@ -57,7 +60,6 @@ export function SyncCoursesPageClient({
   const [isQueueingSync, startQueueingSync] = useTransition()
   const hasAutoLoadedRef = useRef(false)
 
-  const latestSync = buildLatestSyncFromJob(activeCanvasJob, lastSync)
   const syncPhase = getCanvasJobPhase(activeCanvasJob)
   const syncProgressValue = getCanvasJobProgressValue(activeCanvasJob)
   const syncDetail = getCanvasJobDetail(activeCanvasJob)
@@ -91,7 +93,7 @@ export function SyncCoursesPageClient({
     isLoadingCourses,
     isCanvasJobActive,
     courseLoadError,
-    latestSync,
+    syncActivity,
     hasSyncedCourses: syncedCourseCount > 0,
   })
 
@@ -253,14 +255,33 @@ export function SyncCoursesPageClient({
 
       <section className="sync-summary-grid" aria-label="Course sync summary">
         <SummaryCard
-          label="Last sync"
-          title={latestSync?.label ?? 'No sync yet'}
-          detail={latestSync ? 'Your latest course import is saved.' : 'Refresh Courses, select what you need, then sync.'}
+          label="Last Canvas update"
+          title={syncActivity.lastCanvasUpdate?.title ?? 'No update yet'}
+          detail={syncActivity.lastCanvasUpdate?.detail ?? 'Refresh courses, then sync or refresh a course to pull new Canvas changes in.'}
+          tone={syncActivity.lastCanvasUpdate?.tone ?? 'neutral'}
           action={(
             <button type="button" onClick={() => loadCourses()} disabled={isLoadingCourses} className="ui-button ui-button-primary ui-button-sm">
               {isLoadingCourses ? 'Refreshing courses...' : 'Refresh Courses'}
             </button>
           )}
+        />
+        <SummaryCard
+          label="Last full manual sync"
+          title={syncActivity.lastFullManualSync?.title ?? 'No full manual sync yet'}
+          detail={syncActivity.lastFullManualSync?.detail ?? 'Use Sync selected to import a course into Stay Focused.'}
+          tone={syncActivity.lastFullManualSync?.tone ?? 'neutral'}
+        />
+        <SummaryCard
+          label="Last background sync"
+          title={syncActivity.lastBackgroundSync?.title ?? 'No background sync yet'}
+          detail={syncActivity.lastBackgroundSync?.detail ?? 'Background syncs check your already-synced courses for new Canvas changes.'}
+          tone={syncActivity.lastBackgroundSync?.tone ?? 'neutral'}
+        />
+        <SummaryCard
+          label="Last resource refresh"
+          title={syncActivity.lastResourceRefresh?.title ?? 'No resource refresh yet'}
+          detail={syncActivity.lastResourceRefresh?.detail ?? 'Resource refreshes update module file/page links without a heavy course re-import.'}
+          tone={syncActivity.lastResourceRefresh?.tone ?? 'neutral'}
         />
         <SummaryCard
           label="Status"
@@ -272,7 +293,9 @@ export function SyncCoursesPageClient({
           label="Synced courses"
           title={`${syncedCourseCount} ${syncedCourseCount === 1 ? 'course' : 'courses'}`}
           detail={`${syncedModules.length} synced ${syncedModules.length === 1 ? 'module' : 'modules'} available for study.`}
-          action={<a href="#synced-modules" className="ui-button ui-button-secondary ui-button-sm">Manage courses</a>}
+          action={(
+            <a href="#synced-modules" className="ui-button ui-button-secondary ui-button-sm">Manage courses</a>
+          )}
         />
       </section>
 
@@ -412,7 +435,12 @@ export function SyncCoursesPageClient({
             progressValue={syncProgressValue}
             title={syncTitle}
             detail={syncDetail}
-            lastSync={latestSync}
+            lastSync={syncActivity.lastFullManualSync
+              ? {
+                  label: `Last full manual sync: ${syncActivity.lastFullManualSync.title}`,
+                  tone: syncActivity.lastFullManualSync.tone,
+                }
+              : null}
             onRetry={selectedCourseIds.length > 0 ? handleCourseSubmit : undefined}
             showWhenIdle
             selectedCourseCount={syncCourseCount}
@@ -420,8 +448,13 @@ export function SyncCoursesPageClient({
           />
 
           <div className="sync-detail-block">
-            <p className="sync-detail-title">Last sync details</p>
-            <p className="sync-detail-copy">{latestSync?.label ?? 'Sync a course to start building your study workspace.'}</p>
+            <p className="sync-detail-title">Latest update details</p>
+            <p className="sync-detail-copy">{syncActivity.lastCanvasUpdate?.detail ?? 'Sync a course to start building your study workspace.'}</p>
+          </div>
+
+          <div className="sync-detail-block">
+            <p className="sync-detail-title">Background sync</p>
+            <p className="sync-detail-copy">{syncActivity.lastBackgroundSync?.detail ?? 'No background sync has run for this account yet.'}</p>
           </div>
 
           <div className="sync-detail-block">
@@ -467,6 +500,7 @@ export function SyncCoursesPageClient({
                 </div>
                 <span className="sync-managed-date">{new Date(module.createdAt).toLocaleDateString()}</span>
                 <div className="sync-managed-actions">
+                  <RefreshCourseResourcesButton courseId={module.courseId} />
                   <Link href={`/modules/${module.id}/learn`} className="ui-button ui-button-secondary ui-button-sm">
                     Open
                   </Link>
@@ -529,26 +563,6 @@ function EndedCoursesToggle({
 
 function Message({ children }: { children: ReactNode }) {
   return <div className="sync-error-message">{children}</div>
-}
-
-function buildLatestSyncFromJob(job: QueuedJob | null, fallback: SyncActivitySnapshot | null): SyncActivitySnapshot | null {
-  if (job?.status === 'completed') {
-    const completedAt = job.completedAt ? new Date(job.completedAt).toLocaleString() : null
-    return {
-      label: completedAt ? `Course sync complete on ${completedAt}` : 'Course sync complete',
-      tone: 'success',
-    }
-  }
-
-  if (job?.status === 'failed') {
-    const completedAt = job.completedAt ? new Date(job.completedAt).toLocaleString() : null
-    return {
-      label: completedAt ? `Course sync failed on ${completedAt}` : 'Course sync failed',
-      tone: 'warning',
-    }
-  }
-
-  return fallback
 }
 
 function getCanvasJobPhase(job: QueuedJob | null): CanvasSyncPhase {
@@ -718,13 +732,13 @@ function getStatusSummary({
   isLoadingCourses,
   isCanvasJobActive,
   courseLoadError,
-  latestSync,
+  syncActivity,
   hasSyncedCourses,
 }: {
   isLoadingCourses: boolean
   isCanvasJobActive: boolean
   courseLoadError: string | null
-  latestSync: SyncActivitySnapshot | null
+  syncActivity: SyncActivitySummary
   hasSyncedCourses: boolean
 }) {
   if (isCanvasJobActive) {
@@ -736,11 +750,14 @@ function getStatusSummary({
   if (courseLoadError) {
     return { title: 'Needs sync', detail: 'Course list could not refresh. Try again from this page.', tone: 'warning' as const }
   }
-  if (latestSync?.tone === 'warning') {
-    return { title: 'Needs sync', detail: 'The last sync did not finish cleanly.', tone: 'warning' as const }
+  if (syncActivity.lastBackgroundSync?.tone === 'warning') {
+    return { title: 'Needs review', detail: 'The latest background sync had warnings or missed part of the refresh path.', tone: 'warning' as const }
+  }
+  if (syncActivity.lastCanvasUpdate?.tone === 'warning') {
+    return { title: 'Needs review', detail: 'The latest Canvas update finished with warnings.', tone: 'warning' as const }
   }
   if (hasSyncedCourses) {
-    return { title: 'Up to date', detail: 'Synced courses are ready for planning.', tone: 'success' as const }
+    return { title: 'Updated', detail: 'Synced courses are ready for planning.', tone: 'success' as const }
   }
 
   return { title: 'Ready', detail: 'Choose courses to bring into Stay Focused.', tone: 'neutral' as const }
