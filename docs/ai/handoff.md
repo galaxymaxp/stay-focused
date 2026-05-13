@@ -5,6 +5,97 @@ Last Updated: 2026-05-13
 
 ---
 
+## Session Update - 2026-05-13 (Fix Canvas auth for OCR queue)
+
+### What changed
+
+- Fixed queued OCR and source preparation so they resolve Canvas credentials from the owning user's saved `user_settings` instead of depending on global `CANVAS_API_URL` / `CANVAS_API_TOKEN`.
+- Added a shared user-scoped Canvas config resolver for background worker paths and reused it in:
+  - `source_ocr` queue processing
+  - readable-text reprocessing during `resource_extraction`
+  - manual `/api/sources/ocr` requests
+- Replaced student-facing OCR/reprocess auth failures with:
+  - `Canvas connection is missing or expired. Reconnect Canvas in Settings, then retry.`
+- Removed student-facing env-var instructions from OCR/reprocess failure paths; env fallback remains as a server-side fallback only.
+- Hardened `/sync` activity reporting in two places:
+  - background sync classification now recognizes `external_cron` from `result.mode` as well as `payload.mode`
+  - `/sync` now reads sync/resource-refresh activity through the service-role client when available, filtered to the signed-in `user_id`, so the page is less likely to miss freshly recorded rows
+- Added tests covering:
+  - user-scoped Canvas credential resolution without global env vars
+  - reconnect-only messaging when credentials are missing
+  - reprocess fallback messaging for relative stored Canvas file URLs without credentials
+  - background sync summary recognition when external-cron mode is only present in the completed result
+
+### Files touched
+
+- `actions/queue-jobs.ts`
+- `app/api/sources/ocr/route.ts`
+- `app/sync/page.tsx`
+- `lib/canvas-user-config.ts`
+- `lib/module-resource-reprocess.ts`
+- `lib/sync-activity.ts`
+- `tests/canvas-user-config.test.ts`
+- `tests/sync-activity.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Production had a split-brain Canvas auth path: course listing/manual sync/background sync already used per-user saved Canvas credentials, but OCR/reprocess/resource-preparation still relied on global env-based Canvas config when fetching stored Canvas files. That made queued OCR fail for valid multi-user Canvas accounts even though the same user could browse and sync courses. The `/sync` summary also had a brittle background-sync classification path and could miss fresh activity rows in the UI.
+
+### Tests run
+
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- source-ocr-updates queue canvas-resource-refresh sync-activity learn-resource-ui` - passed
+- `npm test -- canvas-content-resolution deep-learn-readiness` - passed
+
+### Verification result
+
+- Passed:
+  - typecheck
+  - lint
+  - targeted OCR / queue / sync activity / resource refresh / learn UI tests
+- Verified in code/tests:
+  - OCR/reprocess worker paths can now build Canvas config from saved per-user settings
+  - missing credentials surface reconnect guidance instead of env-var instructions
+  - `/sync` background activity summary still detects external cron runs when the mode lives in `result`
+  - `/sync` resource refresh activity uses a more reliable server-side query path
+- Not completed in this session:
+  - production deploy verification
+  - cron-job.org inspection or live cron log verification
+  - manual `/sync` page/browser verification against a real signed-in deployment
+
+### Known risks
+
+- If production cron-job.org is no longer calling `/api/cron/external-sync`, the summary fix will not create new background-sync rows by itself; deployment-side cron configuration still needs verification.
+- `/sync` now prefers service-role reads for activity cards on the server. The query is still filtered by the signed-in `user_id`, but this is a higher-privilege read path than the previous auth-only path.
+- Manual retry behavior for failed OCR jobs was already present through the existing `manualRetry` path; this session did not redesign queue UX beyond fixing the auth failure.
+
+### Blockers
+
+- No code blocker remains.
+- Deployment-side verification is still required to confirm:
+  - current `Last background sync`
+  - `Last resource refresh` updating after a course refresh
+  - queued OCR retry succeeding for affected scanned PDFs
+- cron-job.org status/logs were not available in the local workspace, so I could not confirm whether production is currently hitting `/api/cron/external-sync`.
+
+### Next recommended step
+
+1. Deploy this fix and manually verify on a real affected account:
+   - open `/sync`
+   - confirm `Last background sync` advances after cron runs
+   - click `Refresh resources` on a synced course and confirm `Last resource refresh` updates
+   - open the affected scanned PDF, click `Scan PDF`, and confirm one `source_ocr` job appears and no env-var wording appears
+2. If `Last background sync` still does not move after deploy, check cron-job.org request history and confirm the `Authorization: Bearer <CRON_SECRET>` header is still being sent to `/api/cron/external-sync`.
+3. If needed, add one small follow-up for explicit OCR retry affordances in every failed-source detail surface, but keep that separate from quiz-quality work.
+
+### Suggested commit message
+
+```bash
+fix Canvas auth for OCR queue
+```
+
 ## Session Update - 2026-05-13 (Add OCR recovery for stuck PDFs)
 
 ### What changed

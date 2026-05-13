@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { revalidatePath } from 'next/cache'
 import { createSupabaseRouteClient } from '@/lib/supabase-auth-server'
 import { resolveCanvasConfig, type CanvasConfig } from '@/lib/canvas'
+import { CANVAS_RECONNECT_MESSAGE, resolveCanvasConfigFromUser } from '@/lib/canvas-user-config'
 import { adaptModuleResourceRow } from '@/lib/module-resource-row'
 import { getSourceOcrProvider } from '@/lib/extraction/source-ocr-provider'
 import { canRunManualSourceOcr, getOcrMaxPagesForProvider, getSourceOcrConfig } from '@/lib/source-ocr-config'
@@ -96,7 +97,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const canvasConfig = getOptionalCanvasConfig()
+    const canvasConfig = await resolveStoredCanvasConfig(resource)
     const sourceUrl = resource.sourceUrl ?? resource.htmlUrl
     if (!sourceUrl) {
       throw new Error('No downloadable PDF source is stored for this item. Open the original file.')
@@ -197,7 +198,7 @@ async function fetchStoredSource(url: string, canvasConfig: CanvasConfig | null)
   if (response.ok) return response
 
   if (response.status === 401 || response.status === 403) {
-    throw new Error('Canvas auth is required to OCR this PDF. Check CANVAS_API_URL and CANVAS_API_TOKEN, or open the original file.')
+    throw new Error(CANVAS_RECONNECT_MESSAGE)
   }
 
   if (response.status === 404) {
@@ -212,7 +213,7 @@ function resolveStoredUrl(url: string, canvasConfig: CanvasConfig | null) {
     return new URL(url).toString()
   } catch {
     if (!canvasConfig) {
-      throw new Error('This stored source URL is relative, but no Canvas base URL is configured for OCR.')
+      throw new Error(CANVAS_RECONNECT_MESSAGE)
     }
 
     return new URL(url, `${canvasConfig.url}/`).toString()
@@ -239,6 +240,16 @@ function getOptionalCanvasConfig() {
     return resolveCanvasConfig()
   } catch {
     return null
+  }
+}
+
+async function resolveStoredCanvasConfig(resource: ModuleResource) {
+  try {
+    return await resolveCanvasConfigFromUser(
+      resource.canvasInstanceUrl ? { url: resource.canvasInstanceUrl } : undefined,
+    )
+  } catch {
+    return getOptionalCanvasConfig()
   }
 }
 

@@ -64,3 +64,25 @@ test('last canvas update ignores failed background syncs when choosing latest su
   assert.equal(summary.lastCanvasUpdate?.occurredAt, '2026-05-11T05:07:24.000Z')
   assert.equal(summary.lastBackgroundSync?.tone, 'warning')
 })
+
+test('background sync summary still recognizes external cron jobs when mode is only present in the completed result', () => {
+  const summary = buildSyncActivitySummary({
+    queueRows: [
+      {
+        status: 'completed',
+        payload: {},
+        result: {
+          mode: 'external_cron',
+          currentStep: 'done',
+        },
+        error: null,
+        created_at: '2026-05-13T05:50:00.000Z',
+        completed_at: '2026-05-13T05:58:47.000Z',
+      },
+    ],
+    resourceRefreshRows: [],
+  })
+
+  assert.equal(summary.lastBackgroundSync?.occurredAt, '2026-05-13T05:58:47.000Z')
+  assert.match(summary.lastBackgroundSync?.detail ?? '', /background sync finished cleanly/i)
+})

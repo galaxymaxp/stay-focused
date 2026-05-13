@@ -15,6 +15,7 @@ import {
   type ResolveCanvasAttachmentDownloadInput,
 } from './canvas-content-resolution'
 import { resolveCanvasConfig, resolveCanvasLinkedTarget, type CanvasConfig } from './canvas'
+import { CANVAS_RECONNECT_MESSAGE } from './canvas-user-config'
 import type { ModuleResource, ModuleResourceExtractionStatus, ModuleResourceVisualExtractionStatus } from './types'
 
 type CanvasPagePayload = {
@@ -780,10 +781,10 @@ function buildStoredFetchError(status: number, absoluteUrl: string, canvasConfig
     const canvasHost = canvasConfig ? new URL(`${canvasConfig.url}/`).host : null
 
     if (!canvasConfig || targetHost !== canvasHost) {
-      return 'Canvas auth is required to reprocess this resource. Add CANVAS_API_URL and CANVAS_API_TOKEN for this Canvas host, then retry.'
+      return CANVAS_RECONNECT_MESSAGE
     }
 
-    return 'Canvas rejected the stored reprocess request for this resource. Check CANVAS_API_TOKEN, try repair, or open the item in Canvas.'
+    return CANVAS_RECONNECT_MESSAGE
   }
 
   if (status === 404) {
@@ -798,7 +799,7 @@ function resolveStoredUrl(url: string, canvasConfig: CanvasConfig | null) {
     return new URL(url).toString()
   } catch {
     if (!canvasConfig) {
-      throw new Error('This stored source URL is relative, but no Canvas base URL is configured for reprocessing.')
+      throw new Error(CANVAS_RECONNECT_MESSAGE)
     }
 
     return new URL(url, `${canvasConfig.url}/`).toString()

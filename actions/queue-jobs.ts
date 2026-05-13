@@ -4,6 +4,7 @@ import { after } from 'next/server'
 import { revalidatePath } from 'next/cache'
 import { createAuthenticatedSupabaseServerClient, getAuthenticatedUserServer } from '@/lib/auth-server'
 import { resolveCanvasConfig, type CanvasConfig } from '@/lib/canvas'
+import { CANVAS_RECONNECT_MESSAGE, resolveCanvasConfigForUserId } from '@/lib/canvas-user-config'
 import { adaptModuleResourceRow } from '@/lib/module-resource-row'
 import {
   createQueuedJob,
@@ -1398,7 +1399,8 @@ export async function processSourceOcrJob(input: {
     const providerAdapter = getSourceOcrProvider(ocrConfig.provider)
     const runningProviderLabel = `${ocrConfig.provider}:running`
     if (await cancel(resource)) return
-    const buffer = await downloadStoredPdfForOcr(sourceUrl, getOptionalCanvasConfig())
+    const canvasConfig = await resolveStoredCanvasConfigForUserResource(input.userId, resource)
+    const buffer = await downloadStoredPdfForOcr(sourceUrl, canvasConfig)
     if (await cancel(resource)) return
     const ocr = await providerAdapter.run({
       buffer,
@@ -1905,7 +1907,11 @@ async function processResourceExtractionJob(input: {
 
     if (await cancel(resource)) return { started: true, status: 'cancelled' }
 
-    const result = await reprocessStoredModuleResource(resource, { triggeredBy: 'learn' })
+    const canvasConfig = await resolveStoredCanvasConfigForUserResource(input.userId, resource)
+    const result = await reprocessStoredModuleResource(resource, {
+      triggeredBy: 'learn',
+      ...(canvasConfig ? { canvasConfig } : {}),
+    })
     const normalized = normalizeSourceProcessingResult({
       resource,
       extractionStatus: result.update.extractionStatus,
@@ -2069,7 +2075,7 @@ async function fetchStoredSourceForOcr(url: string, canvasConfig: CanvasConfig |
 
   if (response.ok) return response
   if (response.status === 401 || response.status === 403) {
-    throw new Error('Canvas auth is required to OCR this PDF. Check CANVAS_API_URL and CANVAS_API_TOKEN, or open the original file.')
+    throw new Error(CANVAS_RECONNECT_MESSAGE)
   }
   if (response.status === 404) throw new Error('The stored PDF no longer resolves. Open the original file.')
   throw new Error(`The stored PDF request failed with HTTP ${response.status}.`)
@@ -2079,7 +2085,7 @@ function resolveStoredUrlForOcr(url: string, canvasConfig: CanvasConfig | null) 
   try {
     return new URL(url).toString()
   } catch {
-    if (!canvasConfig) throw new Error('This stored source URL is relative, but no Canvas base URL is configured for OCR.')
+    if (!canvasConfig) throw new Error(CANVAS_RECONNECT_MESSAGE)
     return new URL(url, `${canvasConfig.url}/`).toString()
   }
 }
@@ -2099,5 +2105,16 @@ function getOptionalCanvasConfig() {
     return resolveCanvasConfig()
   } catch {
     return null
+  }
+}
+
+async function resolveStoredCanvasConfigForUserResource(userId: string, resource: ModuleResource) {
+  try {
+    return await resolveCanvasConfigForUserId(
+      userId,
+      resource.canvasInstanceUrl ? { url: resource.canvasInstanceUrl } : undefined,
+    )
+  } catch {
+    return getOptionalCanvasConfig()
   }
 }

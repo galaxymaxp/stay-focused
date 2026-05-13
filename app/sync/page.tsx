@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { SyncCoursesPageClient } from '@/components/SyncCoursesPageClient'
 import { createAuthenticatedSupabaseServerClient, getAuthenticatedUserServer } from '@/lib/auth-server'
 import { buildCanvasCourseSyncKey } from '@/lib/canvas-sync'
+import { createSupabaseServiceRoleClient } from '@/lib/supabase-service'
 import { buildSyncActivitySummary, type QueueActivityRow, type ResourceRefreshActivityRow } from '@/lib/sync-activity'
 
 export default async function SyncCoursesPage() {
@@ -132,16 +133,17 @@ export default async function SyncCoursesPage() {
         .filter((value): value is string => Boolean(value))
     )
   )
-  const [queueRowsResult, resourceRefreshRowsResult] = db
+  const activityClient = createSupabaseServiceRoleClient() ?? db
+  const [queueRowsResult, resourceRefreshRowsResult] = activityClient
     ? await Promise.all([
-        db
+        activityClient
           .from('queued_jobs')
           .select('status, payload, result, error, created_at, completed_at')
           .eq('user_id', user.id)
           .eq('type', 'canvas_sync')
           .order('created_at', { ascending: false })
           .limit(100),
-        db
+        activityClient
           .from('resource_refresh_activity')
           .select('status, detail, created_at')
           .eq('user_id', user.id)

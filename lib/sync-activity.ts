@@ -144,7 +144,7 @@ function hasQueueWarnings(row: QueueActivityRow) {
 }
 
 function getQueueMode(row: QueueActivityRow) {
-  const value = row.payload?.mode
+  const value = row.payload?.mode ?? row.result?.mode
   return typeof value === 'string' ? value : null
 }
 
