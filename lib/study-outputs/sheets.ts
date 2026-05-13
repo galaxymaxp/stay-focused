@@ -1,5 +1,6 @@
 import { buildDeepLearnNoteBody, resolveDeepLearnWording } from '@/lib/deep-learn'
 import { deepLearnNoteHasUntrustworthyGrounding } from '@/lib/deep-learn-source-validation'
+import { normalizeSourceFaithfulText, normalizeStudyOutputHeadingIfRaw } from '@/lib/study-outputs/source-faithful'
 import type {
   DeepLearnAnswerBankItem,
   DeepLearnIdentificationItem,
@@ -142,17 +143,21 @@ function buildKeyTerms(note: DeepLearnNote, limit: number) {
       .slice()
       .sort(compareImportanceDesc)
       .map((item) => ({
-        term: item.cue.trim(),
-        definition: trimToSentence(resolveDeepLearnWording(item.compactAnswer, 'exam_safe')),
+        term: normalizeStudyOutputHeadingIfRaw(item.cue),
+        definition: trimToSentence(resolveDeepLearnWording(item.compactAnswer, 'exact_source')),
         importance: item.importance,
+        sourceWording: trimToSentence(resolveDeepLearnWording(item.answer, 'exact_source')),
+        plainExplanation: buildPlainExplanation(item),
       })),
     ...note.identificationItems
       .slice()
       .sort(compareImportanceDesc)
       .map((item) => ({
-        term: trimToSentence(resolveDeepLearnWording(item.answer, 'exam_safe')),
+        term: trimToSentence(resolveDeepLearnWording(item.answer, 'exact_source')),
         definition: trimToSentence(item.prompt),
         importance: item.importance,
+        sourceWording: trimToSentence(resolveDeepLearnWording(item.answer, 'exact_source')),
+        plainExplanation: buildPlainExplanation(item),
       })),
   ]
 
@@ -169,14 +174,14 @@ function buildHighYieldFacts(note: DeepLearnNote, limit: number) {
       .sort(compareImportanceDesc)
       .map((item) => ({
         cue: item.cue.trim(),
-        detail: trimToSentence(resolveDeepLearnWording(item.answer, 'exam_safe')),
+        detail: trimToSentence(resolveDeepLearnWording(item.answer, 'exact_source')),
         importance: item.importance,
       })),
     ...note.likelyQuizTargets
       .slice()
       .sort((left, right) => compareImportance(right.importance, left.importance))
       .map((item) => ({
-        cue: item.target.trim(),
+        cue: normalizeStudyOutputHeadingIfRaw(item.target),
         detail: trimToSentence(item.reason),
         importance: item.importance,
       })),
@@ -287,14 +292,14 @@ function buildSupplementalSection(note: DeepLearnNote, limit: number) {
       ...note.answerBank
         .filter((item) => item.kind === 'term_definition' || looksLikeDefinitionRelation(item.cue, resolveDeepLearnWording(item.answer, 'exam_safe')))
         .map((item) => ({
-          cue: item.cue.trim(),
-          detail: trimToSentence(resolveDeepLearnWording(item.answer, 'exam_safe')),
+          cue: normalizeStudyOutputHeadingIfRaw(item.cue),
+          detail: trimToSentence(resolveDeepLearnWording(item.answer, 'exact_source')),
           importance: item.importance,
         })),
       ...note.identificationItems
         .filter((item) => item.kind === 'term_definition')
         .map((item) => ({
-          cue: trimToSentence(resolveDeepLearnWording(item.answer, 'exam_safe')),
+          cue: trimToSentence(resolveDeepLearnWording(item.answer, 'exact_source')),
           detail: trimToSentence(item.prompt),
           importance: item.importance,
         })),
@@ -390,10 +395,17 @@ function looksLikeRealFormula(value: string) {
 }
 
 function trimToSentence(value: string) {
-  return value
+  return normalizeSourceFaithfulText(value)
     .replace(/\s+/g, ' ')
     .replace(/\s*[:;,-]\s*$/, '')
     .trim()
+}
+
+function buildPlainExplanation(item: DeepLearnAnswerBankItem | DeepLearnIdentificationItem) {
+  const explanation = item.simplifiedWording ?? item.supportingContext ?? item.draftExplanation ?? null
+  const cleaned = explanation ? trimToSentence(explanation) : null
+  const source = trimToSentence(resolveDeepLearnWording(item.answer, 'exact_source'))
+  return cleaned && cleaned !== source ? cleaned : null
 }
 
 function trimFormulaText(value: string) {

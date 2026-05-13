@@ -1,5 +1,6 @@
 import { resolveDeepLearnWording } from '@/lib/deep-learn'
 import { collectStudySheetFormulas } from '@/lib/study-outputs/sheets'
+import { buildSourceBasisLine, buildSourceWordingLine, normalizeSourceFaithfulText, normalizeStudyOutputHeadingIfRaw } from '@/lib/study-outputs/source-faithful'
 import type { StudyNoteQuizItem } from '@/lib/study-note-quiz'
 import type { DeepLearnNote } from '@/lib/types'
 
@@ -20,8 +21,10 @@ export function buildDeepLearnQuizItems(note: DeepLearnNote): StudyNoteQuizItem[
     prompt: item.question,
     choices: item.choices,
     answer: item.correctAnswer,
-    explanation: item.explanation ?? 'This multiple-choice question comes directly from the saved study pack.',
+    explanation: item.sourceSnippet ? `Source basis: ${normalizeSourceFaithfulText(item.sourceSnippet)}` : (item.explanation ?? 'This multiple-choice question comes directly from the saved study pack.'),
     sourceLabel: note.title,
+    sourceWording: item.sourceSnippet ?? null,
+    sourceBasis: item.sourceSnippet ?? item.explanation ?? null,
   } satisfies StudyNoteQuizItem))
 
   const answerBankItems = note.answerBank
@@ -34,16 +37,18 @@ export function buildDeepLearnQuizItems(note: DeepLearnNote): StudyNoteQuizItem[
       : 'short_answer',
     prompt: buildAnswerBankPrompt(item.cue, item.kind),
     choices: [],
-    answer: resolveDeepLearnWording(item.answer),
-    explanation: 'This answer is stated directly in the source.',
+    answer: resolveDeepLearnWording(item.answer, 'exact_source'),
+    explanation: buildSourceWordingLine(resolveDeepLearnWording(item.answer, 'exact_source')) ?? 'This answer is stated directly in the source.',
     sourceLabel: note.title,
+    sourceWording: resolveDeepLearnWording(item.answer, 'exact_source'),
+    sourceBasis: item.sourceSnippet ?? resolveDeepLearnWording(item.answer, 'exact_source'),
   } satisfies StudyNoteQuizItem))
 
   const identificationItems = note.identificationItems
     .filter((item) => isAcademicQuizText(item.prompt) && isAcademicQuizText(resolveDeepLearnWording(item.answer)))
     .slice(0, MAX_IDENTIFICATION_ITEMS)
     .map((item, index) => {
-    const correctAnswer = resolveDeepLearnWording(item.answer)
+    const correctAnswer = resolveDeepLearnWording(item.answer, 'exact_source')
     const distractors = item.distractors
       .filter((entry) => normalizeLookup(entry) !== normalizeLookup(correctAnswer))
       .slice(0, 3)
@@ -55,8 +60,10 @@ export function buildDeepLearnQuizItems(note: DeepLearnNote): StudyNoteQuizItem[
       prompt: buildIdentificationPrompt(item.prompt, item.kind),
       choices: isMultipleChoice ? sortChoices([correctAnswer, ...distractors]) : [],
       answer: correctAnswer,
-      explanation: 'This clue is answered directly by the selected source.',
+      explanation: buildSourceWordingLine(correctAnswer) ?? 'This clue is answered directly by the selected source.',
       sourceLabel: note.title,
+      sourceWording: correctAnswer,
+      sourceBasis: item.sourceSnippet ?? correctAnswer,
     } satisfies StudyNoteQuizItem
   })
 
@@ -66,8 +73,10 @@ export function buildDeepLearnQuizItems(note: DeepLearnNote): StudyNoteQuizItem[
     prompt: `What belongs on the timeline at ${item.label}?`,
     choices: [],
     answer: item.detail,
-    explanation: 'This date and event pairing comes from the source timeline.',
+    explanation: buildSourceBasisLine(item.sourceSnippet ?? item.detail) ?? 'This date and event pairing comes from the source timeline.',
     sourceLabel: note.title,
+    sourceWording: item.sourceSnippet ?? item.detail,
+    sourceBasis: item.sourceSnippet ?? item.detail,
   } satisfies StudyNoteQuizItem))
 
   const distinctionItems = note.distinctions.slice(0, MAX_DISTINCTION_ITEMS).map((item, index) => ({
@@ -76,8 +85,10 @@ export function buildDeepLearnQuizItems(note: DeepLearnNote): StudyNoteQuizItem[
     prompt: `Distinguish ${item.conceptA} from ${item.conceptB}.`,
     choices: [],
     answer: item.difference,
-    explanation: item.confusionNote ?? 'This distinction matters because these ideas are easy to confuse.',
+    explanation: buildSourceBasisLine(item.sourceSnippet ?? item.difference) ?? item.confusionNote ?? 'This distinction matters because these ideas are easy to confuse.',
     sourceLabel: note.title,
+    sourceWording: item.sourceSnippet ?? item.difference,
+    sourceBasis: item.sourceSnippet ?? item.difference,
   } satisfies StudyNoteQuizItem))
 
   const likelyTargetItems = note.likelyQuizTargets.slice(0, MAX_LIKELY_TARGET_ITEMS).map((item, index) => ({
@@ -86,8 +97,10 @@ export function buildDeepLearnQuizItems(note: DeepLearnNote): StudyNoteQuizItem[
     prompt: `Why is "${item.target}" a likely quiz target?`,
     choices: [],
     answer: item.reason,
-    explanation: 'This topic is called out explicitly in the saved study pack.',
+    explanation: buildSourceBasisLine(item.sourceSnippet ?? item.reason) ?? 'This topic is called out explicitly in the saved study pack.',
     sourceLabel: note.title,
+    sourceWording: item.sourceSnippet ?? null,
+    sourceBasis: item.sourceSnippet ?? item.reason,
   } satisfies StudyNoteQuizItem))
 
   return uniqueBy(
@@ -113,13 +126,16 @@ export function isDeepLearnQuizReady(note: DeepLearnNote) {
 }
 
 function buildAnswerBankPrompt(cue: string, kind: DeepLearnNote['answerBank'][number]['kind']) {
+  const cleanCue = normalizeStudyOutputHeadingIfRaw(cue)
   if (kind === 'date_event') return `What happened in ${cue}?`
   if (kind === 'law_effect') return `What did ${cue} do?`
-  if (kind === 'province_capital') return `What is the capital of ${cue}?`
-  if (kind === 'person_role') return `What role is linked to ${cue}?`
-  if (kind === 'place_meaning') return `What does ${cue} mean?`
-  if (kind === 'count') return `What count is linked to ${cue}?`
-  return `What does the source say about ${cue}?`
+  if (kind === 'province_capital') return `What is the capital of ${cleanCue}?`
+  if (kind === 'person_role') return `Identify the role linked to ${cleanCue}.`
+  if (kind === 'place_meaning') return `Define or identify ${cleanCue}.`
+  if (kind === 'count') return `Give the count linked to ${cleanCue}.`
+  if (kind === 'term_definition') return `Define ${cleanCue}.`
+  if (kind === 'compare') return `Distinguish ${cleanCue}.`
+  return `Recall the source wording for ${cleanCue}.`
 }
 
 function buildIdentificationPrompt(prompt: string, kind: DeepLearnNote['identificationItems'][number]['kind']) {

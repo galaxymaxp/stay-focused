@@ -136,6 +136,62 @@ test('deep learn quiz builder adds formula-aware prompts when real formulas exis
   assert.match(formulaItem?.explanation ?? '', /provided for the calculation|use this formula/i)
 })
 
+test('definition quiz answers preserve source wording and expose source wording lines', () => {
+  const note = createNote({
+    answerBank: [
+      {
+        cue: 'Vulnerability',
+        kind: 'term_definition',
+        answer: {
+          exact: 'Weaknesses or flaws in the hardware or software.',
+          examSafe: 'A vulnerability is a weakness that an exploit can target.',
+          simplified: 'A weakness attackers can use.',
+        },
+        compactAnswer: {
+          exact: 'Weaknesses or flaws in the hardware or software.',
+          examSafe: 'A weakness that an exploit can target.',
+          simplified: 'A weakness attackers can use.',
+        },
+        importance: 'high',
+        sortKey: null,
+        distractors: ['A successful exploit.', 'A security strategy.', 'A malware symptom.'],
+        sourceSnippet: 'Weaknesses or flaws in the hardware or software.',
+      },
+      ...createNote().answerBank,
+    ],
+  })
+
+  const items = buildDeepLearnQuizItems(note)
+  const item = items.find((entry) => entry.prompt === 'Define Vulnerability.')
+
+  assert.ok(item)
+  assert.equal(item?.answer, 'Weaknesses or flaws in the hardware or software.')
+  assert.match(item?.explanation ?? '', /Source wording: "Weaknesses or flaws in the hardware or software\."/)
+  assert.equal(item?.sourceWording, 'Weaknesses or flaws in the hardware or software.')
+})
+
+test('raw extraction labels are normalized out of quiz prompts', () => {
+  const note = createNote({
+    answerBank: [
+      {
+        cue: 'IT Security -> definition',
+        kind: 'term_definition',
+        answer: wording('A set of cyber security strategies that prevent unauthorized access.'),
+        compactAnswer: wording('A set of cyber security strategies that prevent unauthorized access.'),
+        importance: 'high',
+        sortKey: null,
+        distractors: ['Weaknesses or flaws in hardware/software.', 'A successful exploit.', 'The three security goals.'],
+      },
+      ...createNote().answerBank,
+    ],
+  })
+
+  const prompts = buildDeepLearnQuizItems(note).map((item) => item.prompt).join('\n')
+
+  assert.match(prompts, /Define IT Security\./)
+  assert.doesNotMatch(prompts, /-> definition|what-is-it-security|goals-cia/i)
+})
+
 function createNote(overrides: Partial<DeepLearnNote> = {}): DeepLearnNote {
   return buildDeepLearnNoteRecord({
     id: 'note-1',

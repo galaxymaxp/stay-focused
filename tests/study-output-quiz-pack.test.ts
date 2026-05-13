@@ -66,6 +66,43 @@ test('quiz pack items do not leak debug or metadata labels', () => {
   assert.doesNotMatch(combined, /\banswer-ready fact\b|\bcompact answer unit\b|\bpreserved for direct recall\b/i)
 })
 
+test('quiz pack definition answers preserve source wording and source basis', () => {
+  const items = buildQuizPackItems(createNote({
+    answerBank: [
+      {
+        cue: 'Vulnerability',
+        kind: 'term_definition',
+        answer: {
+          exact: 'Weaknesses or flaws in the hardware or software.',
+          examSafe: 'A vulnerability is a weakness that an exploit can target.',
+          simplified: 'A weakness attackers can use.',
+        },
+        compactAnswer: {
+          exact: 'Weaknesses or flaws in the hardware or software.',
+          examSafe: 'A weakness that an exploit can target.',
+          simplified: 'A weakness attackers can use.',
+        },
+        importance: 'high',
+        sortKey: null,
+        distractors: [
+          'A successful exploit.',
+          'A set of cyber security strategies.',
+          'A malware symptom.',
+        ],
+        sourceSnippet: 'Weaknesses or flaws in the hardware or software.',
+      },
+      ...createNote().answerBank,
+    ],
+  }))
+
+  const definition = items.find((item) => item.prompt === 'Define Vulnerability.')
+
+  assert.ok(definition)
+  assert.equal(definition?.answer, 'Weaknesses or flaws in the hardware or software.')
+  assert.equal(definition?.sourceWording, 'Weaknesses or flaws in the hardware or software.')
+  assert.match(definition?.explanation ?? '', /Source wording/)
+})
+
 function createNote(overrides: Partial<DeepLearnNote> = {}): DeepLearnNote {
   return buildDeepLearnNoteRecord({
     id: 'note-quiz-1',

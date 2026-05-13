@@ -76,7 +76,8 @@ export function StudyOutputSheetPage({
             {sheet.keyTerms.map((item) => (
               <article key={`${item.term}-${item.definition}`} className="reviewer-mini-card">
                 <strong>{item.term}</strong>
-                <p>{item.definition}</p>
+                <p><b>Memorize:</b> {item.sourceWording ?? item.definition}</p>
+                {item.plainExplanation ? <p className="reviewer-muted">Understand: {item.plainExplanation}</p> : null}
               </article>
             ))}
           </div>

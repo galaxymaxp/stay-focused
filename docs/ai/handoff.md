@@ -5,6 +5,111 @@ Last Updated: 2026-05-13
 
 ---
 
+## Session Update - 2026-05-13 (Make Deep Learn outputs source faithful)
+
+### What changed
+
+- Strengthened the Deep Learn generation prompt around a two-layer output model:
+  - exact source wording first for definitions, listed items, formulas, and process steps
+  - separate plain-English explanation only in explanation/support fields
+- Added shared source-faithful output cleanup helpers for:
+  - raw extraction label normalization such as `IT Security -> definition`, `what-is-it-security`, `goals-cia`, and `cybersecurity-definitions`
+  - source wording/source basis line formatting
+- Updated deterministic reviewer, study sheet, cram sheet, and quiz-pack builders to prefer `exact` source wording for memorization/answers instead of broad `examSafe` paraphrases.
+- Updated reviewer and sheet renderers to show separate student-facing layers:
+  - `Memorize`
+  - `Understand`
+- Updated quiz generation/output rendering so definition answers use exact/near-exact source wording and saved quiz packs expose `Source wording` / `Source basis` lines.
+- Kept formula handling strict so IT/security definitions such as vulnerability, breach, InfoSec, and malware symptoms are not treated as formulas.
+- Added regression tests for:
+  - exact source wording preservation in definition answers
+  - separated explanation/support text
+  - raw extraction label cleanup
+  - fake formula avoidance for IT/security definitions
+  - hidden formulas section when no real formulas exist
+  - quiz source wording/source basis output
+  - print output excluding app-navigation/working-context words
+  - selected-source grounding prompt constraints
+
+### Files touched
+
+- `components/StudyOutputQuizPackPage.tsx`
+- `components/StudyOutputReviewerPage.tsx`
+- `components/StudyOutputSheetPage.tsx`
+- `lib/deep-learn-generation.ts`
+- `lib/deep-learn-quiz.ts`
+- `lib/deep-learn.ts`
+- `lib/study-note-quiz.ts`
+- `lib/study-outputs/quiz-pack.ts`
+- `lib/study-outputs/reviewer.ts`
+- `lib/study-outputs/sheets.ts`
+- `lib/study-outputs/source-faithful.ts`
+- `lib/types.ts`
+- `tests/deep-learn-generation.test.ts`
+- `tests/deep-learn-quiz.test.ts`
+- `tests/study-output-print.test.ts`
+- `tests/study-output-quiz-pack.test.ts`
+- `tests/study-output-reviewer.test.ts`
+- `tests/study-output-sheet.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Recent Deep Learn outputs were cleaner than before, but still sometimes felt like extraction dumps or replaced exact teacher/module definitions with broader tutor paraphrases. This pass makes exact source wording the primary memorization layer for exam-safe outputs while keeping explanations readable and clearly separate.
+
+### Tests run
+
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- deep-learn-generation deep-learn-quiz study-output-sheet study-output-reviewer study-output-quiz-pack study-output-print` - passed
+- Manual PDF extraction check:
+  - `C:\Users\omgra\Downloads\1. Intro-To-IT-Security.pdf`
+  - normal extraction returned `status: extracted`
+  - extracted text length: `5908`
+  - preview included the exact IT Security wording: `A set of cyber security strategies that prevent unauthorized access`
+
+### Verification result
+
+- Passed:
+  - typecheck
+  - lint
+  - targeted Deep Learn / quiz / reviewer / sheet / print tests
+- Verified in code/tests:
+  - definition quiz answers preserve exact source wording
+  - saved quiz packs include source wording/source basis metadata
+  - reviewer and sheet rendering separates `Memorize` from `Understand`
+  - raw extraction labels are normalized before reaching output headings/prompts
+  - IT/security definition content does not produce fake formulas
+  - formula sections remain hidden when no real formulas exist
+  - print scaffolds do not include app navigation labels such as `LEARN`, `Deep Learn Tasks Quiz`, `Course Learn`, or `WORKING CONTEXT`
+  - Deep Learn prompt stays grounded only in selected source text
+- Not completed in this session:
+  - authenticated browser/manual generation QA through the saved source card for `1. Intro-To-IT-Security.pdf`
+  - visual print preview QA in a real browser
+
+### Known risks
+
+- Exact-source quality still depends on the model filling `wording.exact` and `sourceSnippet` faithfully during generation. The prompt is stricter and deterministic outputs now prefer exact wording, but historical saved packs with paraphrased-only fields can only preserve the best existing text they already contain.
+- Raw-label normalization is intentionally conservative. It cleans common extraction labels without rewriting normal academic headings, but more source-specific label shapes may need additions after more PDFs are reviewed.
+- Quiz application scenarios remain conservative; this change favors source-wording recall over inventing broader examples.
+
+### Blockers
+
+- No code blocker remains.
+- Full manual QA of generated outputs from the real PDF requires an authenticated local app/session and generation path using the saved Canvas source; only local PDF extraction was verified here.
+
+### Next recommended step
+
+1. Generate a fresh Deep Learn pack from `1. Intro-To-IT-Security.pdf` in the app.
+2. Open Reviewer, Quiz Pack, Study Sheet, and Cram Sheet outputs and confirm the visible `Memorize` / `Understand` / `Source wording` separation with the actual saved content.
+3. Print/save the outputs and confirm no app chrome or working-context labels appear.
+
+### Suggested commit message
+
+```bash
+make Deep Learn outputs source faithful
+```
+
 ## Session Update - 2026-05-13 (Clean study output print styles)
 
 ### What changed

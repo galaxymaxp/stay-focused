@@ -59,7 +59,10 @@ export function StudyOutputReviewerPage({
             {reviewer.highYieldConcepts.map((item) => (
               <li key={`${item.cue}-${item.answer}`}>
                 <strong>{item.cue}</strong>
-                <span>{item.answer}</span>
+                <span><b>Memorize:</b> {item.sourceWording ?? item.answer}</span>
+                {item.plainExplanation || item.support ? (
+                  <span><b>Understand:</b> {item.plainExplanation ?? item.support}</span>
+                ) : null}
               </li>
             ))}
           </ul>
@@ -71,7 +74,10 @@ export function StudyOutputReviewerPage({
             {reviewer.identificationReview.map((item) => (
               <article key={`${item.prompt}-${item.answer}`} className="reviewer-mini-card">
                 <p>{item.prompt}</p>
-                <strong>{item.answer}</strong>
+                <strong>Memorize: {item.sourceWording ?? item.answer}</strong>
+                {item.plainExplanation || item.support ? (
+                  <p className="reviewer-muted">Understand: {item.plainExplanation ?? item.support}</p>
+                ) : null}
               </article>
             ))}
           </div>

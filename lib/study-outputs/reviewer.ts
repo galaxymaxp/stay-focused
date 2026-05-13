@@ -1,6 +1,7 @@
 import { resolveDeepLearnWording } from '@/lib/deep-learn'
 import { buildDeepLearnNoteBody } from '@/lib/deep-learn'
 import { deepLearnNoteHasUntrustworthyGrounding } from '@/lib/deep-learn-source-validation'
+import { normalizeSourceFaithfulText, normalizeStudyOutputHeadingIfRaw } from '@/lib/study-outputs/source-faithful'
 import type {
   DeepLearnAnswerBankItem,
   DeepLearnIdentificationItem,
@@ -81,10 +82,12 @@ export function buildDeepLearnReviewerContent(note: DeepLearnNote): StudyOutputR
     .slice()
     .sort(compareImportanceDesc)
     .map((item) => ({
-      cue: item.cue,
-      answer: resolveDeepLearnWording(item.compactAnswer, 'exam_safe'),
+      cue: normalizeStudyOutputHeadingIfRaw(item.cue),
+      answer: exactMemorizeText(item.compactAnswer),
       importance: item.importance,
-      support: item.supportingContext ?? item.draftExplanation ?? item.reviewText ?? null,
+      support: plainExplanation(item),
+      sourceWording: exactMemorizeText(item.answer),
+      plainExplanation: plainExplanation(item),
     }))
     .slice(0, 12)
 
@@ -92,10 +95,12 @@ export function buildDeepLearnReviewerContent(note: DeepLearnNote): StudyOutputR
     .slice()
     .sort(compareImportanceDesc)
     .map((item) => ({
-      prompt: item.prompt,
-      answer: resolveDeepLearnWording(item.answer, 'exam_safe'),
+      prompt: normalizeSourceFaithfulText(item.prompt),
+      answer: exactMemorizeText(item.answer),
       importance: item.importance,
-      support: item.supportingContext ?? item.draftExplanation ?? item.reviewText ?? null,
+      support: plainExplanation(item),
+      sourceWording: exactMemorizeText(item.answer),
+      plainExplanation: plainExplanation(item),
     }))
     .slice(0, 14)
 
@@ -112,9 +117,9 @@ export function buildDeepLearnReviewerContent(note: DeepLearnNote): StudyOutputR
     distinctions: note.distinctions
       .slice(0, 8)
       .map((item) => ({
-        conceptA: item.conceptA,
-        conceptB: item.conceptB,
-        difference: item.difference,
+        conceptA: normalizeStudyOutputHeadingIfRaw(item.conceptA),
+        conceptB: normalizeStudyOutputHeadingIfRaw(item.conceptB),
+        difference: normalizeSourceFaithfulText(item.difference),
         confusionNote: item.confusionNote,
       })),
     likelyQuizTargets: note.likelyQuizTargets
@@ -122,8 +127,8 @@ export function buildDeepLearnReviewerContent(note: DeepLearnNote): StudyOutputR
       .sort((left, right) => compareImportance(right.importance, left.importance))
       .slice(0, 8)
       .map((item) => ({
-        target: item.target,
-        reason: item.reason,
+        target: normalizeStudyOutputHeadingIfRaw(item.target),
+        reason: normalizeSourceFaithfulText(item.reason),
         importance: item.importance,
       })),
     cautionNotes: note.cautionNotes.slice(0, 6),
@@ -154,7 +159,7 @@ function buildQuickReviewBlocks(note: DeepLearnNote) {
 
   return sections
     .map((section) => ({
-      heading: section.heading,
+      heading: normalizeStudyOutputHeadingIfRaw(section.heading),
       points: toQuickReviewPoints(section.body),
     }))
     .filter((section) => section.points.length > 0)
@@ -180,6 +185,17 @@ function toQuickReviewPoints(body: string) {
     .map((line) => line.replace(/^[-*]\s*/, '').trim())
     .filter((line) => line.length >= 18)
     .slice(0, 4)
+}
+
+function exactMemorizeText(wording: Parameters<typeof resolveDeepLearnWording>[0]) {
+  return normalizeSourceFaithfulText(resolveDeepLearnWording(wording, 'exact_source'))
+}
+
+function plainExplanation(item: DeepLearnAnswerBankItem | DeepLearnIdentificationItem) {
+  const simplified = 'simplifiedWording' in item ? item.simplifiedWording : null
+  const explanation = simplified ?? item.supportingContext ?? item.draftExplanation ?? item.reviewText ?? null
+  const cleaned = explanation ? normalizeSourceFaithfulText(explanation) : null
+  return cleaned && cleaned !== exactMemorizeText(item.answer) ? cleaned : null
 }
 
 function compareImportanceDesc(left: DeepLearnAnswerBankItem | DeepLearnIdentificationItem, right: DeepLearnAnswerBankItem | DeepLearnIdentificationItem) {

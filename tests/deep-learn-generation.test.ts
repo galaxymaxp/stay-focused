@@ -427,6 +427,8 @@ test('buildDeepLearnPrompt does not inject metadata or debug labels into model g
   assert.doesNotMatch(prompt, /\bModule:\s*Week 1\b/i)
   assert.doesNotMatch(prompt, /\banswer-ready\b|\bcompact answer unit\b/i)
   assert.match(prompt, /DATA ORGANIZATION covers OLTP/i)
+  assert.match(prompt, /wording\.exact must keep the teacher\/source wording nearly 1:1/i)
+  assert.match(prompt, /Do not use module summaries, course context, assignment metadata/i)
 })
 
 test('buildDeepLearnGroundingWithDependencies blocks when source fetch still yields unusable text', async () => {

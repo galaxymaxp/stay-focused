@@ -283,6 +283,11 @@ export function StudyOutputQuizPackPage({
               <p className="reviewer-section-label">Grounded answer</p>
               <strong>{currentItem.answer}</strong>
               <p>{currentItem.explanation}</p>
+              {currentItem.sourceWording ? (
+                <p className="reviewer-muted">Source wording: &quot;{currentItem.sourceWording}&quot;</p>
+              ) : currentItem.sourceBasis ? (
+                <p className="reviewer-muted">Source basis: {currentItem.sourceBasis}</p>
+              ) : null}
               <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', marginTop: '0.35rem' }}>
                 <button type="button" onClick={() => markSelfReview('correct')} className={currentReviewState === 'correct' ? 'ui-button ui-button-secondary ui-button-xs' : 'ui-button ui-button-ghost ui-button-xs'}>
                   {quizPack.selfReviewLabel}
@@ -333,6 +338,11 @@ function QuizPackPrintDocument({ quizPack }: { quizPack: StudyOutputQuizPackCont
                 <p className="study-output-print-answer-label">Answer</p>
                 <p>{item.answer}</p>
                 <p className="study-output-print-question-note">{item.explanation}</p>
+                {item.sourceWording ? (
+                  <p className="study-output-print-question-note">Source wording: &quot;{item.sourceWording}&quot;</p>
+                ) : item.sourceBasis ? (
+                  <p className="study-output-print-question-note">Source basis: {item.sourceBasis}</p>
+                ) : null}
               </div>
             </article>
           </li>

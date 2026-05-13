@@ -219,6 +219,52 @@ test('definition-style security content is not misclassified as formulas', () =>
   assert.doesNotMatch(sheet.summary, /\b0 formulas\b|\b\d+ formulas\b/i)
 })
 
+test('study and cram sheets keep exact definitions separate from explanations', () => {
+  const sheet = buildDeepLearnSheetContent(createNote({
+    title: 'IT Security exam prep pack',
+    overview: 'Definitions and distinctions for IT security.',
+    sections: [
+      {
+        heading: 'what-is-it-security',
+        body: 'IT Security is a set of cyber security strategies that prevent unauthorized access.',
+      },
+    ],
+    answerBank: [
+      {
+        cue: 'IT Security -> definition',
+        kind: 'term_definition',
+        answer: {
+          exact: 'A set of cyber security strategies that prevent unauthorized access.',
+          examSafe: 'IT Security protects digital systems and organizational assets.',
+          simplified: 'It keeps unauthorized users out.',
+        },
+        compactAnswer: {
+          exact: 'A set of cyber security strategies that prevent unauthorized access.',
+          examSafe: 'Protects digital systems and organizational assets.',
+          simplified: 'It keeps unauthorized users out.',
+        },
+        importance: 'high',
+        sortKey: null,
+        distractors: [],
+        supportingContext: 'It focuses on protecting organizational assets against cyberattacks and other threats.',
+      },
+    ],
+    identificationItems: [],
+    distinctions: [],
+    likelyQuizTargets: [],
+    cautionNotes: [],
+  }), 'cram_sheet')
+
+  const term = sheet.keyTerms.find((item) => item.term === 'IT Security')
+
+  assert.ok(term)
+  assert.equal(term?.sourceWording, 'A set of cyber security strategies that prevent unauthorized access.')
+  assert.equal(term?.definition, 'A set of cyber security strategies that prevent unauthorized access.')
+  assert.match(term?.plainExplanation ?? '', /protecting organizational assets/i)
+  assert.equal(sheet.formulas.length, 0)
+  assert.doesNotMatch(JSON.stringify(sheet), /IT Security -> definition|what-is-it-security/i)
+})
+
 test('sheet formulas preserve readable expressions when real formulas exist', () => {
   const sheet = buildDeepLearnSheetContent(createNote(), 'study_sheet')
 

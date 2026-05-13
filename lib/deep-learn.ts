@@ -16,6 +16,7 @@ import type {
   DeepLearnWordingSet,
 } from '@/lib/types'
 import type { ExtractedTextQuality } from '@/lib/types'
+import { normalizeStudyOutputHeading, normalizeStudyOutputHeadingIfRaw } from '@/lib/study-outputs/source-faithful'
 
 export const DEEP_LEARN_PROMPT_VERSION = 'v2-exam-prep'
 
@@ -401,7 +402,7 @@ function normalizeSections(value: unknown) {
 
       if (!heading || !body) return null
 
-      return { heading, body }
+      return { heading: normalizeStudyOutputHeadingIfRaw(heading), body }
     })
     .filter((entry): entry is DeepLearnNoteSection => Boolean(entry))
     .slice(0, 6)
@@ -435,7 +436,7 @@ function normalizeAnswerBank(value: unknown): DeepLearnAnswerBankItem[] {
       if (!cue || !answer || !compactAnswer) return null
 
       return {
-        cue,
+        cue: normalizeStudyOutputHeadingIfRaw(cue),
         kind: normalizeAnswerKind(record.kind),
         answer,
         compactAnswer,
@@ -460,7 +461,7 @@ function normalizeIdentificationItems(value: unknown): DeepLearnIdentificationIt
       if (!prompt || !answer) return null
 
       return {
-        prompt,
+        prompt: cleanRawExtractionPrompt(prompt),
         kind: normalizeAnswerKind(record.kind),
         answer,
         importance: normalizeImportance(record.importance),
@@ -484,8 +485,8 @@ function normalizeDistinctions(value: unknown): DeepLearnDistinction[] {
       if (!conceptA || !conceptB || !difference) return null
 
       return {
-        conceptA,
-        conceptB,
+        conceptA: normalizeStudyOutputHeadingIfRaw(conceptA),
+        conceptB: normalizeStudyOutputHeadingIfRaw(conceptB),
         difference,
         confusionNote: cleanParagraph(record.confusionNote),
         ...buildReviewLinkFields(record, 'distinction', `${conceptA} vs ${conceptB}`, difference),
@@ -723,6 +724,14 @@ function sanitizeStudentFacingText(value: string) {
     (current, [pattern, replacement]) => current.replace(pattern, replacement),
     value,
   )
+}
+
+function cleanRawExtractionPrompt(value: string) {
+  if (/^[a-z0-9_-]+(?:\s*(?:->|=>|:)\s*|\s*$)/i.test(value) && value.length <= 96) {
+    return normalizeStudyOutputHeading(value)
+  }
+
+  return value
 }
 
 function isQuizWorthyAnswerBankItem(item: DeepLearnAnswerBankItem) {

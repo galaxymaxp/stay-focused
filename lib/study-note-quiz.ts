@@ -10,6 +10,8 @@ export interface StudyNoteQuizItem {
   answer: string
   explanation: string
   sourceLabel: string | null
+  sourceWording?: string | null
+  sourceBasis?: string | null
 }
 
 interface OutlineFact {

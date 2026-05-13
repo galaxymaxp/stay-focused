@@ -418,6 +418,8 @@ export interface StudyOutputReviewerHighYieldItem {
   answer: string
   importance: DeepLearnTermImportance
   support: string | null
+  sourceWording?: string | null
+  plainExplanation?: string | null
 }
 
 export interface StudyOutputReviewerIdentificationItem {
@@ -425,6 +427,8 @@ export interface StudyOutputReviewerIdentificationItem {
   answer: string
   importance: DeepLearnTermImportance
   support: string | null
+  sourceWording?: string | null
+  plainExplanation?: string | null
 }
 
 export interface StudyOutputReviewerQuickReviewBlock {
@@ -468,6 +472,8 @@ export interface StudyOutputQuizPackItem {
   choices: string[]
   explanation: string
   sourceLabel: string | null
+  sourceWording?: string | null
+  sourceBasis?: string | null
   matchingPrompt?: string | null
   matchingAnswer?: string | null
   truthValue?: boolean | null
@@ -490,6 +496,8 @@ export interface StudyOutputSheetTermItem {
   term: string
   definition: string
   importance: DeepLearnTermImportance
+  sourceWording?: string | null
+  plainExplanation?: string | null
 }
 
 export interface StudyOutputSheetFormulaItem {

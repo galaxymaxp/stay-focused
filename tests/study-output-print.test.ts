@@ -33,7 +33,10 @@ test('quiz pack page renders print-only answer document without interactive cont
   assert.match(markup, /study-output-quiz-print-list/)
   assert.match(markup, /Question 1 - Multiple choice/)
   assert.match(markup, /study-output-print-answer-label\">Answer/)
+  assert.match(markup, /Source wording: &quot;Mitochondria are the main ATP-producing organelles\.&quot;/)
   assert.match(markup, /reviewer-print-hide study-output-screen-header/)
+  assert.doesNotMatch(markup, />LEARN</)
+  assert.doesNotMatch(markup, /Deep Learn Tasks Quiz|Course Learn|WORKING CONTEXT/)
 })
 
 test('task output page keeps actions screen-only while printable content stays rendered', () => {
@@ -138,6 +141,8 @@ function createQuizPackOutput(): StudyOutput {
           prompt: 'Which organelle produces ATP for the cell?',
           answer: 'Mitochondrion',
           explanation: 'Mitochondria are the main ATP-producing organelles.',
+          sourceWording: 'Mitochondria are the main ATP-producing organelles.',
+          sourceBasis: 'Mitochondria are the main ATP-producing organelles.',
           choices: ['Mitochondrion', 'Ribosome', 'Golgi apparatus'],
           sourceLabel: 'Cell biology notes',
           matchingPrompt: null,

@@ -56,6 +56,47 @@ test('reviewer structure stays printable and exam-oriented', () => {
   assert.ok(reviewer.identificationReview[0]?.prompt)
 })
 
+test('reviewer uses source wording as memorize layer and normalizes raw labels', () => {
+  const reviewer = buildDeepLearnReviewerContent(createNote({
+    sections: [
+      {
+        heading: 'cybersecurity-definitions',
+        body: 'Vulnerability means weaknesses or flaws in the hardware or software.',
+      },
+    ],
+    answerBank: [
+      {
+        cue: 'Vulnerability -> definition',
+        kind: 'term_definition',
+        answer: {
+          exact: 'Weaknesses or flaws in the hardware or software.',
+          examSafe: 'A vulnerability is a weakness that an exploit can target.',
+          simplified: 'A weakness attackers can use.',
+        },
+        compactAnswer: {
+          exact: 'Weaknesses or flaws in the hardware or software.',
+          examSafe: 'A weakness that an exploit can target.',
+          simplified: 'A weakness attackers can use.',
+        },
+        importance: 'high',
+        sortKey: null,
+        distractors: [],
+        supportingContext: 'A vulnerability is the weakness that an exploit can target.',
+      },
+    ],
+    identificationItems: [],
+    distinctions: [],
+    likelyQuizTargets: [],
+    cautionNotes: [],
+  }))
+
+  assert.equal(reviewer.highYieldConcepts[0]?.cue, 'Vulnerability')
+  assert.equal(reviewer.highYieldConcepts[0]?.sourceWording, 'Weaknesses or flaws in the hardware or software.')
+  assert.match(reviewer.highYieldConcepts[0]?.plainExplanation ?? '', /exploit can target/i)
+  assert.equal(reviewer.quickReviewBlocks[0]?.heading, 'Cybersecurity Definitions')
+  assert.doesNotMatch(JSON.stringify(reviewer), /-> definition|cybersecurity-definitions/i)
+})
+
 function createNote(overrides: Partial<DeepLearnNote> = {}): DeepLearnNote {
   return buildDeepLearnNoteRecord({
     id: 'note-1',
