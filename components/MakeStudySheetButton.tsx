@@ -19,12 +19,16 @@ export function MakeStudySheetButton({
   function handleClick() {
     setErrorMessage(null)
     startTransition(async () => {
+      const result = await makeDeepLearnSheetAction({ moduleId, resourceId, mode: 'study_sheet' })
+      if (!result.ok) {
+        setErrorMessage(result.error)
+        return
+      }
       try {
-        const result = await makeDeepLearnSheetAction({ moduleId, resourceId, mode: 'study_sheet' })
         router.push(result.href)
         router.refresh()
-      } catch (error) {
-        setErrorMessage(error instanceof Error ? error.message : 'Could not make a study sheet right now.')
+      } catch {
+        setErrorMessage('Could not open this study sheet right now.')
       }
     })
   }

@@ -466,6 +466,17 @@ test('task output save failure classification keeps student copy clean and diagn
   assert.match(failure.diagnosticMessage, /source_task_id/i)
 })
 
+test('study output upsert conflict mismatch is classified as a saved-output schema update issue', () => {
+  const failure = describeStudyOutputSaveFailure({
+    code: '42P10',
+    message: 'there is no unique or exclusion constraint matching the ON CONFLICT specification',
+  })
+
+  assert.equal(failure.diagnosticCode, 'schema_outdated')
+  assert.match(failure.userMessage, /latest saved-output database update/i)
+  assert.match(failure.diagnosticMessage, /ON CONFLICT/i)
+})
+
 // Canvas update event tests
 
 test('new assignment event has correct type and source fields', () => {

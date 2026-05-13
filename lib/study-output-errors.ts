@@ -28,6 +28,18 @@ export function describeStudyOutputSaveFailure(error: unknown): StudyOutputSaveF
   const diagnosticMessage = [code ? `code=${code}` : null, message, details, hint].filter(Boolean).join(' | ')
 
   if (
+    code === '42P10'
+    || lower.includes('on conflict')
+    || lower.includes('there is no unique or exclusion constraint matching')
+  ) {
+    return {
+      diagnosticCode: 'schema_outdated',
+      diagnosticMessage,
+      userMessage: 'Could not save this study output yet. Stay Focused still needs the latest saved-output database update.',
+    }
+  }
+
+  if (
     code === '42703'
     || lower.includes('source_task_id')
     || lower.includes('source_kind')

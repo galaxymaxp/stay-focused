@@ -5,6 +5,94 @@ Last Updated: 2026-05-13
 
 ---
 
+## Session Update - 2026-05-13 (Fix study output upsert constraint)
+
+### What changed
+
+- Fixed the `study_outputs` schema/code mismatch that was breaking Deep Learn saved outputs (`reviewer`, `quiz_pack`, `study_sheet`, `cram_sheet`) with Postgres `42P10`.
+- Confirmed the save helper in `lib/study-outputs/store.ts` uses Supabase `upsert(..., { onConflict: 'user_id,output_kind,source_note_id' })` for Deep Learn note outputs only.
+- Confirmed the prior schema only had a partial unique index on `(user_id, output_kind, source_note_id) where source_note_id is not null`, which PostgREST could not match for the `ON CONFLICT` target used by the app.
+- Added and pushed remote migration `20260513110000_fix_study_output_note_upsert_constraint.sql` to replace that partial index with a real table-level unique constraint:
+  - `study_outputs_user_source_note_kind_key unique (user_id, output_kind, source_note_id)`
+- Kept task-output persistence behavior unchanged:
+  - task outputs are not using the failing `upsert` path
+  - task outputs are intentionally looked up by `taskId + preset + outputType` and then updated by `id`, so this session did not add a wrong `user_id + source_task_id + output_kind` uniqueness rule that would collapse multiple task variants
+- Hardened Deep Learn output button actions so they return clean student-facing error results instead of leaking raw production server-action / database wrapper text into the UI.
+- Added client-safe study-output action error sanitizing for:
+  - generic Server Components production wrappers
+  - raw Postgres / PostgREST diagnostics
+  - schema/internal table details
+- Extended study-output error classification so `42P10` is recognized as a saved-output schema/update mismatch.
+- Confirmed the Quiz page still builds from `deep_learn_notes` quiz-ready content and does not yet read `quiz_pack` rows from `study_outputs`. That is unchanged; Phase 1 verification here was limited to making `quiz_pack` save correctly.
+
+### Files touched
+
+- `actions/study-outputs.ts`
+- `components/MakeCramSheetButton.tsx`
+- `components/MakeQuizPackButton.tsx`
+- `components/MakeReviewerButton.tsx`
+- `components/MakeStudySheetButton.tsx`
+- `lib/study-output-action-errors.ts`
+- `lib/study-output-errors.ts`
+- `supabase/migrations/20260513110000_fix_study_output_note_upsert_constraint.sql`
+- `tests/queue.test.ts`
+- `tests/study-output-action-errors.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Production had already received the table-creation and task-output extension migrations, so the old missing-table `PGRST205` failure was gone. The new failure came from a narrower mismatch: the app was still issuing an `upsert` against `user_id,output_kind,source_note_id`, but the database only exposed that identity as a partial unique index. PostgREST could not infer that partial index as a valid `ON CONFLICT` arbiter, so every Deep Learn saved-output button failed at save time.
+
+### Tests run
+
+- `npx supabase db push` - passed; remote migration `20260513110000_fix_study_output_note_upsert_constraint.sql` applied
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- study-outputs quiz deep-learn-generation` - passed
+
+### Verification result
+
+- Local code checks passed after the fix.
+- Remote Supabase migration push completed successfully.
+- Deep Learn note outputs now have a matching database uniqueness target for the app's `upsert` conflict columns.
+- UI error handling for the four Deep Learn saved-output buttons now keeps diagnostics server-side instead of exposing raw production wrapper text or database details.
+- Quiz-page read-path check completed: current Quiz surfaces still read from `deep_learn_notes`, not `study_outputs`.
+- Manual production button-click verification was not performed in this session because no authenticated browser production session was available in the current environment.
+
+### Known risks
+
+- Manual production verification is still needed to confirm:
+  - `Make Reviewer`
+  - `Make Quiz Pack`
+  - `Make Study Sheet`
+  - `Make Cram Sheet`
+  save without `42P10`, route into Study Library, and replace existing note-linked outputs cleanly on repeat clicks.
+- Task outputs still rely on app-level `taskId + preset + outputType` lookup/update semantics rather than a single table uniqueness constraint because multiple task-output variants are intentionally supported.
+- If PostgREST schema cache lags briefly after the migration, the project may need `notify pgrst, 'reload schema';` in the remote database before re-testing.
+
+### Blockers
+
+- No code blocker remains.
+- Production browser verification remains pending because this session did not have a signed-in production UI context.
+
+### Next recommended step
+
+1. Re-test production Deep Learn output buttons end-to-end on a real account:
+   - click all four buttons
+   - confirm no raw error text appears
+   - confirm the saved outputs open in Study Library
+   - confirm repeated clicks update/replace the note-linked saved output instead of creating uncontrolled duplicates
+2. If production still shows stale-schema behavior immediately after deploy, run `notify pgrst, 'reload schema';` once and retry.
+3. If product wants Quiz to resume saved `quiz_pack` artifacts instead of rebuilding from `deep_learn_notes`, do that as a separate small follow-up after this save-path fix is confirmed.
+
+### Suggested commit message
+
+```bash
+fix study output upsert constraint
+```
+
+---
+
 ## Session Update - 2026-05-13 (Harden refreshed resource queue processing)
 
 ### What changed

@@ -19,12 +19,16 @@ export function MakeCramSheetButton({
   function handleClick() {
     setErrorMessage(null)
     startTransition(async () => {
+      const result = await makeDeepLearnSheetAction({ moduleId, resourceId, mode: 'cram_sheet' })
+      if (!result.ok) {
+        setErrorMessage(result.error)
+        return
+      }
       try {
-        const result = await makeDeepLearnSheetAction({ moduleId, resourceId, mode: 'cram_sheet' })
         router.push(result.href)
         router.refresh()
-      } catch (error) {
-        setErrorMessage(error instanceof Error ? error.message : 'Could not make a cram sheet right now.')
+      } catch {
+        setErrorMessage('Could not open this cram sheet right now.')
       }
     })
   }

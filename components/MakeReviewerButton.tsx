@@ -19,12 +19,16 @@ export function MakeReviewerButton({
   function handleClick() {
     setErrorMessage(null)
     startTransition(async () => {
+      const result = await makeDeepLearnReviewerAction({ moduleId, resourceId })
+      if (!result.ok) {
+        setErrorMessage(result.error)
+        return
+      }
       try {
-        const result = await makeDeepLearnReviewerAction({ moduleId, resourceId })
         router.push(result.href)
         router.refresh()
-      } catch (error) {
-        setErrorMessage(error instanceof Error ? error.message : 'Could not make a reviewer right now.')
+      } catch {
+        setErrorMessage('Could not open this reviewer right now.')
       }
     })
   }

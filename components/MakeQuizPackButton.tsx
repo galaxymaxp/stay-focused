@@ -19,12 +19,16 @@ export function MakeQuizPackButton({
   function handleClick() {
     setErrorMessage(null)
     startTransition(async () => {
+      const result = await makeDeepLearnQuizPackAction({ moduleId, resourceId })
+      if (!result.ok) {
+        setErrorMessage(result.error)
+        return
+      }
       try {
-        const result = await makeDeepLearnQuizPackAction({ moduleId, resourceId })
         router.push(result.href)
         router.refresh()
-      } catch (error) {
-        setErrorMessage(error instanceof Error ? error.message : 'Could not make a quiz pack right now.')
+      } catch {
+        setErrorMessage('Could not open this quiz pack right now.')
       }
     })
   }
