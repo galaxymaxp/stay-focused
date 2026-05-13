@@ -5,6 +5,97 @@ Last Updated: 2026-05-13
 
 ---
 
+## Session Update - 2026-05-13 (Fix manual Canvas PDF retry auth path)
+
+### What changed
+
+- Fixed the manual `Retry extraction` path so it resolves the signed-in user’s saved Canvas credentials before reprocessing stored Canvas PDF resources.
+- Added a shared helper for stored resource reprocessing paths:
+  - `resolveStoredCanvasConfigForUserResource(userId, { canvasInstanceUrl })`
+- Updated the API retry route to pass user-scoped Canvas config into `reprocessStoredModuleResource(...)` instead of silently falling back to env-only behavior.
+- Updated the inspect-page/manual resource reprocess action to use the same user-scoped Canvas credential resolution.
+- Added sanitized retry diagnostics for server logs so production failures are categorized without exposing Canvas tokens or raw student-facing internals:
+  - `missing_canvas_credentials`
+  - `missing_canvas_file_identity`
+  - `non_pdf_response`
+  - `pdf_extraction_exception`
+  - `extracted_text_too_short`
+  - `database_update_failed`
+- Preserved the clean UI message for genuine auth problems:
+  - `Canvas connection is missing or expired. Reconnect Canvas in Settings, then retry.`
+- Added regression coverage for the shared stored-resource Canvas config resolver used by manual retry paths.
+
+### Files touched
+
+- `app/api/sources/process/route.ts`
+- `actions/module-resources.ts`
+- `actions/queue-jobs.ts`
+- `lib/canvas-user-config.ts`
+- `tests/canvas-user-config.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Production evidence showed `Retry extraction` still returned `Processed 1 source · 1 failed` for a readable Canvas PDF even after the earlier downloader fix. Live verification proved the affected resource row already had correct Canvas identity (`canvas_file_id = 10910070`, `canvas_course_id = 61456`), the signed-in user still had valid saved Canvas credentials, the authenticated Canvas download returned real `%PDF` bytes, and local extraction of the same file produced meaningful text. The remaining failure was the manual retry path itself: it was invoking stored-resource reprocessing without resolving and passing the saved per-user Canvas config, so it could still fail with reconnect/auth behavior despite the queue path already being fixed.
+
+### Tests run
+
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- canvas-user-config canvas-content-resolution queue pdf-extractor` - passed
+- `npm test -- pdf-extractor source-ocr-updates deep-learn-readiness deep-learn-generation canvas-content-resolution learn-resource-ui queue` - passed
+
+### Verification result
+
+- Passed:
+  - typecheck
+  - lint
+  - targeted Canvas config / extraction / queue test coverage
+- Verified against the live affected production row:
+  - `module_resources.id = 8dd05a34-77ba-47c0-8a13-854416407f58`
+  - `canvas_file_id = 10910070`
+  - saved `user_settings` Canvas host/token exist for the owning user
+  - authenticated Canvas file metadata request returned `200`
+  - authenticated binary download returned `200 application/pdf`
+  - downloaded bytes began with `%PDF`
+- Verified extractor behavior:
+  - local extraction of `1. Intro-To-IT-Security.pdf` produced meaningful text
+  - replaying `reprocessStoredModuleResource(...)` with the live row plus resolved user Canvas config returned:
+    - `extractionStatus: extracted`
+    - `extractedCharCount: 5908`
+    - `extractionError: null`
+- Background sync investigation result:
+  - recent `GET /api/cron/external-sync` requests are reaching Vercel and returning `200`
+  - auth is accepted
+  - current external cron runs are skipping queue creation because Canvas course-list fetch for the synced user is failing token validation
+  - `Last background sync` remaining stale is therefore expected until a real successful external sync run completes
+- Not completed in this session:
+  - post-deploy browser verification of `Retry extraction` on the real source card
+
+### Known risks
+
+- The retry fix depends on the stored resource belonging to the authenticated user and still having enough Canvas identity to reach the file API. The affected production row does, but older malformed rows may still need identity repair if both `canvas_file_id` and usable URLs are absent.
+- The new diagnostics are log-only. If production needs deeper one-off inspection, a short-lived admin-only debug route may still be useful, but I did not add one in this focused P0 fix.
+- `Last background sync` is still stale because external cron is not completing a successful sync for the affected user right now; this session did not change external cron logic because the live evidence points to account/token validation in that path rather than a summary-query bug.
+
+### Blockers
+
+- No code blocker remains for the manual extraction retry path.
+- Deployment is still required before the fixed retry route can be verified in production.
+- Background sync freshness is currently blocked by external cron failing the Canvas course-list fetch for the synced user, even though the request itself is arriving and authenticated.
+
+### Next recommended step
+
+1. Deploy this fix.
+2. On the affected account, click `Retry extraction` for `1. Intro-To-IT-Security.pdf` and confirm the unreadable state clears and Deep Learn unlocks from extracted text without OCR.
+3. Separately inspect why `/api/cron/external-sync` is failing Canvas token verification for that synced user while manual/resource-refresh flows still work; do not fake `Last background sync` from resource refresh activity.
+
+### Suggested commit message
+
+```bash
+fix Canvas PDF extraction retry
+```
+
 ## Session Update - 2026-05-13 (Fix Canvas PDF extraction retry)
 
 ### What changed

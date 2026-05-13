@@ -1,6 +1,6 @@
 import { getCanvasCredentials } from '@/actions/user-settings'
 import type { CanvasConfig } from '@/lib/canvas'
-import { normalizeCanvasUrl } from '@/lib/canvas'
+import { normalizeCanvasUrl, resolveCanvasConfig } from '@/lib/canvas'
 import { createSupabaseServiceRoleClient } from '@/lib/supabase-service'
 
 export const CANVAS_RECONNECT_MESSAGE = 'Canvas connection is missing or expired. Reconnect Canvas in Settings, then retry.'
@@ -85,6 +85,39 @@ export async function getCanvasCredentialsForUserId(
     }
   } catch {
     return null
+  }
+}
+
+export function getOptionalCanvasConfig(override?: Partial<CanvasConfig>): CanvasConfig | null {
+  const hasAnyOverride = Boolean(override?.url?.trim() || override?.token?.trim())
+  const hasEnvConfig = Boolean((process.env.CANVAS_API_URL ?? process.env.CANVAS_API_BASE_URL)?.trim() && process.env.CANVAS_API_TOKEN?.trim())
+
+  if (!hasAnyOverride && !hasEnvConfig) {
+    return null
+  }
+
+  try {
+    return resolveCanvasConfig(override)
+  } catch {
+    return null
+  }
+}
+
+export async function resolveStoredCanvasConfigForUserResource(
+  userId: string,
+  options?: {
+    canvasInstanceUrl?: string | null
+    loadCredentials?: (requestedUserId: string) => Promise<CanvasCredentialPair | null>
+  },
+): Promise<CanvasConfig | null> {
+  try {
+    return await resolveCanvasConfigForUserId(
+      userId,
+      options?.canvasInstanceUrl ? { url: options.canvasInstanceUrl } : undefined,
+      options?.loadCredentials ? { loadCredentials: options.loadCredentials } : undefined,
+    )
+  } catch {
+    return getOptionalCanvasConfig(options?.canvasInstanceUrl ? { url: options.canvasInstanceUrl } : undefined)
   }
 }
 

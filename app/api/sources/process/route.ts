@@ -3,6 +3,7 @@ import { revalidatePath } from 'next/cache'
 import { createSupabaseRouteClient } from '@/lib/supabase-auth-server'
 import { adaptModuleResourceRow } from '@/lib/module-resource-row'
 import { formatSourceProcessingSummary, isProcessableReadableSource, normalizeSourceProcessingResult } from '@/lib/source-processing'
+import { CANVAS_RECONNECT_MESSAGE, resolveStoredCanvasConfigForUserResource } from '@/lib/canvas-user-config'
 import { reprocessStoredModuleResource } from '@/lib/module-resource-reprocess'
 
 export const runtime = 'nodejs'
@@ -71,7 +72,13 @@ export async function POST(request: NextRequest) {
 
   for (const resource of targets) {
     try {
-      const result = await reprocessStoredModuleResource(resource, { triggeredBy: 'learn' })
+      const canvasConfig = await resolveStoredCanvasConfigForUserResource(user.id, {
+        canvasInstanceUrl: resource.canvasInstanceUrl,
+      })
+      const result = await reprocessStoredModuleResource(resource, {
+        triggeredBy: 'learn',
+        ...(canvasConfig ? { canvasConfig } : {}),
+      })
       const normalized = normalizeSourceProcessingResult({
         resource,
         extractionStatus: result.update.extractionStatus,
@@ -101,12 +108,37 @@ export async function POST(request: NextRequest) {
         .eq('id', resource.id)
 
       if (error) {
+        console.error('[sources/process] persist_failed', {
+          resourceId: resource.id,
+          moduleId: resource.moduleId,
+          canvasCourseId: resource.canvasCourseId,
+          canvasFileId: resource.canvasFileId,
+          failureCategory: 'database_update_failed',
+          message: error.message,
+        })
         failed += 1
         continue
       }
 
       processed += 1
       touchedResourceIds.push(resource.id)
+      if (normalized.outcome === 'failed' || normalized.outcome === 'empty') {
+        console.warn('[sources/process] resource_not_ready', buildSourceProcessDiagnostic({
+          resource,
+          canvasConfigResolved: Boolean(canvasConfig),
+          normalized,
+          result,
+        }))
+      } else {
+        console.info('[sources/process] resource_ready', {
+          resourceId: resource.id,
+          moduleId: resource.moduleId,
+          canvasCourseId: resource.canvasCourseId,
+          canvasFileId: resource.canvasFileId,
+          extractedCharCount: normalized.extractedCharCount,
+          extractionStatus: normalized.extractionStatus,
+        })
+      }
       if (normalized.outcome === 'ready') ready += 1
       if (normalized.outcome === 'empty') empty += 1
       if (normalized.outcome === 'failed') failed += 1
@@ -114,6 +146,24 @@ export async function POST(request: NextRequest) {
       const safeError = error instanceof Error && error.message.trim()
         ? error.message.replace(/\s+/g, ' ').trim()
         : 'Deep Learn could not process this source.'
+      const canvasConfig = await resolveStoredCanvasConfigForUserResource(user.id, {
+        canvasInstanceUrl: resource.canvasInstanceUrl,
+      })
+      console.error('[sources/process] resource_exception', {
+        resourceId: resource.id,
+        moduleId: resource.moduleId,
+        canvasCourseId: resource.canvasCourseId,
+        canvasFileId: resource.canvasFileId,
+        canvasConfigResolved: Boolean(canvasConfig),
+        failureCategory: classifySourceProcessFailure({
+          resource,
+          canvasConfigResolved: Boolean(canvasConfig),
+          extractionStatus: 'failed',
+          extractionError: safeError,
+          extractedCharCount: 0,
+        }),
+        message: safeError,
+      })
       await supabase
         .from('module_resources')
         .update({
@@ -144,6 +194,72 @@ export async function POST(request: NextRequest) {
     counts,
     message: formatSourceProcessingSummary(counts),
   })
+}
+
+function buildSourceProcessDiagnostic(input: {
+  resource: ReturnType<typeof adaptModuleResourceRow>
+  canvasConfigResolved: boolean
+  normalized: ReturnType<typeof normalizeSourceProcessingResult>
+  result: Awaited<ReturnType<typeof reprocessStoredModuleResource>>
+}) {
+  return {
+    resourceId: input.resource.id,
+    moduleId: input.resource.moduleId,
+    canvasCourseId: input.resource.canvasCourseId,
+    canvasFileId: input.resource.canvasFileId,
+    sourceUrlHost: safeUrlHost(input.resource.sourceUrl),
+    htmlUrlHost: safeUrlHost(input.resource.htmlUrl),
+    canvasConfigResolved: input.canvasConfigResolved,
+    extractionStatus: input.normalized.extractionStatus,
+    extractedCharCount: input.normalized.extractedCharCount,
+    visualExtractionStatus: input.result.update.visualExtractionStatus,
+    failureCategory: classifySourceProcessFailure({
+      resource: input.resource,
+      canvasConfigResolved: input.canvasConfigResolved,
+      extractionStatus: input.normalized.extractionStatus,
+      extractionError: input.normalized.extractionError,
+      extractedCharCount: input.normalized.extractedCharCount,
+    }),
+    pdfExtraction: readPlainRecord(input.result.update.metadata?.pdfExtraction),
+  }
+}
+
+function classifySourceProcessFailure(input: {
+  resource: ReturnType<typeof adaptModuleResourceRow>
+  canvasConfigResolved: boolean
+  extractionStatus: string | null
+  extractionError: string | null
+  extractedCharCount: number
+}) {
+  const errorText = input.extractionError?.toLowerCase() ?? ''
+  if (!input.canvasConfigResolved && looksLikeCanvasFileResource(input.resource)) return 'missing_canvas_credentials'
+  if (!input.resource.canvasFileId && looksLikeCanvasFileResource(input.resource)) return 'missing_canvas_file_identity'
+  if (errorText.includes(CANVAS_RECONNECT_MESSAGE.toLowerCase())) return 'missing_canvas_credentials'
+  if (errorText.includes('did not return a pdf') || errorText.includes('not a readable pdf')) return 'non_pdf_response'
+  if (input.extractionStatus === 'failed') return 'pdf_extraction_exception'
+  if (input.extractedCharCount < 120) return 'extracted_text_too_short'
+  return 'unknown'
+}
+
+function looksLikeCanvasFileResource(resource: ReturnType<typeof adaptModuleResourceRow>) {
+  return resource.extension === 'pdf'
+    || resource.contentType?.toLowerCase().includes('pdf')
+    || /instructure\.com/i.test(resource.canvasInstanceUrl ?? '')
+}
+
+function readPlainRecord(value: unknown) {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? { ...value as Record<string, unknown> }
+    : null
+}
+
+function safeUrlHost(value: string | null) {
+  if (!value) return null
+  try {
+    return new URL(value).host
+  } catch {
+    return null
+  }
 }
 
 function revalidateSourceProcessingPaths(input: {

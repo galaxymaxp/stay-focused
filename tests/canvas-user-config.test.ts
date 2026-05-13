@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { CANVAS_RECONNECT_MESSAGE, resolveCanvasConfigForUserId } from '../lib/canvas-user-config'
+import { CANVAS_RECONNECT_MESSAGE, resolveCanvasConfigForUserId, resolveStoredCanvasConfigForUserResource } from '../lib/canvas-user-config'
 import { reprocessStoredModuleResource } from '../lib/module-resource-reprocess'
 import type { ModuleResource } from '../lib/types'
 
@@ -31,6 +31,19 @@ test('resolveCanvasConfigForUserId shows reconnect guidance when credentials are
       return true
     },
   )
+})
+
+test('resolveStoredCanvasConfigForUserResource resolves saved user Canvas settings for manual retry paths', async () => {
+  const config = await resolveStoredCanvasConfigForUserResource('user-1', {
+    canvasInstanceUrl: 'https://canvas.example.edu',
+    loadCredentials: async () => ({
+      canvasApiUrl: 'https://canvas.example.edu/api/v1',
+      canvasAccessToken: 'user-token',
+    }),
+  })
+
+  assert.equal(config?.url, 'https://canvas.example.edu')
+  assert.equal(config?.token, 'user-token')
 })
 
 test('reprocessStoredModuleResource returns reconnect guidance for relative Canvas files without credentials', async () => {

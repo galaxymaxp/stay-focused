@@ -3,8 +3,8 @@
 import { after } from 'next/server'
 import { revalidatePath } from 'next/cache'
 import { createAuthenticatedSupabaseServerClient, getAuthenticatedUserServer } from '@/lib/auth-server'
-import { resolveCanvasConfig, type CanvasConfig } from '@/lib/canvas'
-import { CANVAS_RECONNECT_MESSAGE, resolveCanvasConfigForUserId } from '@/lib/canvas-user-config'
+import type { CanvasConfig } from '@/lib/canvas'
+import { CANVAS_RECONNECT_MESSAGE, resolveStoredCanvasConfigForUserResource as sharedResolveStoredCanvasConfigForUserResource } from '@/lib/canvas-user-config'
 import { adaptModuleResourceRow } from '@/lib/module-resource-row'
 import {
   createQueuedJob,
@@ -2098,23 +2098,8 @@ function buildStoredSourceHeadersForOcr(url: string, canvasConfig: CanvasConfig 
   return { Authorization: `Bearer ${canvasConfig.token}` }
 }
 
-function getOptionalCanvasConfig() {
-  const hasEnvConfig = Boolean((process.env.CANVAS_API_URL ?? process.env.CANVAS_API_BASE_URL)?.trim() && process.env.CANVAS_API_TOKEN?.trim())
-  if (!hasEnvConfig) return null
-  try {
-    return resolveCanvasConfig()
-  } catch {
-    return null
-  }
-}
-
 async function resolveStoredCanvasConfigForUserResource(userId: string, resource: ModuleResource) {
-  try {
-    return await resolveCanvasConfigForUserId(
-      userId,
-      resource.canvasInstanceUrl ? { url: resource.canvasInstanceUrl } : undefined,
-    )
-  } catch {
-    return getOptionalCanvasConfig()
-  }
+  return sharedResolveStoredCanvasConfigForUserResource(userId, {
+    canvasInstanceUrl: resource.canvasInstanceUrl,
+  })
 }

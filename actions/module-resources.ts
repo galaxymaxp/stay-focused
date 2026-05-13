@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { adaptModuleResourceRow } from '@/lib/module-resource-row'
 import { reprocessStoredModuleResource, shouldReprocessWeakModuleResource } from '@/lib/module-resource-reprocess'
+import { resolveStoredCanvasConfigForUserResource } from '@/lib/canvas-user-config'
 import { createAuthenticatedSupabaseServerClient } from '@/lib/auth-server'
 
 type ReprocessScope = 'all' | 'weak' | 'single'
@@ -25,6 +26,14 @@ export async function reprocessModuleResourcesAction(formData: FormData) {
   }
 
   try {
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser()
+    if (authError || !user) {
+      throw new Error('Sign in before retrying source extraction.')
+    }
+
     let query = supabase
       .from('module_resources')
       .select('*')
@@ -54,8 +63,12 @@ export async function reprocessModuleResourcesAction(formData: FormData) {
     }
 
     for (const resource of targets) {
+      const canvasConfig = await resolveStoredCanvasConfigForUserResource(user.id, {
+        canvasInstanceUrl: resource.canvasInstanceUrl,
+      })
       const result = await reprocessStoredModuleResource(resource, {
         triggeredBy,
+        ...(canvasConfig ? { canvasConfig } : {}),
       })
 
       const { error: updateError } = await supabase
