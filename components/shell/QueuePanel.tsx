@@ -670,6 +670,9 @@ function humanizeError(error: string | null) {
   if (!error) return fallback
   const trimmed = error.replace(/\s+/g, ' ').trim()
   if (!trimmed) return fallback
+  if (/max_output_tokens/i.test(trimmed)) {
+    return 'This study output was too large to finish in one pass. Regenerate a shorter version.'
+  }
   return trimmed.length > 150 ? `${trimmed.slice(0, 147).trim()}...` : trimmed
 }
 

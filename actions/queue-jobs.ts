@@ -26,7 +26,7 @@ import {
   getModuleWorkspace,
   resolveLearnResourceSelection,
 } from '@/lib/module-workspace'
-import { DeepLearnGenerationBlockedError, generateDeepLearnNoteForResource } from '@/lib/deep-learn-generation'
+import { DeepLearnGenerationBlockedError, DeepLearnGenerationIncompleteError, generateDeepLearnNoteForResource } from '@/lib/deep-learn-generation'
 import {
   DEEP_LEARN_PROMPT_VERSION,
   buildDeepLearnNoteBody,
@@ -1233,7 +1233,11 @@ async function processLearnGenerationJob(input: {
     })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error during Deep Learn generation.'
-    console.error('[queue-jobs] processLearnGenerationJob failed', { jobId: input.jobId, message })
+    console.error('[queue-jobs] processLearnGenerationJob failed', {
+      jobId: input.jobId,
+      message,
+      incompleteReason: err instanceof DeepLearnGenerationIncompleteError ? err.reason : null,
+    })
     await markQueuedJobFailed(input.jobId, message)
     revalidateLearnQueuePaths(input.moduleId, input.courseId ?? null, input.resourceId)
 

@@ -156,7 +156,7 @@ export async function POST(req: NextRequest) {
       store: false,
       instructions: TASK_DRAFT_SYSTEM_PROMPT,
       input: savedResult.promptText,
-      max_output_tokens: 16384,
+      max_output_tokens: 10000,
     })
 
     console.log('Task draft raw response shape:', JSON.stringify({

@@ -493,7 +493,7 @@ function normalizeDistinctions(value: unknown): DeepLearnDistinction[] {
       } satisfies DeepLearnDistinction
     })
     .filter((entry): entry is DeepLearnDistinction => Boolean(entry))
-    .slice(0, 8)
+    .slice(0, 6)
 }
 
 function normalizeLikelyQuizTargets(value: unknown): DeepLearnLikelyQuizTarget[] {
@@ -528,7 +528,7 @@ function normalizeLikelyQuizTargets(value: unknown): DeepLearnLikelyQuizTarget[]
       } satisfies DeepLearnLikelyQuizTarget
     })
     .filter((entry): entry is DeepLearnLikelyQuizTarget => Boolean(entry))
-    .slice(0, 8)
+    .slice(0, 6)
 }
 
 function normalizeWordingSet(value: unknown): DeepLearnWordingSet | null {

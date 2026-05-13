@@ -19,6 +19,7 @@ import { getUserQueuedJobs, type QueuedJob } from '@/lib/queue'
 import { buildSourceOcrStatusMessage } from '@/lib/source-ocr-queue'
 import { buildResourceExtractionStatusMessage } from '@/lib/resource-extraction-queue'
 import { buildModuleDoHref, getSearchParamValue, getTaskElementId } from '@/lib/stay-focused-links'
+import { listDeepLearnStudyOutputsForNotes } from '@/lib/study-outputs/store'
 import { buildStudyLibraryDetailHref, type DraftShelfItem } from '@/lib/types'
 import {
   buildLearnExperience,
@@ -62,6 +63,8 @@ export default async function LearnPage({ params, searchParams }: Props) {
   const queuedJobs = user ? await getUserQueuedJobs(user.id, { type: ['learn_generation', 'resource_extraction', 'source_ocr'], limit: 75 }) : []
   const deepLearnNotes = deepLearnNotesResult.notes
   const deepLearnNoteByResourceId = new Map(deepLearnNotes.map((note) => [note.resourceId, note]))
+  const deepLearnStudyOutputs = await listDeepLearnStudyOutputsForNotes(deepLearnNotes.map((note) => note.id))
+  const deepLearnOutputHrefsByNoteId = buildDeepLearnOutputHrefsByNoteId(deepLearnStudyOutputs)
   const savedLegacyDrafts = libraryResult.availability === 'available'
     ? libraryResult.drafts.filter((draft) => isSavedLegacyStudyPackForModule(draft, module.id, module.courseId ?? null))
     : []
@@ -161,6 +164,7 @@ export default async function LearnPage({ params, searchParams }: Props) {
         readiness,
         queuedDeepLearn,
         savedLegacyDraft,
+        savedNote ? deepLearnOutputHrefsByNoteId.get(savedNote.id) ?? null : null,
       ),
       moduleId: module.id,
       courseId: module.courseId ?? null,
@@ -645,6 +649,7 @@ function buildDeepLearnAccordionState(
   readiness: NonNullable<Parameters<typeof getDeepLearnResourceUiState>[3]>['readiness'],
   queuedDeepLearn: ReturnType<typeof buildDeepLearnQueueState>,
   savedLegacyDraft: DraftShelfItem | null,
+  savedOutputHrefs: { reviewerHref: string | null; quizHref: string | null } | null,
 ) {
   const deepLearnUi = getDeepLearnResourceUiState(moduleId, resourceId, note, {
     notesAvailability,
@@ -666,12 +671,31 @@ function buildDeepLearnAccordionState(
     deepLearnPrimaryLabel: savedPackState?.primaryLabel ?? deepLearnUi.primaryLabel,
     deepLearnNoteHref: savedPackState?.href ?? (note?.status === 'ready' ? buildStudyLibraryDetailHref(note.id) : deepLearnUi.noteHref),
     deepLearnQuizHref: deepLearnUi.quizHref,
+    deepLearnReviewerOutputHref: savedOutputHrefs?.reviewerHref ?? null,
+    deepLearnQuizOutputHref: savedOutputHrefs?.quizHref ?? null,
     deepLearnQuizReady: deepLearnUi.quizReady,
     deepLearnTermCount: note?.identificationItems.length ?? 0,
     deepLearnFactCount: note?.answerBank.length ?? 0,
     deepLearnNoteFailure: savedPackState?.error ?? note?.errorMessage ?? null,
     deepLearnAvailability: notesAvailability,
   }
+}
+
+function buildDeepLearnOutputHrefsByNoteId(outputs: Awaited<ReturnType<typeof listDeepLearnStudyOutputsForNotes>>) {
+  const result = new Map<string, { reviewerHref: string | null; quizHref: string | null }>()
+  for (const output of outputs) {
+    if (!output.sourceNoteId) continue
+    const current = result.get(output.sourceNoteId) ?? { reviewerHref: null, quizHref: null }
+    const href = `/library/${encodeURIComponent(output.id)}`
+    if (!current.reviewerHref && (output.outputKind === 'reviewer' || output.outputKind === 'study_sheet' || output.outputKind === 'cram_sheet')) {
+      current.reviewerHref = href
+    }
+    if (!current.quizHref && output.outputKind === 'quiz_pack') {
+      current.quizHref = href
+    }
+    result.set(output.sourceNoteId, current)
+  }
+  return result
 }
 
 function findLatestResourceJob(jobs: QueuedJob[], canonicalResourceId: string | null, displayResourceId: string, type?: QueuedJob['type']) {
@@ -706,7 +730,8 @@ function buildDeepLearnQueueState(job: QueuedJob | null, hasSavedPack: boolean) 
     return { status: 'ready' as const, summary: 'Study pack ready.', primaryLabel: 'Open study pack', href, error: null }
   }
   if (job.status === 'failed') {
-    return { status: 'failed' as const, summary: job.error ?? 'Study pack failed.', primaryLabel: 'Retry study pack', href: null, error: job.error ?? 'Study pack failed.' }
+    const error = cleanStudyPackQueueError(job.error)
+    return { status: 'failed' as const, summary: error, primaryLabel: 'Retry study pack', href: null, error }
   }
   return null
 }
@@ -804,4 +829,14 @@ function getSourceGenerationStatusMessage(
 function getNumber(source: Record<string, unknown> | null, key: string) {
   const value = source?.[key]
   return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+function cleanStudyPackQueueError(error: string | null) {
+  const fallback = 'Study pack failed.'
+  if (!error) return fallback
+  const trimmed = error.replace(/\s+/g, ' ').trim()
+  if (/max_output_tokens/i.test(trimmed)) {
+    return 'This study output was too large to finish in one pass. Regenerate a shorter version.'
+  }
+  return trimmed || fallback
 }

@@ -63,13 +63,29 @@ test('legacy sheet and quiz database kinds map to three student-facing Deep Lear
 
 test('Deep Learn source card exposes only Study Pack Reviewer and Quiz actions', () => {
   const source = readFileSync('components/DeepLearnNoteView.tsx', 'utf8')
+  const sourceCard = readFileSync('components/StudyResourceAccordionList.tsx', 'utf8')
 
   assert.match(source, /Open Study Pack/)
   assert.match(source, /MakeReviewerButton/)
   assert.match(source, /MakeQuizPackButton/)
+  assert.match(sourceCard, /Generate Study Pack/)
+  assert.match(sourceCard, /MakeReviewerButton/)
+  assert.match(sourceCard, /MakeQuizPackButton/)
+  assert.doesNotMatch(sourceCard, /<SourceSummaryBadge/)
+  assert.doesNotMatch(sourceCard, /Prepare preview/)
   assert.doesNotMatch(source, /MakeStudySheetButton/)
   assert.doesNotMatch(source, /MakeCramSheetButton/)
+  assert.doesNotMatch(sourceCard, /MakeStudySheetButton/)
+  assert.doesNotMatch(sourceCard, /MakeCramSheetButton/)
   assert.doesNotMatch(source, /Quiz this/)
+})
+
+test('student-facing queue copy hides raw max_output_tokens diagnostics', () => {
+  const queuePanel = readFileSync('components/shell/QueuePanel.tsx', 'utf8')
+  const learnPage = readFileSync('app/modules/[id]/learn/page.tsx', 'utf8')
+
+  assert.match(queuePanel, /This study output was too large to finish in one pass\. Regenerate a shorter version\./)
+  assert.match(learnPage, /This study output was too large to finish in one pass\. Regenerate a shorter version\./)
 })
 
 test('unsupported study output subtype stays visible with a safe subtitle', () => {

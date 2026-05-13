@@ -196,7 +196,7 @@ export async function POST(req: NextRequest) {
       store: false,
       instructions: TASK_OUTPUT_SYSTEM_PROMPT,
       input: buildTaskOutputUserPrompt(requestBody),
-      max_output_tokens: 16384,
+      max_output_tokens: 10000,
     })
 
     if (response.status && response.status !== 'completed') {

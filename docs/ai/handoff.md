@@ -5,6 +5,103 @@ Last Updated: 2026-05-13
 
 ---
 
+## Session Update - 2026-05-13 (Finish Deep Learn output simplification)
+
+### What changed
+
+- Raised Deep Learn generation `max_output_tokens` to `10000` for normal and compact retry attempts.
+- Added a compact retry path for Deep Learn `max_output_tokens` incompletion:
+  - first pass uses the normal bounded Study Pack contract
+  - retry pass asks for fewer sections/items
+  - server logs preserve the raw `max_output_tokens` diagnostic
+  - student-facing queue/source-card copy uses: `This study output was too large to finish in one pass. Regenerate a shorter version.`
+- Tightened Study Pack prompt structure around:
+  - `Source Summary`
+  - `Big Picture`
+  - `Key Concepts`
+  - `Concept Relationships`
+  - `Apply It`
+  - `What to Study First`
+- Enforced smaller generated-content caps in normalization:
+  - no more than 6 Study Pack sections
+  - no more than 16 answer-bank items
+  - no more than 16 identification items
+  - no more than 6 distinctions
+  - no more than 6 likely quiz targets
+- Removed the separate source-card Study Pack preview / source-summary workflow from the Learn source card so Source Summary lives inside Study Pack generation instead of appearing as another visible output.
+- Added Reviewer and Quiz actions directly to the expanded Learn source card when a Study Pack is ready:
+  - `Generate Reviewer` / `Open Reviewer`
+  - `Start Quiz` / `Open Quiz`
+- Added bulk saved-output lookup for Deep Learn note IDs so source cards can open existing Reviewer/Quiz outputs without promoting old `study_sheet`, `cram_sheet`, or `quiz_pack` labels.
+- Kept old `study_sheet`, `cram_sheet`, and `quiz_pack` rows accessible through the existing Study Library routes.
+- Reduced task-output and Do Now generation caps from `16384` to `10000` to align with the requested task-output token policy.
+
+### Files touched
+
+- `actions/deep-learn.ts`
+- `actions/queue-jobs.ts`
+- `app/api/do-now/route.ts`
+- `app/api/task-output/route.ts`
+- `app/modules/[id]/learn/page.tsx`
+- `components/StudyResourceAccordionList.tsx`
+- `components/shell/QueuePanel.tsx`
+- `lib/deep-learn-generation.ts`
+- `lib/deep-learn.ts`
+- `lib/study-outputs/store.ts`
+- `tests/deep-learn-generation.test.ts`
+- `tests/study-library.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+The previous simplification pass left two production risks: Deep Learn still used an `8192` output cap despite the requested `10000`, and the Learn source card still did not fully present the three-output model from the source card itself. The new retry and compact limits reduce max-token failures without trying to generate Study Pack, Reviewer, and Quiz in one giant pass.
+
+### Tests run
+
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- deep-learn-generation study-library` - passed
+- `npm test -- deep-learn-generation deep-learn-quiz study-outputs study-output-sheet study-output-reviewer study-output-quiz-pack study-output-print queue` - passed
+
+### Verification result
+
+- Passed:
+  - typecheck
+  - lint
+  - requested targeted Deep Learn, quiz, study-output, print, and queue coverage
+- Verified in tests/code:
+  - output token caps are `10000`
+  - compact retry prompt uses smaller limits
+  - student-facing queue/source-card copy hides raw `max_output_tokens`
+  - source card exposes Study Pack, Reviewer, and Quiz actions
+  - source-card preview workflow is removed from the primary source card
+  - Study Pack sections and generated item counts are capped
+  - old saved output kinds still map to Reviewer/Quiz labels and remain renderable
+- Not completed:
+  - authenticated browser QA with `1. Intro-To-IT-Security.pdf`
+  - live generation QA against the production source card
+
+### Known risks
+
+- The compact retry still depends on the model returning valid schema JSON. If a provider has a lower hard cap than `10000`, the retry will still fail cleanly with the student-facing shorter-version message.
+- Existing saved Study Sheet/Cram Sheet titles are preserved for compatibility, so old titles can still contain old wording even though labels/actions now collapse to Reviewer.
+- The source-card Quiz action can attempt creation from any ready Study Pack; very thin packs may still return a clean "not enough academic source content" action error from the existing Quiz builder.
+
+### Blockers
+
+- No code blocker remains.
+- Manual QA requires a signed-in local app session and the real `1. Intro-To-IT-Security.pdf` source.
+
+### Next recommended step
+
+Run authenticated browser QA on the real IT Security source card and generate/open Study Pack, Reviewer, and Quiz to confirm content quality, exact wording preservation, and no fake formulas.
+
+### Suggested commit message
+
+```bash
+simplify Deep Learn outputs
+```
+
 ## Session Update - 2026-05-13 (Simplify Deep Learn outputs)
 
 ### What changed

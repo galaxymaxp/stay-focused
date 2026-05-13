@@ -144,6 +144,27 @@ export async function listDeepLearnStudyOutputsForNote(noteId: string): Promise<
   return (data as StudyOutputRow[]).map(adaptStudyOutputRow)
 }
 
+export async function listDeepLearnStudyOutputsForNotes(noteIds: string[]): Promise<StudyOutput[]> {
+  const auth = await getAuthenticatedSupabaseServerContext()
+  if (!auth) return []
+
+  const uniqueNoteIds = [...new Set(noteIds.filter((id) => id.trim().length > 0))]
+  if (uniqueNoteIds.length === 0) return []
+
+  const { data, error } = await auth.client
+    .from(TABLE_NAME)
+    .select('*')
+    .eq('user_id', auth.user.id)
+    .eq('source_kind', 'deep_learn_note')
+    .eq('status', 'ready')
+    .in('source_note_id', uniqueNoteIds)
+    .order('updated_at', { ascending: false })
+
+  if (error || !data) return []
+
+  return (data as StudyOutputRow[]).map(adaptStudyOutputRow)
+}
+
 export async function listStudyOutputShelfItems(): Promise<DraftShelfItem[]> {
   const auth = await getAuthenticatedSupabaseServerContext()
   if (!auth) return []

@@ -1,8 +1,16 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  normalizeDeepLearnGeneratedContent,
+  type DeepLearnGeneratedContent,
+} from '../lib/deep-learn'
+import {
   buildDeepLearnPrompt,
   buildDeepLearnGroundingWithDependencies,
+  DEEP_LEARN_COMPACT_MAX_OUTPUT_TOKENS,
+  DEEP_LEARN_MAX_OUTPUT_TOKENS,
+  DEEP_LEARN_OUTPUT_TOO_LARGE_MESSAGE,
+  DeepLearnGenerationIncompleteError,
   DeepLearnGenerationBlockedError,
 } from '../lib/deep-learn-generation'
 import {
@@ -457,6 +465,70 @@ test('buildDeepLearnPrompt describes compact three-output Deep Learn contract', 
   assert.match(prompt, /Do not generate Reviewer, Quiz, Study Sheet, Cram Sheet, and Source Summary as separate documents/i)
   assert.match(prompt, /answerBank 12 to 16 items/i)
   assert.match(prompt, /identificationItems no more than 16/i)
+  assert.match(prompt, /likelyQuizTargets no more than 6/i)
+  assert.match(prompt, /distinctions no more than 6/i)
+})
+
+test('Deep Learn output token policy uses bounded 10000-token caps and clean student fallback', () => {
+  assert.equal(DEEP_LEARN_MAX_OUTPUT_TOKENS, 10000)
+  assert.equal(DEEP_LEARN_COMPACT_MAX_OUTPUT_TOKENS, 10000)
+
+  const error = new DeepLearnGenerationIncompleteError('max_output_tokens')
+  assert.equal(error.message, DEEP_LEARN_OUTPUT_TOO_LARGE_MESSAGE)
+  assert.equal(error.reason, 'max_output_tokens')
+  assert.doesNotMatch(error.message, /max_output_tokens/i)
+})
+
+test('buildDeepLearnPrompt compact retry enforces smaller output limits', () => {
+  const prompt = buildDeepLearnPrompt({
+    ...createContext(createLearnResource({
+      extractedText: buildLongText('Information security explains confidentiality, integrity, availability, vulnerabilities, threats, and controls.'),
+      extractedTextPreview: buildLongText('Information security explains confidentiality, integrity, availability, vulnerabilities, threats, and controls.'),
+      extractedCharCount: buildLongText('Information security explains confidentiality, integrity, availability, vulnerabilities, threats, and controls.').length,
+      extractionStatus: 'completed',
+    }), createStoredResource()),
+    promptGrounding: 'Information security explains confidentiality, integrity, availability, vulnerabilities, threats, and controls.',
+    sourceGrounding: {
+      sourceType: 'PDF',
+      extractionQuality: 'usable',
+      sourceTextQuality: 'meaningful',
+      groundingStrategy: 'stored_extract',
+      usedAiFallback: false,
+      qualityReason: null,
+      warning: null,
+      charCount: 200,
+    },
+    generationMode: 'text',
+  }, { compact: true })
+
+  assert.match(prompt, /Compact retry limits/i)
+  assert.match(prompt, /Generate a shorter Study Pack/i)
+  assert.match(prompt, /Key Concepts: no more than 8/i)
+  assert.match(prompt, /no more than 10 answerBank items/i)
+  assert.match(prompt, /no more than 8 identificationItems/i)
+})
+
+test('normalizeDeepLearnGeneratedContent enforces compact Study Pack output limits', () => {
+  const generated = normalizeDeepLearnGeneratedContent({
+    title: 'IT Security',
+    overview: 'Information security overview.',
+    sections: Array.from({ length: 8 }, (_, index) => ({
+      heading: index === 0 ? 'Source Summary' : `Section ${index + 1}`,
+      body: `Grounded body ${index + 1}.`,
+    })),
+    answerBank: Array.from({ length: 20 }, (_, index) => answerBankItem(index)),
+    identificationItems: Array.from({ length: 20 }, (_, index) => identificationItem(index)),
+    distinctions: Array.from({ length: 10 }, (_, index) => distinctionItem(index)),
+    likelyQuizTargets: Array.from({ length: 10 }, (_, index) => quizTargetItem(index)),
+    cautionNotes: [],
+  }, 'IT Security') satisfies DeepLearnGeneratedContent
+
+  assert.equal(generated.sections.length, 6)
+  assert.equal(generated.sections[0]?.heading, 'Source Summary')
+  assert.equal(generated.answerBank.length, 16)
+  assert.equal(generated.identificationItems.length, 16)
+  assert.equal(generated.distinctions.length, 6)
+  assert.equal(generated.likelyQuizTargets.length, 6)
 })
 
 test('buildDeepLearnGroundingWithDependencies blocks when source fetch still yields unusable text', async () => {
@@ -783,4 +855,91 @@ function createStoredResource(overrides: Partial<ModuleResource> = {}): ModuleRe
 
 function buildLongText(sentence: string) {
   return `${sentence} ${sentence} ${sentence} ${sentence} ${sentence} ${sentence}`
+}
+
+function answerBankItem(index: number) {
+  return {
+    cue: `Concept ${index}`,
+    kind: 'term_definition',
+    answer: {
+      exact: `Exact source wording ${index}`,
+      examSafe: `Exact source wording ${index}`,
+      simplified: `Plain explanation ${index}`,
+    },
+    compactAnswer: {
+      exact: `Exact source wording ${index}`,
+      examSafe: `Exact source wording ${index}`,
+      simplified: `Plain explanation ${index}`,
+    },
+    importance: 'high',
+    sortKey: null,
+    distractors: [],
+    reviewText: `Concept ${index}`,
+    draftExplanation: `Plain explanation ${index}`,
+    sourceSnippet: `Exact source wording ${index}`,
+    linkedDraftSectionId: null,
+    supportingContext: `Plain explanation ${index}`,
+    compareContext: null,
+    simplifiedWording: `Plain explanation ${index}`,
+    confusionNotes: [],
+    relatedConcepts: [],
+  }
+}
+
+function identificationItem(index: number) {
+  return {
+    prompt: `Prompt ${index}`,
+    kind: 'term_definition',
+    answer: {
+      exact: `Identification answer ${index}`,
+      examSafe: `Identification answer ${index}`,
+      simplified: null,
+    },
+    importance: 'high',
+    distractors: [],
+    reviewText: `Prompt ${index}`,
+    draftExplanation: null,
+    sourceSnippet: `Identification answer ${index}`,
+    linkedDraftSectionId: null,
+    supportingContext: null,
+    compareContext: null,
+    simplifiedWording: null,
+    confusionNotes: [],
+    relatedConcepts: [],
+  }
+}
+
+function distinctionItem(index: number) {
+  return {
+    conceptA: `Concept A ${index}`,
+    conceptB: `Concept B ${index}`,
+    difference: `Difference ${index}`,
+    confusionNote: null,
+    reviewText: `Concept A ${index} vs Concept B ${index}`,
+    draftExplanation: `Difference ${index}`,
+    sourceSnippet: `Difference ${index}`,
+    linkedDraftSectionId: null,
+    supportingContext: `Difference ${index}`,
+    compareContext: null,
+    simplifiedWording: null,
+    confusionNotes: [],
+    relatedConcepts: [],
+  }
+}
+
+function quizTargetItem(index: number) {
+  return {
+    target: `Quiz target ${index}`,
+    reason: `Reason ${index}`,
+    importance: 'high',
+    reviewText: `Quiz target ${index}`,
+    draftExplanation: `Reason ${index}`,
+    sourceSnippet: `Quiz target ${index}`,
+    linkedDraftSectionId: null,
+    supportingContext: `Reason ${index}`,
+    compareContext: null,
+    simplifiedWording: null,
+    confusionNotes: [],
+    relatedConcepts: [],
+  }
 }

@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import OpenAI from 'openai'
 import { createAuthenticatedSupabaseServerClient, getAuthenticatedUserServer } from '@/lib/auth-server'
 import { buildLearnExperience, extractCourseName, getModuleWorkspace, resolveLearnResourceSelection } from '@/lib/module-workspace'
-import { DeepLearnGenerationBlockedError, generateDeepLearnNoteForResource } from '@/lib/deep-learn-generation'
+import { DeepLearnGenerationBlockedError, DeepLearnGenerationIncompleteError, generateDeepLearnNoteForResource } from '@/lib/deep-learn-generation'
 import { DEEP_LEARN_PROMPT_VERSION, buildDeepLearnNoteBody, computeDeepLearnQuizReady } from '@/lib/deep-learn'
 import { classifyDeepLearnResourceReadiness } from '@/lib/deep-learn-readiness'
 import { getDeepLearnRefinementModel, selectDeepLearnRefinementGrounding } from '@/lib/deep-learn-refinement'
@@ -200,6 +200,7 @@ export async function generateDeepLearnNoteAction(input: {
       resolvedResourceId: canonicalResourceId,
       errorName: error instanceof Error ? error.name : typeof error,
       message,
+      incompleteReason: error instanceof DeepLearnGenerationIncompleteError ? error.reason : null,
       blockedReason: error instanceof DeepLearnGenerationBlockedError ? error.blockedReason : null,
       stack: error instanceof Error ? error.stack : null,
     })

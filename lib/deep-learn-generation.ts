@@ -23,7 +23,9 @@ import type { DeepLearnBlockedReason, DeepLearnSourceGrounding } from '@/lib/typ
 
 const DEFAULT_DEEP_LEARN_MODEL = 'gpt-5-mini'
 const MAX_GROUNDING_CHARS = 12000
-const DEEP_LEARN_MAX_OUTPUT_TOKENS = 8192
+export const DEEP_LEARN_MAX_OUTPUT_TOKENS = 10000
+export const DEEP_LEARN_COMPACT_MAX_OUTPUT_TOKENS = 10000
+export const DEEP_LEARN_OUTPUT_TOO_LARGE_MESSAGE = 'This study output was too large to finish in one pass. Regenerate a shorter version.'
 
 const DEEP_LEARN_SYSTEM_PROMPT = [
   'You create saved Deep Learn Study Packs from academic source material.',
@@ -200,6 +202,16 @@ export class DeepLearnGenerationBlockedError extends Error {
   }
 }
 
+export class DeepLearnGenerationIncompleteError extends Error {
+  reason: string
+
+  constructor(reason: string) {
+    super(DEEP_LEARN_OUTPUT_TOO_LARGE_MESSAGE)
+    this.name = 'DeepLearnGenerationIncompleteError'
+    this.reason = reason
+  }
+}
+
 interface DeepLearnGroundingDependencies {
   reprocessStoredModuleResource?: typeof reprocessStoredModuleResource
   downloadScanFallbackSource?: (resource: ModuleResource) => Promise<DeepLearnPreparedBinaryInput>
@@ -220,54 +232,48 @@ export async function generateDeepLearnNoteForResource(
       sourceGrounding: grounding.sourceGrounding,
     })
   }
-  const promptText = buildDeepLearnPrompt({
+  const promptInput = {
     ...input,
     sourceGrounding: grounding.sourceGrounding,
     promptGrounding: grounding.promptGrounding,
     generationMode: grounding.generationMode,
-  })
+  }
+  const promptText = buildDeepLearnPrompt(promptInput)
 
   const client = new OpenAI({
     apiKey: getRequiredDeepLearnApiKey(),
   })
 
-  const response = grounding.generationMode === 'scan_fallback' && grounding.scanFallbackInput
-    ? await client.responses.create({
-        model: getDeepLearnModel(),
-        store: false,
-        instructions: DEEP_LEARN_SYSTEM_PROMPT,
-        input: [{
-          role: 'user',
-          content: [
-            { type: 'input_text', text: promptText },
-            grounding.scanFallbackInput.inputType === 'image'
-              ? {
-                  type: 'input_image',
-                  detail: 'high',
-                  image_url: `data:${grounding.scanFallbackInput.contentType ?? 'image/png'};base64,${grounding.scanFallbackInput.fileData}`,
-                }
-              : {
-                  type: 'input_file',
-                  filename: grounding.scanFallbackInput.filename,
-                  file_data: grounding.scanFallbackInput.fileData,
-                },
-          ],
-        }],
-        text: responseTextConfig(),
-        max_output_tokens: DEEP_LEARN_MAX_OUTPUT_TOKENS,
-      })
-    : await client.responses.create({
-        model: getDeepLearnModel(),
-        store: false,
-        instructions: DEEP_LEARN_SYSTEM_PROMPT,
-        input: promptText,
-        text: responseTextConfig(),
-        max_output_tokens: DEEP_LEARN_MAX_OUTPUT_TOKENS,
-      })
+  let response = await createDeepLearnResponse(client, grounding, promptText, DEEP_LEARN_MAX_OUTPUT_TOKENS)
 
   if (response.status && response.status !== 'completed') {
     const reason = response.incomplete_details?.reason ?? response.status
-    throw new Error(`Deep Learn generation did not complete (${reason}).`)
+    if (isMaxOutputTokenReason(reason)) {
+      console.warn('[deep-learn-generation] retrying compact generation after incomplete response', {
+        reason,
+        maxOutputTokens: DEEP_LEARN_MAX_OUTPUT_TOKENS,
+      })
+      response = await createDeepLearnResponse(
+        client,
+        grounding,
+        buildDeepLearnPrompt(promptInput, { compact: true }),
+        DEEP_LEARN_COMPACT_MAX_OUTPUT_TOKENS,
+      )
+      if (response.status && response.status !== 'completed') {
+        const retryReason = response.incomplete_details?.reason ?? response.status
+        console.error('[deep-learn-generation] compact retry incomplete', {
+          reason: retryReason,
+          originalReason: reason,
+          maxOutputTokens: DEEP_LEARN_COMPACT_MAX_OUTPUT_TOKENS,
+        })
+        if (isMaxOutputTokenReason(retryReason)) {
+          throw new DeepLearnGenerationIncompleteError(retryReason)
+        }
+        throw new Error(`Deep Learn generation did not complete (${retryReason}).`)
+      }
+    } else {
+      throw new Error(`Deep Learn generation did not complete (${reason}).`)
+    }
   }
 
   const rawText = response.output_text?.trim()
@@ -478,7 +484,22 @@ export function buildDeepLearnPrompt(input: DeepLearnGenerationContext & {
   promptGrounding: string
   sourceGrounding: DeepLearnSourceGrounding
   generationMode: 'text' | 'scan_fallback'
-}) {
+}, options: { compact?: boolean } = {}) {
+  const compactRequirements = options.compact
+    ? [
+        '',
+        'Compact retry limits:',
+        '- Generate a shorter Study Pack now. Do not try to cover every source detail.',
+        '- Study Pack sections: exactly these six headings or fewer: Source Summary, Big Picture, Key Concepts, Concept Relationships, Apply It, What to Study First.',
+        '- Key Concepts: no more than 8.',
+        '- Relationships/comparisons: no more than 3.',
+        '- Application examples: no more than 2.',
+        '- Reviewer reusable items: no more than 10 answerBank items and no more than 8 identificationItems.',
+        '- likelyQuizTargets no more than 5; distinctions no more than 4.',
+        '- Keep every explanation to one or two short sentences.',
+      ]
+    : []
+
   return [
     `Prompt version: ${DEEP_LEARN_PROMPT_VERSION}`,
     'Build a saved Deep Learn Study Pack for a single study resource.',
@@ -489,11 +510,11 @@ export function buildDeepLearnPrompt(input: DeepLearnGenerationContext & {
     '',
     'Output requirements:',
     '- Make answerBank the primary output. Each item should be a short student-facing answer, not a paragraph.',
-    '- Keep the Study Pack compact: overview plus no more than 6 to 8 main support sections. Focus on big picture, plain-English explanation, concept relationships, examples/application only when source-grounded, process flows, comparison tables, visual/diagram-ready structure, and why it matters.',
+    '- Keep the Study Pack compact: overview plus no more than 6 main support sections. Focus on Source Summary, Big Picture, Key Concepts, Concept Relationships, Apply It, and What to Study First.',
     '- Do not generate Reviewer, Quiz, Study Sheet, Cram Sheet, and Source Summary as separate documents in this pass.',
     '- Reviewer will reuse answerBank and identificationItems: preserve exact source wording first for definitions, enumerations, lists, formulas, terms, and quick recall.',
     '- Quiz will reuse exact wording for definition answers and Study Pack relationships for application questions; each quiz item must have a source basis.',
-    '- Default output limits: answerBank 12 to 16 items, identificationItems no more than 16, likelyQuizTargets no more than 8, distinctions no more than 8.',
+    '- Default output limits: answerBank 12 to 16 items, identificationItems no more than 16, likelyQuizTargets no more than 6, distinctions no more than 6, application examples no more than 3.',
     '- Favor one-line exam answers such as date -> event, law -> effect, term -> definition, place -> meaning, province -> capital, person -> role, and count recall.',
     '- For definitions and listed items, wording.exact must keep the teacher/source wording nearly 1:1. wording.examSafe should stay the same unless only tiny cleanup is needed.',
     '- Put plain-English explanations only in wording.simplified, simplifiedWording, draftExplanation, or supportingContext. Never blend them into wording.exact.',
@@ -514,7 +535,53 @@ export function buildDeepLearnPrompt(input: DeepLearnGenerationContext & {
     '- Use compareContext only when a contrast or neighboring concept helps prevent mistakes; otherwise return null.',
     '- Use confusionNotes for common wrong answers, traps, or look-alike terms; use an empty array when none are justified.',
     '- relatedConcepts should contain only source-grounded nearby concepts, not invented recommendations.',
+    ...compactRequirements,
   ].join('\n')
+}
+
+async function createDeepLearnResponse(
+  client: OpenAI,
+  grounding: DeepLearnPreparedGrounding,
+  promptText: string,
+  maxOutputTokens: number,
+) {
+  return grounding.generationMode === 'scan_fallback' && grounding.scanFallbackInput
+    ? client.responses.create({
+        model: getDeepLearnModel(),
+        store: false,
+        instructions: DEEP_LEARN_SYSTEM_PROMPT,
+        input: [{
+          role: 'user',
+          content: [
+            { type: 'input_text', text: promptText },
+            grounding.scanFallbackInput.inputType === 'image'
+              ? {
+                  type: 'input_image',
+                  detail: 'high',
+                  image_url: `data:${grounding.scanFallbackInput.contentType ?? 'image/png'};base64,${grounding.scanFallbackInput.fileData}`,
+                }
+              : {
+                  type: 'input_file',
+                  filename: grounding.scanFallbackInput.filename,
+                  file_data: grounding.scanFallbackInput.fileData,
+                },
+          ],
+        }],
+        text: responseTextConfig(),
+        max_output_tokens: maxOutputTokens,
+      })
+    : client.responses.create({
+        model: getDeepLearnModel(),
+        store: false,
+        instructions: DEEP_LEARN_SYSTEM_PROMPT,
+        input: promptText,
+        text: responseTextConfig(),
+        max_output_tokens: maxOutputTokens,
+      })
+}
+
+function isMaxOutputTokenReason(reason: string) {
+  return reason.toLowerCase().includes('max_output_tokens')
 }
 
 function buildPromptGrounding(input: {

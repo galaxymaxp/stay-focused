@@ -4,9 +4,11 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
 import { DeepLearnGenerateButton } from '@/components/DeepLearnGenerateButton'
+import { MakeQuizPackButton } from '@/components/MakeQuizPackButton'
+import { MakeReviewerButton } from '@/components/MakeReviewerButton'
 import { OcrSourceButton } from '@/components/OcrSourceButton'
 import { SourceReadinessFilters, type SourceReadinessFilter } from '@/components/SourceReadinessFilters'
-import { SourceSummaryBadge, type SourceSummaryBadgeModel } from '@/components/SourceSummaryBadge'
+import type { SourceSummaryBadgeModel } from '@/components/SourceSummaryBadge'
 import { shouldShowGenerateStudyPackAction, shouldShowSourceOcrRetryAction } from '@/lib/learn-resource-action-ui'
 import { getResourceElementId } from '@/lib/stay-focused-links'
 import type { StudyFileOutlineSection, StudyFileReaderState } from '@/lib/study-file-reader'
@@ -43,6 +45,8 @@ export interface StudyResourceAccordionItem {
   deepLearnNoteHref: string
   deepLearnQuizHref: string
   deepLearnQuizReady: boolean
+  deepLearnReviewerOutputHref?: string | null
+  deepLearnQuizOutputHref?: string | null
   deepLearnNoteFailure?: string | null
   deepLearnStatusLabel?: 'Pack' | 'Review' | 'Review Ready' | 'Needs action' | 'Unavailable'
   deepLearnTone?: 'accent' | 'warning' | 'muted'
@@ -229,12 +233,6 @@ export function StudyResourceAccordionList({
                     </span>
                   )}
 
-                  <SourceSummaryBadge
-                    resourceId={item.canonicalResourceId}
-                    summary={item.sourceSummary}
-                    canSummarize={item.isSummarizable}
-                  />
-
                   {item.sourceReadinessBucket === 'ready' && item.deepLearnStatus !== 'ready' && item.deepLearnStatus !== 'pending' && (
                     <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.78rem 0.82rem', display: 'grid', gap: '0.35rem' }}>
                       <p className="ui-kicker" style={{ margin: 0 }}>Ready for Deep Learn</p>
@@ -316,10 +314,19 @@ export function StudyResourceAccordionList({
                         manualRetry={item.sourceReadinessState !== 'visual_ocr_available'}
                       />
                     )}
-                    {item.deepLearnStatus === 'ready' && item.deepLearnQuizReady && (
-                      <Link href={item.deepLearnQuizHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-                        Quiz
-                      </Link>
+                    {item.deepLearnStatus === 'ready' && (
+                      <>
+                        <MakeReviewerButton
+                          moduleId={item.moduleId}
+                          resourceId={item.canonicalResourceId ?? item.id}
+                          existingHref={item.deepLearnReviewerOutputHref ?? null}
+                        />
+                        <MakeQuizPackButton
+                          moduleId={item.moduleId}
+                          resourceId={item.canonicalResourceId ?? item.id}
+                          existingHref={item.deepLearnQuizOutputHref ?? null}
+                        />
+                      </>
                     )}
                     {item.sourceReadinessActions.includes('add_notes') && (
                       <Link href={item.readerHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
