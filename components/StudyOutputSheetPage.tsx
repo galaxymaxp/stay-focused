@@ -1,5 +1,6 @@
 import { GeneratedContentState } from '@/components/generated-content/GeneratedContentState'
 import { ReviewerPrintButton } from '@/components/ReviewerPrintButton'
+import { StudyOutputPrintHeader } from '@/components/StudyOutputPrintHeader'
 import { isSheetStudyOutputContent } from '@/lib/study-output-content'
 import type { StudyOutput, StudyOutputSheetContent } from '@/lib/types'
 
@@ -26,8 +27,8 @@ export function StudyOutputSheetPage({
   const isCramSheet = sheet.mode === 'cram_sheet'
 
   return (
-    <section className={`motion-card section-shell section-shell-elevated reviewer-sheet study-sheet-shell${isCramSheet ? ' cram-sheet-shell' : ''}`}>
-      <div className="reviewer-print-hide" style={{ display: 'flex', justifyContent: 'space-between', gap: '0.8rem', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+    <section className={`motion-card section-shell section-shell-elevated reviewer-sheet study-sheet-shell study-output-document${isCramSheet ? ' cram-sheet-shell' : ''}`}>
+      <div className="reviewer-print-hide study-output-screen-header" style={{ display: 'flex', justifyContent: 'space-between', gap: '0.8rem', flexWrap: 'wrap', alignItems: 'flex-start' }}>
         <div>
           <p className="ui-kicker">{isCramSheet ? 'Printable cram sheet' : 'Printable study sheet'}</p>
           <h2 className="ui-section-title" style={{ marginTop: '0.42rem' }}>{sheet.title}</h2>
@@ -38,24 +39,26 @@ export function StudyOutputSheetPage({
         <ReviewerPrintButton />
       </div>
 
-      <div className="reviewer-print-only reviewer-print-meta">
-        <p>{sheet.title}</p>
-        {courseLabel ? <p>{courseLabel}</p> : null}
-        {moduleTitle ? <p>{moduleTitle}</p> : null}
-      </div>
+      <StudyOutputPrintHeader
+        title={sheet.title}
+        outputLabel={isCramSheet ? 'Cram Sheet' : 'Study Sheet'}
+        courseLabel={courseLabel}
+        moduleTitle={moduleTitle}
+        generatedAt={output.generatedAt ?? output.createdAt}
+      />
 
       {(courseLabel || moduleTitle) ? (
-        <div className="reviewer-meta-row">
+        <div className="reviewer-meta-row reviewer-print-hide">
           {courseLabel ? <span>{courseLabel}</span> : null}
           {moduleTitle ? <span>{moduleTitle}</span> : null}
           <span>{isCramSheet ? 'Cram-first format' : 'Compact sheet'}</span>
         </div>
       ) : null}
 
-      <section className="reviewer-panel reviewer-panel-hero">
+      <section className="reviewer-panel reviewer-panel-hero study-output-keep-together">
         <p className="reviewer-section-label">{isCramSheet ? 'Last-minute pass' : 'Scan-first study pass'}</p>
         <p className="reviewer-intro">{sheet.intro}</p>
-        <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', marginTop: '0.8rem' }}>
+        <div className="reviewer-print-hide" style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', marginTop: '0.8rem' }}>
           <span className="ui-chip ui-chip-soft">{sheet.keyTerms.length} key terms</span>
           {sheet.formulas.length > 0 ? (
             <span className="ui-chip ui-chip-soft">{sheet.formulas.length} formulas</span>
@@ -67,7 +70,7 @@ export function StudyOutputSheetPage({
       </section>
 
       <div className="study-sheet-grid">
-        <section className="reviewer-panel">
+        <section className="reviewer-panel study-output-keep-together">
           <p className="reviewer-section-label">Key terms</p>
           <div className="study-sheet-term-grid">
             {sheet.keyTerms.map((item) => (
@@ -80,7 +83,7 @@ export function StudyOutputSheetPage({
         </section>
 
         {sheet.formulas.length > 0 ? (
-          <section className="reviewer-panel">
+          <section className="reviewer-panel study-output-keep-together">
             <p className="reviewer-section-label">Formulas</p>
             <div className="study-sheet-formula-list">
               {sheet.formulas.map((item) => (
@@ -95,7 +98,7 @@ export function StudyOutputSheetPage({
         ) : null}
 
         {sheet.formulas.length === 0 && sheet.supplementalSectionTitle && sheet.supplementalSectionItems.length > 0 ? (
-          <section className="reviewer-panel">
+          <section className="reviewer-panel study-output-keep-together">
             <p className="reviewer-section-label">{sheet.supplementalSectionTitle}</p>
             <ul className="reviewer-answer-list">
               {sheet.supplementalSectionItems.map((item) => (
@@ -108,7 +111,7 @@ export function StudyOutputSheetPage({
           </section>
         ) : null}
 
-        <section className="reviewer-panel">
+        <section className="reviewer-panel study-output-keep-together">
           <p className="reviewer-section-label">High-yield facts</p>
           <ul className="reviewer-answer-list">
             {sheet.highYieldFacts.map((item) => (
@@ -121,7 +124,7 @@ export function StudyOutputSheetPage({
         </section>
 
         {sheet.confusingConcepts.length > 0 ? (
-          <section className="reviewer-panel">
+          <section className="reviewer-panel study-output-keep-together">
             <p className="reviewer-section-label">Confusing concepts</p>
             <div className="reviewer-block-grid">
               {sheet.confusingConcepts.map((item) => (
@@ -136,7 +139,7 @@ export function StudyOutputSheetPage({
         ) : null}
 
         {sheet.likelyExamTraps.length > 0 ? (
-          <section className="reviewer-panel">
+          <section className="reviewer-panel study-output-keep-together">
             <p className="reviewer-section-label">Likely exam traps</p>
             <div className="study-sheet-trap-list">
               {sheet.likelyExamTraps.map((item) => (

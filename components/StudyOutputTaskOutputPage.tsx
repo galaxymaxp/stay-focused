@@ -2,6 +2,7 @@
 
 import { Download, Printer } from 'lucide-react'
 import { GeneratedContentState } from '@/components/generated-content/GeneratedContentState'
+import { StudyOutputPrintHeader } from '@/components/StudyOutputPrintHeader'
 import { isTaskOutputStudyOutputContent } from '@/lib/study-output-content'
 import type { StudyOutput, StudyOutputTaskOutputContent } from '@/lib/types'
 
@@ -30,8 +31,8 @@ export function StudyOutputTaskOutputPage({
     : null
 
   return (
-    <section className="motion-card section-shell section-shell-elevated reviewer-sheet">
-      <div className="reviewer-print-hide" style={{ display: 'flex', justifyContent: 'space-between', gap: '0.8rem', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+    <section className="motion-card section-shell section-shell-elevated reviewer-sheet study-output-document">
+      <div className="reviewer-print-hide study-output-screen-header" style={{ display: 'flex', justifyContent: 'space-between', gap: '0.8rem', flexWrap: 'wrap', alignItems: 'flex-start' }}>
         <div>
           <p className="ui-kicker">Task output</p>
           <h2 className="ui-section-title" style={{ marginTop: '0.42rem' }}>{taskOutput.title}</h2>
@@ -60,13 +61,15 @@ export function StudyOutputTaskOutputPage({
         </div>
       </div>
 
-      <div className="reviewer-print-only reviewer-print-meta">
-        <p>{taskOutput.title}</p>
-        {courseLabel ? <p>{courseLabel}</p> : null}
-        {moduleTitle ? <p>{moduleTitle}</p> : null}
-      </div>
+      <StudyOutputPrintHeader
+        title={taskOutput.title}
+        outputLabel="Task Output"
+        courseLabel={courseLabel}
+        moduleTitle={moduleTitle}
+        generatedAt={output.generatedAt ?? output.createdAt}
+      />
 
-      <div className="reviewer-meta-row">
+      <div className="reviewer-meta-row reviewer-print-hide">
         {courseLabel ? <span>{courseLabel}</span> : null}
         {moduleTitle ? <span>{moduleTitle}</span> : null}
         <span>{taskOutput.preset}</span>
@@ -75,7 +78,7 @@ export function StudyOutputTaskOutputPage({
       </div>
 
       <div className="reviewer-grid">
-        <section className="reviewer-panel reviewer-panel-hero">
+        <section className="reviewer-panel reviewer-panel-hero study-output-keep-together">
           <p className="reviewer-section-label">Grounding contract</p>
           <p className="reviewer-intro">{taskOutput.groundingNote}</p>
           {taskOutput.limitationNote ? (
@@ -83,7 +86,7 @@ export function StudyOutputTaskOutputPage({
           ) : null}
         </section>
 
-        <section className="reviewer-panel">
+        <section className="reviewer-panel study-output-keep-together">
           <p className="reviewer-section-label">Requirements used</p>
           <ul className="reviewer-answer-list">
             {taskOutput.requirements.map((item) => (
@@ -95,7 +98,7 @@ export function StudyOutputTaskOutputPage({
         </section>
 
         {taskOutput.selectedContext.length > 0 ? (
-          <section className="reviewer-panel">
+          <section className="reviewer-panel study-output-keep-together">
             <p className="reviewer-section-label">Selected context</p>
             <ul className="reviewer-answer-list">
               {taskOutput.selectedContext.map((item) => (
@@ -107,7 +110,7 @@ export function StudyOutputTaskOutputPage({
           </section>
         ) : null}
 
-        <section className="reviewer-panel">
+        <section className="reviewer-panel study-output-keep-together">
           <p className="reviewer-section-label">Preview</p>
           {taskOutput.previewMode === 'html' ? (
             <iframe
@@ -123,7 +126,7 @@ export function StudyOutputTaskOutputPage({
         </section>
 
         {taskOutput.revisionHistory.length > 0 ? (
-          <section className="reviewer-panel">
+          <section className="reviewer-panel reviewer-print-hide study-output-keep-together">
             <p className="reviewer-section-label">Revision history</p>
             <div className="reviewer-block-grid">
               {taskOutput.revisionHistory.map((item) => (
@@ -140,7 +143,7 @@ export function StudyOutputTaskOutputPage({
         ) : null}
 
         {taskOutput.warnings.length > 0 ? (
-          <section className="reviewer-panel">
+          <section className="reviewer-panel study-output-keep-together">
             <p className="reviewer-section-label">Warnings</p>
             <ul className="reviewer-caution-list">
               {taskOutput.warnings.map((item) => (

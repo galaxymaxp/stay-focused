@@ -95,6 +95,69 @@ test('sheet output rendering keeps printable and mobile-friendly structure', () 
   assert.match(markup, /study-sheet-grid/)
   assert.match(markup, /study-sheet-term-grid/)
   assert.match(markup, /cram-sheet-shell/)
+  assert.match(markup, /Output:<\/strong> Cram Sheet/)
+  assert.match(markup, /Date:<\/strong> May 9, 2026/)
+})
+
+test('sheet rendering omits formula section when no real formulas exist', () => {
+  const content = buildDeepLearnSheetContent(createNote({
+    title: 'IT Security exam prep pack',
+    overview: 'Definitions, attacker types, malware symptoms, and security domains.',
+    sections: [
+      {
+        heading: 'Definitions',
+        body: [
+          'InfoSec = processes and tools to protect sensitive business info.',
+          'Vulnerability = flaw or weakness in hardware/software.',
+          'Breach = a successful exploit of a vulnerability.',
+        ].join(' '),
+      },
+    ],
+    noteBody: '',
+    answerBank: [
+      {
+        cue: 'InfoSec',
+        kind: 'term_definition',
+        answer: { exact: 'InfoSec = processes and tools to protect sensitive business information.', examSafe: 'Processes and tools used to protect sensitive business information.', simplified: null },
+        compactAnswer: { exact: 'InfoSec = processes and tools to protect sensitive business information.', examSafe: 'Protects sensitive business information.', simplified: null },
+        importance: 'high',
+        sortKey: null,
+        distractors: [],
+        supportingContext: 'InfoSec = processes and tools to protect sensitive business information.',
+      },
+    ],
+    identificationItems: [],
+    distinctions: [],
+    likelyQuizTargets: [],
+    cautionNotes: [],
+  }), 'study_sheet')
+  const output: StudyOutput = {
+    id: 'output-2',
+    userId: 'user-1',
+    courseId: 'course-1',
+    moduleId: 'module-1',
+    resourceId: 'resource-1',
+    sourceKind: 'deep_learn_note',
+    sourceNoteId: 'note-1',
+    sourceTaskId: null,
+    outputKind: 'study_sheet',
+    status: 'ready',
+    title: content.title,
+    summary: content.summary,
+    content,
+    createdAt: '2026-05-09T00:00:00.000Z',
+    updatedAt: '2026-05-09T00:00:00.000Z',
+    generatedAt: '2026-05-09T00:00:00.000Z',
+  }
+
+  const markup = renderToStaticMarkup(createElement(StudyOutputSheetPage, {
+    output,
+    courseLabel: 'IT Security',
+    moduleTitle: 'Threat Basics',
+  }))
+
+  assert.doesNotMatch(markup, />Formulas</)
+  assert.match(markup, />Key definitions</)
 })
 
 test('sheet outputs do not leak metadata or debug labels', () => {

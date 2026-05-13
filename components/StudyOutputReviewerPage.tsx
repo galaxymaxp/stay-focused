@@ -1,6 +1,7 @@
 import { GeneratedContentState } from '@/components/generated-content/GeneratedContentState'
 import { isReviewerStudyOutputContent } from '@/lib/study-output-content'
 import { ReviewerPrintButton } from '@/components/ReviewerPrintButton'
+import { StudyOutputPrintHeader } from '@/components/StudyOutputPrintHeader'
 import type { StudyOutput } from '@/lib/types'
 
 export function StudyOutputReviewerPage({
@@ -24,8 +25,8 @@ export function StudyOutputReviewerPage({
   const reviewer = output.content
 
   return (
-    <section className="motion-card section-shell section-shell-elevated reviewer-sheet">
-      <div className="reviewer-print-hide" style={{ display: 'flex', justifyContent: 'space-between', gap: '0.8rem', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+    <section className="motion-card section-shell section-shell-elevated reviewer-sheet study-output-document">
+      <div className="reviewer-print-hide study-output-screen-header" style={{ display: 'flex', justifyContent: 'space-between', gap: '0.8rem', flexWrap: 'wrap', alignItems: 'flex-start' }}>
         <div>
           <p className="ui-kicker">Printable reviewer</p>
           <h2 className="ui-section-title" style={{ marginTop: '0.42rem' }}>{reviewer.title}</h2>
@@ -36,14 +37,16 @@ export function StudyOutputReviewerPage({
         <ReviewerPrintButton />
       </div>
 
-      <div className="reviewer-print-only reviewer-print-meta">
-        <p>{reviewer.title}</p>
-        {courseLabel ? <p>{courseLabel}</p> : null}
-        {moduleTitle ? <p>{moduleTitle}</p> : null}
-      </div>
+      <StudyOutputPrintHeader
+        title={reviewer.title}
+        outputLabel="Reviewer"
+        courseLabel={courseLabel}
+        moduleTitle={moduleTitle}
+        generatedAt={output.generatedAt ?? output.createdAt}
+      />
 
       <div className="reviewer-grid">
-        <section className="reviewer-panel reviewer-panel-hero">
+        <section className="reviewer-panel reviewer-panel-hero study-output-keep-together">
           <p className="reviewer-section-label">High-yield first</p>
           <p className="reviewer-intro">{reviewer.intro}</p>
           {(courseLabel || moduleTitle) ? (
@@ -62,7 +65,7 @@ export function StudyOutputReviewerPage({
           </ul>
         </section>
 
-        <section className="reviewer-panel">
+        <section className="reviewer-panel study-output-keep-together">
           <p className="reviewer-section-label">Identification review</p>
           <div className="reviewer-two-column-list">
             {reviewer.identificationReview.map((item) => (
@@ -74,7 +77,7 @@ export function StudyOutputReviewerPage({
           </div>
         </section>
 
-        <section className="reviewer-panel">
+        <section className="reviewer-panel study-output-keep-together">
           <p className="reviewer-section-label">Quick-answer blocks</p>
           <div className="reviewer-block-grid">
             {reviewer.quickReviewBlocks.map((block) => (
@@ -90,7 +93,7 @@ export function StudyOutputReviewerPage({
           </div>
         </section>
 
-        <section className="reviewer-panel">
+        <section className="reviewer-panel study-output-keep-together">
           <p className="reviewer-section-label">Distinctions</p>
           <div className="reviewer-block-grid">
             {reviewer.distinctions.map((item) => (
@@ -103,7 +106,7 @@ export function StudyOutputReviewerPage({
           </div>
         </section>
 
-        <section className="reviewer-panel">
+        <section className="reviewer-panel study-output-keep-together">
           <p className="reviewer-section-label">Likely quiz targets</p>
           <ol className="reviewer-target-list">
             {reviewer.likelyQuizTargets.map((item) => (
@@ -116,7 +119,7 @@ export function StudyOutputReviewerPage({
         </section>
 
         {reviewer.cautionNotes.length > 0 ? (
-          <section className="reviewer-panel">
+          <section className="reviewer-panel study-output-keep-together">
             <p className="reviewer-section-label">Caution notes</p>
             <ul className="reviewer-caution-list">
               {reviewer.cautionNotes.map((item) => (

@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { GeneratedContentState } from '@/components/generated-content/GeneratedContentState'
 import { ReviewerPrintButton } from '@/components/ReviewerPrintButton'
+import { StudyOutputPrintHeader } from '@/components/StudyOutputPrintHeader'
 import { isQuizPackStudyOutputContent } from '@/lib/study-output-content'
 import type { StudyOutput, StudyOutputQuizPackContent, StudyOutputQuizPackItem } from '@/lib/types'
 
@@ -80,8 +81,8 @@ export function StudyOutputQuizPackPage({
 
   if (!resolvedActiveCount || !currentItem) {
     return (
-      <section className="motion-card section-shell section-shell-elevated reviewer-sheet">
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.8rem', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+      <section className="motion-card section-shell section-shell-elevated reviewer-sheet study-output-document">
+        <div className="reviewer-print-hide study-output-screen-header" style={{ display: 'flex', justifyContent: 'space-between', gap: '0.8rem', flexWrap: 'wrap', alignItems: 'flex-start' }}>
           <div>
             <p className="ui-kicker">Saved quiz pack</p>
             <h2 className="ui-section-title" style={{ marginTop: '0.42rem' }}>{quizPack.title}</h2>
@@ -92,14 +93,22 @@ export function StudyOutputQuizPackPage({
           <ReviewerPrintButton />
         </div>
 
+        <StudyOutputPrintHeader
+          title={quizPack.title}
+          outputLabel="Quiz Pack"
+          courseLabel={courseLabel}
+          moduleTitle={moduleTitle}
+          generatedAt={output.generatedAt ?? output.createdAt}
+        />
+
         {(courseLabel || moduleTitle) ? (
-          <div className="reviewer-meta-row">
+          <div className="reviewer-meta-row reviewer-print-hide">
             {courseLabel ? <span>{courseLabel}</span> : null}
             {moduleTitle ? <span>{moduleTitle}</span> : null}
           </div>
         ) : null}
 
-        <section className="reviewer-panel reviewer-panel-hero">
+        <section className="reviewer-panel reviewer-panel-hero reviewer-print-hide">
           <p className="reviewer-section-label">Quiz modes</p>
           <p className="reviewer-intro">{quizPack.intro}</p>
           <div className="reviewer-answer-list" style={{ paddingLeft: 0 }}>
@@ -111,7 +120,7 @@ export function StudyOutputQuizPackPage({
           </div>
         </section>
 
-        <section className="reviewer-panel">
+        <section className="reviewer-panel reviewer-print-hide">
           <p className="reviewer-section-label">Question count</p>
           <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', marginTop: '0.8rem' }}>
             {quizPack.questionCountOptions.map((count: number) => (
@@ -132,6 +141,8 @@ export function StudyOutputQuizPackPage({
             </button>
           </div>
         </section>
+
+        <QuizPackPrintDocument quizPack={quizPack} />
       </section>
     )
   }
@@ -142,8 +153,8 @@ export function StudyOutputQuizPackPage({
   const hasInput = isChoiceQuestion ? Boolean(selectedChoice) : Boolean(draftAnswer.trim())
 
   return (
-    <section className="motion-card section-shell section-shell-elevated reviewer-sheet">
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.8rem', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+    <section className="motion-card section-shell section-shell-elevated reviewer-sheet study-output-document">
+      <div className="reviewer-print-hide study-output-screen-header" style={{ display: 'flex', justifyContent: 'space-between', gap: '0.8rem', flexWrap: 'wrap', alignItems: 'flex-start' }}>
         <div>
           <p className="ui-kicker">Saved quiz pack</p>
           <h2 className="ui-section-title" style={{ marginTop: '0.42rem' }}>{quizPack.title}</h2>
@@ -158,8 +169,18 @@ export function StudyOutputQuizPackPage({
         </div>
       </div>
 
+      <StudyOutputPrintHeader
+        title={quizPack.title}
+        outputLabel="Quiz Pack"
+        courseLabel={courseLabel}
+        moduleTitle={moduleTitle}
+        generatedAt={output.generatedAt ?? output.createdAt}
+      />
+
+      <QuizPackPrintDocument quizPack={quizPack} />
+
       <div className="reviewer-grid">
-        <section className="reviewer-panel">
+        <section className="reviewer-panel reviewer-print-hide">
           <p className="reviewer-section-label">Question tracker</p>
           <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginTop: '0.8rem' }}>
             {activeItems.map((item: StudyOutputQuizPackItem, index: number) => {
@@ -175,7 +196,7 @@ export function StudyOutputQuizPackPage({
           </div>
         </section>
 
-        <section className="reviewer-panel reviewer-panel-hero">
+        <section className="reviewer-panel reviewer-panel-hero reviewer-print-hide">
           <p className="reviewer-section-label">{labelForQuizItemType(currentItem.type)}</p>
           <p className="reviewer-intro" style={{ marginTop: '0.7rem' }}>{currentItem.prompt}</p>
           {isMatchingQuestion && currentItem.matchingPrompt && (
@@ -283,4 +304,40 @@ function labelForQuizItemType(type: StudyOutputQuizPackItem['type']) {
   if (type === 'identification') return 'Identification'
   if (type === 'matching') return 'Matching'
   return 'True / false'
+}
+
+function QuizPackPrintDocument({ quizPack }: { quizPack: StudyOutputQuizPackContent }) {
+  return (
+    <section className="reviewer-print-only reviewer-panel study-output-keep-together">
+      <p className="reviewer-section-label">Printable quiz pack</p>
+      <p className="reviewer-intro">{quizPack.summary}</p>
+      <ol className="study-output-quiz-print-list">
+        {quizPack.items.map((item, index) => (
+          <li key={item.id} className="study-output-quiz-print-item">
+            <article className="study-output-print-question study-output-keep-together">
+              <p className="study-output-print-question-number">
+                Question {index + 1} - {labelForQuizItemType(item.type)}
+              </p>
+              <p className="study-output-print-question-prompt">{item.prompt}</p>
+              {item.type === 'matching' && item.matchingPrompt ? (
+                <p className="study-output-print-question-note">Match prompt: {item.matchingPrompt}</p>
+              ) : null}
+              {item.choices.length > 0 ? (
+                <ul className="study-output-print-choice-list">
+                  {item.choices.map((choice) => (
+                    <li key={choice}>{choice}</li>
+                  ))}
+                </ul>
+              ) : null}
+              <div className="study-output-print-answer">
+                <p className="study-output-print-answer-label">Answer</p>
+                <p>{item.answer}</p>
+                <p className="study-output-print-question-note">{item.explanation}</p>
+              </div>
+            </article>
+          </li>
+        ))}
+      </ol>
+    </section>
+  )
 }

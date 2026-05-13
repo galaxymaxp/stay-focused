@@ -5,6 +5,98 @@ Last Updated: 2026-05-13
 
 ---
 
+## Session Update - 2026-05-13 (Clean study output print styles)
+
+### What changed
+
+- Added a shared print-only study output header so saved print/PDF exports show only academic metadata:
+  - output type
+  - course
+  - module
+  - date
+- Reworked saved study output pages to keep the current rich screen UI while rendering cleaner print structure for:
+  - `Reviewer`
+  - `Quiz Pack`
+  - `Study Sheet`
+  - `Cram Sheet`
+  - `Task Output` preview page
+- Added a dedicated print document path for quiz packs:
+  - prints the full grounded question set
+  - includes answer and explanation blocks
+  - excludes interactive-only controls such as question count buttons, reveal buttons, next/reset controls, and self-review actions
+- Tightened global print CSS for saved study outputs so print preview removes app chrome and low-ink issues:
+  - white backgrounds
+  - black text
+  - no shadows, glow, decorative backgrounds, or floating UI
+  - hidden sidebar, top nav, bottom nav, queue/floating surfaces, chips, and action controls
+  - smaller print spacing and stronger page-break avoidance on cards/sections
+- Extended render tests to cover:
+  - print header/class presence
+  - quiz print document rendering
+  - task output print scaffold
+  - formula section omission when no real formulas exist
+
+### Files touched
+
+- `app/globals.css`
+- `components/StudyOutputPrintHeader.tsx`
+- `components/StudyOutputQuizPackPage.tsx`
+- `components/StudyOutputReviewerPage.tsx`
+- `components/StudyOutputSheetPage.tsx`
+- `components/StudyOutputTaskOutputPage.tsx`
+- `tests/study-output-print.test.ts`
+- `tests/study-output-sheet.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Phase 4 improved study output content quality, but the saved output print preview still looked too much like the on-screen Stay Focused UI. The goal of this pass was to preserve the warm/dark screen design while making browser Print / Save PDF produce a cleaner, low-ink academic handout with minimal chrome and more reliable page breaks.
+
+### Tests run
+
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- study-output-sheet study-output-quiz-pack study-output-reviewer study-output-print task-output` - passed
+
+### Verification result
+
+- Passed:
+  - typecheck
+  - lint
+  - targeted study-output render and generation coverage
+- Verified in code/tests:
+  - print-only metadata scaffold is rendered for reviewer, quiz pack, sheet, and task output pages
+  - screen-only headers/actions stay wrapped in print-hide hooks
+  - quiz packs now have a print-only full-question document with clearly labeled answers
+  - sheet rendering still omits the formulas section when no real formulas exist
+  - printable content still renders while screen styling remains intact in component markup
+- Not completed in this session:
+  - browser/manual print preview verification for Reviewer, Study Sheet, Cram Sheet, Quiz Pack, and Task Output pages
+  - visual confirmation that the current signed-in library items produce ideal page breaks in a real browser
+
+### Known risks
+
+- The print CSS is intentionally broad for saved output routes and hides generic floating surfaces such as `.ui-floating`. That is correct for the current printable pages, but if another saved-output subcomponent later depends on a floated element that should print, it will need an explicit print override.
+- Page-break control in browsers remains heuristic. The new `break-inside: avoid` rules reduce awkward splits, but especially long answer blocks or iframe-backed task previews may still split differently across Chrome/Safari print engines.
+- Task output HTML previews still print through the embedded preview frame path. That is cleaner than before, but iframe-backed HTML exports may still need a future inline-print rendering path if real browser QA shows inconsistent PDF output.
+
+### Blockers
+
+- No code blocker remains.
+- Manual browser print verification is still blocked here by the lack of a ready signed-in local session and seeded saved study outputs to exercise the exact library routes end-to-end.
+
+### Next recommended step
+
+1. Open a real saved `Reviewer` item and confirm Print / Save PDF shows the white academic layout with no app chrome.
+2. Repeat for `Study Sheet`, `Cram Sheet`, and `Quiz Pack`, focusing on page breaks and answer readability.
+3. If task-output HTML previews still print inconsistently, add an inline print-render path for HTML exports instead of relying on the iframe preview.
+
+### Suggested commit message
+
+```bash
+clean study output print styles
+```
+
 ## Session Update - 2026-05-13 (Improve study output quality)
 
 ### What changed
