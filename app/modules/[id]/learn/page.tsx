@@ -718,22 +718,22 @@ function buildSourceOcrQueueState(job: QueuedJob | null) {
   if (job.status === 'pending') {
     return {
       status: 'queued' as const,
-      label: 'OCR queued',
+      label: 'Scanning',
       summary: 'Scanned PDF is queued for text extraction.',
     }
   }
   if (job.status === 'running') {
     return {
       status: 'running' as const,
-      label: 'Extracting...',
+      label: 'Scanning',
       summary: buildSourceOcrStatusMessage({ pagesProcessed, pageCount }),
     }
   }
   if (job.status === 'failed') {
     return {
       status: 'failed' as const,
-      label: 'OCR failed',
-      summary: job.error ?? 'Text extraction failed for this PDF. You can open the original source.',
+      label: 'Could not extract enough readable text',
+      summary: job.error ?? 'Could not extract enough readable text from this PDF.',
     }
   }
   return null

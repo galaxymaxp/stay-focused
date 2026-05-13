@@ -24,7 +24,18 @@ export type LearnResourceActionPriority = 'reader' | 'source'
 
 export interface LearnResourceUiState {
   statusKey: LearnResourceStatusKey
-  statusLabel: 'Ready' | 'Partial' | 'Source first' | 'Link only' | 'Unsupported' | 'No extract' | 'Scanned PDF' | 'Preparing' | 'OCR queued' | 'Extracting...' | 'OCR complete' | 'OCR finished' | 'OCR partial' | 'OCR failed' | 'Loading'
+  statusLabel:
+    | 'Ready'
+    | 'Partial'
+    | 'Source first'
+    | 'Link only'
+    | 'Unsupported'
+    | 'No extract'
+    | 'Preparing'
+    | 'Scanning'
+    | 'Could not extract enough readable text'
+    | 'OCR complete'
+    | 'Loading'
   tone: 'accent' | 'warning' | 'muted'
   primaryAction: LearnResourceActionPriority
   summary: string
@@ -105,7 +116,7 @@ export function getLearnResourceUiState(
   if (options?.activeSourceOcrJobStatus === 'pending') {
     return {
       statusKey: 'visual_ocr_queued',
-      statusLabel: 'OCR queued',
+      statusLabel: 'Scanning',
       tone: 'warning',
       primaryAction: 'source',
       summary: 'Scanned PDF is queued for text extraction.',
@@ -118,7 +129,7 @@ export function getLearnResourceUiState(
   if (options?.activeSourceOcrJobStatus === 'running') {
     return {
       statusKey: 'visual_ocr_running',
-      statusLabel: 'Extracting...',
+      statusLabel: 'Scanning',
       tone: 'warning',
       primaryAction: 'source',
       summary: 'Scanning pages for readable text...',
@@ -138,7 +149,7 @@ export function getLearnResourceUiState(
       const remaining = (resource.pageCount as number) - (resource.pagesProcessed as number)
       return {
         statusKey: 'visual_ocr_partial',
-        statusLabel: 'OCR partial',
+        statusLabel: 'Scanning',
         tone: 'accent',
         primaryAction: 'reader',
         summary: 'Partially scanned. Enough readable text is available for Deep Learn.',
@@ -163,7 +174,7 @@ export function getLearnResourceUiState(
   if (resource.visualExtractionStatus === 'completed' && !textQuality.usable) {
     return {
       statusKey: 'visual_ocr_completed_empty',
-      statusLabel: 'OCR finished',
+      statusLabel: 'Could not extract enough readable text',
       tone: 'warning',
       primaryAction: 'source',
       summary: 'We could not find enough readable study text in this PDF. You can open the original source.',
@@ -182,7 +193,7 @@ export function getLearnResourceUiState(
   ) {
     return {
       statusKey: 'visual_ocr_partial',
-      statusLabel: 'OCR partial',
+      statusLabel: 'Scanning',
       tone: 'warning',
       primaryAction: 'source',
       summary: 'Partially scanned. Continue extraction to scan the remaining pages.',
@@ -195,7 +206,7 @@ export function getLearnResourceUiState(
   if (resource.visualExtractionStatus === 'failed') {
     return {
       statusKey: 'visual_ocr_failed',
-      statusLabel: 'OCR failed',
+      statusLabel: 'Could not extract enough readable text',
       tone: 'warning',
       primaryAction: 'source',
       summary: 'Text extraction failed for this PDF. You can open the original source.',
@@ -236,7 +247,7 @@ export function getLearnResourceUiState(
     if (likelyScanned || resource.visualExtractionStatus === 'available' || resource.visualExtractionStatus === 'queued' || resource.visualExtractionStatus === 'running' || resource.extractionStatus === 'processing') {
       return {
         statusKey: 'visual_ocr_required',
-        statusLabel: 'Scanned PDF',
+        statusLabel: 'Could not extract enough readable text',
         tone: 'warning',
         primaryAction: 'source',
         summary: 'This PDF needs visual text extraction before Deep Learn.',

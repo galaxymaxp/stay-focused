@@ -159,7 +159,7 @@ test('image-only PDFs without an active OCR job do not show preparing', () => {
     hasCanvasLink: true,
   })
 
-  assert.equal(state.statusLabel, 'Scanned PDF')
+  assert.equal(state.statusLabel, 'Could not extract enough readable text')
   assert.equal(state.statusKey, 'visual_ocr_required')
   assert.equal(state.primaryAction, 'source')
   assert.equal(state.summary, 'This PDF needs visual text extraction before Deep Learn.')
@@ -197,7 +197,7 @@ test('queued OCR shows queued copy only when an active OCR job exists', () => {
   })
 
   assert.equal(state.statusKey, 'visual_ocr_queued')
-  assert.equal(state.statusLabel, 'OCR queued')
+  assert.equal(state.statusLabel, 'Scanning')
   assert.equal(state.summary, 'Scanned PDF is queued for text extraction.')
   assert.doesNotMatch(`${state.summary} ${state.detail}`, /OCR is already complete/i)
 })
@@ -212,7 +212,7 @@ test('stale queued OCR without an active job shows waiting and retry guidance', 
   })
 
   assert.equal(state.statusKey, 'visual_ocr_required')
-  assert.equal(state.statusLabel, 'Scanned PDF')
+  assert.equal(state.statusLabel, 'Could not extract enough readable text')
   assert.equal(state.summary, 'This PDF needs visual text extraction before Deep Learn.')
 })
 
@@ -244,6 +244,7 @@ test('completed OCR with thin text remains blocked with retry guidance', () => {
   })
 
   assert.equal(state.statusKey, 'visual_ocr_completed_empty')
+  assert.equal(state.statusLabel, 'Could not extract enough readable text')
   assert.match(state.summary, /could not find enough readable study text/i)
 })
 
@@ -263,7 +264,7 @@ test('completed OCR with partial page scan shows partial-ready state with contin
   })
 
   assert.equal(state.statusKey, 'visual_ocr_partial')
-  assert.equal(state.statusLabel, 'OCR partial')
+  assert.equal(state.statusLabel, 'Scanning')
   assert.equal(state.tone, 'accent')
   assert.equal(state.primaryAction, 'reader')
   assert.equal(state.summary, 'Partially scanned. Enough readable text is available for Deep Learn.')
@@ -327,6 +328,7 @@ test('visual OCR refusal text does not surface as ready reader content', () => {
   })
 
   assert.equal(state.statusKey, 'visual_ocr_failed')
+  assert.equal(state.statusLabel, 'Could not extract enough readable text')
   assert.match(state.detail, /usable study text/i)
 })
 
@@ -358,7 +360,7 @@ test('metadata-heavy refusal preview does not show ready', () => {
   })
 
   assert.equal(state.statusKey, 'visual_ocr_failed')
-  assert.equal(state.statusLabel, 'OCR failed')
+  assert.equal(state.statusLabel, 'Could not extract enough readable text')
   assert.match(state.detail, /usable study text/i)
 })
 

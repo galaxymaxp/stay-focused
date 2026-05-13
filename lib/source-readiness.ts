@@ -249,19 +249,19 @@ function buildOriginLabel(resource: ModuleSourceResource, sourceType: ReturnType
 
 function statusLabelForState(state: SourceReadinessState, isPacketTracer: boolean) {
   if (state === 'ready') return 'Ready'
-  if (state === 'needs_processing') return 'Needs processing'
+  if (state === 'needs_processing') return 'Preparing'
   if (state === 'missing_resource_link') return 'Needs source repair'
   if (state === 'unsupported_file_type') return isPacketTracer ? 'Packet Tracer lab' : 'Unsupported'
   if (state === 'canvas_lesson_page') return 'Canvas lesson page'
   if (state === 'external_link') return 'External link'
-  if (state === 'extraction_failed') return 'Retry needed'
-  if (state === 'visual_ocr_available') return 'Scanned PDF'
-  if (state === 'visual_ocr_queued') return 'OCR queued'
-  if (state === 'visual_ocr_running') return 'Extracting...'
-  if (state === 'visual_ocr_partial') return 'OCR partial'
-  if (state === 'visual_ocr_completed_empty') return 'OCR finished'
-  if (state === 'visual_ocr_failed') return 'OCR failed'
-  if (state === 'empty_or_metadata_only') return 'Little readable text'
+  if (state === 'extraction_failed') return 'Could not extract enough readable text'
+  if (state === 'visual_ocr_available') return 'Could not extract enough readable text'
+  if (state === 'visual_ocr_queued') return 'Scanning'
+  if (state === 'visual_ocr_running') return 'Scanning'
+  if (state === 'visual_ocr_partial') return 'Scanning'
+  if (state === 'visual_ocr_completed_empty') return 'Could not extract enough readable text'
+  if (state === 'visual_ocr_failed') return 'Could not extract enough readable text'
+  if (state === 'empty_or_metadata_only') return 'Could not extract enough readable text'
   return 'Extraction status unavailable'
 }
 

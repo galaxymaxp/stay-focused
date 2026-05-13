@@ -275,16 +275,20 @@ export function StudyResourceAccordionList({
                       <Link href={item.deepLearnNoteHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
                         {item.deepLearnStatus === 'ready' ? 'Open study pack' : 'Open workspace'}
                       </Link>
-                    ) : shouldShowPrepareScannedPdfAction(item) ? (
+                    ) : shouldShowScanPdfAction(item) ? (
                       <OcrSourceButton
                         moduleId={item.moduleId}
                         resourceId={item.canonicalResourceId ?? item.id}
                         courseId={item.courseId ?? null}
                         resourceTitle={item.title}
                         className="ui-button ui-button-secondary ui-button-xs"
-                        idleLabel={getOcrActionLabel(item)}
+                        idleLabel="Scan PDF"
                         manualRetry={item.sourceReadinessState === 'visual_ocr_failed' || item.sourceReadinessState === 'visual_ocr_completed_empty'}
                       />
+                    ) : shouldShowScanningStatus(item) ? (
+                      <button type="button" disabled className="ui-button ui-button-secondary ui-button-xs" style={{ opacity: 0.7 }}>
+                        {item.sourceReadinessState === 'visual_ocr_queued' ? 'Queued' : 'Scanning'}
+                      </button>
                     ) : shouldShowGenerateStudyPackAction(item) ? (
                       <DeepLearnGenerateButton
                         moduleId={item.moduleId}
@@ -301,14 +305,14 @@ export function StudyResourceAccordionList({
                         Convert .ppt to .pptx or PDF for extraction.
                       </span>
                     )}
-                    {shouldShowSourceOcrRetryAction(item) && (
+                    {!shouldShowScanPdfAction(item) && shouldShowSourceOcrRetryAction(item) && (
                       <OcrSourceButton
                         moduleId={item.moduleId}
                         resourceId={item.canonicalResourceId ?? item.id}
                         courseId={item.courseId ?? null}
                         resourceTitle={item.title}
                         className="ui-button ui-button-ghost ui-button-xs"
-                        idleLabel={getOcrActionLabel(item)}
+                        idleLabel="Scan PDF"
                         manualRetry={item.sourceReadinessState !== 'visual_ocr_available'}
                       />
                     )}
@@ -495,16 +499,21 @@ function shouldShowDeepLearnWorkspaceAction(item: StudyResourceAccordionItem) {
   return item.deepLearnStatus === 'ready'
 }
 
-function shouldShowPrepareScannedPdfAction(item: StudyResourceAccordionItem) {
+function shouldShowScanPdfAction(item: StudyResourceAccordionItem) {
   return item.sourceReadinessActions.includes('extract_text_from_images')
-    && item.sourceReadinessState === 'visual_ocr_partial'
+    && (
+      item.sourceReadinessState === 'visual_ocr_available'
+      || item.sourceReadinessState === 'visual_ocr_partial'
+      || item.sourceReadinessState === 'visual_ocr_failed'
+      || item.sourceReadinessState === 'visual_ocr_completed_empty'
+      || item.sourceReadinessState === 'empty_or_metadata_only'
+    )
 }
 
-function getOcrActionLabel(item: StudyResourceAccordionItem) {
-  if (item.sourceReadinessState === 'visual_ocr_available') return 'Retry extraction'
-  if (item.sourceReadinessState === 'visual_ocr_partial') return 'Continue OCR'
-  if (item.sourceReadinessState === 'visual_ocr_failed' || item.sourceReadinessState === 'visual_ocr_completed_empty') return 'Retry OCR'
-  return 'Retry extraction'
+function shouldShowScanningStatus(item: StudyResourceAccordionItem) {
+  return item.sourceReadinessState === 'visual_ocr_queued'
+    || item.sourceReadinessState === 'visual_ocr_running'
+    || item.sourceReadinessState === 'visual_ocr_partial'
 }
 
 function labelForSourceAction(item: StudyResourceAccordionItem) {

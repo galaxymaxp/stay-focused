@@ -5,6 +5,104 @@ Last Updated: 2026-05-13
 
 ---
 
+## Session Update - 2026-05-13 (Add OCR recovery for stuck PDFs)
+
+### What changed
+
+- Added a clear student-facing OCR recovery path on Learn resource cards for already-synced scanned / little-readable PDFs.
+- Reused the existing `queueSourceOcrAction` server action instead of adding a new inline OCR path.
+- Updated Learn card OCR actions so OCR-recoverable PDFs now show a primary `Scan PDF` action instead of the confusing `Retry extraction` copy.
+- Added explicit active-job presentation on Learn cards:
+  - `Queued` when a `source_ocr` job already exists in `pending`
+  - `Scanning` when a `source_ocr` job is `running`
+- Kept duplicate-job prevention on the existing queue path:
+  - `queueSourceOcrAction` still returns the existing active `source_ocr` job for the same resource instead of creating another one
+  - repeated clicks refresh UI state instead of spamming jobs
+- Tightened student-facing OCR/readiness labels across Learn surfaces so OCR/problem states now resolve to:
+  - `Preparing`
+  - `Scanning`
+  - `Ready`
+  - `Could not extract enough readable text`
+- Preserved strict Deep Learn readiness:
+  - scanned PDFs remain blocked until meaningful academic OCR text exists
+  - failed/thin OCR stays blocked and surfaces `Could not extract enough readable text`
+  - metadata, UUIDs, refusal text, titles, and debug-style filler continue to be excluded by the existing text-quality/readiness gates
+- Added tests covering:
+  - Learn-card `Scan PDF` action exposure for OCR-recoverable PDFs
+  - Learn-card queued/scanning state presentation
+  - updated Learn UI OCR status labels
+  - updated source-readiness OCR status labels
+
+### Files touched
+
+- `app/modules/[id]/learn/page.tsx`
+- `components/StudyResourceAccordionList.tsx`
+- `lib/course-learn-overview.ts`
+- `lib/learn-resource-ui.ts`
+- `lib/module-learn-overview.ts`
+- `lib/source-readiness.ts`
+- `tests/learn-resource-accordion.test.ts`
+- `tests/learn-resource-ui.test.ts`
+- `tests/source-repair.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Production already had OCR queueing logic, duplicate protection, and Study Queue support, but the student-facing Learn card path did not expose a clear recovery action for stuck scanned PDFs. A resource could sit under `Needs action` with `Little readable text` and a message about visual extraction while offering no obvious `Scan PDF` action. This change fixes the UI gap without moving OCR into the request path, cron, or Deep Learn generation itself.
+
+### Tests run
+
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- learn-resource-ui queue deep-learn-readiness` - passed
+- `npm test -- pdf-extractor source-ocr-updates deep-learn-readiness deep-learn-generation canvas-content-resolution learn-resource-ui queue` - passed
+- `npx tsx scripts/validate-scanned-pdf.ts --pdf "C:\Users\omgra\Downloads\1.1-Data Organization.pdf"` - not run; file not present locally
+
+### Verification result
+
+- Passed:
+  - typecheck
+  - lint
+  - required OCR/readiness/queue/deep-learn targeted test bundle
+- Verified in code/tests:
+  - OCR-recoverable Learn cards now expose `Scan PDF`
+  - active OCR jobs show `Queued` / `Scanning` instead of another trigger
+  - existing `source_ocr` duplicate protection remains in the queue action
+  - Deep Learn remains locked until meaningful OCR text exists
+  - failed or weak OCR states stay blocked with `Could not extract enough readable text`
+- Not completed in this session:
+  - manual runtime verification against a real production/staging scanned PDF
+  - local scanned-PDF validator run, because the requested PDF fixture was missing from `C:\Users\omgra\Downloads\1.1-Data Organization.pdf`
+
+### Known risks
+
+- The optional auto-queue-on-open behavior was intentionally deferred in this session. It is feasible, but broad auto-enqueue from Learn/course-open flows needs careful throttling so simply opening a module with several scanned PDFs does not create surprise queue volume.
+- The new Learn-card OCR affordance is intentionally card-scoped first. If production also needs the same stronger action copy in additional detail surfaces, that should be a follow-up pass.
+- The new source-code assertion test for the Learn-card OCR button protects the contract, but it is lighter than a browser interaction test.
+
+### Blockers
+
+- No code blocker remains.
+- The requested local scanned-PDF validator could not run because `C:\Users\omgra\Downloads\1.1-Data Organization.pdf` was not present.
+
+### Next recommended step
+
+1. Manually verify a real scanned Canvas PDF in production or preview:
+   - card shows `Scan PDF`
+   - click queues exactly one `source_ocr` job
+   - Learn card flips to `Queued` / `Scanning`
+   - Study Queue shows the OCR job
+   - Deep Learn only unlocks after meaningful OCR text exists
+2. If product still wants automatic recovery, add a bounded on-open auto-enqueue path for exactly one eligible scanned PDF at a time, guarded by the existing duplicate logic and daily OCR caps.
+
+### Suggested commit message
+
+```bash
+add OCR recovery for stuck PDFs
+```
+
+---
+
 ## Session Update - 2026-05-13 (Fix study output upsert constraint)
 
 ### What changed

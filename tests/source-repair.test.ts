@@ -188,10 +188,10 @@ test('scanned PDF shows preparing only when active source OCR job exists', () =>
   })
 
   assert.equal(waiting.state, 'visual_ocr_available')
-  assert.equal(waiting.statusLabel, 'Scanned PDF')
+  assert.equal(waiting.statusLabel, 'Could not extract enough readable text')
   assert.equal(waiting.message, 'This PDF needs visual text extraction before Deep Learn.')
   assert.equal(queued.state, 'visual_ocr_queued')
-  assert.equal(queued.statusLabel, 'OCR queued')
+  assert.equal(queued.statusLabel, 'Scanning')
 })
 
 test('healthy extracted module resource is ready and not a repair source', () => {

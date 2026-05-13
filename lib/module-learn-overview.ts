@@ -15,7 +15,18 @@ export interface ModuleStudyMaterial {
   quality: ModuleResourceQualityInfo
   fileTypeLabel: string
   readiness: ModuleStudyReadiness
-  readinessLabel: 'Ready' | 'Partial' | 'Source first' | 'Link only' | 'Unsupported' | 'No extract' | 'Scanned PDF' | 'Preparing' | 'OCR required' | 'OCR queued' | 'Extracting...' | 'OCR complete' | 'OCR finished' | 'OCR partial' | 'OCR failed' | 'Loading'
+  readinessLabel:
+    | 'Ready'
+    | 'Partial'
+    | 'Source first'
+    | 'Link only'
+    | 'Unsupported'
+    | 'No extract'
+    | 'Preparing'
+    | 'Scanning'
+    | 'Could not extract enough readable text'
+    | 'OCR complete'
+    | 'Loading'
   readinessTone: 'accent' | 'warning' | 'muted'
   statusKey: LearnResourceStatusKey
   note: string

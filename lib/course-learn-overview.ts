@@ -48,7 +48,18 @@ export interface CourseLearnStudyMaterialRow {
   id: string
   title: string
   fileTypeLabel: string
-  readinessLabel: 'Ready' | 'Partial' | 'Source first' | 'Link only' | 'Unsupported' | 'No extract' | 'Scanned PDF' | 'Preparing' | 'OCR required' | 'OCR queued' | 'Extracting...' | 'OCR complete' | 'OCR finished' | 'OCR partial' | 'OCR failed' | 'Loading'
+  readinessLabel:
+    | 'Ready'
+    | 'Partial'
+    | 'Source first'
+    | 'Link only'
+    | 'Unsupported'
+    | 'No extract'
+    | 'Preparing'
+    | 'Scanning'
+    | 'Could not extract enough readable text'
+    | 'OCR complete'
+    | 'Loading'
   readinessTone: 'accent' | 'warning' | 'muted'
   statusKey: LearnResourceStatusKey
   readerState: StudyFileReaderState
@@ -574,7 +585,21 @@ function buildDeepLearnRowState(
   >
 }
 
-function mapStudyMaterialReadiness(label: 'Ready' | 'Partial' | 'Source first' | 'Link only' | 'Unsupported' | 'No extract' | 'Scanned PDF' | 'Preparing' | 'OCR required' | 'OCR queued' | 'Extracting...' | 'OCR complete' | 'OCR finished' | 'OCR partial' | 'OCR failed' | 'Loading' | 'Unavailable') {
+function mapStudyMaterialReadiness(
+  label:
+    | 'Ready'
+    | 'Partial'
+    | 'Source first'
+    | 'Link only'
+    | 'Unsupported'
+    | 'No extract'
+    | 'Preparing'
+    | 'Scanning'
+    | 'Could not extract enough readable text'
+    | 'OCR complete'
+    | 'Loading'
+    | 'Unavailable',
+) {
   return label === 'Unavailable' ? 'Source first' : label
 }
 
