@@ -26,7 +26,7 @@ import {
   getModuleWorkspace,
   resolveLearnResourceSelection,
 } from '@/lib/module-workspace'
-import { DeepLearnGenerationBlockedError, DeepLearnGenerationIncompleteError, generateDeepLearnNoteForResource } from '@/lib/deep-learn-generation'
+import { DeepLearnGenerationBlockedError, DeepLearnGenerationIncompleteError, assertDeepLearnContentReadyForSave, generateDeepLearnNoteForResource } from '@/lib/deep-learn-generation'
 import {
   DEEP_LEARN_PROMPT_VERSION,
   buildDeepLearnNoteBody,
@@ -1231,6 +1231,8 @@ async function processLearnGenerationJob(input: {
 
     await updateQueuedJobStatus(input.jobId, 'running', { progress: 85 })
     if (await canceled()) return
+
+    assertDeepLearnContentReadyForSave(generated.content)
 
     const noteBody = buildDeepLearnNoteBody(generated.content.sections)
     const quizReady = computeDeepLearnQuizReady(generated.content)

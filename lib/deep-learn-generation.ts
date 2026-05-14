@@ -26,6 +26,7 @@ const MAX_GROUNDING_CHARS = 12000
 export const DEEP_LEARN_MAX_OUTPUT_TOKENS = 10000
 export const DEEP_LEARN_COMPACT_MAX_OUTPUT_TOKENS = 10000
 export const DEEP_LEARN_OUTPUT_TOO_LARGE_MESSAGE = 'The model response limit was reached even after compact fallback. Try a smaller source or split the module.'
+export const DEEP_LEARN_EMPTY_STUDY_ARTIFACTS_MESSAGE = 'Deep Learn could not build enough structured study content from this source. Try a smaller source or split the module.'
 const DEEP_LEARN_STAGE_TIMEOUT_MS = 120000
 const DEEP_LEARN_COMPACT_CAUTION_NOTE = 'Generated as a compact reviewer because the source was long.'
 
@@ -401,6 +402,13 @@ export class DeepLearnGenerationIncompleteError extends Error {
   }
 }
 
+export class DeepLearnGeneratedContentValidationError extends Error {
+  constructor(message = DEEP_LEARN_EMPTY_STUDY_ARTIFACTS_MESSAGE) {
+    super(message)
+    this.name = 'DeepLearnGeneratedContentValidationError'
+  }
+}
+
 class DeepLearnGenerationStageError extends Error {
   stage: DeepLearnStageKey
   reason: string
@@ -545,6 +553,7 @@ export async function generateDeepLearnStructuredContent(
             reason: microError.reason,
           })
           const content = buildMinimalDeepLearnFallback(input, microError.partialOutput ?? compactError.partialOutput ?? error.partialOutput)
+          assertDeepLearnContentReadyForSave(content)
           return { content, compactFallbackUsed: true }
         }
         throw microError
@@ -789,7 +798,39 @@ async function runDeepLearnStagePlan(
   }
 
   const normalized = normalizeDeepLearnGeneratedContent(stageOutput, input.resource.title)
-  return level === 'full' ? normalized : trimDeepLearnContent(normalized, level)
+  const content = level === 'full' ? normalized : trimDeepLearnContent(normalized, level)
+  assertDeepLearnContentReadyForSave(content)
+  return content
+}
+
+export function validateDeepLearnContentReadyForSave(content: DeepLearnGeneratedContent) {
+  const answerBankCount = content.answerBank.filter(hasMeaningfulAnswerBankItem).length
+  const identificationCount = content.identificationItems.filter(hasMeaningfulIdentificationItem).length
+  const quizTargetCount = content.likelyQuizTargets.filter(hasMeaningfulQuizTarget).length
+  const hasStructuredStudyArtifacts = answerBankCount > 0
+    && identificationCount > 0
+    && quizTargetCount > 0
+
+  if (!hasStructuredStudyArtifacts) {
+    return {
+      ok: false as const,
+      message: DEEP_LEARN_EMPTY_STUDY_ARTIFACTS_MESSAGE,
+      counts: { answerBankCount, identificationCount, quizTargetCount },
+    }
+  }
+
+  return {
+    ok: true as const,
+    message: null,
+    counts: { answerBankCount, identificationCount, quizTargetCount },
+  }
+}
+
+export function assertDeepLearnContentReadyForSave(content: DeepLearnGeneratedContent) {
+  const validation = validateDeepLearnContentReadyForSave(content)
+  if (!validation.ok) {
+    throw new DeepLearnGeneratedContentValidationError(validation.message)
+  }
 }
 
 export function buildDeepLearnPrompt(input: DeepLearnPromptInput, options: { compact?: boolean } = {}) {
@@ -1131,13 +1172,10 @@ function buildMinimalDeepLearnFallback(
   input: DeepLearnPromptInput,
   partialOutput: Record<string, unknown> | null,
 ) {
-  const sourceSentences = input.promptGrounding
-    .replace(/\s+/g, ' ')
-    .split(/(?<=[.!?])\s+/)
-    .map((sentence) => sentence.trim())
-    .filter((sentence) => sentence.length >= 45 && sentence.length <= 260)
+  const sourceSentences = extractStudySentences(input.promptGrounding)
   const summary = sourceSentences[0] ?? truncateForModel(input.promptGrounding, 240)
   const highYieldBullets = sourceSentences.slice(1, 6).map((sentence) => `- ${sentence}`)
+  const derivedArtifacts = buildMinimalReviewerArtifacts(sourceSentences, input.resource.title)
   const fallbackOutput: Record<string, unknown> = {
     ...(partialOutput ?? {}),
     title: typeof partialOutput?.title === 'string' ? partialOutput.title : input.resource.title,
@@ -1154,6 +1192,9 @@ function buildMinimalDeepLearnFallback(
           : '- Review the selected source directly for the strongest terms and definitions.',
       },
     ],
+    answerBank: mergeFallbackArray(partialOutput?.answerBank, derivedArtifacts.answerBank),
+    identificationItems: mergeFallbackArray(partialOutput?.identificationItems, derivedArtifacts.identificationItems),
+    likelyQuizTargets: mergeFallbackArray(partialOutput?.likelyQuizTargets, derivedArtifacts.likelyQuizTargets),
     cautionNotes: uniqueStringList([
       ...(Array.isArray(partialOutput?.cautionNotes) ? partialOutput.cautionNotes.filter((item): item is string => typeof item === 'string') : []),
       DEEP_LEARN_COMPACT_CAUTION_NOTE,
@@ -1163,6 +1204,153 @@ function buildMinimalDeepLearnFallback(
     normalizeDeepLearnGeneratedContent(fallbackOutput, input.resource.title),
     'micro',
   )
+}
+
+function extractStudySentences(sourceText: string) {
+  return sourceText
+    .replace(/\[[^\]]*source excerpt[^\]]*\]/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => sentence.trim())
+    .filter((sentence) => sentence.length >= 45 && sentence.length <= 280)
+    .filter((sentence) => !/^(?:course|module|file|source|extraction|grounding|metadata)\s*[:\-]/i.test(sentence))
+    .slice(0, 12)
+}
+
+function buildMinimalReviewerArtifacts(sourceSentences: string[], fallbackTitle: string) {
+  const usableSentences = sourceSentences.length > 0
+    ? sourceSentences
+    : [`${fallbackTitle} contains source material that should be reviewed directly for key terms and direct recall.`]
+  const termCandidates = uniqueStringList(usableSentences.flatMap(extractTermCandidates)).slice(0, 6)
+  const artifactSentences = usableSentences.slice(0, Math.max(3, Math.min(6, usableSentences.length)))
+
+  const identificationItems = artifactSentences.slice(0, 5).map((sentence, index) => {
+    const term = termCandidates[index] ?? buildSentenceCue(sentence, fallbackTitle)
+    return {
+      prompt: `Identify or explain: ${term}`,
+      kind: 'term_definition' as const,
+      answer: wordingFromSentence(sentence),
+      importance: index < 3 ? 'high' as const : 'medium' as const,
+      distractors: [],
+      reviewText: term,
+      draftExplanation: sentence,
+      sourceSnippet: sentence,
+      linkedDraftSectionId: null,
+      supportingContext: sentence,
+      compareContext: null,
+      simplifiedWording: sentence,
+      confusionNotes: [],
+      relatedConcepts: termCandidates.filter((candidate) => candidate !== term).slice(0, 3),
+    }
+  })
+
+  const answerBank = artifactSentences.slice(0, 6).map((sentence, index) => {
+    const cue = termCandidates[index] ?? buildSentenceCue(sentence, fallbackTitle)
+    return {
+      cue,
+      kind: 'fact' as const,
+      answer: wordingFromSentence(sentence),
+      compactAnswer: wordingFromSentence(truncateForModel(sentence, 180)),
+      importance: index < 3 ? 'high' as const : 'medium' as const,
+      sortKey: null,
+      distractors: [],
+      reviewText: cue,
+      draftExplanation: sentence,
+      sourceSnippet: sentence,
+      linkedDraftSectionId: null,
+      supportingContext: sentence,
+      compareContext: null,
+      simplifiedWording: sentence,
+      confusionNotes: [],
+      relatedConcepts: termCandidates.filter((candidate) => candidate !== cue).slice(0, 3),
+    }
+  })
+
+  const likelyQuizTargets = artifactSentences.slice(0, 5).map((sentence, index) => {
+    const target = termCandidates[index] ?? buildSentenceCue(sentence, fallbackTitle)
+    return {
+      target,
+      reason: truncateForModel(sentence, 190),
+      importance: index < 3 ? 'high' as const : 'medium' as const,
+      reviewText: target,
+      draftExplanation: sentence,
+      sourceSnippet: sentence,
+      linkedDraftSectionId: null,
+      supportingContext: sentence,
+      compareContext: null,
+      simplifiedWording: sentence,
+      confusionNotes: [],
+      relatedConcepts: termCandidates.filter((candidate) => candidate !== target).slice(0, 3),
+    }
+  })
+
+  return { answerBank, identificationItems, likelyQuizTargets }
+}
+
+function mergeFallbackArray(existing: unknown, derived: unknown[]) {
+  return [
+    ...(Array.isArray(existing) ? existing : []),
+    ...derived,
+  ]
+}
+
+function extractTermCandidates(sentence: string) {
+  const candidates = new Set<string>()
+  const beforeDefinition = sentence.match(/\b([A-Z][A-Za-z][A-Za-z\s/()-]{2,48})\s+(?:is|are|refers to|means|involves|includes|consists of)\b/g)
+  for (const match of beforeDefinition ?? []) {
+    const cleaned = match.replace(/\s+(?:is|are|refers to|means|involves|includes|consists of)$/i, '').trim()
+    if (cleaned.length >= 3) candidates.add(cleaned)
+  }
+  const acronyms = sentence.match(/\b[A-Z]{2,8}\b/g) ?? []
+  for (const acronym of acronyms) candidates.add(acronym)
+  const nounish = sentence.match(/\b(?:confidentiality|integrity|availability|threats?|vulnerabilities|controls?|records?|fields?|database|organization|security|processing|warehouse|exercise|activity|recovery)\b/gi) ?? []
+  for (const value of nounish) candidates.add(value.toLowerCase())
+  return [...candidates]
+    .map((value) => value.replace(/\s+/g, ' ').trim())
+    .filter((value) => value.length >= 3 && value.length <= 60)
+}
+
+function buildSentenceCue(sentence: string, fallbackTitle: string) {
+  const words = sentence
+    .replace(/[^A-Za-z0-9\s-]/g, ' ')
+    .split(/\s+/)
+    .filter((word) => word.length > 3)
+    .slice(0, 5)
+    .join(' ')
+  return words || fallbackTitle
+}
+
+function wordingFromSentence(sentence: string) {
+  const text = truncateForModel(sentence, 220)
+  return {
+    exact: text,
+    examSafe: text,
+    simplified: null,
+  }
+}
+
+function hasMeaningfulAnswerBankItem(item: unknown) {
+  if (!item || typeof item !== 'object') return false
+  const record = item as { cue?: unknown; answer?: { exact?: unknown; examSafe?: unknown; simplified?: unknown } }
+  return hasMeaningfulText(record.cue)
+    && hasMeaningfulText(record.answer?.exact ?? record.answer?.examSafe ?? record.answer?.simplified)
+}
+
+function hasMeaningfulIdentificationItem(item: unknown) {
+  if (!item || typeof item !== 'object') return false
+  const record = item as { prompt?: unknown; answer?: { exact?: unknown; examSafe?: unknown; simplified?: unknown } }
+  return hasMeaningfulText(record.prompt)
+    && hasMeaningfulText(record.answer?.exact ?? record.answer?.examSafe ?? record.answer?.simplified)
+}
+
+function hasMeaningfulQuizTarget(item: unknown) {
+  if (!item || typeof item !== 'object') return false
+  const record = item as { target?: unknown; reason?: unknown }
+  return hasMeaningfulText(record.target) && hasMeaningfulText(record.reason)
+}
+
+function hasMeaningfulText(value: unknown) {
+  return typeof value === 'string' && value.replace(/\s+/g, ' ').trim().length >= 8
 }
 
 async function createDeepLearnResponse(

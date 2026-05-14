@@ -5,6 +5,72 @@ Last Updated: 2026-05-14
 
 ---
 
+## Session Update - 2026-05-14 (Fix Deep Learn empty fallback reviewer)
+
+### What changed
+
+- Added a Deep Learn save validator that rejects ready Study Packs unless they contain meaningful structured reviewer artifacts:
+  - `answerBank`
+  - `identificationItems`
+  - `likelyQuizTargets`
+- Kept compact and micro fallback retryable only for provider size-limit failures.
+- Kept timeout, provider failure, malformed JSON, and empty response paths as clean failures instead of falling into compact/micro/minimal fallback.
+- Changed minimal size fallback so it derives non-empty reviewer artifacts from selected source sentences/terms before saving.
+- Added a queue-side validation check immediately before saving a ready Deep Learn note, so source-summary-only packs cannot be persisted as completed.
+- Preserved source readiness behavior: generation failure remains a Study Pack failure and does not turn the source card itself into failed.
+
+### Files touched
+
+- `lib/deep-learn-generation.ts`
+- `actions/queue-jobs.ts`
+- `tests/deep-learn-generation.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+The compact/micro/minimal fallback path could save a completed Deep Learn pack that only had section prose and no reusable Reviewer/Quiz artifacts. That made downstream Reviewer UI show zero useful items even when the selected source text was readable. The fix makes size fallback deterministic enough to remain useful, and rejects any generated pack that still lacks the minimum structured study content.
+
+### Tests run
+
+- `npx tsx --test tests/deep-learn-generation.test.ts` - passed
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- deep-learn-generation deep-learn-readiness queue canvas-content-resolution learn-resource-ui` - passed
+- `npm test -- study-output-reviewer study-output-sheet study-output-quiz-pack study-output-print` - passed
+- `npm test -- task-output task-output-foundation` - passed
+
+### Verification result
+
+- Passed all requested verification commands.
+- Verified compact fallback still runs after a full size-limit failure.
+- Verified micro fallback still runs after compact size-limit failure.
+- Verified minimal fallback now creates non-empty `answerBank`, `identificationItems`, and `likelyQuizTargets` from source text.
+- Verified source-summary-only generated content is rejected before save.
+- Verified invalid JSON, empty responses, and provider errors do not retry into compact/micro fallback.
+- Verified existing Learn-card source readiness regression coverage still passes, including source cards staying Ready after Study Pack generation failure.
+
+### Known risks
+
+- Minimal fallback artifacts are intentionally basic and sentence-derived; they are a safety fallback for repeated size-limit failures, not a quality replacement for normal model-generated packs.
+- The validator is stricter than before: a provider response with sections but no answer bank, identification items, or likely quiz targets now fails cleanly instead of saving a weak pack.
+- Manual production QA is still recommended on the affected readable PDF to confirm the saved Reviewer shows useful counts and opens correctly.
+
+### Blockers
+
+- No code blocker remains.
+
+### Next recommended step
+
+Run authenticated production QA on the affected Deep Learn source: generate a Study Pack, confirm the queue completes or fails cleanly without looping, then open Reviewer and verify non-zero high-yield answers, identification items, and likely quiz targets.
+
+### Suggested commit message
+
+```bash
+fix deep learn empty fallback reviewer
+```
+
+---
+
 ## Session Update - 2026-05-14 (Harden Deep Learn compact fallback)
 
 ### What changed

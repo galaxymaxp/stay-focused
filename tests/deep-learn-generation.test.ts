@@ -8,11 +8,14 @@ import {
   buildDeepLearnPrompt,
   buildDeepLearnGroundingWithDependencies,
   DEEP_LEARN_COMPACT_MAX_OUTPUT_TOKENS,
+  DEEP_LEARN_EMPTY_STUDY_ARTIFACTS_MESSAGE,
   DEEP_LEARN_MAX_OUTPUT_TOKENS,
   DEEP_LEARN_OUTPUT_TOO_LARGE_MESSAGE,
   DeepLearnGenerationIncompleteError,
   DeepLearnGenerationBlockedError,
+  DeepLearnGeneratedContentValidationError,
   generateDeepLearnStructuredContent,
+  validateDeepLearnContentReadyForSave,
 } from '../lib/deep-learn-generation'
 import {
   DEEP_LEARN_REFINEMENT_BAD_SOURCE_MESSAGE,
@@ -708,8 +711,101 @@ test('staged Deep Learn generation saves a minimal fallback when micro also exce
   assert.ok(result.content.sections.length > 0)
   assert.ok(result.content.sections.some((section) => section.heading === 'Source Summary'))
   assert.ok(result.content.sections.some((section) => section.heading === 'High-Yield First'))
+  assert.ok(result.content.identificationItems.length > 0)
+  assert.ok(result.content.answerBank.length > 0)
+  assert.ok(result.content.likelyQuizTargets.length > 0)
+  assert.match(result.content.identificationItems[0]?.answer.examSafe ?? '', /Information security explains/i)
+  assert.match(result.content.answerBank[0]?.answer.examSafe ?? '', /Information security explains/i)
+  assert.match(result.content.likelyQuizTargets[0]?.reason ?? '', /Information security explains/i)
   assert.ok(result.content.cautionNotes.includes('Generated as a compact reviewer because the source was long.'))
   assert.doesNotMatch(JSON.stringify(result), /finish in one pass|Regenerate a shorter version/i)
+})
+
+test('Deep Learn save validator rejects source-summary-only reviewer artifacts', () => {
+  const content = normalizeDeepLearnGeneratedContent({
+    title: 'IT Security',
+    overview: 'The source explains information security basics.',
+    sections: [
+      { heading: 'Source Summary', body: 'The source explains information security basics.' },
+      { heading: 'High-Yield First', body: '- Review the selected source directly.' },
+    ],
+    answerBank: [],
+    identificationItems: [],
+    distinctions: [],
+    likelyQuizTargets: [],
+    cautionNotes: [],
+  }, 'IT Security')
+
+  const validation = validateDeepLearnContentReadyForSave(content)
+
+  assert.equal(validation.ok, false)
+  assert.equal(validation.message, DEEP_LEARN_EMPTY_STUDY_ARTIFACTS_MESSAGE)
+})
+
+test('Deep Learn invalid JSON fails cleanly without fallback retry loop', async () => {
+  let calls = 0
+  await assert.rejects(
+    () => generateDeepLearnStructuredContent(
+      createPromptInput(),
+      createPreparedGrounding(),
+      async () => {
+        calls += 1
+        return {
+          status: 'completed',
+          output_text: '{not valid json',
+          incomplete_details: null,
+        }
+      },
+    ),
+    /High-Yield First returned malformed structured output/,
+  )
+
+  assert.equal(calls, 1)
+})
+
+test('Deep Learn empty provider response fails cleanly without fallback retry loop', async () => {
+  let calls = 0
+  await assert.rejects(
+    () => generateDeepLearnStructuredContent(
+      createPromptInput(),
+      createPreparedGrounding(),
+      async () => {
+        calls += 1
+        return {
+          status: 'completed',
+          output_text: '',
+          incomplete_details: null,
+        }
+      },
+    ),
+    /High-Yield First returned no structured output/,
+  )
+
+  assert.equal(calls, 1)
+})
+
+test('Deep Learn provider errors fail cleanly without compact or micro retry loop', async () => {
+  let calls = 0
+  await assert.rejects(
+    () => generateDeepLearnStructuredContent(
+      createPromptInput(),
+      createPreparedGrounding(),
+      async () => {
+        calls += 1
+        throw new Error('provider overloaded')
+      },
+    ),
+    /High-Yield First failed during Deep Learn generation: provider overloaded/,
+  )
+
+  assert.equal(calls, 1)
+})
+
+test('Deep Learn generated-content validation error is student-facing', () => {
+  const error = new DeepLearnGeneratedContentValidationError()
+
+  assert.equal(error.message, DEEP_LEARN_EMPTY_STUDY_ARTIFACTS_MESSAGE)
+  assert.doesNotMatch(error.message, /JSON|max_output_tokens|provider|schema/i)
 })
 
 test('Deep Learn long source grounding keeps representative chunks instead of one front-only slice', async () => {
