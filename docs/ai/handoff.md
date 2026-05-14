@@ -5,6 +5,74 @@ Last Updated: 2026-05-15
 
 ---
 
+## Session Update - 2026-05-15 (Align Source Map Reviewer Validation)
+
+### What changed
+
+- Added internal Deep Learn reviewer-validation debug logging for:
+  - Source Map validity and unit counts by kind
+  - rendered reviewer section counts
+  - `answerBank`, `identificationItems`, and `likelyQuizTargets` counts
+  - final validation failure/success reason
+- Added a Source Map-backed compact Study Pack repair path in `lib/deep-learn-generation.ts`.
+- The repair path now builds minimum viable saved reviewer artifacts directly from valid `AcademicSourceMap` units:
+  - `Key Answers / Answer Bank`
+  - `Identification Review`
+  - `Likely Quiz Targets`
+  - `Quick Answer Blocks` when list/category/process units exist
+- Kept legacy deterministic structured-source repair as fallback after Source Map repair fails or is unavailable.
+- Preserved anti-garbage filtering for weak labels such as `What`, `activity`, `organization`, `source summary`, `exact source wording`, `reconstructed lists`, and `clean source summary fragments`.
+- Ensured legitimate IT Security concepts survive Source Map repair, including cybersecurity, information security, CIA Triad, malware, methods of infiltration, vulnerability, exploit, and breach.
+- Added Source Map compact reviewer validation tests and IT Security-like regression coverage.
+
+### Files touched
+
+- `lib/deep-learn-generation.ts`
+- `tests/deep-learn-generation.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Phase 2 made the Reviewer page consume `AcademicSourceMap`, but generation-time save validation still required legacy Study Pack artifact arrays. When model output reached the compact reviewer stages but produced sparse arrays, validation rejected the whole generation even though the Source Map contained meaningful units. The new repair path aligns save validation with the Source Map architecture by deterministically filling compact, source-backed reviewer artifacts before the queue marks generation failed.
+
+### Tests run
+
+- `npx tsx --test tests/deep-learn-generation.test.ts` - passed
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- deep-learn-generation deep-learn-readiness queue canvas-content-resolution learn-resource-ui` - passed
+- `npm test -- study-output-reviewer study-output-sheet study-output-quiz-pack study-output-print` - passed
+
+### Verification result
+
+- Passed all requested verification commands.
+- Verified IT Security-like Source Map content can save as a compact valid reviewer with non-empty answer bank, identification, and likely quiz target artifacts.
+- Verified weak/generated labels are filtered and garbage-only Source Map concepts are rejected.
+- Verified Source Map-backed repair preserves expected security concepts and does not require an extra AI call.
+- Verified legacy structured-source repair remains available when Source Map repair is missing or invalid.
+
+### Known risks
+
+- The new internal debug logs are intentionally concise but may be noisy in tests or production logs when validation repair is triggered.
+- The Source Map repair is compact and deterministic; normal model output should still provide richer Study Pack prose when healthy.
+- Unusual source-map titles may need future normalization aliases, but garbage-only concepts remain rejected.
+
+### Blockers
+
+- No blocker remains.
+
+### Next recommended step
+
+Regenerate the real IT Security PDF Study Pack and confirm the queue completes instead of failing at `Identification Review`; then open Reviewer and compare the visible concepts against the expected IT Security list.
+
+### Suggested commit message
+
+```bash
+align source map reviewer validation
+```
+
+---
+
 ## Session Update - 2026-05-15 (Render Reviewer from Source Map)
 
 ### What changed

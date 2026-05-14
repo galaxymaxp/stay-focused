@@ -15,6 +15,7 @@ import {
   DeepLearnGenerationBlockedError,
   DeepLearnGeneratedContentValidationError,
   buildDeterministicReviewerFallback,
+  buildDeepLearnContentFromSourceMap,
   buildAcademicStructuredGrounding,
   generateDeepLearnStructuredContent,
   structureAcademicSourceText,
@@ -789,6 +790,115 @@ test('readable IT Security-like source repairs weak model output locally', async
   assert.ok(result.content.identificationItems.length > 0)
   assert.ok(result.content.likelyQuizTargets.length > 0)
   assert.equal(validateDeepLearnContentReadyForSave(result.content).ok, true)
+  assert.ok(result.content.answerBank.some((item) => /Cybersecurity/i.test(item.cue)))
+  assert.ok(result.content.answerBank.some((item) => /CIA Triad/i.test(item.cue)))
+  assert.ok(result.content.answerBank.some((item) => /Malware Types/i.test(item.cue)))
+  assert.ok(result.content.answerBank.some((item) => /Methods of Infiltration/i.test(item.cue)))
+})
+
+test('Source Map compact reviewer content passes save validation with IT Security concepts', () => {
+  const sourceMap = buildAcademicSourceMap(IT_SECURITY_SAMPLE_SOURCE)
+  const content = buildDeepLearnContentFromSourceMap(sourceMap, 'Intro to IT Security')
+
+  assert.ok(content)
+  assert.equal(validateDeepLearnContentReadyForSave(content).ok, true)
+  assert.ok(content.sections.some((section) => section.heading === 'Key Answers / Answer Bank'))
+  assert.ok(content.sections.some((section) => section.heading === 'Identification Review'))
+  assert.ok(content.sections.some((section) => section.heading === 'Likely Quiz Targets'))
+
+  const cues = content.answerBank.map((item) => item.cue).join(' | ')
+  for (const expected of [
+    'Cybersecurity',
+    'CIA Triad',
+    'Malware Types',
+    'Methods of Infiltration',
+    'Vulnerability / Exploit / Breach',
+  ]) {
+    assert.match(cues, new RegExp(expected.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'))
+  }
+  assert.match(JSON.stringify(content), /Information Security/i)
+})
+
+test('Source Map compact reviewer filters weak terms without removing legitimate security concepts', () => {
+  const sourceMap = buildAcademicSourceMap(IT_SECURITY_SAMPLE_SOURCE)
+  sourceMap.units.unshift(
+    {
+      id: 'weak-what',
+      title: 'What',
+      kind: 'concept',
+      summary: 'What',
+      items: [],
+      sourceQuotes: ['What'],
+      importanceScore: 100,
+      confidence: 1,
+    },
+    {
+      id: 'weak-organization',
+      title: 'organization',
+      kind: 'concept',
+      summary: 'organization',
+      items: [],
+      sourceQuotes: ['organization'],
+      importanceScore: 99,
+      confidence: 1,
+    },
+    {
+      id: 'weak-reconstructed',
+      title: 'Reconstructed lists',
+      kind: 'list',
+      summary: 'Clean source summary fragments',
+      items: ['source summary'],
+      sourceQuotes: ['Reconstructed lists: Clean source summary fragments'],
+      importanceScore: 98,
+      confidence: 1,
+    },
+  )
+
+  const content = buildDeepLearnContentFromSourceMap(sourceMap, 'Intro to IT Security')
+
+  assert.ok(content)
+  const serialized = JSON.stringify(content)
+  assert.doesNotMatch(serialized, /"cue":"What"|"cue":"organization"|Reconstructed lists|Clean source summary fragments/)
+  assert.match(serialized, /Cybersecurity/i)
+  assert.match(serialized, /CIA Triad/i)
+  assert.match(serialized, /Vulnerability \/ Exploit \/ Breach/i)
+  assert.equal(validateDeepLearnContentReadyForSave(content).ok, true)
+})
+
+test('Source Map compact reviewer rejects garbage-only concepts', () => {
+  const sourceMap = {
+    version: 'academic-source-map-v1' as const,
+    normalizedText: 'Readable looking classroom text with weak labels only and no usable academic concepts.',
+    units: [
+      {
+        id: 'weak-what',
+        title: 'What',
+        kind: 'concept' as const,
+        summary: 'What',
+        items: [],
+        sourceQuotes: ['What'],
+        importanceScore: 100,
+        confidence: 1,
+      },
+      {
+        id: 'weak-activity',
+        title: 'activity',
+        kind: 'concept' as const,
+        summary: 'activity',
+        items: [],
+        sourceQuotes: ['activity'],
+        importanceScore: 99,
+        confidence: 1,
+      },
+    ],
+    chunks: [],
+    duplicateFragmentsRemoved: 0,
+    validation: { ok: true as const, reason: 'ok' as const, unitCount: 2, quoteCount: 2 },
+  }
+
+  const content = buildDeepLearnContentFromSourceMap(sourceMap, 'Noise PDF')
+
+  assert.equal(content, null)
 })
 
 test('deterministic reviewer fallback creates minimum study artifacts without internal labels', () => {
@@ -1396,6 +1506,7 @@ function createItSecurityPromptInput(): Parameters<typeof generateDeepLearnStruc
       qualityReason: null,
       warning: null,
       charCount: IT_SECURITY_SAMPLE_SOURCE.length,
+      sourceMap: buildAcademicSourceMap(IT_SECURITY_SAMPLE_SOURCE),
     },
     generationMode: 'text' as const,
   }
@@ -1433,6 +1544,7 @@ function createItSecurityPreparedGrounding(): Parameters<typeof generateDeepLear
       qualityReason: null,
       warning: null,
       charCount: IT_SECURITY_SAMPLE_SOURCE.length,
+      sourceMap: buildAcademicSourceMap(IT_SECURITY_SAMPLE_SOURCE),
     },
     refreshedResource: null,
     scanFallbackInput: null,

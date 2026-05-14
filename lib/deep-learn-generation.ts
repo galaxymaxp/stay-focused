@@ -6,7 +6,13 @@ import {
   sanitizeStudentFacingText,
   type DeepLearnGeneratedContent,
 } from '@/lib/deep-learn'
-import { buildAcademicSourceMap, buildAcademicSourceMapGrounding } from '@/lib/deep-learn-source-map'
+import {
+  buildAcademicSourceMap,
+  buildAcademicSourceMapGrounding,
+  validateAcademicSourceMap,
+  type AcademicSourceMap,
+  type AcademicSourceMapUnit,
+} from '@/lib/deep-learn-source-map'
 import {
   buildDeepLearnBlockedReadiness,
   canAttemptDeepLearnSourceFetch,
@@ -811,6 +817,8 @@ async function runDeepLearnStagePlan(
   const validation = validateDeepLearnContentReadyForSave(content)
   if (validation.ok) return content
 
+  logDeepLearnReviewerValidationDebug('validation_failed', input.sourceGrounding.sourceMap, content, validation)
+
   const repaired = repairDeepLearnContentFromStructuredSource(input, content, level)
   if (repaired) return repaired
 
@@ -874,11 +882,68 @@ export function assertDeepLearnContentReadyForSave(content: DeepLearnGeneratedCo
   }
 }
 
+function logDeepLearnReviewerValidationDebug(
+  event: 'validation_failed' | 'source_map_repair' | 'structured_source_repair',
+  sourceMap: AcademicSourceMap | null | undefined,
+  content: DeepLearnGeneratedContent,
+  validation: ReturnType<typeof validateDeepLearnContentReadyForSave>,
+) {
+  const sourceMapValidation = sourceMap ? validateAcademicSourceMap(sourceMap) : null
+  const sourceMapUnitCounts = sourceMap
+    ? sourceMap.units.reduce<Record<string, number>>((counts, unit) => {
+        counts[unit.kind] = (counts[unit.kind] ?? 0) + 1
+        return counts
+      }, {})
+    : {}
+
+  const sectionCounts = content.sections.reduce<Record<string, number>>((counts, section) => {
+    const key = normalizeAcademicLookup(section.heading) || 'untitled'
+    counts[key] = (counts[key] ?? 0) + 1
+    return counts
+  }, {})
+
+  const payload = {
+    event,
+    sourceMap: {
+      valid: Boolean(sourceMapValidation?.ok),
+      reason: sourceMapValidation?.reason ?? null,
+      unitCount: sourceMap?.units.length ?? 0,
+      unitCounts: sourceMapUnitCounts,
+    },
+    reviewer: {
+      sectionCount: content.sections.length,
+      sectionCounts,
+      answerBankCount: content.answerBank.length,
+      identificationCount: content.identificationItems.length,
+      quizTargetCount: content.likelyQuizTargets.length,
+      meaningfulCounts: validation.counts,
+    },
+    validation: {
+      ok: validation.ok,
+      reason: validation.message,
+    },
+  }
+
+  if (validation.ok) {
+    console.info('[deep-learn-generation] reviewer validation debug', payload)
+  } else {
+    console.warn('[deep-learn-generation] reviewer validation debug', payload)
+  }
+}
+
 function repairDeepLearnContentFromStructuredSource(
   input: DeepLearnPromptInput,
   content: DeepLearnGeneratedContent,
   level: DeepLearnFallbackLevel,
 ) {
+  const sourceMapFallback = buildDeepLearnContentFromSourceMap(input.sourceGrounding.sourceMap, input.resource.title, content)
+  if (sourceMapFallback) {
+    const repaired = level === 'full' ? sourceMapFallback : trimDeepLearnContent(sourceMapFallback, level)
+    const validation = validateDeepLearnContentReadyForSave(repaired)
+    logDeepLearnReviewerValidationDebug('source_map_repair', input.sourceGrounding.sourceMap, repaired, validation)
+    if (validation.ok) return repaired
+  }
+
   const sourceText = selectBestGroundingText(input.resource) || input.promptGrounding
   if (!isMeaningfulDeepLearnSourceText({ text: sourceText, title: input.resource.title })) return null
 
@@ -888,6 +953,7 @@ function repairDeepLearnContentFromStructuredSource(
   const fallback = buildDeterministicReviewerFallback(structuredSource, input.resource.title, content)
   const repaired = level === 'full' ? fallback : trimDeepLearnContent(fallback, level)
   const validation = validateDeepLearnContentReadyForSave(repaired)
+  logDeepLearnReviewerValidationDebug('structured_source_repair', input.sourceGrounding.sourceMap, repaired, validation)
   return validation.ok ? repaired : null
 }
 
@@ -1242,6 +1308,15 @@ function buildMinimalDeepLearnFallback(
   input: DeepLearnPromptInput,
   partialOutput: Record<string, unknown> | null,
 ) {
+  const sourceMapFallback = buildDeepLearnContentFromSourceMap(
+    input.sourceGrounding.sourceMap,
+    input.resource.title,
+    partialOutput ? normalizeDeepLearnGeneratedContent(partialOutput, input.resource.title) : {},
+  )
+  if (sourceMapFallback) {
+    return trimDeepLearnContent(sourceMapFallback, 'micro')
+  }
+
   const sourceSentences = extractStudySentences(input.promptGrounding)
   const summary = sourceSentences[0] ?? truncateForModel(input.promptGrounding, 240)
   const highYieldBullets = sourceSentences.slice(1, 6).map((sentence) => `- ${sentence}`)
@@ -1274,6 +1349,304 @@ function buildMinimalDeepLearnFallback(
     normalizeDeepLearnGeneratedContent(fallbackOutput, input.resource.title),
     'micro',
   )
+}
+
+export function buildDeepLearnContentFromSourceMap(
+  sourceMap: AcademicSourceMap | null | undefined,
+  resourceTitle: string,
+  seedContent: Partial<DeepLearnGeneratedContent> = {},
+): DeepLearnGeneratedContent | null {
+  const units = getMeaningfulSourceMapUnits(sourceMap)
+  if (units.length === 0) return null
+
+  const answerBank = units.slice(0, 16).map((unit, index) => {
+    const answerText = buildSourceMapGeneratedAnswer(unit)
+    return {
+      cue: unit.title,
+      kind: unit.kind === 'definition' ? 'term_definition' as const : 'fact' as const,
+      answer: wordingFromSentence(answerText),
+      compactAnswer: wordingFromSentence(truncateForModel(answerText, 180)),
+      importance: sourceMapGeneratedImportance(unit.importanceScore, index),
+      sortKey: null,
+      distractors: [],
+      reviewText: unit.title,
+      draftExplanation: answerText,
+      sourceSnippet: unit.sourceWording ?? answerText,
+      linkedDraftSectionId: null,
+      supportingContext: unit.support ?? answerText,
+      compareContext: null,
+      simplifiedWording: null,
+      confusionNotes: [],
+      relatedConcepts: unit.items.slice(0, 5),
+    }
+  })
+
+  const identificationItems = units.slice(0, 16).map((unit, index) => {
+    const answerText = buildSourceMapGeneratedAnswer(unit)
+    return {
+      prompt: `Identify or define ${unit.title}.`,
+      kind: unit.kind === 'definition' ? 'term_definition' as const : 'fact' as const,
+      answer: wordingFromSentence(answerText),
+      importance: sourceMapGeneratedImportance(unit.importanceScore, index),
+      distractors: [],
+      reviewText: unit.title,
+      draftExplanation: answerText,
+      sourceSnippet: unit.sourceWording ?? answerText,
+      linkedDraftSectionId: null,
+      supportingContext: unit.support ?? answerText,
+      compareContext: null,
+      simplifiedWording: null,
+      confusionNotes: [],
+      relatedConcepts: unit.items.slice(0, 5),
+    }
+  })
+
+  const likelyQuizTargets = units.slice(0, 8).map((unit, index) => ({
+    target: buildSourceMapGeneratedQuizTarget(unit),
+    reason: buildSourceMapGeneratedQuizReason(unit),
+    importance: sourceMapGeneratedImportance(unit.importanceScore, index),
+    reviewText: unit.title,
+    draftExplanation: buildSourceMapGeneratedAnswer(unit),
+    sourceSnippet: unit.sourceWording ?? unit.support,
+    linkedDraftSectionId: null,
+    supportingContext: unit.support,
+    compareContext: null,
+    simplifiedWording: null,
+    confusionNotes: [],
+    relatedConcepts: unit.items.slice(0, 5),
+  }))
+
+  if (answerBank.length === 0 || identificationItems.length === 0 || likelyQuizTargets.length === 0) return null
+
+  const summary = buildSourceMapGeneratedAnswer(units[0])
+  const quickBlocks = units
+    .filter((unit) => unit.items.length >= 2)
+    .slice(0, 5)
+    .map((unit) => `${unit.title}: ${formatInlineList(unit.items.slice(0, 8))}`)
+
+  const output: Record<string, unknown> = {
+    title: seedContent.title || resourceTitle,
+    overview: seedContent.overview || summary,
+    sections: [
+      { heading: 'Source Summary', body: summary },
+      {
+        heading: 'High-Yield First',
+        body: units.slice(0, 8).map((unit) => `- ${unit.title}: ${truncateForModel(buildSourceMapGeneratedAnswer(unit), 180)}`).join('\n'),
+      },
+      {
+        heading: 'Key Answers / Answer Bank',
+        body: answerBank.slice(0, 8).map((item) => `- ${item.cue}: ${item.compactAnswer.examSafe}`).join('\n'),
+      },
+      {
+        heading: 'Identification Review',
+        body: identificationItems.slice(0, 8).map((item) => `- ${item.prompt}`).join('\n'),
+      },
+      {
+        heading: 'Likely Quiz Targets',
+        body: likelyQuizTargets.slice(0, 6).map((item) => `- ${item.target}: ${item.reason}`).join('\n'),
+      },
+      ...(quickBlocks.length > 0
+        ? [{ heading: 'Quick Answer Blocks', body: quickBlocks.map((block) => `- ${block}`).join('\n') }]
+        : []),
+    ],
+    answerBank,
+    identificationItems,
+    distinctions: buildSourceMapGeneratedDistinctions(units),
+    likelyQuizTargets,
+    cautionNotes: uniqueStringList([
+      ...(Array.isArray(seedContent.cautionNotes) ? seedContent.cautionNotes : []),
+      DEEP_LEARN_COMPACT_CAUTION_NOTE,
+    ]).filter((note) => !containsInternalPipelineText(note)).slice(0, 3),
+  }
+
+  const normalized = normalizeDeepLearnGeneratedContent(output, resourceTitle)
+  const validation = validateDeepLearnContentReadyForSave(normalized)
+  return validation.ok ? normalized : null
+}
+
+interface GeneratedSourceMapUnit {
+  title: string
+  kind: AcademicSourceMapUnit['kind']
+  items: string[]
+  support: string
+  sourceWording: string | null
+  importanceScore: number
+}
+
+function getMeaningfulSourceMapUnits(sourceMap: AcademicSourceMap | null | undefined): GeneratedSourceMapUnit[] {
+  if (!sourceMap) return []
+  const validation = validateAcademicSourceMap(sourceMap)
+  if (!validation.ok) return []
+
+  return sourceMap.units
+    .map(cleanGeneratedSourceMapUnit)
+    .filter((unit): unit is GeneratedSourceMapUnit => Boolean(unit))
+    .filter((unit, index, list) => list.findIndex((candidate) => normalizeAcademicLookup(candidate.title) === normalizeAcademicLookup(unit.title)) === index)
+    .sort(compareGeneratedSourceMapUnits)
+    .slice(0, 18)
+}
+
+function cleanGeneratedSourceMapUnit(unit: AcademicSourceMapUnit): GeneratedSourceMapUnit | null {
+  const title = normalizeGeneratedSourceMapTitle(unit.title)
+  if (isWeakGeneratedSourceMapTerm(title)) return null
+
+  const items = unit.items
+    .map(cleanGeneratedSourceMapText)
+    .filter((item) => item.length > 0 && !isWeakGeneratedSourceMapTerm(item))
+    .slice(0, 12)
+  const support = cleanGeneratedSourceMapAnswer(title, cleanGeneratedSourceMapText(unit.summary))
+  const sourceWording = unit.sourceQuotes
+    .map((quote) => cleanGeneratedSourceMapAnswer(title, cleanGeneratedSourceMapText(quote)))
+    .find((quote) => quote.length >= 12 && !containsInternalPipelineText(quote))
+    ?? null
+
+  if (!support && !sourceWording && items.length === 0) return null
+
+  return {
+    title,
+    kind: unit.kind,
+    items,
+    support: support || sourceWording || `${title} is a source-backed concept.`,
+    sourceWording,
+    importanceScore: unit.importanceScore,
+  }
+}
+
+function normalizeGeneratedSourceMapTitle(value: string) {
+  const cleaned = normalizeStudyOutputHeading(sanitizeStudentFacingText(value))
+  const lookup = normalizeAcademicLookup(cleaned)
+  if (lookup === 'it security definition') return 'IT Security'
+  if (lookup === 'infosec vs it sec') return 'InfoSec vs IT Sec'
+  if (lookup === 'domains of it security') return 'Domains of IT Security'
+  if (lookup === 'cybersecurity definitions') return 'Cybersecurity'
+  if (lookup === 'importance of cybersecurity') return 'Importance of Cybersecurity'
+  if (lookup === 'challenges') return 'Challenges of Cybersecurity'
+  if (lookup === 'cybercrime disruption espionage') return 'Cybersecurity Threat Types'
+  if (lookup === 'malware types') return 'Malware Types'
+  if (lookup === 'malware symptoms') return 'Malware Symptoms'
+  if (lookup === 'infiltration methods') return 'Methods of Infiltration'
+  if (lookup === 'denial of service methods') return 'Denial of Service Methods'
+  if (lookup === 'impact reduction') return 'Impact Reduction'
+  if (lookup === 'types of attackers') return 'Types of Attackers'
+  return cleaned
+}
+
+function buildSourceMapGeneratedAnswer(unit: GeneratedSourceMapUnit) {
+  if (unit.items.length >= 2 && !/^(?:IT Security|Cybersecurity)$/i.test(unit.title)) {
+    return `${unit.title} includes ${formatInlineList(unit.items.slice(0, 8))}.`
+  }
+  return unit.support || unit.sourceWording || unit.title
+}
+
+function buildSourceMapGeneratedQuizTarget(unit: GeneratedSourceMapUnit) {
+  if (unit.kind === 'process') return `Apply ${unit.title}`
+  if (unit.items.length >= 3) return `Enumerate ${unit.title}`
+  if (/ vs |\/|triad/i.test(unit.title)) return `Distinguish ${unit.title}`
+  return `Explain ${unit.title}`
+}
+
+function buildSourceMapGeneratedQuizReason(unit: GeneratedSourceMapUnit) {
+  if (unit.kind === 'definition') return `Define ${unit.title} using the source wording.`
+  if (unit.kind === 'process') return `Apply the source-listed steps or methods under ${unit.title}.`
+  if (unit.items.length >= 3) return `Enumerate source-listed items such as ${formatInlineList(unit.items.slice(0, 6))}.`
+  return `Explain the source-backed concept ${unit.title}.`
+}
+
+function buildSourceMapGeneratedDistinctions(units: GeneratedSourceMapUnit[]) {
+  const distinctions = []
+  const infoSec = units.find((unit) => normalizeAcademicLookup(unit.title) === 'infosec vs it sec')
+  if (infoSec) {
+    distinctions.push({
+      conceptA: 'InfoSec',
+      conceptB: 'IT Sec',
+      difference: infoSec.sourceWording ?? infoSec.support,
+      confusionNote: 'InfoSec protects sensitive business information; IT Sec secures digital data through computer network security.',
+    })
+  }
+
+  const terms = units.find((unit) => normalizeAcademicLookup(unit.title) === 'vulnerability exploit breach')
+  if (terms) {
+    distinctions.push({
+      conceptA: 'Vulnerability',
+      conceptB: 'Exploit / Breach',
+      difference: terms.sourceWording ?? terms.support,
+      confusionNote: 'A vulnerability is the weakness, an exploit takes advantage of it, and a breach is the successful result.',
+    })
+  }
+
+  return distinctions.slice(0, 4)
+}
+
+function cleanGeneratedSourceMapAnswer(title: string, value: string) {
+  return value
+    .replace(new RegExp(`^what\\s+is\\s+${escapeRegExp(title)}\\??\\s*[\\u2022:;-]?\\s*`, 'i'), '')
+    .replace(new RegExp(`^${escapeRegExp(title)}\\??\\s*[\\u2022:;-]?\\s*`, 'i'), '')
+    .replace(/^definition of terms\s*[\u2022:;-]?\s*/i, '')
+    .replace(/^cybersecurity definitions?\??\s*[\u2022:;-]?\s*/i, '')
+    .replace(/^it security definition\s*[\u2022:;-]?\s*/i, '')
+    .trim()
+}
+
+function cleanGeneratedSourceMapText(value: string) {
+  return sanitizeStudentFacingText(value)
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function compareGeneratedSourceMapUnits(left: GeneratedSourceMapUnit, right: GeneratedSourceMapUnit) {
+  return getGeneratedSourceMapPreferredRank(left.title) - getGeneratedSourceMapPreferredRank(right.title)
+    || right.importanceScore - left.importanceScore
+    || left.title.localeCompare(right.title)
+}
+
+function getGeneratedSourceMapPreferredRank(title: string) {
+  const preferred = [
+    'IT Security',
+    'InfoSec vs IT Sec',
+    'CIA Triad',
+    'Domains of IT Security',
+    'Cybersecurity',
+    'Importance of Cybersecurity',
+    'Challenges of Cybersecurity',
+    'Types of Attackers',
+    'Vulnerability / Exploit / Breach',
+    'Cybersecurity Threat Types',
+    'Malware Types',
+    'Malware Symptoms',
+    'Methods of Infiltration',
+    'Denial of Service Methods',
+    'Blended Attacks',
+    'Impact Reduction',
+  ].map(normalizeAcademicLookup)
+  const index = preferred.indexOf(normalizeAcademicLookup(title))
+  return index === -1 ? 100 : index
+}
+
+function sourceMapGeneratedImportance(score: number, index: number) {
+  if (score >= 86 || index < 4) return 'high' as const
+  if (score >= 68 || index < 10) return 'medium' as const
+  return 'low' as const
+}
+
+function isWeakGeneratedSourceMapTerm(value: string) {
+  const key = normalizeAcademicLookup(value)
+  if (!key || key.length < 4) return true
+  return new Set([
+    'what',
+    'activity',
+    'organization',
+    'organization people processes technology must',
+    'source summary',
+    'exact source wording',
+    'reconstructed lists',
+    'clean source summary fragments',
+    'academic source map',
+    'deterministic academic structure',
+  ]).has(key)
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 export function buildDeterministicReviewerFallback(
