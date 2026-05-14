@@ -60,9 +60,9 @@ export function StudyOutputReviewerPage({
               {reviewer.highYieldConcepts.map((item) => (
                 <li key={`${item.cue}-${item.answer}`}>
                   <strong>{item.cue}</strong>
-                  <span><b>Memorize:</b> {item.sourceWording ?? item.answer}</span>
+                  <span><b>{item.answer.includes(':') ? 'Key list' : 'Definition'}:</b> {item.answer}</span>
                   {item.plainExplanation || item.support ? (
-                    <span><b>Understand:</b> {item.plainExplanation ?? item.support}</span>
+                    <span><b>Exam cue:</b> {item.plainExplanation ?? item.support}</span>
                   ) : null}
                 </li>
               ))}
@@ -77,9 +77,9 @@ export function StudyOutputReviewerPage({
               {reviewer.identificationReview.map((item) => (
                 <article key={`${item.prompt}-${item.answer}`} className="reviewer-mini-card">
                   <p>{item.prompt}</p>
-                  <strong>Memorize: {item.sourceWording ?? item.answer}</strong>
+                  <strong>{item.answer}</strong>
                   {item.plainExplanation || item.support ? (
-                    <p className="reviewer-muted">Understand: {item.plainExplanation ?? item.support}</p>
+                    <p className="reviewer-muted">Exam cue: {item.plainExplanation ?? item.support}</p>
                   ) : null}
                 </article>
               ))}

@@ -208,6 +208,47 @@ test('Source Map reviewer adapter produces expected IT Security concepts', () =>
   assert.ok(reviewer.distinctions.some((item) => /Vulnerability/i.test(item.conceptA) && /Exploit/i.test(item.conceptB)))
 })
 
+test('Source Map reviewer keeps IT Security answers inside concept boundaries', () => {
+  const note = createNoteWithSourceMap(IT_SECURITY_SOURCE)
+  const reviewer = buildDeepLearnReviewerContent(note)
+
+  const answerFor = (cue: string) => {
+    const match = reviewer.highYieldConcepts.find((item) => item.cue === cue)
+    assert.ok(match, `missing ${cue}`)
+    return [match.answer, match.sourceWording, match.support, match.plainExplanation].filter(Boolean).join(' ')
+  }
+
+  assert.doesNotMatch(answerFor('IT Security'), /Goal of IT Security/i)
+  assert.doesNotMatch(answerFor('InfoSec vs IT Sec'), /Domains of IT Security|Endpoint Security|Cloud Security|Application Security|Cybersecurity definitions/i)
+  assert.doesNotMatch(answerFor('Domains of IT Security'), /What is Cybersecurity|Protection of networked systems/i)
+  assert.doesNotMatch(answerFor('Vulnerability / Exploit / Breach'), /Types of Cybersecurity Threats|Cybercrime|Disruption|Espionage/i)
+})
+
+test('Source Map reviewer removes repeated memorize labels and varies quiz prompts', () => {
+  const note = createNoteWithSourceMap(IT_SECURITY_SOURCE)
+  const reviewer = buildDeepLearnReviewerContent(note)
+  const markup = renderToStaticMarkup(createElement(StudyOutputReviewerPage, {
+    output: createReviewerOutput(reviewer),
+    courseLabel: null,
+    moduleTitle: null,
+  }))
+
+  assert.doesNotMatch(markup, /Memorize:/)
+  assert.doesNotMatch(markup, /Understand:/)
+  assert.match(markup, /Definition:|Key list:|Exam cue:/)
+
+  const promptVerbs = new Set(
+    reviewer.likelyQuizTargets
+      .map((item) => item.target.split(/\s+/)[0])
+      .filter(Boolean),
+  )
+  assert.ok(promptVerbs.size >= 4)
+  assert.ok(reviewer.likelyQuizTargets.some((item) => /^Define\b/.test(item.target)))
+  assert.ok(reviewer.likelyQuizTargets.some((item) => /^Differentiate\b/.test(item.target)))
+  assert.ok(reviewer.likelyQuizTargets.some((item) => /^Identify\b/.test(item.target)))
+  assert.ok(reviewer.likelyQuizTargets.some((item) => /^Sequence\b/.test(item.target)))
+})
+
 test('Source Map reviewer filters weak key terms and internal labels', () => {
   const sourceMap = buildAcademicSourceMap(IT_SECURITY_SOURCE)
   sourceMap.units.unshift(

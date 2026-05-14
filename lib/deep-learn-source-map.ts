@@ -78,6 +78,7 @@ const HIGH_IMPORTANCE_PATTERNS = [
   /\bbreach\b/i,
   /\bimportance\b/i,
   /\bimpact reduction\b/i,
+  /\bblended attacks?\b/i,
 ]
 
 export function buildAcademicSourceMap(sourceText: string): AcademicSourceMap {
@@ -252,7 +253,7 @@ function buildUnitsFromChunks(chunks: SourceChunk[]): AcademicSourceMapUnit[] {
 function inferKnownSecurityUnits(normalizedText: string): AcademicSourceMapUnit[] {
   const units: AcademicSourceMapUnit[] = []
   const source = normalizedText.replace(/\s+/g, ' ')
-  const addList = (title: string, items: string[], quotePattern: RegExp, kind: AcademicSourceMapUnitKind = 'list') => {
+  const addList = (title: string, items: string[], quoteHeadings: string[], kind: AcademicSourceMapUnitKind = 'list') => {
     const found = items.filter((item) => new RegExp(`\\b${escapeRegExp(item).replace(/\\-/g, '[- ]?')}\\b`, 'i').test(source))
     if (found.length >= 2) {
       units.push(createUnit({
@@ -260,31 +261,34 @@ function inferKnownSecurityUnits(normalizedText: string): AcademicSourceMapUnit[
         kind,
         summary: `${title} includes ${found.join(', ')}.`,
         items: found,
-        sourceQuote: pickRegexQuote(source, quotePattern) ?? `${title}: ${found.join(', ')}`,
+        sourceQuote: pickKnownSectionQuote(normalizedText, quoteHeadings) ?? `${title}: ${found.join(', ')}`,
       }))
     }
   }
 
-  addList('CIA Triad', ['Confidentiality', 'Integrity', 'Availability'], /Goal of IT Security.{0,180}/i, 'concept')
-  addList('Domains of IT Security', ['Network Security', 'Internet Security', 'Endpoint Security', 'Cloud Security', 'Application Security', 'Information Security', 'Operational Security', 'Mobile Security', 'IoT Security', 'User Education', 'Cyber Security'], /Domains of IT Security.{0,520}/i, 'category')
-  addList('Types of attackers', ['Insiders', 'Employees and ex-employees', 'Contract Staff', 'Trusted Partners', 'Organized Attackers', 'Cyber Criminals', 'Hacktivists', 'Terrorists', 'State-sponsored Hackers', 'Black hats', 'Grey hats', 'White hats', 'Amateurs'], /Types of Attackers.{0,520}/i, 'category')
-  addList('Malware types', ['Spyware', 'Adware', 'Bot', 'Rootkit', 'Scareware', 'Ransomware', 'Virus', 'Trojan Horse', 'Worm', 'MiTM'], /Types of Malware.{0,360}/i, 'category')
-  addList('Malware symptoms', ['increase in CPU usage', 'decrease in computer speed', 'freezes or crashes often', 'decrease in Web browsing speed', 'network connections', 'Files are modified', 'Files are deleted', 'unknown files', 'unknown processes', 'Email is being sent'], /Symptoms of Malware.{0,620}/i)
-  addList('Infiltration methods', ['Social Engineering', 'Password Cracking', 'Vulnerability Exploitation', 'Advanced Persistent Threats'], /Methods of Infiltration.{0,760}/i, 'process')
-  addList('Denial of service methods', ['Overwhelm quantity of traffic', 'Maliciously formatted packets', 'Zombie', 'Botnet', 'SEO Poisoning'], /Methods to Deny Service.{0,620}/i, 'process')
-  addList('Cybercrime / Disruption / Espionage', ['Cybercrime', 'Disruption', 'Espionage'], /Types of Cybersecurity Threats.{0,620}/i, 'category')
-  addList('Impact reduction', ['Communicate the Issue', 'Be sincere and accountable', 'Provide details', 'Understand the cause of the breach', 'Ensure all systems are clean', 'Educate employees, partners, and customers'], /Impact Reduction.{0,520}/i, 'process')
+  addList('CIA Triad', ['Confidentiality', 'Integrity', 'Availability'], ['Goal of IT Security'], 'concept')
+  addList('Domains of IT Security', ['Network Security', 'Internet Security', 'Endpoint Security', 'Cloud Security', 'Application Security', 'Information Security', 'Operational Security', 'Mobile Security', 'IoT Security', 'User Education', 'Cyber Security'], ['Domains of IT Security'], 'category')
+  addList('Types of attackers', ['Insiders', 'Employees and ex-employees', 'Contract Staff', 'Trusted Partners', 'Organized Attackers', 'Cyber Criminals', 'Hacktivists', 'Terrorists', 'State-sponsored Hackers', 'Black hats', 'Grey hats', 'White hats', 'Amateurs'], ['Types of Attackers'], 'category')
+  addList('Malware types', ['Spyware', 'Adware', 'Bot', 'Rootkit', 'Scareware', 'Ransomware', 'Virus', 'Trojan Horse', 'Worm', 'MiTM'], ['Types of Malware'], 'category')
+  addList('Malware symptoms', ['increase in CPU usage', 'decrease in computer speed', 'freezes or crashes often', 'decrease in Web browsing speed', 'network connections', 'Files are modified', 'Files are deleted', 'unknown files', 'unknown processes', 'Email is being sent'], ['Symptoms of Malware'])
+  addList('Infiltration methods', ['Social Engineering', 'Password Cracking', 'Vulnerability Exploitation', 'Advanced Persistent Threats'], ['Methods of Infiltration'], 'process')
+  addList('Denial of service methods', ['Overwhelm quantity of traffic', 'Maliciously formatted packets', 'Zombie', 'Botnet', 'SEO Poisoning'], ['Methods to Deny Service'], 'process')
+  addList('Cybercrime / Disruption / Espionage', ['Cybercrime', 'Disruption', 'Espionage'], ['Types of Cybersecurity Threats'], 'category')
+  addList('Blended attacks', ['multiple techniques', 'worms', 'Trojan horses', 'spyware', 'keyloggers', 'spam', 'phishing schemes', 'DDoS combined with phishing emails'], ['Blended Attacks'], 'concept')
+  addList('Impact reduction', ['Communicate the Issue', 'Be sincere and accountable', 'Provide details', 'Understand the cause of the breach', 'Ensure all systems are clean', 'Educate employees, partners, and customers'], ['Impact Reduction'], 'process')
 
-  for (const [title, pattern] of [
-    ['IT Security definition', /What is IT Security.{0,360}/i],
-    ['InfoSec vs IT Sec', /InfoSec.{0,180}IT Sec.{0,180}/i],
-    ['Cybersecurity definitions', /What is Cybersecurity\?.{0,520}/i],
-    ['Importance of cybersecurity', /Importance of cybersecurity.{0,520}/i],
-    ['Challenges', /Challenges of Cybersecurity.{0,420}/i],
-    ['Vulnerability / Exploit / Breach', /Definition of Terms.{0,420}/i],
-    ['Blended attacks', /Blended Attacks.{0,420}/i],
+  for (const [title, headings, pattern] of [
+    ['IT Security definition', ['What is IT Security'], /What is IT Security.{0,260}/i],
+    ['InfoSec vs IT Sec', ['What is IT Security'], /InfoSec.{0,140}IT Sec.{0,140}/i],
+    ['Cybersecurity definitions', ['What is Cybersecurity'], /What is Cybersecurity\?.{0,360}/i],
+    ['Importance of cybersecurity', ['Importance of cybersecurity'], /Importance of cybersecurity.{0,360}/i],
+    ['Challenges', ['Challenges of Cybersecurity'], /Challenges of Cybersecurity.{0,320}/i],
+    ['Vulnerability / Exploit / Breach', ['Definition of Terms'], /Definition of Terms.{0,320}/i],
+    ['Blended attacks', ['Blended Attacks'], /Blended Attacks.{0,320}/i],
   ] as const) {
-    const quote = pickRegexQuote(source, pattern)
+    const quote = title === 'InfoSec vs IT Sec'
+      ? pickRegexQuote(source, pattern) ?? pickKnownSectionQuote(normalizedText, headings, pattern)
+      : pickKnownSectionQuote(normalizedText, headings, pattern)
     if (quote) {
       units.push(createUnit({
         title,
@@ -313,7 +317,7 @@ function createUnit(input: {
     kind: input.kind,
     summary: cleanupSummary(input.summary),
     items: uniqueStrings(input.items.map(cleanupItem).filter(Boolean)).slice(0, 14),
-    sourceQuotes: uniqueStrings([input.sourceQuote].filter(Boolean).map((quote) => truncateForSourceMapModel(quote, 520))),
+    sourceQuotes: uniqueStrings([input.sourceQuote].filter(Boolean).map((quote) => clampSourceMapQuote(quote, title, input.kind))),
     importanceScore: scoreImportance(title, input.kind, input.items.length),
     confidence: input.sourceQuote ? 0.86 : 0.62,
   }
@@ -388,6 +392,59 @@ function pickSourceQuote(chunk: SourceChunk, term: string) {
 function pickRegexQuote(source: string, pattern: RegExp) {
   const match = source.match(pattern)
   return match?.[0] ? truncateForSourceMapModel(match[0].replace(/\s+/g, ' ').trim(), 560) : null
+}
+
+function pickKnownSectionQuote(normalizedText: string, headings: readonly string[], fallbackPattern?: RegExp) {
+  const source = normalizedText.replace(/\r/g, '\n')
+  const headingPattern = headings.map(escapeRegExp).join('|')
+  const match = source.match(new RegExp(`(^|\\n)(${headingPattern})\\??\\s*`, 'i'))
+  if (match?.[0] && typeof match.index === 'number') {
+    const start = match.index + (match[1]?.length ?? 0)
+    const next = findNextSourceMapHeadingIndex(source, start + match[2].length)
+    const block = source.slice(start, next ?? source.length)
+    return clampSourceMapQuote(block, match[2], classifyKnownHeadingKind(match[2]))
+  }
+
+  if (!fallbackPattern) return null
+  return pickRegexQuote(source.replace(/\s+/g, ' '), fallbackPattern)
+}
+
+function findNextSourceMapHeadingIndex(source: string, fromIndex: number) {
+  let nextIndex: number | null = null
+  for (const heading of SOURCE_MAP_HEADINGS) {
+    const pattern = new RegExp(`\\n${escapeRegExp(heading)}\\??\\s*`, 'gi')
+    let match: RegExpExecArray | null
+    while ((match = pattern.exec(source)) !== null) {
+      if (match.index <= fromIndex) continue
+      nextIndex = nextIndex === null ? match.index : Math.min(nextIndex, match.index)
+      break
+    }
+  }
+  return nextIndex
+}
+
+function classifyKnownHeadingKind(heading: string): AcademicSourceMapUnitKind {
+  if (/\bdefinition|what is\b/i.test(heading)) return 'definition'
+  if (/\bmethod|reduction|infiltration|deny service\b/i.test(heading)) return 'process'
+  if (/\btypes?|domains?|symptoms|challenges\b/i.test(heading)) return 'category'
+  return 'concept'
+}
+
+function clampSourceMapQuote(value: string, title: string, kind: AcademicSourceMapUnitKind) {
+  const oneLine = value.replace(/\s+/g, ' ').trim()
+  const withoutAdjacent = stopAtKnownHeading(oneLine, title)
+  const maxChars = kind === 'definition' ? 260 : kind === 'process' ? 420 : 360
+  return truncateForSourceMapModel(withoutAdjacent, maxChars)
+}
+
+function stopAtKnownHeading(value: string, title: string) {
+  let end = value.length
+  for (const heading of SOURCE_MAP_HEADINGS) {
+    if (normalizeLookup(heading) === normalizeLookup(title)) continue
+    const match = value.match(new RegExp(`\\s${escapeRegExp(heading)}\\??\\s`, 'i'))
+    if (match?.index && match.index > 20) end = Math.min(end, match.index)
+  }
+  return value.slice(0, end).trim()
 }
 
 function dedupeUnits(units: AcademicSourceMapUnit[]) {

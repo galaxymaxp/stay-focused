@@ -193,7 +193,7 @@ export function buildReviewerContentFromSourceMap(note: DeepLearnNote): StudyOut
       plainExplanation: unit.support,
     }))
     .filter((item, index, list) => list.findIndex((candidate) => normalizeLookup(candidate.cue) === normalizeLookup(item.cue)) === index)
-    .slice(0, 16)
+    .slice(0, 20)
 
   const identificationReview = units
     .slice(0, 16)
@@ -208,21 +208,31 @@ export function buildReviewerContentFromSourceMap(note: DeepLearnNote): StudyOut
     .filter((item) => !isWeakReviewerTerm(item.answer))
     .slice(0, Math.max(4, REVIEWER_MEMORIZATION_ITEM_LIMIT - highYieldConcepts.length))
 
+  const seenQuickItems = new Set<string>()
   const quickReviewBlocks = units
     .filter((unit) => unit.kind !== 'definition' && unit.items.length >= 2)
-    .map((unit) => ({
-      heading: unit.title,
-      points: unit.items
+    .map((unit) => {
+      const points = unit.items
         .map((item) => cleanReviewerText(item))
         .filter((item) => item.length > 0 && !isWeakReviewerTerm(item))
-        .slice(0, 8),
-    }))
-    .filter((block) => block.points.length > 0)
+        .filter((item) => {
+          const key = normalizeLookup(item)
+          if (!key || seenQuickItems.has(key)) return false
+          seenQuickItems.add(key)
+          return true
+        })
+        .slice(0, unit.kind === 'process' ? 7 : 8)
+      return {
+        heading: unit.title,
+        points,
+      }
+    })
+    .filter((block) => block.points.length >= 2)
     .slice(0, 12)
 
   const distinctions = buildSourceMapDistinctions(units).slice(0, 6)
   const likelyQuizTargets = units
-    .slice(0, 12)
+    .slice(0, 16)
     .map((unit) => ({
       target: buildSourceMapQuizTarget(unit),
       reason: buildSourceMapQuizReason(unit),
@@ -286,12 +296,22 @@ function cleanSourceMapReviewerUnit(unit: AcademicSourceMapUnit): SourceMapRevie
     .map((quote) => unit.kind === 'definition'
       ? cleanDefinitionAnswer(title, cleanReviewerText(quote))
       : cleanReviewerText(quote))
-    .find((quote) => quote.length >= 12 && !containsInternalPipelineText(quote))
+    .map((quote) => shapeReviewerDefinitionAnswer(title, quote))
+    .find((quote) => quote.length >= 12 && !containsInternalPipelineText(quote) && quote !== answer)
     ?? null
   const shortAnswer = items.length > 0 && unit.kind !== 'definition'
-    ? items.slice(0, 6).join(', ')
+    ? items.slice(0, unit.kind === 'process' ? 5 : 6).join(', ')
     : answer
-  const support = cleanDefinitionAnswer(title, cleanReviewerText(unit.summary))
+  const titleKey = normalizeLookup(title)
+  const rawSourceText = `${unit.summary} ${unit.sourceQuotes.join(' ')}`
+  const sourceBackedComparison = titleKey === 'infosec vs it sec'
+    ? /\bInfoSec\b/i.test(rawSourceText) && /\bIT Sec\b/i.test(rawSourceText)
+    : titleKey === 'vulnerability exploit breach'
+      ? /\bVulnerability\b/i.test(rawSourceText) && /\bExploit\b/i.test(rawSourceText) && /\bBreach\b/i.test(rawSourceText)
+      : false
+  const support = titleKey === 'infosec vs it sec' || titleKey === 'vulnerability exploit breach'
+    ? ''
+    : shapeReviewerDefinitionAnswer(title, cleanDefinitionAnswer(title, cleanReviewerText(unit.summary)))
 
   if (!answer || isWeakReviewerTerm(answer)) return null
 
@@ -300,7 +320,9 @@ function cleanSourceMapReviewerUnit(unit: AcademicSourceMapUnit): SourceMapRevie
     answer,
     shortAnswer,
     support: support && support !== answer ? support : null,
-    sourceWording,
+    sourceWording: titleKey === 'infosec vs it sec' || titleKey === 'vulnerability exploit breach'
+      ? sourceBackedComparison ? answer : null
+      : sourceWording,
     items,
     kind: unit.kind,
     importanceScore: unit.importanceScore,
@@ -318,19 +340,36 @@ function normalizeSourceMapReviewerTitle(value: string) {
   if (lookup === 'malware types') return 'Malware Types'
   if (lookup === 'malware symptoms') return 'Malware Symptoms'
   if (lookup === 'infiltration methods') return 'Methods of Infiltration'
+  if (lookup === 'methods of infiltration') return 'Methods of Infiltration'
   if (lookup === 'denial of service methods') return 'Denial of Service Methods'
+  if (lookup === 'methods to deny service') return 'Denial of Service Methods'
   if (lookup === 'impact reduction') return 'Impact Reduction'
   if (lookup === 'types of attackers') return 'Types of Attackers'
+  if (lookup === 'blended attacks') return 'Blended Attacks'
   return cleaned
 }
 
 function buildSourceMapAnswer(title: string, unit: AcademicSourceMapUnit, items: string[]) {
   const summary = cleanReviewerText(unit.summary)
-  if (items.length >= 2 && !/^(?:IT Security|Cybersecurity)$/i.test(title)) {
-    return `${title} includes ${items.slice(0, 8).join(', ')}.`
+  const titleKey = normalizeLookup(title)
+  if (titleKey === 'infosec vs it sec') {
+    return 'InfoSec protects sensitive business information; IT Sec secures digital data through computer network security.'
   }
-  return cleanDefinitionAnswer(title, summary)
-    || unit.sourceQuotes.map((quote) => cleanDefinitionAnswer(title, cleanReviewerText(quote))).find(Boolean)
+  if (titleKey === 'it security') {
+    return 'IT Security uses cybersecurity strategies to prevent unauthorized access and protect organizational assets against cyberattacks and other threats.'
+  }
+  if (titleKey === 'cybersecurity') {
+    return 'Cybersecurity protects networked systems and data from unauthorized use, harm, attack, damage, or unauthorized access.'
+  }
+  if (titleKey === 'vulnerability exploit breach') {
+    return 'Vulnerability = weakness or flaw; exploit = method or tool used to take advantage; breach = successful exploit.'
+  }
+  if (items.length >= 2 && !/^(?:IT Security|Cybersecurity)$/i.test(title)) {
+    const prefix = unit.kind === 'process' ? `${title} steps` : `${title} key list`
+    return `${prefix}: ${items.slice(0, unit.kind === 'process' ? 7 : 8).join('; ')}.`
+  }
+  return shapeReviewerDefinitionAnswer(title, cleanDefinitionAnswer(title, summary))
+    || unit.sourceQuotes.map((quote) => shapeReviewerDefinitionAnswer(title, cleanDefinitionAnswer(title, cleanReviewerText(quote)))).find(Boolean)
     || title
 }
 
@@ -341,17 +380,73 @@ function buildSourceMapIntro(units: SourceMapReviewerUnit[], fallbackOverview: s
 }
 
 function buildSourceMapQuizTarget(unit: SourceMapReviewerUnit) {
-  if (unit.kind === 'process') return `Apply ${unit.title}`
-  if (unit.items.length >= 3) return `Enumerate ${unit.title}`
-  if (/ vs |\/|triad/i.test(unit.title)) return `Distinguish ${unit.title}`
+  const key = normalizeLookup(unit.title)
+  if (key === 'malware symptoms') return 'Identify symptoms of malware'
+  if (key === 'infosec vs it sec' || key === 'vulnerability exploit breach') return `Differentiate ${unit.title}`
+  if (/threat types|attackers|malware types/i.test(unit.title)) return `Match terms in ${unit.title}`
+  if (/importance|challenges/i.test(unit.title)) return `Explain why ${unit.title} matters`
+  if (unit.kind === 'definition') return `Define ${unit.title}`
+  if (unit.kind === 'process') return `Sequence steps for ${unit.title}`
+  if (unit.items.length >= 3) return `Enumerate key items in ${unit.title}`
+  if (/ vs |\/|triad/i.test(unit.title)) return `Differentiate ${unit.title}`
   return `Explain ${unit.title}`
 }
 
 function buildSourceMapQuizReason(unit: SourceMapReviewerUnit) {
-  if (unit.kind === 'definition') return `Explain or define ${unit.title} using the source wording.`
-  if (unit.kind === 'process') return `Apply the steps or methods listed under ${unit.title}.`
-  if (unit.items.length >= 3) return `Enumerate the source-listed items: ${unit.items.slice(0, 6).join(', ')}.`
-  return `Explain or apply the source-backed concept: ${unit.title}.`
+  const key = normalizeLookup(unit.title)
+  if (key === 'infosec vs it sec') return 'Keep the business-information focus separate from network/data-security wording.'
+  if (key === 'vulnerability exploit breach') return 'These terms are commonly tested as a sequence: weakness, method/tool, successful result.'
+  if (key === 'malware symptoms') return `Recognize source-listed signs such as ${unit.items.slice(0, 4).join(', ')}.`
+  if (unit.kind === 'definition') return `Give the compact source-backed definition of ${unit.title}.`
+  if (unit.kind === 'process') return `Put the source-listed methods or response steps in a usable order.`
+  if (unit.items.length >= 3) return `Recall the source-listed examples without mixing them with nearby sections.`
+  return `Explain the source-backed concept in one short answer.`
+}
+
+function shapeReviewerDefinitionAnswer(title: string, value: string) {
+  const cleaned = cleanDefinitionAnswer(title, value)
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (!cleaned) return ''
+
+  const clamped = clampReviewerAnswerToKnownHeading(cleaned, title)
+  const sentences = clamped
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean)
+
+  if (sentences.length > 0) return sentences.slice(0, 2).join(' ')
+
+  const parts = clamped
+    .split(/\s*â€¢\s*|\s*;\s*/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+  return parts.slice(0, 3).join('; ').slice(0, 260)
+}
+
+function clampReviewerAnswerToKnownHeading(value: string, title: string) {
+  let end = value.length
+  for (const heading of [
+    'Goal of IT Security',
+    'Domains of IT Security',
+    'What is Cybersecurity',
+    'Importance of cybersecurity',
+    'Challenges of Cybersecurity',
+    'Types of Attackers',
+    'Definition of Terms',
+    'Types of Cybersecurity Threats',
+    'Types of Malware',
+    'Symptoms of Malware',
+    'Methods of Infiltration',
+    'Methods to Deny Service',
+    'Blended Attacks',
+    'Impact Reduction',
+  ]) {
+    if (normalizeLookup(heading) === normalizeLookup(title)) continue
+    const match = value.match(new RegExp(`\\b${escapeRegExp(heading)}\\??\\b`, 'i'))
+    if (match?.index && match.index > 18) end = Math.min(end, match.index)
+  }
+  return value.slice(0, end).trim()
 }
 
 function cleanDefinitionAnswer(title: string, value: string) {
@@ -396,11 +491,11 @@ function getPreferredSourceMapRank(title: string) {
 function buildSourceMapDistinctions(units: SourceMapReviewerUnit[]) {
   const distinctions: StudyOutputReviewerContent['distinctions'] = []
   const infoSec = units.find((unit) => normalizeLookup(unit.title) === 'infosec vs it sec')
-  if (infoSec) {
+  if (infoSec?.sourceWording && /\bInfoSec\b/i.test(infoSec.answer) && /\bIT Sec\b/i.test(infoSec.answer)) {
     distinctions.push({
       conceptA: 'InfoSec',
       conceptB: 'IT Sec',
-      difference: infoSec.sourceWording ?? infoSec.answer,
+      difference: infoSec.answer,
       confusionNote: 'InfoSec focuses on sensitive business information, while IT Sec focuses on securing digital data through computer network security.',
     })
   }

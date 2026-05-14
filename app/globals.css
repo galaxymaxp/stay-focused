@@ -4784,10 +4784,19 @@ details[open] > .ui-interactive-summary,
     margin-top: 0.45rem;
   }
 
-  .reviewer-panel,
   .reviewer-mini-card {
     break-inside: avoid;
     page-break-inside: avoid;
+  }
+
+  .reviewer-panel {
+    break-inside: auto;
+    page-break-inside: auto;
+  }
+
+  .reviewer-two-column-list,
+  .reviewer-block-grid {
+    grid-template-columns: 1fr !important;
   }
 
   .reviewer-panel {
@@ -4803,7 +4812,7 @@ details[open] > .ui-interactive-summary,
   }
 
   .reviewer-mini-card {
-    padding: 0.45rem 0.5rem;
+    padding: 0.38rem 0.45rem;
     border-radius: 0 !important;
     border-color: rgba(0, 0, 0, 0.14) !important;
   }
@@ -4838,8 +4847,9 @@ details[open] > .ui-interactive-summary,
   .reviewer-target-list,
   .reviewer-caution-list,
   .study-output-quiz-print-list {
-    gap: 0.38rem;
-    margin-top: 0.45rem;
+    gap: 0.28rem;
+    margin-top: 0.35rem;
+    padding-left: 0.85rem;
   }
 
   .reviewer-meta-row,

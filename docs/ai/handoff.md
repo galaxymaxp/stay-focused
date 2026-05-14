@@ -5,6 +5,78 @@ Last Updated: 2026-05-15
 
 ---
 
+## Session Update - 2026-05-15 (Polish Source Map Reviewer Quality)
+
+### What changed
+
+- Tightened `AcademicSourceMap` known-section quote extraction so IT Security units stop at the next known heading instead of using broad fixed-length regex spans.
+- Clamped Source Map source quotes by concept kind and known heading boundaries to reduce adjacent-section bleed.
+- Added stronger known handling for `Blended Attacks` so it survives Source Map ranking and remains visible in the reviewer.
+- Improved Source Map Reviewer answer shaping:
+  - compact definition answers for IT Security and Cybersecurity
+  - side-by-side comparison wording for InfoSec vs IT Sec and Vulnerability / Exploit / Breach
+  - list answers rendered as concise key lists
+  - process answers rendered as step/method lists
+- Varied Source Map quiz target prompts with `Define`, `Differentiate`, `Explain why`, `Identify symptoms`, `Sequence steps`, `Match terms`, and `Enumerate`.
+- Removed repeated student-facing `Memorize:` / `Understand:` labels from the reviewer UI and replaced them with cleaner `Definition`, `Key list`, and `Exam cue` labels.
+- Improved reviewer print CSS:
+  - reviewer cards stay readable in single-column print grids
+  - panels may split while individual cards avoid splitting
+  - print spacing and card padding are tighter to reduce large blank areas
+- Added IT Security-like quality tests for source span boundaries, label cleanup, prompt variety, and core concept retention.
+
+### Files touched
+
+- `app/globals.css`
+- `components/StudyOutputReviewerPage.tsx`
+- `lib/deep-learn-source-map.ts`
+- `lib/study-outputs/reviewer.ts`
+- `tests/study-output-reviewer.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+The Source Map reviewer was stable and queue-safe, but student-facing output still copied long adjacent source spans and rendered generic memorization labels. This pass keeps the deterministic architecture intact while improving local Source Map boundaries, reviewer answer shaping, likely quiz target variety, and print readability.
+
+### Tests run
+
+- `npx tsx --test tests/study-output-reviewer.test.ts` - passed
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- deep-learn-generation study-output-reviewer study-output-quiz-pack` - passed
+- `npm test -- study-output-reviewer study-output-sheet study-output-print` - passed
+
+### Verification result
+
+- Passed all requested verification commands.
+- Verified IT Security answer no longer includes `Goal of IT Security`.
+- Verified InfoSec vs IT Sec no longer pulls in domain-list text.
+- Verified Domains of IT Security no longer pulls in Cybersecurity definition text.
+- Verified Vulnerability / Exploit / Breach no longer pulls in Cybersecurity Threat Types.
+- Verified rendered reviewer markup no longer contains repeated `Memorize:` or `Understand:` labels.
+- Verified quiz prompts are varied and core IT Security concepts remain present.
+
+### Known risks
+
+- Source Map extraction remains deterministic and pattern-based; additional course families may need their own heading aliases or answer-shaping rules.
+- Print CSS is improved by code-level layout rules and render tests, but real browser PDF export should still be visually checked with the generated IT Security reviewer.
+
+### Blockers
+
+- No blocker remains.
+
+### Next recommended step
+
+Regenerate the real IT Security reviewer, export it to PDF, and visually confirm that answer cards read cleanly without source-span bleed or awkward print spacing.
+
+### Suggested commit message
+
+```bash
+polish source map reviewer quality
+```
+
+---
+
 ## Session Update - 2026-05-15 (Align Source Map Reviewer Validation)
 
 ### What changed
