@@ -25,6 +25,10 @@ import {
   getDeepLearnRefinementModel,
   selectDeepLearnRefinementGrounding,
 } from '../lib/deep-learn-refinement'
+import {
+  buildAcademicSourceMap,
+  buildAcademicSourceMapGrounding,
+} from '../lib/deep-learn-source-map'
 import type { ModuleSourceResource } from '../lib/module-workspace'
 import type { Module, ModuleResource } from '../lib/types'
 
@@ -968,6 +972,58 @@ test('buildAcademicStructuredGrounding keeps compact structured units and exact 
   assert.ok(grounding.length <= 1800)
 })
 
+test('Academic Source Map extracts IT Security academic units with source quotes', () => {
+  const sourceMap = buildAcademicSourceMap(IT_SECURITY_SAMPLE_SOURCE)
+  const titles = sourceMap.units.map((unit) => unit.title)
+
+  assert.equal(sourceMap.validation.ok, true)
+  for (const expected of [
+    'IT Security definition',
+    'InfoSec vs IT Sec',
+    'CIA Triad',
+    'Domains of IT Security',
+    'Cybersecurity definitions',
+    'Importance of cybersecurity',
+    'Challenges',
+    'Types of attackers',
+    'Vulnerability / Exploit / Breach',
+    'Cybercrime / Disruption / Espionage',
+    'Malware types',
+    'Malware symptoms',
+    'Infiltration methods',
+    'Denial of service methods',
+    'Blended attacks',
+    'Impact reduction',
+  ]) {
+    assert.ok(titles.includes(expected), `missing ${expected}`)
+  }
+
+  const cia = sourceMap.units.find((unit) => unit.title === 'CIA Triad')
+  assert.ok(cia)
+  assert.equal(cia.kind, 'concept')
+  assert.ok(cia.items.includes('Confidentiality'))
+  assert.ok(cia.items.includes('Integrity'))
+  assert.ok(cia.items.includes('Availability'))
+  assert.ok(cia.importanceScore >= 90)
+  assert.match(cia.sourceQuotes[0] ?? '', /Goal of IT Security/i)
+
+  const terms = sourceMap.units.find((unit) => unit.title === 'Vulnerability / Exploit / Breach')
+  assert.ok(terms)
+  assert.match(terms.sourceQuotes[0] ?? '', /Vulnerability/i)
+  assert.match(terms.sourceQuotes[0] ?? '', /Exploit/i)
+  assert.match(terms.sourceQuotes[0] ?? '', /Breach/i)
+})
+
+test('Academic Source Map grounding is bounded and preserves exact source quotes', () => {
+  const grounding = buildAcademicSourceMapGrounding(IT_SECURITY_SAMPLE_SOURCE, 2600)
+
+  assert.match(grounding, /Academic Source Map/i)
+  assert.match(grounding, /CIA Triad/)
+  assert.match(grounding, /Source quote: "Goal of IT Security/i)
+  assert.match(grounding, /Closest source passages for exact wording/i)
+  assert.ok(grounding.length <= 2600)
+})
+
 test('Deep Learn save validator rejects malformed headings before save', () => {
   const malformed = normalizeDeepLearnGeneratedContent({
     title: 'IT Security',
@@ -1399,10 +1455,15 @@ const IT_SECURITY_SAMPLE_SOURCE = [
   'What is Cybersecurity? • Protection of networked systems and data from unauthorized use or harm • Refers to techniques used to protect the integrity of an organization security architecture and safeguard its data against attack, damage, or unauthorized access',
   'Importance of cybersecurity • Increasingly sophisticated attacks • Widely available hacking tools • Compliance • Rising cost of breaches • Strategic board-level concern • Cyber crime is big business',
   'Challenges of Cybersecurity • Internet of Things • Rapidly Evolving Risks • Big and Confidential Data • Organized and State-sponsored Hacker Groups • Remote Working • High-speed Internet • BYOD',
+  'Types of Attackers Insiders • Employees and ex-employees • Contract Staff • Trusted Partners Outsiders Organized Attackers • Cyber Criminals • Hacktivists • Terrorists • State-sponsored Hackers • Black hats • Grey hats • White hats Amateurs',
   'Definition of Terms • Vulnerability - Weaknesses or flaws in the hardware or software • Exploit - Method or tools used to take advantage vulnerability • Breach - Successful exploit if vulnerability',
   'Types of Cybersecurity Threats • Cybercrime - Efforts by bad actors to profit from their malicious attacks • Disruption - Attempts to disrupt operations by attacking IT and operational technology infrastructure • Espionage - Attacks backed by state agencies as part of espionage and military activity',
   'Types of Malware • Spyware • Adware • Bot • Rootkit • Scareware • Ransomware • Virus • Trojan Horse • Worm • MiTM',
   'Methods of Infiltration 1. Social Engineering • Pretexting • Tailgating • Phishing • Smishing • Vishing 2. Password Cracking • Brute-force • Network Sniffing • Social Engineering 3. Vulnerability Exploitation 4. Advanced Persistent Threats',
+  'Symptoms of Malware - There is an increase in CPU usage - There is a decrease in computer speed - The computer freezes or crashes often - There is a decrease in Web browsing speed - There are unexplainable problems with network connections - Files are modified - Files are deleted - There is a presence of unknown files, programs, or desktop icons - There are unknown processes running - Email is being sent without the user knowledge or consent',
+  'Methods to Deny Service - Overwhelm quantity of traffic - Send enormous quantity of data at a rate that cannot be handled - Maliciously formatted packets - Zombie - Infected Host - Botnet - Network of Infected Hosts - SEO Poisoning - Increase traffic to malicious websites',
+  'Blended Attacks - Uses multiple techniques to compromise a target - Uses a hybrid of worms, Trojan horses, spyware, keyloggers, spam, and phishing schemes - DDoS combined with phishing emails',
+  'Impact Reduction - Communicate the Issue - Be sincere and accountable - Provide details - Understand the cause of the breach - Take steps to avoid another similar breach in the future - Ensure all systems are clean - Educate employees, partners, and customers',
 ].join('\n')
 
 function createLearnResource(overrides: Partial<ModuleSourceResource> = {}): ModuleSourceResource {

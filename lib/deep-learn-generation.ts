@@ -6,6 +6,7 @@ import {
   sanitizeStudentFacingText,
   type DeepLearnGeneratedContent,
 } from '@/lib/deep-learn'
+import { buildAcademicSourceMapGrounding } from '@/lib/deep-learn-source-map'
 import {
   buildDeepLearnBlockedReadiness,
   canAttemptDeepLearnSourceFetch,
@@ -1751,7 +1752,8 @@ function buildPromptGrounding(input: {
   scanFallback: boolean
 }) {
   const sourceBlock = input.bestText
-    ? buildAcademicStructuredGrounding(input.bestText, MAX_GROUNDING_CHARS)
+    ? buildAcademicSourceMapGrounding(input.bestText, MAX_GROUNDING_CHARS)
+      || buildAcademicStructuredGrounding(input.bestText, MAX_GROUNDING_CHARS)
     : 'The original file will be provided directly because dependable parsed text was not stored.'
 
   return sourceBlock

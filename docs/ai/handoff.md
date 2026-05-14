@@ -1,7 +1,64 @@
 # Stay Focused — AI Session Handoff
 
 Author: galaxymaxp omgraythekid@gmail.com
-Last Updated: 2026-05-14
+Last Updated: 2026-05-15
+
+---
+
+## Session Update - 2026-05-15 (Add Deep Learn Source Map foundation)
+
+### What changed
+
+- Added an internal `AcademicSourceMap` layer for Deep Learn source grounding.
+- The source map builder now locally cleans selected source text, chunks it by academic/security headings, extracts definition/list/category/process units, preserves closest source quotes, scores importance, and validates unit/quote coverage.
+- Deep Learn prompt grounding now tries Source Map grounding first and falls back to the existing deterministic structured grounding if source-map validation cannot produce trusted units.
+- Kept the existing Study Pack staged generation path, compact/micro fallback, deterministic repair fallback, and save validation unchanged.
+- Added IT Security-like fixture coverage for expected units including IT Security definition, InfoSec vs IT Sec, CIA Triad, domains, cybersecurity definitions, importance/challenges, attacker types, vulnerability/exploit/breach, cybercrime/disruption/espionage, malware, infiltration, denial-of-service, blended attacks, and impact reduction.
+
+### Files touched
+
+- `lib/deep-learn-source-map.ts`
+- `lib/deep-learn-generation.ts`
+- `tests/deep-learn-generation.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Deep Learn needed a structured internal source layer instead of treating readable source text as one generated blob. The new Source Map foundation gives later Deep Learn v2 work stable academic units with source quotes while staying bounded, local-first, and compatible with the existing Study Pack fallback path.
+
+### Tests run
+
+- `npx tsx --test tests/deep-learn-generation.test.ts` - passed
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- deep-learn-generation deep-learn-readiness queue canvas-content-resolution learn-resource-ui` - passed
+
+### Verification result
+
+- Passed all requested verification commands.
+- Verified Source Map grounding is bounded and includes exact source quote lines.
+- Verified IT Security-like fixture produces the expected core academic units.
+- Verified Deep Learn still falls back to the previous structured grounding if Source Map validation returns no trusted units.
+- Verified the source-card readiness path was not changed; map generation is internal prompt preparation and does not make Ready cards fail.
+
+### Known risks
+
+- The Source Map extractor is deterministic and pattern-based. It covers the IT Security module shape and common heading/list structures, but unusual slide layouts may need more heading and unit patterns.
+- Some source map summaries are intentionally compact; later phases should decide how Reviewer/Quiz consume these units directly instead of only using them as prompt grounding.
+
+### Blockers
+
+- No blocker remains.
+
+### Next recommended step
+
+Wire saved Deep Learn Reviewer/Quiz builders to consume `AcademicSourceMap` units directly instead of relying only on generated Study Pack artifacts.
+
+### Suggested commit message
+
+```bash
+add deep learn source map foundation
+```
 
 ---
 
