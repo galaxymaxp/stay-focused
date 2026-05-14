@@ -14,7 +14,9 @@ import {
   DeepLearnGenerationIncompleteError,
   DeepLearnGenerationBlockedError,
   DeepLearnGeneratedContentValidationError,
+  buildAcademicStructuredGrounding,
   generateDeepLearnStructuredContent,
+  structureAcademicSourceText,
   validateDeepLearnContentReadyForSave,
 } from '../lib/deep-learn-generation'
 import {
@@ -828,10 +830,69 @@ test('Deep Learn long source grounding keeps representative chunks instead of on
 
   const grounding = await buildDeepLearnGroundingWithDependencies(createContext(resource, storedResource))
 
-  assert.match(grounding.promptGrounding, /\[Source excerpt 1: beginning\]/)
+  assert.match(grounding.promptGrounding, /Deterministic academic structure/i)
   assert.match(grounding.promptGrounding, /Middle concept explains target heart rate/)
   assert.match(grounding.promptGrounding, /Ending concept explains cool down/)
   assert.ok(grounding.promptGrounding.length <= 12000)
+})
+
+test('deterministic academic structuring normalizes raw OCR headings and reconstructs lists', () => {
+  const structured = structureAcademicSourceText([
+    'What is Cybersecurity all about?',
+    'Cybersecurity is the practice of protecting systems, networks, and data from digital attacks.',
+    'Password Cracking Brute-force Network Sniffing Social Engineering',
+    'CIA includes Confidentiality, Integrity, and Availability.',
+  ].join('\n'))
+
+  assert.ok(structured.headings.includes('Core Principles of Cybersecurity'))
+  assert.ok(structured.lists.some((list) =>
+    list.heading === 'Password Cracking Methods'
+    && list.items.includes('Brute-force')
+    && list.items.includes('Network Sniffing')
+    && list.items.includes('Social Engineering')
+  ))
+  assert.ok(structured.lists.some((list) =>
+    list.heading === 'CIA Triad'
+    && list.items.includes('Confidentiality')
+    && list.items.includes('Integrity')
+    && list.items.includes('Availability')
+  ))
+})
+
+test('deterministic academic structuring collapses duplicate headings and extracts term definitions', () => {
+  const structured = structureAcademicSourceText([
+    'Core Principles',
+    'Core Principles',
+    'Vulnerability is a weakness or flaw in hardware, software, or procedures that can be exploited.',
+    'Threat refers to a possible danger that can exploit a vulnerability.',
+    'Vulnerability is a weakness or flaw in hardware, software, or procedures that can be exploited.',
+  ].join('\n'))
+
+  assert.equal(structured.headings.filter((heading) => heading === 'Core Principles').length, 1)
+  assert.ok(structured.duplicateFragmentsRemoved >= 2)
+  assert.ok(structured.termDefinitions.some((item) =>
+    item.term === 'Vulnerability'
+    && /weakness or flaw/i.test(item.definition)
+  ))
+  assert.ok(structured.termDefinitions.some((item) =>
+    item.term === 'Threat'
+    && /possible danger/i.test(item.definition)
+  ))
+})
+
+test('buildAcademicStructuredGrounding keeps compact structured units and exact source excerpts', () => {
+  const grounding = buildAcademicStructuredGrounding([
+    'What is Cybersecurity all about?',
+    'Cybersecurity is the practice of protecting systems, networks, and data from digital attacks.',
+    'Password Cracking Brute-force Network Sniffing Social Engineering',
+  ].join('\n'), 1800)
+
+  assert.match(grounding, /Deterministic academic structure/i)
+  assert.match(grounding, /Core Principles of Cybersecurity/)
+  assert.match(grounding, /Password Cracking Methods: Brute-force, Network Sniffing, Social Engineering/)
+  assert.match(grounding, /Closest source passages/i)
+  assert.match(grounding, /Cybersecurity is the practice/i)
+  assert.ok(grounding.length <= 1800)
 })
 
 test('normalizeDeepLearnGeneratedContent enforces compact Study Pack output limits', () => {

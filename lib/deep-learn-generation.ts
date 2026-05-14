@@ -17,6 +17,7 @@ import { classifyExtractedTextQuality, isMeaningfulDeepLearnSourceText, BAD_OCR_
 import { reprocessStoredModuleResource } from '@/lib/module-resource-reprocess'
 import { getModuleResourceQualityInfo, normalizeModuleResourceStudyText } from '@/lib/module-resource-quality'
 import type { ModuleSourceResource } from '@/lib/module-workspace'
+import { normalizeStudyOutputHeading } from '@/lib/study-outputs/source-faithful'
 import { getStudySourceTypeLabel } from '@/lib/study-resource'
 import type { Module, ModuleResource, Task } from '@/lib/types'
 import type { DeepLearnBlockedReason, DeepLearnSourceGrounding } from '@/lib/types'
@@ -29,6 +30,8 @@ export const DEEP_LEARN_OUTPUT_TOO_LARGE_MESSAGE = 'The model response limit was
 export const DEEP_LEARN_EMPTY_STUDY_ARTIFACTS_MESSAGE = 'Deep Learn could not build enough structured study content from this source. Try a smaller source or split the module.'
 const DEEP_LEARN_STAGE_TIMEOUT_MS = 120000
 const DEEP_LEARN_COMPACT_CAUTION_NOTE = 'Generated as a compact reviewer because the source was long.'
+const STRUCTURED_GROUNDING_CHAR_BUDGET = 7600
+const SOURCE_EXCERPT_CHAR_BUDGET = 4200
 
 const DEEP_LEARN_SYSTEM_PROMPT = [
   'You create saved Deep Learn Study Packs from academic source material.',
@@ -1403,10 +1406,333 @@ function buildPromptGrounding(input: {
   scanFallback: boolean
 }) {
   const sourceBlock = input.bestText
-    ? compactGroundingForModel(input.bestText, MAX_GROUNDING_CHARS)
+    ? buildAcademicStructuredGrounding(input.bestText, MAX_GROUNDING_CHARS)
     : 'The original file will be provided directly because dependable parsed text was not stored.'
 
   return sourceBlock
+}
+
+export interface AcademicStructuredGrounding {
+  normalizedText: string
+  headings: string[]
+  lists: Array<{ heading: string; items: string[] }>
+  termDefinitions: Array<{ term: string; definition: string }>
+  conceptGroups: Array<{ parent: string; children: string[] }>
+  duplicateFragmentsRemoved: number
+  structuredText: string
+}
+
+export function structureAcademicSourceText(sourceText: string): AcademicStructuredGrounding {
+  const lines = cleanupAcademicSourceLines(sourceText)
+  const collapsed = collapseDuplicateFragments(lines)
+  const headingGroups = groupAcademicLinesByHeading(collapsed.lines)
+  const lists = dedupeAcademicLists([
+    ...inferKnownAcademicLists(collapsed.lines),
+    ...reconstructAcademicLists(headingGroups),
+  ])
+  const termDefinitions = extractAcademicTermDefinitions(collapsed.lines)
+  const conceptGroups = reconstructAcademicConceptGroups(headingGroups, lists, termDefinitions)
+  const headings = uniqueStringList(headingGroups.map((group) => group.heading).filter((heading) => heading !== 'Source Notes')).slice(0, 10)
+  const normalizedText = collapsed.lines.join('\n')
+  const structuredText = formatAcademicStructuredGrounding({
+    headings,
+    lists,
+    termDefinitions,
+    conceptGroups,
+    normalizedText,
+    duplicateFragmentsRemoved: collapsed.duplicatesRemoved,
+  })
+
+  return {
+    normalizedText,
+    headings,
+    lists,
+    termDefinitions,
+    conceptGroups,
+    duplicateFragmentsRemoved: collapsed.duplicatesRemoved,
+    structuredText,
+  }
+}
+
+export function buildAcademicStructuredGrounding(sourceText: string, maxChars = MAX_GROUNDING_CHARS) {
+  const structured = structureAcademicSourceText(sourceText)
+  const structuredBlock = truncateForModel(structured.structuredText, Math.min(STRUCTURED_GROUNDING_CHAR_BUDGET, Math.max(2200, maxChars - 1800)))
+  const excerptBudget = Math.max(1400, Math.min(SOURCE_EXCERPT_CHAR_BUDGET, maxChars - structuredBlock.length - 160))
+  const sourceExcerpt = compactGroundingForModel(structured.normalizedText || sourceText, excerptBudget)
+  const combined = [
+    'Deterministic academic structure from the selected source:',
+    structuredBlock,
+    '',
+    'Closest source passages for exact wording:',
+    sourceExcerpt,
+  ].join('\n')
+
+  return truncateForModel(combined, maxChars)
+}
+
+function cleanupAcademicSourceLines(sourceText: string) {
+  return sourceText
+    .replace(/\r/g, '\n')
+    .replace(/\[[^\]]*source excerpt[^\]]*\]/gi, ' ')
+    .split(/\n+|(?<=[.!?])\s+(?=[A-Z0-9])/)
+    .map((line) => normalizeAcademicSourceLine(line))
+    .filter((line) => line.length >= 3)
+    .filter((line) => !isAcademicNoiseLine(line))
+    .slice(0, 420)
+}
+
+function normalizeAcademicSourceLine(line: string) {
+  return line
+    .replace(/\s+/g, ' ')
+    .replace(/^[\s"'([{]+|[\s"')\]}]+$/g, '')
+    .replace(/^page\s+\d+\s*(?:of\s+\d+)?\s*/i, '')
+    .replace(/^(?:slide|chapter|module)\s+\d+\s*[:.-]?\s*/i, '')
+    .replace(/^[-*\u2022]\s*/, '- ')
+    .trim()
+}
+
+function isAcademicNoiseLine(line: string) {
+  const compact = line.replace(/\s+/g, ' ').trim()
+  if (compact.length < 3) return true
+  if (/^(?:course|module|file|source|extraction|grounding|metadata|uuid|id|debug|quality)\s*[:\-]/i.test(compact)) return true
+  if (/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/i.test(compact)) return true
+  if (/^(?:copyright|all rights reserved|downloaded from|canvas)$/i.test(compact)) return true
+  const alphaChars = compact.replace(/[^A-Za-z]/g, '').length
+  const totalChars = compact.replace(/\s/g, '').length
+  return totalChars > 0 && alphaChars / totalChars < 0.35
+}
+
+function collapseDuplicateFragments(lines: string[]) {
+  const seen = new Set<string>()
+  const collapsed: string[] = []
+  let duplicatesRemoved = 0
+
+  for (const line of lines) {
+    const key = normalizeAcademicLookup(line)
+    const previous = collapsed[collapsed.length - 1]
+    if (!key) continue
+    if (seen.has(key) || (previous && normalizeAcademicLookup(previous) === key)) {
+      duplicatesRemoved += 1
+      continue
+    }
+    seen.add(key)
+    collapsed.push(line)
+  }
+
+  return { lines: collapsed, duplicatesRemoved }
+}
+
+function groupAcademicLinesByHeading(lines: string[]) {
+  const groups: Array<{ heading: string; lines: string[] }> = []
+  let current: { heading: string; lines: string[] } = { heading: 'Source Notes', lines: [] }
+
+  for (const line of lines) {
+    const heading = detectAcademicHeading(line)
+    if (heading) {
+      if (current.lines.length > 0 || current.heading !== 'Source Notes') groups.push(current)
+      current = { heading, lines: [] }
+      continue
+    }
+    current.lines.push(line)
+  }
+  if (current.lines.length > 0 || current.heading !== 'Source Notes') groups.push(current)
+
+  return groups.length > 0 ? groups.slice(0, 12) : [{ heading: 'Source Notes', lines }]
+}
+
+function detectAcademicHeading(line: string) {
+  const cleaned = line.replace(/^\d+(?:\.\d+)*[.)]?\s*/, '').replace(/[:\-]\s*$/, '').trim()
+  if (!cleaned || cleaned.length > 84) return null
+  if (/^what\s+is\s+cybersecurity\s+all\s+about\??$/i.test(cleaned)) return 'Core Principles of Cybersecurity'
+  if (/password\s+cracking/i.test(cleaned) && /brute|network\s+sniffing|social\s+engineering/i.test(cleaned)) return null
+  if (/^(?:password\s+cracking|malware|social\s+engineering|network\s+sniffing)$/i.test(cleaned)) return null
+  if (/^(?:objectives?|learning outcomes?|key terms?|definitions?|types?|categories|methods?|domains?|principles|components|symptoms|examples)$/i.test(cleaned)) {
+    return normalizeStudyOutputHeading(cleaned)
+  }
+  const words = cleaned.split(/\s+/)
+  const titleLikeWords = words.filter((word) => /^[A-Z0-9][A-Za-z0-9()/-]*$/.test(word)).length
+  const mostlyTitleCase = words.length <= 8 && titleLikeWords / Math.max(words.length, 1) >= 0.72
+  const noTerminalPunctuation = !/[.!?]$/.test(cleaned)
+  return mostlyTitleCase && noTerminalPunctuation ? normalizeStudyOutputHeading(cleaned) : null
+}
+
+function reconstructAcademicLists(groups: Array<{ heading: string; lines: string[] }>) {
+  const lists: Array<{ heading: string; items: string[] }> = []
+  for (const group of groups) {
+    const items = uniqueStringList(group.lines.flatMap(extractListItemsFromLine))
+      .filter((item) => item.length >= 3 && item.length <= 90)
+      .slice(0, 10)
+    if (items.length >= 2) {
+      lists.push({ heading: normalizeListHeading(group.heading, items), items })
+    }
+  }
+  return lists.slice(0, 8)
+}
+
+function inferKnownAcademicLists(lines: string[]) {
+  const lists: Array<{ heading: string; items: string[] }> = []
+  const source = lines.join(' ')
+  const passwordItems = ['Brute-force', 'Network Sniffing', 'Social Engineering']
+    .filter((item) => new RegExp(item.replace('-', '[-\\s]?'), 'i').test(source))
+  if (/password\s+cracking/i.test(source) && passwordItems.length >= 2) {
+    lists.push({ heading: 'Password Cracking Methods', items: passwordItems })
+  }
+
+  const ciaItems = ['Confidentiality', 'Integrity', 'Availability']
+    .filter((item) => new RegExp(`\\b${item}\\b`, 'i').test(source))
+  if (ciaItems.length >= 2) {
+    lists.push({ heading: 'CIA Triad', items: ciaItems })
+  }
+
+  return lists
+}
+
+function dedupeAcademicLists(lists: Array<{ heading: string; items: string[] }>) {
+  const seen = new Set<string>()
+  const result: Array<{ heading: string; items: string[] }> = []
+  for (const list of lists) {
+    const key = normalizeAcademicLookup(list.heading)
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+    result.push(list)
+  }
+  return result.slice(0, 8)
+}
+
+function extractListItemsFromLine(line: string) {
+  if (/password\s+cracking/i.test(line) && /brute|network\s+sniffing|social\s+engineering/i.test(line)) {
+    return ['Brute-force', 'Network Sniffing', 'Social Engineering'].filter((item) => new RegExp(item.replace('-', '[-\\s]?'), 'i').test(line))
+  }
+
+  const explicit = line.match(/^(?:[-*]|\d+[.)]|[A-Za-z][.)])\s+(.+)$/)
+  if (explicit?.[1]) return [cleanupListItem(explicit[1])]
+
+  const afterColon = line.match(/(?:include|includes|such as|types of|methods of|categories of|consist of|are)\s+(.+)$/i)?.[1]
+  const candidate = afterColon ?? (/[:;]\s+/.test(line) ? line.split(/[:;]/).slice(1).join(', ') : '')
+  if (!candidate || !/[,;]|\band\b/i.test(candidate)) return []
+
+  return candidate
+    .split(/[,;]|\s+\band\b\s+/i)
+    .map(cleanupListItem)
+    .filter(Boolean)
+}
+
+function cleanupListItem(value: string) {
+  return value
+    .replace(/\([^)]{80,}\)/g, '')
+    .replace(/\s+/g, ' ')
+    .replace(/^[\s"'([{]+|[\s"'.,;:)\]}]+$/g, '')
+    .trim()
+}
+
+function normalizeListHeading(heading: string, items: string[]) {
+  const joined = items.join(' ')
+  if (/brute[-\s]?force|network sniffing|social engineering|password/i.test(joined)) {
+    return 'Password Cracking Methods'
+  }
+  if (/confidentiality|integrity|availability/i.test(joined)) return 'CIA Triad'
+  if (heading === 'Source Notes') return 'Key Academic Items'
+  return heading
+}
+
+function extractAcademicTermDefinitions(lines: string[]) {
+  const definitions: Array<{ term: string; definition: string }> = []
+  const seen = new Set<string>()
+
+  for (const line of lines) {
+    const match = line.match(/^(.{3,72}?)\s+(?:is|are|refers to|means|involves|describes|defines|can be defined as)\s+(.{12,260})$/i)
+      ?? line.match(/^(.{3,72}?)\s*[-:]\s*(.{12,260})$/)
+    if (!match?.[1] || !match[2]) continue
+    const term = normalizeStudyOutputHeading(match[1].replace(/^(?:the|a|an)\s+/i, '').trim())
+    const definition = cleanupDefinitionText(match[2])
+    const key = normalizeAcademicLookup(term)
+    if (!term || !definition || seen.has(key) || isAcademicNoiseLine(term)) continue
+    seen.add(key)
+    definitions.push({ term, definition })
+  }
+
+  return definitions.slice(0, 16)
+}
+
+function cleanupDefinitionText(value: string) {
+  return value
+    .replace(/\s+/g, ' ')
+    .replace(/^[\s"'([{]+|[\s"')\]}]+$/g, '')
+    .trim()
+}
+
+function reconstructAcademicConceptGroups(
+  groups: Array<{ heading: string; lines: string[] }>,
+  lists: Array<{ heading: string; items: string[] }>,
+  termDefinitions: Array<{ term: string; definition: string }>,
+) {
+  const conceptGroups: Array<{ parent: string; children: string[] }> = []
+  for (const list of lists) {
+    conceptGroups.push({ parent: list.heading, children: list.items.slice(0, 8) })
+  }
+
+  for (const group of groups) {
+    const children = termDefinitions
+      .filter((definition) => group.lines.some((line) => normalizeAcademicLookup(line).includes(normalizeAcademicLookup(definition.term))))
+      .map((definition) => definition.term)
+    if (children.length >= 2) {
+      conceptGroups.push({ parent: group.heading, children: uniqueStringList(children).slice(0, 8) })
+    }
+  }
+
+  return dedupeConceptGroups(conceptGroups).slice(0, 8)
+}
+
+function dedupeConceptGroups(groups: Array<{ parent: string; children: string[] }>) {
+  const seen = new Set<string>()
+  const result: Array<{ parent: string; children: string[] }> = []
+  for (const group of groups) {
+    const key = normalizeAcademicLookup(`${group.parent}:${group.children.join(',')}`)
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+    result.push(group)
+  }
+  return result
+}
+
+function formatAcademicStructuredGrounding(input: Omit<AcademicStructuredGrounding, 'structuredText'>) {
+  const lines: string[] = []
+  if (input.headings.length > 0) {
+    lines.push('Academic headings:')
+    lines.push(...input.headings.slice(0, 8).map((heading) => `- ${heading}`))
+  }
+  if (input.conceptGroups.length > 0) {
+    lines.push('', 'Concept hierarchy:')
+    for (const group of input.conceptGroups.slice(0, 6)) {
+      lines.push(`- ${group.parent}: ${group.children.slice(0, 8).join(', ')}`)
+    }
+  }
+  if (input.termDefinitions.length > 0) {
+    lines.push('', 'Term definitions:')
+    for (const item of input.termDefinitions.slice(0, 12)) {
+      lines.push(`- ${item.term}: ${item.definition}`)
+    }
+  }
+  if (input.lists.length > 0) {
+    lines.push('', 'Reconstructed lists:')
+    for (const list of input.lists.slice(0, 6)) {
+      lines.push(`- ${list.heading}: ${list.items.slice(0, 8).join(', ')}`)
+    }
+  }
+  const normalizedSentences = extractStudySentences(input.normalizedText).slice(0, 8)
+  if (normalizedSentences.length > 0) {
+    lines.push('', 'Clean source summary fragments:')
+    lines.push(...normalizedSentences.map((sentence) => `- ${sentence}`))
+  }
+  if (input.duplicateFragmentsRemoved > 0) {
+    lines.push('', `Duplicate OCR/source fragments collapsed: ${input.duplicateFragmentsRemoved}`)
+  }
+
+  return lines.join('\n').trim() || input.normalizedText
+}
+
+function normalizeAcademicLookup(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
 }
 
 function selectBestGroundingText(resource: ModuleSourceResource) {

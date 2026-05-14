@@ -57,6 +57,19 @@ test('reviewer structure stays exam-oriented and limited', () => {
   assert.ok(reviewer.identificationReview[0]?.prompt)
 })
 
+test('compact fallback reviewer is clearly labeled while hiding empty modes', () => {
+  const reviewer = buildDeepLearnReviewerContent(createNote({
+    distinctions: [],
+    cautionNotes: ['Generated as a compact reviewer because the source was long.'],
+  }))
+
+  assert.match(reviewer.summary, /Compact Reviewer/i)
+  assert.equal(reviewer.distinctions.length, 0)
+  assert.ok(reviewer.highYieldConcepts.length > 0)
+  assert.ok(reviewer.identificationReview.length > 0)
+  assert.ok(reviewer.likelyQuizTargets.length > 0)
+})
+
 test('reviewer uses source wording as memorize layer and normalizes raw labels', () => {
   const reviewer = buildDeepLearnReviewerContent(createNote({
     sections: [

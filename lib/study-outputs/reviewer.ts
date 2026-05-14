@@ -144,11 +144,17 @@ function buildReviewerTitle(noteTitle: string) {
 }
 
 function buildReviewerSummary(note: DeepLearnNote, answerCount: number, identificationCount: number) {
-  const lead = note.quizReady
-    ? 'Exam-first Reviewer built from the saved Study Pack.'
-    : 'Reviewer built from the saved Study Pack.'
+  const lead = hasCompactReviewerCaution(note)
+    ? 'Compact Reviewer built from the strongest source-backed Study Pack items.'
+    : note.quizReady
+      ? 'Exam-first Reviewer built from the saved Study Pack.'
+      : 'Reviewer built from the saved Study Pack.'
 
   return `${lead} ${answerCount} high-yield answer cue${answerCount === 1 ? '' : 's'} and ${identificationCount} identification item${identificationCount === 1 ? '' : 's'} are ready for cram review.`
+}
+
+function hasCompactReviewerCaution(note: DeepLearnNote) {
+  return note.cautionNotes.some((note) => /compact reviewer|compact study pack|source was long/i.test(note))
 }
 
 function buildQuickReviewBlocks(note: DeepLearnNote) {

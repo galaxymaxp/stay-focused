@@ -5,6 +5,111 @@ Last Updated: 2026-05-14
 
 ---
 
+## Session Update - 2026-05-14 (Improve Deep Learn academic structuring quality)
+
+### What changed
+
+- Added a deterministic academic structuring layer before Deep Learn model generation:
+  - cleanup of OCR/source lines
+  - duplicate fragment collapse
+  - heading detection and normalization
+  - enumeration/list reconstruction
+  - known academic grouping for cybersecurity/CIA/password-cracking patterns
+  - term-definition extraction
+  - parent-child concept hierarchy reconstruction
+  - compact structured grounding plus exact source passages
+- Wired Deep Learn prompt grounding through the local structuring layer instead of sending only raw compacted text.
+- Preserved the existing bounded staged generation architecture:
+  - full staged pass
+  - compact fallback only for size-limit failures
+  - micro fallback only for size-limit failures
+  - minimal deterministic fallback only after micro size-limit failure
+- Kept timeout, provider, invalid JSON, and empty provider responses as fail-fast paths with no compact/micro retry loop.
+- Labeled Reviewer output as a Compact Reviewer when the saved Study Pack contains compact fallback caution notes.
+- Added regression coverage for academic normalization, duplicate heading cleanup, list reconstruction, term-definition extraction, compact structured grounding, and compact reviewer rendering.
+
+### Files touched
+
+- `lib/deep-learn-generation.ts`
+- `lib/study-outputs/reviewer.ts`
+- `tests/deep-learn-generation.test.ts`
+- `tests/study-output-reviewer.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Reviewer quality was still too close to raw OCR notes because the model received fragmented extracted text and had to infer structure during bounded generation. The new architecture improves quality locally before any provider call, so each existing stage receives cleaner academic units: headings, lists, definitions, concept groups, and deduped source fragments. This improves the chance of instructor-style reviewer artifacts without adding another AI pass, recursive retries, or larger prompts.
+
+### Architecture reasoning
+
+The pipeline is now:
+
+```text
+raw extracted text
+-> cleanup
+-> duplicate collapse
+-> academic heading detection
+-> list reconstruction
+-> term-definition extraction
+-> concept hierarchy reconstruction
+-> compact structured grounding with exact source passages
+-> existing bounded staged generation
+-> validation
+-> save or fail cleanly
+```
+
+The deterministic layer is intentionally capped before prompt construction. It keeps the existing `MAX_GROUNDING_CHARS` boundary and divides the prompt budget between structured academic units and exact source passages for grounding. This keeps token use bounded while improving signal quality.
+
+### Anti-loop safeguards
+
+- No new model stage was added.
+- No recursive retry path was added.
+- Full, compact, and micro generation still run at most once per level.
+- Compact and micro fallback remain size-limit-only recovery paths.
+- Timeout, provider errors, malformed JSON, and empty responses still fail cleanly without fallback retries.
+- Save validation still rejects ready Study Packs unless meaningful `answerBank`, `identificationItems`, and `likelyQuizTargets` exist.
+- Queue heartbeat/progress behavior is unchanged.
+
+### Tests run
+
+- `npx tsx --test tests/deep-learn-generation.test.ts` - passed
+- `npx tsx --test tests/study-output-reviewer.test.ts` - passed
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- deep-learn-generation deep-learn-readiness queue canvas-content-resolution learn-resource-ui` - passed
+- `npm test -- study-output-reviewer study-output-sheet study-output-quiz-pack study-output-print` - passed
+
+### Verification result
+
+- Passed all requested verification commands.
+- Verified structured grounding preserves selected-source-only grounding and does not reintroduce stale module/course/task context.
+- Verified long-source grounding still keeps beginning/middle/end academic content within the 12,000 character cap.
+- Verified cybersecurity examples normalize into cleaner academic units such as `Core Principles of Cybersecurity`, `Password Cracking Methods`, and `CIA Triad`.
+- Verified duplicate headings/fragments collapse before prompt construction.
+- Verified compact fallback Reviewer summaries are labeled as compact while empty sections remain absent.
+
+### Known risks
+
+- The deterministic structuring uses conservative heuristics. It improves common OCR/extraction patterns, but unusual instructor slide formats may still need future pattern additions.
+- Known cybersecurity group detection is intentionally narrow to avoid inventing unsupported categories.
+- Manual QA on real IT Security and Data Organization PDFs is still recommended to judge reviewer quality beyond unit-level structure.
+
+### Blockers
+
+- No code blocker remains.
+
+### Next recommended step
+
+Run authenticated production QA on the affected IT Security source: generate a Study Pack, open Reviewer, and compare hierarchy, definitions, lists, likely quiz targets, and compact fallback labeling against the previous raw-OCR-feeling output.
+
+### Suggested commit message
+
+```bash
+improve deep learn academic structuring quality
+```
+
+---
+
 ## Session Update - 2026-05-14 (Fix Deep Learn empty fallback reviewer)
 
 ### What changed
