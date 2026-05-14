@@ -5,6 +5,72 @@ Last Updated: 2026-05-14
 
 ---
 
+## Session Update - 2026-05-14 (Repair weak Deep Learn reviewer output locally)
+
+### What changed
+
+- Added a deterministic Deep Learn repair fallback that runs only after model/staged output is sanitized and fails strict save validation.
+- The repair fallback builds a compact local reviewer from the already-cleaned structured source:
+  - `Source Summary`
+  - `High-Yield First`
+  - `answerBank`
+  - `identificationItems`
+  - `likelyQuizTargets`
+- Kept strict save validation unchanged for empty artifacts, internal pipeline labels, malformed reviewer headings, and duplicate quiz targets.
+- Kept anti-stuck behavior unchanged:
+  - no new model calls
+  - no new retry stage
+  - invalid JSON, empty provider responses, provider errors, and timeout-style failures still fail cleanly instead of entering compact/micro fallback loops
+- Improved deterministic source line cleanup so bullet-separated and numbered-list PDF extraction text can be structured into local fallback units.
+
+### Files touched
+
+- `lib/deep-learn-generation.ts`
+- `tests/deep-learn-generation.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+After commit `a032392`, the stricter save validator correctly rejected weak Study Pack output, but readable sources such as the IT Security PDF could fail instead of being repaired into a minimum viable reviewer. The new local repair path preserves the strict save gate while using source-derived headings, lists, term definitions, and concept groups to save compact study artifacts when the selected source text is meaningful.
+
+### Tests run
+
+- `npx tsx --test tests/deep-learn-generation.test.ts` - passed
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- deep-learn-generation deep-learn-readiness queue canvas-content-resolution learn-resource-ui` - passed
+- `npm test -- study-output-reviewer study-output-sheet study-output-quiz-pack study-output-print` - passed
+
+### Verification result
+
+- Passed all requested verification commands.
+- Verified an IT Security-like readable source saves after weak model output with non-empty `answerBank`, `identificationItems`, and `likelyQuizTargets`.
+- Verified deterministic repair strips internal pipeline labels before validation/save.
+- Verified garbage/metadata-only source text remains rejected.
+- Verified provider errors still make one provider call and do not enter compact/micro retry loops.
+- Verified existing source-card readiness coverage still confirms generation failures do not turn the source Ready state into Failed.
+
+### Known risks
+
+- The deterministic fallback is intentionally compact and source-structural. It prevents readable-source failure, but normal model output should still produce richer explanations when healthy.
+- Fallback quality depends on local structure extraction. Very unusual slide text may still produce basic list/category artifacts rather than polished instructor-style summaries.
+
+### Blockers
+
+- No blocker remains.
+
+### Next recommended step
+
+Run authenticated QA on the real IT Security PDF and confirm Deep Learn completes, the source card remains Ready, and the saved Reviewer has useful high-yield, identification, and likely quiz target sections without internal labels.
+
+### Suggested commit message
+
+```bash
+repair weak deep learn reviewer output locally
+```
+
+---
+
 ## Session Update - 2026-05-14 (Improve Deep Learn semantic reviewer quality)
 
 ### What changed

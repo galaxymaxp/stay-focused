@@ -803,8 +803,13 @@ async function runDeepLearnStagePlan(
 
   const normalized = normalizeDeepLearnGeneratedContent(stageOutput, input.resource.title)
   const content = level === 'full' ? normalized : trimDeepLearnContent(normalized, level)
-  assertDeepLearnContentReadyForSave(content)
-  return content
+  const validation = validateDeepLearnContentReadyForSave(content)
+  if (validation.ok) return content
+
+  const repaired = repairDeepLearnContentFromStructuredSource(input, content, level)
+  if (repaired) return repaired
+
+  throw new DeepLearnGeneratedContentValidationError(validation.message)
 }
 
 export function validateDeepLearnContentReadyForSave(content: DeepLearnGeneratedContent) {
@@ -862,6 +867,23 @@ export function assertDeepLearnContentReadyForSave(content: DeepLearnGeneratedCo
   if (!validation.ok) {
     throw new DeepLearnGeneratedContentValidationError(validation.message)
   }
+}
+
+function repairDeepLearnContentFromStructuredSource(
+  input: DeepLearnPromptInput,
+  content: DeepLearnGeneratedContent,
+  level: DeepLearnFallbackLevel,
+) {
+  const sourceText = selectBestGroundingText(input.resource) || input.promptGrounding
+  if (!isMeaningfulDeepLearnSourceText({ text: sourceText, title: input.resource.title })) return null
+
+  const structuredSource = structureAcademicSourceText(sourceText)
+  if (!hasDeterministicReviewerSourceUnits(structuredSource)) return null
+
+  const fallback = buildDeterministicReviewerFallback(structuredSource, input.resource.title, content)
+  const repaired = level === 'full' ? fallback : trimDeepLearnContent(fallback, level)
+  const validation = validateDeepLearnContentReadyForSave(repaired)
+  return validation.ok ? repaired : null
 }
 
 export function buildDeepLearnPrompt(input: DeepLearnPromptInput, options: { compact?: boolean } = {}) {
@@ -1199,6 +1221,18 @@ function uniqueStringList(values: string[]) {
   return result
 }
 
+function uniqueBy<T>(values: T[], getKey: (value: T) => string) {
+  const seen = new Set<string>()
+  const result: T[] = []
+  for (const value of values) {
+    const key = getKey(value)
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+    result.push(value)
+  }
+  return result
+}
+
 function buildMinimalDeepLearnFallback(
   input: DeepLearnPromptInput,
   partialOutput: Record<string, unknown> | null,
@@ -1235,6 +1269,265 @@ function buildMinimalDeepLearnFallback(
     normalizeDeepLearnGeneratedContent(fallbackOutput, input.resource.title),
     'micro',
   )
+}
+
+export function buildDeterministicReviewerFallback(
+  structuredSource: AcademicStructuredGrounding,
+  resourceTitle: string,
+  seedContent: Partial<DeepLearnGeneratedContent> = {},
+): DeepLearnGeneratedContent {
+  const sourceSentences = extractStudySentences(structuredSource.normalizedText)
+  const sourceSummary = sourceSentences[0]
+    ?? summarizeStructuredSource(structuredSource, resourceTitle)
+  const highYieldPoints = buildHighYieldFallbackPoints(structuredSource)
+  const answerBank = buildDeterministicAnswerBank(structuredSource)
+  const identificationItems = buildDeterministicIdentificationItems(structuredSource)
+  const likelyQuizTargets = buildDeterministicLikelyQuizTargets(structuredSource)
+  const fallbackOutput: Record<string, unknown> = {
+    ...seedContent,
+    title: seedContent.title || resourceTitle,
+    overview: seedContent.overview || sourceSummary,
+    sections: [
+      { heading: 'Source Summary', body: sourceSummary },
+      {
+        heading: 'High-Yield First',
+        body: highYieldPoints.length > 0
+          ? highYieldPoints.map((point) => `- ${point}`).join('\n')
+          : sourceSummary,
+      },
+      ...buildDeterministicConceptSections(structuredSource),
+    ],
+    answerBank: mergeFallbackArray(seedContent.answerBank, answerBank),
+    identificationItems: mergeFallbackArray(seedContent.identificationItems, identificationItems),
+    likelyQuizTargets: mergeFallbackArray(seedContent.likelyQuizTargets, likelyQuizTargets),
+    cautionNotes: Array.isArray(seedContent.cautionNotes) ? seedContent.cautionNotes : [],
+  }
+
+  return normalizeDeepLearnGeneratedContent(fallbackOutput, resourceTitle)
+}
+
+function hasDeterministicReviewerSourceUnits(structuredSource: AcademicStructuredGrounding) {
+  return structuredSource.termDefinitions.length > 0
+    || structuredSource.lists.length > 0
+    || structuredSource.conceptGroups.length > 0
+    || extractStudySentences(structuredSource.normalizedText).length >= 2
+}
+
+function summarizeStructuredSource(structuredSource: AcademicStructuredGrounding, resourceTitle: string) {
+  const firstDefinition = structuredSource.termDefinitions[0]
+  if (firstDefinition) return `${firstDefinition.term}: ${firstDefinition.definition}`
+
+  const firstList = structuredSource.lists[0]
+  if (firstList) return `${firstList.heading} includes ${formatInlineList(firstList.items)}.`
+
+  const firstGroup = structuredSource.conceptGroups[0]
+  if (firstGroup) return `${firstGroup.parent} connects ${formatInlineList(firstGroup.children)}.`
+
+  return `${resourceTitle} contains readable academic source material for review.`
+}
+
+function buildHighYieldFallbackPoints(structuredSource: AcademicStructuredGrounding) {
+  return uniqueStringList([
+    ...structuredSource.termDefinitions
+      .slice(0, 4)
+      .map((item) => `${item.term}: ${item.definition}`),
+    ...structuredSource.lists
+      .slice(0, 3)
+      .map((list) => `${list.heading}: ${formatInlineList(list.items)}`),
+    ...structuredSource.conceptGroups
+      .slice(0, 3)
+      .map((group) => `${group.parent}: ${formatInlineList(group.children)}`),
+    ...extractStudySentences(structuredSource.normalizedText).slice(0, 3),
+  ]).slice(0, 8)
+}
+
+function buildDeterministicAnswerBank(structuredSource: AcademicStructuredGrounding) {
+  const definitionItems = structuredSource.termDefinitions.map((item, index) => {
+    const answer = wordingFromSentence(item.definition)
+    return {
+      cue: item.term,
+      kind: 'term_definition' as const,
+      answer,
+      compactAnswer: wordingFromSentence(truncateForModel(item.definition, 180)),
+      importance: index < 6 ? 'high' as const : 'medium' as const,
+      sortKey: null,
+      distractors: [],
+      reviewText: item.term,
+      draftExplanation: item.definition,
+      sourceSnippet: item.definition,
+      linkedDraftSectionId: null,
+      supportingContext: item.definition,
+      compareContext: null,
+      simplifiedWording: null,
+      confusionNotes: [],
+      relatedConcepts: relatedStructuredConcepts(structuredSource, item.term),
+    }
+  })
+
+  const listItems = structuredSource.lists.map((list, index) => {
+    const answerText = `${list.heading} includes ${formatInlineList(list.items)}.`
+    return {
+      cue: list.heading,
+      kind: 'fact' as const,
+      answer: wordingFromSentence(answerText),
+      compactAnswer: wordingFromSentence(answerText),
+      importance: index < 4 ? 'high' as const : 'medium' as const,
+      sortKey: null,
+      distractors: [],
+      reviewText: list.heading,
+      draftExplanation: answerText,
+      sourceSnippet: answerText,
+      linkedDraftSectionId: null,
+      supportingContext: answerText,
+      compareContext: null,
+      simplifiedWording: null,
+      confusionNotes: [],
+      relatedConcepts: list.items.slice(0, 5),
+    }
+  })
+
+  const groupItems = structuredSource.conceptGroups.map((group, index) => {
+    const answerText = `${group.parent} connects ${formatInlineList(group.children)}.`
+    return {
+      cue: group.parent,
+      kind: 'fact' as const,
+      answer: wordingFromSentence(answerText),
+      compactAnswer: wordingFromSentence(answerText),
+      importance: index < 3 ? 'high' as const : 'medium' as const,
+      sortKey: null,
+      distractors: [],
+      reviewText: group.parent,
+      draftExplanation: answerText,
+      sourceSnippet: answerText,
+      linkedDraftSectionId: null,
+      supportingContext: answerText,
+      compareContext: null,
+      simplifiedWording: null,
+      confusionNotes: [],
+      relatedConcepts: group.children.slice(0, 5),
+    }
+  })
+
+  return uniqueBy([...definitionItems, ...listItems, ...groupItems], (item) => normalizeAcademicLookup(item.cue)).slice(0, 12)
+}
+
+function buildDeterministicIdentificationItems(structuredSource: AcademicStructuredGrounding) {
+  const definitionItems = structuredSource.termDefinitions.map((item, index) => ({
+    prompt: truncateForModel(item.definition, 140),
+    kind: 'term_definition' as const,
+    answer: wordingFromSentence(item.term),
+    importance: index < 6 ? 'high' as const : 'medium' as const,
+    distractors: [],
+    reviewText: item.definition,
+    draftExplanation: item.definition,
+    sourceSnippet: item.definition,
+    linkedDraftSectionId: null,
+    supportingContext: item.definition,
+    compareContext: null,
+    simplifiedWording: null,
+    confusionNotes: [],
+    relatedConcepts: relatedStructuredConcepts(structuredSource, item.term),
+  }))
+
+  const listItems = structuredSource.lists.flatMap((list, listIndex) => (
+    list.items.slice(0, 5).map((item, itemIndex) => ({
+      prompt: `One source-listed item under ${list.heading}`,
+      kind: 'fact' as const,
+      answer: wordingFromSentence(item),
+      importance: listIndex === 0 && itemIndex < 3 ? 'high' as const : 'medium' as const,
+      distractors: [],
+      reviewText: list.heading,
+      draftExplanation: `${item} is listed under ${list.heading}.`,
+      sourceSnippet: `${list.heading}: ${formatInlineList(list.items)}`,
+      linkedDraftSectionId: null,
+      supportingContext: `${item} is listed under ${list.heading}.`,
+      compareContext: null,
+      simplifiedWording: null,
+      confusionNotes: [],
+      relatedConcepts: list.items.filter((candidate) => candidate !== item).slice(0, 4),
+    }))
+  ))
+
+  return uniqueBy([...definitionItems, ...listItems], (item) => normalizeAcademicLookup(resolveWordingValue(item.answer))).slice(0, 12)
+}
+
+function buildDeterministicLikelyQuizTargets(structuredSource: AcademicStructuredGrounding) {
+  const headingTargets = structuredSource.headings.slice(0, 5).map((heading, index) => ({
+    target: `Explain ${heading}`,
+    reason: `${heading} is a clear source heading or category.`,
+    importance: index < 3 ? 'high' as const : 'medium' as const,
+    reviewText: heading,
+    draftExplanation: `${heading} is a clear source heading or category.`,
+    sourceSnippet: heading,
+    linkedDraftSectionId: null,
+    supportingContext: `${heading} is a clear source heading or category.`,
+    compareContext: null,
+    simplifiedWording: null,
+    confusionNotes: [],
+    relatedConcepts: relatedStructuredConcepts(structuredSource, heading),
+  }))
+
+  const groupTargets = structuredSource.conceptGroups.slice(0, 5).map((group, index) => ({
+    target: `Apply ${group.parent}`,
+    reason: `${group.parent} groups source concepts: ${formatInlineList(group.children)}.`,
+    importance: index < 3 ? 'high' as const : 'medium' as const,
+    reviewText: group.parent,
+    draftExplanation: `${group.parent} groups source concepts: ${formatInlineList(group.children)}.`,
+    sourceSnippet: `${group.parent}: ${formatInlineList(group.children)}`,
+    linkedDraftSectionId: null,
+    supportingContext: `${group.parent} groups source concepts: ${formatInlineList(group.children)}.`,
+    compareContext: null,
+    simplifiedWording: null,
+    confusionNotes: [],
+    relatedConcepts: group.children.slice(0, 5),
+  }))
+
+  const listTargets = structuredSource.lists.slice(0, 5).map((list, index) => ({
+    target: `Recall items in ${list.heading}`,
+    reason: `${list.heading} is listed with ${formatInlineList(list.items)}.`,
+    importance: index < 3 ? 'high' as const : 'medium' as const,
+    reviewText: list.heading,
+    draftExplanation: `${list.heading} is listed with ${formatInlineList(list.items)}.`,
+    sourceSnippet: `${list.heading}: ${formatInlineList(list.items)}`,
+    linkedDraftSectionId: null,
+    supportingContext: `${list.heading} is listed with ${formatInlineList(list.items)}.`,
+    compareContext: null,
+    simplifiedWording: null,
+    confusionNotes: [],
+    relatedConcepts: list.items.slice(0, 5),
+  }))
+
+  return uniqueBy([...headingTargets, ...groupTargets, ...listTargets], (item) => normalizeAcademicLookup(item.target)).slice(0, 6)
+}
+
+function buildDeterministicConceptSections(structuredSource: AcademicStructuredGrounding) {
+  return [
+    ...structuredSource.lists.slice(0, 2).map((list) => ({
+      heading: normalizeStudyOutputHeading(list.heading),
+      body: `${list.heading} includes ${formatInlineList(list.items)}.`,
+    })),
+    ...structuredSource.conceptGroups.slice(0, 2).map((group) => ({
+      heading: normalizeStudyOutputHeading(group.parent),
+      body: `${group.parent} connects ${formatInlineList(group.children)}.`,
+    })),
+  ].slice(0, 4)
+}
+
+function relatedStructuredConcepts(structuredSource: AcademicStructuredGrounding, value: string) {
+  const key = normalizeAcademicLookup(value)
+  return uniqueStringList([
+    ...structuredSource.termDefinitions.map((item) => item.term),
+    ...structuredSource.lists.flatMap((list) => [list.heading, ...list.items]),
+    ...structuredSource.conceptGroups.flatMap((group) => [group.parent, ...group.children]),
+  ]).filter((item) => normalizeAcademicLookup(item) !== key).slice(0, 5)
+}
+
+function formatInlineList(items: string[]) {
+  return uniqueStringList(items).slice(0, 8).join(', ')
+}
+
+function resolveWordingValue(value: ReturnType<typeof wordingFromSentence>) {
+  return value.examSafe || value.exact || value.simplified || ''
 }
 
 function extractStudySentences(sourceText: string) {
@@ -1530,7 +1823,7 @@ function cleanupAcademicSourceLines(sourceText: string) {
   return sourceText
     .replace(/\r/g, '\n')
     .replace(/\[[^\]]*source excerpt[^\]]*\]/gi, ' ')
-    .split(/\n+|(?<=[.!?])\s+(?=[A-Z0-9])/)
+    .split(/\n+|[•]+|\s+(?=\d+[.)]\s+[A-Z])|(?<=[.!?])\s+(?=[A-Z0-9])/)
     .map((line) => normalizeAcademicSourceLine(line))
     .filter((line) => line.length >= 3)
     .filter((line) => !isAcademicNoiseLine(line))

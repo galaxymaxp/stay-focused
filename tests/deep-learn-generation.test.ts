@@ -14,6 +14,7 @@ import {
   DeepLearnGenerationIncompleteError,
   DeepLearnGenerationBlockedError,
   DeepLearnGeneratedContentValidationError,
+  buildDeterministicReviewerFallback,
   buildAcademicStructuredGrounding,
   generateDeepLearnStructuredContent,
   structureAcademicSourceText,
@@ -744,6 +745,77 @@ test('Deep Learn save validator rejects source-summary-only reviewer artifacts',
   assert.equal(validation.message, DEEP_LEARN_EMPTY_STUDY_ARTIFACTS_MESSAGE)
 })
 
+test('readable IT Security-like source repairs weak model output locally', async () => {
+  let calls = 0
+  const result = await generateDeepLearnStructuredContent(
+    createItSecurityPromptInput(),
+    createItSecurityPreparedGrounding(),
+    async ({ schemaName }) => {
+      calls += 1
+      if (schemaName === 'deep_learn_high_yield_stage') {
+        return jsonResponse({
+          title: 'Intro to IT Security',
+          overview: 'The source introduces IT security and cybersecurity.',
+          sections: [
+            { heading: 'Source Summary', body: 'The source introduces IT security and cybersecurity.' },
+            { heading: 'High-Yield First', body: 'Review the source directly.' },
+          ],
+        })
+      }
+      if (schemaName === 'deep_learn_identification_stage') {
+        return jsonResponse({ sections: [], identificationItems: [] })
+      }
+      if (schemaName === 'deep_learn_quick_answers_stage') {
+        return jsonResponse({ sections: [], answerBank: [] })
+      }
+      return jsonResponse({
+        sections: [],
+        distinctions: [],
+        likelyQuizTargets: [],
+        cautionNotes: [],
+      })
+    },
+  )
+
+  assert.equal(calls, 4)
+  assert.equal(result.compactFallbackUsed, false)
+  assert.ok(result.content.sections.some((section) => section.heading === 'Source Summary'))
+  assert.ok(result.content.sections.some((section) => section.heading === 'High-Yield First'))
+  assert.ok(result.content.answerBank.length > 0)
+  assert.ok(result.content.identificationItems.length > 0)
+  assert.ok(result.content.likelyQuizTargets.length > 0)
+  assert.equal(validateDeepLearnContentReadyForSave(result.content).ok, true)
+})
+
+test('deterministic reviewer fallback creates minimum study artifacts without internal labels', () => {
+  const structuredSource = structureAcademicSourceText(IT_SECURITY_SAMPLE_SOURCE)
+  const content = buildDeterministicReviewerFallback(structuredSource, 'Intro to IT Security', {
+    sections: [
+      { heading: 'Source Summary', body: 'Reconstructed lists: weak model text.' },
+    ],
+  })
+
+  assert.ok(content.answerBank.length > 0)
+  assert.ok(content.identificationItems.length > 0)
+  assert.ok(content.likelyQuizTargets.length > 0)
+  assert.equal(validateDeepLearnContentReadyForSave(content).ok, true)
+  assert.doesNotMatch(JSON.stringify(content), /Reconstructed lists|Clean source summary fragments|Normalized headings|Detected concepts/)
+})
+
+test('deterministic reviewer fallback does not make garbage source text saveable', () => {
+  const structuredSource = structureAcademicSourceText([
+    'File title: 550e8400-e29b-41d4-a716-446655440000.pdf',
+    'UUID: 550e8400-e29b-41d4-a716-446655440000',
+    'Extraction quality: metadata_only',
+  ].join('\n'))
+  const content = buildDeterministicReviewerFallback(structuredSource, 'Noise PDF')
+
+  const validation = validateDeepLearnContentReadyForSave(content)
+
+  assert.equal(validation.ok, false)
+  assert.equal(validation.message, DEEP_LEARN_EMPTY_STUDY_ARTIFACTS_MESSAGE)
+})
+
 test('Deep Learn invalid JSON fails cleanly without fallback retry loop', async () => {
   let calls = 0
   await assert.rejects(
@@ -1229,6 +1301,50 @@ function createPromptInput(): Parameters<typeof generateDeepLearnStructuredConte
   }
 }
 
+function createItSecurityPromptInput(): Parameters<typeof generateDeepLearnStructuredContent>[0] {
+  return {
+    ...createContext(createLearnResource({
+      title: 'Intro to IT Security.pdf',
+      type: 'File',
+      contentType: 'application/pdf',
+      extension: 'pdf',
+      normalizedSourceType: 'pdf',
+      extractedText: IT_SECURITY_SAMPLE_SOURCE,
+      extractedTextPreview: IT_SECURITY_SAMPLE_SOURCE.slice(0, 420),
+      extractedCharCount: IT_SECURITY_SAMPLE_SOURCE.length,
+      extractionStatus: 'completed',
+      quality: 'usable',
+      groundingLevel: 'strong',
+      previewState: 'full_text_available',
+      fullTextAvailable: true,
+      storedTextLength: IT_SECURITY_SAMPLE_SOURCE.length,
+      storedPreviewLength: 420,
+      storedWordCount: IT_SECURITY_SAMPLE_SOURCE.split(/\s+/).length,
+    }), createStoredResource({
+      title: 'Intro to IT Security.pdf',
+      resourceType: 'File',
+      contentType: 'application/pdf',
+      extension: 'pdf',
+      extractedText: IT_SECURITY_SAMPLE_SOURCE,
+      extractedTextPreview: IT_SECURITY_SAMPLE_SOURCE.slice(0, 420),
+      extractedCharCount: IT_SECURITY_SAMPLE_SOURCE.length,
+      extractionStatus: 'completed',
+    })),
+    promptGrounding: buildAcademicStructuredGrounding(IT_SECURITY_SAMPLE_SOURCE),
+    sourceGrounding: {
+      sourceType: 'PDF',
+      extractionQuality: 'usable',
+      sourceTextQuality: 'meaningful',
+      groundingStrategy: 'stored_extract',
+      usedAiFallback: false,
+      qualityReason: null,
+      warning: null,
+      charCount: IT_SECURITY_SAMPLE_SOURCE.length,
+    },
+    generationMode: 'text' as const,
+  }
+}
+
 function createPreparedGrounding(): Parameters<typeof generateDeepLearnStructuredContent>[1] {
   return {
     generationMode: 'text' as const,
@@ -1248,6 +1364,25 @@ function createPreparedGrounding(): Parameters<typeof generateDeepLearnStructure
   }
 }
 
+function createItSecurityPreparedGrounding(): Parameters<typeof generateDeepLearnStructuredContent>[1] {
+  return {
+    generationMode: 'text' as const,
+    promptGrounding: buildAcademicStructuredGrounding(IT_SECURITY_SAMPLE_SOURCE),
+    sourceGrounding: {
+      sourceType: 'PDF',
+      extractionQuality: 'usable',
+      sourceTextQuality: 'meaningful',
+      groundingStrategy: 'stored_extract' as const,
+      usedAiFallback: false,
+      qualityReason: null,
+      warning: null,
+      charCount: IT_SECURITY_SAMPLE_SOURCE.length,
+    },
+    refreshedResource: null,
+    scanFallbackInput: null,
+  }
+}
+
 function jsonResponse(payload: unknown) {
   return {
     status: 'completed',
@@ -1255,6 +1390,20 @@ function jsonResponse(payload: unknown) {
     incomplete_details: null,
   }
 }
+
+const IT_SECURITY_SAMPLE_SOURCE = [
+  'Intro to IT Security Module 1',
+  'What is IT Security • A set of cyber security strategies that prevent unauthorized access • Focuses on protecting organizational assets against cyberattacks and other threats • InfoSec - processes and tools designed to protect sensitive business information • IT Sec - securing digital data through computer network security',
+  'Goal of IT Security 1. Confidentiality 2. Integrity 3. Availability',
+  'Domains of IT Security 1. Network Security 2. Internet Security 3. Endpoint Security 4. Cloud Security 5. Application Security 6. Information Security 7. Operational Security 8. Mobile Security 9. IoT Security 10. User Education 11. Cyber Security',
+  'What is Cybersecurity? • Protection of networked systems and data from unauthorized use or harm • Refers to techniques used to protect the integrity of an organization security architecture and safeguard its data against attack, damage, or unauthorized access',
+  'Importance of cybersecurity • Increasingly sophisticated attacks • Widely available hacking tools • Compliance • Rising cost of breaches • Strategic board-level concern • Cyber crime is big business',
+  'Challenges of Cybersecurity • Internet of Things • Rapidly Evolving Risks • Big and Confidential Data • Organized and State-sponsored Hacker Groups • Remote Working • High-speed Internet • BYOD',
+  'Definition of Terms • Vulnerability - Weaknesses or flaws in the hardware or software • Exploit - Method or tools used to take advantage vulnerability • Breach - Successful exploit if vulnerability',
+  'Types of Cybersecurity Threats • Cybercrime - Efforts by bad actors to profit from their malicious attacks • Disruption - Attempts to disrupt operations by attacking IT and operational technology infrastructure • Espionage - Attacks backed by state agencies as part of espionage and military activity',
+  'Types of Malware • Spyware • Adware • Bot • Rootkit • Scareware • Ransomware • Virus • Trojan Horse • Worm • MiTM',
+  'Methods of Infiltration 1. Social Engineering • Pretexting • Tailgating • Phishing • Smishing • Vishing 2. Password Cracking • Brute-force • Network Sniffing • Social Engineering 3. Vulnerability Exploitation 4. Advanced Persistent Threats',
+].join('\n')
 
 function createLearnResource(overrides: Partial<ModuleSourceResource> = {}): ModuleSourceResource {
   return {
