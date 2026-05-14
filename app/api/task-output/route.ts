@@ -5,6 +5,7 @@ import {
   buildTaskOutputFallback,
   buildTaskOutputRequest,
   buildTaskOutputUserPrompt,
+  detectTaskOutputFormat,
   normalizeTaskOutputModelResponse,
   type TaskOutputModelResponse,
   type TaskOutputRequest,
@@ -132,6 +133,13 @@ function readTaskOutputRequest(body: unknown): TaskOutputRequest | null {
       outputType,
       selectedContext: normalizeStringList(body.selectedContext, 6, 800),
       groundingStatus: body.groundingStatus === 'limited' ? 'limited' : 'grounded',
+      detectedFormat: detectTaskOutputFormat({
+        title,
+        instructions,
+        requirements: normalizeStringList(body.requirements, 8, 220),
+        preset,
+        outputType,
+      }),
     }
   }
 

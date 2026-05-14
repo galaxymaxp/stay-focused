@@ -508,6 +508,32 @@ test('buildDeepLearnPrompt compact retry enforces smaller output limits', () => 
   assert.match(prompt, /no more than 8 identificationItems/i)
 })
 
+test('Deep Learn long source grounding keeps representative chunks instead of one front-only slice', async () => {
+  const beginning = Array.from({ length: 80 }, () => 'Beginning concept explains readiness, warm up, and safety cues for the activity.').join(' ')
+  const middle = Array.from({ length: 80 }, () => 'Middle concept explains target heart rate, perceived exertion, and pacing.').join(' ')
+  const ending = Array.from({ length: 80 }, () => 'Ending concept explains cool down, reflection, recovery, and habit planning.').join(' ')
+  const longText = [beginning, middle, ending].join('\n\n')
+  const resource = createLearnResource({
+    extractedText: longText,
+    extractedTextPreview: beginning.slice(0, 200),
+    extractedCharCount: longText.length,
+    extractionStatus: 'completed',
+  })
+  const storedResource = createStoredResource({
+    extractedText: longText,
+    extractedTextPreview: beginning.slice(0, 200),
+    extractedCharCount: longText.length,
+    extractionStatus: 'completed',
+  })
+
+  const grounding = await buildDeepLearnGroundingWithDependencies(createContext(resource, storedResource))
+
+  assert.match(grounding.promptGrounding, /\[Source excerpt 1: beginning\]/)
+  assert.match(grounding.promptGrounding, /Middle concept explains target heart rate/)
+  assert.match(grounding.promptGrounding, /Ending concept explains cool down/)
+  assert.ok(grounding.promptGrounding.length <= 12000)
+})
+
 test('normalizeDeepLearnGeneratedContent enforces compact Study Pack output limits', () => {
   const generated = normalizeDeepLearnGeneratedContent({
     title: 'IT Security',

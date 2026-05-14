@@ -4,6 +4,7 @@ import {
   buildTaskOutputFallback,
   buildTaskOutputRequest,
   buildTaskOutputUserPrompt,
+  detectTaskOutputFormat,
   normalizeTaskOutputModelResponse,
 } from '../lib/task-output'
 import type { StudyOutputTaskOutputContent } from '../lib/types'
@@ -48,8 +49,55 @@ test('task output request stays grounded in task instructions and readable selec
   const prompt = buildTaskOutputUserPrompt(request)
   assert.ok(prompt.includes('Requested preset: report'))
   assert.ok(prompt.includes('Requested output type: pdf'))
+  assert.ok(prompt.includes('Detected task format: essay_report'))
   assert.ok(prompt.includes('- No fake citations.'))
   assert.ok(prompt.includes('- No fabricated requirements.'))
+})
+
+test('short-answer task output is grounded by actionable prompt and answers directly', () => {
+  const request = buildTaskOutputRequest({
+    taskId: 'task-short',
+    taskTitle: 'M1: Application',
+    taskDetails: 'Answer in 2-3 sentences: How can regular physical activity help a student manage stress and improve daily performance?',
+    deadline: '2026-05-20',
+    priority: 'high',
+    courseName: 'PATHFit 3',
+    moduleTitle: 'M1',
+    resourceSnippet: [
+      'Regular physical activity supports cardiovascular endurance and helps reduce stress through consistent movement.',
+      'The module emphasizes setting realistic exercise goals and connecting activity to daily wellness habits.',
+    ].join('\n'),
+    sourceText: 'The rubric gives points for directly answering the prompt, using module concepts, and staying within 2-3 sentences.',
+    sourceNote: null,
+    moduleSummary: 'Old course summary should not be needed.',
+  }, {
+    preset: 'report',
+    outputType: 'docx',
+  })
+
+  assert.equal(request.groundingStatus, 'grounded')
+  assert.equal(request.detectedFormat, 'short_answer')
+
+  const fallback = buildTaskOutputFallback(request)
+  assert.equal(fallback.groundingStatus, 'grounded')
+  assert.doesNotMatch(fallback.previewContent, /Purpose|Deliverable focus|Grounded context|Next edit pass/)
+  assert.match(fallback.previewContent, /physical activity|stress/i)
+  assert.ok(fallback.previewContent.split(/(?<=[.!?])\s+/).length <= 3)
+})
+
+test('task output format detection covers common assignment shapes', () => {
+  assert.equal(detectTaskOutputFormat({
+    title: 'Reflection Journal',
+    instructions: 'Reflect on your experience after the activity.',
+  }), 'reflection')
+  assert.equal(detectTaskOutputFormat({
+    title: 'Module Quiz',
+    instructions: 'Answer the multiple choice and identification items.',
+  }), 'quiz_like')
+  assert.equal(detectTaskOutputFormat({
+    title: 'Activity Sheet',
+    instructions: 'Complete the worksheet table.',
+  }), 'activity_sheet')
 })
 
 test('weak task-output grounding falls back to scaffold-only export bundle', () => {

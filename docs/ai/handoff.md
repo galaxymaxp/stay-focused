@@ -1,9 +1,72 @@
 # Stay Focused — AI Session Handoff
 
 Author: galaxymaxp omgraythekid@gmail.com
-Last Updated: 2026-05-13
+Last Updated: 2026-05-14
 
 ---
+
+## Session Update - 2026-05-14 (Fix task output grounding and Deep Learn queue progress)
+
+### What changed
+
+- Task output generation now enriches queued jobs from the server-side module workspace before calling `/api/task-output`.
+- Task output context now pulls the selected assignment prompt plus related readable module resources/pages, preferring meaningful extracted Canvas source text over stale module summaries.
+- Added flexible task format detection for short answer, essay/report, quiz-like, reflection, activity sheet, file-upload report, and presentation/document outputs.
+- Strengthened task-output prompting so grounded requests produce the actual answer/content first and preserve instructor constraints such as `2-3 sentences`.
+- Grounded task-output fallback now produces conservative answer content instead of the old `Purpose / Deliverable focus / Grounded context / Next edit pass` scaffold.
+- Metadata/debug/UUID/OCR-status text is filtered before task-output grounding is considered sufficient.
+- Deep Learn queued jobs now move past 40% before model generation and write heartbeat updates while the model is working.
+- Deep Learn long text grounding now compacts representative beginning/middle/end chunks instead of only front-truncating a normal long Canvas source.
+
+### Files touched
+
+- `actions/queue-jobs.ts`
+- `app/api/task-output/route.ts`
+- `lib/task-output.ts`
+- `lib/deep-learn-generation.ts`
+- `tests/task-output-foundation.test.ts`
+- `tests/deep-learn-generation.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Task output was too dependent on the client-surfaced task context and could mark real assignment prompts as limited, which caused a scaffold-only output even when Learn could see readable module sources. Deep Learn also updated progress to 40% immediately before the long model call, so normal generation looked stuck. This pass aligns task generation with Learn's grounded source context and makes Deep Learn queue progress and long-source handling more reliable.
+
+### Tests run
+
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- task-output-foundation deep-learn-generation` - passed
+- `npm test -- task-output deep-learn-generation deep-learn-readiness canvas-content-resolution learn-resource-ui queue` - passed
+
+### Verification result
+
+- Passed all requested verification commands for touched task-output, Deep Learn, readiness, Canvas content resolution, Learn UI, and queue coverage.
+- Verified task-output short-answer prompts are classified as `short_answer`, preserve `2-3 sentences`, and do not return the old scaffold when grounded.
+- Verified weak metadata/debug/UUID-only task context still falls back to a limited scaffold.
+- Verified Deep Learn long source grounding includes beginning, middle, and ending source excerpts within the existing 12k grounding cap.
+- Verified typecheck and lint are clean.
+
+### Known risks
+
+- Related module-resource selection is heuristic: it scores title/token overlap, module markers such as `M1`, Canvas pages, and acquire-knowledge pages. It should improve PATHFit-style module context, but live Canvas courses with unusual naming may need additional matching rules.
+- The heartbeat updates keep running jobs fresh while the model call is active, but they cannot interrupt a provider call that hangs below the platform timeout.
+- Grounded deterministic fallback is conservative and not a replacement for the model path; the main quality improvement depends on the strengthened prompt and richer source context.
+
+### Blockers
+
+- No code blocker remains.
+- Manual QA with a signed-in PATHFit 3 Canvas assignment is still recommended to confirm exact instructor-format output quality.
+
+### Next recommended step
+
+Generate a task output for PATHFit 3 `M1: APPLICATION` from a signed-in account and confirm it uses the assignment prompt, rubric, and `M1: ACQUIRE NEW KNOWLEDGE` source context to produce a direct submission-ready answer.
+
+### Suggested commit message
+
+```bash
+fix task generation grounding and deep learn queue failures
+```
 
 ## Session Update - 2026-05-13 (Finish Deep Learn output simplification)
 

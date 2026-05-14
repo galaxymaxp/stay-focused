@@ -589,7 +589,7 @@ function buildPromptGrounding(input: {
   scanFallback: boolean
 }) {
   const sourceBlock = input.bestText
-    ? truncateForModel(input.bestText, MAX_GROUNDING_CHARS)
+    ? compactGroundingForModel(input.bestText, MAX_GROUNDING_CHARS)
     : 'The original file will be provided directly because dependable parsed text was not stored.'
 
   return sourceBlock
@@ -612,6 +612,56 @@ function truncateForModel(value: string, maxChars: number) {
   )
 
   return clipped.slice(0, breakIndex > 280 ? breakIndex + 1 : maxChars).trim()
+}
+
+function compactGroundingForModel(value: string, maxChars: number) {
+  if (value.length <= maxChars) return value
+
+  const chunks = chunkGroundingText(value, 3600)
+  if (chunks.length <= 2) return truncateForModel(value, maxChars)
+
+  const first = chunks[0] ?? ''
+  const middle = chunks[Math.floor(chunks.length / 2)] ?? ''
+  const last = chunks[chunks.length - 1] ?? ''
+  const selected = [
+    '[Source excerpt 1: beginning]',
+    truncateForModel(first, 3800),
+    '',
+    `[Source excerpt 2: middle of ${chunks.length} chunks]`,
+    truncateForModel(middle, 3600),
+    '',
+    '[Source excerpt 3: end]',
+    truncateForModel(last, 3600),
+  ].join('\n')
+
+  return truncateForModel(selected, maxChars)
+}
+
+function chunkGroundingText(value: string, targetChars: number) {
+  const paragraphs = value
+    .replace(/\r/g, '')
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean)
+  if (paragraphs.length === 0) return [value]
+  const units = paragraphs.flatMap((paragraph) => {
+    if (paragraph.length <= targetChars) return [paragraph]
+    const sentences = paragraph.split(/(?<=[.!?])\s+/).map((sentence) => sentence.trim()).filter(Boolean)
+    return sentences.length > 1 ? sentences : [paragraph]
+  })
+
+  const chunks: string[] = []
+  let current = ''
+  for (const unit of units) {
+    if (current && current.length + unit.length + 2 > targetChars) {
+      chunks.push(current.trim())
+      current = unit
+      continue
+    }
+    current = current ? `${current}\n\n${unit}` : unit
+  }
+  if (current.trim()) chunks.push(current.trim())
+  return chunks
 }
 
 function getRequiredDeepLearnApiKey() {

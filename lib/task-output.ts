@@ -24,7 +24,17 @@ export interface TaskOutputRequest {
   outputType: TaskOutputTargetType
   selectedContext: string[]
   groundingStatus: TaskOutputGroundingStatus
+  detectedFormat: TaskOutputDetectedFormat
 }
+
+export type TaskOutputDetectedFormat =
+  | 'short_answer'
+  | 'essay_report'
+  | 'quiz_like'
+  | 'reflection'
+  | 'activity_sheet'
+  | 'file_upload_report'
+  | 'presentation_document'
 
 export interface TaskOutputModelResponse {
   title: string
@@ -49,13 +59,17 @@ export interface TaskOutputApiResponse {
 export const TASK_OUTPUT_SYSTEM_PROMPT = [
   'You are Stay Focused\'s grounded task-output generator.',
   '',
-  'Your job is to produce a student deliverable scaffold or first-pass output using only the surfaced task instructions, requirements, and readable selected context.',
+  'Your job is to produce the student deliverable itself using only the surfaced task instructions, rubric/requirements, and readable selected context.',
   '',
   'Rules:',
   '- Ground every part of the output in the task data provided in this request.',
   '- Do not invent requirements, rubric criteria, or missing deliverable details.',
   '- Do not invent citations, quotations, page numbers, references, or sources.',
-  '- If the source text is weak, return a scaffold or template only and state the limitation clearly.',
+  '- Generate the actual answer/content first. Do not return a planning scaffold when enough prompt/source context exists.',
+  '- Preserve instructor constraints such as sentence counts, word counts, point values, rubric criteria, required headings, and file format.',
+  '- If the task asks for 2-3 sentences, return 2-3 polished sentences and nothing longer unless the requested export wrapper requires it.',
+  '- For reports, documents, HTML, PDF, DOCX, and presentation exports, wrap the actual answer/content in the selected format instead of outputting only section placeholders.',
+  '- If the source text is genuinely weak or missing, state exactly what is missing and return only a conservative scaffold/draft that is safe.',
   '- Do not use generic motivational filler, fake confidence, or decorative academic fluff.',
   '- Prefer compact, export-ready structure over long explanations.',
   '- Keep presentation, report, reviewer, webpage, and documentation outputs aligned with the requested preset and target output type.',
@@ -102,6 +116,13 @@ export function buildTaskOutputRequest(context: TaskDraftContext, input: {
     outputType: input.outputType,
     selectedContext,
     groundingStatus,
+    detectedFormat: detectTaskOutputFormat({
+      title: draftPayload.title,
+      instructions: draftPayload.instructions,
+      requirements: draftPayload.requirements ?? [],
+      preset: input.preset,
+      outputType: input.outputType,
+    }),
   }
 }
 
@@ -117,6 +138,7 @@ export function buildTaskOutputUserPrompt(input: TaskOutputRequest) {
     `Task type: ${input.taskType ?? 'Task'}`,
     `Requested preset: ${input.preset}`,
     `Requested output type: ${input.outputType}`,
+    `Detected task format: ${input.detectedFormat}`,
     `Grounding strength: ${input.groundingStatus}`,
     `Source key: ${input.sourceKey}`,
     '',
@@ -135,16 +157,21 @@ export function buildTaskOutputUserPrompt(input: TaskOutputRequest) {
     '',
     'Contract:',
     '- Stay strictly grounded in the surfaced task data.',
+    '- Produce the submission-ready answer/content before any notes about limitations.',
+    '- Do not output a generic scaffold with headings like Purpose, Deliverable focus, Grounded context, or Next edit pass when grounding is marked grounded.',
+    '- Apply instructor format constraints exactly, especially sentence counts and required sections.',
     '- No fake citations.',
     '- No fabricated requirements.',
-    '- If grounding is limited, return a scaffold or template only.',
+    '- If grounding is limited, say what readable assignment/source text is missing and keep any draft conservative.',
     '- Make the output feel submission-ready, not like tutoring notes.',
   ].join('\n')
 }
 
 export function buildTaskOutputFallback(input: TaskOutputRequest): StudyOutputTaskOutputContent {
   const previewMode = resolvePreviewMode(input.outputType)
-  const previewContent = buildFallbackPreview(input, previewMode)
+  const previewContent = input.groundingStatus === 'grounded'
+    ? buildGroundedAnswerPreview(input, previewMode)
+    : buildFallbackPreview(input, previewMode)
   const warning = input.groundingStatus === 'limited'
     ? 'Limited readable source text was available, so this stays as a conservative scaffold.'
     : 'This first-pass output stays tightly grounded in the surfaced task requirements.'
@@ -157,7 +184,7 @@ export function buildTaskOutputFallback(input: TaskOutputRequest): StudyOutputTa
     outputType: input.outputType,
     previewMode,
     title: buildTaskOutputTitle(input),
-    summary: buildTaskOutputSummary(input, true),
+    summary: buildTaskOutputSummary(input, input.groundingStatus !== 'grounded'),
     previewContent,
     stylesheet: previewMode === 'html' ? buildHtmlStylesForPreset(input.preset) : null,
     script: previewMode === 'html' && input.outputType === 'js'
@@ -171,7 +198,7 @@ export function buildTaskOutputFallback(input: TaskOutputRequest): StudyOutputTa
     groundingStatus: input.groundingStatus,
     groundingNote: input.groundingStatus === 'limited'
       ? 'Only partial readable task/source text was available, so this output is a scaffold anchored to surfaced requirements only.'
-      : 'This output is grounded in the surfaced task instructions, derived requirements, and readable selected context.',
+      : 'This output is a direct first-pass answer grounded in the surfaced task prompt, requirements, and readable course/source context.',
     limitationNote: input.groundingStatus === 'limited'
       ? 'Add real task evidence, source detail, or class-specific content before submission.'
       : null,
@@ -299,6 +326,7 @@ function classifyTaskOutputGrounding(context: TaskDraftContext, instructions: st
     context.sourceText,
     context.sourceNote,
   ]
+    .map(sanitizeGroundedTextBlock)
     .filter((value): value is string => typeof value === 'string')
     .join('\n')
     .replace(/\s+/g, ' ')
@@ -306,7 +334,9 @@ function classifyTaskOutputGrounding(context: TaskDraftContext, instructions: st
     .length
 
   if (/full task instructions were not available/i.test(instructions)) return 'limited'
-  return readableChars >= 220 ? 'grounded' : 'limited'
+  if (readableChars >= 220) return 'grounded'
+  if (hasActionableAssignmentPrompt(sanitizeGroundedTextBlock(instructions) ?? '')) return 'grounded'
+  return 'limited'
 }
 
 function buildTaskOutputTitle(input: TaskOutputRequest) {
@@ -379,6 +409,115 @@ function buildFallbackPreview(input: TaskOutputRequest, previewMode: TaskOutputP
     '',
     ...buildSectionList(input).flatMap((item) => [item.heading, item.body, '']),
   ].join('\n').trim()
+}
+
+function buildGroundedAnswerPreview(input: TaskOutputRequest, previewMode: TaskOutputPreviewMode) {
+  const answer = buildConservativeGroundedAnswer(input)
+
+  if (previewMode === 'html') {
+    return [
+      '<main class="task-output-shell">',
+      `  <h1>${escapeHtml(input.title)}</h1>`,
+      '  <section>',
+      `    <p>${escapeHtml(answer)}</p>`,
+      '  </section>',
+      '</main>',
+    ].join('\n')
+  }
+
+  if (previewMode === 'code') {
+    return input.outputType === 'js'
+      ? [
+          `// ${input.title}`,
+          'export const taskOutput = {',
+          `  title: ${JSON.stringify(input.title)},`,
+          `  answer: ${JSON.stringify(answer)},`,
+          '};',
+        ].join('\n')
+      : `.task-output-answer {\n  max-width: 65ch;\n  line-height: 1.6;\n}`
+  }
+
+  if (input.detectedFormat === 'short_answer') return answer
+
+  return [
+    input.title,
+    '',
+    answer,
+  ].join('\n')
+}
+
+function buildConservativeGroundedAnswer(input: TaskOutputRequest) {
+  const contextSentences = splitSentences([
+    input.instructions,
+    ...input.selectedContext,
+  ].join('\n'))
+  const sentenceConstraint = detectSentenceConstraint(input.instructions, input.requirements)
+  const targetCount = sentenceConstraint ? Math.min(Math.max(sentenceConstraint.min, 1), Math.max(sentenceConstraint.max, sentenceConstraint.min)) : null
+
+  if (targetCount && sentenceConstraint) {
+    const sentences = contextSentences
+      .filter((sentence) => !/^(task details|assignment context|selected context|instructions|rubric)\s*:/i.test(sentence))
+      .slice(0, targetCount)
+    if (sentences.length >= sentenceConstraint.min) return sentences.join(' ')
+  }
+
+  const usable = contextSentences.slice(0, input.detectedFormat === 'essay_report' || input.detectedFormat === 'file_upload_report' ? 6 : 3)
+  if (usable.length > 0) return usable.join(' ')
+
+  return 'A conservative first draft can be written from the surfaced assignment prompt, but the source text is too thin to add course-specific details safely.'
+}
+
+export function detectTaskOutputFormat(input: {
+  title: string
+  instructions: string
+  requirements?: string[]
+  preset?: TaskOutputPreset
+  outputType?: TaskOutputTargetType
+}): TaskOutputDetectedFormat {
+  const text = normalizeComparisonText([
+    input.title,
+    input.instructions,
+    ...(input.requirements ?? []),
+    input.preset ?? '',
+    input.outputType ?? '',
+  ].join(' '))
+
+  if (/\b(2\s*[-–]\s*3|two\s+to\s+three|one|two|three|4|four|5|five)\s+(?:complete\s+)?sentences?\b/.test(text)
+    || /\bshort answer\b|\banswer in\b/.test(text)) return 'short_answer'
+  if (/\bquiz\b|\banswer sheet\b|\bmultiple choice\b|\btrue or false\b|\bidentification\b/.test(text)) return 'quiz_like'
+  if (/\breflection\b|\breflect\b|\binsight\b|\bexperience\b|\blearning journal\b/.test(text)) return 'reflection'
+  if (/\bactivity sheet\b|\bworksheet\b|\bfill in\b|\btable\b|\bchart\b|\btemplate\b/.test(text)) return 'activity_sheet'
+  if (/\bfile upload\b|\bupload\b|\breport file\b/.test(text)) return 'file_upload_report'
+  if (/\bpresentation\b|\bslide\b|\bppt\b|\bdocument\b|\bhtml\b|\bwebpage\b/.test(text)) return 'presentation_document'
+  return 'essay_report'
+}
+
+function hasActionableAssignmentPrompt(text: string) {
+  const normalized = cleanBlock(text)
+  if (normalized.length >= 80) return true
+  if (detectSentenceConstraint(normalized, [])) return true
+  return /\b(rubric|points?|criteria|required format|answer in|write in|submit as)\b/i.test(normalized)
+}
+
+function detectSentenceConstraint(instructions: string, requirements: string[]) {
+  const text = `${instructions}\n${requirements.join('\n')}`
+  const range = text.match(/\b(\d+)\s*[-–]\s*(\d+)\s+(?:complete\s+)?sentences?\b/i)
+  if (range?.[1] && range?.[2]) return { min: Number(range[1]), max: Number(range[2]) }
+  const wordRange = text.match(/\b(two|three|four|five)\s+to\s+(three|four|five|six)\s+(?:complete\s+)?sentences?\b/i)
+  if (wordRange?.[1] && wordRange?.[2]) return { min: NUMBER_WORDS[wordRange[1].toLowerCase()] ?? 2, max: NUMBER_WORDS[wordRange[2].toLowerCase()] ?? 3 }
+  const exact = text.match(/\b(one|two|three|four|five|six|\d+)\s+(?:complete\s+)?sentences?\b/i)
+  if (!exact?.[1]) return null
+  const value = /^\d+$/.test(exact[1]) ? Number(exact[1]) : NUMBER_WORDS[exact[1].toLowerCase()] ?? null
+  return value ? { min: value, max: value } : null
+}
+
+function splitSentences(text: string) {
+  return cleanBlock(text)
+    .replace(/^(Task details|Assignment context|Instructions|Selected context):\s*/gim, '')
+    .split(/(?<=[.!?])\s+/)
+    .map((part) => cleanInline(part))
+    .filter((part) => part.length >= 24)
+    .filter((part) => !isLikelyMetadataLeak(part))
 }
 
 function buildSectionList(input: TaskOutputRequest) {
@@ -583,6 +722,10 @@ function cleanBlock(value: string | null | undefined) {
     .trim() ?? ''
 }
 
+function normalizeComparisonText(value: string | null | undefined) {
+  return cleanInline(value).toLowerCase()
+}
+
 function slugify(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
 }
@@ -602,6 +745,15 @@ function escapeHtml(value: string) {
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+const NUMBER_WORDS: Record<string, number> = {
+  one: 1,
+  two: 2,
+  three: 3,
+  four: 4,
+  five: 5,
+  six: 6,
 }
 
 export function buildTaskOutputPromptPreview(input: TaskOutputRequest, output?: StudyOutputTaskOutputContent | null) {
