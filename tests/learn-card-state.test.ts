@@ -172,7 +172,7 @@ test('new generation queue item is not blocked by an old failed attempt', () => 
 test('old one-pass too-large wording is not returned for queue errors', () => {
   const message = cleanStudyPackQueueError('max_output_tokens')
 
-  assert.match(message, /compact study pack still exceeded/i)
+  assert.match(message, /model response limit was reached even after compact fallback/i)
   assert.doesNotMatch(message, /finish in one pass|Regenerate a shorter version/i)
 })
 

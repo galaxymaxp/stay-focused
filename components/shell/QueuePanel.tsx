@@ -675,7 +675,7 @@ function humanizeError(error: string | null) {
   const trimmed = error.replace(/\s+/g, ' ').trim()
   if (!trimmed) return fallback
   if (/max_output_tokens/i.test(trimmed)) {
-    return 'The compact study pack still exceeded the model response size limit. Try generating it again.'
+    return 'The model response limit was reached even after compact fallback. Try a smaller source or split the module.'
   }
   return trimmed.length > 150 ? `${trimmed.slice(0, 147).trim()}...` : trimmed
 }

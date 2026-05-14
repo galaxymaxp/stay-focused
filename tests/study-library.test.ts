@@ -87,7 +87,7 @@ test('student-facing queue copy does not use old one-pass retry wording', () => 
 
   assert.doesNotMatch(queuePanel, /This study output was too large to finish in one pass\. Regenerate a shorter version\./)
   assert.doesNotMatch(learnPage, /This study output was too large to finish in one pass\. Regenerate a shorter version\./)
-  assert.match(queuePanel, /compact study pack still exceeded the model response size limit/i)
+  assert.match(queuePanel, /model response limit was reached even after compact fallback/i)
 })
 
 test('unsupported study output subtype stays visible with a safe subtitle', () => {

@@ -5,6 +5,84 @@ Last Updated: 2026-05-14
 
 ---
 
+## Session Update - 2026-05-14 (Harden Deep Learn compact fallback)
+
+### What changed
+
+- Added levelled Deep Learn fallback handling for long readable sources:
+  - full staged generation still runs first
+  - `max_output_tokens` retries only the failed/remaining stage at compact level
+  - compact size failures retry only the failed/remaining stage at micro level
+  - micro size failures save a minimal grounded source-summary pack instead of failing when readable academic source text exists
+- Added partial salvage so successful earlier stages are carried into compact, micro, and minimal fallback output.
+- Added micro hard limits in prompt and runtime trimming:
+  - High-Yield First max 5 bullets
+  - Key Terms/identification max 8
+  - Quick Q&A/answerBank max 6
+  - Likely Quiz Targets max 5
+  - Caution Notes max 2
+- Added compact reviewer caution copy to fallback packs: `Generated as a compact reviewer because the source was long.`
+- Updated size-limit failure copy in queue/card helpers to: `The model response limit was reached even after compact fallback. Try a smaller source or split the module.`
+- Updated internal logs to include exact fallback level (`compact`, `micro`, `minimal`), previous level, stage, kind, and reason.
+
+### Files touched
+
+- `lib/deep-learn-generation.ts`
+- `components/shell/QueuePanel.tsx`
+- `lib/learn-card-state.ts`
+- `tests/deep-learn-generation.test.ts`
+- `tests/learn-card-state.test.ts`
+- `tests/study-library.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Production still hit `max_output_tokens` during the compact fallback for a readable long PDF. The previous path treated compact size failure as terminal and could discard valid completed stage output. This change makes size limits retryable through a hard-bounded micro pass, preserves already generated sections, and saves a small grounded pack when only provider output size is the remaining problem.
+
+### Tests run
+
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- deep-learn-generation deep-learn-readiness queue canvas-content-resolution learn-resource-ui` - passed
+- `npm test -- study-output-reviewer study-output-sheet study-output-quiz-pack study-output-print` - passed
+- `npm test -- task-output task-output-foundation` - passed
+- Additional targeted checks:
+  - `npx tsx --test tests/deep-learn-generation.test.ts` - passed
+  - `npx tsx --test tests/learn-card-state.test.ts tests/study-library.test.ts tests/queue.test.ts` - passed
+
+### Verification result
+
+- Passed all requested verification commands.
+- Verified full generation can recover through compact fallback.
+- Verified compact size failure can recover through micro fallback.
+- Verified micro fallback trims arrays to strict maximum counts before saving.
+- Verified micro size failure saves a minimal grounded Study Pack instead of surfacing the old one-pass failure.
+- Verified old one-pass retry wording is not returned in queue/card copy.
+- Verified source readiness remains separate from Study Pack generation failure state through existing queue/card tests.
+- Verified metadata-only, refusal, UUID/debug-text, and unreadable scanned-PDF blockers still pass.
+
+### Known risks
+
+- Minimal fallback content is intentionally sparse when every structured fallback hits provider size limits; it should keep the source usable but will not be as rich as the normal Study Pack.
+- Provider errors, malformed JSON, timeouts, source-quality blockers, or save failures still fail the job instead of silently creating questionable content.
+- Manual production QA is still needed on `1. Intro-To-IT-Security.pdf` to confirm the live provider follows the micro bounds and the saved compact reviewer is useful.
+
+### Blockers
+
+- No code blocker remains.
+
+### Next recommended step
+
+Deploy and run authenticated production QA on `1. Intro-To-IT-Security.pdf`: generate the Study Pack from the Ready card, confirm the queue completes with `Compact study pack ready.`, open the saved pack, and verify Reviewer/Quiz outputs still render from the compact pack.
+
+### Suggested commit message
+
+```bash
+harden deep learn compact fallback
+```
+
+---
+
 ## Session Update - 2026-05-14 (Fix Deep Learn fallback and retry failure state)
 
 ### What changed

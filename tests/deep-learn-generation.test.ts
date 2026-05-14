@@ -620,37 +620,96 @@ test('staged Deep Learn generation saves a compact fallback when the full quick-
   assert.doesNotMatch(JSON.stringify(result), /finish in one pass|Regenerate a shorter version/i)
 })
 
-test('staged Deep Learn generation throws the clean too-large error only after compact fallback also exceeds limits', async () => {
-  await assert.rejects(
-    () => generateDeepLearnStructuredContent(
-      createPromptInput(),
-      createPreparedGrounding(),
-      async ({ schemaName }) => {
-        if (schemaName === 'deep_learn_high_yield_stage') {
-          return jsonResponse({
-            title: 'IT Security',
-            overview: 'Large source.',
-            sections: [
-              { heading: 'Source Summary', body: 'Summary.' },
-              { heading: 'High-Yield First', body: 'High yield.' },
-            ],
-          })
+test('staged Deep Learn generation completes through micro fallback when compact also exceeds limits', async () => {
+  let identificationCalls = 0
+  const result = await generateDeepLearnStructuredContent(
+    createPromptInput(),
+    createPreparedGrounding(),
+    async ({ schemaName }) => {
+      if (schemaName === 'deep_learn_high_yield_stage') {
+        return jsonResponse({
+          title: 'IT Security',
+          overview: 'Large source.',
+          sections: [
+            { heading: 'Source Summary', body: 'Summary.' },
+            { heading: 'High-Yield First', body: '- CIA triad\n- Controls\n- Threats' },
+          ],
+        })
+      }
+      if (schemaName === 'deep_learn_identification_stage') {
+        identificationCalls += 1
+        if (identificationCalls < 3) {
+          return {
+            status: 'incomplete',
+            output_text: '',
+            incomplete_details: { reason: 'max_output_tokens' },
+          }
         }
+        return jsonResponse({
+          sections: [{ heading: 'Identification Review', body: 'Micro key terms only.' }],
+          identificationItems: Array.from({ length: 12 }, (_, index) => identificationItem(index)),
+        })
+      }
+      if (schemaName === 'deep_learn_quick_answers_stage') {
+        return jsonResponse({
+          sections: [{ heading: 'Quick-Answer Blocks', body: 'Micro Q&A only.' }],
+          answerBank: Array.from({ length: 10 }, (_, index) => answerBankItem(index)),
+        })
+      }
+      return jsonResponse({
+        sections: [{ heading: 'Likely Quiz Targets', body: 'Micro quiz targets.' }],
+        distinctions: [distinctionItem(1), distinctionItem(2)],
+        likelyQuizTargets: Array.from({ length: 9 }, (_, index) => quizTargetItem(index)),
+        cautionNotes: ['First caution.', 'Second caution.', 'Third caution.'],
+      })
+    },
+  )
+
+  assert.equal(result.compactFallbackUsed, true)
+  assert.equal(identificationCalls, 3)
+  assert.ok(result.content.identificationItems.length <= 8)
+  assert.ok(result.content.answerBank.length <= 6)
+  assert.ok(result.content.likelyQuizTargets.length <= 5)
+  assert.ok(result.content.cautionNotes.length <= 2)
+  assert.ok(result.content.cautionNotes.includes('Generated as a compact reviewer because the source was long.'))
+  assert.doesNotMatch(JSON.stringify(result), /finish in one pass|Regenerate a shorter version/i)
+})
+
+test('staged Deep Learn generation saves a minimal fallback when micro also exceeds limits', async () => {
+  let identificationCalls = 0
+  const result = await generateDeepLearnStructuredContent(
+    createPromptInput(),
+    createPreparedGrounding(),
+    async ({ schemaName }) => {
+      if (schemaName === 'deep_learn_high_yield_stage') {
+        return jsonResponse({
+          title: 'IT Security',
+          overview: 'Large source.',
+          sections: [
+            { heading: 'Source Summary', body: 'The source explains information security basics.' },
+            { heading: 'High-Yield First', body: '- CIA triad\n- Threats and vulnerabilities' },
+          ],
+        })
+      }
+      if (schemaName === 'deep_learn_identification_stage') {
+        identificationCalls += 1
         return {
           status: 'incomplete',
           output_text: '',
           incomplete_details: { reason: 'max_output_tokens' },
         }
-      },
-    ),
-    (error: unknown) => {
-      assert.ok(error instanceof DeepLearnGenerationIncompleteError)
-      assert.match(error.message, /compact study pack still exceeded/i)
-      assert.doesNotMatch(error.message, /finish in one pass|Regenerate a shorter version/i)
-      assert.match(error.reason, /quick_answers:max_output_tokens|identification:max_output_tokens|distinctions:max_output_tokens/i)
-      return true
+      }
+      throw new Error(`Unexpected schema ${schemaName}`)
     },
   )
+
+  assert.equal(result.compactFallbackUsed, true)
+  assert.equal(identificationCalls, 3)
+  assert.ok(result.content.sections.length > 0)
+  assert.ok(result.content.sections.some((section) => section.heading === 'Source Summary'))
+  assert.ok(result.content.sections.some((section) => section.heading === 'High-Yield First'))
+  assert.ok(result.content.cautionNotes.includes('Generated as a compact reviewer because the source was long.'))
+  assert.doesNotMatch(JSON.stringify(result), /finish in one pass|Regenerate a shorter version/i)
 })
 
 test('Deep Learn long source grounding keeps representative chunks instead of one front-only slice', async () => {

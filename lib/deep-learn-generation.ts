@@ -25,8 +25,9 @@ const DEFAULT_DEEP_LEARN_MODEL = 'gpt-5-mini'
 const MAX_GROUNDING_CHARS = 12000
 export const DEEP_LEARN_MAX_OUTPUT_TOKENS = 10000
 export const DEEP_LEARN_COMPACT_MAX_OUTPUT_TOKENS = 10000
-export const DEEP_LEARN_OUTPUT_TOO_LARGE_MESSAGE = 'The compact study pack still exceeded the model response size limit.'
+export const DEEP_LEARN_OUTPUT_TOO_LARGE_MESSAGE = 'The model response limit was reached even after compact fallback. Try a smaller source or split the module.'
 const DEEP_LEARN_STAGE_TIMEOUT_MS = 120000
+const DEEP_LEARN_COMPACT_CAUTION_NOTE = 'Generated as a compact reviewer because the source was long.'
 
 const DEEP_LEARN_SYSTEM_PROMPT = [
   'You create saved Deep Learn Study Packs from academic source material.',
@@ -183,8 +184,10 @@ function getDeepLearnStageDefinitions(): DeepLearnStageDefinition[] {
       },
       fullMaxOutputTokens: 2800,
       compactMaxOutputTokens: 1800,
+      microMaxOutputTokens: 900,
       fullProgress: 40,
       compactProgress: 42,
+      microProgress: 44,
     },
     {
       key: 'identification',
@@ -211,8 +214,10 @@ function getDeepLearnStageDefinitions(): DeepLearnStageDefinition[] {
       },
       fullMaxOutputTokens: 3200,
       compactMaxOutputTokens: 2200,
+      microMaxOutputTokens: 1100,
       fullProgress: 55,
       compactProgress: 57,
+      microProgress: 59,
     },
     {
       key: 'quick_answers',
@@ -239,8 +244,10 @@ function getDeepLearnStageDefinitions(): DeepLearnStageDefinition[] {
       },
       fullMaxOutputTokens: 4200,
       compactMaxOutputTokens: 2600,
+      microMaxOutputTokens: 1200,
       fullProgress: 70,
       compactProgress: 72,
+      microProgress: 74,
     },
     {
       key: 'distinctions',
@@ -269,8 +276,10 @@ function getDeepLearnStageDefinitions(): DeepLearnStageDefinition[] {
       },
       fullMaxOutputTokens: 2600,
       compactMaxOutputTokens: 1800,
+      microMaxOutputTokens: 900,
       fullProgress: 80,
       compactProgress: 80,
+      microProgress: 82,
     },
   ]
 }
@@ -341,6 +350,7 @@ interface DeepLearnGenerationOptions {
 }
 
 type DeepLearnStageKey = 'high_yield' | 'identification' | 'quick_answers' | 'distinctions'
+type DeepLearnFallbackLevel = 'full' | 'compact' | 'micro'
 
 interface DeepLearnStageDefinition {
   key: DeepLearnStageKey
@@ -348,15 +358,18 @@ interface DeepLearnStageDefinition {
   schema: Record<string, unknown>
   fullMaxOutputTokens: number
   compactMaxOutputTokens: number
+  microMaxOutputTokens: number
   fullProgress: number
   compactProgress: number
+  microProgress: number
 }
 
 interface DeepLearnStageErrorOptions {
   stage: DeepLearnStageKey
   reason: string
-  mode: 'full' | 'compact'
+  level: DeepLearnFallbackLevel
   kind: 'size' | 'timeout' | 'provider' | 'invalid_json' | 'empty'
+  partialOutput?: Record<string, unknown> | null
 }
 
 export class DeepLearnGenerationBlockedError extends Error {
@@ -391,16 +404,18 @@ export class DeepLearnGenerationIncompleteError extends Error {
 class DeepLearnGenerationStageError extends Error {
   stage: DeepLearnStageKey
   reason: string
-  mode: 'full' | 'compact'
+  level: DeepLearnFallbackLevel
   kind: 'size' | 'timeout' | 'provider' | 'invalid_json' | 'empty'
+  partialOutput: Record<string, unknown> | null
 
   constructor(options: DeepLearnStageErrorOptions) {
     super(buildDeepLearnStageFailureMessage(options))
     this.name = 'DeepLearnGenerationStageError'
     this.stage = options.stage
     this.reason = options.reason
-    this.mode = options.mode
+    this.level = options.level
     this.kind = options.kind
+    this.partialOutput = options.partialOutput ?? null
   }
 }
 
@@ -468,15 +483,17 @@ export async function generateDeepLearnStructuredContent(
   options: DeepLearnGenerationOptions = {},
 ): Promise<{ content: DeepLearnGeneratedContent; compactFallbackUsed: boolean }> {
   try {
-    const content = await runDeepLearnStagePlan(input, grounding, createResponse, false, options)
+    const content = await runDeepLearnStagePlan(input, grounding, createResponse, 'full', options)
     return { content, compactFallbackUsed: false }
   } catch (error) {
-    if (!(error instanceof DeepLearnGenerationStageError) || error.mode === 'compact') {
+    if (!(error instanceof DeepLearnGenerationStageError) || error.kind !== 'size') {
       throw error
     }
 
-    console.warn('[deep-learn-generation] retrying staged compact fallback', {
+    console.warn('[deep-learn-generation] retrying staged fallback', {
       stage: error.stage,
+      level: 'compact',
+      previousLevel: error.level,
       kind: error.kind,
       reason: error.reason,
     })
@@ -488,13 +505,50 @@ export async function generateDeepLearnStructuredContent(
     })
 
     try {
-      const content = await runDeepLearnStagePlan(input, grounding, createResponse, true, options)
+      const content = await runDeepLearnStagePlan(input, grounding, createResponse, 'compact', options, {
+        startStage: error.stage,
+        seedOutput: error.partialOutput,
+      })
       return { content, compactFallbackUsed: true }
     } catch (compactError) {
-      if (compactError instanceof DeepLearnGenerationStageError && compactError.kind === 'size') {
-        throw new DeepLearnGenerationIncompleteError(`${compactError.stage}:${compactError.reason}`)
+      if (!(compactError instanceof DeepLearnGenerationStageError) || compactError.kind !== 'size') {
+        throw compactError
       }
-      throw compactError
+
+      console.warn('[deep-learn-generation] retrying staged fallback', {
+        stage: compactError.stage,
+        level: 'micro',
+        previousLevel: compactError.level,
+        kind: compactError.kind,
+        reason: compactError.reason,
+      })
+      await options.onProgress?.({
+        progress: 36,
+        statusMessage: 'Deep Learn is saving a smaller compact reviewer from the strongest source points.',
+        stage: 'compact_fallback',
+        compactFallbackUsed: true,
+      })
+
+      try {
+        const content = await runDeepLearnStagePlan(input, grounding, createResponse, 'micro', options, {
+          startStage: compactError.stage,
+          seedOutput: compactError.partialOutput,
+        })
+        return { content, compactFallbackUsed: true }
+      } catch (microError) {
+        if (microError instanceof DeepLearnGenerationStageError && microError.kind === 'size') {
+          console.warn('[deep-learn-generation] saving minimal fallback after staged size limit', {
+            stage: microError.stage,
+            level: 'minimal',
+            previousLevel: microError.level,
+            kind: microError.kind,
+            reason: microError.reason,
+          })
+          const content = buildMinimalDeepLearnFallback(input, microError.partialOutput ?? compactError.partialOutput ?? error.partialOutput)
+          return { content, compactFallbackUsed: true }
+        }
+        throw microError
+      }
     }
   }
 }
@@ -684,8 +738,12 @@ async function runDeepLearnStagePlan(
   input: DeepLearnPromptInput,
   grounding: DeepLearnPreparedGrounding,
   createResponse: DeepLearnResponseCreator,
-  compact: boolean,
+  level: DeepLearnFallbackLevel,
   options: DeepLearnGenerationOptions,
+  resume: {
+    startStage?: DeepLearnStageKey
+    seedOutput?: Record<string, unknown> | null
+  } = {},
 ) {
   const stageOutput: Record<string, unknown> = {
     title: input.resource.title,
@@ -696,28 +754,42 @@ async function runDeepLearnStagePlan(
     distinctions: [],
     likelyQuizTargets: [],
     cautionNotes: [],
+    ...(resume.seedOutput ?? {}),
   }
+  const stages = getDeepLearnStageDefinitions()
+  const startIndex = resume.startStage
+    ? Math.max(0, stages.findIndex((stage) => stage.key === resume.startStage))
+    : 0
 
-  for (const stage of getDeepLearnStageDefinitions()) {
+  for (const stage of stages.slice(startIndex)) {
     await options.onProgress?.({
-      progress: compact ? stage.compactProgress : stage.fullProgress,
-      statusMessage: buildDeepLearnStageStatusMessage(stage.key, compact),
+      progress: getDeepLearnStageProgress(stage, level),
+      statusMessage: buildDeepLearnStageStatusMessage(stage.key, level),
       stage: stage.key,
-      compactFallbackUsed: compact,
+      compactFallbackUsed: level !== 'full',
     })
 
-    const raw = await createStageResponse(
-      input,
-      grounding,
-      stage,
-      compact,
-      createResponse,
-    )
-    const parsed = parseStageResponse(raw, stage, compact)
-    mergeDeepLearnStageOutput(stageOutput, parsed)
+    try {
+      const raw = await createStageResponse(
+        input,
+        grounding,
+        stage,
+        level,
+        createResponse,
+      )
+      const parsed = parseStageResponse(raw, stage, level)
+      mergeDeepLearnStageOutput(stageOutput, parsed)
+      if (level !== 'full') trimDeepLearnStageOutput(stageOutput, level)
+    } catch (error) {
+      if (error instanceof DeepLearnGenerationStageError) {
+        error.partialOutput = cloneStageOutput(stageOutput)
+      }
+      throw error
+    }
   }
 
-  return normalizeDeepLearnGeneratedContent(stageOutput, input.resource.title)
+  const normalized = normalizeDeepLearnGeneratedContent(stageOutput, input.resource.title)
+  return level === 'full' ? normalized : trimDeepLearnContent(normalized, level)
 }
 
 export function buildDeepLearnPrompt(input: DeepLearnPromptInput, options: { compact?: boolean } = {}) {
@@ -778,10 +850,13 @@ export function buildDeepLearnPrompt(input: DeepLearnPromptInput, options: { com
 function buildDeepLearnStagePrompt(
   input: DeepLearnPromptInput,
   stage: DeepLearnStageKey,
-  options: { compact?: boolean } = {},
+  options: { compact?: boolean; level?: DeepLearnFallbackLevel } = {},
 ) {
-  const compact = options.compact === true
-  const compactInstruction = compact
+  const level = options.level ?? (options.compact ? 'compact' : 'full')
+  const compact = level !== 'full'
+  const compactInstruction = level === 'micro'
+    ? 'Micro fallback is active. Return only short structured arrays with the strongest source-backed items. Do not write long explanations or prose-heavy sections.'
+    : level === 'compact'
     ? 'Compact fallback is active. Keep bodies tight, keep only the highest-yield items, and prefer fewer stronger facts over broad coverage.'
     : 'Normal staged generation is active. Keep coverage grounded and useful, but still concise.'
 
@@ -790,7 +865,9 @@ function buildDeepLearnStagePrompt(
       'Build only the first stage of the Study Pack.',
       'Return title, overview, and sections only.',
       'sections must contain exactly these headings in order: Source Summary, High-Yield First.',
-      compact
+      level === 'micro'
+        ? '- High-Yield First must contain no more than 5 short bullets total. Source Summary must be 1 short sentence.'
+        : compact
         ? '- Source Summary and High-Yield First should each stay within 2 short paragraphs or 4 compact bullet-style lines.'
         : '- Source Summary and High-Yield First should stay concise and exam-focused, not textbook-length.',
       '- Do not return answerBank, identificationItems, distinctions, likelyQuizTargets, or cautionNotes in this stage.',
@@ -799,7 +876,9 @@ function buildDeepLearnStagePrompt(
       'Build only the Identification Review stage.',
       'Return sections plus identificationItems only.',
       'sections must contain exactly one heading: Identification Review.',
-      compact
+      level === 'micro'
+        ? '- identificationItems: no more than 8 key terms or direct prompts. Keep answers to one sentence.'
+        : compact
         ? '- identificationItems: 4 to 6 strongest direct term/prompt items only.'
         : '- identificationItems: 8 to 12 direct source-grounded prompt/answer items.',
       '- The section body should summarize the strongest key terms without duplicating every answer verbatim.',
@@ -808,7 +887,9 @@ function buildDeepLearnStagePrompt(
       'Build only the Quick-Answer Blocks stage.',
       'Return sections plus answerBank only.',
       'sections must contain exactly one heading: Quick-Answer Blocks.',
-      compact
+      level === 'micro'
+        ? '- answerBank: no more than 6 Quick Q&A items. Keep each answer to one sentence.'
+        : compact
         ? '- answerBank: 6 to 8 strongest quick-answer items only.'
         : '- answerBank: 10 to 14 grounded quick-answer items.',
       '- Prefer definitions, processes, formulas, examples, and one-line exam answers.',
@@ -817,7 +898,9 @@ function buildDeepLearnStagePrompt(
       'Build only the distinctions and likely-quiz-target stage.',
       'Return sections, distinctions, likelyQuizTargets, and cautionNotes only.',
       'sections may contain up to two headings in order: Distinctions, Likely Quiz Targets.',
-      compact
+      level === 'micro'
+        ? '- distinctions: omit unless one short source-backed distinction is essential. likelyQuizTargets: no more than 5. cautionNotes: no more than 2.'
+        : compact
         ? '- distinctions: no more than 3. likelyQuizTargets: no more than 4. cautionNotes: no more than 3.'
         : '- distinctions: 3 to 6. likelyQuizTargets: 4 to 6. cautionNotes: no more than 4.',
       '- Use cautionNotes only for grounded uncertainty, partial OCR, confusing wording, or source gaps that could cost points.',
@@ -839,6 +922,16 @@ function buildDeepLearnStagePrompt(
     '- Do not invent facts, examples, certainty, or missing steps.',
     '- Clean raw extraction labels before using them as headings or prompts.',
     '- If evidence is partial, keep the item but reflect that uncertainty in cautionNotes or simplified wording.',
+    ...(level === 'micro' ? [
+      '',
+      'Micro fallback hard limits:',
+      '- High-Yield First: max 5 bullets.',
+      '- Key Terms: max 8 terms through identificationItems.',
+      '- Quick Q&A: max 6 questions through answerBank.',
+      '- Likely Quiz Targets: max 5 bullets.',
+      '- Caution Notes: max 2 bullets.',
+      '- No prose-heavy support sections. No long explanations.',
+    ] : []),
     '',
     'Stage requirements:',
     ...stageRequirements[stage],
@@ -849,14 +942,14 @@ async function createStageResponse(
   input: DeepLearnPromptInput,
   grounding: DeepLearnPreparedGrounding,
   stage: DeepLearnStageDefinition,
-  compact: boolean,
+  level: DeepLearnFallbackLevel,
   createResponse: DeepLearnResponseCreator,
 ) {
   return withTimeout(
     createResponse({
       grounding,
-      promptText: buildDeepLearnStagePrompt(input, stage.key, { compact }),
-      maxOutputTokens: compact ? stage.compactMaxOutputTokens : stage.fullMaxOutputTokens,
+      promptText: buildDeepLearnStagePrompt(input, stage.key, { level }),
+      maxOutputTokens: getDeepLearnStageMaxOutputTokens(stage, level),
       schemaName: stage.schemaName,
       schema: stage.schema,
     }),
@@ -864,7 +957,7 @@ async function createStageResponse(
     new DeepLearnGenerationStageError({
       stage: stage.key,
       reason: `stage timed out after ${Math.round(DEEP_LEARN_STAGE_TIMEOUT_MS / 1000)} seconds`,
-      mode: compact ? 'compact' : 'full',
+      level,
       kind: 'timeout',
     }),
   ).catch((error) => {
@@ -872,7 +965,7 @@ async function createStageResponse(
     throw new DeepLearnGenerationStageError({
       stage: stage.key,
       reason: error instanceof Error ? error.message : 'provider request failed',
-      mode: compact ? 'compact' : 'full',
+      level,
       kind: 'provider',
     })
   })
@@ -881,14 +974,14 @@ async function createStageResponse(
 function parseStageResponse(
   response: DeepLearnResponseLike,
   stage: DeepLearnStageDefinition,
-  compact: boolean,
+  level: DeepLearnFallbackLevel,
 ) {
   if (response.status && response.status !== 'completed') {
     const reason = response.incomplete_details?.reason ?? response.status
     throw new DeepLearnGenerationStageError({
       stage: stage.key,
       reason,
-      mode: compact ? 'compact' : 'full',
+      level,
       kind: isMaxOutputTokenReason(reason) ? 'size' : 'provider',
     })
   }
@@ -898,7 +991,7 @@ function parseStageResponse(
     throw new DeepLearnGenerationStageError({
       stage: stage.key,
       reason: 'empty response',
-      mode: compact ? 'compact' : 'full',
+      level,
       kind: 'empty',
     })
   }
@@ -909,7 +1002,7 @@ function parseStageResponse(
     throw new DeepLearnGenerationStageError({
       stage: stage.key,
       reason: 'invalid JSON',
-      mode: compact ? 'compact' : 'full',
+      level,
       kind: 'invalid_json',
     })
   }
@@ -930,6 +1023,146 @@ function mergeDeepLearnStageOutput(target: Record<string, unknown>, parsed: Reco
     const existing = Array.isArray(target[key]) ? target[key] : []
     target[key] = [...existing, ...parsed[key]]
   }
+}
+
+function getDeepLearnStageProgress(stage: DeepLearnStageDefinition, level: DeepLearnFallbackLevel) {
+  if (level === 'micro') return stage.microProgress
+  if (level === 'compact') return stage.compactProgress
+  return stage.fullProgress
+}
+
+function getDeepLearnStageMaxOutputTokens(stage: DeepLearnStageDefinition, level: DeepLearnFallbackLevel) {
+  if (level === 'micro') return stage.microMaxOutputTokens
+  if (level === 'compact') return stage.compactMaxOutputTokens
+  return stage.fullMaxOutputTokens
+}
+
+function cloneStageOutput(value: Record<string, unknown>) {
+  return {
+    title: value.title,
+    overview: value.overview,
+    sections: Array.isArray(value.sections) ? [...value.sections] : [],
+    answerBank: Array.isArray(value.answerBank) ? [...value.answerBank] : [],
+    identificationItems: Array.isArray(value.identificationItems) ? [...value.identificationItems] : [],
+    distinctions: Array.isArray(value.distinctions) ? [...value.distinctions] : [],
+    likelyQuizTargets: Array.isArray(value.likelyQuizTargets) ? [...value.likelyQuizTargets] : [],
+    cautionNotes: Array.isArray(value.cautionNotes) ? [...value.cautionNotes] : [],
+  }
+}
+
+function trimDeepLearnStageOutput(output: Record<string, unknown>, level: Exclude<DeepLearnFallbackLevel, 'full'>) {
+  const limits = getFallbackLimits(level)
+  if (Array.isArray(output.sections)) output.sections = output.sections.slice(0, limits.sections)
+  if (Array.isArray(output.answerBank)) output.answerBank = output.answerBank.slice(0, limits.answerBank)
+  if (Array.isArray(output.identificationItems)) output.identificationItems = output.identificationItems.slice(0, limits.identificationItems)
+  if (Array.isArray(output.distinctions)) output.distinctions = output.distinctions.slice(0, limits.distinctions)
+  if (Array.isArray(output.likelyQuizTargets)) output.likelyQuizTargets = output.likelyQuizTargets.slice(0, limits.likelyQuizTargets)
+  if (Array.isArray(output.cautionNotes)) output.cautionNotes = output.cautionNotes.slice(0, limits.cautionNotes)
+}
+
+function trimDeepLearnContent(
+  content: DeepLearnGeneratedContent,
+  level: Exclude<DeepLearnFallbackLevel, 'full'>,
+): DeepLearnGeneratedContent {
+  const limits = getFallbackLimits(level)
+  const cautionNotes = uniqueStringList([
+    DEEP_LEARN_COMPACT_CAUTION_NOTE,
+    ...(content.cautionNotes ?? []),
+  ]).slice(0, limits.cautionNotes)
+
+  return {
+    ...content,
+    sections: content.sections.slice(0, limits.sections).map((section) => ({
+      ...section,
+      body: level === 'micro' ? trimSectionBody(section.body, section.heading) : section.body,
+    })),
+    answerBank: content.answerBank.slice(0, limits.answerBank),
+    identificationItems: content.identificationItems.slice(0, limits.identificationItems),
+    distinctions: content.distinctions.slice(0, limits.distinctions),
+    likelyQuizTargets: content.likelyQuizTargets.slice(0, limits.likelyQuizTargets),
+    cautionNotes,
+  }
+}
+
+function getFallbackLimits(level: Exclude<DeepLearnFallbackLevel, 'full'>) {
+  return level === 'micro'
+    ? {
+        sections: 5,
+        answerBank: 6,
+        identificationItems: 8,
+        distinctions: 1,
+        likelyQuizTargets: 5,
+        cautionNotes: 2,
+      }
+    : {
+        sections: 6,
+        answerBank: 10,
+        identificationItems: 8,
+        distinctions: 4,
+        likelyQuizTargets: 5,
+        cautionNotes: 3,
+      }
+}
+
+function trimSectionBody(body: string, heading: string) {
+  const lines = body
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+
+  if (/high-yield/i.test(heading)) return lines.slice(0, 5).join('\n') || truncateForModel(body, 520)
+  if (/source summary/i.test(heading)) return truncateForModel(body, 260)
+  return lines.slice(0, 3).join('\n') || truncateForModel(body, 420)
+}
+
+function uniqueStringList(values: string[]) {
+  const seen = new Set<string>()
+  const result: string[] = []
+  for (const value of values) {
+    const trimmed = value.replace(/\s+/g, ' ').trim()
+    if (!trimmed || seen.has(trimmed.toLowerCase())) continue
+    seen.add(trimmed.toLowerCase())
+    result.push(trimmed)
+  }
+  return result
+}
+
+function buildMinimalDeepLearnFallback(
+  input: DeepLearnPromptInput,
+  partialOutput: Record<string, unknown> | null,
+) {
+  const sourceSentences = input.promptGrounding
+    .replace(/\s+/g, ' ')
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => sentence.trim())
+    .filter((sentence) => sentence.length >= 45 && sentence.length <= 260)
+  const summary = sourceSentences[0] ?? truncateForModel(input.promptGrounding, 240)
+  const highYieldBullets = sourceSentences.slice(1, 6).map((sentence) => `- ${sentence}`)
+  const fallbackOutput: Record<string, unknown> = {
+    ...(partialOutput ?? {}),
+    title: typeof partialOutput?.title === 'string' ? partialOutput.title : input.resource.title,
+    overview: typeof partialOutput?.overview === 'string' && partialOutput.overview.trim()
+      ? partialOutput.overview
+      : summary,
+    sections: [
+      ...(Array.isArray(partialOutput?.sections) ? partialOutput.sections : []),
+      { heading: 'Source Summary', body: summary },
+      {
+        heading: 'High-Yield First',
+        body: highYieldBullets.length > 0
+          ? highYieldBullets.join('\n')
+          : '- Review the selected source directly for the strongest terms and definitions.',
+      },
+    ],
+    cautionNotes: uniqueStringList([
+      ...(Array.isArray(partialOutput?.cautionNotes) ? partialOutput.cautionNotes.filter((item): item is string => typeof item === 'string') : []),
+      DEEP_LEARN_COMPACT_CAUTION_NOTE,
+    ]),
+  }
+  return trimDeepLearnContent(
+    normalizeDeepLearnGeneratedContent(fallbackOutput, input.resource.title),
+    'micro',
+  )
 }
 
 async function createDeepLearnResponse(
@@ -1110,8 +1343,12 @@ function getDeepLearnSourceNote(
     ?? null
 }
 
-function buildDeepLearnStageStatusMessage(stage: DeepLearnStageKey, compact: boolean) {
-  const prefix = compact ? 'Generating compact reviewer sections' : 'Generating study pack sections'
+function buildDeepLearnStageStatusMessage(stage: DeepLearnStageKey, level: DeepLearnFallbackLevel) {
+  const prefix = level === 'micro'
+    ? 'Generating micro reviewer sections'
+    : level === 'compact'
+      ? 'Generating compact reviewer sections'
+      : 'Generating study pack sections'
   if (stage === 'high_yield') return `${prefix}: High-Yield First.`
   if (stage === 'identification') return `${prefix}: Identification Review.`
   if (stage === 'quick_answers') return `${prefix}: Quick-Answer Blocks.`
@@ -1127,7 +1364,12 @@ function buildDeepLearnStageFailureMessage(options: DeepLearnStageErrorOptions) 
   }[options.stage]
 
   if (options.kind === 'size') {
-    return `${stageLabel} exceeded the model response size limit during ${options.mode === 'compact' ? 'compact fallback' : 'normal generation'}.`
+    const levelLabel = options.level === 'micro'
+      ? 'micro fallback'
+      : options.level === 'compact'
+        ? 'compact fallback'
+        : 'normal generation'
+    return `${stageLabel} exceeded the model response size limit during ${levelLabel}.`
   }
 
   if (options.kind === 'timeout') {
@@ -1146,7 +1388,8 @@ function buildDeepLearnStageFailureMessage(options: DeepLearnStageErrorOptions) 
 }
 
 function buildDeepLearnIncompleteMessage(reason: string) {
-  const stageKey = reason.split(':')[0] as DeepLearnStageKey | undefined
+  const parts = reason.split(':')
+  const stageKey = (parts.length >= 3 ? parts[1] : parts[0]) as DeepLearnStageKey | undefined
   const stageLabel = stageKey
     ? {
         high_yield: 'High-Yield First',
