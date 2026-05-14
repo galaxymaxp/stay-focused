@@ -478,6 +478,7 @@ test('Deep Learn output token policy uses bounded 10000-token caps and clean stu
   assert.equal(error.message, DEEP_LEARN_OUTPUT_TOO_LARGE_MESSAGE)
   assert.equal(error.reason, 'max_output_tokens')
   assert.doesNotMatch(error.message, /max_output_tokens/i)
+  assert.doesNotMatch(error.message, /finish in one pass|Regenerate a shorter version/i)
 })
 
 test('buildDeepLearnPrompt compact retry enforces smaller output limits', () => {
@@ -616,6 +617,7 @@ test('staged Deep Learn generation saves a compact fallback when the full quick-
   assert.ok(result.content.answerBank.length >= 2)
   assert.ok(result.content.likelyQuizTargets.length >= 1)
   assert.ok(progress.some((item) => item.compactFallbackUsed && item.progress === 32))
+  assert.doesNotMatch(JSON.stringify(result), /finish in one pass|Regenerate a shorter version/i)
 })
 
 test('staged Deep Learn generation throws the clean too-large error only after compact fallback also exceeds limits', async () => {
@@ -643,7 +645,8 @@ test('staged Deep Learn generation throws the clean too-large error only after c
     ),
     (error: unknown) => {
       assert.ok(error instanceof DeepLearnGenerationIncompleteError)
-      assert.equal(error.message, DEEP_LEARN_OUTPUT_TOO_LARGE_MESSAGE)
+      assert.match(error.message, /compact study pack still exceeded/i)
+      assert.doesNotMatch(error.message, /finish in one pass|Regenerate a shorter version/i)
       assert.match(error.reason, /quick_answers:max_output_tokens|identification:max_output_tokens|distinctions:max_output_tokens/i)
       return true
     },

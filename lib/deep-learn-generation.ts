@@ -25,7 +25,7 @@ const DEFAULT_DEEP_LEARN_MODEL = 'gpt-5-mini'
 const MAX_GROUNDING_CHARS = 12000
 export const DEEP_LEARN_MAX_OUTPUT_TOKENS = 10000
 export const DEEP_LEARN_COMPACT_MAX_OUTPUT_TOKENS = 10000
-export const DEEP_LEARN_OUTPUT_TOO_LARGE_MESSAGE = 'This study output was too large to finish in one pass. Regenerate a shorter version.'
+export const DEEP_LEARN_OUTPUT_TOO_LARGE_MESSAGE = 'The compact study pack still exceeded the model response size limit.'
 const DEEP_LEARN_STAGE_TIMEOUT_MS = 120000
 
 const DEEP_LEARN_SYSTEM_PROMPT = [
@@ -382,7 +382,7 @@ export class DeepLearnGenerationIncompleteError extends Error {
   reason: string
 
   constructor(reason: string) {
-    super(DEEP_LEARN_OUTPUT_TOO_LARGE_MESSAGE)
+    super(buildDeepLearnIncompleteMessage(reason))
     this.name = 'DeepLearnGenerationIncompleteError'
     this.reason = reason
   }
@@ -1143,6 +1143,21 @@ function buildDeepLearnStageFailureMessage(options: DeepLearnStageErrorOptions) 
   }
 
   return `${stageLabel} failed during Deep Learn generation: ${options.reason}.`
+}
+
+function buildDeepLearnIncompleteMessage(reason: string) {
+  const stageKey = reason.split(':')[0] as DeepLearnStageKey | undefined
+  const stageLabel = stageKey
+    ? {
+        high_yield: 'High-Yield First',
+        identification: 'Identification Review',
+        quick_answers: 'Quick-Answer Blocks',
+        distinctions: 'Distinctions and Likely Quiz Targets',
+      }[stageKey]
+    : null
+  return stageLabel
+    ? `${DEEP_LEARN_OUTPUT_TOO_LARGE_MESSAGE} Stage: ${stageLabel}.`
+    : DEEP_LEARN_OUTPUT_TOO_LARGE_MESSAGE
 }
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, error: Error) {

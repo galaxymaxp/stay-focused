@@ -81,12 +81,13 @@ test('Deep Learn source card exposes only Study Pack Reviewer and Quiz actions',
   assert.doesNotMatch(source, /Quiz this/)
 })
 
-test('student-facing queue copy hides raw max_output_tokens diagnostics', () => {
+test('student-facing queue copy does not use old one-pass retry wording', () => {
   const queuePanel = readFileSync('components/shell/QueuePanel.tsx', 'utf8')
   const learnPage = readFileSync('app/modules/[id]/learn/page.tsx', 'utf8')
 
-  assert.match(queuePanel, /This study output was too large to finish in one pass\. Regenerate a shorter version\./)
-  assert.match(learnPage, /This study output was too large to finish in one pass\. Regenerate a shorter version\./)
+  assert.doesNotMatch(queuePanel, /This study output was too large to finish in one pass\. Regenerate a shorter version\./)
+  assert.doesNotMatch(learnPage, /This study output was too large to finish in one pass\. Regenerate a shorter version\./)
+  assert.match(queuePanel, /compact study pack still exceeded the model response size limit/i)
 })
 
 test('unsupported study output subtype stays visible with a safe subtitle', () => {

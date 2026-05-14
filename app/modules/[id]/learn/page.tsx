@@ -10,7 +10,7 @@ import { StudyResourceAccordionList } from '@/components/StudyResourceAccordionL
 import { classifyDeepLearnResourceReadiness } from '@/lib/deep-learn-readiness'
 import { listDeepLearnNotesForModule } from '@/lib/deep-learn-store'
 import { getDeepLearnResourceUiState } from '@/lib/deep-learn-ui'
-import { buildSavedLegacyPackState, findSavedLegacyStudyPack, isSavedLegacyStudyPackForModule, shouldTrustCompletedLearnQueueJob } from '@/lib/learn-card-state'
+import { buildLearnGenerationQueueState, buildSavedLegacyPackState, findSavedLegacyStudyPack, isSavedLegacyStudyPackForModule } from '@/lib/learn-card-state'
 import { buildModuleLearnOverview } from '@/lib/module-learn-overview'
 import { buildModuleOverviewFallback, getModuleSummary, listResourceSummaries } from '@/lib/source-summaries'
 import { getSourceReadinessBucket, normalizeSourceReadiness } from '@/lib/source-readiness'
@@ -135,7 +135,10 @@ export default async function LearnPage({ params, searchParams }: Props) {
     const queueJob = findLatestResourceJob(queuedJobs, deepLearnResourceId, material.resource.id, 'learn_generation')
     const extractionQueueJob = findLatestResourceJob(queuedJobs, deepLearnResourceId, material.resource.id, 'resource_extraction')
     const ocrQueueJob = findLatestResourceJob(queuedJobs, deepLearnResourceId, material.resource.id, 'source_ocr')
-    const queuedDeepLearn = buildDeepLearnQueueState(queueJob, Boolean(savedNote || savedLegacyDraft))
+    const queuedDeepLearn = buildLearnGenerationQueueState(queueJob, {
+      hasSavedPack: Boolean(savedNote || savedLegacyDraft),
+      savedPackUpdatedAt: savedNote?.updatedAt ?? savedLegacyDraft?.updatedAt ?? null,
+    })
     const queuedExtraction = buildResourceExtractionQueueState(extractionQueueJob)
     const queuedOcr = buildSourceOcrQueueState(ocrQueueJob)
     const sourceReadiness = normalizeSourceReadiness({
@@ -647,7 +650,7 @@ function buildDeepLearnAccordionState(
   notesAvailability: 'available' | 'unavailable',
   unavailableMessage: string | null,
   readiness: NonNullable<Parameters<typeof getDeepLearnResourceUiState>[3]>['readiness'],
-  queuedDeepLearn: ReturnType<typeof buildDeepLearnQueueState>,
+  queuedDeepLearn: ReturnType<typeof buildLearnGenerationQueueState>,
   savedLegacyDraft: DraftShelfItem | null,
   savedOutputHrefs: { reviewerHref: string | null; quizHref: string | null } | null,
 ) {
@@ -710,32 +713,6 @@ function findLatestResourceJob(jobs: QueuedJob[], canonicalResourceId: string | 
   }) ?? null
 }
 
-function buildDeepLearnQueueState(job: QueuedJob | null, hasSavedPack: boolean) {
-  if (!job) return null
-  const href = typeof job.result?.href === 'string' ? job.result.href : null
-  if (job.status === 'pending') {
-    return { status: 'pending' as const, summary: 'Added to queue.', primaryLabel: 'Added to queue', href: href ?? null, error: null }
-  }
-  if (job.status === 'running') {
-    return {
-      status: 'pending' as const,
-      summary: `Generating study pack... ${Math.max(0, Math.min(job.progress, 100))}%`,
-      primaryLabel: 'Generating study pack...',
-      href: href ?? null,
-      error: null,
-    }
-  }
-  if (job.status === 'completed') {
-    if (!shouldTrustCompletedLearnQueueJob(hasSavedPack)) return null
-    return { status: 'ready' as const, summary: 'Study pack ready.', primaryLabel: 'Open study pack', href, error: null }
-  }
-  if (job.status === 'failed') {
-    const error = cleanStudyPackQueueError(job.error)
-    return { status: 'failed' as const, summary: error, primaryLabel: 'Retry study pack', href: null, error }
-  }
-  return null
-}
-
 function buildSourceOcrQueueState(job: QueuedJob | null) {
   if (!job) return null
   const pageCount = getNumber(job.result, 'pageCount') ?? getNumber(job.payload, 'pageCount')
@@ -794,13 +771,12 @@ function getSourceGenerationStatusLabel(
   fallback: string,
   readiness: ReturnType<typeof classifyDeepLearnResourceReadiness>,
   queuedExtraction: ReturnType<typeof buildResourceExtractionQueueState>,
-  queuedDeepLearn: ReturnType<typeof buildDeepLearnQueueState>,
+  queuedDeepLearn: ReturnType<typeof buildLearnGenerationQueueState>,
   queuedOcr: ReturnType<typeof buildSourceOcrQueueState>,
 ) {
   if (queuedOcr?.label) return queuedOcr.label
   if (queuedExtraction?.label) return queuedExtraction.label
   if (queuedDeepLearn?.status === 'pending') return queuedDeepLearn.primaryLabel === 'Added to queue' ? 'Preparing' : 'Preparing'
-  if (queuedDeepLearn?.status === 'failed') return 'Failed'
   if (queuedDeepLearn?.status === 'ready') return 'Ready'
   if (!readiness.canGenerate && readiness.state === 'partial_text') return 'Needs more source text'
   if (!readiness.canGenerate) return fallback === 'Ready' ? 'Limited text' : fallback
@@ -811,12 +787,12 @@ function getSourceGenerationStatusMessage(
   fallback: string,
   readiness: ReturnType<typeof classifyDeepLearnResourceReadiness>,
   queuedExtraction: ReturnType<typeof buildResourceExtractionQueueState>,
-  queuedDeepLearn: ReturnType<typeof buildDeepLearnQueueState>,
+  queuedDeepLearn: ReturnType<typeof buildLearnGenerationQueueState>,
   queuedOcr: ReturnType<typeof buildSourceOcrQueueState>,
 ) {
   if (queuedOcr?.summary) return queuedOcr.summary
   if (queuedExtraction?.summary) return queuedExtraction.summary
-  if (queuedDeepLearn?.summary) return queuedDeepLearn.summary
+  if (queuedDeepLearn?.status === 'pending' || queuedDeepLearn?.status === 'ready') return queuedDeepLearn.summary
   if (!readiness.canGenerate && readiness.state === 'partial_text') {
     return 'This source does not have enough readable text to create a trustworthy study pack.'
   }
@@ -829,14 +805,4 @@ function getSourceGenerationStatusMessage(
 function getNumber(source: Record<string, unknown> | null, key: string) {
   const value = source?.[key]
   return typeof value === 'number' && Number.isFinite(value) ? value : null
-}
-
-function cleanStudyPackQueueError(error: string | null) {
-  const fallback = 'Study pack failed.'
-  if (!error) return fallback
-  const trimmed = error.replace(/\s+/g, ' ').trim()
-  if (/max_output_tokens/i.test(trimmed)) {
-    return 'This study output was too large to finish in one pass. Regenerate a shorter version.'
-  }
-  return trimmed || fallback
 }

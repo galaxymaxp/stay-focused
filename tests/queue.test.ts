@@ -410,7 +410,7 @@ test('learn generation queue uses staged progress updates and compact fallback c
   assert.match(generationSource, /fullProgress:\s*40/)
   assert.match(generationSource, /fullProgress:\s*55/)
   assert.match(generationSource, /fullProgress:\s*70/)
-  assert.match(queueSource, /Generated a compact study pack because the source was long\./)
+  assert.match(queueSource, /Compact study pack ready\./)
 })
 
 test('Canvas resource preservation keeps meaningful extracted text when incoming sync is weak', () => {

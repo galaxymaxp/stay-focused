@@ -1,11 +1,15 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import {
+  buildLearnGenerationQueueState,
   buildSavedLegacyPackState,
+  cleanStudyPackQueueError,
   findSavedLegacyStudyPack,
   isSavedLegacyStudyPackForModule,
   shouldTrustCompletedLearnQueueJob,
 } from '../lib/learn-card-state'
+import type { QueuedJob } from '../lib/queue'
 import type { DraftShelfItem } from '../lib/types'
 
 test('current-user library empty plus extracted source does not create a saved study pack state', () => {
@@ -120,6 +124,65 @@ test('failed or non-resource draft does not count as a saved study pack', () => 
   assert.equal(isSavedLegacyStudyPackForModule(taskDraft, 'module-current', 'course-current'), false)
 })
 
+test('failed Deep Learn attempt stays separate from readable source readiness copy', () => {
+  const state = buildLearnGenerationQueueState(createJob({
+    id: 'learn-failed',
+    status: 'failed',
+    error: 'Provider returned malformed structured output.',
+    completedAt: '2026-05-14T08:00:00.000Z',
+  }), {
+    hasSavedPack: false,
+  })
+
+  assert.equal(state?.status, 'failed')
+  assert.equal(state?.primaryLabel, 'Regenerate Study Pack')
+  assert.equal(state?.error, 'Provider returned malformed structured output.')
+  assert.notEqual(state?.summary, 'Failed')
+})
+
+test('successful retry supersedes an older failed Deep Learn queue item', () => {
+  const staleFailed = createJob({
+    id: 'learn-old-failed',
+    status: 'failed',
+    error: 'The compact study pack still exceeded the model response size limit.',
+    completedAt: '2026-05-14T08:00:00.000Z',
+  })
+
+  const state = buildLearnGenerationQueueState(staleFailed, {
+    hasSavedPack: true,
+    savedPackUpdatedAt: '2026-05-14T08:05:00.000Z',
+  })
+
+  assert.equal(state, null)
+})
+
+test('new generation queue item is not blocked by an old failed attempt', () => {
+  const state = buildLearnGenerationQueueState(createJob({
+    id: 'learn-new-pending',
+    status: 'pending',
+    createdAt: '2026-05-14T08:10:00.000Z',
+  }), {
+    hasSavedPack: false,
+  })
+
+  assert.equal(state?.status, 'pending')
+  assert.equal(state?.summary, 'Added to queue.')
+})
+
+test('old one-pass too-large wording is not returned for queue errors', () => {
+  const message = cleanStudyPackQueueError('max_output_tokens')
+
+  assert.match(message, /compact study pack still exceeded/i)
+  assert.doesNotMatch(message, /finish in one pass|Regenerate a shorter version/i)
+})
+
+test('Learn page does not turn source readiness label into Failed for study-pack failures', () => {
+  const source = readFileSync('app/modules/[id]/learn/page.tsx', 'utf8')
+
+  assert.doesNotMatch(source, /queuedDeepLearn\?\.status === 'failed'\) return 'Failed'/)
+  assert.match(source, /queuedDeepLearn\?\.status === 'pending' \|\| queuedDeepLearn\?\.status === 'ready'/)
+})
+
 function createDraftShelfItem(overrides: Partial<DraftShelfItem> = {}): DraftShelfItem {
   return {
     id: 'draft-1',
@@ -141,5 +204,38 @@ function createDraftShelfItem(overrides: Partial<DraftShelfItem> = {}): DraftShe
     quizReady: false,
     summary: null,
     ...overrides,
+  }
+}
+
+function createJob(input: {
+  id: string
+  status: QueuedJob['status']
+  error?: string | null
+  createdAt?: string
+  updatedAt?: string
+  completedAt?: string | null
+}): QueuedJob {
+  return {
+    id: input.id,
+    userId: 'user-current',
+    type: 'learn_generation',
+    title: 'Generating study pack: Source',
+    status: input.status,
+    progress: input.status === 'running' ? 55 : 0,
+    payload: {
+      resourceId: 'resource-current',
+      resourceTitle: 'Source',
+    },
+    result: null,
+    error: input.error ?? null,
+    attempts: 0,
+    maxAttempts: 3,
+    createdAt: input.createdAt ?? '2026-05-14T08:00:00.000Z',
+    updatedAt: input.updatedAt ?? input.createdAt ?? '2026-05-14T08:00:00.000Z',
+    startedAt: null,
+    completedAt: input.completedAt ?? null,
+    dismissedAt: null,
+    cancelRequestedAt: null,
+    canceledAt: null,
   }
 }

@@ -615,7 +615,9 @@ function getCompletedTitle(job: QueuedJob) {
   if (job.type === 'canvas_sync') return 'Canvas sync complete'
   if (job.type === SOURCE_OCR_JOB_TYPE) return 'Scanned PDF prepared'
   if (job.type === RESOURCE_EXTRACTION_JOB_TYPE) return 'Source prepared'
-  if (job.type === 'learn_generation') return 'Study pack ready'
+  if (job.type === 'learn_generation') return getString(job.result, 'compactFallbackUsed') === 'true' || job.result?.compactFallbackUsed === true
+    ? 'Compact study pack ready'
+    : 'Study pack ready'
   if (job.type === 'task_output' || job.type === 'do_generation') return 'Activity ready'
   return 'Job complete'
 }
@@ -673,7 +675,7 @@ function humanizeError(error: string | null) {
   const trimmed = error.replace(/\s+/g, ' ').trim()
   if (!trimmed) return fallback
   if (/max_output_tokens/i.test(trimmed)) {
-    return 'This study output was too large to finish in one pass. Regenerate a shorter version.'
+    return 'The compact study pack still exceeded the model response size limit. Try generating it again.'
   }
   return trimmed.length > 150 ? `${trimmed.slice(0, 147).trim()}...` : trimmed
 }

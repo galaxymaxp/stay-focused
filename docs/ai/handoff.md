@@ -5,6 +5,77 @@ Last Updated: 2026-05-14
 
 ---
 
+## Session Update - 2026-05-14 (Fix Deep Learn fallback and retry failure state)
+
+### What changed
+
+- Removed the active Deep Learn path that surfaced the old one-pass retry wording for long readable sources.
+- Kept staged generation behavior, but compact fallback failures now report a compact-size/stage-specific error instead of telling students to regenerate a shorter version before fallback has had a chance to succeed.
+- Added shared Learn-card queue state handling so a failed study-pack generation attempt is separate from source extraction/readiness.
+- Changed Learn source status logic so a readable source can remain `Ready` while the card separately says the last study-pack attempt failed.
+- Starting or retrying generation still saves a pending `deep_learn_notes` row with `errorMessage: null`; a successful retry supersedes older failed queue state on the card.
+- Queue completion for compact fallback now uses `Compact study pack ready.` and the queue title can show `Compact study pack ready`.
+- Regenerate button copy now uses `Regenerate Study Pack` after a failed study-pack attempt.
+- Added regression coverage for compact fallback success, old failure copy removal, stale failed queue-state clearing, source readiness not becoming failed, and old failed queue items not blocking a new pending attempt.
+
+### Files touched
+
+- `actions/queue-jobs.ts`
+- `app/modules/[id]/learn/page.tsx`
+- `components/StudyResourceAccordionList.tsx`
+- `components/shell/QueuePanel.tsx`
+- `lib/deep-learn-generation.ts`
+- `lib/learn-card-state.ts`
+- `tests/deep-learn-generation.test.ts`
+- `tests/learn-card-state.test.ts`
+- `tests/queue.test.ts`
+- `tests/study-library.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+The latest deployment still showed a long-source one-pass failure for `1. Intro-To-IT-Security.pdf`, even though the source was readable and eligible for Deep Learn. The visible bug had two parts: compact fallback was still mapped to old one-pass copy on size failure, and the Learn source card let a failed generation queue job override source readiness, making the PDF itself look failed. This pass makes fallback/result copy match the actual staged flow and keeps source readiness independent from study-pack generation status.
+
+### Tests run
+
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- deep-learn-generation deep-learn-readiness queue canvas-content-resolution learn-resource-ui` - passed
+- `npm test -- study-output-reviewer study-output-sheet study-output-quiz-pack study-output-print` - passed
+- `npm test -- task-output task-output-foundation` - passed
+- `npm test -- deep-learn-generation learn-card-state study-library queue` - passed as an additional targeted regression run
+
+### Verification result
+
+- Passed all requested verification commands.
+- Verified staged compact fallback can complete after a full stage hits `max_output_tokens`.
+- Verified compact fallback success does not return the old one-pass retry wording.
+- Verified a failed Deep Learn attempt followed by a later saved pack clears stale failed card state.
+- Verified a readable source is not labeled failed just because the last Study Pack attempt failed.
+- Verified old failed queue jobs do not block a new pending generation state.
+
+### Known risks
+
+- Live provider behavior can still fail if compact fallback itself times out, returns malformed structured JSON, or repeatedly exceeds provider limits.
+- Manual production QA is still needed on the actual `1. Intro-To-IT-Security.pdf` source to confirm the compact reviewer content quality and exact UI copy in the deployed account.
+- The current test runner executes the full test suite even when file name filters are passed through `npm test -- ...`; this is noisy but all runs passed.
+
+### Blockers
+
+- No code blocker remains.
+
+### Next recommended step
+
+Deploy and run authenticated manual QA on `1. Intro-To-IT-Security.pdf`: generate the Study Pack from the Ready source card, confirm queue progress advances through staged sections, confirm a compact pack saves/opens if fallback is needed, and confirm the source card stays `Ready` if a generation attempt fails.
+
+### Suggested commit message
+
+```bash
+fix deep learn fallback and retry failure state
+```
+
+---
+
 ## Session Update - 2026-05-14 (Fix Deep Learn long-source staged fallback)
 
 ### What changed
@@ -222,7 +293,7 @@ fix task generation grounding and deep learn queue failures
   - first pass uses the normal bounded Study Pack contract
   - retry pass asks for fewer sections/items
   - server logs preserve the raw `max_output_tokens` diagnostic
-  - student-facing queue/source-card copy uses: `This study output was too large to finish in one pass. Regenerate a shorter version.`
+  - student-facing queue/source-card copy previously used a generic too-large retry message
 - Tightened Study Pack prompt structure around:
   - `Source Summary`
   - `Big Picture`

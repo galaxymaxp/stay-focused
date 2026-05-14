@@ -258,7 +258,7 @@ export function StudyResourceAccordionList({
                         {item.deepLearnNoteFailure}
                       </p>
                       <p style={{ margin: '0.35rem 0 0', fontSize: '12px', lineHeight: 1.55, color: 'var(--text-muted)' }}>
-                        Add more readable source text, prepare OCR if it is scanned, or retry after checking the source.
+                        The source can still be ready even when the last study pack attempt fails. Retry generation or check the source if this keeps happening.
                       </p>
                     </div>
                   )}
@@ -292,7 +292,7 @@ export function StudyResourceAccordionList({
                         moduleId={item.moduleId}
                         resourceId={item.canonicalResourceId ?? item.id}
                         courseId={item.courseId ?? null}
-                        label="Generate Study Pack"
+                        label={item.deepLearnStatus === 'failed' ? item.deepLearnPrimaryLabel ?? 'Regenerate Study Pack' : 'Generate Study Pack'}
                         disabledReason={item.deepLearnDisabledReason}
                         resourceTitle={item.title}
                       />

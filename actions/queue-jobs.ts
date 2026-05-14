@@ -1263,7 +1263,7 @@ async function processLearnGenerationJob(input: {
       resourceTitle: resource.title,
       href: resultHref,
       statusMessage: generated.compactFallbackUsed
-        ? 'Generated a compact study pack because the source was long.'
+        ? 'Compact study pack ready.'
         : 'Study pack ready.',
       compactFallbackUsed: generated.compactFallbackUsed,
     })
