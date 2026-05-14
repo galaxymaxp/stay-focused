@@ -478,6 +478,10 @@ export interface StudyOutputQuizPackItem {
   matchingPrompt?: string | null
   matchingAnswer?: string | null
   truthValue?: boolean | null
+  sourceUnitId?: string | null
+  sourceExcerpt?: string | null
+  confidence?: number | null
+  generationMethod?: 'source_map_identification' | 'source_map_mcq' | 'legacy_study_pack' | null
 }
 
 export interface StudyOutputQuizPackContent {

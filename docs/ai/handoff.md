@@ -5,6 +5,88 @@ Last Updated: 2026-05-15
 
 ---
 
+## Session Update - 2026-05-15 (Build Source Map Quiz Foundation)
+
+### What changed
+
+- Rebuilt saved Quiz Pack generation around normalized Source Map quiz units when a valid `sourceGrounding.sourceMap` exists.
+- Added `NormalizedQuizSourceUnit` as the deterministic quiz intermediate layer with title, normalized stem/answer, aliases, source excerpt, source type, confidence, and keyword tags.
+- Made Source Map quiz output Phase 3.1-only:
+  - deterministic Multiple Choice
+  - deterministic Identification
+  - no matching, true/false expansion, essay/open response, adaptive difficulty, internet fallback, or invented distractors
+- Made Source Map quiz generation use reviewer-shaped answers from `buildReviewerContentFromSourceMap` before falling back to raw Source Map summaries.
+- Added internal quiz item grounding fields:
+  - `sourceUnitId`
+  - `sourceExcerpt`
+  - `confidence`
+  - `generationMethod`
+- Preserved complete list answers for source-listed domains, malware types, taxonomies, and other enumerations.
+- Added deterministic MCQ safety gates:
+  - high-confidence units only
+  - concise answers or safe list-membership categories only
+  - distractors derived only from neighboring Source Map units
+  - no duplicate choices
+  - no answer duplicated as a distractor
+  - weak OCR/debug/metadata text rejected
+- Kept legacy Study Pack quiz item fallback only for old notes that do not carry a Source Map. If a Source Map exists but is weak/invalid, Quiz does not fall back to stale note arrays.
+
+### Architecture reasoning
+
+Reviewer output is now treated as the canonical normalized learning layer for Quiz. The quiz builder first validates the saved `AcademicSourceMap`, then joins each source unit to reviewer-shaped high-yield answers. That keeps quiz wording grounded in the selected academic source while avoiding direct raw extraction blobs where reviewer shaping already exists. Invalid Source Maps intentionally return no quiz items instead of falling back to old answer-bank or module context, preventing stale or metadata-only leakage.
+
+### Files touched
+
+- `lib/study-outputs/quiz-pack.ts`
+- `lib/types.ts`
+- `tests/study-output-quiz-pack.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Phase 3.1 moves Quiz onto the same Source Map + Reviewer foundation that now powers the Reviewer page. The previous Quiz Pack builder still mixed legacy Deep Learn quiz arrays with matching and true/false generation. This pass narrows quiz generation to deterministic, source-grounded Multiple Choice and Identification while preserving existing save/render flows.
+
+### Tests run
+
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- study-output-quiz-pack` - passed
+- `npm test -- deep-learn-generation study-output-reviewer study-output-quiz-pack` - passed
+- `npm test -- quiz source-map reviewer` - passed
+
+### Verification result
+
+- Passed all requested verification commands.
+- Verified deterministic MCQ generation from Source Map units.
+- Verified duplicate distractors are prevented and the correct answer appears only once.
+- Verified complete Domains of IT Security and Malware Types lists are preserved.
+- Verified identification prompts use direct course-like `Define` / `Identify` forms.
+- Verified OCR garbage and metadata/debug labels do not enter quiz output.
+- Verified invalid Source Maps block quiz generation instead of using stale legacy note arrays.
+- Verified IT Security Source Map reviewer content flows into Quiz Pack generation.
+
+### Known risks
+
+- Source Map MCQs currently favor safe list-membership category questions when definition answers are too long for reliable MCQ distractors. This is conservative but may feel less varied until later phases add richer deterministic distractor strategies.
+- Legacy non-Source Map notes still use the old Deep Learn quiz item fallback, but matching and true/false are no longer added by the saved Quiz Pack builder.
+- The Study Output Quiz UI still renders existing source wording/source basis lines; the new internal grounding metadata is not rendered.
+
+### Blockers
+
+- No blocker remains.
+
+### Next recommended phase
+
+Phase 3.2 should expand deterministic quiz coverage with richer Source Map item families, especially safe term-definition MCQs, formula-group handling, and optional matching type only after complete-list and distractor safety rules are stable.
+
+### Suggested commit message
+
+```bash
+build source-map quiz foundation
+```
+
+---
+
 ## Session Update - 2026-05-15 (Polish Source Map Completeness)
 
 ### What changed

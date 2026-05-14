@@ -1,11 +1,17 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { buildDeepLearnNoteRecord } from '../lib/deep-learn'
-import { buildDeepLearnQuizPackContent, buildQuizPackItems, getDeepLearnQuizPackReadiness } from '../lib/study-outputs/quiz-pack'
+import { buildAcademicSourceMap } from '../lib/deep-learn-source-map'
+import {
+  buildDeepLearnQuizPackContent,
+  buildNormalizedQuizSourceUnits,
+  buildQuizPackItems,
+  getDeepLearnQuizPackReadiness,
+} from '../lib/study-outputs/quiz-pack'
 import type { DeepLearnNote, DeepLearnWordingSet } from '../lib/types'
 
-test('quiz pack generation builds deterministic mixed question types from a ready Deep Learn pack', () => {
-  const note = createNote()
+test('quiz pack generation builds deterministic Source Map multiple choice and identification items', () => {
+  const note = createItSecuritySourceMapNote()
 
   const first = buildDeepLearnQuizPackContent(note)
   const second = buildDeepLearnQuizPackContent(note)
@@ -14,11 +20,12 @@ test('quiz pack generation builds deterministic mixed question types from a read
   assert.deepEqual(first.items, second.items)
   assert.ok(first.items.some((item) => item.type === 'multiple_choice'))
   assert.ok(first.items.some((item) => item.type === 'identification'))
-  assert.ok(first.items.some((item) => item.type === 'matching'))
-  assert.ok(first.items.some((item) => item.type === 'true_false'))
+  assert.ok(first.items.every((item) => item.type === 'multiple_choice' || item.type === 'identification'))
+  assert.ok(first.items.every((item) => item.sourceUnitId && item.sourceExcerpt && item.confidence && item.generationMethod))
   assert.ok(first.questionCountOptions.length > 0)
   assert.ok(first.items.length <= 15)
   assert.doesNotMatch(first.title, /Quiz Pack/)
+  assert.doesNotMatch(JSON.stringify(first.items), /according to the source|metadata|debug|ocr garbage/i)
 })
 
 test('blocked pending and failed notes cannot make quiz packs', () => {
@@ -32,12 +39,14 @@ test('blocked pending and failed notes cannot make quiz packs', () => {
 })
 
 test('quiz pack builder keeps distractor generation deterministic and grounded', () => {
-  const items = buildQuizPackItems(createNote())
+  const items = buildQuizPackItems(createItSecuritySourceMapNote())
   const mcq = items.find((item) => item.type === 'multiple_choice')
 
   assert.ok(mcq)
   assert.deepEqual(mcq?.choices, [...(mcq?.choices ?? [])].sort((left, right) => left.localeCompare(right)))
   assert.ok((mcq?.choices ?? []).includes(mcq?.answer ?? ''))
+  assert.equal(new Set(mcq?.choices.map(normalizeLookup)).size, mcq?.choices.length)
+  assert.equal((mcq?.choices ?? []).filter((choice) => normalizeLookup(choice) === normalizeLookup(mcq?.answer ?? '')).length, 1)
 })
 
 test('metadata-only source grounding is rejected before quiz pack generation', () => {
@@ -59,13 +68,116 @@ test('metadata-only source grounding is rejected before quiz pack generation', (
 })
 
 test('quiz pack items do not leak debug or metadata labels', () => {
-  const items = buildQuizPackItems(createNote())
+  const items = buildQuizPackItems(createItSecuritySourceMapNote())
   const combined = items.map((item) => `${item.prompt} ${item.answer} ${item.explanation}`).join(' ')
 
   assert.doesNotMatch(combined, /\bfile title\b/i)
   assert.doesNotMatch(combined, /\bgrounding strategy used\b/i)
   assert.doesNotMatch(combined, /\bsource type of the file\b/i)
   assert.doesNotMatch(combined, /\banswer-ready fact\b|\bcompact answer unit\b|\bpreserved for direct recall\b/i)
+})
+
+test('normalized quiz source units preserve complete Source Map lists', () => {
+  const units = buildNormalizedQuizSourceUnits(createItSecuritySourceMapNote())
+  const answerFor = (title: string) => {
+    const unit = units.find((item) => item.title === title)
+    assert.ok(unit, `missing ${title}`)
+    return unit.normalizedAnswer
+  }
+
+  const domains = answerFor('Domains of IT Security')
+  for (const item of ['Network Security', 'Internet Security', 'Endpoint Security', 'Cloud Security', 'Application Security', 'Information Security', 'Operational Security', 'Mobile Security', 'IoT Security', 'User Education', 'Cyber Security']) {
+    assert.match(domains, new RegExp(item.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+  }
+
+  const malware = answerFor('Malware Types')
+  for (const item of ['Spyware', 'Adware', 'Bot', 'Rootkit', 'Scareware', 'Ransomware', 'Virus', 'Trojan Horse', 'Worm', 'MiTM']) {
+    assert.match(malware, new RegExp(item.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+  }
+})
+
+test('Source Map identification questions use direct course-like stems', () => {
+  const items = buildQuizPackItems(createItSecuritySourceMapNote())
+  const identification = items.filter((item) => item.type === 'identification')
+
+  assert.ok(identification.length >= 5)
+  assert.ok(identification.some((item) => /^Define\b/.test(item.prompt)))
+  assert.ok(identification.some((item) => /^Identify\b/.test(item.prompt)))
+  assert.ok(identification.every((item) => !/according to the source|debug|metadata/i.test(item.prompt)))
+})
+
+test('Source Map MCQs prevent duplicate distractors and answer duplication', () => {
+  const items = buildQuizPackItems(createItSecuritySourceMapNote())
+  const mcqs = items.filter((item) => item.type === 'multiple_choice')
+
+  assert.ok(mcqs.length >= 1)
+  for (const item of mcqs) {
+    const normalizedChoices = item.choices.map(normalizeLookup)
+    assert.equal(new Set(normalizedChoices).size, item.choices.length)
+    assert.equal(normalizedChoices.filter((choice) => choice === normalizeLookup(item.answer)).length, 1)
+    assert.ok(item.choices.every((choice) => !/joke|none of the above|all of the above/i.test(choice)))
+  }
+})
+
+test('Source Map quiz generation rejects weak OCR garbage units', () => {
+  const sourceMap = buildAcademicSourceMap(IT_SECURITY_SOURCE)
+  sourceMap.units.unshift({
+    id: 'ocr-garbage',
+    title: 'Sent to a host or application and the receiver',
+    kind: 'concept',
+    summary: 'OCR garbage 29384 ### receiver unable handle it',
+    items: [],
+    sourceQuotes: ['OCR garbage 29384 ### receiver unable handle it'],
+    importanceScore: 100,
+    confidence: 0.95,
+  })
+  const items = buildQuizPackItems(createItSecuritySourceMapNote({ sourceGrounding: { ...createItSecuritySourceMapNote().sourceGrounding, sourceMap } }))
+  const combined = JSON.stringify(items)
+
+  assert.doesNotMatch(combined, /Sent to a host|OCR garbage|29384|receiver unable/i)
+})
+
+test('weak Source Map blocks quiz generation instead of falling back to stale note arrays', () => {
+  const note = createNote({
+    sourceGrounding: {
+      ...createNote().sourceGrounding,
+      sourceTextQuality: 'meaningful',
+      sourceMap: {
+        version: 'academic-source-map-v1',
+        normalizedText: 'file title: Intro to IT Security\nuuid: 123e4567-e89b-12d3-a456-426614174000',
+        chunks: [],
+        units: [{
+          id: 'weak-source',
+          title: 'File Title',
+          kind: 'concept',
+          summary: 'Intro to IT Security',
+          items: [],
+          sourceQuotes: [],
+          importanceScore: 100,
+          confidence: 0.95,
+        }],
+        duplicateFragmentsRemoved: 0,
+        validation: { ok: false, reason: 'missing_quotes', unitCount: 1, quoteCount: 0 },
+      },
+    },
+  })
+
+  const readiness = getDeepLearnQuizPackReadiness(note)
+  assert.equal(buildQuizPackItems(note).length, 0)
+  assert.equal(readiness.ok, false)
+  assert.equal(readiness.reason, 'empty')
+})
+
+test('IT Security reviewer Source Map flows into quiz generation', () => {
+  const items = buildQuizPackItems(createItSecuritySourceMapNote())
+  const combined = JSON.stringify(items)
+
+  assert.ok(items.length >= 5)
+  assert.match(combined, /IT Security/)
+  assert.match(combined, /Cybersecurity/)
+  assert.match(combined, /Domains of IT Security/)
+  assert.match(combined, /Malware Types/)
+  assert.doesNotMatch(combined, /InfoSec.*Domains of IT Security.*Cybersecurity definitions/i)
 })
 
 test('quiz pack definition answers preserve source wording and source basis', () => {
@@ -247,3 +359,45 @@ function wording(examSafe: string): DeepLearnWordingSet {
     simplified: null,
   }
 }
+
+function createItSecuritySourceMapNote(overrides: Partial<DeepLearnNote> = {}): DeepLearnNote {
+  return createNote({
+    title: 'Intro to IT Security Reviewer',
+    overview: 'Definitions, domains, threats, malware, and response concepts for IT security.',
+    sourceGrounding: {
+      sourceType: 'PDF',
+      extractionQuality: 'usable',
+      sourceTextQuality: 'meaningful',
+      groundingStrategy: 'stored_extract',
+      usedAiFallback: false,
+      qualityReason: null,
+      warning: null,
+      charCount: IT_SECURITY_SOURCE.length,
+      sourceMap: buildAcademicSourceMap(IT_SECURITY_SOURCE),
+    },
+    ...overrides,
+  })
+}
+
+function normalizeLookup(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+}
+
+const IT_SECURITY_SOURCE = [
+  'Intro to IT Security Module 1',
+  'What is IT Security • A set of cyber security strategies that prevent unauthorized access • Focuses on protecting organizational assets against cyberattacks and other threats • InfoSec - processes and tools designed to protect sensitive business information • IT Sec - securing digital data through computer network security',
+  'Goal of IT Security 1. Confidentiality 2. Integrity 3. Availability',
+  'Domains of IT Security 1. Network Security 2. Internet Security 3. Endpoint Security 4. Cloud Security 5. Application Security 6. Information Security 7. Operational Security 8. Mobile Security 9. IoT Security 10. User Education 11. Cyber Security',
+  'What is Cybersecurity? • Protection of networked systems and data from unauthorized use or harm • Refers to techniques used to protect the integrity of an organization security architecture and safeguard its data against attack, damage, or unauthorized access',
+  'Importance of cybersecurity • Increasingly sophisticated attacks • Widely available hacking tools • Compliance • Rising cost of breaches • Strategic board-level concern • Cyber crime is big business',
+  'Challenges of Cybersecurity • Internet of Things • Rapidly Evolving Risks • Big and Confidential Data • Organized and State-sponsored Hacker Groups • Remote Working • High-speed Internet • BYOD',
+  'Types of Attackers Insiders • Employees and ex-employees • Contract Staff • Trusted Partners Outsiders Organized Attackers • Cyber Criminals • Hacktivists • Terrorists • State-sponsored Hackers • Black hats • Grey hats • White hats Amateurs',
+  'Definition of Terms • Vulnerability - Weaknesses or flaws in the hardware or software • Exploit - Method or tools used to take advantage vulnerability • Breach - Successful exploit if vulnerability',
+  'Types of Cybersecurity Threats • Cybercrime - Efforts by bad actors to profit from their malicious attacks • Disruption - Attempts to disrupt operations by attacking IT and operational technology infrastructure • Espionage - Attacks backed by state agencies as part of espionage and military activity',
+  'Types of Malware • Spyware • Adware • Bot • Rootkit • Scareware • Ransomware • Virus • Trojan Horse • Worm • MiTM',
+  'Symptoms of Malware • There is an increase in CPU usage • There is a decrease in computer speed • The computer freezes or crashes often • There is a decrease in Web browsing speed • There are unexplainable problems with network connections • Files are modified • Files are deleted • There is a presence of unknown files, programs, or desktop icons • There are unknown processes running • Email is being sent without the user knowledge or consent',
+  'Methods of Infiltration 1. Social Engineering • Pretexting • Tailgating • Phishing • Smishing • Vishing 2. Password Cracking • Brute-force • Network Sniffing • Social Engineering 3. Vulnerability Exploitation 4. Advanced Persistent Threats',
+  'Methods to Deny Service • Overwhelm quantity of traffic • Send enormous quantity of data at a rate that cannot be handled • Maliciously formatted packets • Zombie - Infected Host • Botnet - Network of Infected Hosts • SEO Poisoning - Increase traffic to malicious websites',
+  'Blended Attacks • Uses multiple techniques to compromise a target • Uses a hybrid of worms, Trojan horses, spyware, keyloggers, spam, and phishing schemes • DDoS combined with phishing emails',
+  'Impact Reduction • Communicate the Issue • Be sincere and accountable • Provide details • Understand the cause of the breach • Ensure all systems are clean • Educate employees, partners, and customers',
+].join('\n')
