@@ -26,6 +26,7 @@ const MAX_GROUNDING_CHARS = 12000
 export const DEEP_LEARN_MAX_OUTPUT_TOKENS = 10000
 export const DEEP_LEARN_COMPACT_MAX_OUTPUT_TOKENS = 10000
 export const DEEP_LEARN_OUTPUT_TOO_LARGE_MESSAGE = 'This study output was too large to finish in one pass. Regenerate a shorter version.'
+const DEEP_LEARN_STAGE_TIMEOUT_MS = 120000
 
 const DEEP_LEARN_SYSTEM_PROMPT = [
   'You create saved Deep Learn Study Packs from academic source material.',
@@ -154,6 +155,126 @@ const DEEP_LEARN_RESPONSE_SCHEMA = {
   },
 } as const
 
+function getDeepLearnStageDefinitions(): DeepLearnStageDefinition[] {
+  return [
+    {
+      key: 'high_yield',
+      schemaName: 'deep_learn_high_yield_stage',
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['title', 'overview', 'sections'],
+        properties: {
+          title: { type: 'string' },
+          overview: { type: 'string' },
+          sections: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['heading', 'body'],
+              properties: {
+                heading: { type: 'string' },
+                body: { type: 'string' },
+              },
+            },
+          },
+        },
+      },
+      fullMaxOutputTokens: 2800,
+      compactMaxOutputTokens: 1800,
+      fullProgress: 40,
+      compactProgress: 42,
+    },
+    {
+      key: 'identification',
+      schemaName: 'deep_learn_identification_stage',
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['sections', 'identificationItems'],
+        properties: {
+          sections: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['heading', 'body'],
+              properties: {
+                heading: { type: 'string' },
+                body: { type: 'string' },
+              },
+            },
+          },
+          identificationItems: identificationItemsSchema(),
+        },
+      },
+      fullMaxOutputTokens: 3200,
+      compactMaxOutputTokens: 2200,
+      fullProgress: 55,
+      compactProgress: 57,
+    },
+    {
+      key: 'quick_answers',
+      schemaName: 'deep_learn_quick_answers_stage',
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['sections', 'answerBank'],
+        properties: {
+          sections: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['heading', 'body'],
+              properties: {
+                heading: { type: 'string' },
+                body: { type: 'string' },
+              },
+            },
+          },
+          answerBank: answerBankSchema(),
+        },
+      },
+      fullMaxOutputTokens: 4200,
+      compactMaxOutputTokens: 2600,
+      fullProgress: 70,
+      compactProgress: 72,
+    },
+    {
+      key: 'distinctions',
+      schemaName: 'deep_learn_distinctions_stage',
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['sections', 'distinctions', 'likelyQuizTargets', 'cautionNotes'],
+        properties: {
+          sections: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['heading', 'body'],
+              properties: {
+                heading: { type: 'string' },
+                body: { type: 'string' },
+              },
+            },
+          },
+          distinctions: distinctionsSchema(),
+          likelyQuizTargets: likelyQuizTargetsSchema(),
+          cautionNotes: cautionNotesSchema(),
+        },
+      },
+      fullMaxOutputTokens: 2600,
+      compactMaxOutputTokens: 1800,
+      fullProgress: 80,
+      compactProgress: 80,
+    },
+  ]
+}
+
 export interface DeepLearnGenerationContext {
   module: Module
   courseName: string
@@ -166,6 +287,7 @@ export interface DeepLearnGenerationResult {
   content: DeepLearnGeneratedContent
   sourceGrounding: DeepLearnSourceGrounding
   refreshedResource: ModuleResource | null
+  compactFallbackUsed: boolean
 }
 
 interface DeepLearnPreparedBinaryInput {
@@ -181,6 +303,60 @@ interface DeepLearnPreparedGrounding {
   sourceGrounding: DeepLearnSourceGrounding
   refreshedResource: ModuleResource | null
   scanFallbackInput: DeepLearnPreparedBinaryInput | null
+}
+
+interface DeepLearnPromptInput extends DeepLearnGenerationContext {
+  promptGrounding: string
+  sourceGrounding: DeepLearnSourceGrounding
+  generationMode: 'text' | 'scan_fallback'
+}
+
+interface DeepLearnGenerationProgressUpdate {
+  progress: number
+  statusMessage: string
+  stage: 'compacting_source' | 'high_yield' | 'identification' | 'quick_answers' | 'distinctions' | 'compact_fallback'
+  compactFallbackUsed?: boolean
+}
+
+interface DeepLearnResponseLike {
+  status?: string | null
+  output_text?: string | null
+  incomplete_details?: {
+    reason?: string | null
+  } | null
+}
+
+interface DeepLearnResponseRequest {
+  grounding: DeepLearnPreparedGrounding
+  promptText: string
+  maxOutputTokens: number
+  schemaName: string
+  schema: Record<string, unknown>
+}
+
+type DeepLearnResponseCreator = (request: DeepLearnResponseRequest) => Promise<DeepLearnResponseLike>
+
+interface DeepLearnGenerationOptions {
+  onProgress?: (update: DeepLearnGenerationProgressUpdate) => Promise<void> | void
+}
+
+type DeepLearnStageKey = 'high_yield' | 'identification' | 'quick_answers' | 'distinctions'
+
+interface DeepLearnStageDefinition {
+  key: DeepLearnStageKey
+  schemaName: string
+  schema: Record<string, unknown>
+  fullMaxOutputTokens: number
+  compactMaxOutputTokens: number
+  fullProgress: number
+  compactProgress: number
+}
+
+interface DeepLearnStageErrorOptions {
+  stage: DeepLearnStageKey
+  reason: string
+  mode: 'full' | 'compact'
+  kind: 'size' | 'timeout' | 'provider' | 'invalid_json' | 'empty'
 }
 
 export class DeepLearnGenerationBlockedError extends Error {
@@ -212,6 +388,22 @@ export class DeepLearnGenerationIncompleteError extends Error {
   }
 }
 
+class DeepLearnGenerationStageError extends Error {
+  stage: DeepLearnStageKey
+  reason: string
+  mode: 'full' | 'compact'
+  kind: 'size' | 'timeout' | 'provider' | 'invalid_json' | 'empty'
+
+  constructor(options: DeepLearnStageErrorOptions) {
+    super(buildDeepLearnStageFailureMessage(options))
+    this.name = 'DeepLearnGenerationStageError'
+    this.stage = options.stage
+    this.reason = options.reason
+    this.mode = options.mode
+    this.kind = options.kind
+  }
+}
+
 interface DeepLearnGroundingDependencies {
   reprocessStoredModuleResource?: typeof reprocessStoredModuleResource
   downloadScanFallbackSource?: (resource: ModuleResource) => Promise<DeepLearnPreparedBinaryInput>
@@ -219,6 +411,7 @@ interface DeepLearnGroundingDependencies {
 
 export async function generateDeepLearnNoteForResource(
   input: DeepLearnGenerationContext,
+  options: DeepLearnGenerationOptions = {},
 ): Promise<DeepLearnGenerationResult> {
   const grounding = await buildDeepLearnGrounding(input)
   if (grounding.generationMode === 'text' && !isMeaningfulDeepLearnSourceText({
@@ -232,71 +425,78 @@ export async function generateDeepLearnNoteForResource(
       sourceGrounding: grounding.sourceGrounding,
     })
   }
-  const promptInput = {
+  await options.onProgress?.({
+    progress: 25,
+    statusMessage: 'Compacting readable source text for staged Deep Learn generation.',
+    stage: 'compacting_source',
+  })
+
+  const promptInput: DeepLearnPromptInput = {
     ...input,
     sourceGrounding: grounding.sourceGrounding,
     promptGrounding: grounding.promptGrounding,
     generationMode: grounding.generationMode,
   }
-  const promptText = buildDeepLearnPrompt(promptInput)
 
   const client = new OpenAI({
     apiKey: getRequiredDeepLearnApiKey(),
   })
 
-  let response = await createDeepLearnResponse(client, grounding, promptText, DEEP_LEARN_MAX_OUTPUT_TOKENS)
-
-  if (response.status && response.status !== 'completed') {
-    const reason = response.incomplete_details?.reason ?? response.status
-    if (isMaxOutputTokenReason(reason)) {
-      console.warn('[deep-learn-generation] retrying compact generation after incomplete response', {
-        reason,
-        maxOutputTokens: DEEP_LEARN_MAX_OUTPUT_TOKENS,
-      })
-      response = await createDeepLearnResponse(
-        client,
-        grounding,
-        buildDeepLearnPrompt(promptInput, { compact: true }),
-        DEEP_LEARN_COMPACT_MAX_OUTPUT_TOKENS,
-      )
-      if (response.status && response.status !== 'completed') {
-        const retryReason = response.incomplete_details?.reason ?? response.status
-        console.error('[deep-learn-generation] compact retry incomplete', {
-          reason: retryReason,
-          originalReason: reason,
-          maxOutputTokens: DEEP_LEARN_COMPACT_MAX_OUTPUT_TOKENS,
-        })
-        if (isMaxOutputTokenReason(retryReason)) {
-          throw new DeepLearnGenerationIncompleteError(retryReason)
-        }
-        throw new Error(`Deep Learn generation did not complete (${retryReason}).`)
-      }
-    } else {
-      throw new Error(`Deep Learn generation did not complete (${reason}).`)
-    }
-  }
-
-  const rawText = response.output_text?.trim()
-  if (!rawText) {
-    throw new Error('Deep Learn generation returned an empty response.')
-  }
-
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(rawText)
-  } catch {
-    throw new Error('Deep Learn generation returned invalid JSON.')
-  }
+  const { content, compactFallbackUsed } = await generateDeepLearnStructuredContent(
+    promptInput,
+    grounding,
+    (request) => createDeepLearnResponse(client, request),
+    options,
+  )
 
   return {
-    content: normalizeDeepLearnGeneratedContent(parsed, input.resource.title),
+    content,
     sourceGrounding: grounding.sourceGrounding,
     refreshedResource: grounding.refreshedResource,
+    compactFallbackUsed,
   }
 }
 
 export async function buildDeepLearnGrounding(input: DeepLearnGenerationContext) {
   return buildDeepLearnGroundingWithDependencies(input)
+}
+
+export async function generateDeepLearnStructuredContent(
+  input: DeepLearnPromptInput,
+  grounding: DeepLearnPreparedGrounding,
+  createResponse: DeepLearnResponseCreator,
+  options: DeepLearnGenerationOptions = {},
+): Promise<{ content: DeepLearnGeneratedContent; compactFallbackUsed: boolean }> {
+  try {
+    const content = await runDeepLearnStagePlan(input, grounding, createResponse, false, options)
+    return { content, compactFallbackUsed: false }
+  } catch (error) {
+    if (!(error instanceof DeepLearnGenerationStageError) || error.mode === 'compact') {
+      throw error
+    }
+
+    console.warn('[deep-learn-generation] retrying staged compact fallback', {
+      stage: error.stage,
+      kind: error.kind,
+      reason: error.reason,
+    })
+    await options.onProgress?.({
+      progress: 32,
+      statusMessage: 'The source is long, so Deep Learn is switching to a compact reviewer pass.',
+      stage: 'compact_fallback',
+      compactFallbackUsed: true,
+    })
+
+    try {
+      const content = await runDeepLearnStagePlan(input, grounding, createResponse, true, options)
+      return { content, compactFallbackUsed: true }
+    } catch (compactError) {
+      if (compactError instanceof DeepLearnGenerationStageError && compactError.kind === 'size') {
+        throw new DeepLearnGenerationIncompleteError(`${compactError.stage}:${compactError.reason}`)
+      }
+      throw compactError
+    }
+  }
 }
 
 export async function buildDeepLearnGroundingWithDependencies(
@@ -480,11 +680,47 @@ export async function buildDeepLearnGroundingWithDependencies(
   })
 }
 
-export function buildDeepLearnPrompt(input: DeepLearnGenerationContext & {
-  promptGrounding: string
-  sourceGrounding: DeepLearnSourceGrounding
-  generationMode: 'text' | 'scan_fallback'
-}, options: { compact?: boolean } = {}) {
+async function runDeepLearnStagePlan(
+  input: DeepLearnPromptInput,
+  grounding: DeepLearnPreparedGrounding,
+  createResponse: DeepLearnResponseCreator,
+  compact: boolean,
+  options: DeepLearnGenerationOptions,
+) {
+  const stageOutput: Record<string, unknown> = {
+    title: input.resource.title,
+    overview: '',
+    sections: [],
+    answerBank: [],
+    identificationItems: [],
+    distinctions: [],
+    likelyQuizTargets: [],
+    cautionNotes: [],
+  }
+
+  for (const stage of getDeepLearnStageDefinitions()) {
+    await options.onProgress?.({
+      progress: compact ? stage.compactProgress : stage.fullProgress,
+      statusMessage: buildDeepLearnStageStatusMessage(stage.key, compact),
+      stage: stage.key,
+      compactFallbackUsed: compact,
+    })
+
+    const raw = await createStageResponse(
+      input,
+      grounding,
+      stage,
+      compact,
+      createResponse,
+    )
+    const parsed = parseStageResponse(raw, stage, compact)
+    mergeDeepLearnStageOutput(stageOutput, parsed)
+  }
+
+  return normalizeDeepLearnGeneratedContent(stageOutput, input.resource.title)
+}
+
+export function buildDeepLearnPrompt(input: DeepLearnPromptInput, options: { compact?: boolean } = {}) {
   const compactRequirements = options.compact
     ? [
         '',
@@ -539,12 +775,169 @@ export function buildDeepLearnPrompt(input: DeepLearnGenerationContext & {
   ].join('\n')
 }
 
+function buildDeepLearnStagePrompt(
+  input: DeepLearnPromptInput,
+  stage: DeepLearnStageKey,
+  options: { compact?: boolean } = {},
+) {
+  const compact = options.compact === true
+  const compactInstruction = compact
+    ? 'Compact fallback is active. Keep bodies tight, keep only the highest-yield items, and prefer fewer stronger facts over broad coverage.'
+    : 'Normal staged generation is active. Keep coverage grounded and useful, but still concise.'
+
+  const stageRequirements = {
+    high_yield: [
+      'Build only the first stage of the Study Pack.',
+      'Return title, overview, and sections only.',
+      'sections must contain exactly these headings in order: Source Summary, High-Yield First.',
+      compact
+        ? '- Source Summary and High-Yield First should each stay within 2 short paragraphs or 4 compact bullet-style lines.'
+        : '- Source Summary and High-Yield First should stay concise and exam-focused, not textbook-length.',
+      '- Do not return answerBank, identificationItems, distinctions, likelyQuizTargets, or cautionNotes in this stage.',
+    ],
+    identification: [
+      'Build only the Identification Review stage.',
+      'Return sections plus identificationItems only.',
+      'sections must contain exactly one heading: Identification Review.',
+      compact
+        ? '- identificationItems: 4 to 6 strongest direct term/prompt items only.'
+        : '- identificationItems: 8 to 12 direct source-grounded prompt/answer items.',
+      '- The section body should summarize the strongest key terms without duplicating every answer verbatim.',
+    ],
+    quick_answers: [
+      'Build only the Quick-Answer Blocks stage.',
+      'Return sections plus answerBank only.',
+      'sections must contain exactly one heading: Quick-Answer Blocks.',
+      compact
+        ? '- answerBank: 6 to 8 strongest quick-answer items only.'
+        : '- answerBank: 10 to 14 grounded quick-answer items.',
+      '- Prefer definitions, processes, formulas, examples, and one-line exam answers.',
+    ],
+    distinctions: [
+      'Build only the distinctions and likely-quiz-target stage.',
+      'Return sections, distinctions, likelyQuizTargets, and cautionNotes only.',
+      'sections may contain up to two headings in order: Distinctions, Likely Quiz Targets.',
+      compact
+        ? '- distinctions: no more than 3. likelyQuizTargets: no more than 4. cautionNotes: no more than 3.'
+        : '- distinctions: 3 to 6. likelyQuizTargets: 4 to 6. cautionNotes: no more than 4.',
+      '- Use cautionNotes only for grounded uncertainty, partial OCR, confusing wording, or source gaps that could cost points.',
+    ],
+  } satisfies Record<DeepLearnStageKey, string[]>
+
+  return [
+    `Prompt version: ${DEEP_LEARN_PROMPT_VERSION}`,
+    `Deep Learn staged generation: ${stage}.`,
+    'Use only the selected resource extracted text as factual grounding. Do not use module summaries, course context, assignment metadata, deadlines, prior packs, or surrounding Canvas/module context as study facts.',
+    compactInstruction,
+    '',
+    'Selected resource source text:',
+    input.promptGrounding,
+    '',
+    'Shared grounding rules:',
+    '- Preserve exact source wording first for definitions, enumerations, lists, formulas, and explicit distinctions.',
+    '- Keep every returned item compact, source-faithful, and reusable for Reviewer and Quiz.',
+    '- Do not invent facts, examples, certainty, or missing steps.',
+    '- Clean raw extraction labels before using them as headings or prompts.',
+    '- If evidence is partial, keep the item but reflect that uncertainty in cautionNotes or simplified wording.',
+    '',
+    'Stage requirements:',
+    ...stageRequirements[stage],
+  ].join('\n')
+}
+
+async function createStageResponse(
+  input: DeepLearnPromptInput,
+  grounding: DeepLearnPreparedGrounding,
+  stage: DeepLearnStageDefinition,
+  compact: boolean,
+  createResponse: DeepLearnResponseCreator,
+) {
+  return withTimeout(
+    createResponse({
+      grounding,
+      promptText: buildDeepLearnStagePrompt(input, stage.key, { compact }),
+      maxOutputTokens: compact ? stage.compactMaxOutputTokens : stage.fullMaxOutputTokens,
+      schemaName: stage.schemaName,
+      schema: stage.schema,
+    }),
+    DEEP_LEARN_STAGE_TIMEOUT_MS,
+    new DeepLearnGenerationStageError({
+      stage: stage.key,
+      reason: `stage timed out after ${Math.round(DEEP_LEARN_STAGE_TIMEOUT_MS / 1000)} seconds`,
+      mode: compact ? 'compact' : 'full',
+      kind: 'timeout',
+    }),
+  ).catch((error) => {
+    if (error instanceof DeepLearnGenerationStageError) throw error
+    throw new DeepLearnGenerationStageError({
+      stage: stage.key,
+      reason: error instanceof Error ? error.message : 'provider request failed',
+      mode: compact ? 'compact' : 'full',
+      kind: 'provider',
+    })
+  })
+}
+
+function parseStageResponse(
+  response: DeepLearnResponseLike,
+  stage: DeepLearnStageDefinition,
+  compact: boolean,
+) {
+  if (response.status && response.status !== 'completed') {
+    const reason = response.incomplete_details?.reason ?? response.status
+    throw new DeepLearnGenerationStageError({
+      stage: stage.key,
+      reason,
+      mode: compact ? 'compact' : 'full',
+      kind: isMaxOutputTokenReason(reason) ? 'size' : 'provider',
+    })
+  }
+
+  const rawText = response.output_text?.trim()
+  if (!rawText) {
+    throw new DeepLearnGenerationStageError({
+      stage: stage.key,
+      reason: 'empty response',
+      mode: compact ? 'compact' : 'full',
+      kind: 'empty',
+    })
+  }
+
+  try {
+    return JSON.parse(rawText) as Record<string, unknown>
+  } catch {
+    throw new DeepLearnGenerationStageError({
+      stage: stage.key,
+      reason: 'invalid JSON',
+      mode: compact ? 'compact' : 'full',
+      kind: 'invalid_json',
+    })
+  }
+}
+
+function mergeDeepLearnStageOutput(target: Record<string, unknown>, parsed: Record<string, unknown>) {
+  if (typeof parsed.title === 'string') target.title = parsed.title
+  if (typeof parsed.overview === 'string') target.overview = parsed.overview
+
+  const mergedSections = [
+    ...(Array.isArray(target.sections) ? target.sections : []),
+    ...(Array.isArray(parsed.sections) ? parsed.sections : []),
+  ]
+  target.sections = mergedSections
+
+  for (const key of ['answerBank', 'identificationItems', 'distinctions', 'likelyQuizTargets', 'cautionNotes'] as const) {
+    if (!Array.isArray(parsed[key])) continue
+    const existing = Array.isArray(target[key]) ? target[key] : []
+    target[key] = [...existing, ...parsed[key]]
+  }
+}
+
 async function createDeepLearnResponse(
   client: OpenAI,
-  grounding: DeepLearnPreparedGrounding,
-  promptText: string,
-  maxOutputTokens: number,
+  request: DeepLearnResponseRequest,
 ) {
+  const { grounding, promptText, maxOutputTokens, schema, schemaName } = request
+
   return grounding.generationMode === 'scan_fallback' && grounding.scanFallbackInput
     ? client.responses.create({
         model: getDeepLearnModel(),
@@ -567,7 +960,7 @@ async function createDeepLearnResponse(
                 },
           ],
         }],
-        text: responseTextConfig(),
+        text: responseTextConfig(schemaName, schema),
         max_output_tokens: maxOutputTokens,
       })
     : client.responses.create({
@@ -575,7 +968,7 @@ async function createDeepLearnResponse(
         store: false,
         instructions: DEEP_LEARN_SYSTEM_PROMPT,
         input: promptText,
-        text: responseTextConfig(),
+        text: responseTextConfig(schemaName, schema),
         max_output_tokens: maxOutputTokens,
       })
 }
@@ -717,13 +1110,62 @@ function getDeepLearnSourceNote(
     ?? null
 }
 
-function responseTextConfig() {
+function buildDeepLearnStageStatusMessage(stage: DeepLearnStageKey, compact: boolean) {
+  const prefix = compact ? 'Generating compact reviewer sections' : 'Generating study pack sections'
+  if (stage === 'high_yield') return `${prefix}: High-Yield First.`
+  if (stage === 'identification') return `${prefix}: Identification Review.`
+  if (stage === 'quick_answers') return `${prefix}: Quick-Answer Blocks.`
+  return `${prefix}: Distinctions and Likely Quiz Targets.`
+}
+
+function buildDeepLearnStageFailureMessage(options: DeepLearnStageErrorOptions) {
+  const stageLabel = {
+    high_yield: 'High-Yield First',
+    identification: 'Identification Review',
+    quick_answers: 'Quick-Answer Blocks',
+    distinctions: 'Distinctions and Likely Quiz Targets',
+  }[options.stage]
+
+  if (options.kind === 'size') {
+    return `${stageLabel} exceeded the model response size limit during ${options.mode === 'compact' ? 'compact fallback' : 'normal generation'}.`
+  }
+
+  if (options.kind === 'timeout') {
+    return `${stageLabel} timed out before Deep Learn could finish it.`
+  }
+
+  if (options.kind === 'invalid_json') {
+    return `${stageLabel} returned malformed structured output.`
+  }
+
+  if (options.kind === 'empty') {
+    return `${stageLabel} returned no structured output.`
+  }
+
+  return `${stageLabel} failed during Deep Learn generation: ${options.reason}.`
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, error: Error) {
+  let timeoutHandle: ReturnType<typeof setTimeout> | null = null
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeoutHandle = setTimeout(() => reject(error), timeoutMs)
+      }),
+    ])
+  } finally {
+    if (timeoutHandle) clearTimeout(timeoutHandle)
+  }
+}
+
+function responseTextConfig(schemaName: string, schema: Record<string, unknown>) {
   return {
     format: {
       type: 'json_schema' as const,
-      name: 'deep_learn_exam_prep_pack',
+      name: schemaName,
       strict: true,
-      schema: DEEP_LEARN_RESPONSE_SCHEMA,
+      schema,
     },
     verbosity: 'low' as const,
   }
@@ -740,6 +1182,26 @@ function wordingSchema() {
       simplified: { type: ['string', 'null'] },
     },
   }
+}
+
+function answerBankSchema() {
+  return DEEP_LEARN_RESPONSE_SCHEMA.properties.answerBank
+}
+
+function identificationItemsSchema() {
+  return DEEP_LEARN_RESPONSE_SCHEMA.properties.identificationItems
+}
+
+function distinctionsSchema() {
+  return DEEP_LEARN_RESPONSE_SCHEMA.properties.distinctions
+}
+
+function likelyQuizTargetsSchema() {
+  return DEEP_LEARN_RESPONSE_SCHEMA.properties.likelyQuizTargets
+}
+
+function cautionNotesSchema() {
+  return DEEP_LEARN_RESPONSE_SCHEMA.properties.cautionNotes
 }
 
 function reviewLinkSchemaProperties() {

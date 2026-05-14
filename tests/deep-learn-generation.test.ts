@@ -12,6 +12,7 @@ import {
   DEEP_LEARN_OUTPUT_TOO_LARGE_MESSAGE,
   DeepLearnGenerationIncompleteError,
   DeepLearnGenerationBlockedError,
+  generateDeepLearnStructuredContent,
 } from '../lib/deep-learn-generation'
 import {
   DEEP_LEARN_REFINEMENT_BAD_SOURCE_MESSAGE,
@@ -416,8 +417,8 @@ test('buildDeepLearnPrompt does not inject metadata or debug labels into model g
     sourceGrounding: {
       sourceType: 'PDF',
       extractionQuality: 'usable',
-      sourceTextQuality: 'meaningful',
-      groundingStrategy: 'stored_extract',
+      sourceTextQuality: 'meaningful' as const,
+      groundingStrategy: 'stored_extract' as const,
       usedAiFallback: false,
       qualityReason: null,
       warning: null,
@@ -451,7 +452,7 @@ test('buildDeepLearnPrompt describes compact three-output Deep Learn contract', 
     sourceGrounding: {
       sourceType: 'PDF',
       extractionQuality: 'usable',
-      sourceTextQuality: 'meaningful',
+      sourceTextQuality: 'meaningful' as const,
       groundingStrategy: 'stored_extract',
       usedAiFallback: false,
       qualityReason: null,
@@ -506,6 +507,147 @@ test('buildDeepLearnPrompt compact retry enforces smaller output limits', () => 
   assert.match(prompt, /Key Concepts: no more than 8/i)
   assert.match(prompt, /no more than 10 answerBank items/i)
   assert.match(prompt, /no more than 8 identificationItems/i)
+})
+
+test('staged Deep Learn generation completes long readable sources without one giant response', async () => {
+  const progress: Array<{ progress: number; statusMessage: string; compactFallbackUsed?: boolean }> = []
+  const result = await generateDeepLearnStructuredContent(
+    createPromptInput(),
+    createPreparedGrounding(),
+    async ({ schemaName }) => {
+      if (schemaName === 'deep_learn_high_yield_stage') {
+        return jsonResponse({
+          title: 'IT Security',
+          overview: 'Focus on the core security ideas first.',
+          sections: [
+            { heading: 'Source Summary', body: 'The source defines information security, threats, vulnerabilities, and controls.' },
+            { heading: 'High-Yield First', body: 'Prioritize confidentiality, integrity, availability, and basic control categories.' },
+          ],
+        })
+      }
+      if (schemaName === 'deep_learn_identification_stage') {
+        return jsonResponse({
+          sections: [{ heading: 'Identification Review', body: 'Practice core terms such as threat, vulnerability, and control.' }],
+          identificationItems: [identificationItem(1), identificationItem(2), identificationItem(3)],
+        })
+      }
+      if (schemaName === 'deep_learn_quick_answers_stage') {
+        return jsonResponse({
+          sections: [{ heading: 'Quick-Answer Blocks', body: 'Use these quick answers for direct recall and short-response questions.' }],
+          answerBank: [answerBankItem(1), answerBankItem(2), answerBankItem(3), answerBankItem(4)],
+        })
+      }
+      return jsonResponse({
+        sections: [{ heading: 'Likely Quiz Targets', body: 'Expect CIA triad definitions, threat vs vulnerability, and control examples.' }],
+        distinctions: [distinctionItem(1)],
+        likelyQuizTargets: [quizTargetItem(1), quizTargetItem(2)],
+        cautionNotes: ['Some examples were brief, so memorize the exact source wording first.'],
+      })
+    },
+    {
+      onProgress(update) {
+        progress.push(update)
+      },
+    },
+  )
+
+  assert.equal(result.compactFallbackUsed, false)
+  assert.equal(result.content.sections.length, 5)
+  assert.equal(result.content.answerBank.length, 4)
+  assert.equal(result.content.identificationItems.length, 3)
+  assert.equal(result.content.likelyQuizTargets.length, 2)
+  assert.deepEqual(progress.map((item) => item.progress), [40, 55, 70, 80])
+})
+
+test('staged Deep Learn generation saves a compact fallback when the full quick-answer stage is too large', async () => {
+  const progress: Array<{ progress: number; statusMessage: string; compactFallbackUsed?: boolean }> = []
+  let quickAnswerCalls = 0
+  const result = await generateDeepLearnStructuredContent(
+    createPromptInput(),
+    createPreparedGrounding(),
+    async ({ schemaName }) => {
+      if (schemaName === 'deep_learn_high_yield_stage') {
+        return jsonResponse({
+          title: 'IT Security',
+          overview: 'Compact fallback should still preserve the main source summary.',
+          sections: [
+            { heading: 'Source Summary', body: 'The source explains information security basics and common risk terms.' },
+            { heading: 'High-Yield First', body: 'Remember CIA, controls, and common attack surfaces first.' },
+          ],
+        })
+      }
+      if (schemaName === 'deep_learn_identification_stage') {
+        return jsonResponse({
+          sections: [{ heading: 'Identification Review', body: 'Keep the strongest key terms only.' }],
+          identificationItems: [identificationItem(1), identificationItem(2)],
+        })
+      }
+      if (schemaName === 'deep_learn_quick_answers_stage') {
+        quickAnswerCalls += 1
+        if (quickAnswerCalls === 1) {
+          return {
+            status: 'incomplete',
+            output_text: '',
+            incomplete_details: { reason: 'max_output_tokens' },
+          }
+        }
+        return jsonResponse({
+          sections: [{ heading: 'Quick-Answer Blocks', body: 'Compact quick answers keep only the strongest direct recall items.' }],
+          answerBank: [answerBankItem(1), answerBankItem(2)],
+        })
+      }
+      return jsonResponse({
+        sections: [{ heading: 'Likely Quiz Targets', body: 'Focus on the source definitions most likely to appear in short quizzes.' }],
+        distinctions: [],
+        likelyQuizTargets: [quizTargetItem(1)],
+        cautionNotes: ['Generated a compact reviewer because the source was long.'],
+      })
+    },
+    {
+      onProgress(update) {
+        progress.push(update)
+      },
+    },
+  )
+
+  assert.equal(result.compactFallbackUsed, true)
+  assert.equal(result.content.sections[0]?.heading, 'Source Summary')
+  assert.ok(result.content.identificationItems.length >= 2)
+  assert.ok(result.content.answerBank.length >= 2)
+  assert.ok(result.content.likelyQuizTargets.length >= 1)
+  assert.ok(progress.some((item) => item.compactFallbackUsed && item.progress === 32))
+})
+
+test('staged Deep Learn generation throws the clean too-large error only after compact fallback also exceeds limits', async () => {
+  await assert.rejects(
+    () => generateDeepLearnStructuredContent(
+      createPromptInput(),
+      createPreparedGrounding(),
+      async ({ schemaName }) => {
+        if (schemaName === 'deep_learn_high_yield_stage') {
+          return jsonResponse({
+            title: 'IT Security',
+            overview: 'Large source.',
+            sections: [
+              { heading: 'Source Summary', body: 'Summary.' },
+              { heading: 'High-Yield First', body: 'High yield.' },
+            ],
+          })
+        }
+        return {
+          status: 'incomplete',
+          output_text: '',
+          incomplete_details: { reason: 'max_output_tokens' },
+        }
+      },
+    ),
+    (error: unknown) => {
+      assert.ok(error instanceof DeepLearnGenerationIncompleteError)
+      assert.equal(error.message, DEEP_LEARN_OUTPUT_TOO_LARGE_MESSAGE)
+      assert.match(error.reason, /quick_answers:max_output_tokens|identification:max_output_tokens|distinctions:max_output_tokens/i)
+      return true
+    },
+  )
 })
 
 test('Deep Learn long source grounding keeps representative chunks instead of one front-only slice', async () => {
@@ -780,6 +922,64 @@ function createContext(resource: ModuleSourceResource, storedResource: ModuleRes
     resource,
     storedResource,
     linkedTask: null,
+  }
+}
+
+function createPromptInput(): Parameters<typeof generateDeepLearnStructuredContent>[0] {
+  const text = buildLongText('Information security explains confidentiality, integrity, availability, threats, vulnerabilities, and layered controls.')
+  return {
+    ...createContext(createLearnResource({
+      title: 'IT Security PDF',
+      extractedText: text,
+      extractedTextPreview: text.slice(0, 420),
+      extractedCharCount: text.length,
+      extractionStatus: 'completed',
+    }), createStoredResource({
+      title: 'IT Security PDF',
+      extractedText: text,
+      extractedTextPreview: text.slice(0, 420),
+      extractedCharCount: text.length,
+      extractionStatus: 'completed',
+    })),
+    promptGrounding: text,
+    sourceGrounding: {
+      sourceType: 'PDF',
+      extractionQuality: 'usable',
+      sourceTextQuality: 'meaningful',
+      groundingStrategy: 'stored_extract',
+      usedAiFallback: false,
+      qualityReason: null,
+      warning: null,
+      charCount: text.length,
+    },
+    generationMode: 'text' as const,
+  }
+}
+
+function createPreparedGrounding(): Parameters<typeof generateDeepLearnStructuredContent>[1] {
+  return {
+    generationMode: 'text' as const,
+    promptGrounding: 'Information security explains confidentiality, integrity, availability, threats, vulnerabilities, and layered controls.',
+    sourceGrounding: {
+      sourceType: 'PDF',
+      extractionQuality: 'usable',
+      sourceTextQuality: 'meaningful',
+      groundingStrategy: 'stored_extract' as const,
+      usedAiFallback: false,
+      qualityReason: null,
+      warning: null,
+      charCount: 3200,
+    },
+    refreshedResource: null,
+    scanFallbackInput: null,
+  }
+}
+
+function jsonResponse(payload: unknown) {
+  return {
+    status: 'completed',
+    output_text: JSON.stringify(payload),
+    incomplete_details: null,
   }
 }
 

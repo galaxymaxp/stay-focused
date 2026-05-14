@@ -402,6 +402,17 @@ test('resource extraction retries normal source reprocessing before OCR fallback
   assert.match(source, /const result = await reprocessStoredModuleResource\(resource,[\s\S]*const queuedOcrJobs = result\.update\.visualExtractionStatus === 'available'/)
 })
 
+test('learn generation queue uses staged progress updates and compact fallback completion copy', () => {
+  const queueSource = readFileSync('actions/queue-jobs.ts', 'utf8')
+  const generationSource = readFileSync('lib/deep-learn-generation.ts', 'utf8')
+  assert.match(queueSource, /progress:\s*25/)
+  assert.match(queueSource, /progress:\s*85/)
+  assert.match(generationSource, /fullProgress:\s*40/)
+  assert.match(generationSource, /fullProgress:\s*55/)
+  assert.match(generationSource, /fullProgress:\s*70/)
+  assert.match(queueSource, /Generated a compact study pack because the source was long\./)
+})
+
 test('Canvas resource preservation keeps meaningful extracted text when incoming sync is weak', () => {
   const decision = evaluateResourceTextPreservation(
     createResourceForPreservation({

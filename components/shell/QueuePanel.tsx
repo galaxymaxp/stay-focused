@@ -105,6 +105,7 @@ function ActiveJobCard({ job, onCancel }: { job: QueuedJob; onCancel: (jobId: st
 
 function CompletedJobCard({ job, onDismiss }: { job: QueuedJob; onDismiss: (jobId: string) => void }) {
   const resultHref = getResultHref(job)
+  const statusMessage = getString(job.result, 'statusMessage')
 
   return (
     <article className="glass-panel glass-soft" style={jobCardStyle('completed')}>
@@ -116,6 +117,7 @@ function CompletedJobCard({ job, onDismiss }: { job: QueuedJob; onDismiss: (jobI
           <div style={{ minWidth: 0 }}>
             <p style={titleStyle}>{getCompletedTitle(job)}</p>
             <p style={sourceStyle}>{getJobSourceName(job)}</p>
+            {statusMessage ? <p style={{ ...statusTextStyle, marginTop: '0.22rem' }}>{statusMessage}</p> : null}
           </div>
         </div>
         <button type="button" onClick={() => onDismiss(job.id)} className="queue-action-icon" style={ghostIconStyle} aria-label="Dismiss completed job">

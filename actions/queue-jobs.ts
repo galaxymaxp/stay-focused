@@ -1135,7 +1135,15 @@ async function processLearnGenerationJob(input: {
       errorMessage: null,
     })
 
-    await updateQueuedJobStatus(input.jobId, 'running', { progress: 40 })
+    await updateQueuedJobStatus(input.jobId, 'running', {
+      progress: 25,
+      result: {
+        resourceId: canonicalResourceId,
+        moduleId: workspace.module.id,
+        resourceTitle: resource.title,
+        statusMessage: 'Compacting readable source text for staged Deep Learn generation.',
+      },
+    })
     if (await canceled()) return
 
     const linkedTask = workspace.tasks.find((t) =>
@@ -1144,24 +1152,17 @@ async function processLearnGenerationJob(input: {
 
     let generated
     let heartbeat: ReturnType<typeof setInterval> | null = null
+    let latestProgress = 25
+    let latestStatusMessage = 'Compacting readable source text for staged Deep Learn generation.'
     try {
-      await updateQueuedJobStatus(input.jobId, 'running', {
-        progress: 45,
-        result: {
-          resourceId: canonicalResourceId,
-          moduleId: workspace.module.id,
-          resourceTitle: resource.title,
-          statusMessage: 'Building the Study Pack from readable source text.',
-        },
-      })
       heartbeat = setInterval(() => {
         void updateQueuedJobStatus(input.jobId, 'running', {
-          progress: 55,
+          progress: latestProgress,
           result: {
             resourceId: canonicalResourceId,
             moduleId: workspace.module.id,
             resourceTitle: resource.title,
-            statusMessage: 'Still building the Study Pack from grounded source text.',
+            statusMessage: latestStatusMessage,
           },
         })
       }, 25000)
@@ -1171,6 +1172,21 @@ async function processLearnGenerationJob(input: {
         courseName,
         module: workspace.module,
         linkedTask,
+      }, {
+        onProgress: async (update) => {
+          latestProgress = update.progress
+          latestStatusMessage = update.statusMessage
+          await updateQueuedJobStatus(input.jobId, 'running', {
+            progress: update.progress,
+            result: {
+              resourceId: canonicalResourceId,
+              moduleId: workspace.module.id,
+              resourceTitle: resource.title,
+              statusMessage: update.statusMessage,
+              compactFallbackUsed: update.compactFallbackUsed ?? false,
+            },
+          })
+        },
       })
       if (heartbeat) {
         clearInterval(heartbeat)
@@ -1246,6 +1262,10 @@ async function processLearnGenerationJob(input: {
       moduleId: workspace.module.id,
       resourceTitle: resource.title,
       href: resultHref,
+      statusMessage: generated.compactFallbackUsed
+        ? 'Generated a compact study pack because the source was long.'
+        : 'Study pack ready.',
+      compactFallbackUsed: generated.compactFallbackUsed,
     })
     revalidateLearnQueuePaths(workspace.module.id, workspace.module.courseId ?? input.courseId ?? null, canonicalResourceId)
 
@@ -1253,7 +1273,9 @@ async function processLearnGenerationJob(input: {
       userId: input.userId,
       type: 'queue_completed',
       title: 'Study pack ready',
-      body: `Your study pack for "${resource.title}" is ready.`,
+      body: generated.compactFallbackUsed
+        ? `Your study pack for "${resource.title}" is ready. Stay Focused generated a compact version because the source was long.`
+        : `Your study pack for "${resource.title}" is ready.`,
       href: resultHref,
       severity: 'success',
       metadata: { jobId: input.jobId, dedupeKey: `learn:${canonicalResourceId}` },

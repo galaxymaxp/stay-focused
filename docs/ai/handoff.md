@@ -5,6 +5,74 @@ Last Updated: 2026-05-14
 
 ---
 
+## Session Update - 2026-05-14 (Fix Deep Learn long-source staged fallback)
+
+### What changed
+
+- Replaced monolithic Deep Learn generation with staged section generation in `lib/deep-learn-generation.ts`:
+  - `Source Summary` + `High-Yield First`
+  - `Identification Review`
+  - `Quick-Answer Blocks`
+  - `Distinctions` + `Likely Quiz Targets`
+- Added automatic compact fallback when a normal staged pass hits provider size limits or another recoverable stage failure.
+- Kept all staged/fallback passes grounded only in the selected resource text; no stale module/course/task context is used as study content.
+- Added per-stage queue progress/status updates so Deep Learn now advances through source compaction, staged section generation, and save completion instead of appearing stuck at 40%.
+- Added completed-queue copy for compact fallback results so students can see when Stay Focused generated a shorter study pack because the source was long.
+- Added tests covering:
+  - normal long readable staged generation success
+  - compact fallback success after a size-limited stage
+  - failure only after compact fallback also exhausts size limits
+  - staged queue progress literals and compact completion copy
+
+### Files touched
+
+- `actions/queue-jobs.ts`
+- `components/shell/QueuePanel.tsx`
+- `lib/deep-learn-generation.ts`
+- `tests/deep-learn-generation.test.ts`
+- `tests/queue.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Deep Learn was still trying to materialize one oversized structured response for a normal long readable course PDF, so the OpenAI response hit `max_output_tokens` and surfaced the old one-pass failure message. The fix moves Deep Learn to bounded staged generation, then retries automatically with a smaller compact pack before failing. That keeps readable long sources usable without weakening the existing source-quality guardrails.
+
+### Tests run
+
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- deep-learn-generation deep-learn-readiness queue canvas-content-resolution learn-resource-ui` - passed
+- `npm test -- study-output-reviewer study-output-sheet study-output-quiz-pack study-output-print` - passed
+- `npm test -- task-output task-output-foundation` - passed
+
+### Verification result
+
+- Passed all requested verification commands.
+- Verified the previous long-source failure path now comes from staged generation retries instead of a single oversized Study Pack response.
+- Verified compact fallback succeeds when a normal staged section exceeds response size limits.
+- Verified queue progress now advances through staged generation and completed jobs can display compact-fallback copy.
+- Verified existing readiness/source-quality protections still block metadata-only, refusal, and debug-only content.
+
+### Known risks
+
+- Compact fallback still depends on the provider returning valid structured JSON for each smaller stage; repeated provider-side structured-output failures can still fail the job after retry.
+- Queue staleness is reduced by staged progress updates and heartbeat writes, but a provider/network hang beyond the stage timeout will still fail that stage rather than recover invisibly.
+- Manual signed-in QA on the real IT Security PDF is still recommended to validate section quality and student-facing compact wording.
+
+### Blockers
+
+- No code blocker remains.
+
+### Next recommended step
+
+Run authenticated manual QA on the IT Security PDF in Learn and confirm the saved Study Pack opens with staged content quality that is acceptable for Reviewer and Quiz downstream outputs.
+
+### Suggested commit message
+
+```bash
+fix deep learn long source generation fallback
+```
+
 ## Session Update - 2026-05-14 (Refine Activity and reviewer export templates)
 
 ### What changed
