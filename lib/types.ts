@@ -222,6 +222,7 @@ export interface DeepLearnSourceGrounding {
   qualityReason: string | null
   warning: string | null
   charCount: number
+  sourceMap?: import('@/lib/deep-learn-source-map').AcademicSourceMap | null
 }
 
 export interface DeepLearnNote {

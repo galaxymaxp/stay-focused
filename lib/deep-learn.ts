@@ -198,6 +198,7 @@ export function normalizeDeepLearnSourceGrounding(value: unknown): DeepLearnSour
     qualityReason: cleanParagraph(record.qualityReason),
     warning: cleanParagraph(record.warning),
     charCount: normalizePositiveNumber(record.charCount),
+    sourceMap: normalizeAcademicSourceMapRecord(record.sourceMap),
   }
 }
 
@@ -839,4 +840,11 @@ function asRecord(value: unknown): Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
     ? { ...value as Record<string, unknown> }
     : {}
+}
+
+function normalizeAcademicSourceMapRecord(value: unknown) {
+  const record = asRecord(value)
+  if (record.version !== 'academic-source-map-v1') return null
+  if (!Array.isArray(record.units) || record.units.length === 0) return null
+  return record as unknown as import('@/lib/deep-learn-source-map').AcademicSourceMap
 }

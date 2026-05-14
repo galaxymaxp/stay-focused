@@ -1,5 +1,6 @@
 import { resolveDeepLearnWording, sanitizeStudentFacingText } from '@/lib/deep-learn'
 import { buildDeepLearnNoteBody } from '@/lib/deep-learn'
+import { validateAcademicSourceMap, type AcademicSourceMap, type AcademicSourceMapUnit } from '@/lib/deep-learn-source-map'
 import { deepLearnNoteHasUntrustworthyGrounding } from '@/lib/deep-learn-source-validation'
 import { normalizeSourceFaithfulText, normalizeStudyOutputHeadingIfRaw } from '@/lib/study-outputs/source-faithful'
 import type {
@@ -50,6 +51,15 @@ export function getDeepLearnReviewerReadiness(note: DeepLearnNote | null): Revie
     }
   }
 
+  const sourceMapReviewer = buildReviewerContentFromSourceMap(note)
+  if (sourceMapReviewer) {
+    return {
+      ok: true,
+      reason: 'empty',
+      message: '',
+    }
+  }
+
   const quickReviewBlocks = buildQuickReviewBlocks(note)
   if (
     note.answerBank.length === 0
@@ -77,6 +87,9 @@ export function buildDeepLearnReviewerContent(note: DeepLearnNote): StudyOutputR
   if (!readiness.ok) {
     throw new Error(readiness.message)
   }
+
+  const sourceMapReviewer = buildReviewerContentFromSourceMap(note)
+  if (sourceMapReviewer) return sourceMapReviewer
 
   const quickReviewBlocks = dedupeQuickReviewBlocks(buildQuickReviewBlocks(note))
   const title = buildReviewerTitle(note.title)
@@ -151,10 +164,286 @@ function buildReviewerSummary(note: DeepLearnNote, answerCount: number, identifi
   const lead = hasCompactReviewerCaution(note)
     ? 'Compact Reviewer built from the strongest source-backed Study Pack items.'
     : note.quizReady
-      ? 'Exam-first Reviewer built from the saved Study Pack.'
-      : 'Reviewer built from the saved Study Pack.'
+      ? 'Fallback exam-first Reviewer built from the saved Study Pack.'
+      : 'Fallback Reviewer built from the saved Study Pack.'
 
   return `${lead} ${answerCount} high-yield answer cue${answerCount === 1 ? '' : 's'} and ${identificationCount} identification item${identificationCount === 1 ? '' : 's'} are ready for cram review.`
+}
+
+export function buildReviewerContentFromSourceMap(note: DeepLearnNote): StudyOutputReviewerContent | null {
+  const sourceMap = note.sourceGrounding.sourceMap
+  if (!isUsableAcademicSourceMap(sourceMap)) return null
+
+  const units = sourceMap.units
+    .map(cleanSourceMapReviewerUnit)
+    .filter((unit): unit is SourceMapReviewerUnit => Boolean(unit))
+    .filter((unit, index, list) => list.findIndex((candidate) => normalizeLookup(candidate.title) === normalizeLookup(unit.title)) === index)
+    .sort(compareSourceMapReviewerUnits)
+
+  if (units.length === 0) return null
+
+  const highYieldConcepts = units
+    .slice(0, 20)
+    .map((unit) => ({
+      cue: unit.title,
+      answer: unit.answer,
+      importance: sourceMapImportance(unit.importanceScore),
+      support: unit.support,
+      sourceWording: unit.sourceWording,
+      plainExplanation: unit.support,
+    }))
+    .filter((item, index, list) => list.findIndex((candidate) => normalizeLookup(candidate.cue) === normalizeLookup(item.cue)) === index)
+    .slice(0, 16)
+
+  const identificationReview = units
+    .slice(0, 16)
+    .map((unit) => ({
+      prompt: `Identify or define ${unit.title}.`,
+      answer: unit.shortAnswer,
+      importance: sourceMapImportance(unit.importanceScore),
+      support: unit.support,
+      sourceWording: unit.sourceWording,
+      plainExplanation: unit.support,
+    }))
+    .filter((item) => !isWeakReviewerTerm(item.answer))
+    .slice(0, Math.max(4, REVIEWER_MEMORIZATION_ITEM_LIMIT - highYieldConcepts.length))
+
+  const quickReviewBlocks = units
+    .filter((unit) => unit.kind !== 'definition' && unit.items.length >= 2)
+    .map((unit) => ({
+      heading: unit.title,
+      points: unit.items
+        .map((item) => cleanReviewerText(item))
+        .filter((item) => item.length > 0 && !isWeakReviewerTerm(item))
+        .slice(0, 8),
+    }))
+    .filter((block) => block.points.length > 0)
+    .slice(0, 12)
+
+  const distinctions = buildSourceMapDistinctions(units).slice(0, 6)
+  const likelyQuizTargets = units
+    .slice(0, 12)
+    .map((unit) => ({
+      target: buildSourceMapQuizTarget(unit),
+      reason: buildSourceMapQuizReason(unit),
+      importance: sourceMapImportance(unit.importanceScore),
+    }))
+    .filter((item) => !isWeakReviewerTerm(item.target))
+    .slice(0, 16)
+
+  if (
+    highYieldConcepts.length === 0
+    && identificationReview.length === 0
+    && quickReviewBlocks.length === 0
+    && likelyQuizTargets.length === 0
+  ) {
+    return null
+  }
+
+  return {
+    version: 'reviewer-v1',
+    sourceNoteId: note.id,
+    sourceResourceId: note.resourceId,
+    title: buildReviewerTitle(note.title),
+    summary: `Source Map Reviewer built from ${units.length} source-backed academic unit${units.length === 1 ? '' : 's'}. ${highYieldConcepts.length} high-yield answer cue${highYieldConcepts.length === 1 ? '' : 's'} and ${identificationReview.length} identification item${identificationReview.length === 1 ? '' : 's'} are ready for cram review.`,
+    intro: buildSourceMapIntro(units, note.overview),
+    highYieldConcepts,
+    identificationReview,
+    quickReviewBlocks,
+    distinctions,
+    likelyQuizTargets,
+    cautionNotes: note.cautionNotes.map(cleanReviewerText).filter(Boolean).filter((item) => !containsInternalPipelineText(item)).slice(0, 4),
+  }
+}
+
+interface SourceMapReviewerUnit {
+  title: string
+  answer: string
+  shortAnswer: string
+  support: string | null
+  sourceWording: string | null
+  items: string[]
+  kind: AcademicSourceMapUnit['kind']
+  importanceScore: number
+}
+
+function isUsableAcademicSourceMap(value: AcademicSourceMap | null | undefined): value is AcademicSourceMap {
+  if (!value) return false
+  const validation = validateAcademicSourceMap(value)
+  return validation.ok
+}
+
+function cleanSourceMapReviewerUnit(unit: AcademicSourceMapUnit): SourceMapReviewerUnit | null {
+  const title = normalizeSourceMapReviewerTitle(unit.title)
+  if (isWeakReviewerTerm(title)) return null
+
+  const items = unit.items
+    .map(cleanReviewerText)
+    .filter((item) => item.length > 0 && !isWeakReviewerTerm(item))
+    .slice(0, 12)
+  const answer = buildSourceMapAnswer(title, unit, items)
+  const sourceWording = unit.sourceQuotes
+    .map((quote) => unit.kind === 'definition'
+      ? cleanDefinitionAnswer(title, cleanReviewerText(quote))
+      : cleanReviewerText(quote))
+    .find((quote) => quote.length >= 12 && !containsInternalPipelineText(quote))
+    ?? null
+  const shortAnswer = items.length > 0 && unit.kind !== 'definition'
+    ? items.slice(0, 6).join(', ')
+    : answer
+  const support = cleanDefinitionAnswer(title, cleanReviewerText(unit.summary))
+
+  if (!answer || isWeakReviewerTerm(answer)) return null
+
+  return {
+    title,
+    answer,
+    shortAnswer,
+    support: support && support !== answer ? support : null,
+    sourceWording,
+    items,
+    kind: unit.kind,
+    importanceScore: unit.importanceScore,
+  }
+}
+
+function normalizeSourceMapReviewerTitle(value: string) {
+  const cleaned = normalizeStudyOutputHeadingIfRaw(cleanReviewerText(value))
+  const lookup = normalizeLookup(cleaned)
+  if (lookup === 'it security definition') return 'IT Security'
+  if (lookup === 'cybersecurity definitions') return 'Cybersecurity'
+  if (lookup === 'importance of cybersecurity') return 'Importance of Cybersecurity'
+  if (lookup === 'challenges') return 'Challenges of Cybersecurity'
+  if (lookup === 'cybercrime disruption espionage') return 'Cybersecurity Threat Types'
+  if (lookup === 'malware types') return 'Malware Types'
+  if (lookup === 'malware symptoms') return 'Malware Symptoms'
+  if (lookup === 'infiltration methods') return 'Methods of Infiltration'
+  if (lookup === 'denial of service methods') return 'Denial of Service Methods'
+  if (lookup === 'impact reduction') return 'Impact Reduction'
+  if (lookup === 'types of attackers') return 'Types of Attackers'
+  return cleaned
+}
+
+function buildSourceMapAnswer(title: string, unit: AcademicSourceMapUnit, items: string[]) {
+  const summary = cleanReviewerText(unit.summary)
+  if (items.length >= 2 && !/^(?:IT Security|Cybersecurity)$/i.test(title)) {
+    return `${title} includes ${items.slice(0, 8).join(', ')}.`
+  }
+  return cleanDefinitionAnswer(title, summary)
+    || unit.sourceQuotes.map((quote) => cleanDefinitionAnswer(title, cleanReviewerText(quote))).find(Boolean)
+    || title
+}
+
+function buildSourceMapIntro(units: SourceMapReviewerUnit[], fallbackOverview: string) {
+  const firstDefinition = units.find((unit) => unit.kind === 'definition')
+  if (firstDefinition) return `${firstDefinition.title}: ${firstDefinition.answer}`
+  return cleanReviewerText(fallbackOverview) || 'Use this reviewer for source-backed definitions, lists, distinctions, and likely quiz targets.'
+}
+
+function buildSourceMapQuizTarget(unit: SourceMapReviewerUnit) {
+  if (unit.kind === 'process') return `Apply ${unit.title}`
+  if (unit.items.length >= 3) return `Enumerate ${unit.title}`
+  if (/ vs |\/|triad/i.test(unit.title)) return `Distinguish ${unit.title}`
+  return `Explain ${unit.title}`
+}
+
+function buildSourceMapQuizReason(unit: SourceMapReviewerUnit) {
+  if (unit.kind === 'definition') return `Explain or define ${unit.title} using the source wording.`
+  if (unit.kind === 'process') return `Apply the steps or methods listed under ${unit.title}.`
+  if (unit.items.length >= 3) return `Enumerate the source-listed items: ${unit.items.slice(0, 6).join(', ')}.`
+  return `Explain or apply the source-backed concept: ${unit.title}.`
+}
+
+function cleanDefinitionAnswer(title: string, value: string) {
+  return cleanReviewerText(value)
+    .replace(new RegExp(`^what\\s+is\\s+${escapeRegExp(title)}\\??\\s*[•:;-]?\\s*`, 'i'), '')
+    .replace(new RegExp(`^${escapeRegExp(title)}\\??\\s*[•:;-]?\\s*`, 'i'), '')
+    .replace(/^definition of terms\s*[•:;-]?\s*/i, '')
+    .replace(/^cybersecurity definitions?\??\s*[•:;-]?\s*/i, '')
+    .replace(/^it security definition\s*[•:;-]?\s*/i, '')
+    .trim()
+}
+
+function compareSourceMapReviewerUnits(left: SourceMapReviewerUnit, right: SourceMapReviewerUnit) {
+  return getPreferredSourceMapRank(left.title) - getPreferredSourceMapRank(right.title)
+    || right.importanceScore - left.importanceScore
+    || left.title.localeCompare(right.title)
+}
+
+function getPreferredSourceMapRank(title: string) {
+  const preferred = [
+    'IT Security',
+    'InfoSec vs IT Sec',
+    'CIA Triad',
+    'Domains of IT Security',
+    'Cybersecurity',
+    'Importance of Cybersecurity',
+    'Challenges of Cybersecurity',
+    'Types of Attackers',
+    'Vulnerability / Exploit / Breach',
+    'Cybersecurity Threat Types',
+    'Malware Types',
+    'Malware Symptoms',
+    'Methods of Infiltration',
+    'Denial of Service Methods',
+    'Blended Attacks',
+    'Impact Reduction',
+  ].map(normalizeLookup)
+  const index = preferred.indexOf(normalizeLookup(title))
+  return index === -1 ? 100 : index
+}
+
+function buildSourceMapDistinctions(units: SourceMapReviewerUnit[]) {
+  const distinctions: StudyOutputReviewerContent['distinctions'] = []
+  const infoSec = units.find((unit) => normalizeLookup(unit.title) === 'infosec vs it sec')
+  if (infoSec) {
+    distinctions.push({
+      conceptA: 'InfoSec',
+      conceptB: 'IT Sec',
+      difference: infoSec.sourceWording ?? infoSec.answer,
+      confusionNote: 'InfoSec focuses on sensitive business information, while IT Sec focuses on securing digital data through computer network security.',
+    })
+  }
+
+  const terms = units.find((unit) => normalizeLookup(unit.title) === 'vulnerability exploit breach')
+  if (terms) {
+    distinctions.push({
+      conceptA: 'Vulnerability',
+      conceptB: 'Exploit / Breach',
+      difference: terms.sourceWording ?? terms.answer,
+      confusionNote: 'A vulnerability is the weakness; an exploit takes advantage of it; a breach is the successful result.',
+    })
+  }
+
+  return distinctions.filter((item) => item.difference.length > 0)
+}
+
+function sourceMapImportance(score: number) {
+  if (score >= 86) return 'high' as const
+  if (score >= 68) return 'medium' as const
+  return 'low' as const
+}
+
+function isWeakReviewerTerm(value: string) {
+  const key = normalizeLookup(value)
+  if (!key) return true
+  if (key.length < 4) return true
+  return new Set([
+    'what',
+    'activity',
+    'organization',
+    'organization people processes technology must',
+    'source summary',
+    'exact source wording',
+    'reconstructed lists',
+    'clean source summary fragments',
+    'academic source map',
+    'deterministic academic structure',
+  ]).has(key)
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 function hasCompactReviewerCaution(note: DeepLearnNote) {

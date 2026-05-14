@@ -5,6 +5,78 @@ Last Updated: 2026-05-15
 
 ---
 
+## Session Update - 2026-05-15 (Render Reviewer from Source Map)
+
+### What changed
+
+- Persisted the validated `AcademicSourceMap` inside Deep Learn `sourceGrounding` so saved ready Study Packs can carry the internal source structure forward.
+- Added a Source Map -> Reviewer adapter that renders the primary Reviewer directly from source-map units when present and valid.
+- Built deterministic Reviewer content from source-map units:
+  - high-yield answer cues
+  - glossary-style memorization answers
+  - direct `Identify or define ...` prompts
+  - grouped quick-answer blocks for lists/categories/processes
+  - instructor-style likely quiz targets
+  - source-supported distinctions such as InfoSec vs IT Sec and Vulnerability vs Exploit/Breach
+- Kept the legacy blob/Study Pack reviewer as fallback only when the Source Map is missing or invalid.
+- Added weak-term and internal-label filtering so reviewer keys do not become `What`, `activity`, `organization`, `source summary`, `exact source wording`, `reconstructed lists`, or `clean source summary fragments`.
+- Updated Reviewer rendering to hide empty mode sections instead of rendering empty panels.
+- Added focused tests for Source Map reviewer rendering, IT Security concept coverage, weak-term filtering, internal-label stripping, empty section hiding, legacy fallback, and deterministic no-AI reviewer construction.
+
+### Files touched
+
+- `components/StudyOutputReviewerPage.tsx`
+- `lib/deep-learn-generation.ts`
+- `lib/deep-learn.ts`
+- `lib/study-outputs/reviewer.ts`
+- `lib/types.ts`
+- `tests/study-output-reviewer.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Phase 1 created the Source Map foundation, but Reviewer still depended on generated Study Pack arrays and section text. That allowed weak generated artifacts to drive the student-facing reviewer. This change makes Source Map units the primary reviewer source while preserving old saved packs through an explicit legacy fallback path.
+
+### Tests run
+
+- `npx tsx --test tests/study-output-reviewer.test.ts` - passed
+- `npm run typecheck` - passed after fixing a strict source-map cast
+- `npm run lint` - passed
+- `npm test -- study-output-reviewer deep-learn-generation learn-resource-ui` - passed
+- `npm test -- deep-learn-generation deep-learn-readiness queue canvas-content-resolution learn-resource-ui` - passed
+- `npm test -- study-output-reviewer study-output-sheet study-output-quiz-pack study-output-print` - passed
+
+### Verification result
+
+- Passed all requested verification commands.
+- Verified IT Security-like source maps produce reviewer concepts for IT Security, InfoSec vs IT Sec, CIA Triad, domains, cybersecurity, importance/challenges, attacker types, vulnerability/exploit/breach, threat types, malware, infiltration, denial-of-service, blended attacks, and impact reduction.
+- Verified Source Map Reviewer is selected before legacy reviewer when a valid map exists.
+- Verified legacy Study Pack reviewer still renders when no Source Map exists and is labeled as fallback.
+- Verified empty Reviewer sections are hidden in rendered markup.
+- Verified no new AI call is needed for Reviewer rendering; the adapter is deterministic and local.
+
+### Known risks
+
+- Existing ready Study Packs generated before this change do not have `sourceGrounding.sourceMap`; they will continue using the fallback reviewer until regenerated.
+- The adapter quality depends on Source Map unit quality. Very unusual source layouts may still need more source-map extraction patterns.
+- `sourceGrounding` now stores a larger JSON payload because it includes the Source Map.
+
+### Blockers
+
+- No blocker remains.
+
+### Next recommended step
+
+Regenerate the real IT Security Study Pack so its saved note includes `sourceGrounding.sourceMap`, then generate/open the Reviewer and verify the student-facing concepts against the expected IT Security list.
+
+### Suggested commit message
+
+```bash
+render reviewer from source map
+```
+
+---
+
 ## Session Update - 2026-05-15 (Add Deep Learn Source Map foundation)
 
 ### What changed

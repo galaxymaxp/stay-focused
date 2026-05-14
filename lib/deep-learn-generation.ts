@@ -6,7 +6,7 @@ import {
   sanitizeStudentFacingText,
   type DeepLearnGeneratedContent,
 } from '@/lib/deep-learn'
-import { buildAcademicSourceMapGrounding } from '@/lib/deep-learn-source-map'
+import { buildAcademicSourceMap, buildAcademicSourceMapGrounding } from '@/lib/deep-learn-source-map'
 import {
   buildDeepLearnBlockedReadiness,
   canAttemptDeepLearnSourceFetch,
@@ -666,6 +666,7 @@ export async function buildDeepLearnGroundingWithDependencies(
 
   const bestText = selectBestGroundingText(surfaceResource)
   if (bestText) {
+    const sourceMap = buildAcademicSourceMap(bestText)
     const promptGrounding = buildPromptGrounding({
       bestText,
       scanFallback: false,
@@ -673,6 +674,7 @@ export async function buildDeepLearnGroundingWithDependencies(
 
     const sourceGrounding = buildDeepLearnSourceGrounding(surfaceResource, finalQuality, groundingStrategy === 'insufficient' ? 'stored_extract' : groundingStrategy, recoveryWarning)
     sourceGrounding.charCount = bestText.length
+    sourceGrounding.sourceMap = sourceMap.validation.ok ? sourceMap : null
 
     return {
       generationMode: 'text',
@@ -709,12 +711,14 @@ export async function buildDeepLearnGroundingWithDependencies(
 
   if (recoveryWarning && selectDeepLearnGroundingText(input.resource)) {
     const fallbackText = selectBestGroundingText(input.resource)
+    const sourceMap = buildAcademicSourceMap(fallbackText)
     const promptGrounding = buildPromptGrounding({
       bestText: fallbackText,
       scanFallback: false,
     })
     const sourceGrounding = buildDeepLearnSourceGrounding(input.resource, currentQuality, 'stored_extract', recoveryWarning)
     sourceGrounding.charCount = fallbackText.length
+    sourceGrounding.sourceMap = sourceMap.validation.ok ? sourceMap : null
 
     return {
       generationMode: 'text',

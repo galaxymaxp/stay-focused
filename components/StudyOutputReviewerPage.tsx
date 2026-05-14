@@ -55,74 +55,84 @@ export function StudyOutputReviewerPage({
               {moduleTitle ? <span>{moduleTitle}</span> : null}
             </div>
           ) : null}
-          <ul className="reviewer-answer-list">
-            {reviewer.highYieldConcepts.map((item) => (
-              <li key={`${item.cue}-${item.answer}`}>
-                <strong>{item.cue}</strong>
-                <span><b>Memorize:</b> {item.sourceWording ?? item.answer}</span>
-                {item.plainExplanation || item.support ? (
-                  <span><b>Understand:</b> {item.plainExplanation ?? item.support}</span>
-                ) : null}
-              </li>
-            ))}
-          </ul>
+          {reviewer.highYieldConcepts.length > 0 ? (
+            <ul className="reviewer-answer-list">
+              {reviewer.highYieldConcepts.map((item) => (
+                <li key={`${item.cue}-${item.answer}`}>
+                  <strong>{item.cue}</strong>
+                  <span><b>Memorize:</b> {item.sourceWording ?? item.answer}</span>
+                  {item.plainExplanation || item.support ? (
+                    <span><b>Understand:</b> {item.plainExplanation ?? item.support}</span>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          ) : null}
         </section>
 
-        <section className="reviewer-panel study-output-keep-together">
-          <p className="reviewer-section-label">Identification review</p>
-          <div className="reviewer-two-column-list">
-            {reviewer.identificationReview.map((item) => (
-              <article key={`${item.prompt}-${item.answer}`} className="reviewer-mini-card">
-                <p>{item.prompt}</p>
-                <strong>Memorize: {item.sourceWording ?? item.answer}</strong>
-                {item.plainExplanation || item.support ? (
-                  <p className="reviewer-muted">Understand: {item.plainExplanation ?? item.support}</p>
-                ) : null}
-              </article>
-            ))}
-          </div>
-        </section>
+        {reviewer.identificationReview.length > 0 ? (
+          <section className="reviewer-panel study-output-keep-together">
+            <p className="reviewer-section-label">Identification review</p>
+            <div className="reviewer-two-column-list">
+              {reviewer.identificationReview.map((item) => (
+                <article key={`${item.prompt}-${item.answer}`} className="reviewer-mini-card">
+                  <p>{item.prompt}</p>
+                  <strong>Memorize: {item.sourceWording ?? item.answer}</strong>
+                  {item.plainExplanation || item.support ? (
+                    <p className="reviewer-muted">Understand: {item.plainExplanation ?? item.support}</p>
+                  ) : null}
+                </article>
+              ))}
+            </div>
+          </section>
+        ) : null}
 
-        <section className="reviewer-panel study-output-keep-together">
-          <p className="reviewer-section-label">Quick-answer blocks</p>
-          <div className="reviewer-block-grid">
-            {reviewer.quickReviewBlocks.map((block) => (
-              <article key={block.heading} className="reviewer-mini-card">
-                <h3>{block.heading}</h3>
-                <ul>
-                  {block.points.map((point) => (
-                    <li key={point}>{point}</li>
-                  ))}
-                </ul>
-              </article>
-            ))}
-          </div>
-        </section>
+        {reviewer.quickReviewBlocks.length > 0 ? (
+          <section className="reviewer-panel study-output-keep-together">
+            <p className="reviewer-section-label">Quick-answer blocks</p>
+            <div className="reviewer-block-grid">
+              {reviewer.quickReviewBlocks.map((block) => (
+                <article key={block.heading} className="reviewer-mini-card">
+                  <h3>{block.heading}</h3>
+                  <ul>
+                    {block.points.map((point) => (
+                      <li key={point}>{point}</li>
+                    ))}
+                  </ul>
+                </article>
+              ))}
+            </div>
+          </section>
+        ) : null}
 
-        <section className="reviewer-panel study-output-keep-together">
-          <p className="reviewer-section-label">Distinctions</p>
-          <div className="reviewer-block-grid">
-            {reviewer.distinctions.map((item) => (
-              <article key={`${item.conceptA}-${item.conceptB}`} className="reviewer-mini-card">
-                <h3>{item.conceptA} vs {item.conceptB}</h3>
-                <p>{item.difference}</p>
-                {item.confusionNote ? <p className="reviewer-muted">{item.confusionNote}</p> : null}
-              </article>
-            ))}
-          </div>
-        </section>
+        {reviewer.distinctions.length > 0 ? (
+          <section className="reviewer-panel study-output-keep-together">
+            <p className="reviewer-section-label">Distinctions</p>
+            <div className="reviewer-block-grid">
+              {reviewer.distinctions.map((item) => (
+                <article key={`${item.conceptA}-${item.conceptB}`} className="reviewer-mini-card">
+                  <h3>{item.conceptA} vs {item.conceptB}</h3>
+                  <p>{item.difference}</p>
+                  {item.confusionNote ? <p className="reviewer-muted">{item.confusionNote}</p> : null}
+                </article>
+              ))}
+            </div>
+          </section>
+        ) : null}
 
-        <section className="reviewer-panel study-output-keep-together">
-          <p className="reviewer-section-label">Likely quiz targets</p>
-          <ol className="reviewer-target-list">
-            {reviewer.likelyQuizTargets.map((item) => (
-              <li key={item.target}>
-                <strong>{item.target}</strong>
-                <span>{item.reason}</span>
-              </li>
-            ))}
-          </ol>
-        </section>
+        {reviewer.likelyQuizTargets.length > 0 ? (
+          <section className="reviewer-panel study-output-keep-together">
+            <p className="reviewer-section-label">Likely quiz targets</p>
+            <ol className="reviewer-target-list">
+              {reviewer.likelyQuizTargets.map((item) => (
+                <li key={item.target}>
+                  <strong>{item.target}</strong>
+                  <span>{item.reason}</span>
+                </li>
+              ))}
+            </ol>
+          </section>
+        ) : null}
 
         {reviewer.cautionNotes.length > 0 ? (
           <section className="reviewer-panel study-output-keep-together">
