@@ -3,6 +3,7 @@ import { downloadCanvasBinarySource, normalizeCanvasUrl } from '@/lib/canvas'
 import {
   DEEP_LEARN_PROMPT_VERSION,
   normalizeDeepLearnGeneratedContent,
+  sanitizeStudentFacingText,
   type DeepLearnGeneratedContent,
 } from '@/lib/deep-learn'
 import {
@@ -810,6 +811,9 @@ export function validateDeepLearnContentReadyForSave(content: DeepLearnGenerated
   const answerBankCount = content.answerBank.filter(hasMeaningfulAnswerBankItem).length
   const identificationCount = content.identificationItems.filter(hasMeaningfulIdentificationItem).length
   const quizTargetCount = content.likelyQuizTargets.filter(hasMeaningfulQuizTarget).length
+  const hasInternalPipelineText = containsInternalPipelineText(JSON.stringify(content))
+  const hasMalformedHeadings = content.sections.some((section) => isMalformedReviewerHeading(section.heading))
+  const hasDuplicatedConcepts = findDuplicatedReviewerConcepts(content).length > 0
   const hasStructuredStudyArtifacts = answerBankCount > 0
     && identificationCount > 0
     && quizTargetCount > 0
@@ -818,6 +822,30 @@ export function validateDeepLearnContentReadyForSave(content: DeepLearnGenerated
     return {
       ok: false as const,
       message: DEEP_LEARN_EMPTY_STUDY_ARTIFACTS_MESSAGE,
+      counts: { answerBankCount, identificationCount, quizTargetCount },
+    }
+  }
+
+  if (hasInternalPipelineText) {
+    return {
+      ok: false as const,
+      message: 'Deep Learn could not clean internal reviewer labels from this Study Pack.',
+      counts: { answerBankCount, identificationCount, quizTargetCount },
+    }
+  }
+
+  if (hasMalformedHeadings) {
+    return {
+      ok: false as const,
+      message: 'Deep Learn could not build clean reviewer headings from this source.',
+      counts: { answerBankCount, identificationCount, quizTargetCount },
+    }
+  }
+
+  if (hasDuplicatedConcepts) {
+    return {
+      ok: false as const,
+      message: 'Deep Learn could not deduplicate enough reviewer concepts from this source.',
       counts: { answerBankCount, identificationCount, quizTargetCount },
     }
   }
@@ -1356,6 +1384,30 @@ function hasMeaningfulText(value: unknown) {
   return typeof value === 'string' && value.replace(/\s+/g, ' ').trim().length >= 8
 }
 
+function containsInternalPipelineText(value: string) {
+  return /\b(?:Reconstructed lists|Clean source summary fragments|Normalized headings|Detected concepts|Academic headings|Concept hierarchy|Term definitions|Duplicate OCR\/source fragments collapsed)\b/i.test(value)
+}
+
+function isMalformedReviewerHeading(value: string) {
+  const cleaned = value.trim()
+  if (!cleaned) return true
+  if (/^(?:cyber\s*security\s+what|what\s+cyber\s*security|password\s+cracking\s+brute[-\s]?force)/i.test(cleaned)) return true
+  return /\b(?:reconstructed lists|clean source summary fragments|normalized headings|detected concepts)\b/i.test(cleaned)
+}
+
+function findDuplicatedReviewerConcepts(content: DeepLearnGeneratedContent) {
+  const concepts = content.likelyQuizTargets.map((item) => item.target)
+  const seen = new Set<string>()
+  const duplicated: string[] = []
+  for (const concept of concepts) {
+    const key = normalizeAcademicLookup(concept)
+    if (!key || key.length < 4) continue
+    if (seen.has(key)) duplicated.push(key)
+    seen.add(key)
+  }
+  return duplicated
+}
+
 async function createDeepLearnResponse(
   client: OpenAI,
   request: DeepLearnResponseRequest,
@@ -1415,6 +1467,7 @@ function buildPromptGrounding(input: {
 export interface AcademicStructuredGrounding {
   normalizedText: string
   headings: string[]
+  headingConfidence: Array<{ heading: string; confidence: number }>
   lists: Array<{ heading: string; items: string[] }>
   termDefinitions: Array<{ term: string; definition: string }>
   conceptGroups: Array<{ parent: string; children: string[] }>
@@ -1432,10 +1485,12 @@ export function structureAcademicSourceText(sourceText: string): AcademicStructu
   ])
   const termDefinitions = extractAcademicTermDefinitions(collapsed.lines)
   const conceptGroups = reconstructAcademicConceptGroups(headingGroups, lists, termDefinitions)
-  const headings = uniqueStringList(headingGroups.map((group) => group.heading).filter((heading) => heading !== 'Source Notes')).slice(0, 10)
+  const headingConfidence = scoreAcademicHeadings(headingGroups, lists)
+  const headings = headingConfidence.map((entry) => entry.heading).slice(0, 10)
   const normalizedText = collapsed.lines.join('\n')
   const structuredText = formatAcademicStructuredGrounding({
     headings,
+    headingConfidence,
     lists,
     termDefinitions,
     conceptGroups,
@@ -1446,6 +1501,7 @@ export function structureAcademicSourceText(sourceText: string): AcademicStructu
   return {
     normalizedText,
     headings,
+    headingConfidence,
     lists,
     termDefinitions,
     conceptGroups,
@@ -1543,7 +1599,8 @@ function groupAcademicLinesByHeading(lines: string[]) {
 function detectAcademicHeading(line: string) {
   const cleaned = line.replace(/^\d+(?:\.\d+)*[.)]?\s*/, '').replace(/[:\-]\s*$/, '').trim()
   if (!cleaned || cleaned.length > 84) return null
-  if (/^what\s+is\s+cybersecurity\s+all\s+about\??$/i.test(cleaned)) return 'Core Principles of Cybersecurity'
+  const canonical = canonicalizeAcademicHeading(cleaned)
+  if (canonical) return canonical
   if (/password\s+cracking/i.test(cleaned) && /brute|network\s+sniffing|social\s+engineering/i.test(cleaned)) return null
   if (/^(?:password\s+cracking|malware|social\s+engineering|network\s+sniffing)$/i.test(cleaned)) return null
   if (/^(?:objectives?|learning outcomes?|key terms?|definitions?|types?|categories|methods?|domains?|principles|components|symptoms|examples)$/i.test(cleaned)) {
@@ -1553,7 +1610,52 @@ function detectAcademicHeading(line: string) {
   const titleLikeWords = words.filter((word) => /^[A-Z0-9][A-Za-z0-9()/-]*$/.test(word)).length
   const mostlyTitleCase = words.length <= 8 && titleLikeWords / Math.max(words.length, 1) >= 0.72
   const noTerminalPunctuation = !/[.!?]$/.test(cleaned)
-  return mostlyTitleCase && noTerminalPunctuation ? normalizeStudyOutputHeading(cleaned) : null
+  return mostlyTitleCase && noTerminalPunctuation
+    ? canonicalizeAcademicHeading(normalizeStudyOutputHeading(cleaned)) ?? normalizeStudyOutputHeading(cleaned)
+    : null
+}
+
+function canonicalizeAcademicHeading(value: string) {
+  const cleaned = sanitizeStudentFacingText(value)
+    .replace(/\s+/g, ' ')
+    .replace(/\bcyber\s+security\b/gi, 'Cybersecurity')
+    .trim()
+  const lookup = normalizeAcademicLookup(cleaned)
+
+  if (/^(?:cybersecurity what|what cybersecurity|what is cybersecurity(?: all about)?)$/.test(lookup)) return 'What is Cybersecurity?'
+  if (/password cracking/.test(lookup) && /(?:brute force|network sniffing|social engineering|methods?)/.test(lookup)) return 'Password Cracking Methods'
+  if (/^(?:goals? )?cia(?: triad)?$/.test(lookup)) return 'CIA Triad'
+  return null
+}
+
+function scoreAcademicHeadings(
+  groups: Array<{ heading: string; lines: string[] }>,
+  lists: Array<{ heading: string; items: string[] }>,
+) {
+  const byKey = new Map<string, { heading: string; confidence: number }>()
+  const candidates = [
+    ...groups
+      .filter((group) => group.heading !== 'Source Notes')
+      .map((group) => ({
+        heading: canonicalizeAcademicHeading(group.heading) ?? group.heading,
+        confidence: group.lines.length > 0 ? 0.72 : 0.58,
+      })),
+    ...lists.map((list) => ({
+      heading: canonicalizeAcademicHeading(list.heading) ?? list.heading,
+      confidence: list.items.length >= 3 ? 0.92 : 0.82,
+    })),
+  ]
+
+  for (const candidate of candidates) {
+    const key = normalizeAcademicLookup(candidate.heading)
+    if (!key) continue
+    const previous = byKey.get(key)
+    if (!previous || candidate.confidence > previous.confidence) byKey.set(key, candidate)
+  }
+
+  return [...byKey.values()]
+    .sort((left, right) => right.confidence - left.confidence || left.heading.localeCompare(right.heading))
+    .slice(0, 10)
 }
 
 function reconstructAcademicLists(groups: Array<{ heading: string; lines: string[] }>) {
@@ -1640,6 +1742,8 @@ function extractAcademicTermDefinitions(lines: string[]) {
   const seen = new Set<string>()
 
   for (const line of lines) {
+    if (detectAcademicHeading(line)) continue
+    if (/password\s+cracking/i.test(line) && /brute|network\s+sniffing|social\s+engineering/i.test(line)) continue
     const match = line.match(/^(.{3,72}?)\s+(?:is|are|refers to|means|involves|describes|defines|can be defined as)\s+(.{12,260})$/i)
       ?? line.match(/^(.{3,72}?)\s*[-:]\s*(.{12,260})$/)
     if (!match?.[1] || !match[2]) continue
@@ -1679,8 +1783,38 @@ function reconstructAcademicConceptGroups(
       conceptGroups.push({ parent: group.heading, children: uniqueStringList(children).slice(0, 8) })
     }
   }
+  conceptGroups.push(...inferRelationshipConceptGroups(groups, termDefinitions))
 
   return dedupeConceptGroups(conceptGroups).slice(0, 8)
+}
+
+function inferRelationshipConceptGroups(
+  groups: Array<{ heading: string; lines: string[] }>,
+  termDefinitions: Array<{ term: string; definition: string }>,
+) {
+  const relationshipGroups: Array<{ parent: string; children: string[] }> = []
+  for (const group of groups) {
+    const heading = canonicalizeAcademicHeading(group.heading) ?? group.heading
+    if (heading === 'Source Notes') continue
+    const source = group.lines.join(' ')
+    const members = uniqueStringList([
+      ...extractRelationshipMembers(source),
+      ...termDefinitions
+        .filter((definition) => group.lines.some((line) => normalizeAcademicLookup(line).includes(normalizeAcademicLookup(definition.term))))
+        .map((definition) => definition.term),
+    ]).slice(0, 8)
+    if (members.length >= 2) relationshipGroups.push({ parent: heading, children: members })
+  }
+  return relationshipGroups
+}
+
+function extractRelationshipMembers(source: string) {
+  const match = source.match(/(?:examples?|types?|methods?|techniques?|categories|members|components|subdomains?)\s+(?:include|are|consist of)\s+([^.!?]+)/i)
+  if (!match?.[1]) return []
+  return match[1]
+    .split(/[,;]|\s+\band\b\s+/i)
+    .map(cleanupListItem)
+    .filter((item) => item.length >= 3 && item.length <= 72)
 }
 
 function dedupeConceptGroups(groups: Array<{ parent: string; children: string[] }>) {

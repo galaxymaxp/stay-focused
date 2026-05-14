@@ -5,6 +5,92 @@ Last Updated: 2026-05-14
 
 ---
 
+## Session Update - 2026-05-14 (Improve Deep Learn semantic reviewer quality)
+
+### What changed
+
+- Added a final student-facing cleanup layer for Deep Learn generated content:
+  - strips internal pipeline labels such as `Reconstructed lists`, `Clean source summary fragments`, `Normalized headings`, and `Detected concepts`
+  - applies during generated-content normalization and again during Reviewer rendering
+- Improved deterministic semantic reconstruction:
+  - canonicalizes raw OCR headings such as `Cyber Security What` into `What is Cybersecurity?`
+  - scores reconstructed headings so strong list-derived headings such as `Password Cracking Methods` rank above weak OCR fragments
+  - avoids treating headings/list rows as term definitions
+  - adds relationship grouping for category/member, method/technique, component, and subdomain patterns
+- Improved reviewer output specialization:
+  - Identification prompts are direct `Identify:` style prompts
+  - Answer bank remains compact memorize/glossary style
+  - Likely quiz targets are framed as explain/apply style prompts when model wording is too flat
+  - Quick review blocks can reconstruct cleaner educational headings such as `Layered Cybersecurity Defense`
+- Added semantic deduplication:
+  - answer bank, identification, and likely quiz target artifacts are deduped deterministically during normalization
+  - reviewer rendering also removes repeated quick-review blocks, repeated points, and duplicated quiz targets
+- Strengthened save-time validation:
+  - rejects empty reviewer artifacts as before
+  - rejects leaked internal pipeline labels
+  - rejects malformed reviewer headings
+  - rejects duplicated likely quiz targets
+- Preserved anti-stuck protections:
+  - no new AI stage
+  - no recursive generation
+  - no retry/stage count increase
+  - no prompt-size expansion beyond existing staged prompts
+  - compact/micro/minimal fallback behavior remains bounded and size-limit-only
+
+### Files touched
+
+- `lib/deep-learn.ts`
+- `lib/deep-learn-generation.ts`
+- `lib/study-outputs/reviewer.ts`
+- `tests/deep-learn-generation.test.ts`
+- `tests/study-output-reviewer.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Reviewer output could still expose prompt-structuring labels and raw OCR-derived phrasing even though the deterministic academic structuring foundation was working. This pass keeps quality improvements deterministic and local: clean the artifact before save/render, improve heading/group reconstruction, and make each reviewer mode present source-grounded content differently without adding another model pass or longer retry loop.
+
+### Tests run
+
+- `npx tsx --test tests/deep-learn-generation.test.ts` - passed
+- `npx tsx --test tests/study-output-reviewer.test.ts` - passed
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- deep-learn-generation deep-learn-readiness queue canvas-content-resolution learn-resource-ui` - passed
+- `npm test -- study-output-reviewer study-output-sheet study-output-quiz-pack study-output-print` - passed
+
+### Verification result
+
+- Passed all requested verification commands.
+- Verified internal pipeline phrases are stripped from normalized saved artifacts and Reviewer output.
+- Verified malformed headings are rejected before save.
+- Verified `What is Cybersecurity?`, `Password Cracking Methods`, and `CIA Triad` reconstruction remains deterministic.
+- Verified parent-child concept grouping still reconstructs CIA/password-cracking groups.
+- Verified Reviewer modes are no longer identical: identification, answer bank, likely quiz target, and quick-review content get separate deterministic treatment.
+- Verified anti-loop protections still pass through the existing staged fallback tests, including invalid JSON, empty response, provider error, compact fallback, micro fallback, and minimal fallback paths.
+
+### Known risks
+
+- Heading and educational abstraction are still conservative heuristics. They improve common OCR/security-course patterns but will need more examples for unusual slide layouts.
+- Deduplication intentionally preserves at least one likely quiz target even when all quiz targets overlap other artifacts, so very small packs can still save with a useful quiz target.
+- Relationship grouping is pattern-based and should not be treated as inferred knowledge beyond the selected source text.
+
+### Blockers
+
+- No blocker remains.
+
+### Next recommended step
+
+Run authenticated QA on the IT Security source and compare the saved Reviewer against the previous output for internal-label leaks, heading quality, concept grouping, and mode differentiation.
+
+### Suggested commit message
+
+```bash
+improve deep learn semantic reviewer quality
+```
+
+---
+
 ## Session Update - 2026-05-14 (Improve Deep Learn academic structuring quality)
 
 ### What changed

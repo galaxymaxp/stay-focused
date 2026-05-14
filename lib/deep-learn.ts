@@ -31,6 +31,22 @@ const STUDENT_FACING_REPLACEMENTS: Array<[RegExp, string]> = [
   [/\bdebug label\b/gi, 'label'],
 ]
 
+const INTERNAL_PIPELINE_LABELS = [
+  'Academic headings',
+  'Clean source summary fragments',
+  'Concept hierarchy',
+  'Detected concepts',
+  'Duplicate OCR/source fragments collapsed',
+  'Normalized headings',
+  'Reconstructed lists',
+  'Term definitions',
+]
+
+const INTERNAL_PIPELINE_LABEL_PATTERN = new RegExp(
+  `\\b(?:${INTERNAL_PIPELINE_LABELS.map((label) => label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})\\b\\s*:?`,
+  'gi',
+)
+
 const QUIZ_WORTHY_ALLOWED_KINDS = new Set<DeepLearnAnswerKind>([
   'term_definition',
   'timeline',
@@ -134,6 +150,11 @@ export function normalizeDeepLearnGeneratedContent(
   const record = asRecord(value)
   const sections = normalizeSections(record.sections)
   const overview = cleanSentence(record.overview) || buildOverviewFromSections(sections)
+  const artifacts = dedupeDeepLearnStudyArtifacts({
+    answerBank: normalizeAnswerBank(record.answerBank),
+    identificationItems: normalizeIdentificationItems(record.identificationItems),
+    likelyQuizTargets: normalizeLikelyQuizTargets(record.likelyQuizTargets),
+  })
 
   return {
     title: cleanShortText(record.title) || fallbackTitle,
@@ -141,10 +162,10 @@ export function normalizeDeepLearnGeneratedContent(
     sections: sections.length > 0
       ? sections
       : [{ heading: 'Support note', body: overview || fallbackTitle }],
-    answerBank: normalizeAnswerBank(record.answerBank),
-    identificationItems: normalizeIdentificationItems(record.identificationItems),
+    answerBank: artifacts.answerBank,
+    identificationItems: artifacts.identificationItems,
     distinctions: normalizeDistinctions(record.distinctions),
-    likelyQuizTargets: normalizeLikelyQuizTargets(record.likelyQuizTargets),
+    likelyQuizTargets: artifacts.likelyQuizTargets,
     cautionNotes: normalizeStringList(record.cautionNotes, 6),
   }
 }
@@ -216,10 +237,15 @@ export function buildDeepLearnNoteRecord(input: {
   generatedAt: string | null
 }): DeepLearnNote {
   const sections = normalizeSections(input.sections)
-  const answerBank = normalizeAnswerBank(input.answerBank)
-  const identificationItems = normalizeIdentificationItems(input.identificationItems)
+  const artifacts = dedupeDeepLearnStudyArtifacts({
+    answerBank: normalizeAnswerBank(input.answerBank),
+    identificationItems: normalizeIdentificationItems(input.identificationItems),
+    likelyQuizTargets: normalizeLikelyQuizTargets(input.likelyQuizTargets),
+  })
+  const answerBank = artifacts.answerBank
+  const identificationItems = artifacts.identificationItems
   const distinctions = normalizeDistinctions(input.distinctions)
-  const likelyQuizTargets = normalizeLikelyQuizTargets(input.likelyQuizTargets)
+  const likelyQuizTargets = artifacts.likelyQuizTargets
 
   return {
     ...input,
@@ -694,6 +720,42 @@ function cleanShortText(value: unknown) {
   return cleaned.slice(0, 180)
 }
 
+function dedupeDeepLearnStudyArtifacts(input: {
+  answerBank: DeepLearnAnswerBankItem[]
+  identificationItems: DeepLearnIdentificationItem[]
+  likelyQuizTargets: DeepLearnLikelyQuizTarget[]
+}) {
+  const answerKeys = new Set<string>()
+  const identificationKeys = new Set<string>()
+  const claim = (seen: Set<string>, value: string) => {
+    const key = normalizeLookup(value)
+    if (!key || key.length < 4) return true
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  }
+
+  const answerBank = input.answerBank.filter((item) => claim(answerKeys, item.cue))
+  const identificationItems = input.identificationItems.filter((item) => {
+    const answer = resolveDeepLearnWording(item.answer, 'exam_safe')
+    return claim(identificationKeys, answer) && normalizeLookup(answer) !== normalizeLookup(item.prompt)
+  })
+  const blockedQuizKeys = new Set([...answerKeys, ...identificationKeys])
+  const likelyQuizTargets = input.likelyQuizTargets.filter((item) => {
+    const key = normalizeLookup(item.target)
+    if (!key || key.length < 4) return true
+    if (blockedQuizKeys.has(key)) return false
+    blockedQuizKeys.add(key)
+    return true
+  })
+
+  return {
+    answerBank,
+    identificationItems,
+    likelyQuizTargets: likelyQuizTargets.length > 0 ? likelyQuizTargets : input.likelyQuizTargets.slice(0, 1),
+  }
+}
+
 function cleanSentence(value: unknown) {
   if (typeof value !== 'string') return null
 
@@ -719,10 +781,20 @@ function normalizeLookup(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
 }
 
-function sanitizeStudentFacingText(value: string) {
+export function sanitizeStudentFacingText(value: string) {
+  const withoutInternalLines = value
+    .replace(/\r\n/g, '\n')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => {
+      if (!line) return true
+      return !INTERNAL_PIPELINE_LABELS.some((label) => new RegExp(`^[-*\\s]*${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*:?`, 'i').test(line))
+    })
+    .join('\n')
+
   return STUDENT_FACING_REPLACEMENTS.reduce(
     (current, [pattern, replacement]) => current.replace(pattern, replacement),
-    value,
+    withoutInternalLines.replace(INTERNAL_PIPELINE_LABEL_PATTERN, ''),
   )
 }
 

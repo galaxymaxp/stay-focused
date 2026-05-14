@@ -844,7 +844,8 @@ test('deterministic academic structuring normalizes raw OCR headings and reconst
     'CIA includes Confidentiality, Integrity, and Availability.',
   ].join('\n'))
 
-  assert.ok(structured.headings.includes('Core Principles of Cybersecurity'))
+  assert.ok(structured.headings.includes('What is Cybersecurity?'))
+  assert.ok(structured.headingConfidence.some((entry) => entry.heading === 'Password Cracking Methods' && entry.confidence >= 0.9))
   assert.ok(structured.lists.some((list) =>
     list.heading === 'Password Cracking Methods'
     && list.items.includes('Brute-force')
@@ -888,11 +889,64 @@ test('buildAcademicStructuredGrounding keeps compact structured units and exact 
   ].join('\n'), 1800)
 
   assert.match(grounding, /Deterministic academic structure/i)
-  assert.match(grounding, /Core Principles of Cybersecurity/)
+  assert.match(grounding, /What is Cybersecurity\?/)
   assert.match(grounding, /Password Cracking Methods: Brute-force, Network Sniffing, Social Engineering/)
   assert.match(grounding, /Closest source passages/i)
   assert.match(grounding, /Cybersecurity is the practice/i)
   assert.ok(grounding.length <= 1800)
+})
+
+test('Deep Learn save validator rejects malformed headings before save', () => {
+  const malformed = normalizeDeepLearnGeneratedContent({
+    title: 'IT Security',
+    overview: 'The source explains information security basics.',
+    sections: [
+      { heading: 'Cyber Security What', body: 'CIA includes confidentiality, integrity, and availability.' },
+    ],
+    answerBank: [answerBankItem(1)],
+    identificationItems: [identificationItem(1)],
+    likelyQuizTargets: [quizTargetItem(1)],
+    cautionNotes: [],
+  }, 'IT Security')
+
+  const validation = validateDeepLearnContentReadyForSave(malformed)
+
+  assert.equal(validation.ok, false)
+})
+
+test('Deep Learn save validator rejects leaked internal pipeline labels before save', () => {
+  const content = normalizeDeepLearnGeneratedContent({
+    title: 'IT Security',
+    overview: 'The source explains information security basics.',
+    sections: [
+      { heading: 'Source Summary', body: 'CIA includes confidentiality, integrity, and availability.' },
+    ],
+    answerBank: [answerBankItem(1)],
+    identificationItems: [identificationItem(1)],
+    likelyQuizTargets: [quizTargetItem(1)],
+    cautionNotes: [],
+  }, 'IT Security')
+  content.sections[0] = { heading: 'Source Summary', body: 'Reconstructed lists: CIA Triad.' }
+
+  const validation = validateDeepLearnContentReadyForSave(content)
+
+  assert.equal(validation.ok, false)
+})
+
+test('normalizeDeepLearnGeneratedContent strips internal pipeline wording from saved artifacts', () => {
+  const content = normalizeDeepLearnGeneratedContent({
+    title: 'IT Security',
+    overview: 'Clean source summary fragments: The source explains layered defense.',
+    sections: [
+      { heading: 'Source Summary', body: 'Detected concepts: layered defense protects systems.' },
+    ],
+    answerBank: [answerBankItem(1)],
+    identificationItems: [identificationItem(1)],
+    likelyQuizTargets: [quizTargetItem(1)],
+    cautionNotes: ['Normalized headings: review cleaned terms.'],
+  }, 'IT Security')
+
+  assert.doesNotMatch(JSON.stringify(content), /Clean source summary fragments|Detected concepts|Normalized headings/)
 })
 
 test('normalizeDeepLearnGeneratedContent enforces compact Study Pack output limits', () => {

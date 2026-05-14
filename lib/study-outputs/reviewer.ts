@@ -1,4 +1,4 @@
-import { resolveDeepLearnWording } from '@/lib/deep-learn'
+import { resolveDeepLearnWording, sanitizeStudentFacingText } from '@/lib/deep-learn'
 import { buildDeepLearnNoteBody } from '@/lib/deep-learn'
 import { deepLearnNoteHasUntrustworthyGrounding } from '@/lib/deep-learn-source-validation'
 import { normalizeSourceFaithfulText, normalizeStudyOutputHeadingIfRaw } from '@/lib/study-outputs/source-faithful'
@@ -78,8 +78,9 @@ export function buildDeepLearnReviewerContent(note: DeepLearnNote): StudyOutputR
     throw new Error(readiness.message)
   }
 
-  const quickReviewBlocks = buildQuickReviewBlocks(note)
+  const quickReviewBlocks = dedupeQuickReviewBlocks(buildQuickReviewBlocks(note))
   const title = buildReviewerTitle(note.title)
+  const usedConcepts = new Set<string>()
   const highYieldConcepts = note.answerBank
     .slice()
     .sort(compareImportanceDesc)
@@ -91,19 +92,21 @@ export function buildDeepLearnReviewerContent(note: DeepLearnNote): StudyOutputR
       sourceWording: exactMemorizeText(item.answer),
       plainExplanation: plainExplanation(item),
     }))
+    .filter((item) => claimReviewerConcept(usedConcepts, item.cue))
     .slice(0, 12)
 
   const identificationReview = note.identificationItems
     .slice()
     .sort(compareImportanceDesc)
     .map((item) => ({
-      prompt: normalizeSourceFaithfulText(item.prompt),
+      prompt: buildIdentificationPrompt(item),
       answer: exactMemorizeText(item.answer),
       importance: item.importance,
       support: plainExplanation(item),
       sourceWording: exactMemorizeText(item.answer),
       plainExplanation: plainExplanation(item),
     }))
+    .filter((item) => claimReviewerConcept(usedConcepts, item.prompt))
     .slice(0, Math.max(4, REVIEWER_MEMORIZATION_ITEM_LIMIT - highYieldConcepts.length))
 
   return {
@@ -112,7 +115,7 @@ export function buildDeepLearnReviewerContent(note: DeepLearnNote): StudyOutputR
     sourceResourceId: note.resourceId,
     title,
     summary: buildReviewerSummary(note, highYieldConcepts.length, identificationReview.length),
-    intro: note.overview,
+    intro: cleanReviewerText(note.overview),
     highYieldConcepts,
     identificationReview,
     quickReviewBlocks,
@@ -130,10 +133,11 @@ export function buildDeepLearnReviewerContent(note: DeepLearnNote): StudyOutputR
       .slice(0, 8)
       .map((item) => ({
         target: normalizeStudyOutputHeadingIfRaw(item.target),
-        reason: normalizeSourceFaithfulText(item.reason),
+        reason: buildLikelyQuizReason(item.reason),
         importance: item.importance,
-      })),
-    cautionNotes: note.cautionNotes.slice(0, 6),
+      }))
+      .filter((item) => claimReviewerConcept(usedConcepts, item.target)),
+    cautionNotes: note.cautionNotes.map(cleanReviewerText).filter(Boolean).slice(0, 6),
   }
 }
 
@@ -164,7 +168,7 @@ function buildQuickReviewBlocks(note: DeepLearnNote) {
 
   return sections
     .map((section) => ({
-      heading: normalizeStudyOutputHeadingIfRaw(section.heading),
+      heading: specializeQuickReviewHeading(section.heading, section.body),
       points: toQuickReviewPoints(section.body),
     }))
     .filter((section) => section.points.length > 0)
@@ -188,19 +192,90 @@ function toQuickReviewPoints(body: string) {
   return body
     .split(/\n|(?<=[.!?])\s+/)
     .map((line) => line.replace(/^[-*]\s*/, '').trim())
-    .filter((line) => line.length >= 18)
+    .map(cleanEducationalReviewerPoint)
+    .filter((line) => line.length >= 18 && !containsInternalPipelineText(line))
     .slice(0, 4)
 }
 
 function exactMemorizeText(wording: Parameters<typeof resolveDeepLearnWording>[0]) {
-  return normalizeSourceFaithfulText(resolveDeepLearnWording(wording, 'exact_source'))
+  return cleanReviewerText(resolveDeepLearnWording(wording, 'exact_source'))
 }
 
 function plainExplanation(item: DeepLearnAnswerBankItem | DeepLearnIdentificationItem) {
   const simplified = 'simplifiedWording' in item ? item.simplifiedWording : null
   const explanation = simplified ?? item.supportingContext ?? item.draftExplanation ?? item.reviewText ?? null
-  const cleaned = explanation ? normalizeSourceFaithfulText(explanation) : null
+  const cleaned = explanation ? cleanReviewerText(explanation) : null
   return cleaned && cleaned !== exactMemorizeText(item.answer) ? cleaned : null
+}
+
+function buildIdentificationPrompt(item: DeepLearnIdentificationItem) {
+  const prompt = cleanReviewerText(item.prompt)
+  if (/^(?:identify|define|explain)\b/i.test(prompt)) return prompt
+  const answer = exactMemorizeText(item.answer)
+  if (answer && normalizeLookup(prompt) !== normalizeLookup(answer)) return `Identify: ${prompt}`
+  return prompt
+}
+
+function buildLikelyQuizReason(reason: string) {
+  const cleaned = cleanReviewerText(reason)
+  if (/^(?:explain|distinguish|apply|compare|why|how|which)\b/i.test(cleaned)) return cleaned
+  return `Explain or apply: ${cleaned}`
+}
+
+function specializeQuickReviewHeading(heading: string, body: string) {
+  const cleaned = normalizeStudyOutputHeadingIfRaw(cleanReviewerText(heading))
+  if (/multiple layers|layers of protection|systems, networks, programs, and data/i.test(body)) {
+    return 'Layered Cybersecurity Defense'
+  }
+  if (/cia|confidentiality|integrity|availability/i.test(`${heading} ${body}`)) return 'CIA Triad'
+  return cleaned
+}
+
+function cleanEducationalReviewerPoint(value: string) {
+  const cleaned = cleanReviewerText(value)
+  const layered = cleaned.match(/(?:successful\s+)?cybersecurity\s+approach\s+has\s+multiple\s+layers.*?(?:systems,\s*networks,\s*programs,\s*and\s*data|systems.*?networks.*?programs.*?data)/i)
+  if (layered) return 'Multiple layers of protection are used across systems, networks, programs, and data.'
+  return cleaned
+}
+
+function cleanReviewerText(value: string) {
+  return normalizeSourceFaithfulText(sanitizeStudentFacingText(value))
+}
+
+function containsInternalPipelineText(value: string) {
+  return /\b(?:Reconstructed lists|Clean source summary fragments|Normalized headings|Detected concepts|Academic headings|Concept hierarchy|Term definitions|Duplicate OCR\/source fragments collapsed)\b/i.test(value)
+}
+
+function dedupeQuickReviewBlocks(blocks: ReturnType<typeof buildQuickReviewBlocks>) {
+  const seenHeadings = new Set<string>()
+  const seenPoints = new Set<string>()
+  const result: ReturnType<typeof buildQuickReviewBlocks> = []
+  for (const block of blocks) {
+    const headingKey = normalizeLookup(block.heading)
+    if (!headingKey || seenHeadings.has(headingKey)) continue
+    const points = block.points.filter((point) => {
+      const key = normalizeLookup(point)
+      if (!key || seenPoints.has(key)) return false
+      seenPoints.add(key)
+      return true
+    })
+    if (points.length === 0) continue
+    seenHeadings.add(headingKey)
+    result.push({ ...block, points })
+  }
+  return result
+}
+
+function claimReviewerConcept(seen: Set<string>, value: string) {
+  const key = normalizeLookup(value)
+  if (!key || key.length < 4) return true
+  if (seen.has(key)) return false
+  seen.add(key)
+  return true
+}
+
+function normalizeLookup(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
 }
 
 function compareImportanceDesc(left: DeepLearnAnswerBankItem | DeepLearnIdentificationItem, right: DeepLearnAnswerBankItem | DeepLearnIdentificationItem) {

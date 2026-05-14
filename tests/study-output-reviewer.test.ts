@@ -111,6 +111,66 @@ test('reviewer uses source wording as memorize layer and normalizes raw labels',
   assert.doesNotMatch(JSON.stringify(reviewer), /-> definition|cybersecurity-definitions/i)
 })
 
+test('reviewer strips pipeline labels and reconstructs educational quick-review language', () => {
+  const reviewer = buildDeepLearnReviewerContent(createNote({
+    overview: 'Clean source summary fragments: Cybersecurity protects systems.',
+    sections: [
+      {
+        heading: 'Source Summary',
+        body: [
+          'Reconstructed lists:',
+          'A successful cybersecurity approach has multiple layers of protection spread across systems, networks, programs, and data.',
+          'Detected concepts: confidentiality integrity availability.',
+        ].join('\n'),
+      },
+    ],
+    cautionNotes: ['Normalized headings: use cleaner review labels.'],
+  }))
+
+  assert.equal(reviewer.quickReviewBlocks[0]?.heading, 'Layered Cybersecurity Defense')
+  assert.ok(reviewer.quickReviewBlocks[0]?.points.includes('Multiple layers of protection are used across systems, networks, programs, and data.'))
+  assert.doesNotMatch(JSON.stringify(reviewer), /Reconstructed lists|Detected concepts|Clean source summary fragments|Normalized headings/)
+})
+
+test('reviewer keeps modes specialized and semantically deduped', () => {
+  const reviewer = buildDeepLearnReviewerContent(createNote({
+    likelyQuizTargets: [
+      {
+        target: 'Subject matter jurisdiction',
+        reason: 'Recall court authority.',
+        importance: 'high',
+        reviewText: 'Subject matter jurisdiction',
+        draftExplanation: null,
+        sourceSnippet: null,
+        linkedDraftSectionId: null,
+        supportingContext: null,
+        compareContext: null,
+        simplifiedWording: null,
+        confusionNotes: [],
+        relatedConcepts: [],
+      },
+      {
+        target: 'Complete diversity',
+        reason: 'Standard exam trigger for diversity jurisdiction.',
+        importance: 'high',
+        reviewText: 'Complete diversity',
+        draftExplanation: null,
+        sourceSnippet: null,
+        linkedDraftSectionId: null,
+        supportingContext: null,
+        compareContext: null,
+        simplifiedWording: null,
+        confusionNotes: [],
+        relatedConcepts: [],
+      },
+    ],
+  }))
+
+  assert.match(reviewer.identificationReview[0]?.prompt ?? '', /^Identify:/)
+  assert.doesNotMatch(JSON.stringify(reviewer.likelyQuizTargets), /Subject matter jurisdiction/)
+  assert.match(reviewer.likelyQuizTargets[0]?.reason ?? '', /^Explain or apply:/)
+})
+
 function createNote(overrides: Partial<DeepLearnNote> = {}): DeepLearnNote {
   return buildDeepLearnNoteRecord({
     id: 'note-1',
