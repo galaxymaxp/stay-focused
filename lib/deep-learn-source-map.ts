@@ -65,6 +65,27 @@ const SOURCE_MAP_HEADINGS = [
   'Impact Reduction',
 ]
 
+const SOURCE_MAP_STOP_TOKENS = [
+  'Goal of IT Security',
+  'Domains of IT Security',
+  'What is Cybersecurity?',
+  'What is Cybersecurity',
+  'Importance of Cybersecurity',
+  'Importance of cybersecurity',
+  'Challenges of Cybersecurity',
+  'Impact of a Security Breach',
+  'Types of Attackers',
+  'Definition of Terms',
+  'Types of Cybersecurity Threats',
+  'Types of Malware',
+  'Symptoms of Malware',
+  'Methods of Infiltration',
+  'Methods to Deny Service',
+  'Blended Attacks',
+  'Impact Reduction',
+  'Attacks backed by state agencies that',
+]
+
 const HIGH_IMPORTANCE_PATTERNS = [
   /\bdefinition\b/i,
   /\bwhat is\b/i,
@@ -80,6 +101,31 @@ const HIGH_IMPORTANCE_PATTERNS = [
   /\bimpact reduction\b/i,
   /\bblended attacks?\b/i,
 ]
+
+const RECOGNIZED_SOURCE_MAP_TERMS = new Set([
+  'it security',
+  'infosec vs it sec',
+  'infosec',
+  'it sec',
+  'cia triad',
+  'cybersecurity',
+  'domains of it security',
+  'importance of cybersecurity',
+  'challenges',
+  'challenges of cybersecurity',
+  'types of attackers',
+  'vulnerability',
+  'exploit',
+  'breach',
+  'vulnerability exploit breach',
+  'cybercrime disruption espionage',
+  'malware types',
+  'malware symptoms',
+  'infiltration methods',
+  'denial of service methods',
+  'blended attacks',
+  'impact reduction',
+])
 
 export function buildAcademicSourceMap(sourceText: string): AcademicSourceMap {
   const cleanedLines = cleanupSourceMapLines(sourceText)
@@ -170,8 +216,8 @@ function cleanupSourceMapLines(sourceText: string) {
 
 function splitInlineSourceMapHeadings(line: string) {
   let current = line
-  for (const heading of SOURCE_MAP_HEADINGS) {
-    const pattern = new RegExp(`\\s+(${escapeRegExp(heading)}\\??)\\s+`, 'gi')
+  for (const heading of [...SOURCE_MAP_HEADINGS].sort((left, right) => right.length - left.length)) {
+    const pattern = new RegExp(`\\s+(${escapeRegExp(heading)}\\??)(?=\\s|\\d+[.)])`, 'gi')
     current = current.replace(pattern, '\n$1 ')
   }
   return current.split('\n')
@@ -223,10 +269,12 @@ function buildUnitsFromChunks(chunks: SourceChunk[]): AcademicSourceMapUnit[] {
   return chunks.flatMap((chunk) => {
     const items = extractSourceMapItems(chunk.text)
     const definitions = extractDefinitionsFromText(chunk.text)
-    const kind = classifyUnitKind(chunk.heading, chunk.text, items, definitions)
+    const canExtractDefinitionUnits = isDefinitionSourceMapChunk(chunk.heading)
+    const chunkDefinitions = canExtractDefinitionUnits ? definitions : []
+    const kind = classifyUnitKind(chunk.heading, chunk.text, items, chunkDefinitions)
     const units: AcademicSourceMapUnit[] = []
 
-    if (definitions.length > 0) {
+    if (canExtractDefinitionUnits && definitions.length > 0) {
       units.push(...definitions.map((definition) => createUnit({
         title: definition.term,
         kind: 'definition',
@@ -236,11 +284,11 @@ function buildUnitsFromChunks(chunks: SourceChunk[]): AcademicSourceMapUnit[] {
       })))
     }
 
-    if (items.length >= 2 || definitions.length === 0) {
+    if (items.length >= 2 || definitions.length === 0 || !canExtractDefinitionUnits) {
       units.push(createUnit({
         title: chunk.heading,
         kind,
-        summary: summarizeChunk(chunk, items, definitions),
+        summary: summarizeChunk(chunk, items, chunkDefinitions),
         items,
         sourceQuote: chunk.sourceQuote,
       }))
@@ -248,6 +296,10 @@ function buildUnitsFromChunks(chunks: SourceChunk[]): AcademicSourceMapUnit[] {
 
     return units
   })
+}
+
+function isDefinitionSourceMapChunk(heading: string) {
+  return /\b(?:what is|definition of terms?)\b/i.test(heading)
 }
 
 function inferKnownSecurityUnits(normalizedText: string): AcademicSourceMapUnit[] {
@@ -290,11 +342,14 @@ function inferKnownSecurityUnits(normalizedText: string): AcademicSourceMapUnit[
       ? pickRegexQuote(source, pattern) ?? pickKnownSectionQuote(normalizedText, headings, pattern)
       : pickKnownSectionQuote(normalizedText, headings, pattern)
     if (quote) {
+      const items = title === 'InfoSec vs IT Sec'
+        ? extractSourceMapItems(quote).filter((item) => /^(?:InfoSec|IT Sec)\b/i.test(item))
+        : extractSourceMapItems(quote)
       units.push(createUnit({
         title,
         kind: title.includes('definition') || title.includes('Definitions') ? 'definition' : title.includes('/') ? 'category' : 'concept',
         summary: summarizeQuote(title, quote),
-        items: extractSourceMapItems(quote),
+        items,
         sourceQuote: quote,
       }))
     }
@@ -315,12 +370,18 @@ function createUnit(input: {
     id: slugify(title),
     title,
     kind: input.kind,
-    summary: cleanupSummary(input.summary),
-    items: uniqueStrings(input.items.map(cleanupItem).filter(Boolean)).slice(0, 14),
+    summary: cleanupSummary(stopAtKnownHeading(input.summary, title)),
+    items: uniqueStrings(input.items.map((item) => cleanupSourceMapUnitItem(item, title)).filter(Boolean)).slice(0, 14),
     sourceQuotes: uniqueStrings([input.sourceQuote].filter(Boolean).map((quote) => clampSourceMapQuote(quote, title, input.kind))),
     importanceScore: scoreImportance(title, input.kind, input.items.length),
     confidence: input.sourceQuote ? 0.86 : 0.62,
   }
+}
+
+function cleanupSourceMapUnitItem(value: string, title: string) {
+  return cleanupItem(stopAtKnownHeading(value, title))
+    .replace(/\s+(?:Goal of IT Security|Domains of IT(?: Security)?|What is Cybersecurity\??|Importance of Cybersecurity|Challenges of Cybersecurity|Impact of a Security Breach|Types of Attackers|Definition of Terms|Types of Cybersecurity Threats|Types of Malware|Symptoms of Malware|Methods of Infiltration|Methods to Deny Service|Blended Attacks|Impact Reduction)\b.*$/i, '')
+    .trim()
 }
 
 function extractSourceMapItems(text: string) {
@@ -439,9 +500,9 @@ function clampSourceMapQuote(value: string, title: string, kind: AcademicSourceM
 
 function stopAtKnownHeading(value: string, title: string) {
   let end = value.length
-  for (const heading of SOURCE_MAP_HEADINGS) {
+  for (const heading of SOURCE_MAP_STOP_TOKENS) {
     if (normalizeLookup(heading) === normalizeLookup(title)) continue
-    const match = value.match(new RegExp(`\\s${escapeRegExp(heading)}\\??\\s`, 'i'))
+    const match = value.match(new RegExp(`\\s${escapeRegExp(heading)}\\??(?=\\s|\\d+[.)])`, 'i'))
     if (match?.index && match.index > 20) end = Math.min(end, match.index)
   }
   return value.slice(0, end).trim()
@@ -449,9 +510,34 @@ function stopAtKnownHeading(value: string, title: string) {
 
 function dedupeUnits(units: AcademicSourceMapUnit[]) {
   return uniqueBy(
-    units.filter((unit) => unit.title.length >= 3 && unit.summary.length >= 8 && unit.sourceQuotes.length > 0),
+    units.filter((unit) => isMeaningfulSourceMapUnit(unit)),
     (unit) => normalizeLookup(unit.title),
   )
+}
+
+function isMeaningfulSourceMapUnit(unit: AcademicSourceMapUnit) {
+  const titleKey = normalizeLookup(unit.title)
+  const summaryKey = normalizeLookup(unit.summary)
+  if (!titleKey || unit.title.length < 3 || unit.sourceQuotes.length === 0) return false
+  if (isWeakSourceMapTitle(unit.title)) return false
+  if (summaryKey.length < 14 && !RECOGNIZED_SOURCE_MAP_TERMS.has(titleKey)) return false
+  if (/^cyber crime\b/i.test(unit.title) && /\bbig business\b/i.test(unit.summary)) return false
+  return true
+}
+
+function isWeakSourceMapTitle(title: string) {
+  const key = normalizeLookup(title)
+  if (!key) return true
+  if (RECOGNIZED_SOURCE_MAP_TERMS.has(key)) return false
+  if (/^(?:there|high|state|terms|programs|activity|organization|source summary|what)$/i.test(key)) return true
+  if (/^(?:cyber crime|organized and state|seo poisoning|sent to a host or application and the receiver)$/i.test(key)) return true
+  if (/\bthat$/i.test(key)) return true
+  if (/^(?:attacks backed by state agencies that|sent to a host or application and the receiver)\b/i.test(key)) return true
+  const words = key.split(/\s+/).filter(Boolean)
+  if (words.length === 1 && !RECOGNIZED_SOURCE_MAP_TERMS.has(key)) return true
+  if (words.length >= 7 && !/^(?:vulnerability exploit breach|cybercrime disruption espionage)$/i.test(key)) return true
+  if (/\b(?:there is|there are|sent to|attempts to|refers to|the receiver|that are part)\b/i.test(title)) return true
+  return false
 }
 
 function scoreImportance(title: string, kind: AcademicSourceMapUnitKind, itemCount: number) {

@@ -5,6 +5,66 @@ Last Updated: 2026-05-15
 
 ---
 
+## Session Update - 2026-05-15 (Harden Source Map Unit Quality)
+
+### What changed
+
+- Added a Source Map unit quality gate for weak/generated titles such as `There`, `High`, `State`, `Cyber Crime`, long sentence-fragment titles, and titles ending in `that`.
+- Expanded known stop tokens and inline heading splitting so IT Security text stops at section headings such as `Goal of IT Security`, `Domains of IT Security`, `Definition of Terms`, `Methods to Deny Service`, and `Impact Reduction`.
+- Limited local definition extraction to definition-style chunks so category/list sections do not create orphan units from nearby OCR fragments.
+- Cleaned Source Map items at known heading boundaries, with special handling for InfoSec vs IT Sec so CIA/domain items do not bleed into that comparison.
+- Replaced raw reviewer exam-cue snippets with deterministic cue templates for definitions, lists, comparisons, and processes.
+- Tightened quick-answer block filtering and shaped malware symptom bullets so quick cards avoid weak orphan terms and raw `There is...` residue.
+- Added IT Security fixture coverage for weak unit rejection, inline heading splitting, templated exam cues, quick-answer block cleanup, and core concept retention.
+
+### Files touched
+
+- `lib/deep-learn-source-map.ts`
+- `lib/study-outputs/reviewer.ts`
+- `tests/study-output-reviewer.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+The reviewer was stable and exportable, but low-quality Source Map units were still reaching rendering. Cleaning the units before rendering keeps the deterministic Source Map architecture intact without adding model calls, retries, queue changes, or looser validation.
+
+### Tests run
+
+- `npm test -- study-output-reviewer` - passed
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- deep-learn-generation study-output-reviewer study-output-quiz-pack` - passed
+- `npm test -- study-output-reviewer study-output-sheet study-output-print` - passed
+
+### Verification result
+
+- Passed all requested verification commands.
+- Verified InfoSec vs IT Sec no longer carries `Goal of IT Security`, CIA items, or domain heading text.
+- Verified IT Security exam cues use the generated template and do not include raw InfoSec snippets.
+- Verified weak fragment units such as `There`, `High`, `State`, `Cyber Crime`, `Attacks Backed By State Agencies That`, and `Sent To A Host Or Application And The Receiver` are rejected.
+- Verified quick-answer blocks omit weak orphan units while keeping core IT Security concepts.
+
+### Known risks
+
+- The quality gate is deterministic and intentionally conservative; future source families may need additional heading aliases or recognized-term entries.
+- The latest real IT Security PDF export should still be visually checked after regeneration to confirm the fixture improvements match the live extracted source.
+
+### Blockers
+
+- No blocker remains.
+
+### Next recommended step
+
+Regenerate the real IT Security reviewer from the PDF and compare the exported PDF against this pass, then move to Quiz only after reviewer source quality is confirmed.
+
+### Suggested commit message
+
+```bash
+harden source map unit quality
+```
+
+---
+
 ## Session Update - 2026-05-15 (Polish Source Map Reviewer Quality)
 
 ### What changed

@@ -188,9 +188,9 @@ export function buildReviewerContentFromSourceMap(note: DeepLearnNote): StudyOut
       cue: unit.title,
       answer: unit.answer,
       importance: sourceMapImportance(unit.importanceScore),
-      support: unit.support,
+      support: null,
       sourceWording: unit.sourceWording,
-      plainExplanation: unit.support,
+      plainExplanation: buildSourceMapExamCue(unit),
     }))
     .filter((item, index, list) => list.findIndex((candidate) => normalizeLookup(candidate.cue) === normalizeLookup(item.cue)) === index)
     .slice(0, 20)
@@ -201,20 +201,20 @@ export function buildReviewerContentFromSourceMap(note: DeepLearnNote): StudyOut
       prompt: `Identify or define ${unit.title}.`,
       answer: unit.shortAnswer,
       importance: sourceMapImportance(unit.importanceScore),
-      support: unit.support,
+      support: null,
       sourceWording: unit.sourceWording,
-      plainExplanation: unit.support,
+      plainExplanation: buildSourceMapExamCue(unit),
     }))
     .filter((item) => !isWeakReviewerTerm(item.answer))
     .slice(0, Math.max(4, REVIEWER_MEMORIZATION_ITEM_LIMIT - highYieldConcepts.length))
 
   const seenQuickItems = new Set<string>()
   const quickReviewBlocks = units
-    .filter((unit) => unit.kind !== 'definition' && unit.items.length >= 2)
+    .filter(isStrongSourceMapQuickBlockUnit)
     .map((unit) => {
       const points = unit.items
-        .map((item) => cleanReviewerText(item))
-        .filter((item) => item.length > 0 && !isWeakReviewerTerm(item))
+        .map((item) => shapeQuickReviewPoint(item, unit.title))
+        .filter((item) => item.length > 0 && !isWeakReviewerTerm(item) && !isWeakQuickReviewPoint(item))
         .filter((item) => {
           const key = normalizeLookup(item)
           if (!key || seenQuickItems.has(key)) return false
@@ -227,7 +227,7 @@ export function buildReviewerContentFromSourceMap(note: DeepLearnNote): StudyOut
         points,
       }
     })
-    .filter((block) => block.points.length >= 2)
+    .filter((block) => block.points.length >= 2 && !isWeakReviewerTerm(block.heading))
     .slice(0, 12)
 
   const distinctions = buildSourceMapDistinctions(units).slice(0, 6)
@@ -403,6 +403,53 @@ function buildSourceMapQuizReason(unit: SourceMapReviewerUnit) {
   return `Explain the source-backed concept in one short answer.`
 }
 
+function buildSourceMapExamCue(unit: SourceMapReviewerUnit) {
+  const key = normalizeLookup(unit.title)
+  if (key === 'infosec vs it sec') return 'Be able to distinguish InfoSec from IT Sec.'
+  if (key === 'vulnerability exploit breach') return 'Be able to distinguish Vulnerability from Exploit and Breach.'
+  if (unit.kind === 'definition') return 'Know the exact definition.'
+  if (unit.kind === 'process') return 'Know the order or purpose of the steps.'
+  if (unit.items.length >= 2) return 'Be able to enumerate the listed items.'
+  return 'Know the exact definition.'
+}
+
+function isStrongSourceMapQuickBlockUnit(unit: SourceMapReviewerUnit) {
+  if (unit.kind === 'definition') return false
+  if (unit.items.length < 3) return false
+  if (isWeakReviewerTerm(unit.title)) return false
+  const key = normalizeLookup(unit.title)
+  if (/^(?:terms|there|high|state|programs)$/i.test(key)) return false
+  return unit.kind === 'category'
+    || unit.kind === 'process'
+    || unit.kind === 'list'
+    || getPreferredSourceMapRank(unit.title) < 100
+}
+
+function isWeakQuickReviewPoint(value: string) {
+  const key = normalizeLookup(value)
+  if (!key) return true
+  if (/^(?:there|high|state|terms|programs|what|activity|organization)$/i.test(key)) return true
+  if (/^cyber crime is big business$/i.test(key)) return true
+  if (/\b(?:sent to a host|the receiver|attacks backed by state agencies that|that are part)\b/i.test(value)) return true
+  if (key.split(/\s+/).length > 14) return true
+  return false
+}
+
+function shapeQuickReviewPoint(value: string, heading: string) {
+  let cleaned = cleanReviewerText(value)
+    .replace(/^\d+[.)]\s*/, '')
+    .trim()
+  if (normalizeLookup(heading) === 'malware symptoms') {
+    cleaned = cleaned
+      .replace(/^There is an?\s+/i, '')
+      .replace(/^There are\s+/i, '')
+      .replace(/^There is a presence of\s+/i, 'Presence of ')
+      .replace(/^The computer\s+/i, 'Computer ')
+      .trim()
+  }
+  return cleaned ? cleaned.charAt(0).toUpperCase() + cleaned.slice(1) : cleaned
+}
+
 function shapeReviewerDefinitionAnswer(title: string, value: string) {
   const cleaned = cleanDefinitionAnswer(title, value)
     .replace(/\s+/g, ' ')
@@ -527,6 +574,14 @@ function isWeakReviewerTerm(value: string) {
     'what',
     'activity',
     'organization',
+    'there',
+    'high',
+    'state',
+    'terms',
+    'programs',
+    'cyber crime big business',
+    'attacks backed by state agencies that',
+    'sent to a host or application and the receiver',
     'organization people processes technology must',
     'source summary',
     'exact source wording',

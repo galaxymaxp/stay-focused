@@ -219,9 +219,45 @@ test('Source Map reviewer keeps IT Security answers inside concept boundaries', 
   }
 
   assert.doesNotMatch(answerFor('IT Security'), /Goal of IT Security/i)
-  assert.doesNotMatch(answerFor('InfoSec vs IT Sec'), /Domains of IT Security|Endpoint Security|Cloud Security|Application Security|Cybersecurity definitions/i)
+  assert.doesNotMatch(answerFor('InfoSec vs IT Sec'), /Goal of IT Security|Domains of IT Security|Endpoint Security|Cloud Security|Application Security|Cybersecurity definitions/i)
   assert.doesNotMatch(answerFor('Domains of IT Security'), /What is Cybersecurity|Protection of networked systems/i)
   assert.doesNotMatch(answerFor('Vulnerability / Exploit / Breach'), /Types of Cybersecurity Threats|Cybercrime|Disruption|Espionage/i)
+})
+
+test('Academic Source Map quality gate rejects weak IT Security fragment units', () => {
+  const sourceMap = buildAcademicSourceMap([
+    IT_SECURITY_SOURCE,
+    'Attacks backed by state agencies that are part of a broader espionage activity.',
+    'Cyber Crime - big business',
+    'There - There are unknown processes running',
+    'High - speed Internet',
+    'State - sponsored Hackers',
+    'Sent to a host or application and the receiver - unable to handle it',
+  ].join('\n'))
+  const titles = sourceMap.units.map((unit) => unit.title)
+  const renderedUnits = JSON.stringify(sourceMap.units)
+
+  for (const weak of [
+    'There',
+    'High',
+    'State',
+    'Cyber Crime',
+    'Attacks Backed By State Agencies That',
+    'Sent To A Host Or Application And The Receiver',
+  ]) {
+    assert.ok(titles.every((title) => title !== weak), `weak unit survived: ${weak}`)
+  }
+  assert.doesNotMatch(renderedUnits, /Cyber Crime: big business|Attacks Backed By State Agencies That|Sent To A Host Or Application And The Receiver/i)
+})
+
+test('Academic Source Map splits inline heading runs before CIA/domain text', () => {
+  const sourceMap = buildAcademicSourceMap(
+    'What is IT Security • InfoSec - processes and tools designed to protect sensitive business information • IT Sec - securing digital data through computer network security Goal of IT Security 1. Confidentiality 2. Integrity 3. Availability Domains of IT Security 1. Network Security 2. Internet Security',
+  )
+  const infoSec = sourceMap.units.find((unit) => unit.title === 'InfoSec vs IT Sec')
+
+  assert.ok(infoSec)
+  assert.doesNotMatch(`${infoSec.summary} ${infoSec.sourceQuotes.join(' ')}`, /Goal of IT Security|Confidentiality|Domains of IT Security/i)
 })
 
 test('Source Map reviewer removes repeated memorize labels and varies quiz prompts', () => {
@@ -236,6 +272,9 @@ test('Source Map reviewer removes repeated memorize labels and varies quiz promp
   assert.doesNotMatch(markup, /Memorize:/)
   assert.doesNotMatch(markup, /Understand:/)
   assert.match(markup, /Definition:|Key list:|Exam cue:/)
+  const examCues = reviewer.highYieldConcepts.map((item) => item.plainExplanation ?? '')
+  assert.ok(examCues.every((cue) => /^(Know the exact definition|Be able to enumerate|Be able to distinguish|Know the order or purpose)/.test(cue)))
+  assert.doesNotMatch(examCues.join(' '), /InfoSec -|Goal of IT Security|There is|State-sponsored|Cyber Crime/i)
 
   const promptVerbs = new Set(
     reviewer.likelyQuizTargets
@@ -248,6 +287,17 @@ test('Source Map reviewer removes repeated memorize labels and varies quiz promp
   assert.ok(reviewer.likelyQuizTargets.some((item) => /^Identify\b/.test(item.target)))
   assert.ok(reviewer.likelyQuizTargets.some((item) => /^Sequence\b/.test(item.target)))
 })
+
+test('Source Map reviewer quick-answer blocks exclude weak orphan units', () => {
+  const reviewer = buildDeepLearnReviewerContent(createNoteWithSourceMap(IT_SECURITY_SOURCE))
+  const rendered = JSON.stringify(reviewer.quickReviewBlocks)
+
+  assert.doesNotMatch(rendered, /"There"|"High"|"State"|"Terms"|"Programs"|Cyber Crime: big business|Attacks Backed By State Agencies That|Sent To A Host Or Application And The Receiver/i)
+  assert.ok(reviewer.quickReviewBlocks.every((block) => block.points.length >= 2))
+  assert.ok(reviewer.quickReviewBlocks.some((block) => block.heading === 'Domains of IT Security'))
+  assert.ok(reviewer.quickReviewBlocks.some((block) => block.heading === 'Methods of Infiltration'))
+})
+
 
 test('Source Map reviewer filters weak key terms and internal labels', () => {
   const sourceMap = buildAcademicSourceMap(IT_SECURITY_SOURCE)
