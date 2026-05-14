@@ -5,6 +5,70 @@ Last Updated: 2026-05-15
 
 ---
 
+## Session Update - 2026-05-15 (Polish Source Map Completeness)
+
+### What changed
+
+- Preserved complete IT Security source-listed items for deterministic Source Map reviewer output:
+  - `Domains of IT Security` now keeps all 11 listed domains, including `IoT Security`, `User Education`, and `Cyber Security`.
+  - `Malware Types` now keeps both source blocks merged into one complete list, including `Bot`, `Trojan Horse`, and `MiTM`.
+- Shaped generated Source Map answers before saving so `High-Yield First` uses clean reviewer wording instead of raw compact source snippets.
+- Added targeted deterministic answer shaping for `IT Security`, `Cybersecurity`, `InfoSec vs IT Sec`, and `Vulnerability / Exploit / Breach`.
+- Made compact generated reviewer answers word-safe so Answer Bank fields do not truncate mid-word.
+- Kept `Bot` as a legitimate short malware term while preserving weak-term filtering for generic fragments.
+- Added IT Security fixture coverage for complete Domains/Malware lists, IT Security definition isolation, non-truncated Cybersecurity answers, word-safe compact answers, and shaped High-Yield First text.
+
+### Files touched
+
+- `lib/deep-learn-generation.ts`
+- `lib/study-outputs/reviewer.ts`
+- `tests/deep-learn-generation.test.ts`
+- `tests/study-output-reviewer.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Phase 2.7 stabilized reviewer generation and removed most source-span bleed, but compact rendering still dropped valid source-listed items and used overly raw high-yield snippets. This pass keeps the Source Map architecture deterministic and stable while improving completeness and final student-facing reviewer polish before moving to Quiz.
+
+### Tests run
+
+- `npm test -- study-output-reviewer deep-learn-generation` - passed
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- deep-learn-generation study-output-reviewer study-output-quiz-pack` - passed
+- `npm test -- study-output-reviewer study-output-sheet study-output-print` - passed
+
+### Verification result
+
+- Passed all requested verification commands.
+- Verified Domains includes all 11 source-listed items.
+- Verified Malware Types merges both source blocks into one complete 10-item list.
+- Verified IT Security definition and high-yield answer exclude InfoSec text.
+- Verified Cybersecurity saved answer does not end with a cut word such as `u` or `architect`.
+- Verified compact Answer Bank fields avoid mid-word truncation.
+- Verified High-Yield First uses shaped reviewer text.
+
+### Known risks
+
+- Complete-list limits are deterministic and currently targeted to known IT Security list headings; future course families may need additional complete-list aliases.
+- The real IT Security PDF/HTML export should still be regenerated and visually checked before starting Quiz work.
+
+### Blockers
+
+- No blocker remains.
+
+### Next recommended step
+
+Regenerate the real IT Security reviewer PDF/HTML from the latest source and do a final visual QA pass, then begin Quiz generation from the cleaned Source Map units.
+
+### Suggested commit message
+
+```bash
+polish source map completeness
+```
+
+---
+
 ## Session Update - 2026-05-15 (Harden Source Map Unit Quality)
 
 ### What changed

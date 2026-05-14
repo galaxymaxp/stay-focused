@@ -224,6 +224,52 @@ test('Source Map reviewer keeps IT Security answers inside concept boundaries', 
   assert.doesNotMatch(answerFor('Vulnerability / Exploit / Breach'), /Types of Cybersecurity Threats|Cybercrime|Disruption|Espionage/i)
 })
 
+test('Source Map reviewer preserves complete IT Security lists and shaped high-yield answers', () => {
+  const reviewer = buildDeepLearnReviewerContent(createNoteWithSourceMap(IT_SECURITY_SOURCE))
+  const highYieldFor = (cue: string) => {
+    const match = reviewer.highYieldConcepts.find((item) => item.cue === cue)
+    assert.ok(match, `missing high-yield cue ${cue}`)
+    return match.answer
+  }
+  const quickBlockFor = (heading: string) => {
+    const match = reviewer.quickReviewBlocks.find((block) => block.heading === heading)
+    assert.ok(match, `missing quick block ${heading}`)
+    return match.points
+  }
+
+  const domainsAnswer = highYieldFor('Domains of IT Security')
+  for (const item of ['Network Security', 'Internet Security', 'Endpoint Security', 'Cloud Security', 'Application Security', 'Information Security', 'Operational Security', 'Mobile Security', 'IoT Security', 'User Education', 'Cyber Security']) {
+    assert.match(domainsAnswer, new RegExp(item.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+  }
+  assert.deepEqual(quickBlockFor('Domains of IT Security'), [
+    'Network Security',
+    'Internet Security',
+    'Endpoint Security',
+    'Cloud Security',
+    'Application Security',
+    'Information Security',
+    'Operational Security',
+    'Mobile Security',
+    'IoT Security',
+    'User Education',
+    'Cyber Security',
+  ])
+
+  const malwareAnswer = highYieldFor('Malware Types')
+  for (const item of ['Spyware', 'Adware', 'Bot', 'Rootkit', 'Scareware', 'Ransomware', 'Virus', 'Trojan Horse', 'Worm', 'MiTM']) {
+    assert.match(malwareAnswer, new RegExp(item.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+  }
+  assert.deepEqual(quickBlockFor('Malware Types'), ['Spyware', 'Adware', 'Bot', 'Rootkit', 'Scareware', 'Ransomware', 'Virus', 'Trojan Horse', 'Worm', 'MiTM'])
+
+  const itSecurityAnswer = highYieldFor('IT Security')
+  assert.match(itSecurityAnswer, /^IT Security uses cybersecurity strategies/)
+  assert.doesNotMatch(itSecurityAnswer, /InfoSec|processes and tools/i)
+
+  const cybersecurityAnswer = highYieldFor('Cybersecurity')
+  assert.match(cybersecurityAnswer, /unauthorized access\.$/)
+  assert.doesNotMatch(cybersecurityAnswer, /\b(?:u|architect)$/)
+})
+
 test('Academic Source Map quality gate rejects weak IT Security fragment units', () => {
   const sourceMap = buildAcademicSourceMap([
     IT_SECURITY_SOURCE,

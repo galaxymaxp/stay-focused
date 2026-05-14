@@ -1364,8 +1364,8 @@ export function buildDeepLearnContentFromSourceMap(
     return {
       cue: unit.title,
       kind: unit.kind === 'definition' ? 'term_definition' as const : 'fact' as const,
-      answer: wordingFromSentence(answerText),
-      compactAnswer: wordingFromSentence(truncateForModel(answerText, 180)),
+      answer: wordingFromSentence(answerText, getSourceMapGeneratedAnswerLimit(unit)),
+      compactAnswer: wordingFromSentence(answerText, getSourceMapGeneratedAnswerLimit(unit)),
       importance: sourceMapGeneratedImportance(unit.importanceScore, index),
       sortKey: null,
       distractors: [],
@@ -1386,7 +1386,7 @@ export function buildDeepLearnContentFromSourceMap(
     return {
       prompt: `Identify or define ${unit.title}.`,
       kind: unit.kind === 'definition' ? 'term_definition' as const : 'fact' as const,
-      answer: wordingFromSentence(answerText),
+      answer: wordingFromSentence(answerText, getSourceMapGeneratedAnswerLimit(unit)),
       importance: sourceMapGeneratedImportance(unit.importanceScore, index),
       distractors: [],
       reviewText: unit.title,
@@ -1422,7 +1422,7 @@ export function buildDeepLearnContentFromSourceMap(
   const quickBlocks = units
     .filter((unit) => unit.items.length >= 2)
     .slice(0, 5)
-    .map((unit) => `${unit.title}: ${formatInlineList(unit.items.slice(0, 8))}`)
+    .map((unit) => `${unit.title}: ${formatInlineList(unit.items.slice(0, getSourceMapGeneratedListLimit(unit)))}`)
 
   const output: Record<string, unknown> = {
     title: seedContent.title || resourceTitle,
@@ -1431,7 +1431,7 @@ export function buildDeepLearnContentFromSourceMap(
       { heading: 'Source Summary', body: summary },
       {
         heading: 'High-Yield First',
-        body: units.slice(0, 8).map((unit) => `- ${unit.title}: ${truncateForModel(buildSourceMapGeneratedAnswer(unit), 180)}`).join('\n'),
+        body: units.slice(0, 8).map((unit) => `- ${unit.title}: ${truncateForModel(buildSourceMapGeneratedAnswer(unit), getSourceMapGeneratedAnswerLimit(unit))}`).join('\n'),
       },
       {
         heading: 'Key Answers / Answer Bank',
@@ -1532,10 +1532,35 @@ function normalizeGeneratedSourceMapTitle(value: string) {
 }
 
 function buildSourceMapGeneratedAnswer(unit: GeneratedSourceMapUnit) {
+  const key = normalizeAcademicLookup(unit.title)
+  if (key === 'infosec vs it sec') {
+    return 'InfoSec protects sensitive business information; IT Sec secures digital data through computer network security.'
+  }
+  if (key === 'it security') {
+    return 'IT Security uses cybersecurity strategies to prevent unauthorized access and protect organizational assets against cyberattacks and other threats.'
+  }
+  if (key === 'cybersecurity') {
+    return 'Cybersecurity protects networked systems and data from unauthorized use or harm, protects the integrity of security architecture, and safeguards data against attack, damage, or unauthorized access.'
+  }
+  if (key === 'vulnerability exploit breach') {
+    return 'Vulnerability = weakness or flaw; exploit = method or tool used to take advantage; breach = successful exploit.'
+  }
   if (unit.items.length >= 2 && !/^(?:IT Security|Cybersecurity)$/i.test(unit.title)) {
-    return `${unit.title} includes ${formatInlineList(unit.items.slice(0, 8))}.`
+    return `${unit.title} includes ${formatInlineList(unit.items.slice(0, getSourceMapGeneratedListLimit(unit)))}.`
   }
   return unit.support || unit.sourceWording || unit.title
+}
+
+function getSourceMapGeneratedListLimit(unit: GeneratedSourceMapUnit) {
+  if (/^domains of it security$/i.test(unit.title)) return 11
+  if (/^malware types$/i.test(unit.title)) return 10
+  return unit.kind === 'process' ? 7 : 8
+}
+
+function getSourceMapGeneratedAnswerLimit(unit: GeneratedSourceMapUnit) {
+  if (/^(?:domains of it security|malware types)$/i.test(unit.title)) return 320
+  if (/^cybersecurity$/i.test(unit.title)) return 260
+  return 180
 }
 
 function buildSourceMapGeneratedQuizTarget(unit: GeneratedSourceMapUnit) {
@@ -1630,6 +1655,7 @@ function sourceMapGeneratedImportance(score: number, index: number) {
 
 function isWeakGeneratedSourceMapTerm(value: string) {
   const key = normalizeAcademicLookup(value)
+  if (key === 'bot') return false
   if (!key || key.length < 4) return true
   return new Set([
     'what',
@@ -1901,7 +1927,7 @@ function relatedStructuredConcepts(structuredSource: AcademicStructuredGrounding
 }
 
 function formatInlineList(items: string[]) {
-  return uniqueStringList(items).slice(0, 8).join(', ')
+  return uniqueStringList(items).join(', ')
 }
 
 function resolveWordingValue(value: ReturnType<typeof wordingFromSentence>) {
@@ -2022,8 +2048,8 @@ function buildSentenceCue(sentence: string, fallbackTitle: string) {
   return words || fallbackTitle
 }
 
-function wordingFromSentence(sentence: string) {
-  const text = truncateForModel(sentence, 220)
+function wordingFromSentence(sentence: string, maxChars = 220) {
+  const text = truncateForModel(sentence, maxChars)
   return {
     exact: text,
     examSafe: text,
@@ -2557,7 +2583,15 @@ function truncateForModel(value: string, maxChars: number) {
     clipped.lastIndexOf('. '),
   )
 
-  return clipped.slice(0, breakIndex > 280 ? breakIndex + 1 : maxChars).trim()
+  if (breakIndex > Math.min(280, maxChars * 0.65)) return clipped.slice(0, breakIndex + 1).trim()
+
+  const wordBreakIndex = Math.max(
+    clipped.lastIndexOf(' '),
+    clipped.lastIndexOf(';'),
+    clipped.lastIndexOf(','),
+  )
+
+  return clipped.slice(0, wordBreakIndex > maxChars * 0.65 ? wordBreakIndex : maxChars).trim()
 }
 
 function compactGroundingForModel(value: string, maxChars: number) {

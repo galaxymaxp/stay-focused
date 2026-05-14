@@ -221,7 +221,7 @@ export function buildReviewerContentFromSourceMap(note: DeepLearnNote): StudyOut
           seenQuickItems.add(key)
           return true
         })
-        .slice(0, unit.kind === 'process' ? 7 : 8)
+        .slice(0, getSourceMapReviewerListLimit(unit.title, unit.kind, 'quick'))
       return {
         heading: unit.title,
         points,
@@ -300,7 +300,7 @@ function cleanSourceMapReviewerUnit(unit: AcademicSourceMapUnit): SourceMapRevie
     .find((quote) => quote.length >= 12 && !containsInternalPipelineText(quote) && quote !== answer)
     ?? null
   const shortAnswer = items.length > 0 && unit.kind !== 'definition'
-    ? items.slice(0, unit.kind === 'process' ? 5 : 6).join(', ')
+    ? items.slice(0, getSourceMapReviewerListLimit(title, unit.kind, 'short')).join(', ')
     : answer
   const titleKey = normalizeLookup(title)
   const rawSourceText = `${unit.summary} ${unit.sourceQuotes.join(' ')}`
@@ -366,7 +366,7 @@ function buildSourceMapAnswer(title: string, unit: AcademicSourceMapUnit, items:
   }
   if (items.length >= 2 && !/^(?:IT Security|Cybersecurity)$/i.test(title)) {
     const prefix = unit.kind === 'process' ? `${title} steps` : `${title} key list`
-    return `${prefix}: ${items.slice(0, unit.kind === 'process' ? 7 : 8).join('; ')}.`
+    return `${prefix}: ${items.slice(0, getSourceMapReviewerListLimit(title, unit.kind, 'answer')).join('; ')}.`
   }
   return shapeReviewerDefinitionAnswer(title, cleanDefinitionAnswer(title, summary))
     || unit.sourceQuotes.map((quote) => shapeReviewerDefinitionAnswer(title, cleanDefinitionAnswer(title, cleanReviewerText(quote)))).find(Boolean)
@@ -423,6 +423,13 @@ function isStrongSourceMapQuickBlockUnit(unit: SourceMapReviewerUnit) {
     || unit.kind === 'process'
     || unit.kind === 'list'
     || getPreferredSourceMapRank(unit.title) < 100
+}
+
+function getSourceMapReviewerListLimit(title: string, kind: AcademicSourceMapUnit['kind'], mode: 'answer' | 'quick' | 'short') {
+  if (/^domains of it security$/i.test(title)) return 11
+  if (/^malware types$/i.test(title)) return 10
+  if (mode === 'short') return kind === 'process' ? 5 : 6
+  return kind === 'process' ? 7 : 8
 }
 
 function isWeakQuickReviewPoint(value: string) {
@@ -568,6 +575,7 @@ function sourceMapImportance(score: number) {
 
 function isWeakReviewerTerm(value: string) {
   const key = normalizeLookup(value)
+  if (key === 'bot') return false
   if (!key) return true
   if (key.length < 4) return true
   return new Set([

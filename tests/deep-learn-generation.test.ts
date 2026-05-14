@@ -819,6 +819,44 @@ test('Source Map compact reviewer content passes save validation with IT Securit
   assert.match(JSON.stringify(content), /Information Security/i)
 })
 
+test('Source Map compact reviewer preserves complete lists and word-safe compact answers', () => {
+  const sourceMap = buildAcademicSourceMap(IT_SECURITY_SAMPLE_SOURCE)
+  const content = buildDeepLearnContentFromSourceMap(sourceMap, 'Intro to IT Security')
+  assert.ok(content)
+
+  const answerFor = (cue: string) => {
+    const match = content.answerBank.find((item) => item.cue === cue)
+    assert.ok(match, `missing ${cue}`)
+    return match
+  }
+
+  const domains = answerFor('Domains of IT Security')
+  for (const item of ['Network Security', 'Internet Security', 'Endpoint Security', 'Cloud Security', 'Application Security', 'Information Security', 'Operational Security', 'Mobile Security', 'IoT Security', 'User Education', 'Cyber Security']) {
+    assert.match(domains.answer.examSafe, new RegExp(item.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+  }
+
+  const malware = answerFor('Malware Types')
+  for (const item of ['Spyware', 'Adware', 'Bot', 'Rootkit', 'Scareware', 'Ransomware', 'Virus', 'Trojan Horse', 'Worm', 'MiTM']) {
+    assert.match(malware.answer.examSafe, new RegExp(item.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+  }
+
+  const itSecurity = answerFor('IT Security')
+  assert.match(itSecurity.answer.examSafe, /^IT Security uses cybersecurity strategies/)
+  assert.doesNotMatch(itSecurity.answer.examSafe, /InfoSec|processes and tools/i)
+
+  const cybersecurity = answerFor('Cybersecurity')
+  assert.match(cybersecurity.answer.examSafe, /unauthorized access\.$/)
+  assert.doesNotMatch(cybersecurity.compactAnswer.examSafe, /\b(?:u|architect)$/i)
+
+  for (const item of content.answerBank) {
+    assert.doesNotMatch(item.compactAnswer.examSafe, /[A-Za-z]{2,}-$| [A-Za-z]{1,2}$/)
+  }
+
+  const highYield = content.sections.find((section) => section.heading === 'High-Yield First')?.body ?? ''
+  assert.match(highYield, /IT Security uses cybersecurity strategies/)
+  assert.doesNotMatch(highYield, /IT Security: .*InfoSec -|IT Security: .*processes and tools/i)
+})
+
 test('Source Map compact reviewer filters weak terms without removing legitimate security concepts', () => {
   const sourceMap = buildAcademicSourceMap(IT_SECURITY_SAMPLE_SOURCE)
   sourceMap.units.unshift(
