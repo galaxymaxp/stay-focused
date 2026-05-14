@@ -5,6 +5,78 @@ Last Updated: 2026-05-15
 
 ---
 
+## Session Update - 2026-05-15 (Improve Source Map Quiz Quality)
+
+### What changed
+
+- Improved deterministic Source Map Quiz Pack generation without adding AI calls.
+- Added richer term-definition MCQs for reviewer-shaped concepts such as `IT Security`, `Cybersecurity`, and `InfoSec vs IT Sec`.
+- Added safer list/category membership MCQs for:
+  - `CIA Triad`
+  - `Domains of IT Security`
+  - `Malware Types`
+  - `Malware Symptoms`
+- Expanded Source Map quiz coverage selection so the IT Security fixture covers the requested security concepts through MCQ and Identification items.
+- Improved sibling distractor selection by using concept families, confidence gates, normalized alias checks, duplicate filtering, and multiple-correct avoidance.
+- Cleaned list aliases for symptom-style source wording so legitimate academic items like `unknown processes` can be used without leaking robotic sentence fragments.
+- Added course-like explanations that state why the correct answer is right without `according to the source`, debug metadata, or OCR wording.
+- Improved Identification prompt shaping for definitions, enumerations, methods, and distinction prompts.
+
+### Architecture reasoning
+
+Quiz generation still treats the validated Source Map plus reviewer-shaped answers as the canonical learning layer. This pass keeps the deterministic Phase 3.1 foundation but broadens safe MCQ generation by deriving distractors only from sibling Source Map units and by mapping coverage through exact source unit ids instead of broad substring matches. That prevents stale module/course fallback leakage and avoids letting broad labels like `IT Security` accidentally claim more specific groups such as `Domains of IT Security`.
+
+### Files touched
+
+- `lib/study-outputs/quiz-pack.ts`
+- `tests/study-output-quiz-pack.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Phase 3.2 needed better quiz variety and broader IT Security coverage while preserving the no-AI, no-unsafe-distractor constraint. The previous foundation was intentionally conservative and under-produced definition MCQs and some list membership prompts.
+
+### Tests run
+
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- study-output-quiz-pack` - passed
+- `npm test -- deep-learn-generation study-output-reviewer study-output-quiz-pack` - passed
+- `npm test -- quiz source-map reviewer` - passed
+
+### Verification result
+
+- Passed all requested verification commands.
+- Verified richer term-definition MCQs.
+- Verified category/list membership MCQs.
+- Verified duplicate distractor and answer duplication prevention.
+- Verified MCQ explanations include source-backed reasons without debug wording.
+- Verified complete list preservation still holds for domains and malware types.
+- Verified weak/noisy/OCR garbage units are rejected.
+- Verified IT Security Source Map quiz coverage includes the requested Phase 3.2 concepts.
+
+### Known risks
+
+- Distractor selection remains deterministic and conservative; unusual courses may still produce fewer MCQs if sibling units are too weak or too similar.
+- Quiz Pack output can now include up to 18 items for Source Map-backed packs to preserve coverage plus a small amount of MCQ/Identification variety.
+- Matching type remains intentionally unimplemented.
+
+### Blockers
+
+- No blocker remains.
+
+### Next recommended phase
+
+Phase 3.3 should add isolated, deterministic matching only if it can reuse the same normalized quiz source units without changing the save/render model. Otherwise, improve formula-group and taxonomy-specific quiz shaping next.
+
+### Suggested commit message
+
+```bash
+improve source-map quiz quality
+```
+
+---
+
 ## Session Update - 2026-05-15 (Build Source Map Quiz Foundation)
 
 ### What changed

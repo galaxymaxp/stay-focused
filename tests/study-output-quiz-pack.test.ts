@@ -23,7 +23,7 @@ test('quiz pack generation builds deterministic Source Map multiple choice and i
   assert.ok(first.items.every((item) => item.type === 'multiple_choice' || item.type === 'identification'))
   assert.ok(first.items.every((item) => item.sourceUnitId && item.sourceExcerpt && item.confidence && item.generationMethod))
   assert.ok(first.questionCountOptions.length > 0)
-  assert.ok(first.items.length <= 15)
+  assert.ok(first.items.length <= 18)
   assert.doesNotMatch(first.title, /Quiz Pack/)
   assert.doesNotMatch(JSON.stringify(first.items), /according to the source|metadata|debug|ocr garbage/i)
 })
@@ -47,6 +47,40 @@ test('quiz pack builder keeps distractor generation deterministic and grounded',
   assert.ok((mcq?.choices ?? []).includes(mcq?.answer ?? ''))
   assert.equal(new Set(mcq?.choices.map(normalizeLookup)).size, mcq?.choices.length)
   assert.equal((mcq?.choices ?? []).filter((choice) => normalizeLookup(choice) === normalizeLookup(mcq?.answer ?? '')).length, 1)
+})
+
+test('Source Map MCQs include reviewer-shaped term-definition prompts', () => {
+  const items = buildQuizPackItems(createItSecuritySourceMapNote())
+  const mcqs = items.filter((item) => item.type === 'multiple_choice')
+  const prompts = mcqs.map((item) => item.prompt)
+
+  assert.ok(prompts.some((prompt) => /^Which (?:statement best defines|definition matches) IT Security\?/.test(prompt)))
+  assert.ok(prompts.some((prompt) => /^Which (?:statement best defines|definition matches) Cybersecurity\?/.test(prompt)))
+  assert.ok(prompts.some((prompt) => prompt === 'Which description best matches InfoSec?'))
+
+  const itSecurity = mcqs.find((item) => /IT Security/.test(item.prompt) && !/domains/i.test(item.prompt))
+  assert.ok(itSecurity)
+  assert.notEqual(normalizeLookup(itSecurity.answer), normalizeLookup('IT Security'))
+  assert.match(itSecurity.answer, /cyber security strategies|unauthorized access|organizational assets/i)
+  assert.match(itSecurity.explanation, /course definition|protecting sensitive business information/i)
+})
+
+test('Source Map MCQs ask safe category and list membership questions', () => {
+  const mcqs = buildQuizPackItems(createItSecuritySourceMapNote()).filter((item) => item.type === 'multiple_choice')
+
+  const cia = findMcq(mcqs, /Which item belongs to the CIA Triad\?/)
+  assert.equal(cia.answer, 'Confidentiality')
+  assert.equal(countChoicesInGroup(cia, ['Confidentiality', 'Integrity', 'Availability']), 1)
+
+  const domains = findMcq(mcqs, /Which item belongs to the domains of IT Security\?/)
+  assert.equal(domains.answer, 'Endpoint Security')
+  assert.equal(countChoicesInGroup(domains, ['Network Security', 'Internet Security', 'Endpoint Security', 'Cloud Security', 'Application Security', 'Information Security', 'Operational Security', 'Mobile Security', 'IoT Security', 'User Education', 'Cyber Security']), 1)
+
+  const malware = findMcq(mcqs, /Which item belongs to the malware types\?/)
+  assert.equal(malware.answer, 'Ransomware')
+  assert.equal(countChoicesInGroup(malware, ['Spyware', 'Adware', 'Bot', 'Rootkit', 'Scareware', 'Ransomware', 'Virus', 'Trojan Horse', 'Worm', 'MiTM']), 1)
+
+  assert.ok(mcqs.some((item) => /Which item belongs to the symptoms of malware\?/.test(item.prompt)))
 })
 
 test('metadata-only source grounding is rejected before quiz pack generation', () => {
@@ -103,6 +137,8 @@ test('Source Map identification questions use direct course-like stems', () => {
   assert.ok(identification.length >= 5)
   assert.ok(identification.some((item) => /^Define\b/.test(item.prompt)))
   assert.ok(identification.some((item) => /^Identify\b/.test(item.prompt)))
+  assert.ok(identification.some((item) => /^Enumerate the listed items under\b/.test(item.prompt)))
+  assert.ok(identification.some((item) => /^Distinguish\b/.test(item.prompt)))
   assert.ok(identification.every((item) => !/according to the source|debug|metadata/i.test(item.prompt)))
 })
 
@@ -116,6 +152,19 @@ test('Source Map MCQs prevent duplicate distractors and answer duplication', () 
     assert.equal(new Set(normalizedChoices).size, item.choices.length)
     assert.equal(normalizedChoices.filter((choice) => choice === normalizeLookup(item.answer)).length, 1)
     assert.ok(item.choices.every((choice) => !/joke|none of the above|all of the above/i.test(choice)))
+  }
+
+  assert.equal(countChoicesInGroup(findMcq(mcqs, /CIA Triad/), ['Confidentiality', 'Integrity', 'Availability']), 1)
+  assert.equal(countChoicesInGroup(findMcq(mcqs, /malware types/), ['Spyware', 'Adware', 'Bot', 'Rootkit', 'Scareware', 'Ransomware', 'Virus', 'Trojan Horse', 'Worm', 'MiTM']), 1)
+})
+
+test('Source Map MCQ explanations state source-backed reasons without debug wording', () => {
+  const mcqs = buildQuizPackItems(createItSecuritySourceMapNote()).filter((item) => item.type === 'multiple_choice')
+
+  assert.ok(mcqs.length >= 5)
+  for (const item of mcqs) {
+    assert.match(item.explanation, /listed under|course definition|course distinction|InfoSec is tied/i)
+    assert.doesNotMatch(item.explanation, /according to the source|debug|metadata|ocr/i)
   }
 })
 
@@ -170,14 +219,26 @@ test('weak Source Map blocks quiz generation instead of falling back to stale no
 
 test('IT Security reviewer Source Map flows into quiz generation', () => {
   const items = buildQuizPackItems(createItSecuritySourceMapNote())
-  const combined = JSON.stringify(items)
+  const combined = normalizeLookup(JSON.stringify(items))
 
   assert.ok(items.length >= 5)
-  assert.match(combined, /IT Security/)
-  assert.match(combined, /Cybersecurity/)
-  assert.match(combined, /Domains of IT Security/)
-  assert.match(combined, /Malware Types/)
-  assert.doesNotMatch(combined, /InfoSec.*Domains of IT Security.*Cybersecurity definitions/i)
+  for (const expected of [
+    'IT Security',
+    'InfoSec vs IT Sec',
+    'CIA Triad',
+    'Domains of IT Security',
+    'Cybersecurity',
+    'Vulnerability Exploit Breach',
+    'Malware Types',
+    'Malware Symptoms',
+    'Methods of Infiltration',
+    'Denial of Service Methods',
+    'Blended Attacks',
+    'Impact Reduction',
+  ]) {
+    assert.ok(combined.includes(normalizeLookup(expected)), `missing ${expected}`)
+  }
+  assert.doesNotMatch(combined, /infosec domains of it security cybersecurity definitions/i)
 })
 
 test('quiz pack definition answers preserve source wording and source basis', () => {
@@ -381,6 +442,17 @@ function createItSecuritySourceMapNote(overrides: Partial<DeepLearnNote> = {}): 
 
 function normalizeLookup(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+}
+
+function findMcq(items: ReturnType<typeof buildQuizPackItems>, prompt: RegExp) {
+  const item = items.find((candidate) => candidate.type === 'multiple_choice' && prompt.test(candidate.prompt))
+  assert.ok(item, `missing MCQ matching ${prompt}`)
+  return item
+}
+
+function countChoicesInGroup(item: ReturnType<typeof buildQuizPackItems>[number], group: string[]) {
+  const groupKeys = new Set(group.map(normalizeLookup))
+  return item.choices.filter((choice) => groupKeys.has(normalizeLookup(choice))).length
 }
 
 const IT_SECURITY_SOURCE = [

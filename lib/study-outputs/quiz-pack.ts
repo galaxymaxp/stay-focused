@@ -11,11 +11,11 @@ import type {
   StudyOutputQuizItemType,
 } from '@/lib/types'
 
-const MAX_QUIZ_PACK_ITEMS = 15
-const MAX_SOURCE_MAP_IDENTIFICATION_ITEMS = 11
-const MAX_SOURCE_MAP_MCQ_ITEMS = 4
+const MAX_QUIZ_PACK_ITEMS = 18
+const MAX_SOURCE_MAP_IDENTIFICATION_ITEMS = 16
+const MAX_SOURCE_MAP_MCQ_ITEMS = 12
 const HIGH_CONFIDENCE_THRESHOLD = 0.84
-const MAX_MCQ_ANSWER_CHARS = 96
+const MAX_MCQ_ANSWER_CHARS = 190
 
 export interface QuizPackBuildReadiness {
   ok: boolean
@@ -34,6 +34,7 @@ export interface NormalizedQuizSourceUnit {
   sourceType: AcademicSourceMapUnit['kind']
   confidence: number
   keywords: string[]
+  conceptFamily: string
 }
 
 export function getDeepLearnQuizPackReadiness(note: DeepLearnNote | null): QuizPackBuildReadiness {
@@ -164,7 +165,9 @@ export function buildNormalizedQuizSourceUnits(note: DeepLearnNote): NormalizedQ
       const reviewerAnswer = reviewerAnswers.get(titleKey)
       const sourceExcerpt = cleanQuizText(unit.sourceQuotes[0] ?? reviewerAnswer?.sourceWording ?? unit.summary)
       const normalizedAnswer = cleanQuizAnswer(title, reviewerAnswer?.answer ?? buildAnswerFromSourceMapUnit(title, unit))
-      const aliases = uniqueStrings(unit.items.map(cleanQuizText).filter((item) => item.length > 0 && !isWeakQuizText(item)))
+      const aliases = uniqueStrings(unit.items
+        .map((item) => cleanListAlias(item, title))
+        .filter((item) => item.length > 0 && !isWeakQuizText(item)))
       const keywords = uniqueStrings([
         ...title.split(/\s+/),
         ...aliases.flatMap((item) => item.split(/\s+/)),
@@ -174,7 +177,8 @@ export function buildNormalizedQuizSourceUnits(note: DeepLearnNote): NormalizedQ
         .slice(0, 12)
 
       if (!title || !normalizedAnswer || !sourceExcerpt) return null
-      if (isWeakQuizText(title) || isWeakQuizText(normalizedAnswer) || containsQuizGarbage(`${title} ${normalizedAnswer} ${sourceExcerpt}`)) return null
+      if (isWeakQuizText(title) || containsQuizGarbage(`${title} ${normalizedAnswer} ${sourceExcerpt}`)) return null
+      if (isWeakQuizText(normalizedAnswer) && aliases.length < 2) return null
       if (unit.confidence < 0.72) return null
 
       return {
@@ -188,6 +192,7 @@ export function buildNormalizedQuizSourceUnits(note: DeepLearnNote): NormalizedQ
         sourceType: unit.kind,
         confidence: unit.confidence,
         keywords,
+        conceptFamily: inferConceptFamily(title, unit.kind),
       }
     })
     .filter((unit): unit is NormalizedQuizSourceUnit => Boolean(unit))
@@ -252,7 +257,7 @@ function buildSourceMapQuizPackItems(note: DeepLearnNote): StudyOutputQuizPackIt
   const mcqItems = units
     .filter(isSafeMultipleChoiceSourceUnit)
     .map((unit, index): StudyOutputQuizPackItem | null => {
-      const distractors = deriveSafeDistractors(unit, units)
+      const distractors = deriveSafeDistractorsForMultipleChoice(unit, units)
       if (distractors.length < 3) return null
       const answer = buildMultipleChoiceAnswer(unit)
       const choices = sortChoices([answer, ...distractors.slice(0, 3)])
@@ -263,7 +268,7 @@ function buildSourceMapQuizPackItems(note: DeepLearnNote): StudyOutputQuizPackIt
         prompt: buildMultipleChoiceQuestion(unit),
         answer,
         choices,
-        explanation: buildSourceMapExplanation(unit),
+        explanation: buildSourceMapExplanation(unit, answer),
         sourceLabel: note.title,
         sourceWording: unit.sourceExcerpt,
         sourceBasis: unit.sourceExcerpt,
@@ -283,6 +288,8 @@ function buildSourceMapQuizPackItems(note: DeepLearnNote): StudyOutputQuizPackIt
     [...mcqItems, ...identificationItems],
     (item) => `${normalizeLookup(item.prompt)}::${normalizeLookup(item.answer)}::${item.type}`,
   )
+    .sort(compareQuizItemsForCoverage)
+    .reduce(selectQuizItemsForCoverage, [] as StudyOutputQuizPackItem[])
 }
 
 function buildAnswerFromSourceMapUnit(title: string, unit: AcademicSourceMapUnit) {
@@ -303,27 +310,45 @@ function buildNormalizedQuestionStem(title: string, kind: AcademicSourceMapUnit[
 }
 
 function buildIdentificationQuestion(unit: NormalizedQuizSourceUnit) {
+  if (normalizeLookup(unit.title) === 'infosec vs it sec') return 'Distinguish InfoSec from IT Sec.'
+  if (normalizeLookup(unit.title) === 'vulnerability exploit breach') return 'Distinguish Vulnerability, Exploit, and Breach.'
   if (unit.sourceType === 'definition') return `Define ${unit.title}.`
   if (unit.sourceType === 'process') return `Identify the methods or steps in ${unit.title}.`
-  if (unit.aliases.length >= 2) return `Identify the complete list for ${unit.title}.`
+  if (unit.aliases.length >= 2) return `Enumerate the listed items under ${unit.title}.`
 
   const variants = ['What is', 'Define', 'Identify']
   const variant = variants[Math.abs(hashText(unit.title)) % variants.length]
   if (variant === 'What is') return `What is ${unit.title}?`
   if (variant === 'Define') return `Define ${unit.title}.`
-  return `Identify ${unit.title}.`
+  return `Identify the concept described: ${unit.normalizedAnswer}`
 }
 
 function buildMultipleChoiceQuestion(unit: NormalizedQuizSourceUnit) {
   if (usesListMembershipMcq(unit)) {
-    return `Which category includes ${unit.aliases.slice(0, 2).join(' and ')}?`
+    return `Which item belongs to ${formatListMembershipTarget(unit.title)}?`
   }
-  if (unit.sourceType === 'definition') return `Which answer best defines ${unit.title}?`
-  return `Which answer best matches ${unit.title}?`
+  const key = normalizeLookup(unit.title)
+  if (key === 'infosec vs it sec') return 'Which description best matches InfoSec?'
+  if (unit.sourceType === 'definition') {
+    return Math.abs(hashText(unit.title)) % 2 === 0
+      ? `Which statement best defines ${unit.title}?`
+      : `Which definition matches ${unit.title}?`
+  }
+  return `Which description best matches ${unit.title}?`
 }
 
-function buildSourceMapExplanation(unit: NormalizedQuizSourceUnit) {
-  if (unit.sourceType === 'definition') return `Use the course definition for ${unit.title}.`
+function buildSourceMapExplanation(unit: NormalizedQuizSourceUnit, answer?: string) {
+  const resolvedAnswer = answer ?? unit.normalizedAnswer
+  if (usesListMembershipMcq(unit)) {
+    return `${resolvedAnswer} is listed under ${unit.title}; the other choices are from different source-map groups.`
+  }
+  if (normalizeLookup(unit.title) === 'infosec vs it sec') {
+    return 'InfoSec is tied to protecting sensitive business information, while IT Sec is tied to securing digital data.'
+  }
+  if (normalizeLookup(unit.title) === 'vulnerability exploit breach') {
+    return 'This matches the course distinction: vulnerability is the weakness, exploit is the method or tool, and breach is the successful exploit.'
+  }
+  if (unit.sourceType === 'definition') return `This matches the course definition of ${unit.title}.`
   if (unit.sourceType === 'process') return `Use the listed methods or response steps for ${unit.title}.`
   if (unit.aliases.length >= 2) return `Use the complete list tied to ${unit.title}.`
   return `Use the grounded course wording for ${unit.title}.`
@@ -332,47 +357,105 @@ function buildSourceMapExplanation(unit: NormalizedQuizSourceUnit) {
 function isSafeMultipleChoiceSourceUnit(unit: NormalizedQuizSourceUnit) {
   if (unit.confidence < HIGH_CONFIDENCE_THRESHOLD) return false
   if (usesListMembershipMcq(unit)) return isConciseQuizAnswer(unit.title)
-  if (unit.sourceType !== 'definition' && unit.sourceType !== 'concept') return false
+  if (!isDefinitionLikeUnit(unit)) return false
   if (!isConciseQuizAnswer(unit.normalizedAnswer)) return false
-  if (unit.normalizedAnswer.includes(';')) return false
   if (containsQuizGarbage(`${unit.title} ${unit.normalizedAnswer} ${unit.sourceExcerpt}`)) return false
   return true
 }
 
-function deriveSafeDistractors(unit: NormalizedQuizSourceUnit, units: NormalizedQuizSourceUnit[]) {
-  if (usesListMembershipMcq(unit)) {
-    return uniqueStrings(
-      units
-        .filter((candidate) => candidate.sourceUnitId !== unit.sourceUnitId)
-        .filter((candidate) => usesListMembershipMcq(candidate))
-        .map((candidate) => candidate.title)
-        .filter(isConciseQuizAnswer)
-        .filter((candidate) => normalizeLookup(candidate) !== normalizeLookup(unit.title))
-        .filter((candidate) => !areAnswersTooSimilar(candidate, unit.title))
-        .filter((candidate) => !containsQuizGarbage(candidate)),
-    ).slice(0, 3)
-  }
+function deriveSafeDistractorsForMultipleChoice(unit: NormalizedQuizSourceUnit, units: NormalizedQuizSourceUnit[]) {
+  return usesListMembershipMcq(unit)
+    ? deriveListMembershipDistractors(unit, units)
+    : deriveDefinitionDistractors(unit, units)
+}
 
+function deriveDefinitionDistractors(unit: NormalizedQuizSourceUnit, units: NormalizedQuizSourceUnit[]) {
   return uniqueStrings(
     units
       .filter((candidate) => candidate.sourceUnitId !== unit.sourceUnitId)
-      .filter((candidate) => candidate.sourceType === unit.sourceType)
       .filter((candidate) => candidate.confidence >= HIGH_CONFIDENCE_THRESHOLD)
+      .filter((candidate) => candidate.conceptFamily === unit.conceptFamily || isDefinitionLikeUnit(candidate))
       .map((candidate) => candidate.normalizedAnswer)
       .filter(isConciseQuizAnswer)
       .filter((candidate) => normalizeLookup(candidate) !== normalizeLookup(unit.normalizedAnswer))
       .filter((candidate) => !areAnswersTooSimilar(candidate, unit.normalizedAnswer))
-      .filter((candidate) => !containsQuizGarbage(candidate)),
+      .filter((candidate) => !containsQuizGarbage(candidate))
+      .filter((candidate) => !wouldMakeDefinitionDistractorCorrect(unit, candidate)),
   ).slice(0, 3)
 }
 
+function deriveListMembershipDistractors(unit: NormalizedQuizSourceUnit, units: NormalizedQuizSourceUnit[]) {
+  const answer = buildMultipleChoiceAnswer(unit)
+  const answerKey = normalizeLookup(answer)
+  const targetAliasKeys = new Set(unit.aliases.map(normalizeLookup))
+  const sameFamily = units
+    .filter((candidate) => candidate.sourceUnitId !== unit.sourceUnitId)
+    .filter((candidate) => candidate.confidence >= HIGH_CONFIDENCE_THRESHOLD)
+    .filter((candidate) => candidate.conceptFamily === unit.conceptFamily)
+    .flatMap((candidate) => candidate.aliases)
+  const adjacent = units
+    .filter((candidate) => candidate.sourceUnitId !== unit.sourceUnitId)
+    .filter((candidate) => candidate.confidence >= HIGH_CONFIDENCE_THRESHOLD)
+    .filter((candidate) => candidate.sourceType === unit.sourceType || usesListMembershipMcq(candidate))
+    .flatMap((candidate) => candidate.aliases)
+
+  return uniqueStrings([...sameFamily, ...adjacent])
+    .filter(isConciseListChoice)
+    .filter((candidate) => normalizeLookup(candidate) !== answerKey)
+    .filter((candidate) => !targetAliasKeys.has(normalizeLookup(candidate)))
+    .filter((candidate) => !areAnswersTooSimilar(candidate, answer))
+    .filter((candidate) => !containsQuizGarbage(candidate))
+    .slice(0, 3)
+}
+
 function buildMultipleChoiceAnswer(unit: NormalizedQuizSourceUnit) {
-  return usesListMembershipMcq(unit) ? unit.title : unit.normalizedAnswer
+  return usesListMembershipMcq(unit) ? pickRepresentativeListAnswer(unit) : unit.normalizedAnswer
 }
 
 function usesListMembershipMcq(unit: NormalizedQuizSourceUnit) {
-  return (unit.sourceType === 'category' || unit.sourceType === 'list' || unit.sourceType === 'process')
+  if (isDefinitionLikeUnit(unit)) return false
+  return (unit.sourceType === 'category' || unit.sourceType === 'list' || unit.sourceType === 'process' || normalizeLookup(unit.title) === 'cia triad')
     && unit.aliases.length >= 2
+}
+
+function isDefinitionLikeUnit(unit: NormalizedQuizSourceUnit) {
+  return unit.sourceType === 'definition'
+    || normalizeLookup(unit.title) === 'infosec vs it sec'
+    || normalizeLookup(unit.title) === 'vulnerability exploit breach'
+}
+
+function pickRepresentativeListAnswer(unit: NormalizedQuizSourceUnit) {
+  const preferred = getPreferredListAnswer(unit.title)
+  if (preferred) {
+    const found = unit.aliases.find((item) => normalizeLookup(item) === normalizeLookup(preferred))
+    if (found) return found
+  }
+  return unit.aliases.find(isConciseListChoice) ?? unit.aliases[0] ?? unit.title
+}
+
+function getPreferredListAnswer(title: string) {
+  const key = normalizeLookup(title)
+  if (key === 'cia triad') return 'Confidentiality'
+  if (key === 'domains of it security') return 'Endpoint Security'
+  if (key === 'malware types') return 'Ransomware'
+  if (key === 'malware symptoms') return 'unknown processes'
+  if (key === 'methods of infiltration') return 'Phishing'
+  if (key === 'denial of service methods') return 'Botnet'
+  if (key === 'blended attacks') return 'DDoS combined with phishing emails'
+  if (key === 'impact reduction') return 'Communicate the Issue'
+  if (key === 'vulnerability exploit breach') return 'Vulnerability - Weaknesses or flaws in the hardware or software'
+  return null
+}
+
+function formatListMembershipTarget(title: string) {
+  const key = normalizeLookup(title)
+  if (key === 'cia triad') return 'the CIA Triad'
+  if (key === 'domains of it security') return 'the domains of IT Security'
+  if (key === 'malware types') return 'the malware types'
+  if (key === 'malware symptoms') return 'the symptoms of malware'
+  if (key === 'methods of infiltration') return 'the methods of infiltration'
+  if (key === 'denial of service methods') return 'the denial of service methods'
+  return title
 }
 
 function cleanQuizAnswer(title: string, value: string) {
@@ -380,6 +463,26 @@ function cleanQuizAnswer(title: string, value: string) {
     .replace(new RegExp(`^${escapeRegExp(title)}\\s+(?:includes|key list|steps)\\s*:?\\s*`, 'i'), '')
     .replace(/\s*Source wording:\s*/gi, ' ')
     .trim()
+  return cleaned
+}
+
+function cleanListAlias(value: string, title: string) {
+  const cleaned = cleanQuizText(value)
+    .replace(/^(?:there is|there are)\s+(?:a|an)\s+/i, '')
+    .replace(/^(?:there is|there are)\s+/i, '')
+    .replace(/^the\s+/i, '')
+    .replace(/\s+running$/i, '')
+    .replace(/\s+often$/i, '')
+    .replace(/\s+without the user knowledge or consent$/i, '')
+    .trim()
+  if (normalizeLookup(title) === 'malware symptoms') {
+    return cleaned
+      .replace(/^an\s+/i, '')
+      .replace(/^increase in\s+/i, 'increased ')
+      .replace(/^decrease in\s+/i, 'decreased ')
+      .replace(/^presence of\s+/i, 'presence of ')
+      .trim()
+  }
   return cleaned
 }
 
@@ -394,9 +497,15 @@ function isConciseQuizAnswer(value: string) {
   const cleaned = cleanQuizText(value)
   if (cleaned.length < 3 || cleaned.length > MAX_MCQ_ANSWER_CHARS) return false
   const words = cleaned.split(/\s+/).filter(Boolean)
-  if (words.length > 13) return false
-  if ((cleaned.match(/,/g) ?? []).length >= 2) return false
+  if (words.length > 24) return false
   return true
+}
+
+function isConciseListChoice(value: string) {
+  const cleaned = cleanQuizText(value).replace(/^\d+[.)]\s*/, '')
+  if (cleaned.length < 3 || cleaned.length > 82) return false
+  if (cleaned.split(/\s+/).filter(Boolean).length > 9) return false
+  return !containsQuizGarbage(cleaned) && !isWeakQuizText(cleaned)
 }
 
 function isWeakQuizText(value: string) {
@@ -422,6 +531,14 @@ function areAnswersTooSimilar(left: string, right: string) {
   return leftKey.includes(rightKey) || rightKey.includes(leftKey)
 }
 
+function wouldMakeDefinitionDistractorCorrect(unit: NormalizedQuizSourceUnit, candidate: string) {
+  const candidateKey = normalizeLookup(candidate)
+  const titleKey = normalizeLookup(unit.title)
+  if (titleKey.length >= 12 && candidateKey.includes(titleKey)) return true
+  if (unit.aliases.some((alias) => normalizeLookup(alias) && candidateKey.includes(normalizeLookup(alias)))) return true
+  return false
+}
+
 function normalizeLookup(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
 }
@@ -444,6 +561,16 @@ function normalizeQuizSourceTitle(value: string) {
   return cleaned
 }
 
+function inferConceptFamily(title: string, kind: AcademicSourceMapUnit['kind']) {
+  const key = normalizeLookup(title)
+  if (/\b(?:it security|infosec|it sec|cia triad|domains)\b/i.test(key)) return 'it-security'
+  if (/\b(?:cybersecurity|threat|attacker|vulnerability|exploit|breach)\b/i.test(key)) return 'cybersecurity'
+  if (/\b(?:malware|infiltration|denial|blended|impact reduction)\b/i.test(key)) return 'security-operations'
+  if (kind === 'definition') return 'definitions'
+  if (kind === 'process') return 'processes'
+  return 'general'
+}
+
 function uniqueBy<T>(values: T[], getKey: (value: T) => string) {
   const seen = new Set<string>()
   const output: T[] = []
@@ -464,6 +591,101 @@ function uniqueStrings(values: string[]) {
 
 function sortChoices(choices: string[]) {
   return [...choices].sort((left, right) => left.localeCompare(right))
+}
+
+function compareQuizItemsForCoverage(left: StudyOutputQuizPackItem, right: StudyOutputQuizPackItem) {
+  const leftRank = getPreferredQuizSourceRank(getQuizItemCoverageTitle(left))
+  const rightRank = getPreferredQuizSourceRank(getQuizItemCoverageTitle(right))
+  return leftRank - rightRank
+    || getQuizItemTypeRank(left) - getQuizItemTypeRank(right)
+    || left.id.localeCompare(right.id)
+}
+
+function selectQuizItemsForCoverage(selected: StudyOutputQuizPackItem[], item: StudyOutputQuizPackItem) {
+  if (selected.length >= MAX_QUIZ_PACK_ITEMS) return selected
+
+  const title = getQuizItemCoverageTitle(item)
+  const titleRank = getPreferredQuizSourceRank(title)
+  const isPreferred = titleRank < 100
+  const coveredItems = selected.filter((entry) => normalizeLookup(getQuizItemCoverageTitle(entry)) === normalizeLookup(title))
+  const alreadyCovered = coveredItems.length > 0
+  const allowsDuplicateCoverage = allowsDuplicateCoverageItem(item) && coveredItems.every((entry) => entry.type !== item.type)
+  const remainingPreferredTitles = getRequiredQuizCoverageTitles()
+    .filter((candidate) => !selected.some((entry) => normalizeLookup(getQuizItemCoverageTitle(entry)) === normalizeLookup(candidate)))
+    .length
+  const remainingSlots = MAX_QUIZ_PACK_ITEMS - selected.length
+
+  if (alreadyCovered && !allowsDuplicateCoverage) return selected
+  if (!isPreferred && remainingPreferredTitles >= remainingSlots) return selected
+
+  selected.push(item)
+  return selected
+}
+
+function allowsDuplicateCoverageItem(item: StudyOutputQuizPackItem) {
+  if (item.type === 'multiple_choice' && item.prompt === 'Which description best matches InfoSec?') return true
+  if (item.type === 'identification' && item.prompt === 'Distinguish InfoSec from IT Sec.') return true
+  if (item.type === 'identification' && /^Define (?:IT Security|Cybersecurity)\./.test(item.prompt)) return true
+  return false
+}
+
+function getQuizItemCoverageTitle(item: StudyOutputQuizPackItem) {
+  const unitId = item.sourceUnitId?.replace(/-/g, ' ') ?? ''
+  const sourceUnitTitle = getCoverageTitleFromSourceUnitId(item.sourceUnitId ?? '')
+  if (sourceUnitTitle) return sourceUnitTitle
+  const combined = `${item.prompt} ${item.answer} ${unitId}`
+  return [...getRequiredQuizCoverageTitles()]
+    .sort((left, right) => normalizeLookup(right).length - normalizeLookup(left).length)
+    .find((title) => matchesCoverageTitle(combined, title))
+    ?? item.prompt
+}
+
+function getCoverageTitleFromSourceUnitId(sourceUnitId: string) {
+  const key = normalizeLookup(sourceUnitId)
+  if (key === 'it security definition') return 'IT Security'
+  if (key === 'infosec vs it sec') return 'InfoSec vs IT Sec'
+  if (key === 'cia triad') return 'CIA Triad'
+  if (key === 'domains of it security') return 'Domains of IT Security'
+  if (key === 'cybersecurity definitions') return 'Cybersecurity'
+  if (key === 'vulnerability exploit breach') return 'Vulnerability / Exploit / Breach'
+  if (key === 'malware types') return 'Malware Types'
+  if (key === 'malware symptoms') return 'Malware Symptoms'
+  if (key === 'methods of infiltration') return 'Methods of Infiltration'
+  if (key === 'denial of service methods') return 'Denial of Service Methods'
+  if (key === 'blended attacks') return 'Blended Attacks'
+  if (key === 'impact reduction') return 'Impact Reduction'
+  return null
+}
+
+function getRequiredQuizCoverageTitles() {
+  return [
+    'IT Security',
+    'InfoSec vs IT Sec',
+    'CIA Triad',
+    'Domains of IT Security',
+    'Cybersecurity',
+    'Vulnerability / Exploit / Breach',
+    'Malware Types',
+    'Malware Symptoms',
+    'Methods of Infiltration',
+    'Denial of Service Methods',
+    'Blended Attacks',
+    'Impact Reduction',
+  ]
+}
+
+function matchesCoverageTitle(value: string, title: string) {
+  const titleKey = normalizeLookup(title)
+  const valueKey = normalizeLookup(value)
+  if (valueKey.includes(titleKey)) return true
+  if (titleKey === 'vulnerability exploit breach') return /\bvulnerability\b.*\bexploit\b.*\bbreach\b/i.test(valueKey)
+  if (titleKey === 'denial of service methods') return /\bdenial\b.*\bservice\b/i.test(valueKey)
+  return false
+}
+
+function getQuizItemTypeRank(item: StudyOutputQuizPackItem) {
+  if (item.type === 'identification' && /^Distinguish\b/.test(item.prompt)) return -1
+  return item.type === 'multiple_choice' ? 0 : 1
 }
 
 function compareQuizSourceUnits(left: NormalizedQuizSourceUnit, right: NormalizedQuizSourceUnit) {
