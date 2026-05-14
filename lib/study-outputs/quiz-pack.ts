@@ -340,18 +340,24 @@ function buildMultipleChoiceQuestion(unit: NormalizedQuizSourceUnit) {
 function buildSourceMapExplanation(unit: NormalizedQuizSourceUnit, answer?: string) {
   const resolvedAnswer = answer ?? unit.normalizedAnswer
   if (usesListMembershipMcq(unit)) {
-    return `${resolvedAnswer} is listed under ${unit.title}; the other choices are from different source-map groups.`
+    if (normalizeLookup(unit.title) === 'malware types') {
+      return `Correct because ${resolvedAnswer} belongs to Malware Types, not Malware Symptoms.`
+    }
+    if (normalizeLookup(unit.title) === 'malware symptoms') {
+      return `Correct because ${resolvedAnswer} is listed as a Malware Symptoms item, not a Malware Types item.`
+    }
+    return `Correct because ${resolvedAnswer} is listed under ${unit.title}.`
   }
   if (normalizeLookup(unit.title) === 'infosec vs it sec') {
-    return 'InfoSec is tied to protecting sensitive business information, while IT Sec is tied to securing digital data.'
+    return 'Correct because InfoSec protects sensitive business information, while IT Sec secures digital data through computer network security.'
   }
   if (normalizeLookup(unit.title) === 'vulnerability exploit breach') {
-    return 'This matches the course distinction: vulnerability is the weakness, exploit is the method or tool, and breach is the successful exploit.'
+    return 'Correct because the course distinction is vulnerability as the weakness, exploit as the method or tool, and breach as the successful exploit.'
   }
-  if (unit.sourceType === 'definition') return `This matches the course definition of ${unit.title}.`
-  if (unit.sourceType === 'process') return `Use the listed methods or response steps for ${unit.title}.`
-  if (unit.aliases.length >= 2) return `Use the complete list tied to ${unit.title}.`
-  return `Use the grounded course wording for ${unit.title}.`
+  if (unit.sourceType === 'definition') return `Correct because the source defines ${unit.title} as ${resolvedAnswer}.`
+  if (unit.sourceType === 'process') return `Correct because these are the listed methods or response steps for ${unit.title}.`
+  if (unit.aliases.length >= 2) return `Correct because the answer preserves the complete list tied to ${unit.title}.`
+  return `Correct because this matches the course wording for ${unit.title}.`
 }
 
 function isSafeMultipleChoiceSourceUnit(unit: NormalizedQuizSourceUnit) {

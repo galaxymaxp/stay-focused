@@ -62,7 +62,7 @@ test('Source Map MCQs include reviewer-shaped term-definition prompts', () => {
   assert.ok(itSecurity)
   assert.notEqual(normalizeLookup(itSecurity.answer), normalizeLookup('IT Security'))
   assert.match(itSecurity.answer, /cyber security strategies|unauthorized access|organizational assets/i)
-  assert.match(itSecurity.explanation, /course definition|protecting sensitive business information/i)
+  assert.match(itSecurity.explanation, /Correct because the source defines IT Security as/i)
 })
 
 test('Source Map MCQs ask safe category and list membership questions', () => {
@@ -163,9 +163,16 @@ test('Source Map MCQ explanations state source-backed reasons without debug word
 
   assert.ok(mcqs.length >= 5)
   for (const item of mcqs) {
-    assert.match(item.explanation, /listed under|course definition|course distinction|InfoSec is tied/i)
+    assert.match(item.explanation, /^Correct because\b/)
+    assert.doesNotMatch(item.explanation, /supported directly by the selected source/i)
     assert.doesNotMatch(item.explanation, /according to the source|debug|metadata|ocr/i)
   }
+
+  const cia = findMcq(mcqs, /CIA Triad/)
+  assert.match(cia.explanation, /Correct because Confidentiality is listed under CIA Triad\./)
+
+  const malware = findMcq(mcqs, /malware types/)
+  assert.match(malware.explanation, /Malware Types, not Malware Symptoms/)
 })
 
 test('Source Map quiz generation rejects weak OCR garbage units', () => {

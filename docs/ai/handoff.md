@@ -5,6 +5,80 @@ Last Updated: 2026-05-15
 
 ---
 
+## Session Update - 2026-05-15 (Improve Quiz Answer Feedback)
+
+### What changed
+
+- Improved saved Quiz Pack review mode without changing the save/render model or adding AI calls.
+- Added clearer MCQ answer feedback sections in the quiz UI:
+  - selected answer
+  - result
+  - correct answer
+  - explanation
+  - review cue
+  - source-backed note
+- Let Identification items reveal the grounded answer without requiring typed input first.
+- Reworded deterministic Source Map explanations to be specific and course-like:
+  - `Correct because the source defines IT Security as...`
+  - `Correct because Confidentiality is listed under CIA Triad.`
+  - `Correct because Ransomware belongs to Malware Types, not Malware Symptoms.`
+- Added source concept title display derived from known Source Map unit ids while keeping `sourceUnitId`, `confidence`, and `generationMethod` out of student-facing output.
+- Updated printable Quiz Pack answer document to include review cues and source-backed notes.
+
+### Architecture reasoning
+
+This phase stays on the existing Source Map Quiz item model. The UI derives student-facing concept labels from internal item metadata at render time instead of changing persisted schemas. Feedback is purely deterministic and uses existing quiz item fields (`answer`, `explanation`, `sourceWording`, `sourceBasis`) so no raw OCR fallback, AI call, matching model, or new save path is introduced.
+
+### Files touched
+
+- `components/StudyOutputQuizPackPage.tsx`
+- `lib/study-outputs/quiz-pack.ts`
+- `tests/study-output-print.test.ts`
+- `tests/study-output-quiz-pack.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Phase 3.3 needed the saved quiz experience to feel more like Canvas-style practice. The previous reveal block showed the grounded answer, but it did not clearly separate selected answer, result, correct answer, explanation, and review cue, and identification reveal required typing before the answer could be shown.
+
+### Tests run
+
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- study-output-quiz-pack` - passed
+- `npm test -- deep-learn-generation study-output-reviewer study-output-quiz-pack` - passed
+- `npm test -- quiz source-map reviewer` - passed
+
+### Verification result
+
+- Passed all requested verification commands.
+- Verified MCQ explanations are specific and avoid generic selected-source wording.
+- Verified print/render output includes source-backed review cues.
+- Verified internal metadata labels are not rendered in the quiz page.
+- Verified identification reveal can be used without a typed response.
+- Verified no matching type was added.
+
+### Known risks
+
+- The test coverage for interactive correct/incorrect state is source-level and static-render based because the project does not currently include a DOM interaction test harness.
+- Review cue titles are derived deterministically from known Source Map ids, with a readable fallback for unknown source unit ids.
+
+### Blockers
+
+- No blocker remains.
+
+### Next recommended phase
+
+Phase 3.4 should add a small browser-level interaction test harness for saved quiz review mode, then use it to verify MCQ selection, incorrect feedback, retry, and reveal flows end to end.
+
+### Suggested commit message
+
+```bash
+improve quiz answer feedback
+```
+
+---
+
 ## Session Update - 2026-05-15 (Improve Source Map Quiz Quality)
 
 ### What changed

@@ -151,6 +151,9 @@ export function StudyOutputQuizPackPage({
   const isMatchingQuestion = currentItem.type === 'matching'
   const currentReviewState = selfReview[currentItem.id] ?? null
   const hasInput = isChoiceQuestion ? Boolean(selectedChoice) : Boolean(draftAnswer.trim())
+  const selectedIsCorrect = isChoiceQuestion && revealed && selectedChoice === currentItem.answer
+  const selectedIsIncorrect = isChoiceQuestion && revealed && Boolean(selectedChoice) && selectedChoice !== currentItem.answer
+  const sourceConceptTitle = getSourceConceptTitle(currentItem)
 
   return (
     <section className="motion-card section-shell section-shell-elevated reviewer-sheet study-output-document">
@@ -198,7 +201,10 @@ export function StudyOutputQuizPackPage({
 
         <section className="reviewer-panel reviewer-panel-hero reviewer-print-hide">
           <p className="reviewer-section-label">{labelForQuizItemType(currentItem.type)}</p>
-          <p className="reviewer-intro" style={{ marginTop: '0.7rem' }}>{currentItem.prompt}</p>
+          <div style={{ display: 'grid', gap: '0.55rem', marginTop: '0.7rem' }}>
+            <p className="reviewer-section-label">Question</p>
+            <p className="reviewer-intro" style={{ marginTop: 0 }}>{currentItem.prompt}</p>
+          </div>
           {isMatchingQuestion && currentItem.matchingPrompt && (
             <p className="reviewer-muted" style={{ marginTop: '0.6rem' }}>
               Match prompt: {currentItem.matchingPrompt}
@@ -235,6 +241,9 @@ export function StudyOutputQuizPackPage({
                             : undefined,
                     }}
                   >
+                    <span className="reviewer-section-label">
+                      {isSelected ? 'Selected answer' : isAnswer ? 'Correct answer' : 'Choice'}
+                    </span>
                     <strong>{choice}</strong>
                   </button>
                 )
@@ -259,9 +268,9 @@ export function StudyOutputQuizPackPage({
               type="button"
               onClick={() => setRevealed(true)}
               className="ui-button ui-button-secondary ui-button-xs"
-              disabled={revealed || !hasInput}
+              disabled={revealed || (isChoiceQuestion && !hasInput)}
             >
-              {quizPack.answerRevealLabel}
+              {isChoiceQuestion ? 'Check answer' : quizPack.answerRevealLabel}
             </button>
             <button type="button" onClick={resetQuestionState} className="ui-button ui-button-ghost ui-button-xs">
               Reset question
@@ -279,14 +288,45 @@ export function StudyOutputQuizPackPage({
           </div>
 
           {revealed && (
-            <div className="reviewer-mini-card" style={{ marginTop: '0.9rem' }}>
-              <p className="reviewer-section-label">Grounded answer</p>
-              <strong>{currentItem.answer}</strong>
-              <p>{currentItem.explanation}</p>
+            <div className="reviewer-mini-card" style={{ marginTop: '0.9rem', display: 'grid', gap: '0.65rem' }}>
+              {isChoiceQuestion ? (
+                <div>
+                  <p className="reviewer-section-label">Result</p>
+                  <p style={{ margin: '0.25rem 0 0', color: selectedIsCorrect ? 'var(--accent-foreground)' : 'var(--amber)', fontWeight: 700 }}>
+                    {selectedIsCorrect ? 'Correct' : selectedIsIncorrect ? 'Incorrect' : 'Answer revealed'}
+                  </p>
+                  {selectedChoice ? (
+                    <p className="reviewer-muted" style={{ marginTop: '0.25rem' }}>Selected answer: {selectedChoice}</p>
+                  ) : null}
+                </div>
+              ) : (
+                <div>
+                  <p className="reviewer-section-label">Identification review</p>
+                  {draftAnswer.trim() ? (
+                    <p className="reviewer-muted" style={{ marginTop: '0.25rem' }}>Your answer: {draftAnswer.trim()}</p>
+                  ) : null}
+                </div>
+              )}
+
+              <div>
+                <p className="reviewer-section-label">Correct answer</p>
+                <strong>{currentItem.answer}</strong>
+              </div>
+
+              <div>
+                <p className="reviewer-section-label">Explanation</p>
+                <p>{currentItem.explanation}</p>
+              </div>
+
+              <div>
+                <p className="reviewer-section-label">Review cue</p>
+                <p className="reviewer-muted">Review this concept: {sourceConceptTitle}</p>
+              </div>
+
               {currentItem.sourceWording ? (
-                <p className="reviewer-muted">Source wording: &quot;{currentItem.sourceWording}&quot;</p>
+                <p className="reviewer-muted">Source-backed note: &quot;{currentItem.sourceWording}&quot;</p>
               ) : currentItem.sourceBasis ? (
-                <p className="reviewer-muted">Source basis: {currentItem.sourceBasis}</p>
+                <p className="reviewer-muted">Source-backed note: {currentItem.sourceBasis}</p>
               ) : null}
               <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', marginTop: '0.35rem' }}>
                 <button type="button" onClick={() => markSelfReview('correct')} className={currentReviewState === 'correct' ? 'ui-button ui-button-secondary ui-button-xs' : 'ui-button ui-button-ghost ui-button-xs'}>
@@ -309,6 +349,36 @@ function labelForQuizItemType(type: StudyOutputQuizPackItem['type']) {
   if (type === 'identification') return 'Identification'
   if (type === 'matching') return 'Matching'
   return 'True / false'
+}
+
+function getSourceConceptTitle(item: StudyOutputQuizPackItem) {
+  const key = normalizeLookup(item.sourceUnitId ?? '')
+  if (key === 'it security definition') return 'IT Security'
+  if (key === 'infosec vs it sec') return 'InfoSec vs IT Sec'
+  if (key === 'cia triad') return 'CIA Triad'
+  if (key === 'domains of it security') return 'Domains of IT Security'
+  if (key === 'cybersecurity definitions') return 'Cybersecurity'
+  if (key === 'vulnerability exploit breach') return 'Vulnerability / Exploit / Breach'
+  if (key === 'malware types') return 'Malware Types'
+  if (key === 'malware symptoms') return 'Malware Symptoms'
+  if (key === 'methods of infiltration') return 'Methods of Infiltration'
+  if (key === 'denial of service methods') return 'Denial of Service Methods'
+  if (key === 'blended attacks') return 'Blended Attacks'
+  if (key === 'impact reduction') return 'Impact Reduction'
+  if (item.sourceUnitId) return toConceptTitle(item.sourceUnitId)
+  return item.sourceLabel ?? labelForQuizItemType(item.type)
+}
+
+function normalizeLookup(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+}
+
+function toConceptTitle(value: string) {
+  return value
+    .replace(/[-_]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase())
 }
 
 function QuizPackPrintDocument({ quizPack }: { quizPack: StudyOutputQuizPackContent }) {
@@ -338,10 +408,11 @@ function QuizPackPrintDocument({ quizPack }: { quizPack: StudyOutputQuizPackCont
                 <p className="study-output-print-answer-label">Answer</p>
                 <p>{item.answer}</p>
                 <p className="study-output-print-question-note">{item.explanation}</p>
+                <p className="study-output-print-question-note">Review this concept: {getSourceConceptTitle(item)}</p>
                 {item.sourceWording ? (
-                  <p className="study-output-print-question-note">Source wording: &quot;{item.sourceWording}&quot;</p>
+                  <p className="study-output-print-question-note">Source-backed note: &quot;{item.sourceWording}&quot;</p>
                 ) : item.sourceBasis ? (
-                  <p className="study-output-print-question-note">Source basis: {item.sourceBasis}</p>
+                  <p className="study-output-print-question-note">Source-backed note: {item.sourceBasis}</p>
                 ) : null}
               </div>
             </article>

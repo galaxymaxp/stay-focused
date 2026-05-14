@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
@@ -33,10 +34,23 @@ test('quiz page renders print-only answer document without interactive controls 
   assert.match(markup, /study-output-quiz-print-list/)
   assert.match(markup, /Question 1 - Multiple choice/)
   assert.match(markup, /study-output-print-answer-label\">Answer/)
-  assert.match(markup, /Source wording: &quot;Mitochondria are the main ATP-producing organelles\.&quot;/)
+  assert.match(markup, /Review this concept: Mitochondrion/)
+  assert.match(markup, /Source-backed note: &quot;Mitochondria are the main ATP-producing organelles\.&quot;/)
   assert.match(markup, /reviewer-print-hide study-output-screen-header/)
+  assert.doesNotMatch(markup, /sourceUnitId|confidence|generationMethod|source-map-mcq/)
   assert.doesNotMatch(markup, />LEARN</)
   assert.doesNotMatch(markup, /Deep Learn Tasks Quiz|Course Learn|WORKING CONTEXT/)
+})
+
+test('quiz review mode source keeps answer feedback states and identification reveal available', () => {
+  const source = readFileSync('components/StudyOutputQuizPackPage.tsx', 'utf8')
+
+  assert.match(source, /Selected answer/)
+  assert.match(source, /Correct answer/)
+  assert.match(source, /Incorrect/)
+  assert.match(source, /Review cue/)
+  assert.match(source, /Source-backed note/)
+  assert.match(source, /disabled=\{revealed \|\| \(isChoiceQuestion && !hasInput\)\}/)
 })
 
 test('task output page keeps actions screen-only while printable content stays rendered', () => {
@@ -151,6 +165,9 @@ function createQuizPackOutput(): StudyOutput {
           sourceBasis: 'Mitochondria are the main ATP-producing organelles.',
           choices: ['Mitochondrion', 'Ribosome', 'Golgi apparatus'],
           sourceLabel: 'Cell biology notes',
+          sourceUnitId: 'mitochondrion',
+          confidence: 0.91,
+          generationMethod: 'source_map_mcq',
           matchingPrompt: null,
         },
         {
