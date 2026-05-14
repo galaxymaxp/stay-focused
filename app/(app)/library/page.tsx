@@ -104,7 +104,7 @@ export default async function StudyLibraryPage({ searchParams }: Props) {
             href={filterHref(kindFilter, 'task_output')}
             className={`home-plan-filter-chip${subtypeFilter === 'task_output' ? ' active' : ''}`}
           >
-            Task outputs {subtypeCounts.task_output > 0 ? `(${subtypeCounts.task_output})` : ''}
+            Activities {subtypeCounts.task_output > 0 ? `(${subtypeCounts.task_output})` : ''}
           </Link>
           <Link
             href={filterHref(kindFilter, 'reviewer')}
@@ -222,7 +222,7 @@ function getEmptyStateDescription({
   if (kindFilter === 'learning') return 'Open a module and generate a Learn item to save it here.'
   if (kindFilter === 'tasks') return 'Start from a task and generate an output to see it here.'
   if (hasAnyItems && hasScopedFilters) return 'Try a broader library view to reopen another saved item.'
-  return "Generate Study Packs, Reviewers, Quizzes, or task outputs and they'll appear here."
+  return "Generate Study Packs, Reviewers, Quizzes, or Activities and they'll appear here."
 }
 
 function getEmptyStateActionLabel({
@@ -261,7 +261,7 @@ function getUnavailableStateTitle(message: string | null) {
 }
 
 function getUnavailableStateDescription(message: string | null) {
-  if (isSignedOutMessage(message)) return 'Your saved Study Packs, Reviewers, Quizzes, and task outputs will appear here after you sign in.'
+  if (isSignedOutMessage(message)) return 'Your saved Study Packs, Reviewers, Quizzes, and Activities will appear here after you sign in.'
   if ((message ?? '').toLowerCase().includes('supabase')) return 'Saved study content is not available in this local setup yet.'
   return 'Try again in a moment, or head back to Courses while this catches up.'
 }

@@ -68,7 +68,7 @@ export default async function LibraryItemPage({ params }: Props) {
       <main className="page-shell">
         <GeneratedContentState
           title="Sign in to load your saved study content."
-          description="Your saved Study Packs, Reviewers, Quizzes, and task outputs will appear here after you sign in."
+          description="Your saved Study Packs, Reviewers, Quizzes, and Activities will appear here after you sign in."
           tone="accent"
           action={(
             <Link href={`/sign-in?next=${encodeURIComponent(detailHref)}`} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
@@ -196,7 +196,7 @@ export default async function LibraryItemPage({ params }: Props) {
               <h1 className="ui-page-title" style={{ marginTop: '0.45rem' }}>{output.title}</h1>
               <p className="ui-page-copy" style={{ marginTop: '0.38rem', maxWidth: '48rem' }}>
                 {output.outputKind === 'task_output'
-                  ? 'This task output is a saved deliverable preview built from surfaced task instructions, readable source text, requirements, and selected context.'
+                  ? 'This Activity is a saved deliverable preview built from surfaced task instructions, readable source text, requirements, and selected context.'
                   : `This ${outputLabel} is built from your saved grounded Deep Learn pack.`}
               </p>
               {output.outputKind !== 'task_output' && getStudyOutputVariantLabel(output.outputKind) ? (

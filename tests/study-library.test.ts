@@ -41,7 +41,7 @@ test('task outputs appear as task items in Study Library', () => {
   }), courseNames)
 
   assert.equal(item.kind, 'task')
-  assert.equal(item.subtitle, 'Task output')
+  assert.equal(item.subtitle, 'Activity')
   assert.equal(item.taskTitle, 'Case Digest Output')
   assert.equal(item.href, '/library/output-1')
 })
@@ -59,6 +59,7 @@ test('legacy sheet and quiz database kinds map to three student-facing Deep Lear
   assert.equal(getStudyOutputKindLabel('study_sheet'), 'Reviewer')
   assert.equal(getStudyOutputKindLabel('cram_sheet'), 'Reviewer')
   assert.equal(getStudyOutputKindLabel('quiz_pack'), 'Quiz')
+  assert.equal(getStudyOutputKindLabel('task_output'), 'Activity')
 })
 
 test('Deep Learn source card exposes only Study Pack Reviewer and Quiz actions', () => {

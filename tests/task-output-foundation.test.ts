@@ -83,6 +83,15 @@ test('short-answer task output is grounded by actionable prompt and answers dire
   assert.doesNotMatch(fallback.previewContent, /Purpose|Deliverable focus|Grounded context|Next edit pass/)
   assert.match(fallback.previewContent, /physical activity|stress/i)
   assert.ok(fallback.previewContent.split(/(?<=[.!?])\s+/).length <= 3)
+
+  const htmlExport = fallback.exports.find((file) => file.filename.endsWith('.html'))
+  assert.ok(htmlExport)
+  assert.match(htmlExport.content, /activity-submission/)
+  assert.match(htmlExport.content, /<strong>Names:<\/strong> ______________________________/)
+  assert.match(htmlExport.content, /<strong>Section \/ Schedule:<\/strong> ______________________________/)
+  assert.match(htmlExport.content, /PATHFit 3/)
+  assert.match(htmlExport.content, /M1: Application/)
+  assert.doesNotMatch(htmlExport.content, /<pre>/)
 })
 
 test('task output format detection covers common assignment shapes', () => {
@@ -122,6 +131,7 @@ test('weak task-output grounding falls back to scaffold-only export bundle', () 
 
   const fallback = buildTaskOutputFallback(request)
   assert.equal(fallback.version, 'task-output-v1')
+  assert.equal(fallback.title, 'Case Brief')
   assert.equal(fallback.groundingStatus, 'limited')
   assert.ok(fallback.groundingNote.includes('partial readable task/source text'))
   assert.ok(fallback.limitationNote?.includes('before submission'))
@@ -197,6 +207,7 @@ test('task output HTML exports stay deterministic and revision history appends n
   assert.equal(normalized.exports.length, 1)
   assert.equal(normalized.exports[0]?.filename.endsWith('.html'), true)
   assert.ok(normalized.exports[0]?.content.includes('<!doctype html>'))
+  assert.ok(normalized.exports[0]?.content.includes('activity-submission'))
   assert.ok(normalized.exports[0]?.content.includes('console.log("portfolio")'))
   assert.equal(normalized.revisionHistory.length, 2)
   assert.equal(normalized.revisionHistory[0]?.label, 'Revision 2')

@@ -198,7 +198,7 @@ export async function listStudyOutputShelfItems(): Promise<DraftShelfItem[]> {
       status: 'ready',
       sourceType: isTaskOutput ? 'task' : 'module_resource',
       sourceTitle: isTaskOutput
-        ? ((taskRow?.title ?? record.title) as string | null) ?? 'Task output'
+        ? ((taskRow?.title ?? record.title) as string | null) ?? 'Activity'
         : ((record.title as string | null) ?? 'Study output'),
       tokenCount: null,
       updatedAt: record.updated_at as string,

@@ -4560,6 +4560,81 @@ details[open] > .ui-interactive-summary,
   gap: 0.4rem;
 }
 
+.task-output-print-document {
+  margin: 0;
+}
+
+.activity-submission {
+  box-sizing: border-box;
+  width: min(100%, 8.5in);
+  margin: 0 auto;
+  padding: 0.72in 0.78in;
+  background: #ffffff;
+  color: #111111;
+  font-family: "Times New Roman", Times, serif;
+}
+
+.activity-header {
+  text-align: center;
+  margin-bottom: 0.28in;
+}
+
+.activity-header p,
+.activity-header h1 {
+  margin: 0;
+}
+
+.activity-header h1 {
+  font-size: 13pt;
+  line-height: 1.25;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.activity-title {
+  margin-top: 0.08in !important;
+  font-size: 12pt;
+  line-height: 1.35;
+  font-weight: 700;
+}
+
+.activity-meta {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.08in 0.28in;
+  margin: 0.18in 0 0.28in;
+  font-size: 11pt;
+  line-height: 1.35;
+}
+
+.activity-meta p {
+  margin: 0;
+  border-bottom: 1px solid #b9b9b9;
+  padding-bottom: 0.03in;
+}
+
+.activity-body {
+  font-size: 12pt;
+  line-height: 1.6;
+}
+
+.activity-body p {
+  margin: 0 0 0.14in;
+}
+
+.activity-body h1,
+.activity-body h2,
+.activity-body h3 {
+  line-height: 1.25;
+  margin: 0.22in 0 0.1in;
+}
+
+.activity-body pre {
+  white-space: pre-wrap;
+  font-family: "Times New Roman", Times, serif;
+  line-height: 1.55;
+}
+
 .study-output-print-question-number,
 .study-output-print-question-prompt,
 .study-output-print-question-note,
@@ -4801,6 +4876,17 @@ details[open] > .ui-interactive-summary,
   .study-output-print-answer {
     padding-top: 0.3rem;
     border-top-color: rgba(0, 0, 0, 0.16);
+  }
+
+  .task-output-print-document {
+    display: block !important;
+  }
+
+  .task-output-print-document .activity-submission {
+    width: auto;
+    min-height: auto;
+    margin: 0;
+    padding: 0;
   }
 
   .task-output-preview-frame {

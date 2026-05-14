@@ -5,6 +5,83 @@ Last Updated: 2026-05-14
 
 ---
 
+## Session Update - 2026-05-14 (Refine Activity and reviewer export templates)
+
+### What changed
+
+- Added a shared Activity submission HTML template for task/activity exports, modeled loosely on the uploaded `CC19 Template.docx` structure without hard-coding CC19/Data Mining:
+  - centered course/program header
+  - activity title
+  - Names/Date row
+  - Section/Schedule and Course/Module row
+  - generated answer/body immediately below
+- Changed task output titles to use the activity/task title itself instead of appending generic labels such as `Report`.
+- Renamed student-facing task-output surfaces to `Activity` in Library labels, queue copy, task generation UI, print metadata, and export button labels.
+- Added a clean print-only Activity document renderer for saved task outputs, including compatibility rewrapping for older saved outputs that still contain bare HTML.
+- Hid the module lens header from print/export output so reviewer/study prints do not include app chrome such as Learn/Tasks/Quiz tabs, course overview actions, or working context.
+- Changed generated reviewer titles to preserve the source/study title instead of appending `Reviewer`; the output type remains shown as compact metadata.
+- Added global print styles for the Activity template.
+
+### Files touched
+
+- `app/(app)/library/[id]/page.tsx`
+- `app/(app)/library/page.tsx`
+- `app/globals.css`
+- `components/DoNowPanel.tsx`
+- `components/ModuleLensShell.tsx`
+- `components/StudyOutputTaskOutputPage.tsx`
+- `components/shell/QueuePanel.tsx`
+- `lib/study-output-content.ts`
+- `lib/study-outputs/reviewer.ts`
+- `lib/study-outputs/store.ts`
+- `lib/task-output.ts`
+- `lib/task-output-template.ts`
+- `tests/study-library.test.ts`
+- `tests/study-output-print.test.ts`
+- `tests/study-output-reviewer.test.ts`
+- `tests/task-output-foundation.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Task exports were too bare for actual activity submission, especially short-answer tasks that produced only a simple answer inside a minimal HTML shell. Reviewer/study output print views also needed a cleaner separation from app workspace chrome. This pass makes Activity exports submission-shaped while keeping the generated answer as the main body and preserving existing task/Deep Learn grounding rules.
+
+### Tests run
+
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- task-output-foundation study-output-print study-output-reviewer study-library` - passed
+- `npm test -- task-output study-output-print study-output-reviewer study-output-sheet study-output-quiz-pack` - passed
+- `npm test -- task-output-foundation deep-learn-generation` - passed
+
+### Verification result
+
+- Passed all requested verification.
+- Verified Activity exports include academic metadata placeholders/values and no longer wrap rich-text answers in a bare `<pre>`.
+- Verified saved task-output print rendering produces the Activity template even for older bare HTML exports.
+- Verified reviewer/study print output remains free of app workspace labels such as `LEARN`, `Deep Learn Tasks Quiz`, `Course Learn`, and `Working context`.
+- Verified Deep Learn grounding regression coverage still passes.
+
+### Known risks
+
+- The template currently produces export-ready HTML/printable output for DOCX/PDF targets; it does not generate a native `.docx` binary file.
+- Student name, section, and schedule are placeholders unless surfaced in future profile/course metadata.
+- Browser print preview QA with a real saved PATHFit/CC19-style activity is still recommended for spacing and page-break polish.
+
+### Blockers
+
+- No code blocker remains.
+
+### Next recommended step
+
+Generate a real Activity output from a signed-in account using a short-answer task and confirm the downloaded/printed Activity document matches the instructor-facing submission shape.
+
+### Suggested commit message
+
+```bash
+refine task and reviewer export templates
+```
+
 ## Session Update - 2026-05-14 (Fix task output grounding and Deep Learn queue progress)
 
 ### What changed

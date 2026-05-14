@@ -17,7 +17,7 @@ import type {
 } from '@/lib/types'
 
 const OUTPUT_PRESETS: Array<{ value: TaskOutputPreset; label: string; note: string }> = [
-  { value: 'report', label: 'Report', note: 'Structured writing for submission-ready documents.' },
+  { value: 'report', label: 'Activity', note: 'Submission-ready academic activity format.' },
   { value: 'presentation', label: 'Presentation', note: 'Slide-first outline and talking structure.' },
   { value: 'reviewer', label: 'Reviewer', note: 'Deliverable-shaped review handout when the task asks for it.' },
   { value: 'webpage', label: 'Webpage', note: 'HTML-first layout for page-style submissions.' },
@@ -122,14 +122,14 @@ export function TaskDraftPanel({
     })
 
     if (result.error || !result.jobId) {
-      setQueueError(result.error ?? 'Could not add this task output to the queue.')
-      dispatchInAppToast({ title: 'Could not queue task output', description: result.error ?? 'Try again in a moment.', tone: 'error' })
+      setQueueError(result.error ?? 'Could not add this activity to the queue.')
+      dispatchInAppToast({ title: 'Could not queue activity', description: result.error ?? 'Try again in a moment.', tone: 'error' })
       return
     }
 
     if (result.job) setQueueJob(result.job)
     window.dispatchEvent(new CustomEvent('stay-focused:queue-refresh', { detail: { job: result.job ?? null } }))
-    dispatchInAppToast({ title: 'Task output added to queue.', description: 'The Study queue will track progress.', tone: 'success' })
+    dispatchInAppToast({ title: 'Activity added to queue.', description: 'The Study queue will track progress.', tone: 'success' })
   }
 
   return (
@@ -147,7 +147,7 @@ export function TaskDraftPanel({
         onClick={(event) => event.stopPropagation()}
         role="dialog"
         aria-modal="true"
-        aria-label={`Task output - ${context.taskTitle}`}
+        aria-label={`Activity - ${context.taskTitle}`}
       >
         <div style={headerStyle}>
           <div style={{ minWidth: 0 }}>
@@ -351,13 +351,13 @@ function TaskQueueStatus({
   return (
     <div style={statusBannerStyle(error ? 'error' : hasOutput ? 'done' : 'idle')}>
       <p style={statusTitleStyle}>
-        {error ? 'Task output failed' : hasOutput ? 'Task output ready' : isActive ? 'Generating task output' : 'Prepare task output'}
+        {error ? 'Activity failed' : hasOutput ? 'Activity ready' : isActive ? 'Generating activity' : 'Prepare activity'}
       </p>
       <p style={statusBodyStyle}>
         {error
           ? error
           : hasOutput
-            ? 'The generated output has been saved into Study Library and is ready for preview or export.'
+            ? 'The generated activity has been saved into Study Library and is ready for preview or export.'
             : isActive
               ? `The Study queue is building this output${job?.status === 'running' ? ` (${progress}%)` : ''}.`
               : 'Choose an output type and preset, then generate a first pass from the surfaced task requirements.'}

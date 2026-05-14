@@ -36,7 +36,7 @@ export function ModuleLensShell({
   return (
     <main className="page-shell command-page command-page-tight">
       <section
-        className={`motion-card section-shell ${currentLens === 'do' ? 'section-shell-elevated' : ''}`}
+        className={`motion-card section-shell module-lens-shell-header reviewer-print-hide ${currentLens === 'do' ? 'section-shell-elevated' : ''}`}
         style={{ padding: currentLens === 'do' ? '1.1rem 1.2rem' : '1.05rem 1.15rem' }}
       >
         <div className="command-header">

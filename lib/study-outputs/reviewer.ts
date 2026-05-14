@@ -139,11 +139,8 @@ export function buildDeepLearnReviewerContent(note: DeepLearnNote): StudyOutputR
 
 function buildReviewerTitle(noteTitle: string) {
   const trimmed = noteTitle.trim()
-  if (!trimmed) return 'Deep Learn Reviewer'
-  if (/\breviewer\b/i.test(trimmed)) return trimmed
-  if (/\bexam prep pack\b/i.test(trimmed)) return trimmed.replace(/\bexam prep pack\b/i, 'Reviewer')
-  if (/\breview pack\b/i.test(trimmed)) return trimmed.replace(/\breview pack\b/i, 'Reviewer')
-  return `${trimmed} Reviewer`
+  if (!trimmed) return 'Reviewer'
+  return trimmed
 }
 
 function buildReviewerSummary(note: DeepLearnNote, answerCount: number, identificationCount: number) {

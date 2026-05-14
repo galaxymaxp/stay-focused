@@ -11,7 +11,7 @@ test('ready Deep Learn pack can build a reviewer output', () => {
 
   assert.equal(reviewer.version, 'reviewer-v1')
   assert.equal(reviewer.sourceNoteId, note.id)
-  assert.ok(reviewer.title.includes('Reviewer'))
+  assert.equal(reviewer.title, note.title)
   assert.ok(reviewer.highYieldConcepts.length > 0)
   assert.ok(reviewer.identificationReview.length > 0)
   assert.ok(reviewer.quickReviewBlocks.length > 0)

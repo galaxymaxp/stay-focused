@@ -26,7 +26,7 @@ export function isStudyOutputKind(value: unknown): value is StudyOutputKind {
 export function getStudyOutputKindLabel(value: unknown) {
   if (value === 'reviewer') return 'Reviewer'
   if (value === 'quiz_pack') return 'Quiz'
-  if (value === 'task_output') return 'Task output'
+  if (value === 'task_output') return 'Activity'
   if (value === 'study_sheet') return 'Reviewer'
   if (value === 'cram_sheet') return 'Reviewer'
   return 'Unsupported output'

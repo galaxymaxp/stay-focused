@@ -47,10 +47,16 @@ test('task output page keeps actions screen-only while printable content stays r
     moduleTitle: 'Essay Writing',
   }))
 
-  assert.match(markup, /Output:<\/strong> Task Output/)
+  assert.match(markup, /Output:<\/strong> Activity/)
   assert.match(markup, /reviewer-print-hide study-output-screen-header/)
+  assert.match(markup, /task-output-print-document/)
+  assert.match(markup, /activity-submission/)
+  assert.match(markup, /Names:<\/strong> ______________________________/)
+  assert.match(markup, /Section \/ Schedule:<\/strong> ______________________________/)
   assert.match(markup, /task-output-preview-frame/)
   assert.match(markup, /Requirements used/)
+  assert.doesNotMatch(markup, />LEARN</)
+  assert.doesNotMatch(markup, /Deep Learn Tasks Quiz|Course Learn|Working context|WORKING CONTEXT/)
 })
 
 function createReviewerOutput(): StudyOutput {

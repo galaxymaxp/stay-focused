@@ -614,7 +614,7 @@ function getCompletedTitle(job: QueuedJob) {
   if (job.type === SOURCE_OCR_JOB_TYPE) return 'Scanned PDF prepared'
   if (job.type === RESOURCE_EXTRACTION_JOB_TYPE) return 'Source prepared'
   if (job.type === 'learn_generation') return 'Study pack ready'
-  if (job.type === 'task_output' || job.type === 'do_generation') return 'Task output ready'
+  if (job.type === 'task_output' || job.type === 'do_generation') return 'Activity ready'
   return 'Job complete'
 }
 
@@ -623,7 +623,7 @@ function getFailedTitle(job: QueuedJob) {
   if (job.type === SOURCE_OCR_JOB_TYPE) return 'Scanned PDF preparation failed'
   if (job.type === RESOURCE_EXTRACTION_JOB_TYPE) return 'Source preparation failed'
   if (job.type === 'learn_generation') return 'Study pack failed'
-  if (job.type === 'task_output' || job.type === 'do_generation') return 'Task output failed'
+  if (job.type === 'task_output' || job.type === 'do_generation') return 'Activity failed'
   return `Failed: ${getJobSourceName(job)}`
 }
 
@@ -632,7 +632,7 @@ function getCanceledTitle(job: QueuedJob) {
   if (job.type === SOURCE_OCR_JOB_TYPE) return 'Scanning canceled'
   if (job.type === RESOURCE_EXTRACTION_JOB_TYPE) return 'Preparation canceled'
   if (job.type === 'learn_generation') return 'Study pack canceled'
-  if (job.type === 'task_output' || job.type === 'do_generation') return 'Task output canceled'
+  if (job.type === 'task_output' || job.type === 'do_generation') return 'Activity canceled'
   return 'Job canceled'
 }
 

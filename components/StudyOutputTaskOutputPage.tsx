@@ -4,6 +4,7 @@ import { Download, Printer } from 'lucide-react'
 import { GeneratedContentState } from '@/components/generated-content/GeneratedContentState'
 import { StudyOutputPrintHeader } from '@/components/StudyOutputPrintHeader'
 import { isTaskOutputStudyOutputContent } from '@/lib/study-output-content'
+import { buildTaskOutputActivitySubmissionHtml } from '@/lib/task-output-template'
 import type { StudyOutput, StudyOutputTaskOutputContent } from '@/lib/types'
 
 export function StudyOutputTaskOutputPage({
@@ -29,12 +30,25 @@ export function StudyOutputTaskOutputPage({
   const printableHtml = taskOutput.version === 'task-output-v1'
     ? taskOutput.exports.find((item) => item.filename.endsWith('.html'))?.content ?? null
     : null
+  const activityExportHtml = printableHtml?.includes('activity-submission') ? printableHtml : null
+  const activitySubmissionHtml = activityExportHtml ?? buildTaskOutputActivitySubmissionHtml({
+    title: taskOutput.title,
+    taskTitle: taskOutput.taskTitle,
+    courseLabel,
+    moduleTitle,
+    generatedAt: output.generatedAt ?? output.createdAt,
+    previewMode: taskOutput.previewMode,
+    previewContent: taskOutput.previewContent,
+    stylesheet: taskOutput.stylesheet,
+    script: taskOutput.script,
+  })
+  const activitySubmissionMarkup = extractMainMarkup(activitySubmissionHtml)
 
   return (
     <section className="motion-card section-shell section-shell-elevated reviewer-sheet study-output-document">
       <div className="reviewer-print-hide study-output-screen-header" style={{ display: 'flex', justifyContent: 'space-between', gap: '0.8rem', flexWrap: 'wrap', alignItems: 'flex-start' }}>
         <div>
-          <p className="ui-kicker">Task output</p>
+          <p className="ui-kicker">Activity</p>
           <h2 className="ui-section-title" style={{ marginTop: '0.42rem' }}>{taskOutput.title}</h2>
           <p className="ui-section-copy" style={{ marginTop: '0.45rem', maxWidth: '48rem' }}>
             {taskOutput.summary}
@@ -63,7 +77,7 @@ export function StudyOutputTaskOutputPage({
 
       <StudyOutputPrintHeader
         title={taskOutput.title}
-        outputLabel="Task Output"
+        outputLabel="Activity"
         courseLabel={courseLabel}
         moduleTitle={moduleTitle}
         generatedAt={output.generatedAt ?? output.createdAt}
@@ -77,7 +91,12 @@ export function StudyOutputTaskOutputPage({
         <span>{taskOutput.groundingStatus === 'limited' ? 'Limited grounding' : 'Grounded output'}</span>
       </div>
 
-      <div className="reviewer-grid">
+      <div
+        className="reviewer-print-only task-output-print-document"
+        dangerouslySetInnerHTML={{ __html: activitySubmissionMarkup }}
+      />
+
+      <div className="reviewer-grid reviewer-print-hide">
         <section className="reviewer-panel reviewer-panel-hero study-output-keep-together">
           <p className="reviewer-section-label">Grounding contract</p>
           <p className="reviewer-intro">{taskOutput.groundingNote}</p>
@@ -167,4 +186,12 @@ function downloadExportFile(filename: string, mimeType: string, content: string)
   anchor.click()
   anchor.remove()
   URL.revokeObjectURL(href)
+}
+
+function extractMainMarkup(html: string) {
+  const main = html.match(/<main[^>]*class=["'][^"']*activity-submission[^"']*["'][^>]*>[\s\S]*?<\/main>/i)
+  if (main?.[0]) return main[0]
+
+  const body = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i)
+  return body?.[1]?.trim() ?? html
 }

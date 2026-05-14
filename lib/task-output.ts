@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { buildTaskDraftRequestPayload, buildTaskDraftSourceKey, type TaskDraftContext } from '@/lib/do-now'
 import { buildTaskRequirementSummary } from '@/lib/manual-copy-bundle'
+import { formatTaskExportDate, wrapActivitySubmissionHtml, type TaskOutputExportMetadata } from '@/lib/task-output-template'
 import type {
   StudyOutputTaskOutputContent,
   StudyOutputTaskOutputExportFile,
@@ -210,6 +211,7 @@ export function buildTaskOutputFallback(input: TaskOutputRequest): StudyOutputTa
       previewContent,
       stylesheet: previewMode === 'html' ? buildHtmlStylesForPreset(input.preset) : null,
       script: previewMode === 'html' || input.outputType === 'js' ? buildJsScaffold(input) : null,
+      metadata: buildTaskOutputExportMetadata(input),
     }),
     revisionHistory: [createRevisionEntry(input, 'Initial generation', input.groundingStatus)],
   }
@@ -235,6 +237,7 @@ export function normalizeTaskOutputModelResponse(
     previewContent,
     stylesheet: cleanBlock(response.stylesheet ?? null),
     script: cleanBlock(response.script ?? null),
+    metadata: buildTaskOutputExportMetadata(request),
   })
 
   const content: StudyOutputTaskOutputContent = {
@@ -340,17 +343,7 @@ function classifyTaskOutputGrounding(context: TaskDraftContext, instructions: st
 }
 
 function buildTaskOutputTitle(input: TaskOutputRequest) {
-  const label = input.preset === 'presentation'
-    ? 'Presentation'
-    : input.preset === 'webpage'
-      ? 'Webpage'
-      : input.preset === 'documentation'
-        ? 'Documentation'
-        : input.preset === 'reviewer'
-          ? 'Reviewer'
-          : 'Report'
-
-  return `${input.title} ${label}`
+  return input.title
 }
 
 function buildTaskOutputSummary(input: TaskOutputRequest, fallback: boolean) {
@@ -361,6 +354,17 @@ function buildTaskOutputSummary(input: TaskOutputRequest, fallback: boolean) {
     ? 'prepared conservatively from surfaced task requirements.'
     : 'prepared from surfaced task requirements and selected readable context.'
   return `${lead} for a ${input.outputType.toUpperCase()} ${input.preset}. ${tail}`
+}
+
+function buildTaskOutputExportMetadata(input: TaskOutputRequest): TaskOutputExportMetadata {
+  return {
+    courseLabel: input.course ?? null,
+    moduleTitle: input.module ?? null,
+    activityTitle: input.title,
+    studentName: null,
+    dateLabel: formatTaskExportDate(input.dueDate ?? null),
+    sectionSchedule: null,
+  }
 }
 
 function summarizeRequirements(requirements: string[]) {
@@ -564,6 +568,7 @@ function buildTaskOutputExports(input: {
   previewContent: string
   stylesheet: string | null
   script: string | null
+  metadata: TaskOutputExportMetadata
 }): StudyOutputTaskOutputExportFile[] {
   const baseName = slugify(input.title) || 'task-output'
   const files: StudyOutputTaskOutputExportFile[] = []
@@ -572,8 +577,15 @@ function buildTaskOutputExports(input: {
     files.push({
       filename: `${baseName}.html`,
       mimeType: 'text/html;charset=utf-8',
-      content: wrapHtmlPreview(input.title, input.previewContent, input.stylesheet, input.script),
-      label: 'Download HTML',
+      content: wrapActivitySubmissionHtml({
+        title: input.title,
+        previewContent: input.previewContent,
+        previewMode: input.previewMode,
+        metadata: input.metadata,
+        stylesheet: input.stylesheet,
+        script: input.script,
+      }),
+      label: 'Download Activity HTML',
     })
     return files
   }
@@ -601,8 +613,15 @@ function buildTaskOutputExports(input: {
   files.push({
     filename: `${baseName}.html`,
     mimeType: 'text/html;charset=utf-8',
-    content: wrapHtmlPreview(input.title, input.previewContent, input.stylesheet, input.script),
-    label: input.outputType === 'pdf' ? 'Download printable HTML' : 'Download export-ready HTML',
+    content: wrapActivitySubmissionHtml({
+      title: input.title,
+      previewContent: input.previewContent,
+      previewMode: input.previewMode,
+      metadata: input.metadata,
+      stylesheet: input.stylesheet,
+      script: input.script,
+    }),
+    label: input.outputType === 'pdf' ? 'Download Activity printable HTML' : 'Download Activity HTML',
   })
   files.push({
     filename: `${baseName}.txt`,
@@ -615,6 +634,7 @@ function buildTaskOutputExports(input: {
 
   return files
 }
+
 
 function buildHtmlStylesForPreset(preset: TaskOutputPreset) {
   if (preset === 'presentation') {
@@ -645,28 +665,6 @@ function buildJsScaffold(input: TaskOutputRequest) {
     '  return taskOutput;',
     '}',
   ].join('\n')
-}
-
-function wrapHtmlPreview(title: string, previewContent: string, stylesheet: string | null, script: string | null) {
-  const body = previewContent.trim().startsWith('<')
-    ? previewContent
-    : `<main class="task-output-shell"><pre>${escapeHtml(previewContent)}</pre></main>`
-
-  return [
-    '<!doctype html>',
-    '<html lang="en">',
-    '<head>',
-    '  <meta charset="utf-8" />',
-    '  <meta name="viewport" content="width=device-width, initial-scale=1" />',
-    `  <title>${escapeHtml(title)}</title>`,
-    stylesheet ? `  <style>\n${stylesheet}\n  </style>` : '',
-    '</head>',
-    '<body>',
-    body,
-    script ? `  <script>\n${script}\n  </script>` : '',
-    '</body>',
-    '</html>',
-  ].filter(Boolean).join('\n')
 }
 
 function sanitizeStringList(values: Array<string | null | undefined>, maxItems: number) {
