@@ -413,6 +413,13 @@ test('learn generation queue uses staged progress updates and compact fallback c
   assert.match(queueSource, /Compact study pack ready\./)
 })
 
+test('learn generation queue maps quick-answer size failures to specific student copy', () => {
+  const queueSource = readFileSync('actions/queue-jobs.ts', 'utf8')
+  assert.match(queueSource, /quick_answers_output_too_large/)
+  assert.match(queueSource, /Quick answers were too large to generate\. Other study sections were saved when available\./)
+  assert.doesNotMatch(queueSource, /quick_answers_output_too_large[\s\S]{0,220}could not build enough structured study content/i)
+})
+
 test('Canvas resource preservation keeps meaningful extracted text when incoming sync is weak', () => {
   const decision = evaluateResourceTextPreservation(
     createResourceForPreservation({

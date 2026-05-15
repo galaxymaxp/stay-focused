@@ -1464,6 +1464,9 @@ function getStringFromJobRecord(source: Record<string, unknown> | null, key: str
 function humanizeLearnGenerationFailureForQueue(message: string) {
   const trimmed = message.replace(/\s+/g, ' ').trim()
   if (!trimmed) return 'Deep Learn could not finish this Study Pack.'
+  if (/quick_answers_output_too_large|Quick answers were too large/i.test(trimmed)) {
+    return 'Quick answers were too large to generate. Other study sections were saved when available.'
+  }
   if (/max_output_tokens|response size limit|too large/i.test(trimmed)) {
     return 'The source was too large for the model response after compact fallback.'
   }

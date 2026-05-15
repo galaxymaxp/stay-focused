@@ -13,6 +13,8 @@ import {
   DEEP_LEARN_IDENTIFICATION_OUTPUT_TOO_LARGE_REASON,
   DEEP_LEARN_MAX_OUTPUT_TOKENS,
   DEEP_LEARN_OUTPUT_TOO_LARGE_MESSAGE,
+  DEEP_LEARN_QUICK_ANSWERS_OUTPUT_TOO_LARGE_MESSAGE,
+  DEEP_LEARN_QUICK_ANSWERS_OUTPUT_TOO_LARGE_REASON,
   DeepLearnGenerationIncompleteError,
   DeepLearnGenerationBlockedError,
   DeepLearnGeneratedContentValidationError,
@@ -883,6 +885,89 @@ test('identification output size failures use the specific student-facing reason
 
   assert.equal(validation.ok, true)
   assert.equal(error.message, DEEP_LEARN_IDENTIFICATION_OUTPUT_TOO_LARGE_MESSAGE)
+  assert.doesNotMatch(error.message, /could not build enough structured study content/i)
+})
+
+test('quick-answer output size failures save partial Study Pack content', async () => {
+  let quickAnswerCalls = 0
+  const quickAnswerTokenCaps: number[] = []
+  const quickAnswerPrompts: string[] = []
+  const result = await generateDeepLearnStructuredContent(
+    createPromptInput(),
+    createPreparedGrounding(),
+    async ({ schemaName, maxOutputTokens, promptText }) => {
+      if (schemaName === 'deep_learn_high_yield_stage') {
+        return jsonResponse({
+          title: 'Academic Module',
+          overview: 'The source explains core academic concepts and procedures.',
+          sections: [
+            { heading: 'Source Summary', body: 'The source explains core academic concepts and procedures.' },
+            { heading: 'High-Yield First', body: '- Concept groups\n- Procedures\n- Definitions' },
+          ],
+        })
+      }
+      if (schemaName === 'deep_learn_identification_stage') {
+        return jsonResponse({
+          sections: [{ heading: 'Identification Review', body: 'Practice direct prompts from the source.' }],
+          identificationItems: Array.from({ length: 12 }, (_, index) => identificationItem(index)),
+        })
+      }
+      if (schemaName === 'deep_learn_quick_answers_stage') {
+        quickAnswerCalls += 1
+        quickAnswerTokenCaps.push(maxOutputTokens)
+        quickAnswerPrompts.push(promptText)
+        return {
+          status: 'incomplete',
+          output_text: '',
+          incomplete_details: { reason: 'max_output_tokens' },
+        }
+      }
+      return jsonResponse({
+        sections: [{ heading: 'Likely Quiz Targets', body: 'Likely quiz targets remain usable without a full quick-answer section.' }],
+        distinctions: [distinctionItem(1)],
+        likelyQuizTargets: Array.from({ length: 6 }, (_, index) => quizTargetItem(index)),
+        cautionNotes: [],
+      })
+    },
+  )
+
+  assert.equal(result.compactFallbackUsed, true)
+  assert.equal(quickAnswerCalls, 4)
+  assert.deepEqual(quickAnswerTokenCaps, [4200, 2600, 1200, 800])
+  assert.match(quickAnswerPrompts[0] ?? '', /answer only the generated identification items/i)
+  assert.match(quickAnswerPrompts.at(-1) ?? '', /answer max 3 generated identification items, one sentence each/i)
+  assert.match(quickAnswerPrompts.at(-1) ?? '', /No long explanations\. No essay-style output/i)
+  assert.ok(result.content.sections.some((section) => section.heading === 'Source Summary'))
+  assert.ok(result.content.sections.some((section) => section.heading === 'Identification Review'))
+  assert.ok(result.content.identificationItems.length >= 3)
+  assert.ok(result.content.answerBank.length <= 3)
+  assert.ok(result.content.likelyQuizTargets.length >= 3)
+  assert.ok(result.content.cautionNotes.includes(DEEP_LEARN_QUICK_ANSWERS_OUTPUT_TOO_LARGE_MESSAGE))
+  assert.doesNotMatch(JSON.stringify(result.content), /could not build enough structured study content/i)
+  assert.equal(validateDeepLearnContentReadyForSave(result.content).ok, true)
+})
+
+test('quick-answer output size failures use the specific student-facing reason', () => {
+  const content = normalizeDeepLearnGeneratedContent({
+    title: 'Academic Module',
+    overview: 'The source explains core academic concepts.',
+    sections: [
+      { heading: 'Source Summary', body: 'The source explains core academic concepts.' },
+      { heading: 'Identification Review', body: 'Use direct prompts for review.' },
+      { heading: 'Likely Quiz Targets', body: 'Use these source-grounded quiz targets.' },
+    ],
+    answerBank: [],
+    identificationItems: [identificationItem(1), identificationItem(2), identificationItem(3)],
+    distinctions: [],
+    likelyQuizTargets: [quizTargetItem(1), quizTargetItem(2), quizTargetItem(3)],
+    cautionNotes: [DEEP_LEARN_QUICK_ANSWERS_OUTPUT_TOO_LARGE_MESSAGE],
+  }, 'Academic Module')
+
+  const validation = validateDeepLearnContentReadyForSave(content)
+  const error = new DeepLearnGenerationIncompleteError(DEEP_LEARN_QUICK_ANSWERS_OUTPUT_TOO_LARGE_REASON)
+
+  assert.equal(validation.ok, true)
+  assert.equal(error.message, DEEP_LEARN_QUICK_ANSWERS_OUTPUT_TOO_LARGE_MESSAGE)
   assert.doesNotMatch(error.message, /could not build enough structured study content/i)
 })
 

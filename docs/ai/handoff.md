@@ -5,6 +5,77 @@ Last Updated: 2026-05-16
 
 ---
 
+## Session Update - 2026-05-16 (Quick Answers Output Limit Partial Save)
+
+### What changed
+
+- Added quick-answer-specific output limit handling:
+  - reason: `quick_answers_output_too_large`
+  - student-facing copy: `Quick answers were too large to generate. Other study sections were saved when available.`
+- Added a minimal quick_answers fallback level:
+  - full: answer only generated identification items
+  - compact: answer max 8 items
+  - micro: answer max 5 items
+  - minimal: answer max 3 items, one sentence each
+- Tightened the quick_answers prompt to avoid long explanations, repeated question text, and essay-style output.
+- Passed prior staged output into quick_answers prompting so the model answers the already-generated identification items instead of regenerating a broad answer section.
+- When quick_answers exceeds `max_output_tokens` through full, compact, micro, and minimal attempts, Deep Learn now:
+  - derives a tiny answer key from parsed identification artifacts when available
+  - marks Quick-Answer Blocks as skipped/partial with the specific quick-answer message
+  - continues to Distinctions / Likely Quiz Targets
+  - saves a valid partial Study Pack when high_yield, identification, and quiz target content are usable
+  - avoids the generic structured-content failure for this case
+- Expanded stage diagnostics with requested answer count, parsed quick-answer count, partial-save status, final saved sections, fallback level, and max output tokens.
+- Updated queue failure humanization so quick_answers size failures do not show the generic structured-content message.
+
+### Files touched
+
+- `lib/deep-learn-generation.ts`
+- `actions/queue-jobs.ts`
+- `tests/deep-learn-generation.test.ts`
+- `tests/queue.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Production retries showed readable academic sources where high_yield and identification completed successfully, but quick_answers exhausted output limits through all staged retries. Quick answers are useful but optional; they should not make the whole Study Pack fail when already-generated sections and structured artifacts can still produce a usable reviewer/quiz path.
+
+### Tests run
+
+- `npm test -- deep-learn-generation` - passed
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- deep-learn-generation deep-learn-readiness queue learn-resource-ui study-output-reviewer study-output-quiz-pack source-map` - passed
+
+### Verification result
+
+- Passed all requested verification commands.
+- Verified quick_answers retries full, compact, micro, then minimal with token caps `4200 / 2600 / 1200 / 800`.
+- Verified minimal quick_answers prompt requests only 3 one-sentence answers.
+- Verified repeated quick_answers `max_output_tokens` failures save a partial Study Pack with Source Summary, Identification Review, Likely Quiz Targets, and a tiny deterministic answer key when identification artifacts are available.
+- Verified the quick-answer-specific message is used instead of `Deep Learn could not build enough structured study content...`.
+- Verified validation can accept a Study Pack marked with the quick_answers size skip when identification and likely quiz target artifacts are still sufficient.
+
+### Known risks
+
+- The deterministic quick-answer key after total quick_answers failure is intentionally tiny, capped at 3 identification-derived answers.
+- Partial packs may have weaker quick-answer coverage than normal packs, but Reviewer and Quiz can still use identification and likely quiz targets.
+- Diagnostics add more structured log fields during Deep Learn generation; they are counts/status metadata, not raw source text.
+
+### Blockers
+
+- No blocker remains.
+
+### Next recommended step
+
+Deploy and retry the production sources that reached `quick_answers` size failures. Confirm the new job completes with `quick_answers_output_too_large` diagnostics only if Quick-Answer Blocks still exceed limits, and confirm the Study Pack opens with the saved non-quick-answer sections.
+
+### Suggested commit message
+
+handle oversized quick answers fallback
+
+---
+
 ## Session Update - 2026-05-16 (Identification Output Limit Partial Save)
 
 ### What changed
