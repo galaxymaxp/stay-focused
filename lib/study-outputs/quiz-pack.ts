@@ -11,9 +11,10 @@ import type {
   StudyOutputQuizItemType,
 } from '@/lib/types'
 
-const MAX_QUIZ_PACK_ITEMS = 18
-const MAX_SOURCE_MAP_IDENTIFICATION_ITEMS = 16
-const MAX_SOURCE_MAP_MCQ_ITEMS = 12
+const MAX_QUIZ_PACK_ITEMS = 30
+const MAX_SOURCE_MAP_IDENTIFICATION_ITEMS = 18
+const MAX_SOURCE_MAP_MCQ_ITEMS = 16
+const MAX_SOURCE_MAP_TRUE_FALSE_ITEMS = 10
 const HIGH_CONFIDENCE_THRESHOLD = 0.84
 const MAX_MCQ_ANSWER_CHARS = 190
 
@@ -215,7 +216,7 @@ function buildQuizPackTitle(noteTitle: string) {
 
 function buildQuizPackSummary(note: DeepLearnNote, itemCount: number) {
   const lane = note.sourceGrounding.sourceMap
-    ? 'Quiz built from the saved Source Map and Reviewer.'
+    ? 'Quiz built from the exam-ready Study Pack and Reviewer.'
     : note.quizReady
       ? 'Deterministic quiz built from the saved Study Pack.'
       : 'Compact quiz built from the saved Study Pack.'
@@ -288,9 +289,10 @@ function buildSourceMapQuizPackItems(note: DeepLearnNote): StudyOutputQuizPackIt
     })
     .filter((item): item is StudyOutputQuizPackItem => item !== null)
     .slice(0, MAX_SOURCE_MAP_MCQ_ITEMS)
+  const trueFalseItems = buildSourceMapTrueFalseItems(note, units).slice(0, MAX_SOURCE_MAP_TRUE_FALSE_ITEMS)
 
   return uniqueBy(
-    [...adaptiveItems, ...mcqItems, ...identificationItems],
+    [...adaptiveItems, ...mcqItems, ...trueFalseItems, ...identificationItems],
     (item) => `${normalizeLookup(item.prompt)}::${normalizeLookup(item.answer)}::${item.type}`,
   )
     .sort(compareQuizItemsForCoverage)
@@ -376,6 +378,102 @@ function buildAdaptiveSourceMapQuizItems(note: DeepLearnNote, units: NormalizedQ
   }
 
   return items
+}
+
+function buildSourceMapTrueFalseItems(note: DeepLearnNote, units: NormalizedQuizSourceUnit[]): StudyOutputQuizPackItem[] {
+  const candidates = units
+    .filter((unit) => unit.confidence >= HIGH_CONFIDENCE_THRESHOLD)
+    .filter((unit) => !containsQuizGarbage(`${unit.title} ${unit.normalizedAnswer} ${unit.sourceExcerpt}`))
+  const items: StudyOutputQuizPackItem[] = []
+
+  for (let index = 0; index < candidates.length; index += 1) {
+    const unit = candidates[index]
+    if (!unit) continue
+    const makeFalse = index % 3 === 1
+    const distractorUnit = candidates.find((candidate) =>
+      candidate.sourceUnitId !== unit.sourceUnitId
+      && candidate.conceptFamily === unit.conceptFamily
+      && !areAnswersTooSimilar(candidate.title, unit.title)
+    ) ?? candidates.find((candidate) => candidate.sourceUnitId !== unit.sourceUnitId)
+    const trueStatement = buildTrueFalseTrueStatement(unit)
+    const falseStatement = distractorUnit ? buildTrueFalseFalseStatement(unit, distractorUnit) : null
+    const prompt = makeFalse && falseStatement ? falseStatement.prompt : trueStatement.prompt
+    const truthValue = makeFalse && falseStatement ? false : true
+    const explanation = makeFalse && falseStatement
+      ? falseStatement.explanation
+      : trueStatement.explanation
+
+    if (!prompt || containsQuizGarbage(prompt)) continue
+    items.push({
+      id: `${note.resourceId}-source-map-tf-${index}`,
+      type: 'true_false',
+      prompt,
+      answer: truthValue ? 'True' : 'False',
+      choices: ['True', 'False'],
+      explanation,
+      sourceLabel: note.title,
+      sourceWording: unit.sourceExcerpt,
+      sourceBasis: unit.sourceExcerpt,
+      matchingPrompt: null,
+      matchingAnswer: null,
+      truthValue,
+      sourceUnitId: unit.sourceUnitId,
+      sourceExcerpt: unit.sourceExcerpt,
+      confidence: unit.confidence,
+      generationMethod: 'source_map_true_false',
+    })
+  }
+
+  return items
+}
+
+function buildTrueFalseTrueStatement(unit: NormalizedQuizSourceUnit) {
+  if (usesListMembershipMcq(unit)) {
+    const answer = buildMultipleChoiceAnswer(unit)
+    return {
+      prompt: `${answer} is listed under ${unit.title}.`,
+      explanation: `Correct because ${answer} is one of the source-listed items under ${unit.title}.`,
+    }
+  }
+  if (unit.learningShape === 'timeline') {
+    return {
+      prompt: `${unit.title} preserves chronology or milestone relationships from the source.`,
+      explanation: `Correct because ${unit.title} is treated as a timeline or milestone unit in the Study Pack.`,
+    }
+  }
+  if (unit.learningShape === 'procedure' || unit.learningShape === 'lab-process') {
+    return {
+      prompt: `${unit.title} should be reviewed as a sequence of steps.`,
+      explanation: `Correct because ${unit.title} is a source-listed procedure or process.`,
+    }
+  }
+  return {
+    prompt: `${unit.title} is tested by recalling this source-backed answer: ${truncateQuizStatement(unit.normalizedAnswer)}.`,
+    explanation: `Correct because this statement matches the source-backed answer for ${unit.title}.`,
+  }
+}
+
+function buildTrueFalseFalseStatement(unit: NormalizedQuizSourceUnit, distractorUnit: NormalizedQuizSourceUnit) {
+  if (usesListMembershipMcq(unit) && distractorUnit.aliases.length > 0) {
+    const distractor = distractorUnit.aliases.find(isConciseListChoice) ?? distractorUnit.aliases[0]
+    if (!distractor) return null
+    return {
+      prompt: `${distractor} is listed under ${unit.title}.`,
+      explanation: `Correct because ${distractor} belongs with ${distractorUnit.title}, not ${unit.title}.`,
+    }
+  }
+  return {
+    prompt: `${unit.title} is best defined by: ${truncateQuizStatement(distractorUnit.normalizedAnswer)}.`,
+    explanation: `Correct because that wording belongs to ${distractorUnit.title}, not ${unit.title}.`,
+  }
+}
+
+function truncateQuizStatement(value: string) {
+  const cleaned = cleanQuizText(value)
+  if (cleaned.length <= 120) return cleaned
+  const clipped = cleaned.slice(0, 120)
+  const breakIndex = Math.max(clipped.lastIndexOf(';'), clipped.lastIndexOf(','), clipped.lastIndexOf(' '))
+  return `${clipped.slice(0, breakIndex > 72 ? breakIndex : 120).trim()}...`
 }
 
 function buildAnswerFromSourceMapUnit(title: string, unit: AcademicSourceMapUnit) {
@@ -597,7 +695,10 @@ function getPreferredListAnswer(title: string) {
   if (key === 'equipment weapons') return 'Bangkaw'
   if (key === 'stick types') return 'Bangkaw'
   if (key === 'regional classifications') return 'Visayans'
+  if (key === 'regional systems') return 'Pampanguenos - SINAWALI'
+  if (key === 'main groups') return 'Central Style - Arnis de Mano'
   if (key === 'organizations timeline') return 'WEKAF'
+  if (key === 'timeline') return '1989 - WEKAF'
   if (key === 'vulnerability exploit breach') return 'Vulnerability - Weaknesses or flaws in the hardware or software'
   return null
 }
@@ -611,6 +712,9 @@ function formatListMembershipTarget(title: string) {
   if (key === 'methods of infiltration') return 'the methods of infiltration'
   if (key === 'denial of service methods') return 'the denial of service methods'
   if (key === 'organizations timeline') return 'the Arnis organizations and timeline'
+  if (key === 'timeline') return 'the timeline'
+  if (key === 'regional systems') return 'the regional systems'
+  if (key === 'main groups') return 'the main groups'
   if (key === 'equipment weapons') return 'Arnis equipment and weapons'
   if (key === 'stick types') return 'Arnis stick types'
   if (key === 'regional classifications') return 'the regional classifications'
@@ -648,6 +752,7 @@ function cleanListAlias(value: string, title: string) {
 function cleanQuizText(value: string) {
   return normalizeSourceFaithfulText(value)
     .replace(/\s+/g, ' ')
+    .replace(/\?{2,}/g, ' ')
     .replace(/^[\s"'([{.:;-]+|[\s"'.,;:)\]}]+$/g, '')
     .trim()
 }
@@ -671,16 +776,17 @@ function isWeakQuizText(value: string) {
   const key = normalizeLookup(value)
   if (key === 'bot') return false
   if (!key || key.length < 3) return true
-  if (/^(?:what|there|high|state|terms|programs|activity|organization|source summary|exact source wording|reconstructed lists|clean source summary fragments)$/i.test(key)) return true
+  if (/^(?:what|there|high|state|terms|programs|activity|organization|source summary|source notes|exact source wording|reconstructed lists|clean source summary fragments)$/i.test(key)) return true
+  if (/^(?:understand the|insiders employees and ex)\b/i.test(key)) return true
   if (/\b(?:uuid|debug|metadata|file title|quality note|extraction|ocr confidence|grounding strategy)\b/i.test(value)) return true
-  if (/\b(?:there is|there are|sent to a host|the receiver|attacks backed by state agencies that)\b/i.test(value)) return true
+  if (/\b(?:there is|there are|sent to a host|the receiver|attacks backed by state agencies that|other threats\s+InfoSec\s*-\s*processes)\b/i.test(value)) return true
   const alphaChars = value.replace(/[^A-Za-z]/g, '').length
   const totalChars = value.replace(/\s/g, '').length
   return totalChars > 0 && alphaChars / totalChars < 0.42
 }
 
 function containsQuizGarbage(value: string) {
-  return /\b(?:according to the source|answer-ready fact|compact answer unit|preserved for direct recall|source summary|exact source wording|reconstructed lists|clean source summary fragments|normalized headings|detected concepts|duplicate ocr|ocr garbage|metadata|uuid|debug|file title|quality notes?)\b/i.test(value)
+  return /\b(?:according to the source|answer-ready fact|compact answer unit|preserved for direct recall|source summary|source notes|exact source wording|reconstructed lists|clean source summary fragments|normalized headings|detected concepts|duplicate ocr|ocr garbage|metadata|uuid|debug|file title|quality notes?)\b/i.test(value)
 }
 
 function areAnswersTooSimilar(left: string, right: string) {
@@ -721,7 +827,10 @@ function normalizeQuizSourceTitle(value: string) {
   if (lookup === 'ra 9850') return 'RA 9850'
   if (lookup === 'historical concept') return 'Historical Concept'
   if (lookup === 'evolution classifications') return 'Evolution / Classifications'
+  if (lookup === 'regional systems') return 'Regional Systems'
   if (lookup === 'organizations timeline') return 'Organizations / Timeline'
+  if (lookup === 'timeline') return 'Timeline'
+  if (lookup === 'main groups') return 'Main Groups'
   if (lookup === 'courtesy salutation') return 'Courtesy / Salutation'
   if (lookup === 'strike types') return 'Strike Types'
   if (lookup === 'equipment weapons') return 'Equipment / Weapons'
@@ -733,7 +842,7 @@ function normalizeQuizSourceTitle(value: string) {
 function inferConceptFamily(title: string, kind: AcademicSourceMapUnit['kind'], learningShape: AcademicLearningShape = 'definition') {
   const key = normalizeLookup(title)
   if (/\b(?:arnis|ra 9850|historical|organizations|timeline)\b/i.test(key)) return 'arnis-history'
-  if (/\b(?:courtesy|salutation|strike|equipment|weapons|stick|regional|classification)\b/i.test(key)) return 'arnis-practice'
+  if (/\b(?:courtesy|salutation|strike|equipment|weapons|stick|regional|classification|main groups)\b/i.test(key)) return 'arnis-practice'
   if (/\b(?:it security|infosec|it sec|cia triad|domains)\b/i.test(key)) return 'it-security'
   if (/\b(?:cybersecurity|threat|attacker|vulnerability|exploit|breach)\b/i.test(key)) return 'cybersecurity'
   if (/\b(?:malware|infiltration|denial|blended|impact reduction)\b/i.test(key)) return 'security-operations'
@@ -816,7 +925,7 @@ function selectQuizItemsForCoverage(selected: StudyOutputQuizPackItem[], item: S
   const title = getQuizItemCoverageTitle(item)
   const coveredItems = selected.filter((entry) => normalizeLookup(getQuizItemCoverageTitle(entry)) === normalizeLookup(title))
   const alreadyCovered = coveredItems.length > 0
-  const allowsDuplicateCoverage = allowsDuplicateCoverageItem(item) && coveredItems.every((entry) => entry.type !== item.type)
+  const allowsDuplicateCoverage = allowsDuplicateCoverageItem(item, coveredItems) && coveredItems.every((entry) => entry.type !== item.type)
 
   if (alreadyCovered && !allowsDuplicateCoverage) return selected
 
@@ -824,7 +933,8 @@ function selectQuizItemsForCoverage(selected: StudyOutputQuizPackItem[], item: S
   return selected
 }
 
-function allowsDuplicateCoverageItem(item: StudyOutputQuizPackItem) {
+function allowsDuplicateCoverageItem(item: StudyOutputQuizPackItem, coveredItems: StudyOutputQuizPackItem[] = []) {
+  if (coveredItems.length < 2 && ['multiple_choice', 'identification', 'true_false'].includes(item.type)) return true
   if (item.type === 'multiple_choice' && item.prompt === 'Which description best matches InfoSec?') return true
   if (item.type === 'identification' && item.prompt === 'Distinguish InfoSec from IT Sec.') return true
   if (item.type === 'identification' && /^Define (?:IT Security|Cybersecurity)\./.test(item.prompt)) return true
@@ -865,7 +975,10 @@ function getCoverageTitleFromSourceUnitId(sourceUnitId: string) {
   if (key === 'ra 9850') return 'RA 9850'
   if (key === 'historical concept') return 'Historical Concept'
   if (key === 'evolution classifications') return 'Evolution / Classifications'
+  if (key === 'regional systems') return 'Regional Systems'
   if (key === 'organizations timeline') return 'Organizations / Timeline'
+  if (key === 'timeline') return 'Timeline'
+  if (key === 'main groups') return 'Main Groups'
   if (key === 'courtesy salutation') return 'Courtesy / Salutation'
   if (key === 'strike types') return 'Strike Types'
   if (key === 'equipment weapons') return 'Equipment / Weapons'
@@ -890,6 +1003,9 @@ function getRequiredQuizCoverageTitles() {
     'Impact Reduction',
     'Arnis',
     'Organizations / Timeline',
+    'Timeline',
+    'Regional Systems',
+    'Main Groups',
     'Courtesy / Salutation',
     'Equipment / Weapons',
     'Regional Classifications',
@@ -936,12 +1052,15 @@ function getPreferredQuizSourceRank(title: string) {
     'Impact Reduction',
     'Arnis',
     'RA 9850',
-    'Historical Concept',
-    'Evolution / Classifications',
     'Organizations / Timeline',
+    'Timeline',
     'Courtesy / Salutation',
-    'Strike Types',
     'Equipment / Weapons',
+    'Regional Systems',
+    'Main Groups',
+    'Evolution / Classifications',
+    'Historical Concept',
+    'Strike Types',
     'Stick Types',
     'Regional Classifications',
   ].map(normalizeLookup)

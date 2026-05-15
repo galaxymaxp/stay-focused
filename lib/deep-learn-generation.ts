@@ -829,18 +829,24 @@ export function validateDeepLearnContentReadyForSave(content: DeepLearnGenerated
   const answerBankCount = content.answerBank.filter(hasMeaningfulAnswerBankItem).length
   const identificationCount = content.identificationItems.filter(hasMeaningfulIdentificationItem).length
   const quizTargetCount = content.likelyQuizTargets.filter(hasMeaningfulQuizTarget).length
+  const distinctConceptCount = countDistinctStudyConcepts(content)
   const hasInternalPipelineText = containsInternalPipelineText(JSON.stringify(content))
   const hasMalformedHeadings = content.sections.some((section) => isMalformedReviewerHeading(section.heading))
   const hasDuplicatedConcepts = findDuplicatedReviewerConcepts(content).length > 0
+  const hasLowInformationContent = hasLowInformationStudyContent(content)
   const hasStructuredStudyArtifacts = answerBankCount > 0
     && identificationCount > 0
     && quizTargetCount > 0
+  const hasExamReadyDensity = answerBankCount >= 3
+    && identificationCount >= 3
+    && quizTargetCount >= 3
+    && distinctConceptCount >= 6
 
-  if (!hasStructuredStudyArtifacts) {
+  if (!hasStructuredStudyArtifacts || !hasExamReadyDensity || hasLowInformationContent) {
     return {
       ok: false as const,
       message: DEEP_LEARN_EMPTY_STUDY_ARTIFACTS_MESSAGE,
-      counts: { answerBankCount, identificationCount, quizTargetCount },
+      counts: { answerBankCount, identificationCount, quizTargetCount, distinctConceptCount },
     }
   }
 
@@ -848,7 +854,7 @@ export function validateDeepLearnContentReadyForSave(content: DeepLearnGenerated
     return {
       ok: false as const,
       message: 'Deep Learn could not clean internal reviewer labels from this Study Pack.',
-      counts: { answerBankCount, identificationCount, quizTargetCount },
+      counts: { answerBankCount, identificationCount, quizTargetCount, distinctConceptCount },
     }
   }
 
@@ -856,7 +862,7 @@ export function validateDeepLearnContentReadyForSave(content: DeepLearnGenerated
     return {
       ok: false as const,
       message: 'Deep Learn could not build clean reviewer headings from this source.',
-      counts: { answerBankCount, identificationCount, quizTargetCount },
+      counts: { answerBankCount, identificationCount, quizTargetCount, distinctConceptCount },
     }
   }
 
@@ -864,14 +870,14 @@ export function validateDeepLearnContentReadyForSave(content: DeepLearnGenerated
     return {
       ok: false as const,
       message: 'Deep Learn could not deduplicate enough reviewer concepts from this source.',
-      counts: { answerBankCount, identificationCount, quizTargetCount },
+      counts: { answerBankCount, identificationCount, quizTargetCount, distinctConceptCount },
     }
   }
 
   return {
     ok: true as const,
     message: null,
-    counts: { answerBankCount, identificationCount, quizTargetCount },
+    counts: { answerBankCount, identificationCount, quizTargetCount, distinctConceptCount },
   }
 }
 
@@ -1401,7 +1407,7 @@ export function buildDeepLearnContentFromSourceMap(
     }
   })
 
-  const likelyQuizTargets = units.slice(0, 8).map((unit, index) => ({
+  const likelyQuizTargets = units.slice(0, 12).map((unit, index) => ({
     target: buildSourceMapGeneratedQuizTarget(unit),
     reason: buildSourceMapGeneratedQuizReason(unit),
     importance: sourceMapGeneratedImportance(unit.importanceScore, index),
@@ -1423,6 +1429,7 @@ export function buildDeepLearnContentFromSourceMap(
     .filter((unit) => unit.items.length >= 2)
     .slice(0, 5)
     .map((unit) => `${unit.title}: ${formatInlineList(unit.items.slice(0, getSourceMapGeneratedListLimit(unit)))}`)
+  const academicBankSections = buildAcademicBankStudyPackSections(sourceMap, units)
 
   const output: Record<string, unknown> = {
     title: seedContent.title || resourceTitle,
@@ -1445,6 +1452,7 @@ export function buildDeepLearnContentFromSourceMap(
         heading: 'Likely Quiz Targets',
         body: likelyQuizTargets.slice(0, 6).map((item) => `- ${item.target}: ${item.reason}`).join('\n'),
       },
+      ...academicBankSections,
       ...(quickBlocks.length > 0
         ? [{ heading: 'Quick Answer Blocks', body: quickBlocks.map((block) => `- ${block}`).join('\n') }]
         : []),
@@ -1462,6 +1470,43 @@ export function buildDeepLearnContentFromSourceMap(
   const normalized = normalizeDeepLearnGeneratedContent(output, resourceTitle)
   const validation = validateDeepLearnContentReadyForSave(normalized)
   return validation.ok ? normalized : null
+}
+
+function buildAcademicBankStudyPackSections(sourceMap: AcademicSourceMap | null | undefined, units: GeneratedSourceMapUnit[]) {
+  const banks = sourceMap?.banks
+  if (!banks) return []
+  const sections: Array<{ heading: string; body: string }> = []
+  const addSection = (heading: string, rows: string[]) => {
+    const body = uniqueStringList(rows.map((row) => row.trim()).filter(Boolean)).slice(0, 8).join('\n')
+    if (body) sections.push({ heading, body })
+  }
+
+  addSection('Definitions to Memorize', [
+    ...banks.definitionBank.map((entry) => `- ${entry.title}: ${entry.answer}`),
+    ...banks.acronymBank.map((entry) => `- ${entry.title}: ${entry.answer}`),
+  ])
+  addSection('Classifications and Groupings', [
+    ...banks.classificationBank.map((entry) => `- ${entry.title}: ${formatInlineList(entry.items.length ? entry.items : [entry.answer])}`),
+    ...banks.relationshipBank.map((entry) => `- ${entry.title}: ${entry.items.length ? formatInlineList(entry.items) : entry.answer}`),
+  ])
+  addSection('Timelines and Procedures', [
+    ...banks.timelineBank.map((entry) => `- ${entry.title}: ${formatInlineList(entry.items.length ? entry.items : [entry.answer])}`),
+    ...banks.procedureBank.map((entry) => `- ${entry.title}: ${formatInlineList(entry.items.length ? entry.items : [entry.answer])}`),
+  ])
+  addSection('Formulas and Comparisons', [
+    ...banks.formulaBank.map((entry) => `- ${entry.title}: ${entry.answer}`),
+    ...banks.comparisonBank.map((entry) => `- ${entry.title}: ${entry.answer}`),
+    ...banks.causeEffectBank.map((entry) => `- ${entry.title}: ${entry.answer}`),
+  ])
+  addSection('Likely Exam Questions', banks.likelyQuestionBank.map((entry) => `- ${entry.prompt} Answer: ${entry.items.length >= 2 ? formatInlineList(entry.items) : entry.answer}`))
+
+  if (sections.length === 0 && units.some((unit) => unit.items.length >= 2)) {
+    addSection('Classifications and Groupings', units
+      .filter((unit) => unit.items.length >= 2)
+      .map((unit) => `- ${unit.title}: ${formatInlineList(unit.items)}`))
+  }
+
+  return sections.slice(0, 5)
 }
 
 interface GeneratedSourceMapUnit {
@@ -1536,7 +1581,9 @@ function normalizeGeneratedSourceMapTitle(value: string) {
   if (lookup === 'ra 9850') return 'RA 9850'
   if (lookup === 'historical concept') return 'Historical Concept'
   if (lookup === 'evolution classifications') return 'Evolution / Classifications'
+  if (lookup === 'regional systems') return 'Regional Systems'
   if (lookup === 'organizations timeline') return 'Organizations / Timeline'
+  if (lookup === 'main groups') return 'Main Groups'
   if (lookup === 'courtesy salutation') return 'Courtesy / Salutation'
   if (lookup === 'strike types') return 'Strike Types'
   if (lookup === 'equipment weapons') return 'Equipment / Weapons'
@@ -1626,7 +1673,7 @@ function buildSourceMapGeneratedAnswer(unit: GeneratedSourceMapUnit) {
 function getSourceMapGeneratedListLimit(unit: GeneratedSourceMapUnit) {
   if (/^domains of it security$/i.test(unit.title)) return 11
   if (/^malware types$/i.test(unit.title)) return 10
-  if (/^(?:courtesy \/ salutation|strike types|equipment \/ weapons|stick types|organizations \/ timeline|regional classifications|evolution \/ classifications)$/i.test(unit.title)) return 12
+  if (/^(?:courtesy \/ salutation|strike types|equipment \/ weapons|stick types|organizations \/ timeline|timeline|regional classifications|regional systems|main groups|evolution \/ classifications)$/i.test(unit.title)) return 12
   return unit.kind === 'process' ? 7 : 8
 }
 
@@ -1717,6 +1764,7 @@ function cleanGeneratedSourceMapAnswer(title: string, value: string) {
 function cleanGeneratedSourceMapText(value: string) {
   return sanitizeStudentFacingText(value)
     .replace(/\s+/g, ' ')
+    .replace(/\?{2,}/g, ' ')
     .trim()
 }
 
@@ -1744,6 +1792,19 @@ function getGeneratedSourceMapPreferredRank(title: string) {
     'Denial of Service Methods',
     'Blended Attacks',
     'Impact Reduction',
+    'Arnis',
+    'RA 9850',
+    'Organizations / Timeline',
+    'Timeline',
+    'Courtesy / Salutation',
+    'Equipment / Weapons',
+    'Regional Systems',
+    'Main Groups',
+    'Evolution / Classifications',
+    'Historical Concept',
+    'Strike Types',
+    'Stick Types',
+    'Regional Classifications',
   ].map(normalizeAcademicLookup)
   const index = preferred.indexOf(normalizeAcademicLookup(title))
   return index === -1 ? 100 : index
@@ -2181,6 +2242,36 @@ function hasMeaningfulQuizTarget(item: unknown) {
 
 function hasMeaningfulText(value: unknown) {
   return typeof value === 'string' && value.replace(/\s+/g, ' ').trim().length >= 8
+}
+
+function countDistinctStudyConcepts(content: DeepLearnGeneratedContent) {
+  const concepts = [
+    ...content.answerBank.map((item) => item.cue),
+    ...content.identificationItems.map((item) => item.prompt),
+    ...content.likelyQuizTargets.map((item) => item.target),
+  ]
+    .map((value) => normalizeAcademicLookup(value))
+    .filter((value) => value.length >= 4)
+    .filter((value) => !/^(?:source summary|source notes|review the source|study this concept)$/i.test(value))
+  return new Set(concepts).size
+}
+
+function hasLowInformationStudyContent(content: DeepLearnGeneratedContent) {
+  const answerTexts = content.answerBank.map((item) => `${item.cue} ${item.answer.examSafe} ${item.compactAnswer.examSafe}`)
+  const identificationTexts = content.identificationItems.map((item) => `${item.prompt} ${item.answer.examSafe}`)
+  const targetTexts = content.likelyQuizTargets.map((item) => `${item.target} ${item.reason}`)
+  return [...answerTexts, ...identificationTexts, ...targetTexts].some(isLowInformationStudyText)
+}
+
+function isLowInformationStudyText(value: string) {
+  const normalized = value.replace(/\s+/g, ' ').trim()
+  const key = normalizeAcademicLookup(normalized)
+  if (!key || key.length < 8) return true
+  if (/\b(?:metadata|uuid|debug|file title|quality note|ocr confidence|grounding strategy|source notes)\b/i.test(normalized)) return true
+  if (/^(?:what|there|high|state|terms|programs|activity|organization)$/i.test(key)) return true
+  const alphaChars = normalized.replace(/[^A-Za-z]/g, '').length
+  const totalChars = normalized.replace(/\s/g, '').length
+  return totalChars > 0 && alphaChars / totalChars < 0.42
 }
 
 function containsInternalPipelineText(value: string) {

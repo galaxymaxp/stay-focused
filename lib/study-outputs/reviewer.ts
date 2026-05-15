@@ -198,7 +198,7 @@ export function buildReviewerContentFromSourceMap(note: DeepLearnNote): StudyOut
   const identificationReview = units
     .slice(0, 16)
     .map((unit) => ({
-      prompt: `Identify or define ${unit.title}.`,
+      prompt: buildSourceMapIdentificationPrompt(unit),
       answer: unit.shortAnswer,
       importance: sourceMapImportance(unit.importanceScore),
       support: null,
@@ -255,7 +255,7 @@ export function buildReviewerContentFromSourceMap(note: DeepLearnNote): StudyOut
     sourceNoteId: note.id,
     sourceResourceId: note.resourceId,
     title: buildReviewerTitle(note.title),
-    summary: `Source Map Reviewer built from ${units.length} source-backed academic unit${units.length === 1 ? '' : 's'}. ${highYieldConcepts.length} high-yield answer cue${highYieldConcepts.length === 1 ? '' : 's'} and ${identificationReview.length} identification item${identificationReview.length === 1 ? '' : 's'} are ready for cram review.`,
+    summary: `Exam Reviewer built from ${units.length} source-backed academic unit${units.length === 1 ? '' : 's'}. ${highYieldConcepts.length} high-yield recall cue${highYieldConcepts.length === 1 ? '' : 's'} and ${identificationReview.length} identification item${identificationReview.length === 1 ? '' : 's'} are ready for cram review.`,
     intro: buildSourceMapIntro(units, note.overview),
     highYieldConcepts,
     identificationReview,
@@ -392,7 +392,10 @@ function normalizeSourceMapReviewerTitle(value: string) {
   if (lookup === 'ra 9850') return 'RA 9850'
   if (lookup === 'historical concept') return 'Historical Concept'
   if (lookup === 'evolution classifications') return 'Evolution / Classifications'
+  if (lookup === 'regional systems') return 'Regional Systems'
   if (lookup === 'organizations timeline') return 'Organizations / Timeline'
+  if (lookup === 'timeline') return 'Timeline'
+  if (lookup === 'main groups') return 'Main Groups'
   if (lookup === 'courtesy salutation') return 'Courtesy / Salutation'
   if (lookup === 'strike types') return 'Strike Types'
   if (lookup === 'equipment weapons') return 'Equipment / Weapons'
@@ -446,7 +449,7 @@ function buildSourceMapAnswer(title: string, unit: AcademicSourceMapUnit, items:
 function buildSourceMapIntro(units: SourceMapReviewerUnit[], fallbackOverview: string) {
   const firstDefinition = units.find((unit) => unit.kind === 'definition')
   if (firstDefinition) return `${firstDefinition.title}: ${firstDefinition.answer}`
-  return cleanReviewerText(fallbackOverview) || 'Use this reviewer for source-backed definitions, lists, distinctions, and likely quiz targets.'
+  return cleanReviewerText(fallbackOverview) || 'Use this reviewer for source-backed definitions, groupings, procedures, timelines, distinctions, and likely quiz targets.'
 }
 
 function buildSourceMapQuizTarget(unit: SourceMapReviewerUnit) {
@@ -474,6 +477,26 @@ function buildSourceMapQuizTarget(unit: SourceMapReviewerUnit) {
   if (unit.items.length >= 3) return `Enumerate key items in ${unit.title}`
   if (/ vs |\/|triad/i.test(unit.title)) return `Differentiate ${unit.title}`
   return `Explain ${unit.title}`
+}
+
+function buildSourceMapIdentificationPrompt(unit: SourceMapReviewerUnit) {
+  const key = normalizeLookup(unit.title)
+  if (key === 'infosec vs it sec') return 'Differentiate InfoSec from IT Sec.'
+  if (key === 'vulnerability exploit breach') return 'Differentiate Vulnerability, Exploit, and Breach.'
+  if (unit.learningShape === 'timeline') return `Identify the chronology or milestone order for ${unit.title}.`
+  if (unit.learningShape === 'procedure' || unit.learningShape === 'lab-process') return `Sequence the steps in ${unit.title}.`
+  if (unit.learningShape === 'equipment') return `Identify the equipment or tool examples in ${unit.title}.`
+  if (unit.learningShape === 'classification' || unit.learningShape === 'taxonomy') return `Classify the listed items under ${unit.title}.`
+  if (unit.learningShape === 'formula') return `Write or use the formula for ${unit.title}.`
+  if (unit.learningShape === 'worked-example') return `Follow the example pattern in ${unit.title}.`
+  if (unit.learningShape === 'case-rule') return `Apply the rule in ${unit.title}.`
+  if (unit.learningShape === 'clinical-care') return `Identify the care priority in ${unit.title}.`
+  if (unit.learningShape === 'cause-effect') return `Explain the cause-effect chain in ${unit.title}.`
+  if (unit.learningShape === 'troubleshooting') return `Match the symptom, cause, and fix pattern in ${unit.title}.`
+  if (unit.learningShape === 'component-system') return `Identify the component roles in ${unit.title}.`
+  if (unit.kind === 'definition') return `Define ${unit.title}.`
+  if (unit.items.length >= 2) return `Enumerate the source-listed items under ${unit.title}.`
+  return `Explain ${unit.title}.`
 }
 
 function buildSourceMapQuizReason(unit: SourceMapReviewerUnit) {
@@ -563,7 +586,7 @@ function isStrongSourceMapQuickBlockUnit(unit: SourceMapReviewerUnit) {
 function getSourceMapReviewerListLimit(title: string, kind: AcademicSourceMapUnit['kind'], mode: 'answer' | 'quick' | 'short') {
   if (/^domains of it security$/i.test(title)) return 11
   if (/^malware types$/i.test(title)) return 10
-  if (/^(?:courtesy \/ salutation|strike types|equipment \/ weapons|stick types|organizations \/ timeline|regional classifications|evolution \/ classifications)$/i.test(title)) return 12
+  if (/^(?:courtesy \/ salutation|strike types|equipment \/ weapons|stick types|organizations \/ timeline|timeline|regional classifications|regional systems|main groups|evolution \/ classifications)$/i.test(title)) return 12
   if (mode === 'short') return kind === 'process' ? 5 : 6
   return kind === 'process' ? 7 : 8
 }
@@ -676,12 +699,15 @@ function getPreferredSourceMapRank(title: string) {
     'Arnis',
     'Aliases',
     'RA 9850',
-    'Historical Concept',
-    'Evolution / Classifications',
     'Organizations / Timeline',
+    'Timeline',
     'Courtesy / Salutation',
-    'Strike Types',
     'Equipment / Weapons',
+    'Regional Systems',
+    'Main Groups',
+    'Evolution / Classifications',
+    'Historical Concept',
+    'Strike Types',
     'Stick Types',
     'Regional Classifications',
   ].map(normalizeLookup)
@@ -739,6 +765,7 @@ function isWeakReviewerTerm(value: string) {
     'sent to a host or application and the receiver',
     'organization people processes technology must',
     'source summary',
+    'source notes',
     'exact source wording',
     'reconstructed lists',
     'clean source summary fragments',
@@ -833,7 +860,7 @@ function cleanEducationalReviewerPoint(value: string) {
 }
 
 function cleanReviewerText(value: string) {
-  return normalizeSourceFaithfulText(sanitizeStudentFacingText(value))
+  return normalizeSourceFaithfulText(sanitizeStudentFacingText(value)).replace(/\?{2,}/g, ' ').replace(/\s+/g, ' ').trim()
 }
 
 function containsInternalPipelineText(value: string) {

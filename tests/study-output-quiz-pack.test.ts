@@ -10,7 +10,7 @@ import {
 } from '../lib/study-outputs/quiz-pack'
 import type { DeepLearnNote, DeepLearnWordingSet } from '../lib/types'
 
-test('quiz pack generation builds deterministic Source Map multiple choice and identification items', () => {
+test('quiz pack generation builds deterministic Source Map MCQ true/false and identification items', () => {
   const note = createItSecuritySourceMapNote()
 
   const first = buildDeepLearnQuizPackContent(note)
@@ -19,13 +19,15 @@ test('quiz pack generation builds deterministic Source Map multiple choice and i
   assert.equal(first.version, 'quiz-pack-v1')
   assert.deepEqual(first.items, second.items)
   assert.ok(first.items.some((item) => item.type === 'multiple_choice'))
+  assert.ok(first.items.some((item) => item.type === 'true_false'))
   assert.ok(first.items.some((item) => item.type === 'identification'))
-  assert.ok(first.items.every((item) => item.type === 'multiple_choice' || item.type === 'identification'))
+  assert.ok(first.items.every((item) => item.type === 'multiple_choice' || item.type === 'true_false' || item.type === 'identification'))
   assert.ok(first.items.every((item) => item.sourceUnitId && item.sourceExcerpt && item.confidence && item.generationMethod))
   assert.ok(first.questionCountOptions.length > 0)
-  assert.ok(first.items.length <= 18)
+  assert.ok(first.items.length >= 20)
+  assert.ok(first.items.length <= 30)
   assert.doesNotMatch(first.title, /Quiz Pack/)
-  assert.doesNotMatch(JSON.stringify(first.items), /according to the source|metadata|debug|ocr garbage/i)
+  assert.doesNotMatch(JSON.stringify(first.items), /according to the source|metadata|debug|ocr garbage|Source Notes|other threats InfoSec|"prompt":"[^"]*Understand The|"prompt":"[^"]*Insiders Employees And Ex/i)
 })
 
 test('blocked pending and failed notes cannot make quiz packs', () => {
@@ -158,6 +160,21 @@ test('Source Map MCQs prevent duplicate distractors and answer duplication', () 
   assert.equal(countChoicesInGroup(findMcq(mcqs, /malware types/), ['Spyware', 'Adware', 'Bot', 'Rootkit', 'Scareware', 'Ransomware', 'Virus', 'Trojan Horse', 'Worm', 'MiTM']), 1)
 })
 
+test('Source Map quiz pack preserves exam density and true/false explanations', () => {
+  const items = buildQuizPackItems(createItSecuritySourceMapNote())
+  const types = new Set(items.map((item) => item.type))
+  const prompts = items.map((item) => item.prompt)
+
+  assert.ok(items.length >= 20)
+  assert.ok(types.has('multiple_choice'))
+  assert.ok(types.has('true_false'))
+  assert.ok(types.has('identification'))
+  assert.ok(prompts.some((prompt) => /Which item belongs to the CIA Triad/.test(prompt)))
+  assert.ok(prompts.some((prompt) => /Enumerate the listed items under Domains of IT Security/.test(prompt)))
+  assert.ok(items.some((item) => item.type === 'true_false' && /^Correct because\b/.test(item.explanation)))
+  assert.doesNotMatch(JSON.stringify(items), /Source Notes|metadata|debug|\?\?\?\?|other threats InfoSec|"prompt":"[^"]*Understand The|"prompt":"[^"]*Insiders Employees And Ex/i)
+})
+
 test('Source Map MCQ explanations state source-backed reasons without debug wording', () => {
   const mcqs = buildQuizPackItems(createItSecuritySourceMapNote()).filter((item) => item.type === 'multiple_choice')
 
@@ -273,6 +290,25 @@ test('Adaptive Source Map quiz generation supports PATHFit Arnis sequence classi
   assert.equal(weapon?.answer, 'Bangkaw')
   assert.doesNotMatch(combined, /What is Historical Concept\?/i)
   assert.doesNotMatch(combined, /metadata|debug|ocr garbage/i)
+})
+
+test('fixture-level Arnis quiz QA preserves timeline classification and useful distractors', () => {
+  const items = buildQuizPackItems(createPathfitArnisSourceMapNote())
+  const types = new Set(items.map((item) => item.type))
+  const combined = JSON.stringify(items)
+
+  assert.ok(items.length >= 18)
+  assert.ok(types.has('multiple_choice'))
+  assert.ok(types.has('true_false'))
+  assert.ok(types.has('identification'))
+  assert.ok(items.some((item) => item.prompt === 'Arrange the Arnis milestones chronologically.'))
+  assert.ok(items.some((item) => item.prompt === 'Classify the listed items under Regional Classifications.'))
+  assert.ok(items.some((item) => item.prompt === 'Which weapon is a six-foot pole?' && item.answer === 'Bangkaw'))
+  for (const item of items.filter((item) => item.type === 'multiple_choice')) {
+    assert.equal(new Set(item.choices.map(normalizeLookup)).size, item.choices.length)
+    assert.ok(item.choices.every((choice) => !/all of the above|none of the above|joke/i.test(choice)))
+  }
+  assert.doesNotMatch(combined, /Source Notes|metadata|debug|\?\?\?\?|What is Historical Concept\?/i)
 })
 
 test('Source Map quiz generation follows learning shape before discipline hint', () => {

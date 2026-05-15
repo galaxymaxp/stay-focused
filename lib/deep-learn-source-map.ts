@@ -68,17 +68,56 @@ export type AcademicLearningShape =
   | 'standards-rubrics'
   | 'narrative'
 
+export type AcademicBankKind =
+  | 'definition'
+  | 'terminology'
+  | 'classification'
+  | 'timeline'
+  | 'procedure'
+  | 'formula'
+  | 'relationship'
+  | 'likely_question'
+  | 'comparison'
+  | 'acronym'
+  | 'cause_effect'
+
 export interface AcademicSourceMapUnit {
   id: string
   title: string
   kind: AcademicSourceMapUnitKind
   unitType?: AcademicSourceMapUnitType
   learningShape?: AcademicLearningShape
+  sectionPath?: string[]
   summary: string
   items: string[]
   sourceQuotes: string[]
   importanceScore: number
   confidence: number
+}
+
+export interface AcademicSourceMapBankEntry {
+  kind: AcademicBankKind
+  title: string
+  prompt: string
+  answer: string
+  items: string[]
+  sectionPath: string[]
+  sourceQuote: string
+  confidence: number
+}
+
+export interface AcademicSourceMapBanks {
+  definitionBank: AcademicSourceMapBankEntry[]
+  terminologyBank: AcademicSourceMapBankEntry[]
+  classificationBank: AcademicSourceMapBankEntry[]
+  timelineBank: AcademicSourceMapBankEntry[]
+  procedureBank: AcademicSourceMapBankEntry[]
+  formulaBank: AcademicSourceMapBankEntry[]
+  relationshipBank: AcademicSourceMapBankEntry[]
+  likelyQuestionBank: AcademicSourceMapBankEntry[]
+  comparisonBank: AcademicSourceMapBankEntry[]
+  acronymBank: AcademicSourceMapBankEntry[]
+  causeEffectBank: AcademicSourceMapBankEntry[]
 }
 
 export interface AcademicSourceMap {
@@ -87,6 +126,7 @@ export interface AcademicSourceMap {
   secondaryStyles?: AcademicSourceMapStyle[]
   disciplineCluster?: AcademicDisciplineCluster
   secondaryDisciplineClusters?: AcademicDisciplineCluster[]
+  banks?: AcademicSourceMapBanks
   normalizedText: string
   units: AcademicSourceMapUnit[]
   chunks: Array<{ heading: string; text: string; sourceQuote: string }>
@@ -96,7 +136,7 @@ export interface AcademicSourceMap {
 
 export interface AcademicSourceMapValidation {
   ok: boolean
-  reason: 'ok' | 'empty' | 'metadata_only' | 'no_units' | 'missing_quotes'
+  reason: 'ok' | 'empty' | 'metadata_only' | 'no_units' | 'missing_quotes' | 'insufficient_academic_content'
   unitCount: number
   quoteCount: number
 }
@@ -126,21 +166,32 @@ const SOURCE_MAP_HEADINGS = [
   'Blended Attacks',
   'Impact Reduction',
   'What is Arnis',
+  'ARNIS/ STICK FIGHTING',
+  'ARNIS AS A SPORT',
   'Aliases of Arnis',
   'Republic Act 9850',
+  'R.A. 9850',
   'Historical Concept',
+  'A. HISTORICAL CONCEPT',
   'History of Arnis',
   'Evolution of Arnis',
+  'B. EVOLVEMENT OF THE ART',
   'Classifications of Arnis',
   'Organizations and Timeline',
   'Organizations of Arnis',
+  '3 MAIN GROUPS',
   'Courtesy and Salutation',
   'Courtesy Salutation',
+  'COURTESY / SALUTATION',
   'Striking Techniques',
   'Strike Types',
+  'TYPES OF STRIKES',
   'Equipment and Weapons',
+  'Facilities and Equipment',
   'Weapons and Equipment',
+  'Weapons',
   'Stick Types',
+  'Types of Arnis sticks',
   'Regional Classifications',
   'Reflection',
 ]
@@ -165,21 +216,32 @@ const SOURCE_MAP_STOP_TOKENS = [
   'Impact Reduction',
   'Attacks backed by state agencies that',
   'What is Arnis',
+  'ARNIS/ STICK FIGHTING',
+  'ARNIS AS A SPORT',
   'Aliases of Arnis',
   'Republic Act 9850',
+  'R.A. 9850',
   'Historical Concept',
+  'A. HISTORICAL CONCEPT',
   'History of Arnis',
   'Evolution of Arnis',
+  'B. EVOLVEMENT OF THE ART',
   'Classifications of Arnis',
   'Organizations and Timeline',
   'Organizations of Arnis',
+  '3 MAIN GROUPS',
   'Courtesy and Salutation',
   'Courtesy Salutation',
+  'COURTESY / SALUTATION',
   'Striking Techniques',
   'Strike Types',
+  'TYPES OF STRIKES',
   'Equipment and Weapons',
+  'Facilities and Equipment',
   'Weapons and Equipment',
+  'Weapons',
   'Stick Types',
+  'Types of Arnis sticks',
   'Regional Classifications',
   'Reflection',
 ]
@@ -233,6 +295,11 @@ const RECOGNIZED_SOURCE_MAP_TERMS = new Set([
   'strike types',
   'equipment weapons',
   'stick types',
+  'main groups',
+  'regional systems',
+  'naming systems',
+  'arnis as a sport',
+  'timeline',
 ])
 
 export function buildAcademicSourceMap(sourceText: string): AcademicSourceMap {
@@ -242,19 +309,26 @@ export function buildAcademicSourceMap(sourceText: string): AcademicSourceMap {
   const chunks = chunkSourceMapByHeadings(normalizedText)
   const styleProfile = detectAcademicSourceMapStyles(normalizedText, chunks)
   const disciplineProfile = detectAcademicDisciplineClusters(normalizedText)
-  const units = dedupeUnits([
+  const baseUnits = dedupeUnits([
     ...inferKnownSecurityUnits(normalizedText),
     ...inferKnownArnisUnits(normalizedText),
     ...buildUnitsFromChunks(chunks),
   ])
+  const initialBanks = buildAcademicSourceMapBanks(normalizedText, chunks, baseUnits)
+  const units = dedupeUnits([
+    ...baseUnits,
+    ...buildUnitsFromAcademicBanks(initialBanks),
+  ])
     .sort((left, right) => right.importanceScore - left.importanceScore || left.title.localeCompare(right.title))
     .slice(0, 36)
+  const banks = buildAcademicSourceMapBanks(normalizedText, chunks, units)
   const validation = validateAcademicSourceMap({
     version: 'academic-source-map-v1',
     sourceStyle: styleProfile.sourceStyle,
     secondaryStyles: styleProfile.secondaryStyles,
     disciplineCluster: disciplineProfile.disciplineCluster,
     secondaryDisciplineClusters: disciplineProfile.secondaryDisciplineClusters,
+    banks,
     normalizedText,
     chunks,
     units,
@@ -268,6 +342,7 @@ export function buildAcademicSourceMap(sourceText: string): AcademicSourceMap {
     secondaryStyles: styleProfile.secondaryStyles,
     disciplineCluster: disciplineProfile.disciplineCluster,
     secondaryDisciplineClusters: disciplineProfile.secondaryDisciplineClusters,
+    banks,
     normalizedText,
     chunks,
     units,
@@ -383,10 +458,17 @@ export function validateAcademicSourceMap(sourceMap: AcademicSourceMap): Academi
     return { ok: false, reason: 'metadata_only', unitCount: 0, quoteCount: 0 }
   }
 
-  const unitCount = sourceMap.units.length
-  const quoteCount = sourceMap.units.reduce((count, unit) => count + unit.sourceQuotes.length, 0)
+  const meaningfulUnits = sourceMap.units.filter(isMeaningfulSourceMapUnit)
+  const unitCount = meaningfulUnits.length
+  const quoteCount = meaningfulUnits.reduce((count, unit) => count + unit.sourceQuotes.length, 0)
+  const bankEntryCount = countAcademicBankEntries(sourceMap.banks)
+  const hasDenseAcademicBanks = bankEntryCount >= 8
+    && getCoreAcademicBankCount(sourceMap.banks) >= 3
   if (unitCount === 0) return { ok: false, reason: 'no_units', unitCount, quoteCount }
   if (quoteCount < Math.min(2, unitCount)) return { ok: false, reason: 'missing_quotes', unitCount, quoteCount }
+  if (unitCount < 4 && !hasDenseAcademicBanks) {
+    return { ok: false, reason: 'insufficient_academic_content', unitCount, quoteCount }
+  }
   return { ok: true, reason: 'ok', unitCount, quoteCount }
 }
 
@@ -396,15 +478,17 @@ export function buildAcademicSourceMapGrounding(sourceText: string, maxChars = D
 
   const unitLines = sourceMap.units.flatMap((unit) => {
     const lines = [
-      `- ${unit.title} [${unit.kind}/${unit.learningShape ?? inferSourceMapLearningShape(unit.title, unit.kind, unit.unitType)}, importance ${unit.importanceScore}/100]: ${unit.summary}`,
+      `- ${unit.title} [${unit.kind}/${unit.learningShape ?? inferSourceMapLearningShape(unit.title, unit.kind, unit.unitType)}, importance ${unit.importanceScore}/100${unit.sectionPath?.length ? `, section ${unit.sectionPath.join(' > ')}` : ''}]: ${unit.summary}`,
     ]
     if (unit.items.length > 0) lines.push(`  Items: ${unit.items.slice(0, 10).join(', ')}`)
     if (unit.sourceQuotes[0]) lines.push(`  Source quote: "${unit.sourceQuotes[0]}"`)
     return lines
   })
+  const bankLines = formatAcademicBankGrounding(sourceMap.banks)
   const structured = truncateForSourceMapModel([
     `Deterministic academic structure from the selected source (Academic Source Map). Dominant style: ${sourceMap.sourceStyle ?? 'technical'}${sourceMap.secondaryStyles?.length ? `; secondary styles: ${sourceMap.secondaryStyles.join(', ')}` : ''}. Discipline hint: ${sourceMap.disciplineCluster ?? 'general-academic'}${sourceMap.secondaryDisciplineClusters?.length ? `; secondary discipline hints: ${sourceMap.secondaryDisciplineClusters.join(', ')}` : ''}:`,
     ...unitLines,
+    ...(bankLines.length > 0 ? ['', 'Academic banks:', ...bankLines] : []),
   ].join('\n'), Math.min(STRUCTURED_SOURCE_MAP_CHARS, Math.max(2400, maxChars - 1800)))
   const quoteBlock = truncateForSourceMapModel([
     'Closest source passages for exact wording:',
@@ -414,11 +498,469 @@ export function buildAcademicSourceMapGrounding(sourceText: string, maxChars = D
   return truncateForSourceMapModel(`${structured}\n\n${quoteBlock}`, maxChars)
 }
 
+function buildAcademicSourceMapBanks(
+  normalizedText: string,
+  chunks: SourceChunk[],
+  units: AcademicSourceMapUnit[],
+): AcademicSourceMapBanks {
+  const definitionBank = dedupeBankEntries([
+    ...chunks.flatMap((chunk) => extractDefinitionsFromText(chunk.text).map((definition) => createBankEntry({
+      kind: 'definition',
+      title: definition.term,
+      prompt: `Define ${definition.term}.`,
+      answer: definition.definition,
+      items: [],
+      sectionPath: [chunk.heading],
+      sourceQuote: pickSourceQuote(chunk, definition.term),
+      confidence: 0.88,
+    }))),
+    ...units
+      .filter((unit) => unit.kind === 'definition' || unit.learningShape === 'definition')
+      .map((unit) => createBankEntry({
+        kind: 'definition',
+        title: unit.title,
+        prompt: `Define ${unit.title}.`,
+        answer: unit.summary,
+        items: unit.items,
+        sectionPath: unit.sectionPath ?? [unit.title],
+        sourceQuote: unit.sourceQuotes[0] ?? unit.summary,
+        confidence: unit.confidence,
+      })),
+  ]).slice(0, 24)
+
+  const terminologyBank = dedupeBankEntries(units.map((unit) => createBankEntry({
+    kind: 'terminology',
+    title: unit.title,
+    prompt: `Recall the exam meaning of ${unit.title}.`,
+    answer: unit.summary,
+    items: unit.items,
+    sectionPath: unit.sectionPath ?? [unit.title],
+    sourceQuote: unit.sourceQuotes[0] ?? unit.summary,
+    confidence: unit.confidence,
+  }))).slice(0, 32)
+
+  const classificationBank = dedupeBankEntries([
+    ...units
+      .filter((unit) => unit.items.length >= 2 && (unit.kind === 'category' || unit.kind === 'list' || unit.unitType === 'classification' || unit.unitType === 'taxonomy' || unit.unitType === 'equipment'))
+      .map((unit) => createBankEntry({
+        kind: 'classification',
+        title: unit.title,
+        prompt: `Classify the items under ${unit.title}.`,
+        answer: `${unit.title}: ${unit.items.join(', ')}`,
+        items: unit.items,
+        sectionPath: unit.sectionPath ?? [unit.title],
+        sourceQuote: unit.sourceQuotes[0] ?? unit.summary,
+        confidence: unit.confidence,
+      })),
+    ...extractDashPairGroups(normalizedText).map((group) => createBankEntry({
+      kind: 'classification',
+      title: group.title,
+      prompt: `Match each item under ${group.title}.`,
+      answer: `${group.title}: ${group.items.join(', ')}`,
+      items: group.items,
+      sectionPath: [group.title],
+      sourceQuote: group.sourceQuote,
+      confidence: 0.84,
+    })),
+  ]).slice(0, 24)
+
+  const timelineBank = dedupeBankEntries([
+    ...units
+      .filter((unit) => unit.unitType === 'timeline' || unit.learningShape === 'timeline')
+      .map((unit) => createBankEntry({
+        kind: 'timeline',
+        title: unit.title,
+        prompt: `Arrange the milestones under ${unit.title}.`,
+        answer: unit.items.length >= 2 ? unit.items.join(', ') : unit.summary,
+        items: unit.items,
+        sectionPath: unit.sectionPath ?? [unit.title],
+        sourceQuote: unit.sourceQuotes[0] ?? unit.summary,
+        confidence: unit.confidence,
+      })),
+    ...extractTimelineBankEntries(normalizedText),
+  ]).slice(0, 18)
+
+  const procedureBank = dedupeBankEntries(units
+    .filter((unit) => unit.kind === 'process' || unit.unitType === 'procedure' || unit.learningShape === 'procedure' || unit.learningShape === 'lab-process')
+    .map((unit) => createBankEntry({
+      kind: 'procedure',
+      title: unit.title,
+      prompt: `Sequence ${unit.title}.`,
+      answer: unit.items.length >= 2 ? unit.items.join(', ') : unit.summary,
+      items: unit.items,
+      sectionPath: unit.sectionPath ?? [unit.title],
+      sourceQuote: unit.sourceQuotes[0] ?? unit.summary,
+      confidence: unit.confidence,
+    }))).slice(0, 18)
+
+  const formulaBank = dedupeBankEntries(extractFormulaBankEntries(normalizedText)).slice(0, 12)
+  const relationshipBank = dedupeBankEntries([
+    ...classificationBank.map((entry) => createBankEntry({
+      ...entry,
+      kind: 'relationship',
+      prompt: `Explain the relationship inside ${entry.title}.`,
+    })),
+    ...extractRelationshipBankEntries(normalizedText),
+  ]).slice(0, 20)
+  const comparisonBank = dedupeBankEntries([
+    ...units
+      .filter((unit) => unit.unitType === 'comparison' || unit.learningShape === 'comparison' || /\b(?:vs|versus|compare|differentiate)\b|\/\s*[A-Za-z]/i.test(unit.title))
+      .map((unit) => createBankEntry({
+        kind: 'comparison',
+        title: unit.title,
+        prompt: `Differentiate ${unit.title}.`,
+        answer: unit.summary,
+        items: unit.items,
+        sectionPath: unit.sectionPath ?? [unit.title],
+        sourceQuote: unit.sourceQuotes[0] ?? unit.summary,
+        confidence: unit.confidence,
+      })),
+    ...extractComparisonBankEntries(normalizedText),
+  ]).slice(0, 14)
+  const acronymBank = dedupeBankEntries(extractAcronymBankEntries(normalizedText)).slice(0, 16)
+  const causeEffectBank = dedupeBankEntries(extractCauseEffectBankEntries(normalizedText)).slice(0, 14)
+  const likelyQuestionBank = dedupeBankEntries([
+    ...units.map((unit) => createBankEntry({
+      kind: 'likely_question',
+      title: unit.title,
+      prompt: buildLikelyQuestionPrompt(unit),
+      answer: unit.items.length >= 2 ? unit.items.join(', ') : unit.summary,
+      items: unit.items,
+      sectionPath: unit.sectionPath ?? [unit.title],
+      sourceQuote: unit.sourceQuotes[0] ?? unit.summary,
+      confidence: Math.min(0.96, unit.confidence + 0.04),
+    })),
+    ...definitionBank.map((entry) => createBankEntry({
+      ...entry,
+      kind: 'likely_question',
+      prompt: `Define ${entry.title}.`,
+    })),
+  ]).slice(0, 28)
+
+  return {
+    definitionBank,
+    terminologyBank,
+    classificationBank,
+    timelineBank,
+    procedureBank,
+    formulaBank,
+    relationshipBank,
+    likelyQuestionBank,
+    comparisonBank,
+    acronymBank,
+    causeEffectBank,
+  }
+}
+
+function buildUnitsFromAcademicBanks(banks: AcademicSourceMapBanks): AcademicSourceMapUnit[] {
+  const entries = [
+    ...banks.definitionBank,
+    ...banks.classificationBank,
+    ...banks.timelineBank,
+    ...banks.procedureBank,
+    ...banks.formulaBank,
+    ...banks.comparisonBank,
+    ...banks.acronymBank,
+    ...banks.causeEffectBank,
+  ]
+  return entries
+    .filter((entry) => entry.answer.length >= 16 || entry.items.length >= 2)
+    .map((entry) => createUnit({
+      title: entry.title,
+      kind: bankKindToUnitKind(entry.kind),
+      unitType: bankKindToUnitType(entry.kind),
+      summary: entry.answer,
+      items: entry.items,
+      sourceQuote: entry.sourceQuote,
+      sectionPath: entry.sectionPath,
+    }))
+}
+
+function bankKindToUnitKind(kind: AcademicBankKind): AcademicSourceMapUnitKind {
+  if (kind === 'definition' || kind === 'acronym' || kind === 'formula' || kind === 'comparison' || kind === 'cause_effect') return 'definition'
+  if (kind === 'procedure') return 'process'
+  if (kind === 'classification' || kind === 'timeline' || kind === 'relationship') return 'category'
+  return 'concept'
+}
+
+function bankKindToUnitType(kind: AcademicBankKind): AcademicSourceMapUnitType {
+  if (kind === 'definition' || kind === 'acronym') return 'definition'
+  if (kind === 'classification' || kind === 'relationship') return 'classification'
+  if (kind === 'timeline') return 'timeline'
+  if (kind === 'procedure') return 'procedure'
+  if (kind === 'formula') return 'definition'
+  if (kind === 'comparison') return 'comparison'
+  if (kind === 'cause_effect') return 'narrative'
+  return 'narrative'
+}
+
+function createBankEntry(input: AcademicSourceMapBankEntry): AcademicSourceMapBankEntry
+function createBankEntry(input: {
+  kind: AcademicBankKind
+  title: string
+  prompt: string
+  answer: string
+  items: string[]
+  sectionPath: string[]
+  sourceQuote: string
+  confidence: number
+}): AcademicSourceMapBankEntry {
+  const title = normalizeSourceMapHeading(input.title)
+  const answer = cleanupSummary(input.answer)
+  const items = uniqueStrings(input.items.map((item) => cleanupSourceMapUnitItem(item, title)).filter(Boolean)).slice(0, 14)
+  return {
+    kind: input.kind,
+    title,
+    prompt: cleanQuestionPrompt(input.prompt),
+    answer,
+    items,
+    sectionPath: input.sectionPath.map((section) => normalizeSourceMapHeading(section)).filter(Boolean).slice(0, 4),
+    sourceQuote: clampSourceMapQuote(input.sourceQuote || answer, title, bankKindToUnitKind(input.kind)),
+    confidence: Math.max(0.4, Math.min(1, input.confidence)),
+  }
+}
+
+function extractDashPairGroups(normalizedText: string) {
+  const lines = normalizedText.split('\n').map((line) => line.trim()).filter(Boolean)
+  const groups: Array<{ title: string; items: string[]; sourceQuote: string }> = []
+  let currentTitle = 'Classification Relationships'
+  let currentItems: string[] = []
+  let currentSource: string[] = []
+  const flush = () => {
+    if (currentItems.length >= 3) {
+      groups.push({
+        title: currentTitle,
+        items: uniqueStrings(currentItems).slice(0, 14),
+        sourceQuote: currentSource.join(' '),
+      })
+    }
+    currentItems = []
+    currentSource = []
+  }
+
+  for (const line of lines) {
+    if (isLikelySectionHeading(line)) {
+      flush()
+      currentTitle = normalizeSourceMapHeading(line)
+      continue
+    }
+    const match = line.match(/^(.{3,54}?)\s*(?:-|â€“|–|:)\s*(.{2,90})$/)
+    if (!match?.[1] || !match[2]) continue
+    const left = cleanupItem(match[1])
+    const right = cleanupItem(match[2])
+    if (!isUsefulPairSide(left) || right.length < 2) continue
+    currentItems.push(`${left} - ${right}`)
+    currentSource.push(line)
+  }
+  flush()
+  return groups
+}
+
+function isUsefulPairSide(value: string) {
+  const key = normalizeLookup(value)
+  if (!key || key.length < 3) return false
+  if (/^(?:there|what|source|metadata|debug|quality|file|page)$/i.test(key)) return false
+  return true
+}
+
+function extractTimelineBankEntries(normalizedText: string) {
+  const source = normalizedText.replace(/\s+/g, ' ')
+  const entries: AcademicSourceMapBankEntry[] = []
+  const timelineItems = uniqueStrings(
+    [...source.matchAll(/\b((?:1[5-9]\d{2}|20\d{2})|(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+(?:1[5-9]\d{2}|20\d{2}))\s*(?:-|â€“|–)?\s*([^.!?]{10,150})/gi)]
+      .map((match) => `${cleanupItem(match[1] ?? '')} - ${cleanupItem(match[2] ?? '')}`)
+      .filter((item) => item.length >= 16),
+  ).slice(0, 14)
+  if (timelineItems.length >= 2) {
+    entries.push(createBankEntry({
+      kind: 'timeline',
+      title: 'Timeline',
+      prompt: 'Arrange the source milestones chronologically.',
+      answer: timelineItems.join(', '),
+      items: timelineItems,
+      sectionPath: ['Timeline'],
+      sourceQuote: timelineItems.join(' '),
+      confidence: 0.86,
+    }))
+  }
+  return entries
+}
+
+function extractFormulaBankEntries(normalizedText: string) {
+  return normalizedText
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => /\b(?:formula|equation|equals|=|calculate|solve)\b/i.test(line))
+    .map((line) => createBankEntry({
+      kind: 'formula',
+      title: line.match(/^(.{3,54}?)(?:formula|equation|:|=)/i)?.[1]?.trim() || 'Formula',
+      prompt: 'Use the source formula.',
+      answer: line,
+      items: extractSourceMapItems(line),
+      sectionPath: ['Formula'],
+      sourceQuote: line,
+      confidence: 0.84,
+    }))
+}
+
+function extractRelationshipBankEntries(normalizedText: string) {
+  return normalizedText
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => /\b(?:includes|consists of|composed of|made up of|belongs to|classified as|characterized by)\b/i.test(line))
+    .map((line) => createBankEntry({
+      kind: 'relationship',
+      title: inferRelationshipTitle(line),
+      prompt: 'Explain the source relationship.',
+      answer: line,
+      items: extractSourceMapItems(line),
+      sectionPath: [inferRelationshipTitle(line)],
+      sourceQuote: line,
+      confidence: 0.78,
+    }))
+    .filter((entry) => entry.items.length >= 2 || entry.answer.length >= 40)
+}
+
+function extractComparisonBankEntries(normalizedText: string) {
+  return normalizedText
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => /\b(?:while|whereas|compared with|different from|versus| vs\.? )\b/i.test(line))
+    .map((line) => createBankEntry({
+      kind: 'comparison',
+      title: inferRelationshipTitle(line),
+      prompt: 'Differentiate the compared concepts.',
+      answer: line,
+      items: extractSourceMapItems(line),
+      sectionPath: [inferRelationshipTitle(line)],
+      sourceQuote: line,
+      confidence: 0.78,
+    }))
+}
+
+function extractAcronymBankEntries(normalizedText: string) {
+  const source = normalizedText.replace(/\s+/g, ' ')
+  const acronymPairs = [
+    ...[...source.matchAll(/\b([A-Z][A-Z0-9-]{1,10})\s*\(([^)]{3,90})\)/g)]
+      .map((match) => ({ acronym: match[1] ?? '', meaning: match[2] ?? '' })),
+    ...[...source.matchAll(/\b([A-Z][A-Za-z ]{4,90})\s*\(([A-Z][A-Z0-9-]{1,10})\)/g)]
+      .map((match) => ({ acronym: match[2] ?? '', meaning: match[1] ?? '' })),
+  ]
+  return uniqueBy(acronymPairs, (item) => normalizeLookup(item.acronym))
+    .map((item) => createBankEntry({
+      kind: 'acronym',
+      title: item.acronym,
+      prompt: `What does ${item.acronym} stand for?`,
+      answer: item.meaning,
+      items: [item.meaning],
+      sectionPath: ['Acronyms'],
+      sourceQuote: `${item.acronym} (${item.meaning})`,
+      confidence: 0.86,
+    }))
+}
+
+function extractCauseEffectBankEntries(normalizedText: string) {
+  return normalizedText
+    .split(/(?<=[.!?])\s+|\n+/)
+    .map((line) => line.trim())
+    .filter((line) => /\b(?:because|therefore|results? in|leads? to|causes?|impact|effect|so that|in order to)\b/i.test(line))
+    .map((line) => createBankEntry({
+      kind: 'cause_effect',
+      title: inferRelationshipTitle(line),
+      prompt: 'Explain the cause-effect relationship.',
+      answer: line,
+      items: [],
+      sectionPath: [inferRelationshipTitle(line)],
+      sourceQuote: line,
+      confidence: 0.76,
+    }))
+    .filter((entry) => entry.answer.length >= 24)
+}
+
+function inferRelationshipTitle(line: string) {
+  const beforeVerb = line.split(/\b(?:includes|consists of|composed of|made up of|belongs to|classified as|characterized by|because|therefore|results? in|leads? to|causes?|while|whereas)\b/i)[0]?.trim()
+  const words = cleanupItem(beforeVerb || line).split(/\s+/).slice(0, 6).join(' ')
+  return words.length >= 3 ? words : 'Concept Relationship'
+}
+
+function buildLikelyQuestionPrompt(unit: AcademicSourceMapUnit) {
+  const shape = unit.learningShape ?? inferSourceMapLearningShape(unit.title, unit.kind, unit.unitType)
+  if (shape === 'timeline') return `Arrange or identify the chronology for ${unit.title}.`
+  if (shape === 'procedure' || shape === 'lab-process') return `Sequence the steps in ${unit.title}.`
+  if (shape === 'classification' || shape === 'taxonomy') return `Classify or enumerate the items under ${unit.title}.`
+  if (shape === 'equipment') return `Identify the equipment or tool examples under ${unit.title}.`
+  if (shape === 'formula') return `Use the formula in ${unit.title}.`
+  if (shape === 'comparison') return `Differentiate ${unit.title}.`
+  if (shape === 'cause-effect') return `Explain why ${unit.title} happens.`
+  if (unit.kind === 'definition') return `Define ${unit.title}.`
+  return `Explain ${unit.title}.`
+}
+
+function countAcademicBankEntries(banks: AcademicSourceMapBanks | null | undefined) {
+  if (!banks) return 0
+  return Object.values(banks).reduce((count, entries) => count + entries.length, 0)
+}
+
+function getCoreAcademicBankCount(banks: AcademicSourceMapBanks | null | undefined) {
+  if (!banks) return 0
+  return [
+    banks.definitionBank,
+    banks.classificationBank,
+    banks.timelineBank,
+    banks.procedureBank,
+    banks.formulaBank,
+    banks.relationshipBank,
+    banks.comparisonBank,
+    banks.acronymBank,
+    banks.causeEffectBank,
+  ].filter((entries) => entries.length > 0).length
+}
+
+function formatAcademicBankGrounding(banks: AcademicSourceMapBanks | null | undefined) {
+  if (!banks) return []
+  const groups: Array<[string, AcademicSourceMapBankEntry[]]> = [
+    ['Definitions', banks.definitionBank],
+    ['Terminology', banks.terminologyBank],
+    ['Classifications', banks.classificationBank],
+    ['Timelines', banks.timelineBank],
+    ['Procedures', banks.procedureBank],
+    ['Formulas', banks.formulaBank],
+    ['Relationships', banks.relationshipBank],
+    ['Likely questions', banks.likelyQuestionBank],
+    ['Comparisons', banks.comparisonBank],
+    ['Acronyms', banks.acronymBank],
+    ['Cause/effect', banks.causeEffectBank],
+  ]
+  return groups
+    .filter(([, entries]) => entries.length > 0)
+    .flatMap(([label, entries]) => [
+      `${label}:`,
+      ...entries.slice(0, 5).map((entry) => `  - ${entry.title}: ${entry.items.length >= 2 ? entry.items.slice(0, 8).join(', ') : entry.answer}`),
+    ])
+}
+
+function dedupeBankEntries(entries: AcademicSourceMapBankEntry[]) {
+  return uniqueBy(
+    entries
+      .filter((entry) => entry.title.length >= 3)
+      .filter((entry) => (entry.answer.length >= 8 || entry.items.length >= 2) && entry.sourceQuote.length >= 8)
+      .filter((entry) => !isWeakSourceMapTitle(entry.title))
+      .filter((entry) => !containsInternalSourceMapText(`${entry.title} ${entry.answer} ${entry.sourceQuote}`)),
+    (entry) => `${entry.kind}:${normalizeLookup(entry.title)}:${normalizeLookup(entry.answer)}`,
+  )
+}
+
+function cleanQuestionPrompt(value: string) {
+  const cleaned = cleanupItem(value)
+  return /[?!.]$/.test(cleaned) ? cleaned : `${cleaned}.`
+}
+
 function cleanupSourceMapLines(sourceText: string) {
   const normalized = sourceText
     .replace(/\r/g, '\n')
     .replace(/â€¢/g, ' • ')
     .replace(/\u2022/g, ' • ')
+    .replace(/â€“|â€”|–|—/g, ' - ')
     .replace(/[ \t]+/g, ' ')
     .replace(/\s+(?=\d+[.)]\s+[A-Z])/g, '\n')
     .trim()
@@ -499,6 +1041,7 @@ function buildUnitsFromChunks(chunks: SourceChunk[]): AcademicSourceMapUnit[] {
         summary: definition.definition,
         items: [],
         sourceQuote: pickSourceQuote(chunk, definition.term),
+        sectionPath: [chunk.heading],
       })))
     }
 
@@ -509,6 +1052,7 @@ function buildUnitsFromChunks(chunks: SourceChunk[]): AcademicSourceMapUnit[] {
         summary: summarizeChunk(chunk, items, chunkDefinitions),
         items,
         sourceQuote: chunk.sourceQuote,
+        sectionPath: [chunk.heading],
       }))
     }
 
@@ -620,17 +1164,19 @@ function inferKnownArnisUnits(normalizedText: string): AcademicSourceMapUnit[] {
     }))
   }
 
-  addQuoteUnit('Arnis definition', ['What is Arnis'], 'definition', 'definition', /What is Arnis.{0,260}/i)
+  addQuoteUnit('Arnis definition', ['What is Arnis', 'ARNIS', 'ARNIS/ STICK FIGHTING'], 'definition', 'definition', /(?:What is Arnis|ARNIS\/ STICK FIGHTING|ARNIS)\s+.{0,320}?(?:Martial Art|Sport|sticks?)/i)
   addList('Aliases', ['Eskrima', 'Kali', 'Garrote', 'Estoque'], ['Aliases of Arnis', 'What is Arnis'], 'list', 'classification')
-  addQuoteUnit('RA 9850', ['Republic Act 9850'], 'concept', 'historical', /(?:RA|Republic Act)\s*9850.{0,260}/i)
-  addQuoteUnit('Historical concept', ['Historical Concept', 'History of Arnis'], 'concept', 'historical', /Historical Concept.{0,320}/i)
-  addList('Evolution / Classifications', ['Classical Arnis', 'Modern Arnis', 'Sports Arnis', 'Anyo', 'Labanan'], ['Evolution of Arnis', 'Classifications of Arnis'], 'category', 'classification')
-  addList('Organizations / Timeline', ['NARAPHIL', 'ARPI', 'WEKAF', 'i-ARNIS'], ['Organizations and Timeline', 'Organizations of Arnis'], 'category', 'timeline')
-  addList('Courtesy / Salutation', ['Attention stance', 'Ready stance', 'Bow', 'Salute', 'Return to ready stance'], ['Courtesy and Salutation', 'Courtesy Salutation'], 'process', 'procedure')
-  addList('Strike Types', ['Forehand strike', 'Backhand strike', 'Thrust', 'Diagonal strike', 'Horizontal strike', 'Vertical strike'], ['Striking Techniques', 'Strike Types'], 'category', 'classification')
-  addList('Equipment / Weapons', ['Baston', 'Daga', 'Bolo', 'Espada y Daga', 'Bangkaw'], ['Equipment and Weapons', 'Weapons and Equipment'], 'category', 'equipment')
-  addList('Stick Types', ['Solo Baston', 'Doble Baston', 'Sibat', 'Bangkaw'], ['Stick Types'], 'category', 'equipment')
-  addList('Regional Classifications', ['Luzon', 'Visayans', 'Mindanao'], ['Regional Classifications', 'Classifications of Arnis'], 'category', 'classification')
+  addQuoteUnit('RA 9850', ['Republic Act 9850', 'R.A. 9850'], 'concept', 'historical', /(?:R\.?A\.?|Republic Act)\s*9850.{0,320}/i)
+  addQuoteUnit('Historical concept', ['Historical Concept', 'A. HISTORICAL CONCEPT', 'History of Arnis'], 'concept', 'historical', /(?:A\.\s*)?Historical Concept.{0,320}/i)
+  addList('Evolution / Classifications', ['Classical Arnis', 'Modern Arnis', 'Sports Arnis', 'Anyo', 'Labanan', 'Arnis Philippines', 'Kali Ilustrisimo', 'Arnis de Abaniko', 'Rizal Arnis', 'Balintawak Arnis', 'Estocada', 'Espada y Daga'], ['Evolution of Arnis', 'B. EVOLVEMENT OF THE ART', 'Classifications of Arnis'], 'category', 'classification')
+  addList('Organizations / Timeline', ['1st Arnis Club', 'Doce Pares Association', 'NARAPHIL', 'WEKAF', 'ARPI', 'i-ARNIS', '1970 Arnis clubs accepted Doce Pares rules'], ['Organizations and Timeline', 'Organizations of Arnis', 'B. EVOLVEMENT OF THE ART'], 'category', 'timeline')
+  addList('Regional Systems', ['Pangasinan - KALIRONGAN', 'Tagalogs - PANANANDATA', 'Ilocanos - DIDYA/KABAROAN', 'Ibanags - PAGKALIKALI', 'Pampanguenos - SINAWALI', 'Visayans - KINAADMAN/PAGARADMAN/ESGRIMA/ESCRIMA'], ['B. EVOLVEMENT OF THE ART', 'Classifications of Arnis'], 'category', 'classification')
+  addList('Main Groups', ['Northern Style - Arnis', 'Central Style - Arnis de Mano', 'Southern Style - Kali'], ['3 MAIN GROUPS'], 'category', 'classification')
+  addList('Courtesy / Salutation', ['Attention stance', 'Ready stance', 'Bow', 'Salute', 'Return to ready stance', 'Handa', 'Pugay'], ['Courtesy and Salutation', 'Courtesy Salutation', 'COURTESY / SALUTATION'], 'process', 'procedure')
+  addList('Strike Types', ['Babad Hangin', 'Buong Palo', 'Pitik', 'Babad Araw', 'Forehand strike', 'Backhand strike', 'Thrust', 'Diagonal strike', 'Horizontal strike', 'Vertical strike'], ['Striking Techniques', 'Strike Types', 'TYPES OF STRIKES'], 'category', 'classification')
+  addList('Equipment / Weapons', ['Baston', 'Yantok', 'Daga', 'Bolo', 'Espada y Daga', 'Bangkaw', 'Bankaw', 'Panangga'], ['Equipment and Weapons', 'Weapons and Equipment', 'Facilities and Equipment', 'Weapons'], 'category', 'equipment')
+  addList('Stick Types', ['Baston / Olisi / Yantok - 24 to 28 inches', 'Largo mano yantok - 28 to 36 inches', 'Dulo y Dulo - 4 to 7 inches', 'Bankaw - six-foot pole', 'Panangga - shield', 'Solo Baston', 'Doble Baston', 'Sibat', 'Bangkaw'], ['Stick Types', 'Types of Arnis sticks'], 'category', 'equipment')
+  addList('Regional Classifications', ['Luzon', 'Visayans', 'Mindanao'], ['Regional Classifications', 'Classifications of Arnis', '3 MAIN GROUPS'], 'category', 'classification')
 
   return units
 }
@@ -639,17 +1185,22 @@ function createUnit(input: {
   title: string
   kind: AcademicSourceMapUnitKind
   unitType?: AcademicSourceMapUnitType
+  sectionPath?: string[]
   summary: string
   items: string[]
   sourceQuote: string
 }): AcademicSourceMapUnit {
   const title = normalizeSourceMapHeading(input.title)
+  const sectionPath = input.sectionPath?.length
+    ? input.sectionPath.map((section) => normalizeSourceMapHeading(section)).filter(Boolean).slice(0, 4)
+    : [title]
   return {
     id: slugify(title),
     title,
     kind: input.kind,
     unitType: input.unitType ?? inferSourceMapUnitType(title, input.kind),
     learningShape: inferSourceMapLearningShape(title, input.kind, input.unitType),
+    sectionPath,
     summary: cleanupSummary(stopAtKnownHeading(input.summary, title)),
     items: uniqueStrings(input.items.map((item) => cleanupSourceMapUnitItem(item, title)).filter(Boolean)).slice(0, 14),
     sourceQuotes: uniqueStrings([input.sourceQuote].filter(Boolean).map((quote) => clampSourceMapQuote(quote, title, input.kind))),
@@ -707,7 +1258,7 @@ function cleanupSourceMapUnitItem(value: string, title: string) {
 }
 
 function extractSourceMapItems(text: string) {
-  const bulletItems = text
+  const bulletItems = text.replace(/\u2022/g, 'â€¢')
     .split(/\s*•\s*|\s+\d+[.)]\s+|(?:^|\s)[a-z][.)]\s+/i)
     .map(cleanupItem)
     .filter((item) => item.length >= 3 && item.length <= 96)
@@ -816,8 +1367,11 @@ function classifyKnownHeadingKind(heading: string): AcademicSourceMapUnitKind {
 function clampSourceMapQuote(value: string, title: string, kind: AcademicSourceMapUnitKind) {
   const oneLine = value.replace(/\s+/g, ' ').trim()
   const withoutAdjacent = stopAtKnownHeading(oneLine, title)
+  const scoped = /^(?:IT Security definition|IT Security)$/i.test(title)
+    ? withoutAdjacent.replace(/\s+InfoSec\s*[-:]\s*.*$/i, '').trim()
+    : withoutAdjacent
   const maxChars = kind === 'definition' ? 260 : kind === 'process' ? 420 : 360
-  return truncateForSourceMapModel(withoutAdjacent, maxChars)
+  return truncateForSourceMapModel(scoped, maxChars)
 }
 
 function stopAtKnownHeading(value: string, title: string) {
@@ -842,6 +1396,7 @@ function isMeaningfulSourceMapUnit(unit: AcademicSourceMapUnit) {
   const summaryKey = normalizeLookup(unit.summary)
   if (!titleKey || unit.title.length < 3 || unit.sourceQuotes.length === 0) return false
   if (isWeakSourceMapTitle(unit.title)) return false
+  if (containsInternalSourceMapText(`${unit.title} ${unit.summary} ${unit.sourceQuotes.join(' ')}`)) return false
   if (summaryKey.length < 14 && !RECOGNIZED_SOURCE_MAP_TERMS.has(titleKey)) return false
   if (/^cyber crime\b/i.test(unit.title) && /\bbig business\b/i.test(unit.summary)) return false
   return true
@@ -851,10 +1406,14 @@ function isWeakSourceMapTitle(title: string) {
   const key = normalizeLookup(title)
   if (!key) return true
   if (RECOGNIZED_SOURCE_MAP_TERMS.has(key)) return false
-  if (/^(?:there|high|state|terms|programs|activity|organization|source summary|what)$/i.test(key)) return true
+  if (/^(?:there|high|state|terms|programs|activity|organization|source summary|source notes|what)$/i.test(key)) return true
+  if (/^(?:understand the|insiders employees and ex)\b/i.test(key)) return true
+  if (/^(?:communicate the issue|overwhelm quantity of traffic)$/i.test(key)) return true
   if (/^(?:cyber crime|organized and state|seo poisoning|sent to a host or application and the receiver)$/i.test(key)) return true
+  if (/\?{2,}/.test(title)) return true
   if (/\bthat$/i.test(key)) return true
   if (/^(?:attacks backed by state agencies that|sent to a host or application and the receiver)\b/i.test(key)) return true
+  if (/\b(?:other threats infosec processes|contract staff trusted partners|the cause of the breach)\b/i.test(key)) return true
   const words = key.split(/\s+/).filter(Boolean)
   if (words.length === 1 && !RECOGNIZED_SOURCE_MAP_TERMS.has(key)) return true
   if (words.length >= 7 && !/^(?:vulnerability exploit breach|cybercrime disruption espionage)$/i.test(key)) return true
@@ -866,14 +1425,14 @@ function scoreImportance(title: string, kind: AcademicSourceMapUnitKind, itemCou
   let score = kind === 'definition' ? 82 : kind === 'process' ? 76 : kind === 'category' ? 72 : 66
   if (HIGH_IMPORTANCE_PATTERNS.some((pattern) => pattern.test(title))) score += 14
   if (/^(?:CIA Triad|IT Security definition|InfoSec vs IT Sec|Vulnerability \/ Exploit \/ Breach)$/i.test(title)) score += 18
-  if (/^(?:Arnis definition|RA 9850|Organizations \/ Timeline|Courtesy \/ Salutation|Equipment \/ Weapons|Regional Classifications)$/i.test(title)) score += 16
+  if (/^(?:Arnis definition|RA 9850|Organizations \/ Timeline|Timeline|Courtesy \/ Salutation|Equipment \/ Weapons|Regional Classifications|Regional Systems|Main Groups|Stick Types)$/i.test(title)) score += 16
   if (itemCount >= 3) score += 6
   if (itemCount >= 8) score += 4
   return Math.max(1, Math.min(100, score))
 }
 
 function normalizeSourceMapHeading(value: string) {
-  const cleaned = normalizeStudyOutputHeading(sanitizeStudentFacingText(value).replace(/\s+/g, ' ').trim())
+  const cleaned = normalizeStudyOutputHeading(sanitizeStudentFacingText(value).replace(/\?{2,}/g, ' ').replace(/^[^A-Za-z0-9]+/, '').replace(/\s+/g, ' ').trim())
   const lookup = normalizeLookup(cleaned)
   if (lookup === 'it security definition') return 'IT Security definition'
   if (lookup === 'infosec vs it sec') return 'InfoSec vs IT Sec'
@@ -886,32 +1445,36 @@ function normalizeSourceMapHeading(value: string) {
   if (lookup === 'malware types') return 'Malware types'
   if (lookup === 'malware symptoms') return 'Malware symptoms'
   if (lookup === 'types of attackers') return 'Types of attackers'
-  if (lookup === 'infiltration methods') return 'Infiltration methods'
-  if (lookup === 'denial of service methods') return 'Denial of service methods'
+  if (lookup === 'infiltration methods' || lookup === 'methods of infiltration') return 'Infiltration methods'
+  if (lookup === 'denial of service methods' || lookup === 'methods to deny service') return 'Denial of service methods'
   if (lookup === 'blended attacks') return 'Blended attacks'
+  if (lookup === 'impact reduction communicate the issue') return 'Impact reduction'
   if (lookup === 'impact reduction') return 'Impact reduction'
   if (lookup === 'goal of it security') return 'CIA Triad'
   if (lookup === 'types of cybersecurity threats') return 'Cybercrime / Disruption / Espionage'
   if (lookup === 'types of malware') return 'Malware types'
   if (lookup === 'symptoms of malware') return 'Malware symptoms'
   if (lookup === 'challenges of cybersecurity') return 'Challenges'
-  if (lookup === 'what is arnis' || lookup === 'arnis definition') return 'Arnis definition'
+  if (lookup === 'what is arnis' || lookup === 'arnis definition' || lookup === 'arnis' || lookup === 'arnis stick fighting') return 'Arnis definition'
   if (lookup === 'aliases of arnis') return 'Aliases'
-  if (lookup === 'republic act 9850' || lookup === 'ra 9850') return 'RA 9850'
-  if (lookup === 'historical concept' || lookup === 'history of arnis') return 'Historical concept'
-  if (lookup === 'evolution of arnis' || lookup === 'classifications of arnis') return 'Evolution / Classifications'
+  if (lookup === 'republic act 9850' || lookup === 'ra 9850' || lookup === 'r a 9850') return 'RA 9850'
+  if (lookup === 'historical concept' || lookup === 'a historical concept' || lookup === 'history of arnis') return 'Historical concept'
+  if (lookup === 'evolution of arnis' || lookup === 'evolvement of the art' || lookup === 'b evolvement of the art' || lookup === 'classifications of arnis') return 'Evolution / Classifications'
   if (lookup === 'organizations and timeline' || lookup === 'organizations of arnis') return 'Organizations / Timeline'
+  if (lookup === '3 main groups' || lookup === 'main groups') return 'Main Groups'
   if (lookup === 'courtesy and salutation' || lookup === 'courtesy salutation') return 'Courtesy / Salutation'
-  if (lookup === 'striking techniques' || lookup === 'strike types') return 'Strike Types'
-  if (lookup === 'equipment and weapons' || lookup === 'weapons and equipment') return 'Equipment / Weapons'
-  if (lookup === 'stick types') return 'Stick Types'
+  if (lookup === 'striking techniques' || lookup === 'strike types' || lookup === 'types of strikes') return 'Strike Types'
+  if (lookup === 'equipment and weapons' || lookup === 'weapons and equipment' || lookup === 'facilities and equipment' || lookup === 'weapons') return 'Equipment / Weapons'
+  if (lookup === 'stick types' || lookup === 'types of arnis sticks') return 'Stick Types'
   if (lookup === 'regional classifications') return 'Regional Classifications'
+  if (lookup === 'arnis as a sport') return 'Arnis as a Sport'
   return cleaned
 }
 
 function cleanupItem(value: string) {
   return sanitizeStudentFacingText(value)
     .replace(/\s+/g, ' ')
+    .replace(/\?{2,}/g, ' ')
     .replace(/^\d+[.)]\s*/, '')
     .replace(/^[\s"'([{.:;-]+|[\s"'.,;:)\]}]+$/g, '')
     .trim()
@@ -919,6 +1482,15 @@ function cleanupItem(value: string) {
 
 function cleanupSummary(value: string) {
   return cleanupItem(value).slice(0, 320)
+}
+
+function isLikelySectionHeading(line: string) {
+  const cleaned = cleanupItem(line).replace(/[:.]$/, '')
+  const words = cleaned.split(/\s+/).filter(Boolean)
+  if (words.length === 0 || words.length > 8) return false
+  if (SOURCE_MAP_HEADINGS.some((heading) => normalizeLookup(heading) === normalizeLookup(cleaned))) return true
+  if (/^(?:[A-Z]\.\s*)?[A-Z0-9][A-Z0-9 /&-]{3,}$/.test(cleaned) && !/[.!?]$/.test(cleaned)) return true
+  return /^(?:chapter|lesson|unit|section|part|topic|module)\s+\d+/i.test(cleaned)
 }
 
 function isSourceMapNoiseLine(line: string) {
@@ -936,6 +1508,10 @@ function looksMetadataOnly(text: string) {
   if (lines.length === 0) return true
   const metadataLines = lines.filter(isSourceMapNoiseLine).length
   return metadataLines / lines.length > 0.6
+}
+
+function containsInternalSourceMapText(value: string) {
+  return /\b(?:source notes|source summary|exact source wording|reconstructed lists|clean source summary fragments|academic source map|deterministic academic structure|metadata|uuid|debug|quality notes?)\b/i.test(value)
 }
 
 function truncateForSourceMapModel(value: string, maxChars: number) {

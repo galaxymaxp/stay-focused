@@ -481,7 +481,7 @@ export interface StudyOutputQuizPackItem {
   sourceUnitId?: string | null
   sourceExcerpt?: string | null
   confidence?: number | null
-  generationMethod?: 'source_map_identification' | 'source_map_mcq' | 'legacy_study_pack' | null
+  generationMethod?: 'source_map_identification' | 'source_map_mcq' | 'source_map_true_false' | 'legacy_study_pack' | null
 }
 
 export interface StudyOutputQuizPackContent {

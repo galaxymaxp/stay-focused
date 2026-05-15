@@ -553,7 +553,7 @@ test('staged Deep Learn generation completes long readable sources without one g
       return jsonResponse({
         sections: [{ heading: 'Likely Quiz Targets', body: 'Expect CIA triad definitions, threat vs vulnerability, and control examples.' }],
         distinctions: [distinctionItem(1)],
-        likelyQuizTargets: [quizTargetItem(1), quizTargetItem(2)],
+        likelyQuizTargets: [quizTargetItem(1), quizTargetItem(2), quizTargetItem(3)],
         cautionNotes: ['Some examples were brief, so memorize the exact source wording first.'],
       })
     },
@@ -568,7 +568,7 @@ test('staged Deep Learn generation completes long readable sources without one g
   assert.equal(result.content.sections.length, 5)
   assert.equal(result.content.answerBank.length, 4)
   assert.equal(result.content.identificationItems.length, 3)
-  assert.equal(result.content.likelyQuizTargets.length, 2)
+  assert.equal(result.content.likelyQuizTargets.length, 3)
   assert.deepEqual(progress.map((item) => item.progress), [40, 55, 70, 80])
 })
 
@@ -687,47 +687,37 @@ test('staged Deep Learn generation completes through micro fallback when compact
   assert.doesNotMatch(JSON.stringify(result), /finish in one pass|Regenerate a shorter version/i)
 })
 
-test('staged Deep Learn generation saves a minimal fallback when micro also exceeds limits', async () => {
+test('staged Deep Learn generation rejects a minimal fallback when micro also exceeds limits', async () => {
   let identificationCalls = 0
-  const result = await generateDeepLearnStructuredContent(
-    createPromptInput(),
-    createPreparedGrounding(),
-    async ({ schemaName }) => {
-      if (schemaName === 'deep_learn_high_yield_stage') {
-        return jsonResponse({
-          title: 'IT Security',
-          overview: 'Large source.',
-          sections: [
-            { heading: 'Source Summary', body: 'The source explains information security basics.' },
-            { heading: 'High-Yield First', body: '- CIA triad\n- Threats and vulnerabilities' },
-          ],
-        })
-      }
-      if (schemaName === 'deep_learn_identification_stage') {
-        identificationCalls += 1
-        return {
-          status: 'incomplete',
-          output_text: '',
-          incomplete_details: { reason: 'max_output_tokens' },
+  await assert.rejects(
+    () => generateDeepLearnStructuredContent(
+      createPromptInput(),
+      createPreparedGrounding(),
+      async ({ schemaName }) => {
+        if (schemaName === 'deep_learn_high_yield_stage') {
+          return jsonResponse({
+            title: 'IT Security',
+            overview: 'Large source.',
+            sections: [
+              { heading: 'Source Summary', body: 'The source explains information security basics.' },
+              { heading: 'High-Yield First', body: '- CIA triad\n- Threats and vulnerabilities' },
+            ],
+          })
         }
-      }
-      throw new Error(`Unexpected schema ${schemaName}`)
-    },
+        if (schemaName === 'deep_learn_identification_stage') {
+          identificationCalls += 1
+          return {
+            status: 'incomplete',
+            output_text: '',
+            incomplete_details: { reason: 'max_output_tokens' },
+          }
+        }
+        throw new Error(`Unexpected schema ${schemaName}`)
+      },
+    ),
+    DeepLearnGeneratedContentValidationError,
   )
-
-  assert.equal(result.compactFallbackUsed, true)
   assert.equal(identificationCalls, 3)
-  assert.ok(result.content.sections.length > 0)
-  assert.ok(result.content.sections.some((section) => section.heading === 'Source Summary'))
-  assert.ok(result.content.sections.some((section) => section.heading === 'High-Yield First'))
-  assert.ok(result.content.identificationItems.length > 0)
-  assert.ok(result.content.answerBank.length > 0)
-  assert.ok(result.content.likelyQuizTargets.length > 0)
-  assert.match(result.content.identificationItems[0]?.answer.examSafe ?? '', /Information security explains/i)
-  assert.match(result.content.answerBank[0]?.answer.examSafe ?? '', /Information security explains/i)
-  assert.match(result.content.likelyQuizTargets[0]?.reason ?? '', /Information security explains/i)
-  assert.ok(result.content.cautionNotes.includes('Generated as a compact reviewer because the source was long.'))
-  assert.doesNotMatch(JSON.stringify(result), /finish in one pass|Regenerate a shorter version/i)
 })
 
 test('Deep Learn save validator rejects source-summary-only reviewer artifacts', () => {
@@ -1163,6 +1153,23 @@ test('Academic Source Map extracts IT Security academic units with source quotes
   assert.match(terms.sourceQuotes[0] ?? '', /Breach/i)
 })
 
+test('Academic Source Map builds exam banks and rejects thin academic content', () => {
+  const sourceMap = buildAcademicSourceMap(IT_SECURITY_SAMPLE_SOURCE)
+  const weak = buildAcademicSourceMap('What is IT Security â€¢ A set of cyber security strategies that prevent unauthorized access.')
+  const banks = sourceMap.banks
+
+  assert.ok(banks)
+  assert.ok((banks?.definitionBank.length ?? 0) >= 3)
+  assert.ok((banks?.classificationBank.length ?? 0) >= 5)
+  assert.ok((banks?.procedureBank.length ?? 0) >= 3)
+  assert.ok((banks?.relationshipBank.length ?? 0) >= 5)
+  assert.ok((banks?.likelyQuestionBank.length ?? 0) >= 12)
+  assert.doesNotMatch(JSON.stringify(sourceMap.units.map((unit) => unit.title)), /Source Notes|Insiders Employees And Ex|Understand The|Communicate The Issue|Overwhelm Quantity|^\?\?\?/i)
+
+  assert.equal(weak.validation.ok, false)
+  assert.equal(weak.validation.reason, 'insufficient_academic_content')
+})
+
 test('Academic Source Map detects adaptive styles without regressing IT Security taxonomy', () => {
   const itSecurity = buildAcademicSourceMap(IT_SECURITY_SAMPLE_SOURCE)
   const arnis = buildAcademicSourceMap(PATHFIT_ARNIS_SAMPLE_SOURCE)
@@ -1180,6 +1187,20 @@ test('Academic Source Map detects adaptive styles without regressing IT Security
   assert.ok(arnis.units.some((unit) => unit.title === 'Courtesy / Salutation' && unit.unitType === 'procedure' && unit.learningShape === 'procedure'))
   assert.ok(arnis.units.some((unit) => unit.title === 'Organizations / Timeline' && unit.unitType === 'timeline' && unit.learningShape === 'timeline'))
   assert.ok(arnis.units.some((unit) => unit.title === 'Equipment / Weapons' && unit.unitType === 'equipment' && unit.learningShape === 'equipment'))
+})
+
+test('Academic Source Map preserves Arnis timeline and classification banks for fixture QA', () => {
+  const arnis = buildAcademicSourceMap(PATHFIT_ARNIS_SAMPLE_SOURCE)
+  const renderedBanks = JSON.stringify(arnis.banks)
+
+  assert.equal(arnis.validation.ok, true)
+  assert.ok((arnis.banks?.timelineBank.length ?? 0) >= 1)
+  assert.ok((arnis.banks?.classificationBank.length ?? 0) >= 4)
+  assert.ok((arnis.banks?.procedureBank.length ?? 0) >= 1)
+  assert.match(renderedBanks, /NARAPHIL|WEKAF|i-ARNIS/)
+  assert.match(renderedBanks, /Regional Classifications|Evolution \/ Classifications|Strike Types/)
+  assert.match(renderedBanks, /Baston|Daga|Bangkaw/)
+  assert.doesNotMatch(renderedBanks, /Source Notes|metadata|debug|\?\?\?\?/i)
 })
 
 test('Academic Source Map discipline clusters are broad hints while learning shapes stay primary', () => {

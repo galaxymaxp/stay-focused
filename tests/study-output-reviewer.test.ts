@@ -180,7 +180,7 @@ test('Source Map reviewer adapter produces expected IT Security concepts', () =>
   const reviewer = buildDeepLearnReviewerContent(note)
   const rendered = JSON.stringify(reviewer)
 
-  assert.match(reviewer.summary, /Source Map Reviewer/)
+  assert.match(reviewer.summary, /Exam Reviewer/)
   for (const expected of [
     'IT Security',
     'InfoSec vs IT Sec',
@@ -202,8 +202,8 @@ test('Source Map reviewer adapter produces expected IT Security concepts', () =>
     assert.match(rendered, new RegExp(expected.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), `missing ${expected}`)
   }
 
-  assert.ok(reviewer.identificationReview.every((item) => /^Identify or define\b/.test(item.prompt)))
-  assert.ok(reviewer.likelyQuizTargets.some((item) => /^(Explain|Enumerate|Distinguish|Apply)\b/.test(item.target)))
+  assert.ok(reviewer.identificationReview.every((item) => /^(Define|Differentiate|Enumerate|Classify|Identify|Sequence|Arrange)\b/.test(item.prompt)))
+  assert.ok(reviewer.likelyQuizTargets.some((item) => /^(Define|Explain|Enumerate|Differentiate|Distinguish|Apply|Classify|Identify|Sequence)\b/.test(item.target)))
   assert.ok(reviewer.distinctions.some((item) => /InfoSec/i.test(item.conceptA) && /IT Sec/i.test(item.conceptB)))
   assert.ok(reviewer.distinctions.some((item) => /Vulnerability/i.test(item.conceptA) && /Exploit/i.test(item.conceptB)))
 })
@@ -319,8 +319,8 @@ test('Source Map reviewer removes repeated memorize labels and varies quiz promp
   assert.doesNotMatch(markup, /Understand:/)
   assert.match(markup, /Definition:|Key list:|Exam cue:/)
   const examCues = reviewer.highYieldConcepts.map((item) => item.plainExplanation ?? '')
-  assert.ok(examCues.every((cue) => /^(Know the exact definition|Be able to enumerate|Be able to distinguish|Know the order or purpose)/.test(cue)))
-  assert.doesNotMatch(examCues.join(' '), /InfoSec -|Goal of IT Security|There is|State-sponsored|Cyber Crime/i)
+  assert.ok(examCues.every((cue) => /^(Know the exact definition|Be able to enumerate|Be able to distinguish|Be able to classify|Be able to identify|Know the chronology|Know the order or purpose|Explain the cause-effect relationship)/.test(cue)))
+  assert.doesNotMatch(examCues.join(' '), /InfoSec -|Goal of IT Security|There is|State-sponsored|Cyber Crime|Source Notes|Insiders Employees And Ex/i)
 
   const promptVerbs = new Set(
     reviewer.likelyQuizTargets
@@ -338,7 +338,7 @@ test('Source Map reviewer quick-answer blocks exclude weak orphan units', () => 
   const reviewer = buildDeepLearnReviewerContent(createNoteWithSourceMap(IT_SECURITY_SOURCE))
   const rendered = JSON.stringify(reviewer.quickReviewBlocks)
 
-  assert.doesNotMatch(rendered, /"There"|"High"|"State"|"Terms"|"Programs"|Cyber Crime: big business|Attacks Backed By State Agencies That|Sent To A Host Or Application And The Receiver/i)
+  assert.doesNotMatch(rendered, /"There"|"High"|"State"|"Terms"|"Programs"|Cyber Crime: big business|Attacks Backed By State Agencies That|Sent To A Host Or Application And The Receiver|"cue":"Understand The"|"cue":"Insiders Employees And Ex"/i)
   assert.ok(reviewer.quickReviewBlocks.every((block) => block.points.length >= 2))
   assert.ok(reviewer.quickReviewBlocks.some((block) => block.heading === 'Domains of IT Security'))
   assert.ok(reviewer.quickReviewBlocks.some((block) => block.heading === 'Methods of Infiltration'))
@@ -458,14 +458,15 @@ test('Source Map reviewer filters weak key terms and internal labels', () => {
   assert.doesNotMatch(rendered, /source summary|exact source wording|reconstructed lists|clean source summary fragments/i)
 })
 
-test('Source Map reviewer hides empty rendered sections', () => {
+test('weak Source Map does not unlock exam reviewer sections', () => {
   const sourceMap = buildAcademicSourceMap('What is IT Security • A set of cyber security strategies that prevent unauthorized access.')
-  const reviewer = buildDeepLearnReviewerContent(createNote({
+  const note = createNote({
     sourceGrounding: {
       ...createNote().sourceGrounding,
       sourceMap,
     },
-  }))
+  })
+  const reviewer = buildDeepLearnReviewerContent(note)
   const output = createReviewerOutput(reviewer)
   const markup = renderToStaticMarkup(createElement(StudyOutputReviewerPage, {
     output,
@@ -473,9 +474,30 @@ test('Source Map reviewer hides empty rendered sections', () => {
     moduleTitle: null,
   }))
 
+  assert.equal(sourceMap.validation.ok, false)
+  assert.equal(buildReviewerContentFromSourceMap(note), null)
   assert.match(markup, /High-yield first/)
-  assert.doesNotMatch(markup, /Quick-answer blocks/)
-  assert.doesNotMatch(markup, /Distinctions/)
+  assert.match(markup, /Quick-answer blocks/)
+  assert.doesNotMatch(markup, /Exam Reviewer built from/i)
+})
+
+test('fixture-level reviewer QA keeps IT Security and Arnis exam rich without raw fragments', () => {
+  const itReviewer = buildDeepLearnReviewerContent(createNoteWithSourceMap(IT_SECURITY_SOURCE))
+  const arnisReviewer = buildDeepLearnReviewerContent(createNoteWithSourceMap(PATHFIT_ARNIS_SOURCE, {
+    title: 'PATHFit Arnis Reviewer',
+    overview: 'Arnis history, classifications, procedures, and equipment.',
+  }))
+  const rendered = JSON.stringify([itReviewer, arnisReviewer])
+
+  assert.ok(itReviewer.highYieldConcepts.length >= 16)
+  assert.ok(itReviewer.likelyQuizTargets.length >= 12)
+  assert.ok(arnisReviewer.highYieldConcepts.length >= 10)
+  assert.ok(arnisReviewer.likelyQuizTargets.length >= 8)
+  assert.ok(arnisReviewer.highYieldConcepts.some((item) => item.cue === 'Organizations / Timeline' && /WEKAF/.test(item.answer)))
+  assert.ok(arnisReviewer.highYieldConcepts.some((item) => item.cue === 'Regional Classifications' && /Luzon|Visayans|Mindanao/.test(item.answer)))
+  assert.ok(arnisReviewer.highYieldConcepts.some((item) => item.cue === 'Equipment / Weapons' && /Baston|Daga|Bangkaw/.test(item.answer)))
+  assert.doesNotMatch(rendered, /Source Notes|metadata|debug|\?\?\?\?|other threats InfoSec|"cue":"Understand The"|"cue":"Insiders Employees And Ex"/i)
+  assert.doesNotMatch(rendered, /\b(?:u|architect)\b[".]/i)
 })
 
 test('legacy blob reviewer still works when Source Map is missing', () => {

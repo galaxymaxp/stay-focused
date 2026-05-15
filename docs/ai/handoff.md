@@ -5,6 +5,71 @@ Last Updated: 2026-05-15
 
 ---
 
+## Session Update - 2026-05-15 (Exam Reviewer Quality Contract)
+
+### What changed
+
+- Rebuilt the Academic Source Map into a denser exam-ready Study Pack layer with explicit academic banks for definitions, terminology, classifications, timelines, procedures, formulas, relationships, likely questions, comparisons, acronyms, and cause/effect.
+- Tightened Study Pack save validation so weak/minimal outputs are rejected instead of saved when they do not contain enough meaningful examinable material.
+- Added bank-derived Study Pack sections for definitions, classifications/groupings, timelines/procedures, formulas/comparisons, and likely exam questions.
+- Upgraded reviewer generation to use exam-reviewer wording, shape prompts by learning type, avoid Source Notes-style labels, and reject weak standalone fragments.
+- Upgraded quiz generation to include MCQ, True/False, and Identification from Source Map units with stronger coverage, grounded explanations, and better type diversity per topic.
+- Preserved IT Security and Arnis/PATHFit adaptive behavior while cleaning weak labels such as standalone procedure fragments and malformed OCR leftovers.
+- Scoped IT Security definition source quotes so adjacent InfoSec bullets do not leak into unrelated reviewer/quiz source wording.
+- Added fixture-level QA assertions against the uploaded IT Security and Arnis reviewer standards for density, concept coverage, timeline/classification preservation, distractor quality, and raw-fragment rejection.
+
+### Files touched
+
+- `lib/deep-learn-source-map.ts`
+- `lib/deep-learn-generation.ts`
+- `lib/study-outputs/reviewer.ts`
+- `lib/study-outputs/quiz-pack.ts`
+- `lib/types.ts`
+- `tests/deep-learn-generation.test.ts`
+- `tests/study-output-reviewer.test.ts`
+- `tests/study-output-quiz-pack.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Reviewer and quiz quality depended on a Study Pack layer that was still too shallow for exam-style outputs. The Source Map now acts as the canonical academic extraction contract: it must preserve educational structure and enough examinable facts before downstream Reviewer or Quiz generation can rely on it.
+
+### Tests run
+
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- deep-learn-generation study-output-reviewer study-output-quiz-pack` - passed
+- `npm test -- quiz source-map reviewer` - passed
+- `npm test -- study-output-reviewer study-output-sheet study-output-print` - passed
+
+### Verification result
+
+- Passed all requested verification commands.
+- Verified Study Pack validation rejects thin/minimal fallback content.
+- Verified IT Security source maps expose dense definition/classification/procedure/relationship/likely-question banks.
+- Verified Arnis source maps preserve timeline, classification, procedure, and equipment relationships.
+- Verified Reviewer output remains exam-oriented and avoids Source Notes/debug-style leakage.
+- Verified Quiz output includes MCQ, True/False, and Identification with grounded explanations and non-filler distractors.
+
+### Known risks
+
+- The bank extraction is deterministic and regex/heading driven; unusual OCR layouts may need additional heading aliases after real-source QA.
+- True/False generation is intentionally conservative and deterministic; future work may improve false-statement variety once the single-call quality contract is stable.
+
+### Blockers
+
+- No blocker remains.
+
+### Next recommended step
+
+- Run manual QA on real scanned/OCR classroom PDFs and compare generated Reviewer/Quiz usefulness against the IT Security and Arnis fixture standards before adding any extra AI calls.
+
+### Suggested commit message
+
+- `rebuild study pack quality contract`
+
+---
+
 ## Session Update - 2026-05-15 (Global Discipline Hints And Learning Shapes)
 
 ### What changed
