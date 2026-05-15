@@ -5,6 +5,73 @@ Last Updated: 2026-05-15
 
 ---
 
+## Session Update - 2026-05-15 (Browser QA for Quiz Review Mode)
+
+### What changed
+
+- Added stable `data-testid` hooks to the saved Quiz Pack review UI for browser-level interaction coverage.
+- Added a Playwright-backed Node test for quiz review interactions:
+  - starts a saved quiz
+  - selects incorrect and correct MCQ choices
+  - checks answers
+  - verifies correct/incorrect feedback
+  - verifies correct answer, explanation, review cue, and source-backed note display
+  - verifies reset/retry behavior hides feedback
+  - verifies identification answer reveal
+  - verifies print media still exposes the printable quiz review document
+  - verifies internal metadata (`sourceUnitId`, `confidence`, `generationMethod`, debug labels) is not visible
+
+### Architecture reasoning
+
+The project does not currently have a dedicated Playwright test config or npm browser-test script, so this phase uses the existing Node test runner with `playwright` directly. The test keeps the production UI unchanged except for stable selectors and validates the browser interaction contract without changing quiz generation, save flow, matching behavior, or Source Map metadata exposure.
+
+### Files touched
+
+- `components/StudyOutputQuizPackPage.tsx`
+- `tests/quiz-review-browser.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Phase 3.4 needed browser-level coverage for the saved Quiz review mode after Phase 3.3 added answer feedback and reveal behavior. The added selectors give tests a stable way to exercise the existing student-facing controls without relying on styling or fragile text traversal.
+
+### Tests run
+
+- `npx tsx --test tests/quiz-review-browser.test.ts` - passed
+- `npx tsx --test tests/study-output-print.test.ts` - passed
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- study-output-quiz-pack` - passed
+- `npm test -- study-output-print` - passed
+- `npm test -- deep-learn-generation study-output-reviewer study-output-quiz-pack` - passed
+
+### Verification result
+
+- Passed all requested verification commands.
+- Browser-level quiz review interaction test passes under the existing Node test runner.
+- Verified correct and incorrect MCQ feedback states, correct answer display, explanation display, review cue/source note display, reset behavior, identification reveal, no debug metadata exposure, and print media behavior.
+
+### Known risks
+
+- There is still no dedicated Playwright config or npm browser-test command. The new test uses `playwright` through `tsx --test`, and it skips only if the local Chromium browser executable is unavailable.
+- The browser harness validates the interaction contract and selectors outside a full Next.js route mount because the repo does not yet have an end-to-end app server test setup.
+
+### Blockers
+
+- No blocker remains.
+
+### Next recommended phase
+
+Add a small first-class browser/e2e test script and Next route harness for saved study output pages so future quiz UI tests can mount the real application route with fixture data instead of a standalone interaction harness.
+
+### Suggested commit message
+
+```bash
+test quiz review interactions
+```
+
+---
+
 ## Session Update - 2026-05-15 (Improve Quiz Answer Feedback)
 
 ### What changed

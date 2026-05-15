@@ -136,7 +136,7 @@ export function StudyOutputQuizPackPage({
             ))}
           </div>
           <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', marginTop: '0.8rem' }}>
-            <button type="button" onClick={startQuiz} className="ui-button ui-button-secondary ui-button-xs" disabled={!resolvedSelectedCount}>
+            <button type="button" onClick={startQuiz} className="ui-button ui-button-secondary ui-button-xs" disabled={!resolvedSelectedCount} data-testid="quiz-start">
               Start Quiz
             </button>
           </div>
@@ -199,11 +199,11 @@ export function StudyOutputQuizPackPage({
           </div>
         </section>
 
-        <section className="reviewer-panel reviewer-panel-hero reviewer-print-hide">
+        <section className="reviewer-panel reviewer-panel-hero reviewer-print-hide" data-testid="quiz-review-card">
           <p className="reviewer-section-label">{labelForQuizItemType(currentItem.type)}</p>
           <div style={{ display: 'grid', gap: '0.55rem', marginTop: '0.7rem' }}>
             <p className="reviewer-section-label">Question</p>
-            <p className="reviewer-intro" style={{ marginTop: 0 }}>{currentItem.prompt}</p>
+            <p className="reviewer-intro" style={{ marginTop: 0 }} data-testid="quiz-question">{currentItem.prompt}</p>
           </div>
           {isMatchingQuestion && currentItem.matchingPrompt && (
             <p className="reviewer-muted" style={{ marginTop: '0.6rem' }}>
@@ -223,6 +223,7 @@ export function StudyOutputQuizPackPage({
                     type="button"
                     onClick={() => setSelectedChoice(choice)}
                     className="reviewer-mini-card"
+                    data-testid={choice === currentItem.answer ? 'quiz-choice-correct' : 'quiz-choice'}
                     style={{
                       textAlign: 'left',
                       borderColor: isAnswer
@@ -269,16 +270,18 @@ export function StudyOutputQuizPackPage({
               onClick={() => setRevealed(true)}
               className="ui-button ui-button-secondary ui-button-xs"
               disabled={revealed || (isChoiceQuestion && !hasInput)}
+              data-testid="quiz-check-answer"
             >
               {isChoiceQuestion ? 'Check answer' : quizPack.answerRevealLabel}
             </button>
-            <button type="button" onClick={resetQuestionState} className="ui-button ui-button-ghost ui-button-xs">
+            <button type="button" onClick={resetQuestionState} className="ui-button ui-button-ghost ui-button-xs" data-testid="quiz-reset">
               Reset question
             </button>
             <button
               type="button"
               onClick={() => moveToIndex((activeIndex + 1) % activeItems.length)}
               className="ui-button ui-button-ghost ui-button-xs"
+              data-testid="quiz-next"
             >
               Next question
             </button>
@@ -288,19 +291,19 @@ export function StudyOutputQuizPackPage({
           </div>
 
           {revealed && (
-            <div className="reviewer-mini-card" style={{ marginTop: '0.9rem', display: 'grid', gap: '0.65rem' }}>
+            <div className="reviewer-mini-card" style={{ marginTop: '0.9rem', display: 'grid', gap: '0.65rem' }} data-testid="quiz-feedback">
               {isChoiceQuestion ? (
                 <div>
                   <p className="reviewer-section-label">Result</p>
-                  <p style={{ margin: '0.25rem 0 0', color: selectedIsCorrect ? 'var(--accent-foreground)' : 'var(--amber)', fontWeight: 700 }}>
+                  <p style={{ margin: '0.25rem 0 0', color: selectedIsCorrect ? 'var(--accent-foreground)' : 'var(--amber)', fontWeight: 700 }} data-testid="quiz-result">
                     {selectedIsCorrect ? 'Correct' : selectedIsIncorrect ? 'Incorrect' : 'Answer revealed'}
                   </p>
                   {selectedChoice ? (
-                    <p className="reviewer-muted" style={{ marginTop: '0.25rem' }}>Selected answer: {selectedChoice}</p>
+                    <p className="reviewer-muted" style={{ marginTop: '0.25rem' }} data-testid="quiz-selected-answer">Selected answer: {selectedChoice}</p>
                   ) : null}
                 </div>
               ) : (
-                <div>
+                <div data-testid="quiz-identification-review">
                   <p className="reviewer-section-label">Identification review</p>
                   {draftAnswer.trim() ? (
                     <p className="reviewer-muted" style={{ marginTop: '0.25rem' }}>Your answer: {draftAnswer.trim()}</p>
@@ -310,23 +313,23 @@ export function StudyOutputQuizPackPage({
 
               <div>
                 <p className="reviewer-section-label">Correct answer</p>
-                <strong>{currentItem.answer}</strong>
+                <strong data-testid="quiz-correct-answer">{currentItem.answer}</strong>
               </div>
 
               <div>
                 <p className="reviewer-section-label">Explanation</p>
-                <p>{currentItem.explanation}</p>
+                <p data-testid="quiz-explanation">{currentItem.explanation}</p>
               </div>
 
               <div>
                 <p className="reviewer-section-label">Review cue</p>
-                <p className="reviewer-muted">Review this concept: {sourceConceptTitle}</p>
+                <p className="reviewer-muted" data-testid="quiz-review-cue">Review this concept: {sourceConceptTitle}</p>
               </div>
 
               {currentItem.sourceWording ? (
-                <p className="reviewer-muted">Source-backed note: &quot;{currentItem.sourceWording}&quot;</p>
+                <p className="reviewer-muted" data-testid="quiz-source-note">Source-backed note: &quot;{currentItem.sourceWording}&quot;</p>
               ) : currentItem.sourceBasis ? (
-                <p className="reviewer-muted">Source-backed note: {currentItem.sourceBasis}</p>
+                <p className="reviewer-muted" data-testid="quiz-source-note">Source-backed note: {currentItem.sourceBasis}</p>
               ) : null}
               <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', marginTop: '0.35rem' }}>
                 <button type="button" onClick={() => markSelfReview('correct')} className={currentReviewState === 'correct' ? 'ui-button ui-button-secondary ui-button-xs' : 'ui-button ui-button-ghost ui-button-xs'}>
