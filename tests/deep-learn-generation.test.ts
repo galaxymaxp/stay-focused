@@ -14,6 +14,7 @@ import {
   DeepLearnGenerationIncompleteError,
   DeepLearnGenerationBlockedError,
   DeepLearnGeneratedContentValidationError,
+  buildExamReviewerFromOutline,
   buildDeterministicReviewerFallback,
   buildDeepLearnContentFromSourceMap,
   buildAcademicStructuredGrounding,
@@ -965,6 +966,108 @@ test('deterministic reviewer fallback does not make garbage source text saveable
   assert.equal(validation.message, DEEP_LEARN_EMPTY_STUDY_ARTIFACTS_MESSAGE)
 })
 
+test('outline exam reviewer fallback builds useful questions from bullet-heavy IT Security notes', () => {
+  const content = buildExamReviewerFromOutline(BULLET_HEAVY_IT_SECURITY_SOURCE, 'IT Security Outline')
+
+  assert.ok(content)
+  assert.equal(validateDeepLearnContentReadyForSave(content).ok, true)
+  assert.ok(content.sections.some((section) => section.heading === 'Key Terms' && /Confidentiality|Malware|Phishing/i.test(section.body)))
+  assert.ok(content.sections.some((section) => section.heading === 'Identification Questions' && /Answer:/i.test(section.body)))
+  assert.ok(content.sections.some((section) => section.heading === 'Multiple Choice Questions' && /Which statement matches/i.test(section.body)))
+  assert.ok(content.sections.some((section) => section.heading === 'True/False Questions' && /True or False/i.test(section.body)))
+  assert.ok(content.sections.some((section) => section.heading === 'Quick Review Notes' && /CIA triad|malware|attacks/i.test(section.body)))
+  assert.ok(content.answerBank.length >= 6)
+  assert.ok(content.identificationItems.length >= 6)
+  assert.ok(content.likelyQuizTargets.some((item) => /Multiple choice/i.test(item.target)))
+  assert.ok(content.likelyQuizTargets.some((item) => /True or false/i.test(item.target)))
+  assert.doesNotMatch(JSON.stringify(content), /metadata|uuid|debug|file title|quality note|unable to transcribe/i)
+})
+
+test('Deep Learn generation repairs sparse structured output with outline exam reviewer', async () => {
+  const resource = createLearnResource({
+    title: 'Arnis Outline.pdf',
+    type: 'File',
+    contentType: 'application/pdf',
+    extension: 'pdf',
+    normalizedSourceType: 'pdf',
+    extractedText: SPARSE_RELATION_ARNIS_OUTLINE_SOURCE,
+    extractedTextPreview: SPARSE_RELATION_ARNIS_OUTLINE_SOURCE.slice(0, 420),
+    extractedCharCount: SPARSE_RELATION_ARNIS_OUTLINE_SOURCE.length,
+    extractionStatus: 'completed',
+    quality: 'usable',
+    groundingLevel: 'strong',
+    previewState: 'full_text_available',
+    fullTextAvailable: true,
+    storedTextLength: SPARSE_RELATION_ARNIS_OUTLINE_SOURCE.length,
+    storedPreviewLength: 420,
+    storedWordCount: SPARSE_RELATION_ARNIS_OUTLINE_SOURCE.split(/\s+/).length,
+  })
+  const storedResource = createStoredResource({
+    title: 'Arnis Outline.pdf',
+    resourceType: 'File',
+    contentType: 'application/pdf',
+    extension: 'pdf',
+    extractedText: SPARSE_RELATION_ARNIS_OUTLINE_SOURCE,
+    extractedTextPreview: SPARSE_RELATION_ARNIS_OUTLINE_SOURCE.slice(0, 420),
+    extractedCharCount: SPARSE_RELATION_ARNIS_OUTLINE_SOURCE.length,
+    extractionStatus: 'completed',
+  })
+  const result = await generateDeepLearnStructuredContent(
+    {
+      ...createContext(resource, storedResource),
+      promptGrounding: buildAcademicStructuredGrounding(SPARSE_RELATION_ARNIS_OUTLINE_SOURCE),
+      sourceGrounding: {
+        sourceType: 'PDF',
+        extractionQuality: 'usable',
+        sourceTextQuality: 'meaningful',
+        groundingStrategy: 'stored_extract',
+        usedAiFallback: false,
+        qualityReason: null,
+        warning: null,
+        charCount: SPARSE_RELATION_ARNIS_OUTLINE_SOURCE.length,
+        sourceMap: null,
+      },
+      generationMode: 'text' as const,
+    },
+    {
+      generationMode: 'text',
+      promptGrounding: buildAcademicStructuredGrounding(SPARSE_RELATION_ARNIS_OUTLINE_SOURCE),
+      sourceGrounding: {
+        sourceType: 'PDF',
+        extractionQuality: 'usable',
+        sourceTextQuality: 'meaningful',
+        groundingStrategy: 'stored_extract',
+        usedAiFallback: false,
+        qualityReason: null,
+        warning: null,
+        charCount: SPARSE_RELATION_ARNIS_OUTLINE_SOURCE.length,
+        sourceMap: null,
+      },
+      refreshedResource: null,
+      scanFallbackInput: null,
+    },
+    async ({ schemaName }) => {
+      if (schemaName === 'deep_learn_high_yield_stage') {
+        return jsonResponse({
+          title: 'Arnis Outline',
+          overview: 'The source has Arnis outline notes.',
+          sections: [{ heading: 'Source Summary', body: 'The source has Arnis outline notes.' }],
+        })
+      }
+      if (schemaName === 'deep_learn_identification_stage') return jsonResponse({ sections: [], identificationItems: [] })
+      if (schemaName === 'deep_learn_quick_answers_stage') return jsonResponse({ sections: [], answerBank: [] })
+      return jsonResponse({ sections: [], distinctions: [], likelyQuizTargets: [], cautionNotes: [] })
+    },
+  )
+
+  assert.equal(result.compactFallbackUsed, false)
+  assert.equal(validateDeepLearnContentReadyForSave(result.content).ok, true)
+  assert.ok(result.content.sections.some((section) => section.heading === 'Multiple Choice Questions'))
+  assert.ok(result.content.sections.some((section) => section.heading === 'True/False Questions'))
+  assert.match(JSON.stringify(result.content), /RA 9850|Doce Pares|baston|classification/i)
+  assert.doesNotMatch(JSON.stringify(result.content), /metadata|uuid|debug|file title|quality note|unable to transcribe/i)
+})
+
 test('Deep Learn invalid JSON fails cleanly without fallback retry loop', async () => {
   let calls = 0
   await assert.rejects(
@@ -1746,6 +1849,40 @@ const IT_SECURITY_SAMPLE_SOURCE = [
   'Methods to Deny Service - Overwhelm quantity of traffic - Send enormous quantity of data at a rate that cannot be handled - Maliciously formatted packets - Zombie - Infected Host - Botnet - Network of Infected Hosts - SEO Poisoning - Increase traffic to malicious websites',
   'Blended Attacks - Uses multiple techniques to compromise a target - Uses a hybrid of worms, Trojan horses, spyware, keyloggers, spam, and phishing schemes - DDoS combined with phishing emails',
   'Impact Reduction - Communicate the Issue - Be sincere and accountable - Provide details - Understand the cause of the breach - Take steps to avoid another similar breach in the future - Ensure all systems are clean - Educate employees, partners, and customers',
+].join('\n')
+
+const BULLET_HEAVY_IT_SECURITY_SOURCE = [
+  'IT Security Exam Outline',
+  'Confidentiality: information is protected from unauthorized access and disclosure.',
+  'Integrity: data stays accurate, complete, and protected from improper modification.',
+  'Availability: systems and data remain accessible to authorized users when needed.',
+  'CIA triad: Confidentiality, Integrity, Availability.',
+  'Malware: malicious software that damages systems, steals data, or disrupts operations.',
+  'Virus: malware that attaches to files and spreads when the file runs.',
+  'Trojan Horse: malware disguised as legitimate software.',
+  'Worm: self-replicating malware that spreads across networks.',
+  'Phishing: a social engineering attack that tricks users into revealing credentials.',
+  'Denial of Service: an attack that overwhelms a service so legitimate users cannot access it.',
+  'Symptoms of malware: slow computer speed, frequent crashes, unknown files, modified files, deleted files, unknown processes, and email sent without user consent.',
+  'Methods of attack: social engineering, password cracking, vulnerability exploitation, malware infection, denial of service, and blended attacks.',
+  'Impact reduction: communicate the issue, explain details, identify the cause, clean systems, and educate employees.',
+].join('\n')
+
+const SPARSE_RELATION_ARNIS_OUTLINE_SOURCE = [
+  'Arnis PATHFit Exam Outline',
+  '* Arnis Filipino martial art and sport using sticks blades and empty hand techniques for defense and competition.',
+  '* RA 9850 declared Arnis the national martial art and sport of the Philippines in 2009.',
+  '* Baston primary rattan stick used in Arnis practice for striking blocking and partner drills.',
+  '* Daga training dagger used for short weapon practice and disarming drills.',
+  '* Bangkaw six foot pole weapon used in long weapon training.',
+  '* Doce Pares Cebu based Arnis organization connected with twelve methods and tournament practice.',
+  '* NARAPHIL organization formed in 1975 to promote and standardize Arnis in the Philippines.',
+  '* WEKAF international federation formed in 1989 to support Arnis competition rules.',
+  '* Main classifications largo mano medio and corto describe long medium and close range fighting.',
+  '* Regional classifications Balintawak Doce Pares Modern Arnis and Kalis Ilustrisimo identify systems.',
+  '* Courtesy salutation attention stance weapon to chest bow and return to ready stance.',
+  '* Strike targets head temple shoulder elbow knee torso and ribs for basic angle practice.',
+  '* Important dates 1975 NARAPHIL formation 1989 WEKAF formation and 2009 RA 9850 approval.',
 ].join('\n')
 
 const PATHFIT_ARNIS_SAMPLE_SOURCE = [

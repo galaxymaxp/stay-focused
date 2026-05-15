@@ -9,6 +9,7 @@ import {
 import {
   buildAcademicSourceMap,
   buildAcademicSourceMapGrounding,
+  countValidatedAcademicRelations,
   validateAcademicSourceMap,
   type AcademicSourceMap,
   type AcademicSourceMapUnit,
@@ -382,6 +383,14 @@ interface DeepLearnStageErrorOptions {
   level: DeepLearnFallbackLevel
   kind: 'size' | 'timeout' | 'provider' | 'invalid_json' | 'empty'
   partialOutput?: Record<string, unknown> | null
+}
+
+interface DeepLearnSourceDiagnostics {
+  id: string | null
+  title: string | null
+  academicTextCharCount: number
+  sourceFieldUsed: 'extracted_text' | 'visual_extracted_text' | 'extracted_text_preview' | 'none'
+  sourceTextQualityReason: string | null
 }
 
 export class DeepLearnGenerationBlockedError extends Error {
@@ -817,7 +826,13 @@ async function runDeepLearnStagePlan(
   const validation = validateDeepLearnContentReadyForSave(content)
   if (validation.ok) return content
 
-  logDeepLearnReviewerValidationDebug('validation_failed', input.sourceGrounding.sourceMap, content, validation)
+  logDeepLearnReviewerValidationDebug(
+    'validation_failed',
+    input.sourceGrounding.sourceMap,
+    content,
+    validation,
+    getSelectedSourceDiagnostics(input.resource),
+  )
 
   const repaired = repairDeepLearnContentFromStructuredSource(input, content, level)
   if (repaired) return repaired
@@ -847,6 +862,7 @@ export function validateDeepLearnContentReadyForSave(content: DeepLearnGenerated
     return {
       ok: false as const,
       message: DEEP_LEARN_EMPTY_STUDY_ARTIFACTS_MESSAGE,
+      reason: hasLowInformationContent ? 'low_information_content' as const : 'insufficient_structured_artifacts' as const,
       counts: { answerBankCount, identificationCount, quizTargetCount, distinctConceptCount },
     }
   }
@@ -855,6 +871,7 @@ export function validateDeepLearnContentReadyForSave(content: DeepLearnGenerated
     return {
       ok: false as const,
       message: 'Deep Learn could not clean internal reviewer labels from this Study Pack.',
+      reason: 'internal_pipeline_text' as const,
       counts: { answerBankCount, identificationCount, quizTargetCount, distinctConceptCount },
     }
   }
@@ -863,6 +880,7 @@ export function validateDeepLearnContentReadyForSave(content: DeepLearnGenerated
     return {
       ok: false as const,
       message: 'Deep Learn could not build clean reviewer headings from this source.',
+      reason: 'malformed_headings' as const,
       counts: { answerBankCount, identificationCount, quizTargetCount, distinctConceptCount },
     }
   }
@@ -871,6 +889,7 @@ export function validateDeepLearnContentReadyForSave(content: DeepLearnGenerated
     return {
       ok: false as const,
       message: 'Deep Learn could not compose clean exam reviewer wording from this source.',
+      reason: 'composer_leakage' as const,
       counts: { answerBankCount, identificationCount, quizTargetCount, distinctConceptCount },
     }
   }
@@ -879,6 +898,7 @@ export function validateDeepLearnContentReadyForSave(content: DeepLearnGenerated
     return {
       ok: false as const,
       message: 'Deep Learn could not deduplicate enough reviewer concepts from this source.',
+      reason: 'duplicated_concepts' as const,
       counts: { answerBankCount, identificationCount, quizTargetCount, distinctConceptCount },
     }
   }
@@ -886,6 +906,7 @@ export function validateDeepLearnContentReadyForSave(content: DeepLearnGenerated
   return {
     ok: true as const,
     message: null,
+    reason: null,
     counts: { answerBankCount, identificationCount, quizTargetCount, distinctConceptCount },
   }
 }
@@ -902,6 +923,7 @@ function logDeepLearnReviewerValidationDebug(
   sourceMap: AcademicSourceMap | null | undefined,
   content: DeepLearnGeneratedContent,
   validation: ReturnType<typeof validateDeepLearnContentReadyForSave>,
+  sourceDiagnostics?: DeepLearnSourceDiagnostics | null,
 ) {
   const sourceMapValidation = sourceMap ? validateAcademicSourceMap(sourceMap) : null
   const sourceMapUnitCounts = sourceMap
@@ -919,11 +941,21 @@ function logDeepLearnReviewerValidationDebug(
 
   const payload = {
     event,
+    selectedSource: sourceDiagnostics
+      ? {
+          id: sourceDiagnostics.id,
+          title: sourceDiagnostics.title,
+          academicTextCharCount: sourceDiagnostics.academicTextCharCount,
+          sourceFieldUsed: sourceDiagnostics.sourceFieldUsed,
+        }
+      : null,
     sourceMap: {
       valid: Boolean(sourceMapValidation?.ok),
       reason: sourceMapValidation?.reason ?? null,
       unitCount: sourceMap?.units.length ?? 0,
       unitCounts: sourceMapUnitCounts,
+      relationCountBeforeValidation: sourceMap?.relations?.length ?? 0,
+      relationCountAfterValidation: countValidatedAcademicRelations(sourceMap),
     },
     reviewer: {
       sectionCount: content.sections.length,
@@ -935,7 +967,8 @@ function logDeepLearnReviewerValidationDebug(
     },
     validation: {
       ok: validation.ok,
-      reason: validation.message,
+      reason: validation.reason,
+      message: validation.message,
     },
   }
 
@@ -951,16 +984,34 @@ function repairDeepLearnContentFromStructuredSource(
   content: DeepLearnGeneratedContent,
   level: DeepLearnFallbackLevel,
 ) {
+  const sourceDiagnostics = getSelectedSourceDiagnostics(input.resource)
   const sourceMapFallback = buildDeepLearnContentFromSourceMap(input.sourceGrounding.sourceMap, input.resource.title, content)
   if (sourceMapFallback) {
     const repaired = level === 'full' ? sourceMapFallback : trimDeepLearnContent(sourceMapFallback, level)
     const validation = validateDeepLearnContentReadyForSave(repaired)
-    logDeepLearnReviewerValidationDebug('source_map_repair', input.sourceGrounding.sourceMap, repaired, validation)
+    logDeepLearnReviewerValidationDebug('source_map_repair', input.sourceGrounding.sourceMap, repaired, validation, sourceDiagnostics)
     if (validation.ok) return repaired
   }
 
   const sourceText = selectBestGroundingText(input.resource) || input.promptGrounding
   if (!isMeaningfulDeepLearnSourceText({ text: sourceText, title: input.resource.title })) return null
+
+  const outlineSourceMap = input.sourceGrounding.sourceMap ?? buildAcademicSourceMap(sourceText)
+  const relationCountAfterValidation = countValidatedAcademicRelations(outlineSourceMap)
+  const currentValidation = validateDeepLearnContentReadyForSave(content)
+  const currentCounts = currentValidation.counts
+  const missingMajorGeneratedArtifacts = currentCounts.answerBankCount === 0
+    || currentCounts.identificationCount === 0
+    || currentCounts.quizTargetCount === 0
+  if ((input.sourceGrounding.sourceMap == null || relationCountAfterValidation < 3 || !validateAcademicSourceMap(outlineSourceMap).ok) && missingMajorGeneratedArtifacts) {
+    const outlineFallback = buildExamReviewerFromOutline(sourceText, input.resource.title, content)
+    if (outlineFallback) {
+      const repaired = level === 'full' ? outlineFallback : trimDeepLearnContent(outlineFallback, level)
+      const validation = validateDeepLearnContentReadyForSave(repaired)
+      logDeepLearnReviewerValidationDebug('structured_source_repair', outlineSourceMap, repaired, validation, sourceDiagnostics)
+      if (validation.ok) return repaired
+    }
+  }
 
   const structuredSource = structureAcademicSourceText(sourceText)
   if (!hasDeterministicReviewerSourceUnits(structuredSource)) return null
@@ -968,7 +1019,7 @@ function repairDeepLearnContentFromStructuredSource(
   const fallback = buildDeterministicReviewerFallback(structuredSource, input.resource.title, content)
   const repaired = level === 'full' ? fallback : trimDeepLearnContent(fallback, level)
   const validation = validateDeepLearnContentReadyForSave(repaired)
-  logDeepLearnReviewerValidationDebug('structured_source_repair', input.sourceGrounding.sourceMap, repaired, validation)
+  logDeepLearnReviewerValidationDebug('structured_source_repair', outlineSourceMap, repaired, validation, sourceDiagnostics)
   return validation.ok ? repaired : null
 }
 
@@ -1963,6 +2014,238 @@ export function buildDeterministicReviewerFallback(
   return normalizeDeepLearnGeneratedContent(fallbackOutput, resourceTitle)
 }
 
+export function buildExamReviewerFromOutline(
+  sourceText: string,
+  resourceTitle: string,
+  seedContent: Partial<DeepLearnGeneratedContent> = {},
+): DeepLearnGeneratedContent | null {
+  if (!isMeaningfulDeepLearnSourceText({ text: sourceText, title: resourceTitle })) return null
+
+  const structuredSource = structureAcademicSourceText(sourceText)
+  const entries = buildOutlineReviewerEntries(structuredSource).slice(0, 18)
+  if (entries.length < 6) return null
+
+  const answerBank = entries.slice(0, 12).map((entry, index) => ({
+    cue: entry.term,
+    kind: entry.kind,
+    answer: wordingFromSentence(entry.answer),
+    compactAnswer: wordingFromSentence(entry.answer, 180),
+    importance: index < 6 ? 'high' as const : 'medium' as const,
+    sortKey: null,
+    distractors: entries
+      .filter((candidate) => candidate.term !== entry.term)
+      .map((candidate) => candidate.term)
+      .slice(0, 3),
+    reviewText: entry.term,
+    draftExplanation: entry.answer,
+    sourceSnippet: entry.sourceSnippet,
+    linkedDraftSectionId: null,
+    supportingContext: entry.answer,
+    compareContext: null,
+    simplifiedWording: null,
+    confusionNotes: [],
+    relatedConcepts: entries
+      .filter((candidate) => candidate.term !== entry.term)
+      .map((candidate) => candidate.term)
+      .slice(0, 5),
+  }))
+
+  const identificationItems = entries.slice(0, 12).map((entry, index) => ({
+    prompt: entry.question,
+    kind: entry.kind,
+    answer: wordingFromSentence(entry.term),
+    importance: index < 6 ? 'high' as const : 'medium' as const,
+    distractors: entries
+      .filter((candidate) => candidate.term !== entry.term)
+      .map((candidate) => candidate.term)
+      .slice(0, 3),
+    reviewText: entry.question,
+    draftExplanation: entry.answer,
+    sourceSnippet: entry.sourceSnippet,
+    linkedDraftSectionId: null,
+    supportingContext: entry.answer,
+    compareContext: null,
+    simplifiedWording: null,
+    confusionNotes: [],
+    relatedConcepts: entries
+      .filter((candidate) => candidate.term !== entry.term)
+      .map((candidate) => candidate.term)
+      .slice(0, 5),
+  }))
+
+  const likelyQuizTargets = [
+    ...entries.slice(0, 4).map((entry, index) => ({
+      target: `Identification: ${entry.question}`,
+      reason: entry.answer,
+      importance: index < 3 ? 'high' as const : 'medium' as const,
+      reviewText: entry.term,
+      draftExplanation: entry.answer,
+      sourceSnippet: entry.sourceSnippet,
+      linkedDraftSectionId: null,
+      supportingContext: entry.answer,
+      compareContext: null,
+      simplifiedWording: null,
+      confusionNotes: [],
+      relatedConcepts: entries.filter((candidate) => candidate.term !== entry.term).map((candidate) => candidate.term).slice(0, 5),
+    })),
+    ...entries.slice(4, 8).map((entry, index) => ({
+      target: `Multiple choice: Which source statement matches ${entry.term}?`,
+      reason: entry.answer,
+      importance: index < 2 ? 'high' as const : 'medium' as const,
+      reviewText: entry.term,
+      draftExplanation: entry.answer,
+      sourceSnippet: entry.sourceSnippet,
+      linkedDraftSectionId: null,
+      supportingContext: entry.answer,
+      compareContext: null,
+      simplifiedWording: null,
+      confusionNotes: [],
+      relatedConcepts: entries.filter((candidate) => candidate.term !== entry.term).map((candidate) => candidate.term).slice(0, 5),
+    })),
+    ...entries.slice(8, 12).map((entry) => ({
+      target: `True or false: ${entry.answer}`,
+      reason: 'Answer: True.',
+      importance: 'medium' as const,
+      reviewText: entry.term,
+      draftExplanation: entry.answer,
+      sourceSnippet: entry.sourceSnippet,
+      linkedDraftSectionId: null,
+      supportingContext: entry.answer,
+      compareContext: null,
+      simplifiedWording: null,
+      confusionNotes: [],
+      relatedConcepts: entries.filter((candidate) => candidate.term !== entry.term).map((candidate) => candidate.term).slice(0, 5),
+    })),
+  ].slice(0, 12)
+
+  const sections = [
+    {
+      heading: 'Key Terms',
+      body: entries.slice(0, 10).map((entry) => `- ${entry.term}: ${entry.answer}`).join('\n'),
+    },
+    {
+      heading: 'Identification Questions',
+      body: entries.slice(0, 8).map((entry) => `- ${entry.question} Answer: ${entry.term}.`).join('\n'),
+    },
+    {
+      heading: 'Multiple Choice Questions',
+      body: entries.slice(0, 5).map((entry) => formatOutlineMultipleChoiceQuestion(entry, entries)).join('\n\n'),
+    },
+    {
+      heading: 'True/False Questions',
+      body: entries.slice(5, 10).map((entry) => `- True or False: ${entry.answer} Answer: True.`).join('\n'),
+    },
+    {
+      heading: 'Quick Review Notes',
+      body: entries.slice(0, 12).map((entry) => `- ${entry.answer}`).join('\n'),
+    },
+  ]
+
+  const fallbackOutput: Record<string, unknown> = {
+    title: seedContent.title || resourceTitle,
+    overview: seedContent.overview || `Exam reviewer from outline notes for ${resourceTitle}.`,
+    sections,
+    answerBank: mergeFallbackArray(seedContent.answerBank, answerBank),
+    identificationItems: mergeFallbackArray(seedContent.identificationItems, identificationItems),
+    distinctions: Array.isArray(seedContent.distinctions) ? seedContent.distinctions : [],
+    likelyQuizTargets: mergeFallbackArray(seedContent.likelyQuizTargets, likelyQuizTargets),
+    cautionNotes: Array.isArray(seedContent.cautionNotes) ? seedContent.cautionNotes : [],
+  }
+
+  const normalized = normalizeDeepLearnGeneratedContent(fallbackOutput, resourceTitle)
+  return validateDeepLearnContentReadyForSave(normalized).ok ? normalized : null
+}
+
+interface OutlineReviewerEntry {
+  term: string
+  answer: string
+  question: string
+  sourceSnippet: string
+  kind: 'term_definition' | 'fact'
+}
+
+function buildOutlineReviewerEntries(structuredSource: AcademicStructuredGrounding): OutlineReviewerEntry[] {
+  const definitionEntries = structuredSource.termDefinitions.map((item) => ({
+    term: item.term,
+    answer: item.definition,
+    question: `What is ${item.term}?`,
+    sourceSnippet: `${item.term}: ${item.definition}`,
+    kind: 'term_definition' as const,
+  }))
+
+  const listEntries = structuredSource.lists.flatMap((list) => [
+    {
+      term: list.heading,
+      answer: `${list.heading}: ${formatInlineList(list.items)}.`,
+      question: `Enumerate ${list.heading}.`,
+      sourceSnippet: `${list.heading}: ${formatInlineList(list.items)}`,
+      kind: 'fact' as const,
+    },
+    ...list.items.slice(0, 8).map((item) => ({
+      term: item,
+      answer: `${item} belongs under ${list.heading}.`,
+      question: `Identify one item under ${list.heading}.`,
+      sourceSnippet: `${list.heading}: ${formatInlineList(list.items)}`,
+      kind: 'fact' as const,
+    })),
+  ])
+
+  const groupEntries = structuredSource.conceptGroups.flatMap((group) => [
+    {
+      term: group.parent,
+      answer: `${group.parent}: ${formatInlineList(group.children)}.`,
+      question: `What items are connected to ${group.parent}?`,
+      sourceSnippet: `${group.parent}: ${formatInlineList(group.children)}`,
+      kind: 'fact' as const,
+    },
+    ...group.children.slice(0, 6).map((child) => ({
+      term: child,
+      answer: `${child} is connected to ${group.parent}.`,
+      question: `Which concept is connected to ${group.parent}?`,
+      sourceSnippet: `${group.parent}: ${formatInlineList(group.children)}`,
+      kind: 'fact' as const,
+    })),
+  ])
+
+  const sentenceEntries = extractStudySentences(structuredSource.normalizedText).map((sentence) => {
+    const term = extractTermCandidates(sentence)[0] ?? buildSentenceCue(sentence, 'Outline note')
+    return {
+      term,
+      answer: sentence,
+      question: `What should you remember about ${term}?`,
+      sourceSnippet: sentence,
+      kind: 'fact' as const,
+    }
+  })
+
+  return uniqueBy([...definitionEntries, ...listEntries, ...groupEntries, ...sentenceEntries]
+    .map((entry) => ({
+      ...entry,
+      term: normalizeStudyOutputHeading(cleanGeneratedSourceMapText(entry.term)),
+      answer: cleanGeneratedSourceMapText(entry.answer),
+      question: cleanGeneratedSourceMapText(entry.question),
+      sourceSnippet: cleanGeneratedSourceMapText(entry.sourceSnippet),
+    }))
+    .filter((entry) => entry.term.length >= 3 && entry.answer.length >= 8)
+    .filter((entry) => !isWeakGeneratedSourceMapTerm(entry.term))
+    .filter((entry) => !containsInternalPipelineText(`${entry.term} ${entry.answer} ${entry.sourceSnippet}`)),
+  (entry) => normalizeAcademicLookup(`${entry.term}:${entry.answer}`))
+}
+
+function formatOutlineMultipleChoiceQuestion(entry: OutlineReviewerEntry, entries: OutlineReviewerEntry[]) {
+  const distractors = entries
+    .filter((candidate) => candidate.term !== entry.term && candidate.answer !== entry.answer)
+    .map((candidate) => candidate.answer)
+    .slice(0, 3)
+  const choices = uniqueStringList([entry.answer, ...distractors]).slice(0, 4)
+  const labels = ['A', 'B', 'C', 'D']
+  return [
+    `- Which statement matches ${entry.term}?`,
+    ...choices.map((choice, index) => `  ${labels[index]}. ${choice}`),
+    `  Answer: ${entry.answer}`,
+  ].join('\n')
+}
+
 function hasDeterministicReviewerSourceUnits(structuredSource: AcademicStructuredGrounding) {
   return structuredSource.termDefinitions.length > 0
     || structuredSource.lists.length > 0
@@ -2867,6 +3150,35 @@ function selectBestGroundingText(resource: ModuleSourceResource) {
   if (!normalizedText) return ''
 
   return normalizedText
+}
+
+function getSelectedSourceDiagnostics(resource: ModuleSourceResource): DeepLearnSourceDiagnostics {
+  const candidates = [
+    { field: 'extracted_text' as const, text: resource.extractedText },
+    {
+      field: 'visual_extracted_text' as const,
+      text: resource.visualExtractionStatus === 'completed' ? resource.visualExtractedText : null,
+    },
+    { field: 'extracted_text_preview' as const, text: resource.extractedTextPreview },
+  ]
+    .filter((candidate): candidate is { field: Exclude<DeepLearnSourceDiagnostics['sourceFieldUsed'], 'none'>; text: string } => typeof candidate.text === 'string' && candidate.text.trim().length > 0)
+    .map((candidate) => ({
+      ...candidate,
+      quality: classifyExtractedTextQuality({ text: candidate.text, title: resource.title }),
+    }))
+
+  const selected = candidates
+    .filter((candidate) => candidate.quality.quality === 'meaningful')
+    .sort((left, right) => right.quality.candidateCharCount - left.quality.candidateCharCount)[0]
+    ?? candidates.sort((left, right) => right.quality.candidateCharCount - left.quality.candidateCharCount)[0]
+
+  return {
+    id: resource.id ?? null,
+    title: resource.title ?? null,
+    academicTextCharCount: selected?.quality.candidateCharCount ?? 0,
+    sourceFieldUsed: selected?.field ?? 'none',
+    sourceTextQualityReason: selected?.quality.reason ?? null,
+  }
 }
 
 function truncateForModel(value: string, maxChars: number) {

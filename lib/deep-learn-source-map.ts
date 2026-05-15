@@ -515,6 +515,10 @@ export function validateAcademicSourceMap(sourceMap: AcademicSourceMap): Academi
   return { ok: true, reason: 'ok', unitCount, quoteCount }
 }
 
+export function countValidatedAcademicRelations(sourceMap: AcademicSourceMap | null | undefined) {
+  return (sourceMap?.relations ?? []).filter(isMeaningfulAcademicRelation).length
+}
+
 export function buildAcademicSourceMapGrounding(sourceText: string, maxChars = DEFAULT_SOURCE_MAP_GROUNDING_CHARS) {
   const sourceMap = buildAcademicSourceMap(sourceText)
   if (!sourceMap.validation.ok) return ''

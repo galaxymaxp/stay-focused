@@ -1,7 +1,63 @@
 # Stay Focused — AI Session Handoff
 
 Author: galaxymaxp omgraythekid@gmail.com
-Last Updated: 2026-05-15
+Last Updated: 2026-05-16
+
+---
+
+## Session Update - 2026-05-16 (Outline Reviewer Fallback)
+
+### What changed
+
+- Added Deep Learn validation diagnostics that log the selected source id/title, selected academic text char count, selected source field, source-map relation counts before and after validation, generated section/card/question counts, and the specific save-validator reason.
+- Added `countValidatedAcademicRelations` to expose the same meaningful relation count used by Source Map validation.
+- Added an "Exam Reviewer from Outline" deterministic fallback for meaningful academic source text when generated artifacts are sparse and Source Map relation repair is missing or too sparse.
+- The outline fallback supports bullet-heavy notes and produces Key Terms, Identification Questions, Multiple Choice Questions, True/False Questions, and Quick Review Notes while staying grounded in the selected source text.
+- Kept the existing strict block for empty, metadata-only, refusal, UUID/debug, and otherwise non-academic source text by requiring `isMeaningfulDeepLearnSourceText` before fallback generation.
+- Added regression coverage for bullet-heavy IT Security notes and sparse-relation Arnis outline notes.
+
+### Files touched
+
+- `lib/deep-learn-generation.ts`
+- `lib/deep-learn-source-map.ts`
+- `tests/deep-learn-generation.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Deep Learn could fail with "could not build enough structured study content" when selected extracted text was academically meaningful but the model output and relation/source-map repair path did not produce enough reusable sections, cards, and questions. Bullet-heavy notes can be valid exam material even when relation composition is sparse, so the new fallback builds an exam reviewer directly from cleaned selected source text instead of failing.
+
+### Tests run
+
+- `npm test -- deep-learn-generation` - passed
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- deep-learn-generation deep-learn-readiness study-output-reviewer study-output-quiz-pack source-map` - passed
+
+### Verification result
+
+- Passed all requested checks.
+- Verified bullet-heavy IT Security content produces key terms, identification questions, multiple choice questions, true/false questions, quick review notes, answer-bank items, identification items, and quiz targets.
+- Verified sparse-relation Arnis outline content repairs weak generated output into a valid saved Study Pack with exam-reviewer content.
+- Verified metadata/debug/refusal-style text remains excluded from fallback study content.
+
+### Known risks
+
+- The outline fallback is deterministic and extraction-pattern based; unusual outline layouts may still need more list/term parsing aliases after real-source QA.
+- Multiple choice distractors are source-derived but simple; future work can improve distractor quality while staying grounded.
+- Diagnostics currently log through the existing server console validation-debug path and should be monitored for volume in production.
+
+### Blockers
+
+- No blocker remains.
+
+### Next recommended step
+
+Retry the original failing Study Pack source and confirm the server logs show the selected source field, academic char count, relation counts, generated artifact counts, and either a successful source-map repair or outline fallback.
+
+### Suggested commit message
+
+fix outline fallback for deep learn generation
 
 ---
 
