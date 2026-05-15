@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { buildDeepLearnNoteRecord } from '../lib/deep-learn'
+import { MIN_DEEP_LEARN_QUIZ_ITEM_COUNT } from '../lib/deep-learn-quiz'
 import { buildAcademicSourceMap } from '../lib/deep-learn-source-map'
 import {
   buildDeepLearnQuizPackContent,
@@ -319,6 +320,63 @@ test('fixture-level Arnis quiz QA preserves timeline classification and useful d
     assert.ok(item.choices.every((choice) => !/all of the above|none of the above|joke/i.test(choice)))
   }
   assert.doesNotMatch(combined, /Source Notes|metadata|debug|\?\?\?\?|What is Historical Concept\?/i)
+})
+
+test('Arnis quiz derives rule-creator and pole spelling from source evidence', () => {
+  const sourceText = [
+    'Organizations and Timeline 1970 Doce Pares created the rules on sparring matches. 1989 WEKAF promoted international competition.',
+    'Equipment and Weapons • Baston - training stick • Daga - dagger • Bankaw - six-foot pole • Panangga - shield',
+    'Regional Classifications include Luzon, Visayans, and Mindanao.',
+  ].join('\n')
+  const items = buildQuizPackItems(createNote({
+    title: 'Arnis source evidence quiz',
+    overview: 'Arnis organizations and equipment.',
+    sourceGrounding: {
+      sourceType: 'PDF',
+      extractionQuality: 'usable',
+      sourceTextQuality: 'meaningful',
+      groundingStrategy: 'stored_extract',
+      usedAiFallback: false,
+      qualityReason: null,
+      warning: null,
+      charCount: sourceText.length,
+      sourceMap: buildAcademicSourceMap(sourceText),
+    },
+  }))
+
+  assert.ok(items.some((item) => item.prompt === 'Which organization created the rules on sparring matches?' && item.answer === 'Doce Pares'))
+  assert.ok(items.some((item) => item.prompt === 'Which weapon is a six-foot pole?' && item.answer === 'Bankaw'))
+  assert.ok(items.every((item) => item.sourceExcerpt && item.sourceUnitId))
+})
+
+test('generic quiz relation source does not import hardcoded IT or Arnis facts', () => {
+  const sourceText = [
+    'Photosynthesis is the process by which plants convert light energy into chemical energy.',
+    'Chloroplast components include thylakoid, stroma, chlorophyll, and grana.',
+    'Lab procedure 1. Place leaf disc in solution 2. Expose to light 3. Record floating discs 4. Compare rates.',
+    'Rate formula: rate = change in discs / time.',
+  ].join('\n')
+  const items = buildQuizPackItems(createNote({
+    title: 'Biology quiz',
+    overview: 'Biology source.',
+    sourceGrounding: {
+      sourceType: 'PDF',
+      extractionQuality: 'usable',
+      sourceTextQuality: 'meaningful',
+      groundingStrategy: 'stored_extract',
+      usedAiFallback: false,
+      qualityReason: null,
+      warning: null,
+      charCount: sourceText.length,
+      sourceMap: buildAcademicSourceMap(sourceText),
+    },
+  }))
+  const rendered = JSON.stringify(items)
+
+  assert.ok(items.length >= MIN_DEEP_LEARN_QUIZ_ITEM_COUNT)
+  assert.match(rendered, /Photosynthesis|Chloroplast|Lab Procedure|Rate Formula/i)
+  assert.doesNotMatch(rendered, /IT Security|Cybersecurity|Arnis|Bangkaw|WEKAF|Doce Pares/i)
+  assert.ok(items.every((item) => item.sourceExcerpt && item.sourceUnitId))
 })
 
 test('Source Map quiz generation follows learning shape before discipline hint', () => {

@@ -1243,6 +1243,43 @@ test('Academic Source Map discipline clusters are broad hints while learning sha
   assert.ok(mixed.units.some((unit) => ['definition', 'troubleshooting', 'component-system', 'procedure'].includes(unit.learningShape ?? '')))
 })
 
+test('Academic Source Map extracts universal evidence relations without known headings', () => {
+  const sourceMap = buildAcademicSourceMap([
+    'Assets include cash, accounts receivable, inventory, and equipment.',
+    '2018 - The standard was adopted by the board.',
+    'Area Formula Area equals length times width.',
+    'The court applies the statute when jurisdiction and evidence establish the offense.',
+    'Nursing care includes assessment, intervention, and evaluation.',
+    'Microscope - optical instrument used to magnify small specimens.',
+  ].join('\n'))
+  const relationTypes = new Set(sourceMap.relations?.map((relation) => relation.relationType))
+
+  assert.equal(sourceMap.validation.ok, true)
+  for (const expected of ['list_membership', 'timeline_milestone', 'formula_variable', 'rule_element', 'symptom_intervention', 'equipment_property']) {
+    assert.ok(relationTypes.has(expected as never), `missing relation ${expected}`)
+  }
+  assert.ok(sourceMap.relations?.every((relation) => relation.sourceEvidence && relation.sourceUnitId && relation.answerText))
+})
+
+test('Source Map relation fallback saves useful limited content and rejects sparse source', () => {
+  const generic = buildAcademicSourceMap([
+    'Contract acceptance is an objective manifestation of assent to the offer terms.',
+    'Remedies include damages, specific performance, and rescission.',
+    '2020 - The revised civil code rules were adopted by the committee.',
+    'Court procedure 1. File complaint 2. Serve summons 3. Present evidence 4. Await judgment.',
+  ].join('\n'))
+  const content = buildDeepLearnContentFromSourceMap(generic, 'Contract Law')
+
+  assert.equal(generic.validation.ok, true)
+  assert.ok(content)
+  assert.equal(validateDeepLearnContentReadyForSave(content).ok, true)
+  assert.match(JSON.stringify(content), /acceptance|Remedies|Court procedure/i)
+
+  const sparse = buildAcademicSourceMap('Contract law is a body of rules.')
+  assert.equal(sparse.validation.ok, false)
+  assert.equal(buildDeepLearnContentFromSourceMap(sparse, 'Sparse Law'), null)
+})
+
 test('Source Map compact reviewer preserves PATHFit procedural units for save validation', () => {
   const sourceMap = buildAcademicSourceMap(PATHFIT_ARNIS_SAMPLE_SOURCE)
   const content = buildDeepLearnContentFromSourceMap(sourceMap, 'PATHFit Arnis')

@@ -331,10 +331,40 @@ function buildAdaptiveSourceMapQuizItems(note: DeepLearnNote, units: NormalizedQ
     })
   }
 
+  const cybersecurity = units.find((unit) => normalizeLookup(unit.title) === 'cybersecurity')
+  if (cybersecurity) {
+    const distractors = deriveDefinitionDistractors(cybersecurity, units)
+    if (distractors.length >= 3) {
+      add({
+        id: 'source-map-adaptive-cybersecurity-definition',
+        prompt: 'Which definition matches Cybersecurity?',
+        answer: cybersecurity.normalizedAnswer,
+        choices: [cybersecurity.normalizedAnswer, ...distractors.slice(0, 3)],
+        unit: cybersecurity,
+        method: 'source_map_mcq',
+      })
+    }
+  }
+
   const organizations = units.find((unit) => normalizeLookup(unit.title) === 'organizations timeline')
   if (organizations) {
-    const answer = organizations.aliases.find((item) => normalizeLookup(item) === 'wekaf') ?? 'WEKAF'
-    if (organizations.aliases.some((item) => normalizeLookup(item) === normalizeLookup(answer))) {
+    const ruleCreator = findOrganizationRuleCreator(organizations)
+    if (ruleCreator) {
+      add({
+        id: 'source-map-adaptive-arnis-rule-creator',
+        prompt: `Which organization created the rules on ${ruleCreator.topic}?`,
+        answer: ruleCreator.answer,
+        choices: uniqueStrings([
+          ruleCreator.answer,
+          ...organizations.aliases.filter((item) => normalizeLookup(item) !== normalizeLookup(ruleCreator.answer)),
+          ...extractOrganizationChoices(organizations.sourceExcerpt).filter((item) => normalizeLookup(item) !== normalizeLookup(ruleCreator.answer)),
+        ]).slice(0, 4),
+        unit: organizations,
+        method: 'source_map_mcq',
+      })
+    }
+    const answer = organizations.aliases.find((item) => normalizeLookup(item) === 'wekaf')
+    if (answer && organizations.aliases.some((item) => normalizeLookup(item) === normalizeLookup(answer))) {
       add({
         id: 'source-map-adaptive-arnis-organization',
         prompt: 'Which organization standardized Arnis sport rules?',
@@ -354,12 +384,13 @@ function buildAdaptiveSourceMapQuizItems(note: DeepLearnNote, units: NormalizedQ
   }
 
   const equipment = units.find((unit) => normalizeLookup(unit.title) === 'equipment weapons' || normalizeLookup(unit.title) === 'stick types')
-  if (equipment && /\bbangkaw\b/i.test(`${equipment.normalizedAnswer} ${equipment.sourceExcerpt}`)) {
+  const poleAnswer = equipment ? findSixFootPoleAnswer(equipment) : null
+  if (equipment && poleAnswer) {
     add({
       id: 'source-map-adaptive-arnis-bangkaw',
       prompt: 'Which weapon is a six-foot pole?',
-      answer: 'Bangkaw',
-      choices: uniqueStrings(['Bangkaw', ...equipment.aliases.filter((item) => normalizeLookup(item) !== 'bangkaw').slice(0, 3)]),
+      answer: poleAnswer,
+      choices: uniqueStrings([poleAnswer, ...equipment.aliases.filter((item) => normalizeLookup(item) !== normalizeLookup(poleAnswer)).slice(0, 3)]),
       unit: equipment,
       method: 'source_map_mcq',
     })
@@ -378,6 +409,39 @@ function buildAdaptiveSourceMapQuizItems(note: DeepLearnNote, units: NormalizedQ
   }
 
   return items
+}
+
+function findOrganizationRuleCreator(unit: NormalizedQuizSourceUnit) {
+  const source = `${unit.normalizedAnswer} ${unit.sourceExcerpt}`
+  const explicitDocePares = source.match(/\bDoce\s+Pares\b/i)
+  const explicitTopic = source.match(/\brules?\s+(?:on|for)\s+([^.;,]{3,80})/i)
+  if (explicitDocePares?.[0] && explicitTopic?.[1] && /\bcreated\b/i.test(source)) {
+    return { answer: cleanQuizText(explicitDocePares[0]), topic: cleanQuizText(explicitTopic[1]) }
+  }
+  const match = source.match(/\b(Doce Pares)\s+(?:created|made|developed|formulated|adopted)\s+(?:the\s+)?rules?\s+(?:on|for)\s+([^.;,]{3,80})/i)
+    ?? source.match(/\b([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,3})\s+(?:created|made|developed|formulated|adopted)\s+(?:the\s+)?rules?\s+(?:on|for)\s+([^.;,]{3,80})/i)
+  if (!match?.[1] || !match[2]) return null
+  const answer = cleanQuizText(match[1])
+  const topic = cleanQuizText(match[2])
+  if (!answer || !topic || !new RegExp(`\\b${escapeRegExp(answer).replace(/\s+/g, '\\s+')}\\b`, 'i').test(unit.sourceExcerpt)) {
+    return null
+  }
+  return { answer, topic }
+}
+
+function extractOrganizationChoices(source: string) {
+  return uniqueStrings(
+    [...source.matchAll(/\b(?:Doce Pares|WEKAF|NARAPHIL|ARPI|i-ARNIS|[A-Z]{3,})\b/g)]
+      .map((match) => cleanQuizText(match[0] ?? ''))
+      .filter(Boolean),
+  )
+}
+
+function findSixFootPoleAnswer(unit: NormalizedQuizSourceUnit) {
+  const candidates = [unit.sourceExcerpt, unit.normalizedAnswer, ...unit.aliases].join(' ')
+  const match = candidates.match(/\b([A-Z][A-Za-z]{2,30})\s*(?:-|:)?\s*(?:a\s+)?six[-\s]?foot\s+pole\b/i)
+  if (match?.[1]) return cleanQuizText(match[1])
+  return unit.aliases.find((item) => /\bsix[-\s]?foot\s+pole\b/i.test(item))?.split(/\s*(?:-|:)\s*/)[0]?.trim() ?? null
 }
 
 function buildSourceMapTrueFalseItems(note: DeepLearnNote, units: NormalizedQuizSourceUnit[]): StudyOutputQuizPackItem[] {
@@ -537,6 +601,7 @@ function buildMultipleChoiceQuestion(unit: NormalizedQuizSourceUnit) {
     return `Which item belongs to ${formatListMembershipTarget(unit.title)}?`
   }
   const key = normalizeLookup(unit.title)
+  if (key === 'cybersecurity') return 'Which definition matches Cybersecurity?'
   if (key === 'infosec vs it sec') return 'Which description best matches InfoSec?'
   if (unit.sourceType === 'definition') {
     return Math.abs(hashText(unit.title)) % 2 === 0
@@ -670,6 +735,7 @@ function isSpecializedLearningShape(shape: AcademicLearningShape) {
 
 function isDefinitionLikeUnit(unit: NormalizedQuizSourceUnit) {
   return unit.sourceType === 'definition'
+    || normalizeLookup(unit.title) === 'cybersecurity'
     || normalizeLookup(unit.title) === 'infosec vs it sec'
     || normalizeLookup(unit.title) === 'vulnerability exploit breach'
 }
@@ -947,6 +1013,7 @@ function allowsDuplicateCoverageItem(item: StudyOutputQuizPackItem, coveredItems
   if (item.type === 'identification' && item.prompt === 'Distinguish InfoSec from IT Sec.') return true
   if (item.type === 'identification' && /^Define (?:IT Security|Cybersecurity)\./.test(item.prompt)) return true
   if (item.type === 'identification' && item.prompt === 'Identify symptoms of malware.') return true
+  if (/^Which organization created the rules on\b/.test(item.prompt)) return true
   if (item.prompt === 'Which organization standardized Arnis sport rules?') return true
   if (item.prompt === 'Arrange the Arnis milestones chronologically.') return true
   if (item.prompt === 'Sequence the steps in Courtesy / Salutation.') return true

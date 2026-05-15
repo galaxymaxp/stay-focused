@@ -548,6 +548,24 @@ test('Source Map reviewer shapes broad academic units by learning shape instead 
   assert.match(cues, /Know the symptom, cause, and fix pattern/)
 })
 
+test('Source Map reviewer renders generic relation-derived units without IT or Arnis leakage', () => {
+  const sourceText = [
+    'Revenue recognition is the process of recording income when performance obligations are satisfied.',
+    'Financial statements include income statement, balance sheet, cash flow statement, and statement of changes in equity.',
+    'Audit procedure 1. Inspect documents 2. Confirm balances 3. Recalculate totals 4. Report findings.',
+    'Gross profit formula: Gross profit = sales - cost of goods sold.',
+  ].join('\n')
+  const reviewer = buildDeepLearnReviewerContent(createNoteWithSourceMap(sourceText, {
+    title: 'Accounting Reviewer',
+    overview: 'Accounting definitions, lists, procedures, and formulas.',
+  }))
+  const rendered = JSON.stringify(reviewer)
+
+  assert.match(rendered, /Revenue Recognition|Financial Statements|Audit Procedure|Gross Profit/i)
+  assert.doesNotMatch(rendered, /IT Security|Cybersecurity|Arnis|Bangkaw|WEKAF|Doce Pares/i)
+  assert.ok(reviewer.highYieldConcepts.every((item) => item.sourceWording || item.answer))
+})
+
 function createNoteWithSourceMap(sourceText: string, overrides: Partial<DeepLearnNote> = {}) {
   return createNote({
     title: overrides.title ?? 'Intro to IT Security Reviewer',

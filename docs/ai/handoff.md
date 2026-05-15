@@ -5,6 +5,78 @@ Last Updated: 2026-05-15
 
 ---
 
+## Session Update - 2026-05-15 (Evidence-Relation Composer Phase 3.8)
+
+### What changed
+
+- Added a universal evidence-relation extraction layer to `buildAcademicSourceMap`.
+- Source Maps now carry evidence-backed `relations` with relation type, parent concept, child concepts, answer text, source evidence, deterministic source unit id, confidence, learning shape, and unit type.
+- Added generic relation detection for definitions, list membership, classification, timelines, procedure steps, comparisons, formula/equation lines, cause/effect, law/rule elements, equipment properties, component/function language, clinical symptom/intervention content, troubleshooting steps, rubrics, and passage/theme-shaped content.
+- Relation-derived units now supplement existing known IT Security and Arnis extraction instead of replacing it, so existing high-quality fixture behavior stays intact.
+- Updated Source Map validation so useful relation-backed sources can produce limited but honest Study Pack content without requiring IT-specific or Arnis-specific headings.
+- Updated adaptive Quiz Pack generation so Arnis rule-creator and six-foot-pole questions are derived from source evidence, including exact spelling from the source.
+- Preserved existing IT Security quiz richness by keeping source-evidence-backed cybersecurity definition MCQ generation.
+- Added regression tests for generic relation extraction, limited relation fallback, generic reviewer rendering without IT/Arnis leakage, evidence-derived Arnis quiz facts, and exact Bankaw/Bangkaw spelling preservation.
+
+### Files touched
+
+- `lib/deep-learn-source-map.ts`
+- `lib/study-outputs/quiz-pack.ts`
+- `tests/deep-learn-generation.test.ts`
+- `tests/study-output-quiz-pack.test.ts`
+- `tests/study-output-reviewer.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Study Pack generation could fail after reviewer/source-map quality gates because the deterministic structured layer still depended too heavily on known headings, known subject-specific units, and hardcoded IT Security or Arnis patterns. The fix moves the backbone toward source evidence -> extracted academic relation -> reviewer/quiz composition. Known IT/Arnis logic remains as an enhancement, but generic academic sources no longer need those exact headings to pass when they contain meaningful evidence-backed relations.
+
+### Failure diagnosis
+
+- The failure mode matched validation rejecting sources with too few structured units when source content did not resemble the known IT Security or Arnis fixtures.
+- The previous composer could extract some useful text, but validation and downstream quiz/reviewer composition were brittle when headings or concepts did not match known patterns.
+- Hardcoded Arnis quiz questions also risked creating title-driven facts instead of evidence-derived facts.
+- Uploaded/context files from the prompt were not available locally in this session, so verification used checked-in fixtures and new generic source fixtures in tests.
+
+### Tests run
+
+- `npm run typecheck`
+- `npm run lint`
+- `npm test -- study-output-quiz-pack`
+- `npm test -- deep-learn-generation study-output-reviewer study-output-quiz-pack`
+- `npm test -- quiz source-map reviewer`
+- `npm test -- study-output-reviewer study-output-sheet study-output-print`
+- `npm run test:browser`
+
+### Verification result
+
+- Passed `typecheck`.
+- Passed `lint`.
+- Passed all requested Node test commands. Because the repo test script expands `tests/*.test.ts`, the targeted `npm test -- ...` commands each ran the full 613-test suite and passed.
+- Passed browser quiz review verification with `npm run test:browser`.
+- Verified in tests that generic academic source text can now form evidence-backed relations and reviewer/quiz content without importing hardcoded IT Security or Arnis facts.
+
+### Known risks
+
+- Relation extraction is deterministic and intentionally conservative; unusual prose formats may still produce limited packs rather than full-rich packs.
+- Formula handling identifies formula/variable study content but still only generates calculation-style quiz items when concrete values are present elsewhere in the existing quiz pipeline.
+- Old saved Source Maps without `relations` continue through existing unit-based behavior; they do not get retroactive relation metadata until regenerated.
+- Manual uploaded artifacts requested in the prompt were unavailable locally, so the exact production failing source still needs a live retry after deployment.
+
+### Blockers
+
+- No local copy of the raw extracted failing source text, bad reviewer output, target IT reviewer standard, target Arnis reviewer standard, or screenshot was available in the workspace.
+
+### Next recommended step
+
+1. Retry Study Pack generation against the original production source and confirm it saves a useful limited or full pack instead of failing on missing known headings.
+2. If the live source still fails, capture the raw extracted text and saved Source Map JSON so the relation extractor can be extended against that real shape.
+3. Consider adding a small internal diagnostic counter for relation count by type in dev logs only.
+
+### Suggested commit message
+
+build evidence relation composer
+
 ## Session Update - 2026-05-15 (Reviewer Composer Phase 3.7)
 
 ### What changed

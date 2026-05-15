@@ -68,6 +68,23 @@ export type AcademicLearningShape =
   | 'standards-rubrics'
   | 'narrative'
 
+export type AcademicRelationType =
+  | 'definition'
+  | 'list_membership'
+  | 'comparison'
+  | 'timeline_milestone'
+  | 'procedure_step'
+  | 'classification'
+  | 'cause_effect'
+  | 'formula_variable'
+  | 'rule_element'
+  | 'equipment_property'
+  | 'component_function'
+  | 'symptom_intervention'
+  | 'passage_theme'
+  | 'troubleshooting_step'
+  | 'standard_rubric'
+
 export type AcademicBankKind =
   | 'definition'
   | 'terminology'
@@ -93,6 +110,19 @@ export interface AcademicSourceMapUnit {
   sourceQuotes: string[]
   importanceScore: number
   confidence: number
+}
+
+export interface AcademicSourceRelation {
+  id: string
+  relationType: AcademicRelationType
+  parentConcept: string
+  childConcepts: string[]
+  answerText: string
+  sourceEvidence: string
+  sourceUnitId: string
+  confidence: number
+  learningShape: AcademicLearningShape
+  unitType: AcademicSourceMapUnitType
 }
 
 export interface AcademicSourceMapBankEntry {
@@ -128,6 +158,7 @@ export interface AcademicSourceMap {
   secondaryDisciplineClusters?: AcademicDisciplineCluster[]
   banks?: AcademicSourceMapBanks
   normalizedText: string
+  relations?: AcademicSourceRelation[]
   units: AcademicSourceMapUnit[]
   chunks: Array<{ heading: string; text: string; sourceQuote: string }>
   duplicateFragmentsRemoved: number
@@ -315,10 +346,12 @@ export function buildAcademicSourceMap(sourceText: string): AcademicSourceMap {
   const chunks = chunkSourceMapByHeadings(normalizedText)
   const styleProfile = detectAcademicSourceMapStyles(normalizedText, chunks)
   const disciplineProfile = detectAcademicDisciplineClusters(normalizedText)
+  const relations = extractAcademicRelations(normalizedText, chunks)
   const baseUnits = dedupeUnits([
     ...inferKnownSecurityUnits(normalizedText),
     ...inferKnownArnisUnits(normalizedText),
     ...buildUnitsFromChunks(chunks),
+    ...buildUnitsFromRelations(relations),
   ])
   const initialBanks = buildAcademicSourceMapBanks(normalizedText, chunks, baseUnits)
   const units = dedupeUnits([
@@ -336,6 +369,7 @@ export function buildAcademicSourceMap(sourceText: string): AcademicSourceMap {
     secondaryDisciplineClusters: disciplineProfile.secondaryDisciplineClusters,
     banks,
     normalizedText,
+    relations,
     chunks,
     units,
     duplicateFragmentsRemoved: collapsed.duplicatesRemoved,
@@ -350,6 +384,7 @@ export function buildAcademicSourceMap(sourceText: string): AcademicSourceMap {
     secondaryDisciplineClusters: disciplineProfile.secondaryDisciplineClusters,
     banks,
     normalizedText,
+    relations,
     chunks,
     units,
     duplicateFragmentsRemoved: collapsed.duplicatesRemoved,
@@ -467,12 +502,14 @@ export function validateAcademicSourceMap(sourceMap: AcademicSourceMap): Academi
   const meaningfulUnits = sourceMap.units.filter(isMeaningfulSourceMapUnit)
   const unitCount = meaningfulUnits.length
   const quoteCount = meaningfulUnits.reduce((count, unit) => count + unit.sourceQuotes.length, 0)
+  const relationCount = (sourceMap.relations ?? []).filter(isMeaningfulAcademicRelation).length
   const bankEntryCount = countAcademicBankEntries(sourceMap.banks)
   const hasDenseAcademicBanks = bankEntryCount >= 8
     && getCoreAcademicBankCount(sourceMap.banks) >= 3
+  const hasMeaningfulRelations = relationCount >= 3
   if (unitCount === 0) return { ok: false, reason: 'no_units', unitCount, quoteCount }
   if (quoteCount < Math.min(2, unitCount)) return { ok: false, reason: 'missing_quotes', unitCount, quoteCount }
-  if (unitCount < 4 && !hasDenseAcademicBanks) {
+  if (unitCount < 4 && !hasDenseAcademicBanks && !hasMeaningfulRelations) {
     return { ok: false, reason: 'insufficient_academic_content', unitCount, quoteCount }
   }
   return { ok: true, reason: 'ok', unitCount, quoteCount }
@@ -956,6 +993,296 @@ function dedupeBankEntries(entries: AcademicSourceMapBankEntry[]) {
   )
 }
 
+export function extractAcademicRelations(
+  normalizedText: string,
+  chunks: SourceChunk[] = chunkSourceMapByHeadings(cleanupSourceMapLines(normalizedText).join('\n')),
+): AcademicSourceRelation[] {
+  const lines = normalizedText
+    .split(/\n+/)
+    .map((line) => cleanupItem(line))
+    .filter((line) => line.length >= 8 && !isSourceMapNoiseLine(line))
+  const relations: AcademicSourceRelation[] = []
+  const add = (input: Omit<AcademicSourceRelation, 'id' | 'sourceUnitId'> & { sourceUnitId?: string }) => {
+    const parentConcept = normalizeSourceMapHeading(input.parentConcept)
+    const answerText = cleanupSummary(input.answerText)
+    const sourceEvidence = cleanupSummary(input.sourceEvidence)
+    const childConcepts = uniqueStrings(input.childConcepts.map(cleanupItem).filter(Boolean)).slice(0, 14)
+    if (!parentConcept || !answerText || !sourceEvidence) return
+    if (isWeakSourceMapTitle(parentConcept) && childConcepts.length < 2) return
+    relations.push({
+      ...input,
+      id: slugify(`${input.relationType}-${parentConcept}-${answerText}`),
+      parentConcept,
+      childConcepts,
+      answerText,
+      sourceEvidence,
+      sourceUnitId: input.sourceUnitId ?? slugify(parentConcept),
+      confidence: Math.max(0.45, Math.min(1, input.confidence)),
+    })
+  }
+
+  for (const chunk of chunks) {
+    const chunkItems = extractSourceMapItems(chunk.text)
+    if (chunkItems.length >= 2 && chunk.heading !== 'Source Notes') {
+      add({
+        relationType: inferListRelationType(chunk.heading, chunk.text),
+        parentConcept: chunk.heading,
+        childConcepts: chunkItems,
+        answerText: `${chunk.heading}: ${chunkItems.join(', ')}`,
+        sourceEvidence: chunk.sourceQuote,
+        confidence: 0.82,
+        learningShape: inferSourceMapLearningShape(chunk.heading, 'list'),
+        unitType: inferSourceMapUnitType(chunk.heading, 'list'),
+      })
+    }
+  }
+
+  for (const line of lines) {
+    const definition = line.match(/^(.{3,72}?)\s+(?:is|are|refers to|means|involves|describes|can be defined as)\s+(.{10,260})$/i)
+    if (definition?.[1] && definition[2]) {
+      add({
+        relationType: 'definition',
+        parentConcept: definition[1],
+        childConcepts: [],
+        answerText: definition[2],
+        sourceEvidence: line,
+        confidence: 0.86,
+        learningShape: 'definition',
+        unitType: 'definition',
+      })
+    }
+
+    const list = line.match(/^(.{3,96}?)\s+(?:includes|include|consists of|consist of|comprises|contains|is composed of|is made up of|has)\s+(.{8,240})$/i)
+    if (list?.[1] && list[2]) {
+      const items = splitRelationItems(list[2])
+      if (items.length >= 2) {
+        add({
+          relationType: inferListRelationType(list[1], line),
+          parentConcept: list[1],
+          childConcepts: items,
+          answerText: `${cleanupItem(list[1])}: ${items.join(', ')}`,
+          sourceEvidence: line,
+          confidence: 0.84,
+          learningShape: inferSourceMapLearningShape(list[1], 'list'),
+          unitType: inferSourceMapUnitType(list[1], 'list'),
+        })
+      }
+    }
+
+    const dashPair = line.match(/^(.{3,72}?)\s*(?:-|:)\s*(.{3,180})$/)
+    if (dashPair?.[1] && dashPair[2]) {
+      const relationType = inferDashPairRelationType(dashPair[1], dashPair[2], line)
+      add({
+        relationType,
+        parentConcept: dashPair[1],
+        childConcepts: splitRelationItems(dashPair[2]),
+        answerText: `${cleanupItem(dashPair[1])} - ${cleanupItem(dashPair[2])}`,
+        sourceEvidence: line,
+        confidence: relationType === 'equipment_property' ? 0.88 : 0.78,
+        learningShape: relationTypeToLearningShape(relationType),
+        unitType: relationTypeToUnitType(relationType),
+      })
+    }
+
+    const timeline = line.match(/\b((?:1[5-9]\d{2}|20\d{2})|(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+(?:1[5-9]\d{2}|20\d{2}))\b\s*(?:-|:)?\s*(.{8,180})/i)
+    if (timeline?.[1] && timeline[2]) {
+      add({
+        relationType: 'timeline_milestone',
+        parentConcept: 'Timeline',
+        childConcepts: [`${timeline[1]} - ${cleanupItem(timeline[2])}`],
+        answerText: `${timeline[1]} - ${cleanupItem(timeline[2])}`,
+        sourceEvidence: line,
+        confidence: 0.86,
+        learningShape: 'timeline',
+        unitType: 'timeline',
+      })
+    }
+
+    const ordered = [...line.matchAll(/\b\d+[.)]\s*([^0-9.]{3,90})(?=\s+\d+[.)]|$)/g)].map((match) => cleanupItem(match[1] ?? ''))
+    if (ordered.length >= 2) {
+      add({
+        relationType: inferProcedureRelationType(line),
+        parentConcept: inferRelationshipTitle(line),
+        childConcepts: ordered,
+        answerText: ordered.join(', '),
+        sourceEvidence: line,
+        confidence: 0.84,
+        learningShape: inferProcedureRelationType(line) === 'troubleshooting_step' ? 'troubleshooting' : inferProcedureRelationType(line) === 'symptom_intervention' ? 'clinical-care' : 'procedure',
+        unitType: 'procedure',
+      })
+    }
+
+    if (/\b(?:while|whereas|compared with|different from|versus| vs\.? )\b/i.test(line)) {
+      add({
+        relationType: 'comparison',
+        parentConcept: inferRelationshipTitle(line),
+        childConcepts: splitRelationItems(line),
+        answerText: line,
+        sourceEvidence: line,
+        confidence: 0.8,
+        learningShape: 'comparison',
+        unitType: 'comparison',
+      })
+    }
+
+    if (/\b(?:formula|equation|equals|calculate|solve)\b|=/.test(line) && /[=0-9+\-*/^()]|\bequals\b/i.test(line)) {
+      add({
+        relationType: 'formula_variable',
+        parentConcept: inferRelationshipTitle(line),
+        childConcepts: splitRelationItems(line).filter((item) => item.length <= 48),
+        answerText: line,
+        sourceEvidence: line,
+        confidence: 0.84,
+        learningShape: 'formula',
+        unitType: 'definition',
+      })
+    }
+
+    if (/\b(?:because|therefore|results? in|leads? to|causes?|effect|impact|so that|in order to)\b/i.test(line)) {
+      add({
+        relationType: 'cause_effect',
+        parentConcept: inferRelationshipTitle(line),
+        childConcepts: [],
+        answerText: line,
+        sourceEvidence: line,
+        confidence: 0.76,
+        learningShape: 'cause-effect',
+        unitType: 'narrative',
+      })
+    }
+
+    if (/\b(?:court|statute|jurisdiction|liability|offense|evidence|rule|law|penalty)\b/i.test(line)) {
+      add({
+        relationType: 'rule_element',
+        parentConcept: inferRelationshipTitle(line),
+        childConcepts: splitRelationItems(line).filter((item) => /\b(?:court|statute|jurisdiction|liability|offense|evidence|rule|law|penalty)\b/i.test(item)),
+        answerText: line,
+        sourceEvidence: line,
+        confidence: 0.78,
+        learningShape: 'case-rule',
+        unitType: 'narrative',
+      })
+    }
+
+    if (/\b(?:equipment|tool|instrument|device|weapon|microscope|apparatus|used to|used for|magnify)\b/i.test(line)) {
+      add({
+        relationType: 'equipment_property',
+        parentConcept: inferRelationshipTitle(line),
+        childConcepts: splitRelationItems(line),
+        answerText: line,
+        sourceEvidence: line,
+        confidence: 0.78,
+        learningShape: 'equipment',
+        unitType: 'equipment',
+      })
+    }
+  }
+
+  return uniqueBy(
+    relations.filter(isMeaningfulAcademicRelation),
+    (relation) => `${relation.relationType}:${normalizeLookup(relation.parentConcept)}:${normalizeLookup(relation.answerText)}`,
+  ).slice(0, 48)
+}
+
+function buildUnitsFromRelations(relations: AcademicSourceRelation[]): AcademicSourceMapUnit[] {
+  const grouped = new Map<string, AcademicSourceRelation[]>()
+  for (const relation of relations) {
+    const key = `${relation.relationType}:${normalizeLookup(relation.parentConcept)}`
+    grouped.set(key, [...(grouped.get(key) ?? []), relation])
+  }
+  return [...grouped.values()].map((group) => {
+    const first = group[0]
+    const items = uniqueStrings(group.flatMap((relation) => relation.childConcepts.length ? relation.childConcepts : [relation.answerText]))
+    return createUnit({
+      title: first.parentConcept,
+      kind: relationTypeToUnitKind(first.relationType),
+      unitType: first.unitType,
+      learningShape: first.learningShape,
+      summary: first.childConcepts.length >= 2 ? `${first.parentConcept}: ${first.childConcepts.join(', ')}` : first.answerText,
+      items,
+      sourceQuote: group.map((relation) => relation.sourceEvidence).join(' '),
+      sectionPath: [first.parentConcept],
+    })
+  })
+}
+
+function isMeaningfulAcademicRelation(relation: AcademicSourceRelation) {
+  if (!relation.parentConcept || !relation.answerText || !relation.sourceEvidence) return false
+  if (containsInternalSourceMapText(`${relation.parentConcept} ${relation.answerText} ${relation.sourceEvidence}`)) return false
+  if (relation.answerText.length < 12 && relation.childConcepts.length < 2) return false
+  return true
+}
+
+function inferListRelationType(title: string, text: string): AcademicRelationType {
+  const combined = `${title} ${text}`
+  if (/\b(?:classifications?|categories|types?|groups?|taxonomy)\b/i.test(combined)) return 'classification'
+  if (/\b(?:equipment|tool|device|instrument|weapon|materials?)\b/i.test(title)) return 'equipment_property'
+  if (/\b(?:rule|statute|law|elements?|penalty|offense|procedure)\b/i.test(combined)) return 'rule_element'
+  if (/\b(?:symptoms?|interventions?|nursing|clinical|patient|care|treatment)\b/i.test(combined)) return 'symptom_intervention'
+  if (/\b(?:rubric|criteria|standard|competency|outcomes?)\b/i.test(combined)) return 'standard_rubric'
+  if (/\b(?:component|function|part|system)\b/i.test(combined)) return 'component_function'
+  return 'list_membership'
+}
+
+function inferDashPairRelationType(left: string, right: string, line: string): AcademicRelationType {
+  const combined = `${left} ${right} ${line}`
+  if (/\b(?:feet?|foot|inch(?:es)?|meter|cm|length|tool|equipment|weapon|instrument|used for|used to|made of|magnify)\b/i.test(combined)) return 'equipment_property'
+  if (/\b(?:rule|statute|law|penalty|offense|element|court|jurisdiction)\b/i.test(combined)) return 'rule_element'
+  if (/\b(?:symptom|intervention|patient|nursing|care|diagnosis|treatment)\b/i.test(combined)) return 'symptom_intervention'
+  if (/\b(?:component|function|part|system|role)\b/i.test(combined)) return 'component_function'
+  return 'definition'
+}
+
+function inferProcedureRelationType(line: string): AcademicRelationType {
+  if (/\b(?:troubleshoot|error|failure|fix|diagnose|isolate)\b/i.test(line)) return 'troubleshooting_step'
+  if (/\b(?:symptom|intervention|patient|nursing|clinical|care|diagnosis|treatment|vital signs)\b/i.test(line)) return 'symptom_intervention'
+  if (/\b(?:rule|statute|law|court|offense|procedure)\b/i.test(line)) return 'rule_element'
+  return 'procedure_step'
+}
+
+function splitRelationItems(value: string) {
+  return value
+    .replace(/\([^)]{100,}\)/g, '')
+    .split(/[,;]|\s+\band\b\s+|\s*\/\s*/)
+    .map(cleanupItem)
+    .filter((item) => item.length >= 2 && item.length <= 96)
+}
+
+function relationTypeToUnitKind(type: AcademicRelationType): AcademicSourceMapUnitKind {
+  if (type === 'definition' || type === 'comparison' || type === 'formula_variable' || type === 'cause_effect') return 'definition'
+  if (type === 'procedure_step' || type === 'troubleshooting_step' || type === 'symptom_intervention') return 'process'
+  if (type === 'list_membership' || type === 'classification' || type === 'timeline_milestone' || type === 'equipment_property' || type === 'rule_element' || type === 'standard_rubric') return 'category'
+  return 'concept'
+}
+
+function relationTypeToUnitType(type: AcademicRelationType): AcademicSourceMapUnitType {
+  if (type === 'comparison') return 'comparison'
+  if (type === 'timeline_milestone') return 'timeline'
+  if (type === 'procedure_step' || type === 'troubleshooting_step' || type === 'symptom_intervention') return 'procedure'
+  if (type === 'equipment_property') return 'equipment'
+  if (type === 'classification' || type === 'list_membership' || type === 'standard_rubric') return 'classification'
+  if (type === 'definition' || type === 'formula_variable') return 'definition'
+  return 'narrative'
+}
+
+function relationTypeToLearningShape(type: AcademicRelationType): AcademicLearningShape {
+  if (type === 'timeline_milestone') return 'timeline'
+  if (type === 'procedure_step') return 'procedure'
+  if (type === 'troubleshooting_step') return 'troubleshooting'
+  if (type === 'symptom_intervention') return 'clinical-care'
+  if (type === 'equipment_property') return 'equipment'
+  if (type === 'formula_variable') return 'formula'
+  if (type === 'rule_element') return 'case-rule'
+  if (type === 'comparison') return 'comparison'
+  if (type === 'cause_effect') return 'cause-effect'
+  if (type === 'component_function') return 'component-system'
+  if (type === 'standard_rubric') return 'standards-rubrics'
+  if (type === 'passage_theme') return 'passage-theme'
+  if (type === 'classification') return 'classification'
+  if (type === 'list_membership') return 'taxonomy'
+  return 'definition'
+}
+
 function cleanQuestionPrompt(value: string) {
   const cleaned = cleanupItem(value)
   return /[?!.]$/.test(cleaned) ? cleaned : `${cleaned}.`
@@ -1159,7 +1486,7 @@ function inferKnownSecurityUnits(normalizedText: string): AcademicSourceMapUnit[
         : extractSourceMapItems(quote)
       units.push(createUnit({
         title,
-        kind: title.includes('definition') || title.includes('Definitions') ? 'definition' : title.includes('/') ? 'category' : 'concept',
+        kind: /\bdefinitions?\b/i.test(title) ? 'definition' : title.includes('/') ? 'category' : 'concept',
         summary: summarizeQuote(title, quote),
         items,
         sourceQuote: quote,
@@ -1235,6 +1562,7 @@ function createUnit(input: {
   title: string
   kind: AcademicSourceMapUnitKind
   unitType?: AcademicSourceMapUnitType
+  learningShape?: AcademicLearningShape
   sectionPath?: string[]
   summary: string
   items: string[]
@@ -1249,7 +1577,7 @@ function createUnit(input: {
     title,
     kind: input.kind,
     unitType: input.unitType ?? inferSourceMapUnitType(title, input.kind),
-    learningShape: inferSourceMapLearningShape(title, input.kind, input.unitType),
+    learningShape: input.learningShape ?? inferSourceMapLearningShape(title, input.kind, input.unitType),
     sectionPath,
     summary: cleanupSummary(stopAtKnownHeading(input.summary, title)),
     items: uniqueStrings(input.items.map((item) => cleanupSourceMapUnitItem(item, title)).filter(Boolean)).slice(0, 14),
@@ -1482,7 +1810,7 @@ function isMeaningfulSourceMapUnit(unit: AcademicSourceMapUnit) {
   const titleKey = normalizeLookup(unit.title)
   const summaryKey = normalizeLookup(unit.summary)
   if (!titleKey || unit.title.length < 3 || unit.sourceQuotes.length === 0) return false
-  if (isWeakSourceMapTitle(unit.title)) return false
+  if (isWeakSourceMapTitle(unit.title) && unit.items.length < 2) return false
   if (containsInternalSourceMapText(`${unit.title} ${unit.summary} ${unit.sourceQuotes.join(' ')}`)) return false
   if (summaryKey.length < 14 && !RECOGNIZED_SOURCE_MAP_TERMS.has(titleKey)) return false
   if (/^cyber crime\b/i.test(unit.title) && /\bbig business\b/i.test(unit.summary)) return false
@@ -1504,7 +1832,7 @@ function isWeakSourceMapTitle(title: string) {
   if (/^(?:attacks backed by state agencies that|sent to a host or application and the receiver)\b/i.test(key)) return true
   if (/\b(?:other threats infosec processes|contract staff trusted partners|the cause of the breach)\b/i.test(key)) return true
   const words = key.split(/\s+/).filter(Boolean)
-  if (words.length === 1 && !RECOGNIZED_SOURCE_MAP_TERMS.has(key)) return true
+  if (words.length === 1 && !RECOGNIZED_SOURCE_MAP_TERMS.has(key) && !/^(?:formula|timeline|rubric|criteria|symptoms?|interventions?|equipment|components?|rules?)$/i.test(key)) return true
   if (words.length >= 7 && !/^(?:vulnerability exploit breach|cybercrime disruption espionage)$/i.test(key)) return true
   if (/\b(?:there is|there are|sent to|attempts to|refers to|the receiver|that are part)\b/i.test(title)) return true
   return false
