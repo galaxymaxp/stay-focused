@@ -1,5 +1,5 @@
 import { deepLearnNoteHasUntrustworthyGrounding } from '@/lib/deep-learn-source-validation'
-import { validateAcademicSourceMap, type AcademicSourceMapUnit } from '@/lib/deep-learn-source-map'
+import { validateAcademicSourceMap, type AcademicSourceMapUnit, type AcademicSourceMapUnitType } from '@/lib/deep-learn-source-map'
 import { buildDeepLearnQuizItems, MIN_DEEP_LEARN_QUIZ_ITEM_COUNT } from '@/lib/deep-learn-quiz'
 import { buildStudyNoteQuestionCountOptions } from '@/lib/study-note-quiz'
 import { buildReviewerContentFromSourceMap } from '@/lib/study-outputs/reviewer'
@@ -32,6 +32,7 @@ export interface NormalizedQuizSourceUnit {
   sourceExcerpt: string
   sourceHeading: string
   sourceType: AcademicSourceMapUnit['kind']
+  unitType: AcademicSourceMapUnitType
   confidence: number
   keywords: string[]
   conceptFamily: string
@@ -190,6 +191,7 @@ export function buildNormalizedQuizSourceUnits(note: DeepLearnNote): NormalizedQ
         sourceExcerpt,
         sourceHeading: title,
         sourceType: unit.kind,
+        unitType: inferQuizUnitType(title, unit),
         confidence: unit.confidence,
         keywords,
         conceptFamily: inferConceptFamily(title, unit.kind),
@@ -232,6 +234,7 @@ function isTrueFalseChoices(choices: string[]) {
 function buildSourceMapQuizPackItems(note: DeepLearnNote): StudyOutputQuizPackItem[] {
   const units = buildNormalizedQuizSourceUnits(note)
   if (units.length === 0) return []
+  const adaptiveItems = buildAdaptiveSourceMapQuizItems(note, units)
 
   const identificationItems = units
     .slice(0, MAX_SOURCE_MAP_IDENTIFICATION_ITEMS)
@@ -285,11 +288,92 @@ function buildSourceMapQuizPackItems(note: DeepLearnNote): StudyOutputQuizPackIt
     .slice(0, MAX_SOURCE_MAP_MCQ_ITEMS)
 
   return uniqueBy(
-    [...mcqItems, ...identificationItems],
+    [...adaptiveItems, ...mcqItems, ...identificationItems],
     (item) => `${normalizeLookup(item.prompt)}::${normalizeLookup(item.answer)}::${item.type}`,
   )
     .sort(compareQuizItemsForCoverage)
     .reduce(selectQuizItemsForCoverage, [] as StudyOutputQuizPackItem[])
+}
+
+function buildAdaptiveSourceMapQuizItems(note: DeepLearnNote, units: NormalizedQuizSourceUnit[]): StudyOutputQuizPackItem[] {
+  const items: StudyOutputQuizPackItem[] = []
+  const add = (input: {
+    id: string
+    prompt: string
+    answer: string
+    choices?: string[]
+    unit: NormalizedQuizSourceUnit
+    method: StudyOutputQuizPackItem['generationMethod']
+  }) => {
+    if (!input.prompt || !input.answer || containsQuizGarbage(`${input.prompt} ${input.answer}`)) return
+    const choices = input.choices?.length ? sortChoices(input.choices) : []
+    items.push({
+      id: `${note.resourceId}-${input.id}`,
+      type: choices.length >= 2 ? 'multiple_choice' : 'identification',
+      prompt: input.prompt,
+      answer: input.answer,
+      choices,
+      explanation: buildSourceMapExplanation(input.unit, input.answer),
+      sourceLabel: note.title,
+      sourceWording: input.unit.sourceExcerpt,
+      sourceBasis: input.unit.sourceExcerpt,
+      matchingPrompt: null,
+      matchingAnswer: null,
+      truthValue: null,
+      sourceUnitId: input.unit.sourceUnitId,
+      sourceExcerpt: input.unit.sourceExcerpt,
+      confidence: input.unit.confidence,
+      generationMethod: input.method,
+    })
+  }
+
+  const organizations = units.find((unit) => normalizeLookup(unit.title) === 'organizations timeline')
+  if (organizations) {
+    const answer = organizations.aliases.find((item) => normalizeLookup(item) === 'wekaf') ?? 'WEKAF'
+    if (organizations.aliases.some((item) => normalizeLookup(item) === normalizeLookup(answer))) {
+      add({
+        id: 'source-map-adaptive-arnis-organization',
+        prompt: 'Which organization standardized Arnis sport rules?',
+        answer,
+        choices: uniqueStrings([answer, ...organizations.aliases.filter((item) => normalizeLookup(item) !== normalizeLookup(answer)).slice(0, 3)]),
+        unit: organizations,
+        method: 'source_map_mcq',
+      })
+    }
+    add({
+      id: 'source-map-adaptive-arnis-chronology',
+      prompt: 'Arrange the Arnis milestones chronologically.',
+      answer: organizations.normalizedAnswer,
+      unit: organizations,
+      method: 'source_map_identification',
+    })
+  }
+
+  const equipment = units.find((unit) => normalizeLookup(unit.title) === 'equipment weapons' || normalizeLookup(unit.title) === 'stick types')
+  if (equipment && /\bbangkaw\b/i.test(`${equipment.normalizedAnswer} ${equipment.sourceExcerpt}`)) {
+    add({
+      id: 'source-map-adaptive-arnis-bangkaw',
+      prompt: 'Which weapon is a six-foot pole?',
+      answer: 'Bangkaw',
+      choices: uniqueStrings(['Bangkaw', ...equipment.aliases.filter((item) => normalizeLookup(item) !== 'bangkaw').slice(0, 3)]),
+      unit: equipment,
+      method: 'source_map_mcq',
+    })
+  }
+
+  const regional = units.find((unit) => normalizeLookup(unit.title) === 'regional classifications')
+  if (regional && regional.aliases.some((item) => /\bvisayans?\b/i.test(item))) {
+    add({
+      id: 'source-map-adaptive-arnis-visayans',
+      prompt: 'Which classification belongs to the Visayans?',
+      answer: regional.aliases.find((item) => /\bvisayans?\b/i.test(item)) ?? 'Visayans',
+      choices: uniqueStrings(regional.aliases.slice(0, 4)),
+      unit: regional,
+      method: 'source_map_mcq',
+    })
+  }
+
+  return items
 }
 
 function buildAnswerFromSourceMapUnit(title: string, unit: AcademicSourceMapUnit) {
@@ -312,6 +396,12 @@ function buildNormalizedQuestionStem(title: string, kind: AcademicSourceMapUnit[
 function buildIdentificationQuestion(unit: NormalizedQuizSourceUnit) {
   if (normalizeLookup(unit.title) === 'infosec vs it sec') return 'Distinguish InfoSec from IT Sec.'
   if (normalizeLookup(unit.title) === 'vulnerability exploit breach') return 'Distinguish Vulnerability, Exploit, and Breach.'
+  if (isAdaptiveEducationalQuizUnit(unit)) {
+    if (unit.unitType === 'timeline') return `Identify the chronology or milestones in ${unit.title}.`
+    if (unit.unitType === 'procedure') return `Sequence the steps in ${unit.title}.`
+    if (unit.unitType === 'equipment') return `Identify the equipment in ${unit.title}.`
+    if (unit.unitType === 'classification') return `Classify the listed items under ${unit.title}.`
+  }
   if (unit.sourceType === 'definition') return `Define ${unit.title}.`
   if (unit.sourceType === 'process') return `Identify the methods or steps in ${unit.title}.`
   if (unit.aliases.length >= 2) return `Enumerate the listed items under ${unit.title}.`
@@ -325,6 +415,10 @@ function buildIdentificationQuestion(unit: NormalizedQuizSourceUnit) {
 
 function buildMultipleChoiceQuestion(unit: NormalizedQuizSourceUnit) {
   if (usesListMembershipMcq(unit)) {
+    if (isAdaptiveEducationalQuizUnit(unit)) {
+      if (unit.unitType === 'equipment') return `Which item is listed as equipment in ${unit.title}?`
+      if (unit.unitType === 'classification') return `Which item belongs to ${unit.title}?`
+    }
     return `Which item belongs to ${formatListMembershipTarget(unit.title)}?`
   }
   const key = normalizeLookup(unit.title)
@@ -354,6 +448,10 @@ function buildSourceMapExplanation(unit: NormalizedQuizSourceUnit, answer?: stri
   if (normalizeLookup(unit.title) === 'vulnerability exploit breach') {
     return 'Correct because the course distinction is vulnerability as the weakness, exploit as the method or tool, and breach as the successful exploit.'
   }
+  if (unit.unitType === 'timeline') return `Correct because ${resolvedAnswer} is preserved as a chronology or milestone item for ${unit.title}.`
+  if (unit.unitType === 'procedure') return `Correct because ${resolvedAnswer} belongs to the source-listed sequence for ${unit.title}.`
+  if (unit.unitType === 'equipment') return `Correct because ${resolvedAnswer} is listed as equipment or a weapon in ${unit.title}.`
+  if (unit.unitType === 'classification') return `Correct because ${resolvedAnswer} belongs to the source-listed classification for ${unit.title}.`
   if (unit.sourceType === 'definition') return `Correct because the source defines ${unit.title} as ${resolvedAnswer}.`
   if (unit.sourceType === 'process') return `Correct because these are the listed methods or response steps for ${unit.title}.`
   if (unit.aliases.length >= 2) return `Correct because the answer preserves the complete list tied to ${unit.title}.`
@@ -420,8 +518,12 @@ function buildMultipleChoiceAnswer(unit: NormalizedQuizSourceUnit) {
 
 function usesListMembershipMcq(unit: NormalizedQuizSourceUnit) {
   if (isDefinitionLikeUnit(unit)) return false
-  return (unit.sourceType === 'category' || unit.sourceType === 'list' || unit.sourceType === 'process' || normalizeLookup(unit.title) === 'cia triad')
+  return (unit.sourceType === 'category' || unit.sourceType === 'list' || unit.sourceType === 'process' || unit.unitType === 'equipment' || unit.unitType === 'classification' || normalizeLookup(unit.title) === 'cia triad')
     && unit.aliases.length >= 2
+}
+
+function isAdaptiveEducationalQuizUnit(unit: NormalizedQuizSourceUnit) {
+  return /\b(?:arnis|ra 9850|historical|evolution|organizations|courtesy|salutation|strike|equipment|weapons|stick|regional)\b/i.test(unit.title)
 }
 
 function isDefinitionLikeUnit(unit: NormalizedQuizSourceUnit) {
@@ -449,6 +551,10 @@ function getPreferredListAnswer(title: string) {
   if (key === 'denial of service methods') return 'Botnet'
   if (key === 'blended attacks') return 'DDoS combined with phishing emails'
   if (key === 'impact reduction') return 'Communicate the Issue'
+  if (key === 'equipment weapons') return 'Bangkaw'
+  if (key === 'stick types') return 'Bangkaw'
+  if (key === 'regional classifications') return 'Visayans'
+  if (key === 'organizations timeline') return 'WEKAF'
   if (key === 'vulnerability exploit breach') return 'Vulnerability - Weaknesses or flaws in the hardware or software'
   return null
 }
@@ -461,6 +567,10 @@ function formatListMembershipTarget(title: string) {
   if (key === 'malware symptoms') return 'the symptoms of malware'
   if (key === 'methods of infiltration') return 'the methods of infiltration'
   if (key === 'denial of service methods') return 'the denial of service methods'
+  if (key === 'organizations timeline') return 'the Arnis organizations and timeline'
+  if (key === 'equipment weapons') return 'Arnis equipment and weapons'
+  if (key === 'stick types') return 'Arnis stick types'
+  if (key === 'regional classifications') return 'the regional classifications'
   return title
 }
 
@@ -564,17 +674,41 @@ function normalizeQuizSourceTitle(value: string) {
   if (lookup === 'impact reduction') return 'Impact Reduction'
   if (lookup === 'types of attackers') return 'Types of Attackers'
   if (lookup === 'blended attacks') return 'Blended Attacks'
+  if (lookup === 'arnis definition') return 'Arnis'
+  if (lookup === 'ra 9850') return 'RA 9850'
+  if (lookup === 'historical concept') return 'Historical Concept'
+  if (lookup === 'evolution classifications') return 'Evolution / Classifications'
+  if (lookup === 'organizations timeline') return 'Organizations / Timeline'
+  if (lookup === 'courtesy salutation') return 'Courtesy / Salutation'
+  if (lookup === 'strike types') return 'Strike Types'
+  if (lookup === 'equipment weapons') return 'Equipment / Weapons'
+  if (lookup === 'stick types') return 'Stick Types'
+  if (lookup === 'regional classifications') return 'Regional Classifications'
   return cleaned
 }
 
 function inferConceptFamily(title: string, kind: AcademicSourceMapUnit['kind']) {
   const key = normalizeLookup(title)
+  if (/\b(?:arnis|ra 9850|historical|organizations|timeline)\b/i.test(key)) return 'arnis-history'
+  if (/\b(?:courtesy|salutation|strike|equipment|weapons|stick|regional|classification)\b/i.test(key)) return 'arnis-practice'
   if (/\b(?:it security|infosec|it sec|cia triad|domains)\b/i.test(key)) return 'it-security'
   if (/\b(?:cybersecurity|threat|attacker|vulnerability|exploit|breach)\b/i.test(key)) return 'cybersecurity'
   if (/\b(?:malware|infiltration|denial|blended|impact reduction)\b/i.test(key)) return 'security-operations'
   if (kind === 'definition') return 'definitions'
   if (kind === 'process') return 'processes'
   return 'general'
+}
+
+function inferQuizUnitType(title: string, unit: AcademicSourceMapUnit): AcademicSourceMapUnitType {
+  if (unit.unitType) return unit.unitType
+  const key = normalizeLookup(title)
+  if (/\b(?:timeline|history|historical|ra 9850|organizations)\b/i.test(key)) return 'timeline'
+  if (/\b(?:courtesy|salutation|methods?|steps?|sequence|reduction)\b/i.test(key) || unit.kind === 'process') return 'procedure'
+  if (/\b(?:equipment|weapons?|stick)\b/i.test(key)) return 'equipment'
+  if (/\b(?:classification|regional|types|domains|categories)\b/i.test(key) || unit.kind === 'category') return 'classification'
+  if (unit.kind === 'definition') return 'definition'
+  if (unit.kind === 'list') return 'taxonomy'
+  return 'narrative'
 }
 
 function uniqueBy<T>(values: T[], getKey: (value: T) => string) {
@@ -632,6 +766,10 @@ function allowsDuplicateCoverageItem(item: StudyOutputQuizPackItem) {
   if (item.type === 'multiple_choice' && item.prompt === 'Which description best matches InfoSec?') return true
   if (item.type === 'identification' && item.prompt === 'Distinguish InfoSec from IT Sec.') return true
   if (item.type === 'identification' && /^Define (?:IT Security|Cybersecurity)\./.test(item.prompt)) return true
+  if (item.prompt === 'Which organization standardized Arnis sport rules?') return true
+  if (item.prompt === 'Arrange the Arnis milestones chronologically.') return true
+  if (item.prompt === 'Sequence the steps in Courtesy / Salutation.') return true
+  if (item.prompt === 'Classify the listed items under Strike Types.') return true
   return false
 }
 
@@ -660,6 +798,16 @@ function getCoverageTitleFromSourceUnitId(sourceUnitId: string) {
   if (key === 'denial of service methods') return 'Denial of Service Methods'
   if (key === 'blended attacks') return 'Blended Attacks'
   if (key === 'impact reduction') return 'Impact Reduction'
+  if (key === 'arnis definition') return 'Arnis'
+  if (key === 'ra 9850') return 'RA 9850'
+  if (key === 'historical concept') return 'Historical Concept'
+  if (key === 'evolution classifications') return 'Evolution / Classifications'
+  if (key === 'organizations timeline') return 'Organizations / Timeline'
+  if (key === 'courtesy salutation') return 'Courtesy / Salutation'
+  if (key === 'strike types') return 'Strike Types'
+  if (key === 'equipment weapons') return 'Equipment / Weapons'
+  if (key === 'stick types') return 'Stick Types'
+  if (key === 'regional classifications') return 'Regional Classifications'
   return null
 }
 
@@ -677,6 +825,11 @@ function getRequiredQuizCoverageTitles() {
     'Denial of Service Methods',
     'Blended Attacks',
     'Impact Reduction',
+    'Arnis',
+    'Organizations / Timeline',
+    'Courtesy / Salutation',
+    'Equipment / Weapons',
+    'Regional Classifications',
   ]
 }
 
@@ -718,6 +871,16 @@ function getPreferredQuizSourceRank(title: string) {
     'Denial of Service Methods',
     'Blended Attacks',
     'Impact Reduction',
+    'Arnis',
+    'RA 9850',
+    'Historical Concept',
+    'Evolution / Classifications',
+    'Organizations / Timeline',
+    'Courtesy / Salutation',
+    'Strike Types',
+    'Equipment / Weapons',
+    'Stick Types',
+    'Regional Classifications',
   ].map(normalizeLookup)
   const index = preferred.indexOf(normalizeLookup(title))
   return index === -1 ? 100 : index

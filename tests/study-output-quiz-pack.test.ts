@@ -248,6 +248,33 @@ test('IT Security reviewer Source Map flows into quiz generation', () => {
   assert.doesNotMatch(combined, /infosec domains of it security cybersecurity definitions/i)
 })
 
+test('Adaptive Source Map quiz generation supports PATHFit Arnis sequence classification and chronology', () => {
+  const note = createPathfitArnisSourceMapNote()
+  const units = buildNormalizedQuizSourceUnits(note)
+  const items = buildQuizPackItems(note)
+  const prompts = items.map((item) => item.prompt)
+  const combined = JSON.stringify(items)
+
+  assert.ok(units.some((unit) => unit.title === 'Courtesy / Salutation' && unit.unitType === 'procedure'))
+  assert.ok(units.some((unit) => unit.title === 'Organizations / Timeline' && unit.unitType === 'timeline'))
+  assert.ok(units.some((unit) => unit.title === 'Equipment / Weapons' && unit.unitType === 'equipment'))
+  assert.ok(units.some((unit) => unit.title === 'Regional Classifications' && unit.unitType === 'classification'))
+
+  assert.ok(prompts.includes('Which organization standardized Arnis sport rules?'))
+  assert.ok(prompts.includes('Arrange the Arnis milestones chronologically.'))
+  assert.ok(prompts.includes('Which weapon is a six-foot pole?'))
+  assert.ok(prompts.includes('Which classification belongs to the Visayans?'))
+  assert.ok(items.some((item) => item.prompt === 'Sequence the steps in Courtesy / Salutation.'))
+  assert.ok(items.some((item) => item.prompt === 'Classify the listed items under Strike Types.'))
+
+  const organization = items.find((item) => item.prompt === 'Which organization standardized Arnis sport rules?')
+  assert.equal(organization?.answer, 'WEKAF')
+  const weapon = items.find((item) => item.prompt === 'Which weapon is a six-foot pole?')
+  assert.equal(weapon?.answer, 'Bangkaw')
+  assert.doesNotMatch(combined, /What is Historical Concept\?/i)
+  assert.doesNotMatch(combined, /metadata|debug|ocr garbage/i)
+})
+
 test('quiz pack definition answers preserve source wording and source basis', () => {
   const items = buildQuizPackItems(createNote({
     answerBank: [
@@ -447,6 +474,25 @@ function createItSecuritySourceMapNote(overrides: Partial<DeepLearnNote> = {}): 
   })
 }
 
+function createPathfitArnisSourceMapNote(overrides: Partial<DeepLearnNote> = {}): DeepLearnNote {
+  return createNote({
+    title: 'PATHFit Arnis Reviewer',
+    overview: 'Arnis history, procedure, classifications, and equipment.',
+    sourceGrounding: {
+      sourceType: 'PDF',
+      extractionQuality: 'usable',
+      sourceTextQuality: 'meaningful',
+      groundingStrategy: 'stored_extract',
+      usedAiFallback: false,
+      qualityReason: null,
+      warning: null,
+      charCount: PATHFIT_ARNIS_SOURCE.length,
+      sourceMap: buildAcademicSourceMap(PATHFIT_ARNIS_SOURCE),
+    },
+    ...overrides,
+  })
+}
+
 function normalizeLookup(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
 }
@@ -479,4 +525,19 @@ const IT_SECURITY_SOURCE = [
   'Methods to Deny Service • Overwhelm quantity of traffic • Send enormous quantity of data at a rate that cannot be handled • Maliciously formatted packets • Zombie - Infected Host • Botnet - Network of Infected Hosts • SEO Poisoning - Increase traffic to malicious websites',
   'Blended Attacks • Uses multiple techniques to compromise a target • Uses a hybrid of worms, Trojan horses, spyware, keyloggers, spam, and phishing schemes • DDoS combined with phishing emails',
   'Impact Reduction • Communicate the Issue • Be sincere and accountable • Provide details • Understand the cause of the breach • Ensure all systems are clean • Educate employees, partners, and customers',
+].join('\n')
+
+const PATHFIT_ARNIS_SOURCE = [
+  'PATHFit Module 1 Arnis',
+  'What is Arnis â€¢ Arnis is the Philippine national martial art and sport using sticks, bladed weapons, and empty-hand techniques.',
+  'Aliases of Arnis â€¢ Eskrima â€¢ Kali â€¢ Garrote â€¢ Estoque',
+  'Republic Act 9850 â€¢ RA 9850 declared Arnis as the national martial art and sport of the Philippines.',
+  'Historical Concept â€¢ Arnis developed from indigenous fighting systems and preserved Filipino culture through practical self-defense.',
+  'Evolution of Arnis â€¢ Classical Arnis â€¢ Modern Arnis â€¢ Sports Arnis â€¢ Anyo â€¢ Labanan',
+  'Organizations and Timeline 1975 NARAPHIL promoted national organization 1986 ARPI supported national competitions 1989 WEKAF standardized Arnis sport rules 2010 i-ARNIS supported school-based implementation',
+  'Courtesy and Salutation 1. Attention stance 2. Ready stance 3. Bow 4. Salute 5. Return to ready stance',
+  'Strike Types â€¢ Forehand strike â€¢ Backhand strike â€¢ Thrust â€¢ Diagonal strike â€¢ Horizontal strike â€¢ Vertical strike',
+  'Equipment and Weapons â€¢ Baston - training stick â€¢ Daga - dagger â€¢ Bolo - bladed weapon â€¢ Espada y Daga - sword and dagger â€¢ Bangkaw - six-foot pole',
+  'Stick Types â€¢ Solo Baston â€¢ Doble Baston â€¢ Sibat â€¢ Bangkaw',
+  'Regional Classifications â€¢ Luzon styles â€¢ Visayans classifications â€¢ Mindanao systems',
 ].join('\n')

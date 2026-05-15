@@ -1467,6 +1467,7 @@ export function buildDeepLearnContentFromSourceMap(
 interface GeneratedSourceMapUnit {
   title: string
   kind: AcademicSourceMapUnit['kind']
+  unitType: NonNullable<AcademicSourceMapUnit['unitType']>
   items: string[]
   support: string
   sourceWording: string | null
@@ -1505,6 +1506,7 @@ function cleanGeneratedSourceMapUnit(unit: AcademicSourceMapUnit): GeneratedSour
   return {
     title,
     kind: unit.kind,
+    unitType: inferGeneratedSourceMapUnitType(title, unit),
     items,
     support: support || sourceWording || `${title} is a source-backed concept.`,
     sourceWording,
@@ -1528,7 +1530,32 @@ function normalizeGeneratedSourceMapTitle(value: string) {
   if (lookup === 'denial of service methods') return 'Denial of Service Methods'
   if (lookup === 'impact reduction') return 'Impact Reduction'
   if (lookup === 'types of attackers') return 'Types of Attackers'
+  if (lookup === 'arnis definition') return 'Arnis'
+  if (lookup === 'ra 9850') return 'RA 9850'
+  if (lookup === 'historical concept') return 'Historical Concept'
+  if (lookup === 'evolution classifications') return 'Evolution / Classifications'
+  if (lookup === 'organizations timeline') return 'Organizations / Timeline'
+  if (lookup === 'courtesy salutation') return 'Courtesy / Salutation'
+  if (lookup === 'strike types') return 'Strike Types'
+  if (lookup === 'equipment weapons') return 'Equipment / Weapons'
+  if (lookup === 'stick types') return 'Stick Types'
+  if (lookup === 'regional classifications') return 'Regional Classifications'
   return cleaned
+}
+
+function inferGeneratedSourceMapUnitType(
+  title: string,
+  unit: AcademicSourceMapUnit,
+): NonNullable<AcademicSourceMapUnit['unitType']> {
+  if (unit.unitType) return unit.unitType
+  const key = normalizeAcademicLookup(title)
+  if (/\b(?:timeline|history|historical|ra 9850|organizations)\b/i.test(key)) return 'timeline'
+  if (/\b(?:courtesy|salutation|methods?|steps?|sequence|reduction)\b/i.test(key) || unit.kind === 'process') return 'procedure'
+  if (/\b(?:equipment|weapons?|stick)\b/i.test(key)) return 'equipment'
+  if (/\b(?:classification|regional|types|domains|categories)\b/i.test(key) || unit.kind === 'category') return 'classification'
+  if (unit.kind === 'definition') return 'definition'
+  if (unit.kind === 'list') return 'taxonomy'
+  return 'narrative'
 }
 
 function buildSourceMapGeneratedAnswer(unit: GeneratedSourceMapUnit) {
@@ -1546,7 +1573,16 @@ function buildSourceMapGeneratedAnswer(unit: GeneratedSourceMapUnit) {
     return 'Vulnerability = weakness or flaw; exploit = method or tool used to take advantage; breach = successful exploit.'
   }
   if (unit.items.length >= 2 && !/^(?:IT Security|Cybersecurity)$/i.test(unit.title)) {
-    return `${unit.title} includes ${formatInlineList(unit.items.slice(0, getSourceMapGeneratedListLimit(unit)))}.`
+    const verb = unit.unitType === 'timeline'
+      ? 'preserves milestones including'
+      : unit.unitType === 'procedure'
+        ? 'uses the sequence'
+        : unit.unitType === 'equipment'
+          ? 'identifies'
+          : unit.unitType === 'classification'
+            ? 'classifies'
+            : 'includes'
+    return `${unit.title} ${verb} ${formatInlineList(unit.items.slice(0, getSourceMapGeneratedListLimit(unit)))}.`
   }
   return unit.support || unit.sourceWording || unit.title
 }
@@ -1554,16 +1590,22 @@ function buildSourceMapGeneratedAnswer(unit: GeneratedSourceMapUnit) {
 function getSourceMapGeneratedListLimit(unit: GeneratedSourceMapUnit) {
   if (/^domains of it security$/i.test(unit.title)) return 11
   if (/^malware types$/i.test(unit.title)) return 10
+  if (/^(?:courtesy \/ salutation|strike types|equipment \/ weapons|stick types|organizations \/ timeline|regional classifications|evolution \/ classifications)$/i.test(unit.title)) return 12
   return unit.kind === 'process' ? 7 : 8
 }
 
 function getSourceMapGeneratedAnswerLimit(unit: GeneratedSourceMapUnit) {
   if (/^(?:domains of it security|malware types)$/i.test(unit.title)) return 320
+  if (unit.unitType === 'timeline' || unit.unitType === 'equipment' || unit.unitType === 'classification') return 260
   if (/^cybersecurity$/i.test(unit.title)) return 260
   return 180
 }
 
 function buildSourceMapGeneratedQuizTarget(unit: GeneratedSourceMapUnit) {
+  if (unit.unitType === 'timeline') return `Arrange ${unit.title} chronologically`
+  if (unit.unitType === 'procedure') return `Sequence ${unit.title}`
+  if (unit.unitType === 'equipment') return `Identify equipment in ${unit.title}`
+  if (unit.unitType === 'classification') return `Classify ${unit.title}`
   if (unit.kind === 'process') return `Apply ${unit.title}`
   if (unit.items.length >= 3) return `Enumerate ${unit.title}`
   if (/ vs |\/|triad/i.test(unit.title)) return `Distinguish ${unit.title}`
@@ -1572,6 +1614,10 @@ function buildSourceMapGeneratedQuizTarget(unit: GeneratedSourceMapUnit) {
 
 function buildSourceMapGeneratedQuizReason(unit: GeneratedSourceMapUnit) {
   if (unit.kind === 'definition') return `Define ${unit.title} using the source wording.`
+  if (unit.unitType === 'timeline') return `Recall the source chronology or milestones under ${unit.title}.`
+  if (unit.unitType === 'procedure') return `Practice the source-listed sequence under ${unit.title}.`
+  if (unit.unitType === 'equipment') return `Identify the equipment or weapon examples under ${unit.title}.`
+  if (unit.unitType === 'classification') return `Classify source-listed items under ${unit.title}.`
   if (unit.kind === 'process') return `Apply the source-listed steps or methods under ${unit.title}.`
   if (unit.items.length >= 3) return `Enumerate source-listed items such as ${formatInlineList(unit.items.slice(0, 6))}.`
   return `Explain the source-backed concept ${unit.title}.`

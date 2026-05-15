@@ -1,6 +1,6 @@
 import { resolveDeepLearnWording, sanitizeStudentFacingText } from '@/lib/deep-learn'
 import { buildDeepLearnNoteBody } from '@/lib/deep-learn'
-import { validateAcademicSourceMap, type AcademicSourceMap, type AcademicSourceMapUnit } from '@/lib/deep-learn-source-map'
+import { validateAcademicSourceMap, type AcademicSourceMap, type AcademicSourceMapUnit, type AcademicSourceMapUnitType } from '@/lib/deep-learn-source-map'
 import { deepLearnNoteHasUntrustworthyGrounding } from '@/lib/deep-learn-source-validation'
 import { normalizeSourceFaithfulText, normalizeStudyOutputHeadingIfRaw } from '@/lib/study-outputs/source-faithful'
 import type {
@@ -274,6 +274,7 @@ interface SourceMapReviewerUnit {
   sourceWording: string | null
   items: string[]
   kind: AcademicSourceMapUnit['kind']
+  unitType: AcademicSourceMapUnitType
   importanceScore: number
 }
 
@@ -325,8 +326,22 @@ function cleanSourceMapReviewerUnit(unit: AcademicSourceMapUnit): SourceMapRevie
       : sourceWording,
     items,
     kind: unit.kind,
+    unitType: inferReviewerUnitType(title, unit),
     importanceScore: unit.importanceScore,
   }
+}
+
+function inferReviewerUnitType(title: string, unit: AcademicSourceMapUnit): AcademicSourceMapUnitType {
+  if (unit.unitType) return unit.unitType
+  const key = normalizeLookup(title)
+  if (/\b(?:vs|vulnerability exploit breach)\b/i.test(key)) return 'comparison'
+  if (/\b(?:timeline|history|historical|ra 9850|organizations)\b/i.test(key)) return 'timeline'
+  if (/\b(?:courtesy|salutation|methods?|steps?|sequence|reduction)\b/i.test(key) || unit.kind === 'process') return 'procedure'
+  if (/\b(?:equipment|weapons?|stick)\b/i.test(key)) return 'equipment'
+  if (/\b(?:classification|regional|types|domains|categories)\b/i.test(key) || unit.kind === 'category') return 'classification'
+  if (unit.kind === 'definition') return 'definition'
+  if (unit.kind === 'list') return 'taxonomy'
+  return 'narrative'
 }
 
 function normalizeSourceMapReviewerTitle(value: string) {
@@ -346,6 +361,16 @@ function normalizeSourceMapReviewerTitle(value: string) {
   if (lookup === 'impact reduction') return 'Impact Reduction'
   if (lookup === 'types of attackers') return 'Types of Attackers'
   if (lookup === 'blended attacks') return 'Blended Attacks'
+  if (lookup === 'arnis definition') return 'Arnis'
+  if (lookup === 'ra 9850') return 'RA 9850'
+  if (lookup === 'historical concept') return 'Historical Concept'
+  if (lookup === 'evolution classifications') return 'Evolution / Classifications'
+  if (lookup === 'organizations timeline') return 'Organizations / Timeline'
+  if (lookup === 'courtesy salutation') return 'Courtesy / Salutation'
+  if (lookup === 'strike types') return 'Strike Types'
+  if (lookup === 'equipment weapons') return 'Equipment / Weapons'
+  if (lookup === 'stick types') return 'Stick Types'
+  if (lookup === 'regional classifications') return 'Regional Classifications'
   return cleaned
 }
 
@@ -364,8 +389,20 @@ function buildSourceMapAnswer(title: string, unit: AcademicSourceMapUnit, items:
   if (titleKey === 'vulnerability exploit breach') {
     return 'Vulnerability = weakness or flaw; exploit = method or tool used to take advantage; breach = successful exploit.'
   }
+  if (titleKey === 'arnis') {
+    return shapeReviewerDefinitionAnswer(title, cleanDefinitionAnswer(title, summary))
+  }
   if (items.length >= 2 && !/^(?:IT Security|Cybersecurity)$/i.test(title)) {
-    const prefix = unit.kind === 'process' ? `${title} steps` : `${title} key list`
+    const unitType = inferReviewerUnitType(title, unit)
+    const prefix = unitType === 'timeline'
+      ? `${title} milestones`
+      : unitType === 'equipment'
+        ? `${title} identification`
+        : unitType === 'procedure'
+          ? `${title} sequence`
+          : unitType === 'classification'
+            ? `${title} classifications`
+            : unit.kind === 'process' ? `${title} steps` : `${title} key list`
     return `${prefix}: ${items.slice(0, getSourceMapReviewerListLimit(title, unit.kind, 'answer')).join('; ')}.`
   }
   return shapeReviewerDefinitionAnswer(title, cleanDefinitionAnswer(title, summary))
@@ -383,6 +420,10 @@ function buildSourceMapQuizTarget(unit: SourceMapReviewerUnit) {
   const key = normalizeLookup(unit.title)
   if (key === 'malware symptoms') return 'Identify symptoms of malware'
   if (key === 'infosec vs it sec' || key === 'vulnerability exploit breach') return `Differentiate ${unit.title}`
+  if (unit.unitType === 'timeline') return `Arrange milestones for ${unit.title}`
+  if (unit.unitType === 'procedure') return `Sequence ${unit.title}`
+  if (unit.unitType === 'equipment') return `Identify equipment in ${unit.title}`
+  if (unit.unitType === 'classification') return `Classify items in ${unit.title}`
   if (/threat types|attackers|malware types/i.test(unit.title)) return `Match terms in ${unit.title}`
   if (/importance|challenges/i.test(unit.title)) return `Explain why ${unit.title} matters`
   if (unit.kind === 'definition') return `Define ${unit.title}`
@@ -397,6 +438,10 @@ function buildSourceMapQuizReason(unit: SourceMapReviewerUnit) {
   if (key === 'infosec vs it sec') return 'Keep the business-information focus separate from network/data-security wording.'
   if (key === 'vulnerability exploit breach') return 'These terms are commonly tested as a sequence: weakness, method/tool, successful result.'
   if (key === 'malware symptoms') return `Recognize source-listed signs such as ${unit.items.slice(0, 4).join(', ')}.`
+  if (unit.unitType === 'timeline') return 'Recall the chronology or milestone relationships preserved from the source.'
+  if (unit.unitType === 'procedure') return 'Practice the source-listed sequence as a practical review target.'
+  if (unit.unitType === 'equipment') return 'Identify the equipment or weapon examples by name and purpose.'
+  if (unit.unitType === 'classification') return 'Keep the source-listed groups under the correct classification heading.'
   if (unit.kind === 'definition') return `Give the compact source-backed definition of ${unit.title}.`
   if (unit.kind === 'process') return `Put the source-listed methods or response steps in a usable order.`
   if (unit.items.length >= 3) return `Recall the source-listed examples without mixing them with nearby sections.`
@@ -407,10 +452,20 @@ function buildSourceMapExamCue(unit: SourceMapReviewerUnit) {
   const key = normalizeLookup(unit.title)
   if (key === 'infosec vs it sec') return 'Be able to distinguish InfoSec from IT Sec.'
   if (key === 'vulnerability exploit breach') return 'Be able to distinguish Vulnerability from Exploit and Breach.'
+  if (isAdaptiveEducationalReviewerUnit(unit)) {
+    if (unit.unitType === 'timeline') return 'Know the chronology or milestone order.'
+    if (unit.unitType === 'procedure') return 'Know the order or purpose of the steps.'
+    if (unit.unitType === 'equipment') return 'Be able to identify the listed equipment.'
+    if (unit.unitType === 'classification') return 'Be able to classify the listed items.'
+  }
   if (unit.kind === 'definition') return 'Know the exact definition.'
   if (unit.kind === 'process') return 'Know the order or purpose of the steps.'
   if (unit.items.length >= 2) return 'Be able to enumerate the listed items.'
   return 'Know the exact definition.'
+}
+
+function isAdaptiveEducationalReviewerUnit(unit: SourceMapReviewerUnit) {
+  return /\b(?:arnis|ra 9850|historical|evolution|organizations|courtesy|salutation|strike|equipment|weapons|stick|regional)\b/i.test(unit.title)
 }
 
 function isStrongSourceMapQuickBlockUnit(unit: SourceMapReviewerUnit) {
@@ -428,6 +483,7 @@ function isStrongSourceMapQuickBlockUnit(unit: SourceMapReviewerUnit) {
 function getSourceMapReviewerListLimit(title: string, kind: AcademicSourceMapUnit['kind'], mode: 'answer' | 'quick' | 'short') {
   if (/^domains of it security$/i.test(title)) return 11
   if (/^malware types$/i.test(title)) return 10
+  if (/^(?:courtesy \/ salutation|strike types|equipment \/ weapons|stick types|organizations \/ timeline|regional classifications|evolution \/ classifications)$/i.test(title)) return 12
   if (mode === 'short') return kind === 'process' ? 5 : 6
   return kind === 'process' ? 7 : 8
 }
@@ -537,6 +593,17 @@ function getPreferredSourceMapRank(title: string) {
     'Denial of Service Methods',
     'Blended Attacks',
     'Impact Reduction',
+    'Arnis',
+    'Aliases',
+    'RA 9850',
+    'Historical Concept',
+    'Evolution / Classifications',
+    'Organizations / Timeline',
+    'Courtesy / Salutation',
+    'Strike Types',
+    'Equipment / Weapons',
+    'Stick Types',
+    'Regional Classifications',
   ].map(normalizeLookup)
   const index = preferred.indexOf(normalizeLookup(title))
   return index === -1 ? 100 : index

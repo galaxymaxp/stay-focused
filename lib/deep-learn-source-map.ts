@@ -12,10 +12,32 @@ export type AcademicSourceMapUnitKind =
   | 'category'
   | 'process'
 
+export type AcademicSourceMapStyle =
+  | 'technical'
+  | 'procedural'
+  | 'narrative'
+  | 'classification-heavy'
+  | 'timeline-heavy'
+  | 'reflective'
+  | 'taxonomy-heavy'
+
+export type AcademicSourceMapUnitType =
+  | 'definition'
+  | 'classification'
+  | 'timeline'
+  | 'procedure'
+  | 'equipment'
+  | 'historical'
+  | 'taxonomy'
+  | 'comparison'
+  | 'narrative'
+  | 'reflective'
+
 export interface AcademicSourceMapUnit {
   id: string
   title: string
   kind: AcademicSourceMapUnitKind
+  unitType?: AcademicSourceMapUnitType
   summary: string
   items: string[]
   sourceQuotes: string[]
@@ -25,6 +47,8 @@ export interface AcademicSourceMapUnit {
 
 export interface AcademicSourceMap {
   version: 'academic-source-map-v1'
+  sourceStyle?: AcademicSourceMapStyle
+  secondaryStyles?: AcademicSourceMapStyle[]
   normalizedText: string
   units: AcademicSourceMapUnit[]
   chunks: Array<{ heading: string; text: string; sourceQuote: string }>
@@ -39,7 +63,7 @@ export interface AcademicSourceMapValidation {
   quoteCount: number
 }
 
-interface SourceChunk {
+export interface SourceChunk {
   heading: string
   text: string
   sourceQuote: string
@@ -63,6 +87,24 @@ const SOURCE_MAP_HEADINGS = [
   'Methods to Deny Service',
   'Blended Attacks',
   'Impact Reduction',
+  'What is Arnis',
+  'Aliases of Arnis',
+  'Republic Act 9850',
+  'Historical Concept',
+  'History of Arnis',
+  'Evolution of Arnis',
+  'Classifications of Arnis',
+  'Organizations and Timeline',
+  'Organizations of Arnis',
+  'Courtesy and Salutation',
+  'Courtesy Salutation',
+  'Striking Techniques',
+  'Strike Types',
+  'Equipment and Weapons',
+  'Weapons and Equipment',
+  'Stick Types',
+  'Regional Classifications',
+  'Reflection',
 ]
 
 const SOURCE_MAP_STOP_TOKENS = [
@@ -84,6 +126,24 @@ const SOURCE_MAP_STOP_TOKENS = [
   'Blended Attacks',
   'Impact Reduction',
   'Attacks backed by state agencies that',
+  'What is Arnis',
+  'Aliases of Arnis',
+  'Republic Act 9850',
+  'Historical Concept',
+  'History of Arnis',
+  'Evolution of Arnis',
+  'Classifications of Arnis',
+  'Organizations and Timeline',
+  'Organizations of Arnis',
+  'Courtesy and Salutation',
+  'Courtesy Salutation',
+  'Striking Techniques',
+  'Strike Types',
+  'Equipment and Weapons',
+  'Weapons and Equipment',
+  'Stick Types',
+  'Regional Classifications',
+  'Reflection',
 ]
 
 const HIGH_IMPORTANCE_PATTERNS = [
@@ -125,6 +185,16 @@ const RECOGNIZED_SOURCE_MAP_TERMS = new Set([
   'denial of service methods',
   'blended attacks',
   'impact reduction',
+  'arnis definition',
+  'aliases',
+  'ra 9850',
+  'historical concept',
+  'evolution classifications',
+  'organizations timeline',
+  'courtesy salutation',
+  'strike types',
+  'equipment weapons',
+  'stick types',
 ])
 
 export function buildAcademicSourceMap(sourceText: string): AcademicSourceMap {
@@ -132,14 +202,18 @@ export function buildAcademicSourceMap(sourceText: string): AcademicSourceMap {
   const collapsed = collapseDuplicateFragments(cleanedLines)
   const normalizedText = collapsed.lines.join('\n')
   const chunks = chunkSourceMapByHeadings(normalizedText)
+  const styleProfile = detectAcademicSourceMapStyles(normalizedText, chunks)
   const units = dedupeUnits([
-    ...buildUnitsFromChunks(chunks),
     ...inferKnownSecurityUnits(normalizedText),
+    ...inferKnownArnisUnits(normalizedText),
+    ...buildUnitsFromChunks(chunks),
   ])
     .sort((left, right) => right.importanceScore - left.importanceScore || left.title.localeCompare(right.title))
     .slice(0, 36)
   const validation = validateAcademicSourceMap({
     version: 'academic-source-map-v1',
+    sourceStyle: styleProfile.sourceStyle,
+    secondaryStyles: styleProfile.secondaryStyles,
     normalizedText,
     chunks,
     units,
@@ -149,12 +223,63 @@ export function buildAcademicSourceMap(sourceText: string): AcademicSourceMap {
 
   return {
     version: 'academic-source-map-v1',
+    sourceStyle: styleProfile.sourceStyle,
+    secondaryStyles: styleProfile.secondaryStyles,
     normalizedText,
     chunks,
     units,
     duplicateFragmentsRemoved: collapsed.duplicatesRemoved,
     validation,
   }
+}
+
+export function detectAcademicSourceMapStyles(
+  normalizedText: string,
+  chunks: SourceChunk[] = chunkSourceMapByHeadings(cleanupSourceMapLines(normalizedText).join('\n')),
+): { sourceStyle: AcademicSourceMapStyle; secondaryStyles: AcademicSourceMapStyle[] } {
+  const source = normalizedText.replace(/\s+/g, ' ')
+  const headingText = chunks.map((chunk) => chunk.heading).join(' ')
+  const scores = new Map<AcademicSourceMapStyle, number>([
+    ['technical', 0],
+    ['procedural', 0],
+    ['narrative', 0],
+    ['classification-heavy', 0],
+    ['timeline-heavy', 0],
+    ['reflective', 0],
+    ['taxonomy-heavy', 0],
+  ])
+  const add = (style: AcademicSourceMapStyle, amount: number) => scores.set(style, (scores.get(style) ?? 0) + amount)
+
+  const numbered = (source.match(/\b\d+[.)]\s+[A-Z]/g) ?? []).length
+  const years = (source.match(/\b(?:1[5-9]\d{2}|20\d{2})\b/g) ?? []).length
+  const bulletCount = (source.match(/â€¢/g) ?? []).length
+  if (numbered >= 3 || /\b(?:steps?|procedure|salutation|courtesy|sequence|perform|execute)\b/i.test(source)) add('procedural', 34 + numbered * 2)
+  if (years >= 3 || /\b(?:timeline|history|historical|milestones?|evolution|founded|established)\b/i.test(source)) add('timeline-heavy', 34 + years * 3)
+  if (/\b(?:classification|classifications|categories|types?|groups?|regional|taxonomy)\b/i.test(`${headingText} ${source}`)) add('classification-heavy', 32)
+  if (bulletCount >= 8 || /\b(?:domains|triad|taxonomy|types?|categories|includes)\b/i.test(source)) add('taxonomy-heavy', 28 + Math.min(bulletCount, 18))
+  if (/\b(?:cybersecurity|security|network|malware|vulnerability|exploit|breach|technical|systems?)\b/i.test(source)) {
+    add('technical', /\b(?:arnis|eskrima|kali|ra 9850|stick|salutation|strike)\b/i.test(source) ? 36 : 58)
+  }
+  if (/\b(?:story|origin|developed|during|period|tradition|culture|historical concept)\b/i.test(source)) add('narrative', 20)
+  if (/\b(?:reflection|reflect|journal|personal|values?|self assessment|insight)\b/i.test(source)) add('reflective', 34)
+  if (/\b(?:arnis|eskrima|kali|ra 9850|stick|weapons?|salutation|strike)\b/i.test(source)) {
+    add('procedural', 22)
+    add('classification-heavy', 18)
+    add('timeline-heavy', 12)
+  }
+
+  const ranked = [...scores.entries()]
+    .filter(([, score]) => score > 0)
+    .sort((left, right) => right[1] - left[1])
+  const isSecurityTechnical = /\b(?:cybersecurity|it security|infosec|malware|vulnerability|exploit|breach)\b/i.test(source)
+    && !/\b(?:arnis|eskrima|kali|ra 9850|stick|salutation|strike)\b/i.test(source)
+  const sourceStyle = isSecurityTechnical ? 'technical' : ranked[0]?.[0] ?? 'technical'
+  const secondaryStyles = ranked
+    .filter(([style]) => style !== sourceStyle)
+    .filter(([, score]) => score >= 24)
+    .map(([style]) => style)
+    .slice(0, 4)
+  return { sourceStyle, secondaryStyles }
 }
 
 export function validateAcademicSourceMap(sourceMap: AcademicSourceMap): AcademicSourceMapValidation {
@@ -178,14 +303,14 @@ export function buildAcademicSourceMapGrounding(sourceText: string, maxChars = D
 
   const unitLines = sourceMap.units.flatMap((unit) => {
     const lines = [
-      `- ${unit.title} [${unit.kind}, importance ${unit.importanceScore}/100]: ${unit.summary}`,
+      `- ${unit.title} [${unit.kind}/${unit.unitType ?? inferSourceMapUnitType(unit.title, unit.kind)}, importance ${unit.importanceScore}/100]: ${unit.summary}`,
     ]
     if (unit.items.length > 0) lines.push(`  Items: ${unit.items.slice(0, 10).join(', ')}`)
     if (unit.sourceQuotes[0]) lines.push(`  Source quote: "${unit.sourceQuotes[0]}"`)
     return lines
   })
   const structured = truncateForSourceMapModel([
-    'Deterministic academic structure from the selected source (Academic Source Map):',
+    `Deterministic academic structure from the selected source (Academic Source Map). Dominant style: ${sourceMap.sourceStyle ?? 'technical'}${sourceMap.secondaryStyles?.length ? `; secondary styles: ${sourceMap.secondaryStyles.join(', ')}` : ''}:`,
     ...unitLines,
   ].join('\n'), Math.min(STRUCTURED_SOURCE_MAP_CHARS, Math.max(2400, maxChars - 1800)))
   const quoteBlock = truncateForSourceMapModel([
@@ -358,9 +483,69 @@ function inferKnownSecurityUnits(normalizedText: string): AcademicSourceMapUnit[
   return units
 }
 
+function inferKnownArnisUnits(normalizedText: string): AcademicSourceMapUnit[] {
+  const units: AcademicSourceMapUnit[] = []
+  const source = normalizedText.replace(/\s+/g, ' ')
+  if (!/\b(?:arnis|eskrima|kali|ra 9850)\b/i.test(source)) return units
+
+  const addList = (
+    title: string,
+    items: string[],
+    quoteHeadings: string[],
+    kind: AcademicSourceMapUnitKind,
+    unitType: AcademicSourceMapUnitType,
+  ) => {
+    const found = items.filter((item) => new RegExp(`\\b${escapeRegExp(item).replace(/\\-/g, '[- ]?')}\\b`, 'i').test(source))
+    if (found.length >= 2) {
+      units.push(createUnit({
+        title,
+        kind,
+        unitType,
+        summary: `${title} includes ${found.join(', ')}.`,
+        items: found,
+        sourceQuote: pickKnownSectionQuote(normalizedText, quoteHeadings) ?? `${title}: ${found.join(', ')}`,
+      }))
+    }
+  }
+
+  const addQuoteUnit = (
+    title: string,
+    quoteHeadings: string[],
+    kind: AcademicSourceMapUnitKind,
+    unitType: AcademicSourceMapUnitType,
+    fallbackPattern?: RegExp,
+  ) => {
+    const quote = pickKnownSectionQuote(normalizedText, quoteHeadings, fallbackPattern)
+    if (!quote) return
+    units.push(createUnit({
+      title,
+      kind,
+      unitType,
+      summary: summarizeQuote(title, quote),
+      items: extractSourceMapItems(quote),
+      sourceQuote: quote,
+    }))
+  }
+
+  addQuoteUnit('Arnis definition', ['What is Arnis'], 'definition', 'definition', /What is Arnis.{0,260}/i)
+  addList('Aliases', ['Eskrima', 'Kali', 'Garrote', 'Estoque'], ['Aliases of Arnis', 'What is Arnis'], 'list', 'classification')
+  addQuoteUnit('RA 9850', ['Republic Act 9850'], 'concept', 'historical', /(?:RA|Republic Act)\s*9850.{0,260}/i)
+  addQuoteUnit('Historical concept', ['Historical Concept', 'History of Arnis'], 'concept', 'historical', /Historical Concept.{0,320}/i)
+  addList('Evolution / Classifications', ['Classical Arnis', 'Modern Arnis', 'Sports Arnis', 'Anyo', 'Labanan'], ['Evolution of Arnis', 'Classifications of Arnis'], 'category', 'classification')
+  addList('Organizations / Timeline', ['NARAPHIL', 'ARPI', 'WEKAF', 'i-ARNIS'], ['Organizations and Timeline', 'Organizations of Arnis'], 'category', 'timeline')
+  addList('Courtesy / Salutation', ['Attention stance', 'Ready stance', 'Bow', 'Salute', 'Return to ready stance'], ['Courtesy and Salutation', 'Courtesy Salutation'], 'process', 'procedure')
+  addList('Strike Types', ['Forehand strike', 'Backhand strike', 'Thrust', 'Diagonal strike', 'Horizontal strike', 'Vertical strike'], ['Striking Techniques', 'Strike Types'], 'category', 'classification')
+  addList('Equipment / Weapons', ['Baston', 'Daga', 'Bolo', 'Espada y Daga', 'Bangkaw'], ['Equipment and Weapons', 'Weapons and Equipment'], 'category', 'equipment')
+  addList('Stick Types', ['Solo Baston', 'Doble Baston', 'Sibat', 'Bangkaw'], ['Stick Types'], 'category', 'equipment')
+  addList('Regional Classifications', ['Luzon', 'Visayans', 'Mindanao'], ['Regional Classifications', 'Classifications of Arnis'], 'category', 'classification')
+
+  return units
+}
+
 function createUnit(input: {
   title: string
   kind: AcademicSourceMapUnitKind
+  unitType?: AcademicSourceMapUnitType
   summary: string
   items: string[]
   sourceQuote: string
@@ -370,12 +555,27 @@ function createUnit(input: {
     id: slugify(title),
     title,
     kind: input.kind,
+    unitType: input.unitType ?? inferSourceMapUnitType(title, input.kind),
     summary: cleanupSummary(stopAtKnownHeading(input.summary, title)),
     items: uniqueStrings(input.items.map((item) => cleanupSourceMapUnitItem(item, title)).filter(Boolean)).slice(0, 14),
     sourceQuotes: uniqueStrings([input.sourceQuote].filter(Boolean).map((quote) => clampSourceMapQuote(quote, title, input.kind))),
     importanceScore: scoreImportance(title, input.kind, input.items.length),
     confidence: input.sourceQuote ? 0.86 : 0.62,
   }
+}
+
+function inferSourceMapUnitType(title: string, kind: AcademicSourceMapUnitKind): AcademicSourceMapUnitType {
+  const key = normalizeLookup(title)
+  if (/\b(?:vs|vulnerability exploit breach)\b/i.test(key)) return 'comparison'
+  if (/\b(?:timeline|organizations timeline|history|historical|ra 9850|evolution)\b/i.test(key)) return 'timeline'
+  if (/\b(?:courtesy|salutation|procedure|methods?|infiltration|reduction|steps?)\b/i.test(key) || kind === 'process') return 'procedure'
+  if (/\b(?:equipment|weapons?|stick types|baston|daga|bangkaw)\b/i.test(key)) return 'equipment'
+  if (/\b(?:classification|classifications|regional|types|domains|categories|attackers|malware|threats)\b/i.test(key) || kind === 'category') return 'classification'
+  if (kind === 'list') return 'taxonomy'
+  if (kind === 'definition') return 'definition'
+  if (/\b(?:reflect|reflection)\b/i.test(key)) return 'reflective'
+  if (/\b(?:historical concept|origin|tradition)\b/i.test(key)) return 'historical'
+  return 'narrative'
 }
 
 function cleanupSourceMapUnitItem(value: string, title: string) {
@@ -544,6 +744,7 @@ function scoreImportance(title: string, kind: AcademicSourceMapUnitKind, itemCou
   let score = kind === 'definition' ? 82 : kind === 'process' ? 76 : kind === 'category' ? 72 : 66
   if (HIGH_IMPORTANCE_PATTERNS.some((pattern) => pattern.test(title))) score += 14
   if (/^(?:CIA Triad|IT Security definition|InfoSec vs IT Sec|Vulnerability \/ Exploit \/ Breach)$/i.test(title)) score += 18
+  if (/^(?:Arnis definition|RA 9850|Organizations \/ Timeline|Courtesy \/ Salutation|Equipment \/ Weapons|Regional Classifications)$/i.test(title)) score += 16
   if (itemCount >= 3) score += 6
   if (itemCount >= 8) score += 4
   return Math.max(1, Math.min(100, score))
@@ -572,12 +773,24 @@ function normalizeSourceMapHeading(value: string) {
   if (lookup === 'types of malware') return 'Malware types'
   if (lookup === 'symptoms of malware') return 'Malware symptoms'
   if (lookup === 'challenges of cybersecurity') return 'Challenges'
+  if (lookup === 'what is arnis' || lookup === 'arnis definition') return 'Arnis definition'
+  if (lookup === 'aliases of arnis') return 'Aliases'
+  if (lookup === 'republic act 9850' || lookup === 'ra 9850') return 'RA 9850'
+  if (lookup === 'historical concept' || lookup === 'history of arnis') return 'Historical concept'
+  if (lookup === 'evolution of arnis' || lookup === 'classifications of arnis') return 'Evolution / Classifications'
+  if (lookup === 'organizations and timeline' || lookup === 'organizations of arnis') return 'Organizations / Timeline'
+  if (lookup === 'courtesy and salutation' || lookup === 'courtesy salutation') return 'Courtesy / Salutation'
+  if (lookup === 'striking techniques' || lookup === 'strike types') return 'Strike Types'
+  if (lookup === 'equipment and weapons' || lookup === 'weapons and equipment') return 'Equipment / Weapons'
+  if (lookup === 'stick types') return 'Stick Types'
+  if (lookup === 'regional classifications') return 'Regional Classifications'
   return cleaned
 }
 
 function cleanupItem(value: string) {
   return sanitizeStudentFacingText(value)
     .replace(/\s+/g, ' ')
+    .replace(/^\d+[.)]\s*/, '')
     .replace(/^[\s"'([{.:;-]+|[\s"'.,;:)\]}]+$/g, '')
     .trim()
 }

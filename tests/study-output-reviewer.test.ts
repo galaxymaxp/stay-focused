@@ -344,6 +344,63 @@ test('Source Map reviewer quick-answer blocks exclude weak orphan units', () => 
   assert.ok(reviewer.quickReviewBlocks.some((block) => block.heading === 'Methods of Infiltration'))
 })
 
+test('Adaptive Source Map detects PATHFit Arnis styles and preserves procedural groups', () => {
+  const sourceMap = buildAcademicSourceMap(PATHFIT_ARNIS_SOURCE)
+  const titles = sourceMap.units.map((unit) => unit.title)
+
+  assert.equal(sourceMap.validation.ok, true)
+  assert.equal(sourceMap.sourceStyle, 'procedural')
+  assert.ok(sourceMap.secondaryStyles?.includes('classification-heavy'))
+  assert.ok(sourceMap.secondaryStyles?.includes('timeline-heavy'))
+
+  for (const expected of [
+    'Arnis definition',
+    'Aliases',
+    'RA 9850',
+    'Historical concept',
+    'Evolution / Classifications',
+    'Organizations / Timeline',
+    'Courtesy / Salutation',
+    'Strike Types',
+    'Equipment / Weapons',
+    'Stick Types',
+    'Regional Classifications',
+  ]) {
+    assert.ok(titles.includes(expected), `missing ${expected}`)
+  }
+
+  const salutation = sourceMap.units.find((unit) => unit.title === 'Courtesy / Salutation')
+  assert.ok(salutation)
+  assert.equal(salutation.unitType, 'procedure')
+  assert.deepEqual(salutation.items.slice(0, 5), ['Attention stance', 'Ready stance', 'Bow', 'Salute', 'Return to ready stance'])
+
+  const timeline = sourceMap.units.find((unit) => unit.title === 'Organizations / Timeline')
+  assert.ok(timeline)
+  assert.equal(timeline.unitType, 'timeline')
+  assert.ok(timeline.items.includes('WEKAF'))
+
+  const equipment = sourceMap.units.find((unit) => unit.title === 'Equipment / Weapons')
+  assert.ok(equipment)
+  assert.equal(equipment.unitType, 'equipment')
+  assert.ok(equipment.items.includes('Bangkaw'))
+})
+
+test('Source Map reviewer adapts PATHFit Arnis prompts by procedural and timeline style', () => {
+  const reviewer = buildDeepLearnReviewerContent(createNoteWithSourceMap(PATHFIT_ARNIS_SOURCE, {
+    title: 'PATHFit Arnis Reviewer',
+    overview: 'Arnis history, classifications, procedures, and equipment.',
+  }))
+  const rendered = JSON.stringify(reviewer)
+
+  assert.match(rendered, /Arnis|Courtesy \/ Salutation|Organizations \/ Timeline|Equipment \/ Weapons/)
+  assert.ok(reviewer.likelyQuizTargets.some((item) => item.target === 'Sequence Courtesy / Salutation'))
+  assert.ok(reviewer.likelyQuizTargets.some((item) => item.target === 'Arrange milestones for Organizations / Timeline'))
+  assert.ok(reviewer.likelyQuizTargets.some((item) => item.target === 'Identify equipment in Equipment / Weapons'))
+  assert.ok(reviewer.likelyQuizTargets.some((item) => item.target === 'Classify items in Regional Classifications'))
+  assert.ok(reviewer.highYieldConcepts.some((item) => item.cue === 'Courtesy / Salutation' && /Attention stance|Return to ready stance/.test(item.answer)))
+  assert.doesNotMatch(rendered, /What is Historical Concept\?/i)
+})
+
 
 test('Source Map reviewer filters weak key terms and internal labels', () => {
   const sourceMap = buildAcademicSourceMap(IT_SECURITY_SOURCE)
@@ -429,10 +486,10 @@ test('legacy blob reviewer still works when Source Map is missing', () => {
   assert.equal(buildReviewerContentFromSourceMap(createNote()), null)
 })
 
-function createNoteWithSourceMap(sourceText: string) {
+function createNoteWithSourceMap(sourceText: string, overrides: Partial<DeepLearnNote> = {}) {
   return createNote({
-    title: 'Intro to IT Security Reviewer',
-    overview: 'Definitions, domains, threats, malware, and response concepts for IT security.',
+    title: overrides.title ?? 'Intro to IT Security Reviewer',
+    overview: overrides.overview ?? 'Definitions, domains, threats, malware, and response concepts for IT security.',
     sourceGrounding: {
       sourceType: 'PDF',
       extractionQuality: 'usable',
@@ -444,6 +501,7 @@ function createNoteWithSourceMap(sourceText: string) {
       charCount: sourceText.length,
       sourceMap: buildAcademicSourceMap(sourceText),
     },
+    ...overrides,
   })
 }
 
@@ -485,6 +543,21 @@ const IT_SECURITY_SOURCE = [
   'Methods to Deny Service • Overwhelm quantity of traffic • Send enormous quantity of data at a rate that cannot be handled • Maliciously formatted packets • Zombie - Infected Host • Botnet - Network of Infected Hosts • SEO Poisoning - Increase traffic to malicious websites',
   'Blended Attacks • Uses multiple techniques to compromise a target • Uses a hybrid of worms, Trojan horses, spyware, keyloggers, spam, and phishing schemes • DDoS combined with phishing emails',
   'Impact Reduction • Communicate the Issue • Be sincere and accountable • Provide details • Understand the cause of the breach • Ensure all systems are clean • Educate employees, partners, and customers',
+].join('\n')
+
+const PATHFIT_ARNIS_SOURCE = [
+  'PATHFit Module 1 Arnis',
+  'What is Arnis â€¢ Arnis is the Philippine national martial art and sport using sticks, bladed weapons, and empty-hand techniques.',
+  'Aliases of Arnis â€¢ Eskrima â€¢ Kali â€¢ Garrote â€¢ Estoque',
+  'Republic Act 9850 â€¢ RA 9850 declared Arnis as the national martial art and sport of the Philippines.',
+  'Historical Concept â€¢ Arnis developed from indigenous fighting systems and preserved Filipino culture through practical self-defense.',
+  'Evolution of Arnis â€¢ Classical Arnis â€¢ Modern Arnis â€¢ Sports Arnis â€¢ Anyo â€¢ Labanan',
+  'Organizations and Timeline 1975 NARAPHIL promoted national organization 1986 ARPI supported national competitions 1989 WEKAF standardized Arnis sport rules 2010 i-ARNIS supported school-based implementation',
+  'Courtesy and Salutation 1. Attention stance 2. Ready stance 3. Bow 4. Salute 5. Return to ready stance',
+  'Strike Types â€¢ Forehand strike â€¢ Backhand strike â€¢ Thrust â€¢ Diagonal strike â€¢ Horizontal strike â€¢ Vertical strike',
+  'Equipment and Weapons â€¢ Baston - training stick â€¢ Daga - dagger â€¢ Bolo - bladed weapon â€¢ Espada y Daga - sword and dagger â€¢ Bangkaw - six-foot pole',
+  'Stick Types â€¢ Solo Baston â€¢ Doble Baston â€¢ Sibat â€¢ Bangkaw',
+  'Regional Classifications â€¢ Luzon styles â€¢ Visayans classifications â€¢ Mindanao systems',
 ].join('\n')
 
 function createNote(overrides: Partial<DeepLearnNote> = {}): DeepLearnNote {

@@ -5,6 +5,90 @@ Last Updated: 2026-05-15
 
 ---
 
+## Session Update - 2026-05-15 (Adaptive Source Map Styles)
+
+### What changed
+
+- Extended `AcademicSourceMap` with deterministic style metadata:
+  - `sourceStyle`
+  - `secondaryStyles`
+  - per-unit `unitType`
+- Added adaptive Source Map styles for technical, procedural, narrative, classification-heavy, timeline-heavy, reflective, and taxonomy-heavy sources.
+- Added deterministic PATHFit/Arnis-aware structure preservation for:
+  - Arnis definition
+  - aliases
+  - RA 9850
+  - historical concept
+  - evolution/classifications
+  - organizations/timeline
+  - courtesy/salutation
+  - strike types
+  - equipment/weapons
+  - stick types
+  - regional classifications
+- Kept the existing IT Security technical/taxonomy behavior and added regression coverage for IT Security style, list completeness, reviewer prompts, and quiz coverage.
+- Adapted Source Map Reviewer shaping so procedural/timeline/equipment/classification units produce sequence, chronology, equipment-identification, and classification review targets instead of definition/list-only prompts.
+- Adapted Source Map Quiz shaping so PATHFit-style sources can produce chronology, sequence, classification, and equipment questions such as:
+  - `Which organization standardized Arnis sport rules?`
+  - `Arrange the Arnis milestones chronologically.`
+  - `Which weapon is a six-foot pole?`
+  - `Which classification belongs to the Visayans?`
+- Updated Source Map quiz coverage selection so adaptive educational units are not squeezed out by the old IT Security-only preferred coverage list.
+
+### Files touched
+
+- `lib/deep-learn-source-map.ts`
+- `lib/deep-learn-generation.ts`
+- `lib/study-outputs/reviewer.ts`
+- `lib/study-outputs/quiz-pack.ts`
+- `tests/deep-learn-generation.test.ts`
+- `tests/study-output-reviewer.test.ts`
+- `tests/study-output-quiz-pack.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+The Source Map foundation was stable for technical/list-heavy sources, but procedural and narrative educational modules were being flattened into generic notes. This pass adds deterministic adaptive styles and unit typing without adding AI calls, retries, queue changes, internet fallback, or weaker validation.
+
+### Tests run
+
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- deep-learn-generation study-output-reviewer study-output-quiz-pack` - passed
+- `npm test -- quiz source-map reviewer` - passed
+- `npm test -- study-output-reviewer study-output-sheet study-output-print` - passed
+
+### Verification result
+
+- Passed all requested verification commands.
+- Verified IT Security remains `technical` with taxonomy-heavy secondary style and keeps core technical Source Map units.
+- Verified PATHFit Arnis detects procedural dominant style with classification-heavy and timeline-heavy secondary styles.
+- Verified PATHFit Arnis preserves procedure steps, timeline/organization groups, equipment/weapons, stick types, and regional classifications.
+- Verified Reviewer produces adaptive sequence, chronology, equipment, and classification targets.
+- Verified Quiz produces adaptive chronology, sequence, classification, and equipment questions while keeping existing IT Security MCQs stable.
+- Verified weak fragment rejection remains covered.
+
+### Known risks
+
+- PATHFit/Arnis grouping is deterministic and heading/term based; future physical-education modules may need additional known heading aliases.
+- Legacy persisted Source Maps without `sourceStyle`, `secondaryStyles`, or `unitType` remain tolerated, but regenerated maps should include the new fields.
+
+### Blockers
+
+- No blocker remains.
+
+### Next recommended step
+
+Regenerate a real PATHFit Arnis Reviewer and Quiz from the live source export, visually compare against the fixture expectations, then broaden adaptive style aliases for any live heading variants found.
+
+### Suggested commit message
+
+```bash
+add adaptive source map styles
+```
+
+---
+
 ## Session Update - 2026-05-15 (First-Class Browser Test Script)
 
 ### What changed

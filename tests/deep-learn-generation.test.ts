@@ -1162,6 +1162,35 @@ test('Academic Source Map extracts IT Security academic units with source quotes
   assert.match(terms.sourceQuotes[0] ?? '', /Breach/i)
 })
 
+test('Academic Source Map detects adaptive styles without regressing IT Security taxonomy', () => {
+  const itSecurity = buildAcademicSourceMap(IT_SECURITY_SAMPLE_SOURCE)
+  const arnis = buildAcademicSourceMap(PATHFIT_ARNIS_SAMPLE_SOURCE)
+
+  assert.equal(itSecurity.sourceStyle, 'technical')
+  assert.ok(itSecurity.secondaryStyles?.includes('taxonomy-heavy'))
+  assert.ok(itSecurity.units.some((unit) => unit.title === 'Domains of IT Security' && unit.unitType === 'classification'))
+  assert.ok(itSecurity.units.some((unit) => unit.title === 'Malware types' && unit.items.includes('MiTM')))
+
+  assert.equal(arnis.sourceStyle, 'procedural')
+  assert.ok(arnis.secondaryStyles?.includes('classification-heavy'))
+  assert.ok(arnis.secondaryStyles?.includes('timeline-heavy'))
+  assert.ok(arnis.units.some((unit) => unit.title === 'Courtesy / Salutation' && unit.unitType === 'procedure'))
+  assert.ok(arnis.units.some((unit) => unit.title === 'Organizations / Timeline' && unit.unitType === 'timeline'))
+  assert.ok(arnis.units.some((unit) => unit.title === 'Equipment / Weapons' && unit.unitType === 'equipment'))
+})
+
+test('Source Map compact reviewer preserves PATHFit procedural units for save validation', () => {
+  const sourceMap = buildAcademicSourceMap(PATHFIT_ARNIS_SAMPLE_SOURCE)
+  const content = buildDeepLearnContentFromSourceMap(sourceMap, 'PATHFit Arnis')
+
+  assert.ok(content)
+  assert.equal(validateDeepLearnContentReadyForSave(content).ok, true)
+  assert.ok(content.answerBank.some((item) => item.cue === 'Courtesy / Salutation' && /Attention stance|Return to ready stance/.test(item.answer.examSafe)))
+  assert.ok(content.likelyQuizTargets.some((item) => item.target === 'Arrange Organizations / Timeline chronologically'))
+  assert.ok(content.likelyQuizTargets.some((item) => item.target === 'Identify equipment in Equipment / Weapons'))
+  assert.doesNotMatch(JSON.stringify(content), /What is Historical Concept\?/i)
+})
+
 test('Academic Source Map grounding is bounded and preserves exact source quotes', () => {
   const grounding = buildAcademicSourceMapGrounding(IT_SECURITY_SAMPLE_SOURCE, 2600)
 
@@ -1614,6 +1643,21 @@ const IT_SECURITY_SAMPLE_SOURCE = [
   'Methods to Deny Service - Overwhelm quantity of traffic - Send enormous quantity of data at a rate that cannot be handled - Maliciously formatted packets - Zombie - Infected Host - Botnet - Network of Infected Hosts - SEO Poisoning - Increase traffic to malicious websites',
   'Blended Attacks - Uses multiple techniques to compromise a target - Uses a hybrid of worms, Trojan horses, spyware, keyloggers, spam, and phishing schemes - DDoS combined with phishing emails',
   'Impact Reduction - Communicate the Issue - Be sincere and accountable - Provide details - Understand the cause of the breach - Take steps to avoid another similar breach in the future - Ensure all systems are clean - Educate employees, partners, and customers',
+].join('\n')
+
+const PATHFIT_ARNIS_SAMPLE_SOURCE = [
+  'PATHFit Module 1 Arnis',
+  'What is Arnis â€¢ Arnis is the Philippine national martial art and sport using sticks, bladed weapons, and empty-hand techniques.',
+  'Aliases of Arnis â€¢ Eskrima â€¢ Kali â€¢ Garrote â€¢ Estoque',
+  'Republic Act 9850 â€¢ RA 9850 declared Arnis as the national martial art and sport of the Philippines.',
+  'Historical Concept â€¢ Arnis developed from indigenous fighting systems and preserved Filipino culture through practical self-defense.',
+  'Evolution of Arnis â€¢ Classical Arnis â€¢ Modern Arnis â€¢ Sports Arnis â€¢ Anyo â€¢ Labanan',
+  'Organizations and Timeline 1975 NARAPHIL promoted national organization 1986 ARPI supported national competitions 1989 WEKAF standardized Arnis sport rules 2010 i-ARNIS supported school-based implementation',
+  'Courtesy and Salutation 1. Attention stance 2. Ready stance 3. Bow 4. Salute 5. Return to ready stance',
+  'Strike Types â€¢ Forehand strike â€¢ Backhand strike â€¢ Thrust â€¢ Diagonal strike â€¢ Horizontal strike â€¢ Vertical strike',
+  'Equipment and Weapons â€¢ Baston - training stick â€¢ Daga - dagger â€¢ Bolo - bladed weapon â€¢ Espada y Daga - sword and dagger â€¢ Bangkaw - six-foot pole',
+  'Stick Types â€¢ Solo Baston â€¢ Doble Baston â€¢ Sibat â€¢ Bangkaw',
+  'Regional Classifications â€¢ Luzon styles â€¢ Visayans classifications â€¢ Mindanao systems',
 ].join('\n')
 
 function createLearnResource(overrides: Partial<ModuleSourceResource> = {}): ModuleSourceResource {
