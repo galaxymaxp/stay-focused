@@ -1,6 +1,6 @@
 import { resolveDeepLearnWording, sanitizeStudentFacingText } from '@/lib/deep-learn'
 import { buildDeepLearnNoteBody } from '@/lib/deep-learn'
-import { validateAcademicSourceMap, type AcademicSourceMap, type AcademicSourceMapUnit, type AcademicSourceMapUnitType } from '@/lib/deep-learn-source-map'
+import { validateAcademicSourceMap, type AcademicLearningShape, type AcademicSourceMap, type AcademicSourceMapUnit, type AcademicSourceMapUnitType } from '@/lib/deep-learn-source-map'
 import { deepLearnNoteHasUntrustworthyGrounding } from '@/lib/deep-learn-source-validation'
 import { normalizeSourceFaithfulText, normalizeStudyOutputHeadingIfRaw } from '@/lib/study-outputs/source-faithful'
 import type {
@@ -275,6 +275,7 @@ interface SourceMapReviewerUnit {
   items: string[]
   kind: AcademicSourceMapUnit['kind']
   unitType: AcademicSourceMapUnitType
+  learningShape: AcademicLearningShape
   importanceScore: number
 }
 
@@ -327,8 +328,34 @@ function cleanSourceMapReviewerUnit(unit: AcademicSourceMapUnit): SourceMapRevie
     items,
     kind: unit.kind,
     unitType: inferReviewerUnitType(title, unit),
+    learningShape: inferReviewerLearningShape(title, unit),
     importanceScore: unit.importanceScore,
   }
+}
+
+function inferReviewerLearningShape(title: string, unit: AcademicSourceMapUnit): AcademicLearningShape {
+  if (unit.learningShape) return unit.learningShape
+  const key = normalizeLookup(title)
+  if (/\b(?:formula|equation|compute|calculate|solve)\b/i.test(key)) return 'formula'
+  if (/\b(?:example|sample problem|worked solution)\b/i.test(key)) return 'worked-example'
+  if (/\b(?:case|rule|statute|jurisdiction|liability|offense)\b/i.test(key)) return 'case-rule'
+  if (/\b(?:clinical|patient|care plan|diagnosis|treatment|assessment)\b/i.test(key)) return 'clinical-care'
+  if (/\b(?:cause|effect|impact|risk factor)\b/i.test(key)) return 'cause-effect'
+  if (/\b(?:troubleshoot|error|failure|debug|symptom)\b/i.test(key)) return 'troubleshooting'
+  if (/\b(?:component|system|architecture|module|parts?)\b/i.test(key)) return 'component-system'
+  if (/\b(?:lab|experiment|protocol)\b/i.test(key)) return 'lab-process'
+  if (/\b(?:rubric|standard|criteria|competency|outcomes?)\b/i.test(key)) return 'standards-rubrics'
+  if (/\b(?:passage|theme|motif|character|argument)\b/i.test(key)) return 'passage-theme'
+  const unitType = inferReviewerUnitType(title, unit)
+  if (unitType === 'timeline' || unitType === 'historical') return 'timeline'
+  if (unitType === 'procedure') return 'procedure'
+  if (unitType === 'equipment') return 'equipment'
+  if (unitType === 'classification') return 'classification'
+  if (unitType === 'comparison') return 'comparison'
+  if (unitType === 'taxonomy') return 'taxonomy'
+  if (unitType === 'reflective') return 'reflection'
+  if (unitType === 'narrative') return 'narrative'
+  return unit.kind === 'definition' ? 'definition' : 'narrative'
 }
 
 function inferReviewerUnitType(title: string, unit: AcademicSourceMapUnit): AcademicSourceMapUnitType {
@@ -393,15 +420,21 @@ function buildSourceMapAnswer(title: string, unit: AcademicSourceMapUnit, items:
     return shapeReviewerDefinitionAnswer(title, cleanDefinitionAnswer(title, summary))
   }
   if (items.length >= 2 && !/^(?:IT Security|Cybersecurity)$/i.test(title)) {
-    const unitType = inferReviewerUnitType(title, unit)
-    const prefix = unitType === 'timeline'
+    const learningShape = inferReviewerLearningShape(title, unit)
+    const prefix = learningShape === 'timeline'
       ? `${title} milestones`
-      : unitType === 'equipment'
+      : learningShape === 'equipment'
         ? `${title} identification`
-        : unitType === 'procedure'
+        : learningShape === 'procedure' || learningShape === 'lab-process'
           ? `${title} sequence`
-          : unitType === 'classification'
+          : learningShape === 'classification' || learningShape === 'taxonomy'
             ? `${title} classifications`
+            : learningShape === 'formula'
+              ? `${title} formula cues`
+              : learningShape === 'case-rule'
+                ? `${title} rule cues`
+                : learningShape === 'clinical-care'
+                  ? `${title} care cues`
             : unit.kind === 'process' ? `${title} steps` : `${title} key list`
     return `${prefix}: ${items.slice(0, getSourceMapReviewerListLimit(title, unit.kind, 'answer')).join('; ')}.`
   }
@@ -420,10 +453,20 @@ function buildSourceMapQuizTarget(unit: SourceMapReviewerUnit) {
   const key = normalizeLookup(unit.title)
   if (key === 'malware symptoms') return 'Identify symptoms of malware'
   if (key === 'infosec vs it sec' || key === 'vulnerability exploit breach') return `Differentiate ${unit.title}`
-  if (unit.unitType === 'timeline') return `Arrange milestones for ${unit.title}`
-  if (unit.unitType === 'procedure') return `Sequence ${unit.title}`
-  if (unit.unitType === 'equipment') return `Identify equipment in ${unit.title}`
-  if (unit.unitType === 'classification') return `Classify items in ${unit.title}`
+  if (unit.learningShape === 'timeline') return `Arrange milestones for ${unit.title}`
+  if (unit.learningShape === 'procedure' || unit.learningShape === 'lab-process') return `Sequence ${unit.title}`
+  if (unit.learningShape === 'equipment') return `Identify equipment in ${unit.title}`
+  if (unit.learningShape === 'classification' || unit.learningShape === 'taxonomy') return `Classify items in ${unit.title}`
+  if (unit.learningShape === 'formula') return `Use the formula in ${unit.title}`
+  if (unit.learningShape === 'worked-example') return `Work through ${unit.title}`
+  if (unit.learningShape === 'case-rule') return `Apply the rule in ${unit.title}`
+  if (unit.learningShape === 'clinical-care') return `Identify care priorities in ${unit.title}`
+  if (unit.learningShape === 'cause-effect') return `Explain the cause-effect relationship in ${unit.title}`
+  if (unit.learningShape === 'troubleshooting') return `Troubleshoot ${unit.title}`
+  if (unit.learningShape === 'component-system') return `Identify components in ${unit.title}`
+  if (unit.learningShape === 'standards-rubrics') return `Apply criteria in ${unit.title}`
+  if (unit.learningShape === 'passage-theme') return `Explain the theme in ${unit.title}`
+  if (unit.learningShape === 'reflection') return `Reflect on ${unit.title}`
   if (/threat types|attackers|malware types/i.test(unit.title)) return `Match terms in ${unit.title}`
   if (/importance|challenges/i.test(unit.title)) return `Explain why ${unit.title} matters`
   if (unit.kind === 'definition') return `Define ${unit.title}`
@@ -438,10 +481,20 @@ function buildSourceMapQuizReason(unit: SourceMapReviewerUnit) {
   if (key === 'infosec vs it sec') return 'Keep the business-information focus separate from network/data-security wording.'
   if (key === 'vulnerability exploit breach') return 'These terms are commonly tested as a sequence: weakness, method/tool, successful result.'
   if (key === 'malware symptoms') return `Recognize source-listed signs such as ${unit.items.slice(0, 4).join(', ')}.`
-  if (unit.unitType === 'timeline') return 'Recall the chronology or milestone relationships preserved from the source.'
-  if (unit.unitType === 'procedure') return 'Practice the source-listed sequence as a practical review target.'
-  if (unit.unitType === 'equipment') return 'Identify the equipment or weapon examples by name and purpose.'
-  if (unit.unitType === 'classification') return 'Keep the source-listed groups under the correct classification heading.'
+  if (unit.learningShape === 'timeline') return 'Recall the chronology or milestone relationships preserved from the source.'
+  if (unit.learningShape === 'procedure' || unit.learningShape === 'lab-process') return 'Practice the source-listed sequence as a practical review target.'
+  if (unit.learningShape === 'equipment') return 'Identify the equipment or tool examples by name and purpose.'
+  if (unit.learningShape === 'classification' || unit.learningShape === 'taxonomy') return 'Keep the source-listed groups under the correct classification heading.'
+  if (unit.learningShape === 'formula') return 'Know when and how the source formula is used.'
+  if (unit.learningShape === 'worked-example') return 'Follow the source example pattern without inventing extra steps.'
+  if (unit.learningShape === 'case-rule') return 'Connect the rule or standard to the correct fact pattern.'
+  if (unit.learningShape === 'clinical-care') return 'Keep the source-listed assessment, intervention, or care priorities straight.'
+  if (unit.learningShape === 'cause-effect') return 'Explain the source-backed relationship between causes and effects.'
+  if (unit.learningShape === 'troubleshooting') return 'Use the source-listed symptoms, causes, and fixes in order.'
+  if (unit.learningShape === 'component-system') return 'Identify how the source-listed parts fit into the system.'
+  if (unit.learningShape === 'standards-rubrics') return 'Apply the listed criteria or standards accurately.'
+  if (unit.learningShape === 'passage-theme') return 'Tie themes or claims to source-backed textual evidence.'
+  if (unit.learningShape === 'reflection') return 'Answer the reflective prompt using source-grounded ideas.'
   if (unit.kind === 'definition') return `Give the compact source-backed definition of ${unit.title}.`
   if (unit.kind === 'process') return `Put the source-listed methods or response steps in a usable order.`
   if (unit.items.length >= 3) return `Recall the source-listed examples without mixing them with nearby sections.`
@@ -452,11 +505,23 @@ function buildSourceMapExamCue(unit: SourceMapReviewerUnit) {
   const key = normalizeLookup(unit.title)
   if (key === 'infosec vs it sec') return 'Be able to distinguish InfoSec from IT Sec.'
   if (key === 'vulnerability exploit breach') return 'Be able to distinguish Vulnerability from Exploit and Breach.'
+  if (key === 'malware symptoms' || key === 'importance of cybersecurity') return 'Be able to enumerate the listed items.'
+  if (key === 'impact reduction') return 'Know the order or purpose of the steps.'
   if (isAdaptiveEducationalReviewerUnit(unit)) {
-    if (unit.unitType === 'timeline') return 'Know the chronology or milestone order.'
-    if (unit.unitType === 'procedure') return 'Know the order or purpose of the steps.'
-    if (unit.unitType === 'equipment') return 'Be able to identify the listed equipment.'
-    if (unit.unitType === 'classification') return 'Be able to classify the listed items.'
+    if (unit.learningShape === 'timeline') return 'Know the chronology or milestone order.'
+    if (unit.learningShape === 'procedure' || unit.learningShape === 'lab-process') return 'Know the order or purpose of the steps.'
+    if (unit.learningShape === 'equipment') return 'Be able to identify the listed equipment.'
+    if (unit.learningShape === 'classification' || unit.learningShape === 'taxonomy') return 'Be able to classify the listed items.'
+    if (unit.learningShape === 'formula') return 'Know the formula and when to use it.'
+    if (unit.learningShape === 'worked-example') return 'Know the example pattern.'
+    if (unit.learningShape === 'case-rule') return 'Know the rule and how to apply it.'
+    if (unit.learningShape === 'clinical-care') return 'Know the care priority or clinical action.'
+    if (unit.learningShape === 'cause-effect') return 'Know the cause-effect relationship.'
+    if (unit.learningShape === 'troubleshooting') return 'Know the symptom, cause, and fix pattern.'
+    if (unit.learningShape === 'component-system') return 'Know each component and its role.'
+    if (unit.learningShape === 'standards-rubrics') return 'Know the criteria or standards.'
+    if (unit.learningShape === 'passage-theme') return 'Know the theme or claim and its evidence.'
+    if (unit.learningShape === 'reflection') return 'Know the reflective focus.'
   }
   if (unit.kind === 'definition') return 'Know the exact definition.'
   if (unit.kind === 'process') return 'Know the order or purpose of the steps.'
@@ -465,7 +530,22 @@ function buildSourceMapExamCue(unit: SourceMapReviewerUnit) {
 }
 
 function isAdaptiveEducationalReviewerUnit(unit: SourceMapReviewerUnit) {
-  return /\b(?:arnis|ra 9850|historical|evolution|organizations|courtesy|salutation|strike|equipment|weapons|stick|regional)\b/i.test(unit.title)
+  return isSpecializedReviewerLearningShape(unit.learningShape)
+    || /\b(?:arnis|ra 9850|historical|evolution|organizations|courtesy|salutation|strike|equipment|weapons|stick|regional)\b/i.test(unit.title)
+}
+
+function isSpecializedReviewerLearningShape(shape: AcademicLearningShape) {
+  return shape === 'formula'
+    || shape === 'worked-example'
+    || shape === 'case-rule'
+    || shape === 'clinical-care'
+    || shape === 'cause-effect'
+    || shape === 'troubleshooting'
+    || shape === 'component-system'
+    || shape === 'lab-process'
+    || shape === 'standards-rubrics'
+    || shape === 'passage-theme'
+    || shape === 'reflection'
 }
 
 function isStrongSourceMapQuickBlockUnit(unit: SourceMapReviewerUnit) {

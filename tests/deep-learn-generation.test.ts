@@ -29,6 +29,7 @@ import {
 import {
   buildAcademicSourceMap,
   buildAcademicSourceMapGrounding,
+  detectAcademicDisciplineClusters,
 } from '../lib/deep-learn-source-map'
 import type { ModuleSourceResource } from '../lib/module-workspace'
 import type { Module, ModuleResource } from '../lib/types'
@@ -1167,16 +1168,45 @@ test('Academic Source Map detects adaptive styles without regressing IT Security
   const arnis = buildAcademicSourceMap(PATHFIT_ARNIS_SAMPLE_SOURCE)
 
   assert.equal(itSecurity.sourceStyle, 'technical')
+  assert.equal(itSecurity.disciplineCluster, 'computer-it-data-software')
   assert.ok(itSecurity.secondaryStyles?.includes('taxonomy-heavy'))
-  assert.ok(itSecurity.units.some((unit) => unit.title === 'Domains of IT Security' && unit.unitType === 'classification'))
-  assert.ok(itSecurity.units.some((unit) => unit.title === 'Malware types' && unit.items.includes('MiTM')))
+  assert.ok(itSecurity.units.some((unit) => unit.title === 'Domains of IT Security' && unit.unitType === 'classification' && unit.learningShape === 'classification'))
+  assert.ok(itSecurity.units.some((unit) => unit.title === 'Malware types' && unit.items.includes('MiTM') && unit.learningShape === 'classification'))
 
   assert.equal(arnis.sourceStyle, 'procedural')
+  assert.equal(arnis.disciplineCluster, 'physical-education-sports-performing-movement')
   assert.ok(arnis.secondaryStyles?.includes('classification-heavy'))
   assert.ok(arnis.secondaryStyles?.includes('timeline-heavy'))
-  assert.ok(arnis.units.some((unit) => unit.title === 'Courtesy / Salutation' && unit.unitType === 'procedure'))
-  assert.ok(arnis.units.some((unit) => unit.title === 'Organizations / Timeline' && unit.unitType === 'timeline'))
-  assert.ok(arnis.units.some((unit) => unit.title === 'Equipment / Weapons' && unit.unitType === 'equipment'))
+  assert.ok(arnis.units.some((unit) => unit.title === 'Courtesy / Salutation' && unit.unitType === 'procedure' && unit.learningShape === 'procedure'))
+  assert.ok(arnis.units.some((unit) => unit.title === 'Organizations / Timeline' && unit.unitType === 'timeline' && unit.learningShape === 'timeline'))
+  assert.ok(arnis.units.some((unit) => unit.title === 'Equipment / Weapons' && unit.unitType === 'equipment' && unit.learningShape === 'equipment'))
+})
+
+test('Academic Source Map discipline clusters are broad hints while learning shapes stay primary', () => {
+  const cases = [
+    ['The nursing care plan records patient assessment, vital signs, diagnosis, intervention, and evaluation.', 'health-nursing-allied-health-medicine'],
+    ['The case rule asks whether the court has jurisdiction and whether the statute creates liability for the offense.', 'law-criminal-justice-criminology-public-safety'],
+    ['The financial statements classify assets, liabilities, revenue, cost, and management strategy.', 'business-accountancy-management-economics'],
+    ['The lesson plan aligns curriculum objectives, classroom instruction, assessment, and learner outcomes.', 'education-pedagogy'],
+    ['The poem passage develops a theme through imagery, rhetoric, culture, and communication choices.', 'arts-humanities-communication'],
+    ['The geology lab uses an experiment, measurements, and an equation to analyze environmental science data.', 'natural-sciences-mathematics-geology-environmental-science'],
+    ['The hotel front office handles guest reservations, housekeeping coordination, tourism destinations, and food service.', 'hospitality-tourism'],
+    ['The ethics reading compares moral philosophy, theology, doctrine, virtue, and arguments about faith.', 'religion-theology-philosophy-ethics'],
+    ['The structural engineering design uses building code standards, construction materials, and architecture constraints.', 'engineering-architecture-built-environment'],
+  ] as const
+
+  for (const [source, expected] of cases) {
+    const profile = detectAcademicDisciplineClusters(source)
+    assert.equal(profile.disciplineCluster, expected, source)
+  }
+
+  const mixed = buildAcademicSourceMap([
+    'What is Cybersecurity? Cybersecurity protects systems and data.',
+    'Troubleshooting Process 1. Identify the error 2. Isolate the component 3. Test the system 4. Document the fix.',
+  ].join('\n'))
+
+  assert.equal(mixed.disciplineCluster, 'computer-it-data-software')
+  assert.ok(mixed.units.some((unit) => ['definition', 'troubleshooting', 'component-system', 'procedure'].includes(unit.learningShape ?? '')))
 })
 
 test('Source Map compact reviewer preserves PATHFit procedural units for save validation', () => {

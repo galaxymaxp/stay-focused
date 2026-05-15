@@ -486,6 +486,34 @@ test('legacy blob reviewer still works when Source Map is missing', () => {
   assert.equal(buildReviewerContentFromSourceMap(createNote()), null)
 })
 
+test('Source Map reviewer shapes broad academic units by learning shape instead of discipline hint', () => {
+  const note = createNote({
+    title: 'Mixed academic reviewer',
+    overview: 'Mixed discipline examples with distinct learning shapes.',
+    sourceGrounding: {
+      sourceType: 'PDF',
+      extractionQuality: 'usable',
+      sourceTextQuality: 'meaningful',
+      groundingStrategy: 'stored_extract',
+      usedAiFallback: false,
+      qualityReason: null,
+      warning: null,
+      charCount: 820,
+      sourceMap: createLearningShapeSourceMap(),
+    },
+  })
+
+  const reviewer = buildDeepLearnReviewerContent(note)
+  const targets = reviewer.likelyQuizTargets.map((item) => item.target)
+  const cues = reviewer.highYieldConcepts.map((item) => item.plainExplanation).join(' ')
+
+  assert.ok(targets.some((target) => /Apply the rule in Case Rule Liability/.test(target)))
+  assert.ok(targets.some((target) => /Troubleshoot Troubleshooting Process/.test(target)))
+  assert.ok(targets.some((target) => /Use the formula in Area Formula/.test(target)))
+  assert.match(cues, /Know the rule and how to apply it/)
+  assert.match(cues, /Know the symptom, cause, and fix pattern/)
+})
+
 function createNoteWithSourceMap(sourceText: string, overrides: Partial<DeepLearnNote> = {}) {
   return createNote({
     title: overrides.title ?? 'Intro to IT Security Reviewer',
@@ -503,6 +531,79 @@ function createNoteWithSourceMap(sourceText: string, overrides: Partial<DeepLear
     },
     ...overrides,
   })
+}
+
+function createLearningShapeSourceMap() {
+  const normalizedText = [
+    'Case Rule Liability The court applies the statute when jurisdiction and evidence establish the offense.',
+    'Troubleshooting Process 1. Identify the error 2. Isolate the component 3. Test the system 4. Document the fix.',
+    'Area Formula Area equals length times width.',
+    'Clinical Care Priority 1. Assess vital signs 2. Identify diagnosis 3. Plan intervention 4. Evaluate response.',
+  ].join('\n')
+  return {
+    version: 'academic-source-map-v1' as const,
+    sourceStyle: 'technical' as const,
+    secondaryStyles: ['procedural' as const],
+    disciplineCluster: 'health-nursing-allied-health-medicine' as const,
+    secondaryDisciplineClusters: ['law-criminal-justice-criminology-public-safety' as const],
+    normalizedText,
+    chunks: [
+      { heading: 'Case Rule Liability', text: 'The court applies the statute when jurisdiction and evidence establish the offense.', sourceQuote: 'Case Rule Liability The court applies the statute when jurisdiction and evidence establish the offense.' },
+      { heading: 'Troubleshooting Process', text: 'Identify the error. Isolate the component. Test the system. Document the fix.', sourceQuote: 'Troubleshooting Process 1. Identify the error 2. Isolate the component 3. Test the system 4. Document the fix.' },
+    ],
+    units: [
+      {
+        id: 'case-rule-liability',
+        title: 'Case Rule Liability',
+        kind: 'concept' as const,
+        unitType: 'definition' as const,
+        learningShape: 'case-rule' as const,
+        summary: 'The court applies the statute when jurisdiction and evidence establish the offense.',
+        items: ['jurisdiction', 'evidence', 'offense'],
+        sourceQuotes: ['Case Rule Liability The court applies the statute when jurisdiction and evidence establish the offense.'],
+        importanceScore: 90,
+        confidence: 0.92,
+      },
+      {
+        id: 'troubleshooting-process',
+        title: 'Troubleshooting Process',
+        kind: 'process' as const,
+        unitType: 'procedure' as const,
+        learningShape: 'troubleshooting' as const,
+        summary: 'Troubleshooting follows the source-listed error isolation and testing process.',
+        items: ['Identify the error', 'Isolate the component', 'Test the system', 'Document the fix'],
+        sourceQuotes: ['Troubleshooting Process 1. Identify the error 2. Isolate the component 3. Test the system 4. Document the fix.'],
+        importanceScore: 88,
+        confidence: 0.91,
+      },
+      {
+        id: 'area-formula',
+        title: 'Area Formula',
+        kind: 'concept' as const,
+        unitType: 'definition' as const,
+        learningShape: 'formula' as const,
+        summary: 'Area equals length times width.',
+        items: ['length', 'width', 'multiply values'],
+        sourceQuotes: ['Area Formula Area equals length times width.'],
+        importanceScore: 84,
+        confidence: 0.9,
+      },
+      {
+        id: 'clinical-care-priority',
+        title: 'Clinical Care Priority',
+        kind: 'process' as const,
+        unitType: 'procedure' as const,
+        learningShape: 'clinical-care' as const,
+        summary: 'Assess vital signs, identify diagnosis, plan intervention, and evaluate response.',
+        items: ['Assess vital signs', 'Identify diagnosis', 'Plan intervention', 'Evaluate response'],
+        sourceQuotes: ['Clinical Care Priority 1. Assess vital signs 2. Identify diagnosis 3. Plan intervention 4. Evaluate response.'],
+        importanceScore: 82,
+        confidence: 0.9,
+      },
+    ],
+    duplicateFragmentsRemoved: 0,
+    validation: { ok: true as const, reason: 'ok' as const, unitCount: 4, quoteCount: 4 },
+  }
 }
 
 function createReviewerOutput(content: ReturnType<typeof buildDeepLearnReviewerContent>): StudyOutput {

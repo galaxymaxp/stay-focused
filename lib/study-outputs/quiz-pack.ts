@@ -1,5 +1,5 @@
 import { deepLearnNoteHasUntrustworthyGrounding } from '@/lib/deep-learn-source-validation'
-import { validateAcademicSourceMap, type AcademicSourceMapUnit, type AcademicSourceMapUnitType } from '@/lib/deep-learn-source-map'
+import { validateAcademicSourceMap, type AcademicLearningShape, type AcademicSourceMapUnit, type AcademicSourceMapUnitType } from '@/lib/deep-learn-source-map'
 import { buildDeepLearnQuizItems, MIN_DEEP_LEARN_QUIZ_ITEM_COUNT } from '@/lib/deep-learn-quiz'
 import { buildStudyNoteQuestionCountOptions } from '@/lib/study-note-quiz'
 import { buildReviewerContentFromSourceMap } from '@/lib/study-outputs/reviewer'
@@ -33,6 +33,7 @@ export interface NormalizedQuizSourceUnit {
   sourceHeading: string
   sourceType: AcademicSourceMapUnit['kind']
   unitType: AcademicSourceMapUnitType
+  learningShape: AcademicLearningShape
   confidence: number
   keywords: string[]
   conceptFamily: string
@@ -192,9 +193,10 @@ export function buildNormalizedQuizSourceUnits(note: DeepLearnNote): NormalizedQ
         sourceHeading: title,
         sourceType: unit.kind,
         unitType: inferQuizUnitType(title, unit),
+        learningShape: inferQuizLearningShape(title, unit),
         confidence: unit.confidence,
         keywords,
-        conceptFamily: inferConceptFamily(title, unit.kind),
+        conceptFamily: inferConceptFamily(title, unit.kind, inferQuizLearningShape(title, unit)),
       }
     })
     .filter((unit): unit is NormalizedQuizSourceUnit => Boolean(unit))
@@ -394,13 +396,25 @@ function buildNormalizedQuestionStem(title: string, kind: AcademicSourceMapUnit[
 }
 
 function buildIdentificationQuestion(unit: NormalizedQuizSourceUnit) {
-  if (normalizeLookup(unit.title) === 'infosec vs it sec') return 'Distinguish InfoSec from IT Sec.'
-  if (normalizeLookup(unit.title) === 'vulnerability exploit breach') return 'Distinguish Vulnerability, Exploit, and Breach.'
+  const key = normalizeLookup(unit.title)
+  if (key === 'infosec vs it sec') return 'Distinguish InfoSec from IT Sec.'
+  if (key === 'vulnerability exploit breach') return 'Distinguish Vulnerability, Exploit, and Breach.'
+  if (key === 'malware symptoms') return 'Identify symptoms of malware.'
   if (isAdaptiveEducationalQuizUnit(unit)) {
-    if (unit.unitType === 'timeline') return `Identify the chronology or milestones in ${unit.title}.`
-    if (unit.unitType === 'procedure') return `Sequence the steps in ${unit.title}.`
-    if (unit.unitType === 'equipment') return `Identify the equipment in ${unit.title}.`
-    if (unit.unitType === 'classification') return `Classify the listed items under ${unit.title}.`
+    if (unit.learningShape === 'timeline') return `Identify the chronology or milestones in ${unit.title}.`
+    if (unit.learningShape === 'procedure' || unit.learningShape === 'lab-process') return `Sequence the steps in ${unit.title}.`
+    if (unit.learningShape === 'equipment') return `Identify the equipment in ${unit.title}.`
+    if (unit.learningShape === 'classification' || unit.learningShape === 'taxonomy') return `Classify the listed items under ${unit.title}.`
+    if (unit.learningShape === 'formula') return `Use the formula in ${unit.title}.`
+    if (unit.learningShape === 'worked-example') return `Solve using the example pattern in ${unit.title}.`
+    if (unit.learningShape === 'case-rule') return `Apply the rule in ${unit.title}.`
+    if (unit.learningShape === 'clinical-care') return `Identify the clinical care priority in ${unit.title}.`
+    if (unit.learningShape === 'cause-effect') return `Explain the cause-effect relationship in ${unit.title}.`
+    if (unit.learningShape === 'troubleshooting') return `Troubleshoot the issue in ${unit.title}.`
+    if (unit.learningShape === 'component-system') return `Identify the component role in ${unit.title}.`
+    if (unit.learningShape === 'standards-rubrics') return `Apply the criteria in ${unit.title}.`
+    if (unit.learningShape === 'passage-theme') return `Explain the theme or claim in ${unit.title}.`
+    if (unit.learningShape === 'reflection') return `Reflect on ${unit.title}.`
   }
   if (unit.sourceType === 'definition') return `Define ${unit.title}.`
   if (unit.sourceType === 'process') return `Identify the methods or steps in ${unit.title}.`
@@ -416,8 +430,10 @@ function buildIdentificationQuestion(unit: NormalizedQuizSourceUnit) {
 function buildMultipleChoiceQuestion(unit: NormalizedQuizSourceUnit) {
   if (usesListMembershipMcq(unit)) {
     if (isAdaptiveEducationalQuizUnit(unit)) {
-      if (unit.unitType === 'equipment') return `Which item is listed as equipment in ${unit.title}?`
-      if (unit.unitType === 'classification') return `Which item belongs to ${unit.title}?`
+      if (unit.learningShape === 'equipment') return `Which item is listed as equipment in ${unit.title}?`
+      if (unit.learningShape === 'classification' || unit.learningShape === 'taxonomy') return `Which item belongs to ${unit.title}?`
+      if (unit.learningShape === 'timeline') return `Which item is a milestone in ${unit.title}?`
+      if (unit.learningShape === 'procedure' || unit.learningShape === 'lab-process') return `Which item is part of the sequence in ${unit.title}?`
     }
     return `Which item belongs to ${formatListMembershipTarget(unit.title)}?`
   }
@@ -448,10 +464,19 @@ function buildSourceMapExplanation(unit: NormalizedQuizSourceUnit, answer?: stri
   if (normalizeLookup(unit.title) === 'vulnerability exploit breach') {
     return 'Correct because the course distinction is vulnerability as the weakness, exploit as the method or tool, and breach as the successful exploit.'
   }
-  if (unit.unitType === 'timeline') return `Correct because ${resolvedAnswer} is preserved as a chronology or milestone item for ${unit.title}.`
-  if (unit.unitType === 'procedure') return `Correct because ${resolvedAnswer} belongs to the source-listed sequence for ${unit.title}.`
-  if (unit.unitType === 'equipment') return `Correct because ${resolvedAnswer} is listed as equipment or a weapon in ${unit.title}.`
-  if (unit.unitType === 'classification') return `Correct because ${resolvedAnswer} belongs to the source-listed classification for ${unit.title}.`
+  if (unit.learningShape === 'timeline') return `Correct because ${resolvedAnswer} is preserved as a chronology or milestone item for ${unit.title}.`
+  if (unit.learningShape === 'procedure' || unit.learningShape === 'lab-process') return `Correct because ${resolvedAnswer} belongs to the source-listed sequence for ${unit.title}.`
+  if (unit.learningShape === 'equipment') return `Correct because ${resolvedAnswer} is listed as equipment or a tool in ${unit.title}.`
+  if (unit.learningShape === 'classification' || unit.learningShape === 'taxonomy') return `Correct because ${resolvedAnswer} belongs to the source-listed classification for ${unit.title}.`
+  if (unit.learningShape === 'formula') return `Correct because this matches the source formula cue for ${unit.title}.`
+  if (unit.learningShape === 'worked-example') return `Correct because this follows the source example pattern for ${unit.title}.`
+  if (unit.learningShape === 'case-rule') return `Correct because this applies the source rule or standard for ${unit.title}.`
+  if (unit.learningShape === 'clinical-care') return `Correct because this matches the source-listed clinical care point for ${unit.title}.`
+  if (unit.learningShape === 'cause-effect') return `Correct because this matches the source-backed cause-effect relationship for ${unit.title}.`
+  if (unit.learningShape === 'troubleshooting') return `Correct because this follows the source troubleshooting cue for ${unit.title}.`
+  if (unit.learningShape === 'component-system') return `Correct because this matches a source-listed component or system role for ${unit.title}.`
+  if (unit.learningShape === 'standards-rubrics') return `Correct because this matches the source-listed criteria for ${unit.title}.`
+  if (unit.learningShape === 'passage-theme') return `Correct because this matches the source-backed theme or claim for ${unit.title}.`
   if (unit.sourceType === 'definition') return `Correct because the source defines ${unit.title} as ${resolvedAnswer}.`
   if (unit.sourceType === 'process') return `Correct because these are the listed methods or response steps for ${unit.title}.`
   if (unit.aliases.length >= 2) return `Correct because the answer preserves the complete list tied to ${unit.title}.`
@@ -518,12 +543,30 @@ function buildMultipleChoiceAnswer(unit: NormalizedQuizSourceUnit) {
 
 function usesListMembershipMcq(unit: NormalizedQuizSourceUnit) {
   if (isDefinitionLikeUnit(unit)) return false
-  return (unit.sourceType === 'category' || unit.sourceType === 'list' || unit.sourceType === 'process' || unit.unitType === 'equipment' || unit.unitType === 'classification' || normalizeLookup(unit.title) === 'cia triad')
+  return (unit.sourceType === 'category' || unit.sourceType === 'list' || unit.learningShape === 'equipment' || unit.learningShape === 'classification' || unit.learningShape === 'taxonomy' || normalizeLookup(unit.title) === 'cia triad')
     && unit.aliases.length >= 2
 }
 
 function isAdaptiveEducationalQuizUnit(unit: NormalizedQuizSourceUnit) {
-  return /\b(?:arnis|ra 9850|historical|evolution|organizations|courtesy|salutation|strike|equipment|weapons|stick|regional)\b/i.test(unit.title)
+  return isSpecializedLearningShape(unit.learningShape)
+    || /\b(?:arnis|ra 9850|historical|evolution|organizations|courtesy|salutation|strike|equipment|weapons|stick|regional)\b/i.test(unit.title)
+}
+
+function isSpecializedLearningShape(shape: AcademicLearningShape) {
+  return shape === 'procedure'
+    || shape === 'timeline'
+    || shape === 'equipment'
+    || shape === 'formula'
+    || shape === 'worked-example'
+    || shape === 'case-rule'
+    || shape === 'clinical-care'
+    || shape === 'cause-effect'
+    || shape === 'troubleshooting'
+    || shape === 'component-system'
+    || shape === 'lab-process'
+    || shape === 'standards-rubrics'
+    || shape === 'passage-theme'
+    || shape === 'reflection'
 }
 
 function isDefinitionLikeUnit(unit: NormalizedQuizSourceUnit) {
@@ -687,13 +730,14 @@ function normalizeQuizSourceTitle(value: string) {
   return cleaned
 }
 
-function inferConceptFamily(title: string, kind: AcademicSourceMapUnit['kind']) {
+function inferConceptFamily(title: string, kind: AcademicSourceMapUnit['kind'], learningShape: AcademicLearningShape = 'definition') {
   const key = normalizeLookup(title)
   if (/\b(?:arnis|ra 9850|historical|organizations|timeline)\b/i.test(key)) return 'arnis-history'
   if (/\b(?:courtesy|salutation|strike|equipment|weapons|stick|regional|classification)\b/i.test(key)) return 'arnis-practice'
   if (/\b(?:it security|infosec|it sec|cia triad|domains)\b/i.test(key)) return 'it-security'
   if (/\b(?:cybersecurity|threat|attacker|vulnerability|exploit|breach)\b/i.test(key)) return 'cybersecurity'
   if (/\b(?:malware|infiltration|denial|blended|impact reduction)\b/i.test(key)) return 'security-operations'
+  if (isSpecializedLearningShape(learningShape)) return `shape-${learningShape}`
   if (kind === 'definition') return 'definitions'
   if (kind === 'process') return 'processes'
   return 'general'
@@ -709,6 +753,31 @@ function inferQuizUnitType(title: string, unit: AcademicSourceMapUnit): Academic
   if (unit.kind === 'definition') return 'definition'
   if (unit.kind === 'list') return 'taxonomy'
   return 'narrative'
+}
+
+function inferQuizLearningShape(title: string, unit: AcademicSourceMapUnit): AcademicLearningShape {
+  if (unit.learningShape) return unit.learningShape
+  const key = normalizeLookup(title)
+  if (/\b(?:formula|equation|compute|calculate|solve)\b/i.test(key)) return 'formula'
+  if (/\b(?:example|sample problem|worked solution)\b/i.test(key)) return 'worked-example'
+  if (/\b(?:case|rule|statute|jurisdiction|liability|offense)\b/i.test(key)) return 'case-rule'
+  if (/\b(?:clinical|patient|care plan|diagnosis|treatment|assessment)\b/i.test(key)) return 'clinical-care'
+  if (/\b(?:cause|effect|impact|risk factor)\b/i.test(key)) return 'cause-effect'
+  if (/\b(?:troubleshoot|error|failure|debug|symptom)\b/i.test(key)) return 'troubleshooting'
+  if (/\b(?:component|system|architecture|module|parts?)\b/i.test(key)) return 'component-system'
+  if (/\b(?:lab|experiment|protocol)\b/i.test(key)) return 'lab-process'
+  if (/\b(?:rubric|standard|criteria|competency|outcomes?)\b/i.test(key)) return 'standards-rubrics'
+  if (/\b(?:passage|theme|motif|character|argument)\b/i.test(key)) return 'passage-theme'
+  const unitType = inferQuizUnitType(title, unit)
+  if (unitType === 'timeline' || unitType === 'historical') return 'timeline'
+  if (unitType === 'procedure') return 'procedure'
+  if (unitType === 'equipment') return 'equipment'
+  if (unitType === 'classification') return 'classification'
+  if (unitType === 'comparison') return 'comparison'
+  if (unitType === 'taxonomy') return 'taxonomy'
+  if (unitType === 'reflective') return 'reflection'
+  if (unitType === 'narrative') return 'narrative'
+  return unit.kind === 'definition' ? 'definition' : 'narrative'
 }
 
 function uniqueBy<T>(values: T[], getKey: (value: T) => string) {
@@ -745,18 +814,11 @@ function selectQuizItemsForCoverage(selected: StudyOutputQuizPackItem[], item: S
   if (selected.length >= MAX_QUIZ_PACK_ITEMS) return selected
 
   const title = getQuizItemCoverageTitle(item)
-  const titleRank = getPreferredQuizSourceRank(title)
-  const isPreferred = titleRank < 100
   const coveredItems = selected.filter((entry) => normalizeLookup(getQuizItemCoverageTitle(entry)) === normalizeLookup(title))
   const alreadyCovered = coveredItems.length > 0
   const allowsDuplicateCoverage = allowsDuplicateCoverageItem(item) && coveredItems.every((entry) => entry.type !== item.type)
-  const remainingPreferredTitles = getRequiredQuizCoverageTitles()
-    .filter((candidate) => !selected.some((entry) => normalizeLookup(getQuizItemCoverageTitle(entry)) === normalizeLookup(candidate)))
-    .length
-  const remainingSlots = MAX_QUIZ_PACK_ITEMS - selected.length
 
   if (alreadyCovered && !allowsDuplicateCoverage) return selected
-  if (!isPreferred && remainingPreferredTitles >= remainingSlots) return selected
 
   selected.push(item)
   return selected
@@ -766,6 +828,7 @@ function allowsDuplicateCoverageItem(item: StudyOutputQuizPackItem) {
   if (item.type === 'multiple_choice' && item.prompt === 'Which description best matches InfoSec?') return true
   if (item.type === 'identification' && item.prompt === 'Distinguish InfoSec from IT Sec.') return true
   if (item.type === 'identification' && /^Define (?:IT Security|Cybersecurity)\./.test(item.prompt)) return true
+  if (item.type === 'identification' && item.prompt === 'Identify symptoms of malware.') return true
   if (item.prompt === 'Which organization standardized Arnis sport rules?') return true
   if (item.prompt === 'Arrange the Arnis milestones chronologically.') return true
   if (item.prompt === 'Sequence the steps in Courtesy / Salutation.') return true

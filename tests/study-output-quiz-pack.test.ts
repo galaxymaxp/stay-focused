@@ -275,6 +275,33 @@ test('Adaptive Source Map quiz generation supports PATHFit Arnis sequence classi
   assert.doesNotMatch(combined, /metadata|debug|ocr garbage/i)
 })
 
+test('Source Map quiz generation follows learning shape before discipline hint', () => {
+  const note = createNote({
+    title: 'Mixed academic quiz',
+    overview: 'Mixed discipline examples with distinct learning shapes.',
+    sourceGrounding: {
+      sourceType: 'PDF',
+      extractionQuality: 'usable',
+      sourceTextQuality: 'meaningful',
+      groundingStrategy: 'stored_extract',
+      usedAiFallback: false,
+      qualityReason: null,
+      warning: null,
+      charCount: 820,
+      sourceMap: createLearningShapeSourceMap(),
+    },
+  })
+  const units = buildNormalizedQuizSourceUnits(note)
+  const items = buildQuizPackItems(note)
+  const prompts = items.map((item) => item.prompt).join(' | ')
+
+  assert.ok(units.some((unit) => unit.title === 'Case Rule Liability' && unit.learningShape === 'case-rule'))
+  assert.ok(units.some((unit) => unit.title === 'Troubleshooting Process' && unit.learningShape === 'troubleshooting'))
+  assert.match(prompts, /Apply the rule in Case Rule Liability/)
+  assert.match(prompts, /Troubleshoot the issue in Troubleshooting Process/)
+  assert.match(prompts, /Use the formula in Area Formula/)
+})
+
 test('quiz pack definition answers preserve source wording and source basis', () => {
   const items = buildQuizPackItems(createNote({
     answerBank: [
@@ -491,6 +518,79 @@ function createPathfitArnisSourceMapNote(overrides: Partial<DeepLearnNote> = {})
     },
     ...overrides,
   })
+}
+
+function createLearningShapeSourceMap() {
+  const normalizedText = [
+    'Case Rule Liability The court applies the statute when jurisdiction and evidence establish the offense.',
+    'Troubleshooting Process 1. Identify the error 2. Isolate the component 3. Test the system 4. Document the fix.',
+    'Area Formula Area equals length times width.',
+    'Clinical Care Priority 1. Assess vital signs 2. Identify diagnosis 3. Plan intervention 4. Evaluate response.',
+  ].join('\n')
+  return {
+    version: 'academic-source-map-v1' as const,
+    sourceStyle: 'technical' as const,
+    secondaryStyles: ['procedural' as const],
+    disciplineCluster: 'health-nursing-allied-health-medicine' as const,
+    secondaryDisciplineClusters: ['law-criminal-justice-criminology-public-safety' as const],
+    normalizedText,
+    chunks: [
+      { heading: 'Case Rule Liability', text: 'The court applies the statute when jurisdiction and evidence establish the offense.', sourceQuote: 'Case Rule Liability The court applies the statute when jurisdiction and evidence establish the offense.' },
+      { heading: 'Troubleshooting Process', text: 'Identify the error. Isolate the component. Test the system. Document the fix.', sourceQuote: 'Troubleshooting Process 1. Identify the error 2. Isolate the component 3. Test the system 4. Document the fix.' },
+    ],
+    units: [
+      {
+        id: 'case-rule-liability',
+        title: 'Case Rule Liability',
+        kind: 'concept' as const,
+        unitType: 'definition' as const,
+        learningShape: 'case-rule' as const,
+        summary: 'The court applies the statute when jurisdiction and evidence establish the offense.',
+        items: ['jurisdiction', 'evidence', 'offense'],
+        sourceQuotes: ['Case Rule Liability The court applies the statute when jurisdiction and evidence establish the offense.'],
+        importanceScore: 90,
+        confidence: 0.92,
+      },
+      {
+        id: 'troubleshooting-process',
+        title: 'Troubleshooting Process',
+        kind: 'process' as const,
+        unitType: 'procedure' as const,
+        learningShape: 'troubleshooting' as const,
+        summary: 'Troubleshooting follows the source-listed error isolation and testing process.',
+        items: ['Identify the error', 'Isolate the component', 'Test the system', 'Document the fix'],
+        sourceQuotes: ['Troubleshooting Process 1. Identify the error 2. Isolate the component 3. Test the system 4. Document the fix.'],
+        importanceScore: 88,
+        confidence: 0.91,
+      },
+      {
+        id: 'area-formula',
+        title: 'Area Formula',
+        kind: 'concept' as const,
+        unitType: 'definition' as const,
+        learningShape: 'formula' as const,
+        summary: 'Area equals length times width.',
+        items: ['length', 'width', 'multiply values'],
+        sourceQuotes: ['Area Formula Area equals length times width.'],
+        importanceScore: 84,
+        confidence: 0.9,
+      },
+      {
+        id: 'clinical-care-priority',
+        title: 'Clinical Care Priority',
+        kind: 'process' as const,
+        unitType: 'procedure' as const,
+        learningShape: 'clinical-care' as const,
+        summary: 'Assess vital signs, identify diagnosis, plan intervention, and evaluate response.',
+        items: ['Assess vital signs', 'Identify diagnosis', 'Plan intervention', 'Evaluate response'],
+        sourceQuotes: ['Clinical Care Priority 1. Assess vital signs 2. Identify diagnosis 3. Plan intervention 4. Evaluate response.'],
+        importanceScore: 82,
+        confidence: 0.9,
+      },
+    ],
+    duplicateFragmentsRemoved: 0,
+    validation: { ok: true as const, reason: 'ok' as const, unitCount: 4, quoteCount: 4 },
+  }
 }
 
 function normalizeLookup(value: string) {

@@ -5,6 +5,79 @@ Last Updated: 2026-05-15
 
 ---
 
+## Session Update - 2026-05-15 (Global Discipline Hints And Learning Shapes)
+
+### What changed
+
+- Added broad `AcademicDisciplineCluster` metadata to `AcademicSourceMap`:
+  - computer/IT/data/software
+  - engineering/architecture/built environment
+  - health/nursing/allied health/medicine
+  - law/criminal justice/criminology/public safety
+  - business/accountancy/management/economics
+  - education/pedagogy
+  - arts/humanities/communication
+  - natural sciences/mathematics/geology/environmental science
+  - hospitality/tourism
+  - religion/theology/philosophy/ethics
+  - physical education/sports/performing movement
+  - general academic fallback
+- Added per-unit `learningShape` metadata so rendering is driven by educational shape, not local course examples or discipline labels.
+- Added deterministic learning-shape inference for definition, taxonomy, procedure, timeline, formula, worked example, case rule, clinical care, cause effect, comparison, passage/theme, reflection, troubleshooting, component system, lab/process, classification, equipment, standards/rubrics, and narrative units.
+- Threaded `learningShape` into Reviewer, Quiz, and compact Source Map Study Pack fallback shaping.
+- Kept discipline detection as a hint only; quiz/reviewer prompts and explanations now prefer the unit learning shape.
+- Removed the quiz coverage reservation that implicitly favored IT Security required titles for non-IT sources while preserving preferred IT ordering when IT concepts exist.
+
+### Files touched
+
+- `lib/deep-learn-source-map.ts`
+- `lib/deep-learn-generation.ts`
+- `lib/study-outputs/reviewer.ts`
+- `lib/study-outputs/quiz-pack.ts`
+- `tests/deep-learn-generation.test.ts`
+- `tests/study-output-reviewer.test.ts`
+- `tests/study-output-quiz-pack.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Deep Learn needed support for global academic discipline clusters without letting those clusters become the main rendering driver. The real driver is now the source-backed learning shape, so a health/law/business/arts/etc. source can produce formula, case-rule, clinical-care, troubleshooting, procedure, timeline, taxonomy, or reflection outputs without adding AI calls or loosening validation.
+
+### Tests run
+
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- study-output-reviewer study-output-quiz-pack deep-learn-generation` - passed
+- `npm test -- quiz source-map reviewer` - passed
+- `npm test -- study-output-reviewer study-output-sheet study-output-print` - passed
+
+### Verification result
+
+- Passed all requested verification commands.
+- Verified IT Security taxonomy and existing MCQ wording remain stable.
+- Verified PATHFit adaptive style tests remain green.
+- Verified broad discipline cluster detection returns expected hints across health, law, business, education, arts, natural science, hospitality, religion/philosophy, engineering, IT, and physical education examples.
+- Verified Reviewer and Quiz use learning-shape prompts for case-rule, troubleshooting, formula, and clinical-care units even when the discipline hint points elsewhere.
+
+### Known risks
+
+- Discipline cluster scoring is deterministic keyword scoring; mixed interdisciplinary modules may need additional terms or weighting after real-source QA.
+- Learning-shape inference is conservative and title/heading based; unusual headings may still fall back to definition/narrative until new patterns are added.
+
+### Blockers
+
+- No blocker remains.
+
+### Next recommended step
+
+- QA with real non-IT/non-PATHFit sources such as nursing care plans, law case digests, accounting worked examples, literature passages, and lab manuals, then tune heading/shape aliases from observed misses.
+
+### Suggested commit message
+
+- `add global discipline source map hints`
+
+---
+
 ## Session Update - 2026-05-15 (Adaptive Source Map Styles)
 
 ### What changed

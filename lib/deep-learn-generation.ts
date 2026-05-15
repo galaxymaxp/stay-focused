@@ -1468,6 +1468,7 @@ interface GeneratedSourceMapUnit {
   title: string
   kind: AcademicSourceMapUnit['kind']
   unitType: NonNullable<AcademicSourceMapUnit['unitType']>
+  learningShape: NonNullable<AcademicSourceMapUnit['learningShape']>
   items: string[]
   support: string
   sourceWording: string | null
@@ -1507,6 +1508,7 @@ function cleanGeneratedSourceMapUnit(unit: AcademicSourceMapUnit): GeneratedSour
     title,
     kind: unit.kind,
     unitType: inferGeneratedSourceMapUnitType(title, unit),
+    learningShape: inferGeneratedSourceMapLearningShape(title, unit),
     items,
     support: support || sourceWording || `${title} is a source-backed concept.`,
     sourceWording,
@@ -1558,6 +1560,34 @@ function inferGeneratedSourceMapUnitType(
   return 'narrative'
 }
 
+function inferGeneratedSourceMapLearningShape(
+  title: string,
+  unit: AcademicSourceMapUnit,
+): NonNullable<AcademicSourceMapUnit['learningShape']> {
+  if (unit.learningShape) return unit.learningShape
+  const key = normalizeAcademicLookup(title)
+  if (/\b(?:formula|equation|compute|calculate|solve)\b/i.test(key)) return 'formula'
+  if (/\b(?:example|sample problem|worked solution)\b/i.test(key)) return 'worked-example'
+  if (/\b(?:case|rule|statute|jurisdiction|liability|offense)\b/i.test(key)) return 'case-rule'
+  if (/\b(?:clinical|patient|care plan|diagnosis|treatment|assessment)\b/i.test(key)) return 'clinical-care'
+  if (/\b(?:cause|effect|impact|risk factor)\b/i.test(key)) return 'cause-effect'
+  if (/\b(?:troubleshoot|error|failure|debug|symptom)\b/i.test(key)) return 'troubleshooting'
+  if (/\b(?:component|system|architecture|module|parts?)\b/i.test(key)) return 'component-system'
+  if (/\b(?:lab|experiment|protocol)\b/i.test(key)) return 'lab-process'
+  if (/\b(?:rubric|standard|criteria|competency|outcomes?)\b/i.test(key)) return 'standards-rubrics'
+  if (/\b(?:passage|theme|motif|character|argument)\b/i.test(key)) return 'passage-theme'
+  const unitType = inferGeneratedSourceMapUnitType(title, unit)
+  if (unitType === 'timeline' || unitType === 'historical') return 'timeline'
+  if (unitType === 'procedure') return 'procedure'
+  if (unitType === 'equipment') return 'equipment'
+  if (unitType === 'classification') return 'classification'
+  if (unitType === 'comparison') return 'comparison'
+  if (unitType === 'taxonomy') return 'taxonomy'
+  if (unitType === 'reflective') return 'reflection'
+  if (unitType === 'narrative') return 'narrative'
+  return unit.kind === 'definition' ? 'definition' : 'narrative'
+}
+
 function buildSourceMapGeneratedAnswer(unit: GeneratedSourceMapUnit) {
   const key = normalizeAcademicLookup(unit.title)
   if (key === 'infosec vs it sec') {
@@ -1573,14 +1603,20 @@ function buildSourceMapGeneratedAnswer(unit: GeneratedSourceMapUnit) {
     return 'Vulnerability = weakness or flaw; exploit = method or tool used to take advantage; breach = successful exploit.'
   }
   if (unit.items.length >= 2 && !/^(?:IT Security|Cybersecurity)$/i.test(unit.title)) {
-    const verb = unit.unitType === 'timeline'
+    const verb = unit.learningShape === 'timeline'
       ? 'preserves milestones including'
-      : unit.unitType === 'procedure'
+      : unit.learningShape === 'procedure' || unit.learningShape === 'lab-process'
         ? 'uses the sequence'
-        : unit.unitType === 'equipment'
+        : unit.learningShape === 'equipment'
           ? 'identifies'
-          : unit.unitType === 'classification'
+          : unit.learningShape === 'classification' || unit.learningShape === 'taxonomy'
             ? 'classifies'
+            : unit.learningShape === 'formula'
+              ? 'uses formula cues including'
+              : unit.learningShape === 'case-rule'
+                ? 'applies rule cues including'
+                : unit.learningShape === 'clinical-care'
+                  ? 'preserves care cues including'
             : 'includes'
     return `${unit.title} ${verb} ${formatInlineList(unit.items.slice(0, getSourceMapGeneratedListLimit(unit)))}.`
   }
@@ -1596,16 +1632,26 @@ function getSourceMapGeneratedListLimit(unit: GeneratedSourceMapUnit) {
 
 function getSourceMapGeneratedAnswerLimit(unit: GeneratedSourceMapUnit) {
   if (/^(?:domains of it security|malware types)$/i.test(unit.title)) return 320
-  if (unit.unitType === 'timeline' || unit.unitType === 'equipment' || unit.unitType === 'classification') return 260
+  if (unit.learningShape === 'timeline' || unit.learningShape === 'equipment' || unit.learningShape === 'classification' || unit.learningShape === 'taxonomy') return 260
   if (/^cybersecurity$/i.test(unit.title)) return 260
   return 180
 }
 
 function buildSourceMapGeneratedQuizTarget(unit: GeneratedSourceMapUnit) {
-  if (unit.unitType === 'timeline') return `Arrange ${unit.title} chronologically`
-  if (unit.unitType === 'procedure') return `Sequence ${unit.title}`
-  if (unit.unitType === 'equipment') return `Identify equipment in ${unit.title}`
-  if (unit.unitType === 'classification') return `Classify ${unit.title}`
+  if (unit.learningShape === 'timeline') return `Arrange ${unit.title} chronologically`
+  if (unit.learningShape === 'procedure' || unit.learningShape === 'lab-process') return `Sequence ${unit.title}`
+  if (unit.learningShape === 'equipment') return `Identify equipment in ${unit.title}`
+  if (unit.learningShape === 'classification' || unit.learningShape === 'taxonomy') return `Classify ${unit.title}`
+  if (unit.learningShape === 'formula') return `Use the formula in ${unit.title}`
+  if (unit.learningShape === 'worked-example') return `Work through ${unit.title}`
+  if (unit.learningShape === 'case-rule') return `Apply the rule in ${unit.title}`
+  if (unit.learningShape === 'clinical-care') return `Identify care priorities in ${unit.title}`
+  if (unit.learningShape === 'cause-effect') return `Explain why ${unit.title} happens`
+  if (unit.learningShape === 'troubleshooting') return `Troubleshoot ${unit.title}`
+  if (unit.learningShape === 'component-system') return `Identify components in ${unit.title}`
+  if (unit.learningShape === 'standards-rubrics') return `Apply criteria in ${unit.title}`
+  if (unit.learningShape === 'passage-theme') return `Explain the theme in ${unit.title}`
+  if (unit.learningShape === 'reflection') return `Reflect on ${unit.title}`
   if (unit.kind === 'process') return `Apply ${unit.title}`
   if (unit.items.length >= 3) return `Enumerate ${unit.title}`
   if (/ vs |\/|triad/i.test(unit.title)) return `Distinguish ${unit.title}`
@@ -1614,10 +1660,20 @@ function buildSourceMapGeneratedQuizTarget(unit: GeneratedSourceMapUnit) {
 
 function buildSourceMapGeneratedQuizReason(unit: GeneratedSourceMapUnit) {
   if (unit.kind === 'definition') return `Define ${unit.title} using the source wording.`
-  if (unit.unitType === 'timeline') return `Recall the source chronology or milestones under ${unit.title}.`
-  if (unit.unitType === 'procedure') return `Practice the source-listed sequence under ${unit.title}.`
-  if (unit.unitType === 'equipment') return `Identify the equipment or weapon examples under ${unit.title}.`
-  if (unit.unitType === 'classification') return `Classify source-listed items under ${unit.title}.`
+  if (unit.learningShape === 'timeline') return `Recall the source chronology or milestones under ${unit.title}.`
+  if (unit.learningShape === 'procedure' || unit.learningShape === 'lab-process') return `Practice the source-listed sequence under ${unit.title}.`
+  if (unit.learningShape === 'equipment') return `Identify the equipment or tool examples under ${unit.title}.`
+  if (unit.learningShape === 'classification' || unit.learningShape === 'taxonomy') return `Classify source-listed items under ${unit.title}.`
+  if (unit.learningShape === 'formula') return `Use the source formula only where it applies.`
+  if (unit.learningShape === 'worked-example') return `Follow the source example pattern.`
+  if (unit.learningShape === 'case-rule') return `Apply the source rule to the right facts.`
+  if (unit.learningShape === 'clinical-care') return `Recall the source-listed care priority or clinical action.`
+  if (unit.learningShape === 'cause-effect') return `Explain the source-backed cause-effect relationship.`
+  if (unit.learningShape === 'troubleshooting') return `Match symptoms, causes, and fixes from the source.`
+  if (unit.learningShape === 'component-system') return `Identify source-listed parts and their roles.`
+  if (unit.learningShape === 'standards-rubrics') return `Apply the source criteria or standards.`
+  if (unit.learningShape === 'passage-theme') return `Tie the theme or claim to source-backed evidence.`
+  if (unit.learningShape === 'reflection') return `Use source-backed ideas in the reflective response.`
   if (unit.kind === 'process') return `Apply the source-listed steps or methods under ${unit.title}.`
   if (unit.items.length >= 3) return `Enumerate source-listed items such as ${formatInlineList(unit.items.slice(0, 6))}.`
   return `Explain the source-backed concept ${unit.title}.`

@@ -33,11 +33,47 @@ export type AcademicSourceMapUnitType =
   | 'narrative'
   | 'reflective'
 
+export type AcademicDisciplineCluster =
+  | 'computer-it-data-software'
+  | 'engineering-architecture-built-environment'
+  | 'health-nursing-allied-health-medicine'
+  | 'law-criminal-justice-criminology-public-safety'
+  | 'business-accountancy-management-economics'
+  | 'education-pedagogy'
+  | 'arts-humanities-communication'
+  | 'natural-sciences-mathematics-geology-environmental-science'
+  | 'hospitality-tourism'
+  | 'religion-theology-philosophy-ethics'
+  | 'physical-education-sports-performing-movement'
+  | 'general-academic'
+
+export type AcademicLearningShape =
+  | 'definition'
+  | 'taxonomy'
+  | 'procedure'
+  | 'timeline'
+  | 'formula'
+  | 'worked-example'
+  | 'case-rule'
+  | 'clinical-care'
+  | 'cause-effect'
+  | 'comparison'
+  | 'passage-theme'
+  | 'reflection'
+  | 'troubleshooting'
+  | 'component-system'
+  | 'lab-process'
+  | 'classification'
+  | 'equipment'
+  | 'standards-rubrics'
+  | 'narrative'
+
 export interface AcademicSourceMapUnit {
   id: string
   title: string
   kind: AcademicSourceMapUnitKind
   unitType?: AcademicSourceMapUnitType
+  learningShape?: AcademicLearningShape
   summary: string
   items: string[]
   sourceQuotes: string[]
@@ -49,6 +85,8 @@ export interface AcademicSourceMap {
   version: 'academic-source-map-v1'
   sourceStyle?: AcademicSourceMapStyle
   secondaryStyles?: AcademicSourceMapStyle[]
+  disciplineCluster?: AcademicDisciplineCluster
+  secondaryDisciplineClusters?: AcademicDisciplineCluster[]
   normalizedText: string
   units: AcademicSourceMapUnit[]
   chunks: Array<{ heading: string; text: string; sourceQuote: string }>
@@ -203,6 +241,7 @@ export function buildAcademicSourceMap(sourceText: string): AcademicSourceMap {
   const normalizedText = collapsed.lines.join('\n')
   const chunks = chunkSourceMapByHeadings(normalizedText)
   const styleProfile = detectAcademicSourceMapStyles(normalizedText, chunks)
+  const disciplineProfile = detectAcademicDisciplineClusters(normalizedText)
   const units = dedupeUnits([
     ...inferKnownSecurityUnits(normalizedText),
     ...inferKnownArnisUnits(normalizedText),
@@ -214,6 +253,8 @@ export function buildAcademicSourceMap(sourceText: string): AcademicSourceMap {
     version: 'academic-source-map-v1',
     sourceStyle: styleProfile.sourceStyle,
     secondaryStyles: styleProfile.secondaryStyles,
+    disciplineCluster: disciplineProfile.disciplineCluster,
+    secondaryDisciplineClusters: disciplineProfile.secondaryDisciplineClusters,
     normalizedText,
     chunks,
     units,
@@ -225,12 +266,64 @@ export function buildAcademicSourceMap(sourceText: string): AcademicSourceMap {
     version: 'academic-source-map-v1',
     sourceStyle: styleProfile.sourceStyle,
     secondaryStyles: styleProfile.secondaryStyles,
+    disciplineCluster: disciplineProfile.disciplineCluster,
+    secondaryDisciplineClusters: disciplineProfile.secondaryDisciplineClusters,
     normalizedText,
     chunks,
     units,
     duplicateFragmentsRemoved: collapsed.duplicatesRemoved,
     validation,
   }
+}
+
+export function detectAcademicDisciplineClusters(
+  normalizedText: string,
+): { disciplineCluster: AcademicDisciplineCluster; secondaryDisciplineClusters: AcademicDisciplineCluster[] } {
+  const source = normalizedText.replace(/\s+/g, ' ')
+  const scores = new Map<AcademicDisciplineCluster, number>([
+    ['computer-it-data-software', 0],
+    ['engineering-architecture-built-environment', 0],
+    ['health-nursing-allied-health-medicine', 0],
+    ['law-criminal-justice-criminology-public-safety', 0],
+    ['business-accountancy-management-economics', 0],
+    ['education-pedagogy', 0],
+    ['arts-humanities-communication', 0],
+    ['natural-sciences-mathematics-geology-environmental-science', 0],
+    ['hospitality-tourism', 0],
+    ['religion-theology-philosophy-ethics', 0],
+    ['physical-education-sports-performing-movement', 0],
+  ])
+  const add = (cluster: AcademicDisciplineCluster, amount: number) => scores.set(cluster, (scores.get(cluster) ?? 0) + amount)
+
+  const scorePatterns: Array<[AcademicDisciplineCluster, RegExp, number]> = [
+    ['computer-it-data-software', /\b(?:computer|information technology|it security|cybersecurity|software|programming|database|data science|network|malware|algorithm|operating system)\b/i, 36],
+    ['engineering-architecture-built-environment', /\b(?:engineering|architecture|built environment|construction|structural|circuit|mechanics|materials?|design load|building code|drafting)\b/i, 34],
+    ['health-nursing-allied-health-medicine', /\b(?:nursing|clinical|patient|medicine|anatomy|physiology|diagnosis|therapeutic|pharmacology|vital signs|care plan|allied health)\b/i, 38],
+    ['law-criminal-justice-criminology-public-safety', /\b(?:law|case|jurisdiction|criminal justice|criminology|public safety|police|forensic|statute|liability|evidence|offense|court|rule)\b/i, 36],
+    ['business-accountancy-management-economics', /\b(?:business|accounting|accountancy|management|economics|market|finance|cost|revenue|asset|liability|strategy|entrepreneurship)\b/i, 34],
+    ['education-pedagogy', /\b(?:education|pedagogy|curriculum|lesson plan|assessment|instruction|classroom|learner|teaching|learning objectives)\b/i, 34],
+    ['arts-humanities-communication', /\b(?:art|literature|humanities|communication|media|rhetoric|poetry|novel|culture|language|journalism|speech|theater)\b/i, 32],
+    ['natural-sciences-mathematics-geology-environmental-science', /\b(?:biology|chemistry|physics|mathematics|calculus|statistics|geology|environmental science|ecosystem|experiment|molecule|force|equation)\b/i, 36],
+    ['hospitality-tourism', /\b(?:hospitality|tourism|hotel|restaurant|guest|front office|housekeeping|travel|destination|food service|culinary)\b/i, 34],
+    ['religion-theology-philosophy-ethics', /\b(?:religion|theology|philosophy|ethics|moral|scripture|faith|doctrine|virtue|argument|metaphysics)\b/i, 32],
+    ['physical-education-sports-performing-movement', /\b(?:physical education|pathfit|sports?|fitness|movement|dance|performing movement|arnis|salutation|strike|exercise|training|baston)\b/i, 38],
+  ]
+
+  for (const [cluster, pattern, score] of scorePatterns) {
+    const matches = source.match(new RegExp(pattern.source, 'gi')) ?? []
+    if (matches.length > 0) add(cluster, score + Math.min(matches.length * 4, 20))
+  }
+
+  const ranked = [...scores.entries()]
+    .filter(([, score]) => score > 0)
+    .sort((left, right) => right[1] - left[1])
+  const disciplineCluster = ranked[0]?.[0] ?? 'general-academic'
+  const secondaryDisciplineClusters = ranked
+    .slice(1)
+    .filter(([, score]) => score >= 28)
+    .map(([cluster]) => cluster)
+    .slice(0, 3)
+  return { disciplineCluster, secondaryDisciplineClusters }
 }
 
 export function detectAcademicSourceMapStyles(
@@ -303,14 +396,14 @@ export function buildAcademicSourceMapGrounding(sourceText: string, maxChars = D
 
   const unitLines = sourceMap.units.flatMap((unit) => {
     const lines = [
-      `- ${unit.title} [${unit.kind}/${unit.unitType ?? inferSourceMapUnitType(unit.title, unit.kind)}, importance ${unit.importanceScore}/100]: ${unit.summary}`,
+      `- ${unit.title} [${unit.kind}/${unit.learningShape ?? inferSourceMapLearningShape(unit.title, unit.kind, unit.unitType)}, importance ${unit.importanceScore}/100]: ${unit.summary}`,
     ]
     if (unit.items.length > 0) lines.push(`  Items: ${unit.items.slice(0, 10).join(', ')}`)
     if (unit.sourceQuotes[0]) lines.push(`  Source quote: "${unit.sourceQuotes[0]}"`)
     return lines
   })
   const structured = truncateForSourceMapModel([
-    `Deterministic academic structure from the selected source (Academic Source Map). Dominant style: ${sourceMap.sourceStyle ?? 'technical'}${sourceMap.secondaryStyles?.length ? `; secondary styles: ${sourceMap.secondaryStyles.join(', ')}` : ''}:`,
+    `Deterministic academic structure from the selected source (Academic Source Map). Dominant style: ${sourceMap.sourceStyle ?? 'technical'}${sourceMap.secondaryStyles?.length ? `; secondary styles: ${sourceMap.secondaryStyles.join(', ')}` : ''}. Discipline hint: ${sourceMap.disciplineCluster ?? 'general-academic'}${sourceMap.secondaryDisciplineClusters?.length ? `; secondary discipline hints: ${sourceMap.secondaryDisciplineClusters.join(', ')}` : ''}:`,
     ...unitLines,
   ].join('\n'), Math.min(STRUCTURED_SOURCE_MAP_CHARS, Math.max(2400, maxChars - 1800)))
   const quoteBlock = truncateForSourceMapModel([
@@ -556,12 +649,41 @@ function createUnit(input: {
     title,
     kind: input.kind,
     unitType: input.unitType ?? inferSourceMapUnitType(title, input.kind),
+    learningShape: inferSourceMapLearningShape(title, input.kind, input.unitType),
     summary: cleanupSummary(stopAtKnownHeading(input.summary, title)),
     items: uniqueStrings(input.items.map((item) => cleanupSourceMapUnitItem(item, title)).filter(Boolean)).slice(0, 14),
     sourceQuotes: uniqueStrings([input.sourceQuote].filter(Boolean).map((quote) => clampSourceMapQuote(quote, title, input.kind))),
     importanceScore: scoreImportance(title, input.kind, input.items.length),
     confidence: input.sourceQuote ? 0.86 : 0.62,
   }
+}
+
+function inferSourceMapLearningShape(
+  title: string,
+  kind: AcademicSourceMapUnitKind,
+  unitType?: AcademicSourceMapUnitType,
+): AcademicLearningShape {
+  const key = normalizeLookup(title)
+  const resolvedUnitType = unitType ?? inferSourceMapUnitType(title, kind)
+  if (/\b(?:formula|equation|compute|calculate|solve)\b/i.test(key)) return 'formula'
+  if (/\b(?:example|sample problem|worked solution)\b/i.test(key)) return 'worked-example'
+  if (/\b(?:case|rule|statute|jurisdiction|liability|offense)\b/i.test(key)) return 'case-rule'
+  if (/\b(?:clinical|patient|care plan|diagnosis|treatment|assessment)\b/i.test(key)) return 'clinical-care'
+  if (/\b(?:cause|effect|impact|risk factor|because|result)\b/i.test(key)) return 'cause-effect'
+  if (/\b(?:troubleshoot|error|failure|debug|symptom)\b/i.test(key)) return 'troubleshooting'
+  if (/\b(?:component|system|architecture|module|parts?)\b/i.test(key)) return 'component-system'
+  if (/\b(?:lab|experiment|protocol|procedure)\b/i.test(key)) return 'lab-process'
+  if (/\b(?:rubric|standard|criteria|competency|outcomes?)\b/i.test(key)) return 'standards-rubrics'
+  if (/\b(?:passage|theme|motif|character|argument)\b/i.test(key)) return 'passage-theme'
+  if (resolvedUnitType === 'definition') return 'definition'
+  if (resolvedUnitType === 'classification') return 'classification'
+  if (resolvedUnitType === 'timeline' || resolvedUnitType === 'historical') return 'timeline'
+  if (resolvedUnitType === 'procedure') return 'procedure'
+  if (resolvedUnitType === 'equipment') return 'equipment'
+  if (resolvedUnitType === 'comparison') return 'comparison'
+  if (resolvedUnitType === 'taxonomy') return 'taxonomy'
+  if (resolvedUnitType === 'reflective') return 'reflection'
+  return resolvedUnitType === 'narrative' ? 'narrative' : 'definition'
 }
 
 function inferSourceMapUnitType(title: string, kind: AcademicSourceMapUnitKind): AcademicSourceMapUnitType {
