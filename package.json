@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "test": "tsx --test tests/*.test.ts",
+    "test:browser": "tsx --test tests/quiz-review-browser.test.ts",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "reprocess:resources": "tsx scripts/reprocess-module-resources.ts"

@@ -5,6 +5,64 @@ Last Updated: 2026-05-15
 
 ---
 
+## Session Update - 2026-05-15 (First-Class Browser Test Script)
+
+### What changed
+
+- Added `npm run test:browser` as the first-class command for browser-level study output interaction tests.
+- The new script runs the existing local/static Playwright harness:
+  - `tsx --test tests/quiz-review-browser.test.ts`
+- Kept the current standalone browser fixture unchanged.
+- Did not add a Playwright config migration, real auth dependency, production data dependency, or external network dependency.
+
+### Architecture reasoning
+
+This phase intentionally makes the existing Phase 3.4 browser QA easy to run without changing app behavior or broadening the browser test architecture. The repo still uses Node's built-in test runner via `tsx`, so the lowest-risk first-class path is an npm alias for the existing Playwright-backed test file.
+
+### Files touched
+
+- `package.json`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Phase 3.4 added useful browser interaction coverage, but it required remembering the raw `npx tsx --test tests/quiz-review-browser.test.ts` command. The new script makes browser QA discoverable and repeatable alongside the existing `test`, `lint`, and `typecheck` commands.
+
+### Tests run
+
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm run test:browser` - passed
+- `npm test -- study-output-quiz-pack` - passed
+- `npm test -- study-output-print` - passed
+
+### Verification result
+
+- Passed all requested verification commands.
+- Confirmed the new first-class browser command runs the existing Playwright-backed quiz review interaction harness.
+- Confirmed study output quiz and print regressions remain green.
+
+### Known risks
+
+- `npm run test:browser` still depends on the local Playwright Chromium executable. The test skips with a clear message if Chromium is unavailable.
+- The browser harness remains standalone/static rather than a full Next route fixture.
+
+### Blockers
+
+- No blocker currently known.
+
+### Next recommended phase
+
+Add a shared browser fixture harness for saved study output pages once the project is ready for a dedicated Playwright or e2e test structure.
+
+### Suggested commit message
+
+```bash
+add browser test script
+```
+
+---
+
 ## Session Update - 2026-05-15 (Browser QA for Quiz Review Mode)
 
 ### What changed
