@@ -60,7 +60,7 @@ export function StudyOutputReviewerPage({
               {reviewer.highYieldConcepts.map((item) => (
                 <li key={`${item.cue}-${item.answer}`}>
                   <strong>{item.cue}</strong>
-                  <span><b>{item.answer.includes(':') ? 'Key list' : 'Definition'}:</b> {item.answer}</span>
+                  <span style={{ whiteSpace: 'pre-line' }}><b>{item.answer.includes(':') ? 'Key list' : 'Definition'}:</b> {item.answer}</span>
                   {item.plainExplanation || item.support ? (
                     <span><b>Exam cue:</b> {item.plainExplanation ?? item.support}</span>
                   ) : null}

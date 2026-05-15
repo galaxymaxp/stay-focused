@@ -834,6 +834,7 @@ export function validateDeepLearnContentReadyForSave(content: DeepLearnGenerated
   const hasMalformedHeadings = content.sections.some((section) => isMalformedReviewerHeading(section.heading))
   const hasDuplicatedConcepts = findDuplicatedReviewerConcepts(content).length > 0
   const hasLowInformationContent = hasLowInformationStudyContent(content)
+  const hasComposerLeakage = hasReviewerComposerLeakage(content)
   const hasStructuredStudyArtifacts = answerBankCount > 0
     && identificationCount > 0
     && quizTargetCount > 0
@@ -862,6 +863,14 @@ export function validateDeepLearnContentReadyForSave(content: DeepLearnGenerated
     return {
       ok: false as const,
       message: 'Deep Learn could not build clean reviewer headings from this source.',
+      counts: { answerBankCount, identificationCount, quizTargetCount, distinctConceptCount },
+    }
+  }
+
+  if (hasComposerLeakage) {
+    return {
+      ok: false as const,
+      message: 'Deep Learn could not compose clean exam reviewer wording from this source.',
       counts: { answerBankCount, identificationCount, quizTargetCount, distinctConceptCount },
     }
   }
@@ -1365,7 +1374,7 @@ export function buildDeepLearnContentFromSourceMap(
   const units = getMeaningfulSourceMapUnits(sourceMap)
   if (units.length === 0) return null
 
-  const answerBank = units.slice(0, 16).map((unit, index) => {
+  const answerBank = units.slice(0, 24).map((unit, index) => {
     const answerText = buildSourceMapGeneratedAnswer(unit)
     return {
       cue: unit.title,
@@ -1387,10 +1396,10 @@ export function buildDeepLearnContentFromSourceMap(
     }
   })
 
-  const identificationItems = units.slice(0, 16).map((unit, index) => {
+  const identificationItems = units.slice(0, 24).map((unit, index) => {
     const answerText = buildSourceMapGeneratedAnswer(unit)
     return {
-      prompt: `Identify or define ${unit.title}.`,
+      prompt: buildSourceMapGeneratedIdentificationPrompt(unit),
       kind: unit.kind === 'definition' ? 'term_definition' as const : 'fact' as const,
       answer: wordingFromSentence(answerText, getSourceMapGeneratedAnswerLimit(unit)),
       importance: sourceMapGeneratedImportance(unit.importanceScore, index),
@@ -1407,7 +1416,7 @@ export function buildDeepLearnContentFromSourceMap(
     }
   })
 
-  const likelyQuizTargets = units.slice(0, 12).map((unit, index) => ({
+  const likelyQuizTargets = units.slice(0, 24).map((unit, index) => ({
     target: buildSourceMapGeneratedQuizTarget(unit),
     reason: buildSourceMapGeneratedQuizReason(unit),
     importance: sourceMapGeneratedImportance(unit.importanceScore, index),
@@ -1442,15 +1451,15 @@ export function buildDeepLearnContentFromSourceMap(
       },
       {
         heading: 'Key Answers / Answer Bank',
-        body: answerBank.slice(0, 8).map((item) => `- ${item.cue}: ${item.compactAnswer.examSafe}`).join('\n'),
+        body: answerBank.slice(0, 12).map((item) => `- ${item.cue}: ${item.compactAnswer.examSafe}`).join('\n'),
       },
       {
         heading: 'Identification Review',
-        body: identificationItems.slice(0, 8).map((item) => `- ${item.prompt}`).join('\n'),
+        body: identificationItems.slice(0, 12).map((item) => `- ${item.prompt}`).join('\n'),
       },
       {
         heading: 'Likely Quiz Targets',
-        body: likelyQuizTargets.slice(0, 6).map((item) => `- ${item.target}: ${item.reason}`).join('\n'),
+        body: likelyQuizTargets.slice(0, 16).map((item) => `- ${item.target}\n  ${item.reason}`).join('\n'),
       },
       ...academicBankSections,
       ...(quickBlocks.length > 0
@@ -1555,7 +1564,7 @@ function cleanGeneratedSourceMapUnit(unit: AcademicSourceMapUnit): GeneratedSour
     unitType: inferGeneratedSourceMapUnitType(title, unit),
     learningShape: inferGeneratedSourceMapLearningShape(title, unit),
     items,
-    support: support || sourceWording || `${title} is a source-backed concept.`,
+    support: support || sourceWording || title,
     sourceWording,
     importanceScore: unit.importanceScore,
   }
@@ -1568,8 +1577,12 @@ function normalizeGeneratedSourceMapTitle(value: string) {
   if (lookup === 'infosec vs it sec') return 'InfoSec vs IT Sec'
   if (lookup === 'domains of it security') return 'Domains of IT Security'
   if (lookup === 'cybersecurity definitions') return 'Cybersecurity'
+  if (lookup === 'cybersecurity approach layers') return 'Cybersecurity approach layers'
+  if (lookup === 'people process technology') return 'People / Process / Technology'
+  if (lookup === 'unified threat management') return 'Unified Threat Management'
   if (lookup === 'importance of cybersecurity') return 'Importance of Cybersecurity'
   if (lookup === 'challenges') return 'Challenges of Cybersecurity'
+  if (lookup === 'impact of a security breach') return 'Impact of a Security Breach'
   if (lookup === 'cybercrime disruption espionage') return 'Cybersecurity Threat Types'
   if (lookup === 'malware types') return 'Malware Types'
   if (lookup === 'malware symptoms') return 'Malware Symptoms'
@@ -1577,6 +1590,8 @@ function normalizeGeneratedSourceMapTitle(value: string) {
   if (lookup === 'denial of service methods') return 'Denial of Service Methods'
   if (lookup === 'impact reduction') return 'Impact Reduction'
   if (lookup === 'types of attackers') return 'Types of Attackers'
+  if (lookup === 'zombie vs botnet') return 'Zombie vs Botnet'
+  if (lookup === 'seo vs seo poisoning') return 'SEO vs SEO Poisoning'
   if (lookup === 'arnis definition') return 'Arnis'
   if (lookup === 'ra 9850') return 'RA 9850'
   if (lookup === 'historical concept') return 'Historical Concept'
@@ -1649,25 +1664,30 @@ function buildSourceMapGeneratedAnswer(unit: GeneratedSourceMapUnit) {
   if (key === 'vulnerability exploit breach') {
     return 'Vulnerability = weakness or flaw; exploit = method or tool used to take advantage; breach = successful exploit.'
   }
+  if (key === 'zombie vs botnet') {
+    return 'Zombie = infected host; Botnet = network of infected hosts.'
+  }
+  if (key === 'seo vs seo poisoning') {
+    return 'SEO improves website search ranking; SEO Poisoning increases traffic to malicious websites and forces malicious sites to rank higher.'
+  }
   if (unit.items.length >= 2 && !/^(?:IT Security|Cybersecurity)$/i.test(unit.title)) {
-    const verb = unit.learningShape === 'timeline'
-      ? 'preserves milestones including'
-      : unit.learningShape === 'procedure' || unit.learningShape === 'lab-process'
-        ? 'uses the sequence'
-        : unit.learningShape === 'equipment'
-          ? 'identifies'
-          : unit.learningShape === 'classification' || unit.learningShape === 'taxonomy'
-            ? 'classifies'
-            : unit.learningShape === 'formula'
-              ? 'uses formula cues including'
-              : unit.learningShape === 'case-rule'
-                ? 'applies rule cues including'
-                : unit.learningShape === 'clinical-care'
-                  ? 'preserves care cues including'
-            : 'includes'
-    return `${unit.title} ${verb} ${formatInlineList(unit.items.slice(0, getSourceMapGeneratedListLimit(unit)))}.`
+    return formatSourceMapGeneratedReviewerList(unit)
   }
   return unit.support || unit.sourceWording || unit.title
+}
+
+function formatSourceMapGeneratedReviewerList(unit: GeneratedSourceMapUnit) {
+  const items = unit.items.slice(0, getSourceMapGeneratedListLimit(unit))
+  const lines = items.map((item, index) => `${index + 1}. ${formatSourceMapGeneratedListItem(unit, item)}`)
+  return `${unit.title}:\n${lines.join('\n')}`
+}
+
+function formatSourceMapGeneratedListItem(unit: GeneratedSourceMapUnit, item: string) {
+  if (unit.learningShape !== 'timeline') return item
+  return item
+    .replace(/\b(\d{4}|[A-Z][a-z]+ \d{1,2}, \d{4})\s*(?:-|\u2013|\u2014)\s*/u, '$1 \u2014 ')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 function getSourceMapGeneratedListLimit(unit: GeneratedSourceMapUnit) {
@@ -1684,11 +1704,25 @@ function getSourceMapGeneratedAnswerLimit(unit: GeneratedSourceMapUnit) {
   return 180
 }
 
+function buildSourceMapGeneratedIdentificationPrompt(unit: GeneratedSourceMapUnit) {
+  const question = buildKnownSourceMapGeneratedQuestion(unit)
+  if (question) return question
+  if (unit.learningShape === 'timeline') return `Arrange the milestones for ${unit.title}.`
+  if (unit.learningShape === 'procedure' || unit.learningShape === 'lab-process') return `Sequence ${unit.title}.`
+  if (unit.learningShape === 'equipment') return `Identify equipment in ${unit.title}.`
+  if (unit.learningShape === 'classification' || unit.learningShape === 'taxonomy') return `Enumerate ${unit.title}.`
+  if (unit.kind === 'definition') return `Define ${unit.title}.`
+  if (unit.items.length >= 3) return `Enumerate ${unit.title}.`
+  return `Explain ${unit.title}.`
+}
+
 function buildSourceMapGeneratedQuizTarget(unit: GeneratedSourceMapUnit) {
-  if (unit.learningShape === 'timeline') return `Arrange ${unit.title} chronologically`
-  if (unit.learningShape === 'procedure' || unit.learningShape === 'lab-process') return `Sequence ${unit.title}`
-  if (unit.learningShape === 'equipment') return `Identify equipment in ${unit.title}`
-  if (unit.learningShape === 'classification' || unit.learningShape === 'taxonomy') return `Classify ${unit.title}`
+  const question = buildKnownSourceMapGeneratedQuestion(unit)
+  if (question) return question
+  if (unit.learningShape === 'timeline') return `Arrange the milestones for ${unit.title}.`
+  if (unit.learningShape === 'procedure' || unit.learningShape === 'lab-process') return `Sequence ${unit.title}.`
+  if (unit.learningShape === 'equipment') return `Identify equipment in ${unit.title}.`
+  if (unit.learningShape === 'classification' || unit.learningShape === 'taxonomy') return `Enumerate ${unit.title}.`
   if (unit.learningShape === 'formula') return `Use the formula in ${unit.title}`
   if (unit.learningShape === 'worked-example') return `Work through ${unit.title}`
   if (unit.learningShape === 'case-rule') return `Apply the rule in ${unit.title}`
@@ -1700,30 +1734,80 @@ function buildSourceMapGeneratedQuizTarget(unit: GeneratedSourceMapUnit) {
   if (unit.learningShape === 'passage-theme') return `Explain the theme in ${unit.title}`
   if (unit.learningShape === 'reflection') return `Reflect on ${unit.title}`
   if (unit.kind === 'process') return `Apply ${unit.title}`
-  if (unit.items.length >= 3) return `Enumerate ${unit.title}`
+  if (unit.items.length >= 3) return `Enumerate ${unit.title}.`
   if (/ vs |\/|triad/i.test(unit.title)) return `Distinguish ${unit.title}`
-  return `Explain ${unit.title}`
+  return `Explain ${unit.title}.`
 }
 
 function buildSourceMapGeneratedQuizReason(unit: GeneratedSourceMapUnit) {
-  if (unit.kind === 'definition') return `Define ${unit.title} using the source wording.`
-  if (unit.learningShape === 'timeline') return `Recall the source chronology or milestones under ${unit.title}.`
-  if (unit.learningShape === 'procedure' || unit.learningShape === 'lab-process') return `Practice the source-listed sequence under ${unit.title}.`
-  if (unit.learningShape === 'equipment') return `Identify the equipment or tool examples under ${unit.title}.`
-  if (unit.learningShape === 'classification' || unit.learningShape === 'taxonomy') return `Classify source-listed items under ${unit.title}.`
-  if (unit.learningShape === 'formula') return `Use the source formula only where it applies.`
-  if (unit.learningShape === 'worked-example') return `Follow the source example pattern.`
-  if (unit.learningShape === 'case-rule') return `Apply the source rule to the right facts.`
-  if (unit.learningShape === 'clinical-care') return `Recall the source-listed care priority or clinical action.`
-  if (unit.learningShape === 'cause-effect') return `Explain the source-backed cause-effect relationship.`
-  if (unit.learningShape === 'troubleshooting') return `Match symptoms, causes, and fixes from the source.`
-  if (unit.learningShape === 'component-system') return `Identify source-listed parts and their roles.`
-  if (unit.learningShape === 'standards-rubrics') return `Apply the source criteria or standards.`
-  if (unit.learningShape === 'passage-theme') return `Tie the theme or claim to source-backed evidence.`
-  if (unit.learningShape === 'reflection') return `Use source-backed ideas in the reflective response.`
-  if (unit.kind === 'process') return `Apply the source-listed steps or methods under ${unit.title}.`
-  if (unit.items.length >= 3) return `Enumerate source-listed items such as ${formatInlineList(unit.items.slice(0, 6))}.`
-  return `Explain the source-backed concept ${unit.title}.`
+  const key = normalizeAcademicLookup(unit.title)
+  if (key === 'infosec vs it sec') return 'Tests the difference between business information protection and digital data/network protection.'
+  if (key === 'vulnerability exploit breach') return 'Tests the attack sequence: weakness, method or tool, successful result.'
+  if (key === 'zombie vs botnet') return 'Tests the difference between one infected host and a network of infected hosts.'
+  if (key === 'seo vs seo poisoning') return 'Tests normal search optimization against malicious ranking manipulation.'
+  if (key === 'cia triad') return 'Tests the three-goal security list: confidentiality, integrity, availability.'
+  if (unit.kind === 'definition') return `Tests the core definition of ${unit.title}.`
+  if (unit.learningShape === 'timeline') return `Tests dates, milestones, and ordering for ${unit.title}.`
+  if (unit.learningShape === 'procedure' || unit.learningShape === 'lab-process') return `Tests the ordered steps or methods in ${unit.title}.`
+  if (unit.learningShape === 'equipment') return `Tests names, uses, and identification details for ${unit.title}.`
+  if (unit.learningShape === 'classification' || unit.learningShape === 'taxonomy') return `Tests the category members under ${unit.title}.`
+  if (unit.learningShape === 'formula') return `Tests when and how the formula is used.`
+  if (unit.learningShape === 'worked-example') return `Tests the example pattern.`
+  if (unit.learningShape === 'case-rule') return `Tests the rule and the matching facts.`
+  if (unit.learningShape === 'clinical-care') return `Tests the care priority or clinical action.`
+  if (unit.learningShape === 'cause-effect') return `Tests the cause-effect relationship in ${unit.title}.`
+  if (unit.learningShape === 'troubleshooting') return `Tests symptom, cause, and fix matching.`
+  if (unit.learningShape === 'component-system') return `Tests each part and its role.`
+  if (unit.learningShape === 'standards-rubrics') return `Tests the criteria or standards.`
+  if (unit.learningShape === 'passage-theme') return `Tests the theme or claim with evidence.`
+  if (unit.learningShape === 'reflection') return `Tests the reflective focus.`
+  if (unit.kind === 'process') return `Tests the steps or methods in ${unit.title}.`
+  if (unit.items.length >= 3) return `Tests recall of ${formatInlineList(unit.items.slice(0, 6))}.`
+  return `Tests the main idea of ${unit.title}.`
+}
+
+function buildKnownSourceMapGeneratedQuestion(unit: GeneratedSourceMapUnit) {
+  const key = normalizeAcademicLookup(unit.title)
+  const questions: Record<string, string> = {
+    'it security': 'What is IT Security?',
+    'infosec vs it sec': 'Differentiate InfoSec and IT Security.',
+    'cia triad': 'What are the three goals of IT Security?',
+    'domains of it security': 'Enumerate the domains of IT Security.',
+    'cybersecurity': 'What is Cybersecurity?',
+    'cybersecurity approach layers': 'What does a successful cybersecurity approach protect across?',
+    'people process technology': 'Which three elements must complement one another to defend an organization from cyberattacks?',
+    'unified threat management': 'What security operations can a unified threat management system accelerate?',
+    'importance of cybersecurity': 'Why is cybersecurity important to organizations and critical infrastructure?',
+    'challenges of cybersecurity': 'Enumerate the challenges of cybersecurity.',
+    'impact of a security breach': 'What are possible impacts of a security breach?',
+    'types of attackers': 'Classify the types of cyber attackers.',
+    'vulnerability exploit breach': 'Differentiate vulnerability, exploit, and breach.',
+    'cybersecurity threat types': 'Differentiate cybercrime, disruption, and espionage.',
+    'malware types': 'Which items are types of malware?',
+    'malware symptoms': 'What are symptoms of malware?',
+    'methods of infiltration': 'Enumerate the methods of infiltration.',
+    'denial of service methods': 'What methods are used to deny service?',
+    'zombie vs botnet': 'Differentiate a zombie and a botnet.',
+    'seo vs seo poisoning': 'Differentiate SEO and SEO Poisoning.',
+    'blended attacks': 'What is a blended attack?',
+    'impact reduction': 'What steps reduce impact after a breach?',
+    'arnis': 'What is Arnis?',
+    'aliases': 'What are the aliases of Arnis?',
+    'ra 9850': 'What did RA 9850 declare?',
+    'historical concept': 'What is the historical concept of Arnis?',
+    'evolution classifications': 'Enumerate the naming systems or classifications of Arnis.',
+    'organizations timeline': 'Arrange the Arnis organizations and milestones chronologically.',
+    'timeline': 'Arrange the Arnis timeline chronologically.',
+    'regional systems': 'Match each regional system with its group.',
+    'main groups': 'What are the three main Arnis groups?',
+    'courtesy salutation': 'What are the steps in Pugay or courtesy salutation?',
+    'strike types': 'Enumerate the types of strikes.',
+    'equipment weapons': 'Identify Arnis weapons and equipment.',
+    'stick types': 'Differentiate Arnis stick types and lengths.',
+    'regional classifications': 'What are the regional classifications of Arnis?',
+    'arnis as a sport': 'How is Arnis played as a sport?',
+  }
+  return questions[key] ?? null
 }
 
 function buildSourceMapGeneratedDistinctions(units: GeneratedSourceMapUnit[]) {
@@ -1781,8 +1865,12 @@ function getGeneratedSourceMapPreferredRank(title: string) {
     'CIA Triad',
     'Domains of IT Security',
     'Cybersecurity',
+    'Cybersecurity approach layers',
+    'People / Process / Technology',
+    'Unified Threat Management',
     'Importance of Cybersecurity',
     'Challenges of Cybersecurity',
+    'Impact of a Security Breach',
     'Types of Attackers',
     'Vulnerability / Exploit / Breach',
     'Cybersecurity Threat Types',
@@ -1790,6 +1878,8 @@ function getGeneratedSourceMapPreferredRank(title: string) {
     'Malware Symptoms',
     'Methods of Infiltration',
     'Denial of Service Methods',
+    'Zombie vs Botnet',
+    'SEO vs SEO Poisoning',
     'Blended Attacks',
     'Impact Reduction',
     'Arnis',
@@ -1885,7 +1975,7 @@ function summarizeStructuredSource(structuredSource: AcademicStructuredGrounding
   if (firstDefinition) return `${firstDefinition.term}: ${firstDefinition.definition}`
 
   const firstList = structuredSource.lists[0]
-  if (firstList) return `${firstList.heading} includes ${formatInlineList(firstList.items)}.`
+  if (firstList) return `${firstList.heading}: ${formatInlineList(firstList.items)}.`
 
   const firstGroup = structuredSource.conceptGroups[0]
   if (firstGroup) return `${firstGroup.parent} connects ${formatInlineList(firstGroup.children)}.`
@@ -1932,7 +2022,7 @@ function buildDeterministicAnswerBank(structuredSource: AcademicStructuredGround
   })
 
   const listItems = structuredSource.lists.map((list, index) => {
-    const answerText = `${list.heading} includes ${formatInlineList(list.items)}.`
+    const answerText = `${list.heading}:\n${formatNumberedLines(list.items)}`
     return {
       cue: list.heading,
       kind: 'fact' as const,
@@ -1998,16 +2088,16 @@ function buildDeterministicIdentificationItems(structuredSource: AcademicStructu
 
   const listItems = structuredSource.lists.flatMap((list, listIndex) => (
     list.items.slice(0, 5).map((item, itemIndex) => ({
-      prompt: `One source-listed item under ${list.heading}`,
+      prompt: `One item under ${list.heading}`,
       kind: 'fact' as const,
       answer: wordingFromSentence(item),
       importance: listIndex === 0 && itemIndex < 3 ? 'high' as const : 'medium' as const,
       distractors: [],
       reviewText: list.heading,
-      draftExplanation: `${item} is listed under ${list.heading}.`,
+      draftExplanation: `${item} belongs under ${list.heading}.`,
       sourceSnippet: `${list.heading}: ${formatInlineList(list.items)}`,
       linkedDraftSectionId: null,
-      supportingContext: `${item} is listed under ${list.heading}.`,
+      supportingContext: `${item} belongs under ${list.heading}.`,
       compareContext: null,
       simplifiedWording: null,
       confusionNotes: [],
@@ -2020,14 +2110,14 @@ function buildDeterministicIdentificationItems(structuredSource: AcademicStructu
 
 function buildDeterministicLikelyQuizTargets(structuredSource: AcademicStructuredGrounding) {
   const headingTargets = structuredSource.headings.slice(0, 5).map((heading, index) => ({
-    target: `Explain ${heading}`,
-    reason: `${heading} is a clear source heading or category.`,
+    target: `What should you know about ${heading}?`,
+    reason: `${heading} is a major heading or category in the material.`,
     importance: index < 3 ? 'high' as const : 'medium' as const,
     reviewText: heading,
-    draftExplanation: `${heading} is a clear source heading or category.`,
+    draftExplanation: `${heading} is a major heading or category in the material.`,
     sourceSnippet: heading,
     linkedDraftSectionId: null,
-    supportingContext: `${heading} is a clear source heading or category.`,
+    supportingContext: `${heading} is a major heading or category in the material.`,
     compareContext: null,
     simplifiedWording: null,
     confusionNotes: [],
@@ -2035,14 +2125,14 @@ function buildDeterministicLikelyQuizTargets(structuredSource: AcademicStructure
   }))
 
   const groupTargets = structuredSource.conceptGroups.slice(0, 5).map((group, index) => ({
-    target: `Apply ${group.parent}`,
-    reason: `${group.parent} groups source concepts: ${formatInlineList(group.children)}.`,
+    target: `How do the items under ${group.parent} relate to each other?`,
+    reason: `${group.parent} connects ${formatInlineList(group.children)}.`,
     importance: index < 3 ? 'high' as const : 'medium' as const,
     reviewText: group.parent,
-    draftExplanation: `${group.parent} groups source concepts: ${formatInlineList(group.children)}.`,
+    draftExplanation: `${group.parent} connects ${formatInlineList(group.children)}.`,
     sourceSnippet: `${group.parent}: ${formatInlineList(group.children)}`,
     linkedDraftSectionId: null,
-    supportingContext: `${group.parent} groups source concepts: ${formatInlineList(group.children)}.`,
+    supportingContext: `${group.parent} connects ${formatInlineList(group.children)}.`,
     compareContext: null,
     simplifiedWording: null,
     confusionNotes: [],
@@ -2050,14 +2140,14 @@ function buildDeterministicLikelyQuizTargets(structuredSource: AcademicStructure
   }))
 
   const listTargets = structuredSource.lists.slice(0, 5).map((list, index) => ({
-    target: `Recall items in ${list.heading}`,
-    reason: `${list.heading} is listed with ${formatInlineList(list.items)}.`,
+    target: `Enumerate the items under ${list.heading}.`,
+    reason: `${list.heading}: ${formatInlineList(list.items)}.`,
     importance: index < 3 ? 'high' as const : 'medium' as const,
     reviewText: list.heading,
-    draftExplanation: `${list.heading} is listed with ${formatInlineList(list.items)}.`,
+    draftExplanation: `${list.heading}: ${formatInlineList(list.items)}.`,
     sourceSnippet: `${list.heading}: ${formatInlineList(list.items)}`,
     linkedDraftSectionId: null,
-    supportingContext: `${list.heading} is listed with ${formatInlineList(list.items)}.`,
+    supportingContext: `${list.heading}: ${formatInlineList(list.items)}.`,
     compareContext: null,
     simplifiedWording: null,
     confusionNotes: [],
@@ -2071,7 +2161,7 @@ function buildDeterministicConceptSections(structuredSource: AcademicStructuredG
   return [
     ...structuredSource.lists.slice(0, 2).map((list) => ({
       heading: normalizeStudyOutputHeading(list.heading),
-      body: `${list.heading} includes ${formatInlineList(list.items)}.`,
+      body: `${list.heading}:\n${formatNumberedLines(list.items)}`,
     })),
     ...structuredSource.conceptGroups.slice(0, 2).map((group) => ({
       heading: normalizeStudyOutputHeading(group.parent),
@@ -2091,6 +2181,12 @@ function relatedStructuredConcepts(structuredSource: AcademicStructuredGrounding
 
 function formatInlineList(items: string[]) {
   return uniqueStringList(items).join(', ')
+}
+
+function formatNumberedLines(items: string[]) {
+  return uniqueStringList(items)
+    .map((item, index) => `${index + 1}. ${item}`)
+    .join('\n')
 }
 
 function resolveWordingValue(value: ReturnType<typeof wordingFromSentence>) {
@@ -2261,6 +2357,12 @@ function hasLowInformationStudyContent(content: DeepLearnGeneratedContent) {
   const identificationTexts = content.identificationItems.map((item) => `${item.prompt} ${item.answer.examSafe}`)
   const targetTexts = content.likelyQuizTargets.map((item) => `${item.target} ${item.reason}`)
   return [...answerTexts, ...identificationTexts, ...targetTexts].some(isLowInformationStudyText)
+}
+
+function hasReviewerComposerLeakage(content: DeepLearnGeneratedContent) {
+  const rendered = JSON.stringify(content)
+  return /\b(?:source-backed|source wording|source chronology|grouped concepts|extracted concepts|compact grounding|exact source passage|Source Notes)\b/i.test(rendered)
+    || /\b(?:classifies|preserves milestones|preserves chronology|using the source wording|Explain the source-backed concept)\b/i.test(rendered)
 }
 
 function isLowInformationStudyText(value: string) {

@@ -142,7 +142,7 @@ export function DeepLearnReviewPackSurface({ note }: { note: DeepLearnNote }) {
                         <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.65, color: 'var(--text-primary)', fontWeight: 650 }}>
                           {renderSupportText(supportKey, item, item.cue)}
                         </p>
-                        <p style={{ margin: '0.2rem 0 0', fontSize: '13px', lineHeight: 1.62, color: 'var(--text-secondary)' }}>
+                        <p style={{ margin: '0.2rem 0 0', fontSize: '13px', lineHeight: 1.62, color: 'var(--text-secondary)', whiteSpace: 'pre-line' }}>
                           {resolveDeepLearnWording(item.compactAnswer, wordingMode)}
                         </p>
                       </li>
@@ -287,7 +287,7 @@ export function DeepLearnReviewPackSurface({ note }: { note: DeepLearnNote }) {
                       <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.55, color: 'var(--text-primary)', fontWeight: 650 }}>
                         {renderSupportText(supportKey, item, item.target)}
                       </p>
-                      <p style={{ margin: '0.18rem 0 0', fontSize: '12px', lineHeight: 1.58, color: 'var(--text-secondary)' }}>
+                      <p style={{ margin: '0.18rem 0 0', fontSize: '12px', lineHeight: 1.58, color: 'var(--text-secondary)', whiteSpace: 'pre-line' }}>
                         {item.reason}
                       </p>
                     </li>

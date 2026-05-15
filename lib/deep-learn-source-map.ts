@@ -269,15 +269,21 @@ const RECOGNIZED_SOURCE_MAP_TERMS = new Set([
   'it sec',
   'cia triad',
   'cybersecurity',
+  'cybersecurity approach layers',
+  'people process technology',
+  'unified threat management',
   'domains of it security',
   'importance of cybersecurity',
   'challenges',
   'challenges of cybersecurity',
+  'impact of a security breach',
   'types of attackers',
   'vulnerability',
   'exploit',
   'breach',
   'vulnerability exploit breach',
+  'zombie vs botnet',
+  'seo vs seo poisoning',
   'cybercrime disruption espionage',
   'malware types',
   'malware symptoms',
@@ -1068,25 +1074,69 @@ function inferKnownSecurityUnits(normalizedText: string): AcademicSourceMapUnit[
   const units: AcademicSourceMapUnit[] = []
   const source = normalizedText.replace(/\s+/g, ' ')
   const addList = (title: string, items: string[], quoteHeadings: string[], kind: AcademicSourceMapUnitKind = 'list') => {
-    const found = items.filter((item) => new RegExp(`\\b${escapeRegExp(item).replace(/\\-/g, '[- ]?')}\\b`, 'i').test(source))
+    const found = items.filter((item) => sourceContainsStudyItem(source, item))
     if (found.length >= 2) {
       units.push(createUnit({
         title,
         kind,
-        summary: `${title} includes ${found.join(', ')}.`,
+        summary: `${title}: ${found.join(', ')}.`,
         items: found,
         sourceQuote: pickKnownSectionQuote(normalizedText, quoteHeadings) ?? `${title}: ${found.join(', ')}`,
       }))
     }
   }
 
+  const addUnit = (input: {
+    title: string
+    kind: AcademicSourceMapUnitKind
+    unitType?: AcademicSourceMapUnitType
+    items: string[]
+    summary?: string
+    quoteHeadings: string[]
+    fallbackPattern?: RegExp
+  }) => {
+    const found = input.items.filter((item) => sourceContainsStudyItem(source, item))
+    const quote = pickKnownSectionQuote(normalizedText, input.quoteHeadings, input.fallbackPattern)
+    if (found.length < 2 && !quote) return
+    units.push(createUnit({
+      title: input.title,
+      kind: input.kind,
+      unitType: input.unitType,
+      summary: input.summary ?? `${input.title}: ${(found.length >= 2 ? found : input.items).join(', ')}.`,
+      items: found.length >= 2 ? found : input.items,
+      sourceQuote: quote ?? `${input.title}: ${(found.length >= 2 ? found : input.items).join(', ')}`,
+    }))
+  }
+
   addList('CIA Triad', ['Confidentiality', 'Integrity', 'Availability'], ['Goal of IT Security'], 'concept')
   addList('Domains of IT Security', ['Network Security', 'Internet Security', 'Endpoint Security', 'Cloud Security', 'Application Security', 'Information Security', 'Operational Security', 'Mobile Security', 'IoT Security', 'User Education', 'Cyber Security'], ['Domains of IT Security'], 'category')
+  addList('Cybersecurity approach layers', ['Computers', 'Networks', 'Programs', 'Data'], ['What is Cybersecurity all about'], 'list')
+  addList('People / Process / Technology', ['People', 'Processes', 'Technology'], ['What is Cybersecurity all about'], 'category')
+  addList('Unified Threat Management', ['Detection', 'Investigation', 'Remediation'], ['What is Cybersecurity all about'], 'process')
   addList('Types of attackers', ['Insiders', 'Employees and ex-employees', 'Contract Staff', 'Trusted Partners', 'Organized Attackers', 'Cyber Criminals', 'Hacktivists', 'Terrorists', 'State-sponsored Hackers', 'Black hats', 'Grey hats', 'White hats', 'Amateurs'], ['Types of Attackers'], 'category')
+  addList('Impact of a Security Breach', ['Ruined Reputation', 'Vandalism', 'Theft', 'Revenue Lost', 'Damaged Intellectual Property'], ['Impact of a Security Breach'], 'category')
   addList('Malware types', ['Spyware', 'Adware', 'Bot', 'Rootkit', 'Scareware', 'Ransomware', 'Virus', 'Trojan Horse', 'Worm', 'MiTM'], ['Types of Malware'], 'category')
   addList('Malware symptoms', ['increase in CPU usage', 'decrease in computer speed', 'freezes or crashes often', 'decrease in Web browsing speed', 'network connections', 'Files are modified', 'Files are deleted', 'unknown files', 'unknown processes', 'Email is being sent'], ['Symptoms of Malware'])
   addList('Infiltration methods', ['Social Engineering', 'Password Cracking', 'Vulnerability Exploitation', 'Advanced Persistent Threats'], ['Methods of Infiltration'], 'process')
   addList('Denial of service methods', ['Overwhelm quantity of traffic', 'Maliciously formatted packets', 'Zombie', 'Botnet', 'SEO Poisoning'], ['Methods to Deny Service'], 'process')
+  addUnit({
+    title: 'Zombie vs Botnet',
+    kind: 'definition',
+    unitType: 'comparison',
+    items: ['Zombie - Infected Host', 'Botnet - Network of Infected Hosts'],
+    summary: 'Zombie = infected host; Botnet = network of infected hosts.',
+    quoteHeadings: ['Methods to Deny Service'],
+    fallbackPattern: /Zombie.{0,80}Botnet.{0,100}/i,
+  })
+  addUnit({
+    title: 'SEO vs SEO Poisoning',
+    kind: 'definition',
+    unitType: 'comparison',
+    items: ['SEO - Search Engine Optimization', 'SEO Poisoning - Increase traffic to malicious websites'],
+    summary: 'SEO improves website search ranking; SEO Poisoning increases traffic to malicious websites and forces malicious sites to rank higher.',
+    quoteHeadings: ['Methods to Deny Service'],
+    fallbackPattern: /SEO.{0,220}SEO Poisoning.{0,180}/i,
+  })
   addList('Cybercrime / Disruption / Espionage', ['Cybercrime', 'Disruption', 'Espionage'], ['Types of Cybersecurity Threats'], 'category')
   addList('Blended attacks', ['multiple techniques', 'worms', 'Trojan horses', 'spyware', 'keyloggers', 'spam', 'phishing schemes', 'DDoS combined with phishing emails'], ['Blended Attacks'], 'concept')
   addList('Impact reduction', ['Communicate the Issue', 'Be sincere and accountable', 'Provide details', 'Understand the cause of the breach', 'Ensure all systems are clean', 'Educate employees, partners, and customers'], ['Impact Reduction'], 'process')
@@ -1132,13 +1182,13 @@ function inferKnownArnisUnits(normalizedText: string): AcademicSourceMapUnit[] {
     kind: AcademicSourceMapUnitKind,
     unitType: AcademicSourceMapUnitType,
   ) => {
-    const found = items.filter((item) => new RegExp(`\\b${escapeRegExp(item).replace(/\\-/g, '[- ]?')}\\b`, 'i').test(source))
+    const found = items.filter((item) => sourceContainsStudyItem(source, item))
     if (found.length >= 2) {
       units.push(createUnit({
         title,
         kind,
         unitType,
-        summary: `${title} includes ${found.join(', ')}.`,
+        summary: `${title}: ${found.join(', ')}.`,
         items: found,
         sourceQuote: pickKnownSectionQuote(normalizedText, quoteHeadings) ?? `${title}: ${found.join(', ')}`,
       }))
@@ -1273,6 +1323,43 @@ function extractSourceMapItems(text: string) {
   )
 }
 
+function sourceContainsStudyItem(source: string, item: string) {
+  const cleanedItem = item.replace(/\([^)]*\)/g, ' ').trim()
+  if (matchesSourceMapPhrase(source, cleanedItem)) return true
+
+  if (/[-\u2013\u2014/]/u.test(cleanedItem)) {
+    const parts = cleanedItem
+      .split(/\s*(?:-|\/|\u2013|\u2014)\s*/u)
+      .map((part) => part.trim())
+      .filter((part) => part.length >= 3)
+    const head = parts[0] ?? ''
+    const details = parts.slice(1)
+    if (head && details.length > 0) {
+      return matchesSourceMapPhrase(source, head) && details.some((detail) => matchesSourceMapPhrase(source, detail))
+    }
+  }
+
+  const candidates = uniqueStrings([
+    item,
+    item.split(/\s+(?:-|\u2013|\u2014)\s+/u)[0] ?? '',
+    item.split('/')[0] ?? '',
+    item.split(',')[0] ?? '',
+  ])
+    .map((candidate) => candidate.replace(/\([^)]*\)/g, ' ').trim())
+    .filter((candidate) => candidate.length >= 3)
+
+  return candidates.some((candidate) => matchesSourceMapPhrase(source, candidate))
+}
+
+function matchesSourceMapPhrase(source: string, phrase: string) {
+  const cleaned = phrase.replace(/\s+/g, ' ').trim()
+  if (cleaned.length < 3) return false
+  const pattern = escapeRegExp(cleaned)
+    .replace(/-/g, '[-\\s]?')
+    .replace(/\s+/g, '\\s+')
+  return new RegExp(`\\b${pattern}\\b`, 'i').test(source)
+}
+
 function extractDefinitionsFromText(text: string) {
   const definitions: Array<{ term: string; definition: string }> = []
   const parts = text.split(/\s*•\s*/).map((part) => part.trim()).filter(Boolean)
@@ -1308,7 +1395,7 @@ function summarizeChunk(
   definitions: Array<{ term: string; definition: string }>,
 ) {
   if (definitions[0]) return `${definitions[0].term}: ${definitions[0].definition}`
-  if (items.length >= 2) return `${chunk.heading} includes ${items.slice(0, 8).join(', ')}.`
+  if (items.length >= 2) return `${chunk.heading}: ${items.slice(0, 8).join(', ')}.`
   return summarizeQuote(chunk.heading, chunk.sourceQuote)
 }
 
@@ -1408,6 +1495,8 @@ function isWeakSourceMapTitle(title: string) {
   if (RECOGNIZED_SOURCE_MAP_TERMS.has(key)) return false
   if (/^(?:there|high|state|terms|programs|activity|organization|source summary|source notes|what)$/i.test(key)) return true
   if (/^(?:understand the|insiders employees and ex)\b/i.test(key)) return true
+  if (/\u2022/.test(title) || /Ã¢â‚¬Â¢/.test(title)) return true
+  if (/^organized (?:(?:and|&) )?state\b/i.test(key)) return true
   if (/^(?:communicate the issue|overwhelm quantity of traffic)$/i.test(key)) return true
   if (/^(?:cyber crime|organized and state|seo poisoning|sent to a host or application and the receiver)$/i.test(key)) return true
   if (/\?{2,}/.test(title)) return true
@@ -1424,7 +1513,7 @@ function isWeakSourceMapTitle(title: string) {
 function scoreImportance(title: string, kind: AcademicSourceMapUnitKind, itemCount: number) {
   let score = kind === 'definition' ? 82 : kind === 'process' ? 76 : kind === 'category' ? 72 : 66
   if (HIGH_IMPORTANCE_PATTERNS.some((pattern) => pattern.test(title))) score += 14
-  if (/^(?:CIA Triad|IT Security definition|InfoSec vs IT Sec|Vulnerability \/ Exploit \/ Breach)$/i.test(title)) score += 18
+  if (/^(?:CIA Triad|IT Security definition|InfoSec vs IT Sec|Vulnerability \/ Exploit \/ Breach|Cybersecurity approach layers|People \/ Process \/ Technology|Unified Threat Management|Zombie vs Botnet|SEO vs SEO Poisoning)$/i.test(title)) score += 18
   if (/^(?:Arnis definition|RA 9850|Organizations \/ Timeline|Timeline|Courtesy \/ Salutation|Equipment \/ Weapons|Regional Classifications|Regional Systems|Main Groups|Stick Types)$/i.test(title)) score += 16
   if (itemCount >= 3) score += 6
   if (itemCount >= 8) score += 4
@@ -1439,7 +1528,13 @@ function normalizeSourceMapHeading(value: string) {
   if (lookup === 'cia triad') return 'CIA Triad'
   if (lookup === 'domains of it security') return 'Domains of IT Security'
   if (lookup === 'cybersecurity definitions') return 'Cybersecurity definitions'
+  if (lookup === 'cybersecurity approach layers') return 'Cybersecurity approach layers'
+  if (lookup === 'people process technology') return 'People / Process / Technology'
+  if (lookup === 'unified threat management') return 'Unified Threat Management'
   if (lookup === 'importance of cybersecurity') return 'Importance of cybersecurity'
+  if (lookup === 'impact of a security breach') return 'Impact of a Security Breach'
+  if (lookup === 'zombie vs botnet') return 'Zombie vs Botnet'
+  if (lookup === 'seo vs seo poisoning') return 'SEO vs SEO Poisoning'
   if (lookup === 'vulnerability exploit breach') return 'Vulnerability / Exploit / Breach'
   if (lookup === 'cybercrime disruption espionage') return 'Cybercrime / Disruption / Espionage'
   if (lookup === 'malware types') return 'Malware types'

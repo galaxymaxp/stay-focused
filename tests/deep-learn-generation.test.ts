@@ -554,7 +554,7 @@ test('staged Deep Learn generation completes long readable sources without one g
         sections: [{ heading: 'Likely Quiz Targets', body: 'Expect CIA triad definitions, threat vs vulnerability, and control examples.' }],
         distinctions: [distinctionItem(1)],
         likelyQuizTargets: [quizTargetItem(1), quizTargetItem(2), quizTargetItem(3)],
-        cautionNotes: ['Some examples were brief, so memorize the exact source wording first.'],
+        cautionNotes: ['Some examples were brief, so memorize the definitions and lists first.'],
       })
     },
     {
@@ -825,6 +825,7 @@ test('Source Map compact reviewer preserves complete lists and word-safe compact
   for (const item of ['Network Security', 'Internet Security', 'Endpoint Security', 'Cloud Security', 'Application Security', 'Information Security', 'Operational Security', 'Mobile Security', 'IoT Security', 'User Education', 'Cyber Security']) {
     assert.match(domains.answer.examSafe, new RegExp(item.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
   }
+  assert.match(domains.answer.examSafe, /Domains of IT Security:\n1\. Network Security/)
 
   const malware = answerFor('Malware Types')
   for (const item of ['Spyware', 'Adware', 'Bot', 'Rootkit', 'Scareware', 'Ransomware', 'Virus', 'Trojan Horse', 'Worm', 'MiTM']) {
@@ -846,6 +847,11 @@ test('Source Map compact reviewer preserves complete lists and word-safe compact
   const highYield = content.sections.find((section) => section.heading === 'High-Yield First')?.body ?? ''
   assert.match(highYield, /IT Security uses cybersecurity strategies/)
   assert.doesNotMatch(highYield, /IT Security: .*InfoSec -|IT Security: .*processes and tools/i)
+
+  const rendered = JSON.stringify(content)
+  assert.doesNotMatch(rendered, /source-backed|source wording|source chronology|grouped concepts|extracted concepts|compact grounding|exact source passage|Source Notes|using the source wording|Explain the source-backed concept|\bclassifies\b|\bpreserves\b/i)
+  assert.ok(content.likelyQuizTargets.every((item) => /\?$|\.$/.test(item.target)))
+  assert.ok(content.likelyQuizTargets.some((item) => item.target === 'What are the three goals of IT Security?'))
 })
 
 test('Source Map compact reviewer filters weak terms without removing legitimate security concepts', () => {
@@ -1122,8 +1128,12 @@ test('Academic Source Map extracts IT Security academic units with source quotes
     'CIA Triad',
     'Domains of IT Security',
     'Cybersecurity definitions',
+    'Cybersecurity approach layers',
+    'People / Process / Technology',
+    'Unified Threat Management',
     'Importance of cybersecurity',
     'Challenges',
+    'Impact of a Security Breach',
     'Types of attackers',
     'Vulnerability / Exploit / Breach',
     'Cybercrime / Disruption / Espionage',
@@ -1187,6 +1197,9 @@ test('Academic Source Map detects adaptive styles without regressing IT Security
   assert.ok(arnis.units.some((unit) => unit.title === 'Courtesy / Salutation' && unit.unitType === 'procedure' && unit.learningShape === 'procedure'))
   assert.ok(arnis.units.some((unit) => unit.title === 'Organizations / Timeline' && unit.unitType === 'timeline' && unit.learningShape === 'timeline'))
   assert.ok(arnis.units.some((unit) => unit.title === 'Equipment / Weapons' && unit.unitType === 'equipment' && unit.learningShape === 'equipment'))
+  assert.ok(arnis.units.some((unit) => unit.title === 'Regional Systems' && unit.learningShape === 'classification'))
+  assert.ok(arnis.units.some((unit) => unit.title === 'Main Groups' && unit.learningShape === 'classification'))
+  assert.ok(arnis.units.some((unit) => unit.title === 'Stick Types' && unit.items.some((item) => /24 to 28 inches/.test(item))))
 })
 
 test('Academic Source Map preserves Arnis timeline and classification banks for fixture QA', () => {
@@ -1197,8 +1210,8 @@ test('Academic Source Map preserves Arnis timeline and classification banks for 
   assert.ok((arnis.banks?.timelineBank.length ?? 0) >= 1)
   assert.ok((arnis.banks?.classificationBank.length ?? 0) >= 4)
   assert.ok((arnis.banks?.procedureBank.length ?? 0) >= 1)
-  assert.match(renderedBanks, /NARAPHIL|WEKAF|i-ARNIS/)
-  assert.match(renderedBanks, /Regional Classifications|Evolution \/ Classifications|Strike Types/)
+  assert.match(renderedBanks, /NARAPHIL|WEKAF|i-ARNIS|Doce Pares/)
+  assert.match(renderedBanks, /Regional Classifications|Regional Systems|Main Groups|Evolution \/ Classifications|Strike Types/)
   assert.match(renderedBanks, /Baston|Daga|Bangkaw/)
   assert.doesNotMatch(renderedBanks, /Source Notes|metadata|debug|\?\?\?\?/i)
 })
@@ -1237,8 +1250,8 @@ test('Source Map compact reviewer preserves PATHFit procedural units for save va
   assert.ok(content)
   assert.equal(validateDeepLearnContentReadyForSave(content).ok, true)
   assert.ok(content.answerBank.some((item) => item.cue === 'Courtesy / Salutation' && /Attention stance|Return to ready stance/.test(item.answer.examSafe)))
-  assert.ok(content.likelyQuizTargets.some((item) => item.target === 'Arrange Organizations / Timeline chronologically'))
-  assert.ok(content.likelyQuizTargets.some((item) => item.target === 'Identify equipment in Equipment / Weapons'))
+  assert.ok(content.likelyQuizTargets.some((item) => item.target === 'Arrange the Arnis organizations and milestones chronologically.'))
+  assert.ok(content.likelyQuizTargets.some((item) => item.target === 'Identify Arnis weapons and equipment.'))
   assert.doesNotMatch(JSON.stringify(content), /What is Historical Concept\?/i)
 })
 
@@ -1322,10 +1335,10 @@ test('normalizeDeepLearnGeneratedContent enforces compact Study Pack output limi
 
   assert.equal(generated.sections.length, 6)
   assert.equal(generated.sections[0]?.heading, 'Source Summary')
-  assert.equal(generated.answerBank.length, 16)
-  assert.equal(generated.identificationItems.length, 16)
+  assert.equal(generated.answerBank.length, 20)
+  assert.equal(generated.identificationItems.length, 20)
   assert.equal(generated.distinctions.length, 6)
-  assert.equal(generated.likelyQuizTargets.length, 6)
+  assert.equal(generated.likelyQuizTargets.length, 10)
 })
 
 test('buildDeepLearnGroundingWithDependencies blocks when source fetch still yields unusable text', async () => {
@@ -1682,6 +1695,8 @@ const IT_SECURITY_SAMPLE_SOURCE = [
   'What is IT Security • A set of cyber security strategies that prevent unauthorized access • Focuses on protecting organizational assets against cyberattacks and other threats • InfoSec - processes and tools designed to protect sensitive business information • IT Sec - securing digital data through computer network security',
   'Goal of IT Security 1. Confidentiality 2. Integrity 3. Availability',
   'Domains of IT Security 1. Network Security 2. Internet Security 3. Endpoint Security 4. Cloud Security 5. Application Security 6. Information Security 7. Operational Security 8. Mobile Security 9. IoT Security 10. User Education 11. Cyber Security',
+  'What is Cybersecurity all about? Cybersecurity involves multiple layers of protection spread across computers, networks, programs, and data. People, processes, and technology must complement one another. Unified threat management can accelerate detection, investigation, and remediation.',
+  'Impact of a Security Breach Ruined Reputation, Vandalism, Theft, Revenue Lost, Damaged Intellectual Property',
   'What is Cybersecurity? • Protection of networked systems and data from unauthorized use or harm • Refers to techniques used to protect the integrity of an organization security architecture and safeguard its data against attack, damage, or unauthorized access',
   'Importance of cybersecurity • Increasingly sophisticated attacks • Widely available hacking tools • Compliance • Rising cost of breaches • Strategic board-level concern • Cyber crime is big business',
   'Challenges of Cybersecurity • Internet of Things • Rapidly Evolving Risks • Big and Confidential Data • Organized and State-sponsored Hacker Groups • Remote Working • High-speed Internet • BYOD',
@@ -1704,6 +1719,10 @@ const PATHFIT_ARNIS_SAMPLE_SOURCE = [
   'Historical Concept â€¢ Arnis developed from indigenous fighting systems and preserved Filipino culture through practical self-defense.',
   'Evolution of Arnis â€¢ Classical Arnis â€¢ Modern Arnis â€¢ Sports Arnis â€¢ Anyo â€¢ Labanan',
   'Organizations and Timeline 1975 NARAPHIL promoted national organization 1986 ARPI supported national competitions 1989 WEKAF standardized Arnis sport rules 2010 i-ARNIS supported school-based implementation',
+  'Organizations and Timeline 1970 Doce Pares Association rules were accepted by many Arnis clubs',
+  'Regional Systems Pangasinan - KALIRONGAN; Tagalogs - PANANANDATA; Ilocanos - DIDYA/KABAROAN; Ibanags - PAGKALIKALI; Pampanguenos - SINAWALI; Visayans - KINAADMAN/PAGARADMAN/ESGRIMA/ESCRIMA',
+  '3 Main Groups Northern Style - Arnis; Central Style - Arnis de Mano; Southern Style - Kali',
+  'Stick Types Baston / Olisi / Yantok - 24 to 28 inches; Largo mano yantok - 28 to 36 inches; Dulo y Dulo - 4 to 7 inches',
   'Courtesy and Salutation 1. Attention stance 2. Ready stance 3. Bow 4. Salute 5. Return to ready stance',
   'Strike Types â€¢ Forehand strike â€¢ Backhand strike â€¢ Thrust â€¢ Diagonal strike â€¢ Horizontal strike â€¢ Vertical strike',
   'Equipment and Weapons â€¢ Baston - training stick â€¢ Daga - dagger â€¢ Bolo - bladed weapon â€¢ Espada y Daga - sword and dagger â€¢ Bangkaw - six-foot pole',
@@ -1816,13 +1835,13 @@ function answerBankItem(index: number) {
     cue: `Concept ${index}`,
     kind: 'term_definition',
     answer: {
-      exact: `Exact source wording ${index}`,
-      examSafe: `Exact source wording ${index}`,
+      exact: `Exact course wording ${index}`,
+      examSafe: `Exact course wording ${index}`,
       simplified: `Plain explanation ${index}`,
     },
     compactAnswer: {
-      exact: `Exact source wording ${index}`,
-      examSafe: `Exact source wording ${index}`,
+      exact: `Exact course wording ${index}`,
+      examSafe: `Exact course wording ${index}`,
       simplified: `Plain explanation ${index}`,
     },
     importance: 'high',
@@ -1830,7 +1849,7 @@ function answerBankItem(index: number) {
     distractors: [],
     reviewText: `Concept ${index}`,
     draftExplanation: `Plain explanation ${index}`,
-    sourceSnippet: `Exact source wording ${index}`,
+    sourceSnippet: `Exact course wording ${index}`,
     linkedDraftSectionId: null,
     supportingContext: `Plain explanation ${index}`,
     compareContext: null,

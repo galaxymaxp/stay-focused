@@ -5,6 +5,76 @@ Last Updated: 2026-05-15
 
 ---
 
+## Session Update - 2026-05-15 (Reviewer Composer Phase 3.7)
+
+### What changed
+
+- Converted deterministic Source Map Study Pack and Reviewer rendering from summary-style prose into exam-ready reviewer composition:
+  - numbered lists for enumerations and classifications
+  - timeline-style date/event formatting
+  - comparison answers for InfoSec vs IT Security, Vulnerability/Exploit/Breach, Zombie/Botnet, and SEO/SEO Poisoning
+  - real likely quiz questions instead of internal wording prompts
+- Added IT Security coverage for cybersecurity layers, People/Process/Technology, Unified Threat Management, security-breach impact, Zombie vs Botnet, and SEO vs SEO Poisoning.
+- Expanded Arnis/PATHFit coverage for Doce Pares, regional systems, three main groups, and stick type/length material when present in the source.
+- Tightened Source Map filtering and matching so weak orphan fragments are removed and detailed known items require source evidence for both the head term and detail.
+- Increased deterministic reviewer/quiz density caps so source-dense modules keep later high-yield topics such as Methods of Infiltration, Denial of Service, Blended Attacks, and Impact Reduction.
+- Updated Quiz Pack membership wording and explanations to use exam-style phrasing with stronger MCQ/True-False/Identification coverage.
+- Preserved multi-line answer formatting in the reviewer UI so numbered blocks render correctly.
+- Added regression coverage for banned/internal student-facing phrases, real likely quiz targets, numbered answer blocks, expanded IT Security headings, and expanded Arnis coverage.
+
+### Files touched
+
+- `lib/deep-learn-source-map.ts`
+- `lib/deep-learn-generation.ts`
+- `lib/deep-learn.ts`
+- `lib/study-outputs/reviewer.ts`
+- `lib/study-outputs/quiz-pack.ts`
+- `components/DeepLearnReviewPackSurface.tsx`
+- `components/StudyOutputReviewerPage.tsx`
+- `tests/deep-learn-generation.test.ts`
+- `tests/study-output-reviewer.test.ts`
+- `tests/study-output-quiz-pack.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+The generated Study Pack / Reviewer was still rendering concept metadata as prose, which produced shallow lines such as generic classification/chronology statements and internal prompt wording. The Reviewer now composes source-map units into exam-reviewer material while staying grounded only in selected academic source text.
+
+### Tests run
+
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- deep-learn-generation study-output-reviewer study-output-quiz-pack` - passed
+- `npm test -- quiz source-map reviewer` - passed
+- `npm test -- study-output-reviewer study-output-sheet study-output-print` - passed
+
+### Verification result
+
+- Passed all requested verification commands.
+- Verified IT Security output uses numbered blocks and covers the requested major headings.
+- Verified Arnis output covers procedural, timeline, classification, organization, equipment, and stick-length material when present in the source.
+- Verified saved reviewer content rejects banned/internal phrases such as Source Notes, source-backed/source wording prompts, and generic classifies/preserves wording.
+- Verified likely quiz targets are concrete exam-style questions.
+
+### Known risks
+
+- Known-unit coverage still depends on deterministic heading/item detection; unusual OCR layouts may need more aliases after real fixture QA.
+- The expanded reviewer/quiz caps increase output density for large source maps, so very dense modules should be checked in the UI for scanability.
+
+### Blockers
+
+- No blocker remains.
+
+### Next recommended step
+
+- Run manual generation QA against a real Canvas IT Security source and a real PATHFit/Arnis source, then compare the saved reviewer pages against the target-standard examples.
+
+### Suggested commit message
+
+- `compose exam-ready reviewer sections`
+
+---
+
 ## Session Update - 2026-05-15 (Exam Reviewer Quality Contract)
 
 ### What changed

@@ -25,7 +25,7 @@ test('quiz pack generation builds deterministic Source Map MCQ true/false and id
   assert.ok(first.items.every((item) => item.sourceUnitId && item.sourceExcerpt && item.confidence && item.generationMethod))
   assert.ok(first.questionCountOptions.length > 0)
   assert.ok(first.items.length >= 20)
-  assert.ok(first.items.length <= 30)
+  assert.ok(first.items.length <= 48)
   assert.doesNotMatch(first.title, /Quiz Pack/)
   assert.doesNotMatch(JSON.stringify(first.items), /according to the source|metadata|debug|ocr garbage|Source Notes|other threats InfoSec|"prompt":"[^"]*Understand The|"prompt":"[^"]*Insiders Employees And Ex/i)
 })
@@ -139,7 +139,7 @@ test('Source Map identification questions use direct course-like stems', () => {
   assert.ok(identification.length >= 5)
   assert.ok(identification.some((item) => /^Define\b/.test(item.prompt)))
   assert.ok(identification.some((item) => /^Identify\b/.test(item.prompt)))
-  assert.ok(identification.some((item) => /^Enumerate the listed items under\b/.test(item.prompt)))
+  assert.ok(identification.some((item) => /^Enumerate the items under\b/.test(item.prompt)))
   assert.ok(identification.some((item) => /^Distinguish\b/.test(item.prompt)))
   assert.ok(identification.every((item) => !/according to the source|debug|metadata/i.test(item.prompt)))
 })
@@ -170,12 +170,12 @@ test('Source Map quiz pack preserves exam density and true/false explanations', 
   assert.ok(types.has('true_false'))
   assert.ok(types.has('identification'))
   assert.ok(prompts.some((prompt) => /Which item belongs to the CIA Triad/.test(prompt)))
-  assert.ok(prompts.some((prompt) => /Enumerate the listed items under Domains of IT Security/.test(prompt)))
+  assert.ok(prompts.some((prompt) => /Enumerate the items under Domains of IT Security/.test(prompt)))
   assert.ok(items.some((item) => item.type === 'true_false' && /^Correct because\b/.test(item.explanation)))
   assert.doesNotMatch(JSON.stringify(items), /Source Notes|metadata|debug|\?\?\?\?|other threats InfoSec|"prompt":"[^"]*Understand The|"prompt":"[^"]*Insiders Employees And Ex/i)
 })
 
-test('Source Map MCQ explanations state source-backed reasons without debug wording', () => {
+test('Source Map MCQ explanations state exam reasons without debug wording', () => {
   const mcqs = buildQuizPackItems(createItSecuritySourceMapNote()).filter((item) => item.type === 'multiple_choice')
 
   assert.ok(mcqs.length >= 5)
@@ -186,7 +186,7 @@ test('Source Map MCQ explanations state source-backed reasons without debug word
   }
 
   const cia = findMcq(mcqs, /CIA Triad/)
-  assert.match(cia.explanation, /Correct because Confidentiality is listed under CIA Triad\./)
+  assert.match(cia.explanation, /Correct because Confidentiality belongs under CIA Triad\./)
 
   const malware = findMcq(mcqs, /malware types/)
   assert.match(malware.explanation, /Malware Types, not Malware Symptoms/)
@@ -252,6 +252,10 @@ test('IT Security reviewer Source Map flows into quiz generation', () => {
     'CIA Triad',
     'Domains of IT Security',
     'Cybersecurity',
+    'Cybersecurity approach layers',
+    'People Process Technology',
+    'Unified Threat Management',
+    'Impact of a Security Breach',
     'Vulnerability Exploit Breach',
     'Malware Types',
     'Malware Symptoms',
@@ -276,13 +280,16 @@ test('Adaptive Source Map quiz generation supports PATHFit Arnis sequence classi
   assert.ok(units.some((unit) => unit.title === 'Organizations / Timeline' && unit.unitType === 'timeline'))
   assert.ok(units.some((unit) => unit.title === 'Equipment / Weapons' && unit.unitType === 'equipment'))
   assert.ok(units.some((unit) => unit.title === 'Regional Classifications' && unit.unitType === 'classification'))
+  assert.ok(units.some((unit) => unit.title === 'Regional Systems' && unit.aliases.some((item) => /KALIRONGAN|PANANANDATA/.test(item))))
+  assert.ok(units.some((unit) => unit.title === 'Main Groups' && unit.aliases.some((item) => /Northern Style|Southern Style/.test(item))))
+  assert.ok(units.some((unit) => unit.title === 'Stick Types' && unit.aliases.some((item) => /24 to 28 inches/.test(item))))
 
   assert.ok(prompts.includes('Which organization standardized Arnis sport rules?'))
   assert.ok(prompts.includes('Arrange the Arnis milestones chronologically.'))
   assert.ok(prompts.includes('Which weapon is a six-foot pole?'))
   assert.ok(prompts.includes('Which classification belongs to the Visayans?'))
   assert.ok(items.some((item) => item.prompt === 'Sequence the steps in Courtesy / Salutation.'))
-  assert.ok(items.some((item) => item.prompt === 'Classify the listed items under Strike Types.'))
+  assert.ok(items.some((item) => item.prompt === 'Classify items under Strike Types.'))
 
   const organization = items.find((item) => item.prompt === 'Which organization standardized Arnis sport rules?')
   assert.equal(organization?.answer, 'WEKAF')
@@ -302,8 +309,11 @@ test('fixture-level Arnis quiz QA preserves timeline classification and useful d
   assert.ok(types.has('true_false'))
   assert.ok(types.has('identification'))
   assert.ok(items.some((item) => item.prompt === 'Arrange the Arnis milestones chronologically.'))
-  assert.ok(items.some((item) => item.prompt === 'Classify the listed items under Regional Classifications.'))
+  assert.ok(items.some((item) => item.prompt === 'Classify items under Regional Classifications.'))
   assert.ok(items.some((item) => item.prompt === 'Which weapon is a six-foot pole?' && item.answer === 'Bangkaw'))
+  assert.ok(combined.includes('Doce Pares'))
+  assert.ok(combined.includes('KALIRONGAN'))
+  assert.ok(combined.includes('24 to 28 inches'))
   for (const item of items.filter((item) => item.type === 'multiple_choice')) {
     assert.equal(new Set(item.choices.map(normalizeLookup)).size, item.choices.length)
     assert.ok(item.choices.every((choice) => !/all of the above|none of the above|joke/i.test(choice)))
@@ -593,7 +603,7 @@ function createLearningShapeSourceMap() {
         kind: 'process' as const,
         unitType: 'procedure' as const,
         learningShape: 'troubleshooting' as const,
-        summary: 'Troubleshooting follows the source-listed error isolation and testing process.',
+        summary: 'Troubleshooting follows the error isolation and testing process.',
         items: ['Identify the error', 'Isolate the component', 'Test the system', 'Document the fix'],
         sourceQuotes: ['Troubleshooting Process 1. Identify the error 2. Isolate the component 3. Test the system 4. Document the fix.'],
         importanceScore: 88,
@@ -649,6 +659,8 @@ const IT_SECURITY_SOURCE = [
   'What is IT Security • A set of cyber security strategies that prevent unauthorized access • Focuses on protecting organizational assets against cyberattacks and other threats • InfoSec - processes and tools designed to protect sensitive business information • IT Sec - securing digital data through computer network security',
   'Goal of IT Security 1. Confidentiality 2. Integrity 3. Availability',
   'Domains of IT Security 1. Network Security 2. Internet Security 3. Endpoint Security 4. Cloud Security 5. Application Security 6. Information Security 7. Operational Security 8. Mobile Security 9. IoT Security 10. User Education 11. Cyber Security',
+  'What is Cybersecurity all about? Cybersecurity involves multiple layers of protection spread across computers, networks, programs, and data. People, processes, and technology must complement one another. Unified threat management can accelerate detection, investigation, and remediation.',
+  'Impact of a Security Breach Ruined Reputation, Vandalism, Theft, Revenue Lost, Damaged Intellectual Property',
   'What is Cybersecurity? • Protection of networked systems and data from unauthorized use or harm • Refers to techniques used to protect the integrity of an organization security architecture and safeguard its data against attack, damage, or unauthorized access',
   'Importance of cybersecurity • Increasingly sophisticated attacks • Widely available hacking tools • Compliance • Rising cost of breaches • Strategic board-level concern • Cyber crime is big business',
   'Challenges of Cybersecurity • Internet of Things • Rapidly Evolving Risks • Big and Confidential Data • Organized and State-sponsored Hacker Groups • Remote Working • High-speed Internet • BYOD',
@@ -671,6 +683,10 @@ const PATHFIT_ARNIS_SOURCE = [
   'Historical Concept â€¢ Arnis developed from indigenous fighting systems and preserved Filipino culture through practical self-defense.',
   'Evolution of Arnis â€¢ Classical Arnis â€¢ Modern Arnis â€¢ Sports Arnis â€¢ Anyo â€¢ Labanan',
   'Organizations and Timeline 1975 NARAPHIL promoted national organization 1986 ARPI supported national competitions 1989 WEKAF standardized Arnis sport rules 2010 i-ARNIS supported school-based implementation',
+  'Organizations and Timeline 1970 Doce Pares Association rules were accepted by many Arnis clubs',
+  'Regional Systems Pangasinan - KALIRONGAN; Tagalogs - PANANANDATA; Ilocanos - DIDYA/KABAROAN; Ibanags - PAGKALIKALI; Pampanguenos - SINAWALI; Visayans - KINAADMAN/PAGARADMAN/ESGRIMA/ESCRIMA',
+  '3 Main Groups Northern Style - Arnis; Central Style - Arnis de Mano; Southern Style - Kali',
+  'Stick Types Baston / Olisi / Yantok - 24 to 28 inches; Largo mano yantok - 28 to 36 inches; Dulo y Dulo - 4 to 7 inches',
   'Courtesy and Salutation 1. Attention stance 2. Ready stance 3. Bow 4. Salute 5. Return to ready stance',
   'Strike Types â€¢ Forehand strike â€¢ Backhand strike â€¢ Thrust â€¢ Diagonal strike â€¢ Horizontal strike â€¢ Vertical strike',
   'Equipment and Weapons â€¢ Baston - training stick â€¢ Daga - dagger â€¢ Bolo - bladed weapon â€¢ Espada y Daga - sword and dagger â€¢ Bangkaw - six-foot pole',

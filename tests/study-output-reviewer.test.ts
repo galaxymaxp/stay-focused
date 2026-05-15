@@ -187,8 +187,12 @@ test('Source Map reviewer adapter produces expected IT Security concepts', () =>
     'CIA Triad',
     'Domains of IT Security',
     'Cybersecurity',
+    'Cybersecurity approach layers',
+    'People / Process / Technology',
+    'Unified Threat Management',
     'Importance of Cybersecurity',
     'Challenges of Cybersecurity',
+    'Impact of a Security Breach',
     'Types of Attackers',
     'Vulnerability / Exploit / Breach',
     'Cybersecurity Threat Types',
@@ -239,8 +243,9 @@ test('Source Map reviewer preserves complete IT Security lists and shaped high-y
 
   const domainsAnswer = highYieldFor('Domains of IT Security')
   for (const item of ['Network Security', 'Internet Security', 'Endpoint Security', 'Cloud Security', 'Application Security', 'Information Security', 'Operational Security', 'Mobile Security', 'IoT Security', 'User Education', 'Cyber Security']) {
-    assert.match(domainsAnswer, new RegExp(item.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+  assert.match(domainsAnswer, new RegExp(item.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
   }
+  assert.match(domainsAnswer, /Domains of IT Security:\n1\. Network Security/)
   assert.deepEqual(quickBlockFor('Domains of IT Security'), [
     'Network Security',
     'Internet Security',
@@ -259,6 +264,7 @@ test('Source Map reviewer preserves complete IT Security lists and shaped high-y
   for (const item of ['Spyware', 'Adware', 'Bot', 'Rootkit', 'Scareware', 'Ransomware', 'Virus', 'Trojan Horse', 'Worm', 'MiTM']) {
     assert.match(malwareAnswer, new RegExp(item.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
   }
+  assert.match(highYieldFor('CIA Triad'), /CIA Triad:\n1\. Confidentiality\n2\. Integrity\n3\. Availability/)
   assert.deepEqual(quickBlockFor('Malware Types'), ['Spyware', 'Adware', 'Bot', 'Rootkit', 'Scareware', 'Ransomware', 'Virus', 'Trojan Horse', 'Worm', 'MiTM'])
 
   const itSecurityAnswer = highYieldFor('IT Security')
@@ -319,7 +325,7 @@ test('Source Map reviewer removes repeated memorize labels and varies quiz promp
   assert.doesNotMatch(markup, /Understand:/)
   assert.match(markup, /Definition:|Key list:|Exam cue:/)
   const examCues = reviewer.highYieldConcepts.map((item) => item.plainExplanation ?? '')
-  assert.ok(examCues.every((cue) => /^(Know the exact definition|Be able to enumerate|Be able to distinguish|Be able to classify|Be able to identify|Know the chronology|Know the order or purpose|Explain the cause-effect relationship)/.test(cue)))
+  assert.ok(examCues.every((cue) => /^(Know the exact definition|Be able to enumerate|Be able to distinguish|Be able to classify|Be able to identify|Know the chronology|Know the order or purpose|Know the cause-effect relationship|Explain the cause-effect relationship)/.test(cue)))
   assert.doesNotMatch(examCues.join(' '), /InfoSec -|Goal of IT Security|There is|State-sponsored|Cyber Crime|Source Notes|Insiders Employees And Ex/i)
 
   const promptVerbs = new Set(
@@ -328,10 +334,10 @@ test('Source Map reviewer removes repeated memorize labels and varies quiz promp
       .filter(Boolean),
   )
   assert.ok(promptVerbs.size >= 4)
-  assert.ok(reviewer.likelyQuizTargets.some((item) => /^Define\b/.test(item.target)))
+  assert.ok(reviewer.likelyQuizTargets.some((item) => /^What\b/.test(item.target)))
   assert.ok(reviewer.likelyQuizTargets.some((item) => /^Differentiate\b/.test(item.target)))
-  assert.ok(reviewer.likelyQuizTargets.some((item) => /^Identify\b/.test(item.target)))
-  assert.ok(reviewer.likelyQuizTargets.some((item) => /^Sequence\b/.test(item.target)))
+  assert.ok(reviewer.likelyQuizTargets.some((item) => /^Which\b/.test(item.target)))
+  assert.ok(reviewer.likelyQuizTargets.some((item) => /^Enumerate\b/.test(item.target)))
 })
 
 test('Source Map reviewer quick-answer blocks exclude weak orphan units', () => {
@@ -360,6 +366,8 @@ test('Adaptive Source Map detects PATHFit Arnis styles and preserves procedural 
     'Historical concept',
     'Evolution / Classifications',
     'Organizations / Timeline',
+    'Regional Systems',
+    'Main Groups',
     'Courtesy / Salutation',
     'Strike Types',
     'Equipment / Weapons',
@@ -393,10 +401,10 @@ test('Source Map reviewer adapts PATHFit Arnis prompts by procedural and timelin
   const rendered = JSON.stringify(reviewer)
 
   assert.match(rendered, /Arnis|Courtesy \/ Salutation|Organizations \/ Timeline|Equipment \/ Weapons/)
-  assert.ok(reviewer.likelyQuizTargets.some((item) => item.target === 'Sequence Courtesy / Salutation'))
-  assert.ok(reviewer.likelyQuizTargets.some((item) => item.target === 'Arrange milestones for Organizations / Timeline'))
-  assert.ok(reviewer.likelyQuizTargets.some((item) => item.target === 'Identify equipment in Equipment / Weapons'))
-  assert.ok(reviewer.likelyQuizTargets.some((item) => item.target === 'Classify items in Regional Classifications'))
+  assert.ok(reviewer.likelyQuizTargets.some((item) => item.target === 'What are the steps in Pugay or courtesy salutation?'))
+  assert.ok(reviewer.likelyQuizTargets.some((item) => item.target === 'Arrange the Arnis organizations and milestones chronologically.'))
+  assert.ok(reviewer.likelyQuizTargets.some((item) => item.target === 'Identify Arnis weapons and equipment.'))
+  assert.ok(reviewer.likelyQuizTargets.some((item) => item.target === 'What are the regional classifications of Arnis?'))
   assert.ok(reviewer.highYieldConcepts.some((item) => item.cue === 'Courtesy / Salutation' && /Attention stance|Return to ready stance/.test(item.answer)))
   assert.doesNotMatch(rendered, /What is Historical Concept\?/i)
 })
@@ -494,9 +502,13 @@ test('fixture-level reviewer QA keeps IT Security and Arnis exam rich without ra
   assert.ok(arnisReviewer.highYieldConcepts.length >= 10)
   assert.ok(arnisReviewer.likelyQuizTargets.length >= 8)
   assert.ok(arnisReviewer.highYieldConcepts.some((item) => item.cue === 'Organizations / Timeline' && /WEKAF/.test(item.answer)))
+  assert.ok(arnisReviewer.highYieldConcepts.some((item) => item.cue === 'Organizations / Timeline' && /Doce Pares/.test(item.answer)))
+  assert.ok(arnisReviewer.highYieldConcepts.some((item) => item.cue === 'Regional Systems' && /KALIRONGAN|PANANANDATA/.test(item.answer)))
+  assert.ok(arnisReviewer.highYieldConcepts.some((item) => item.cue === 'Main Groups' && /Northern Style|Central Style|Southern Style/.test(item.answer)))
   assert.ok(arnisReviewer.highYieldConcepts.some((item) => item.cue === 'Regional Classifications' && /Luzon|Visayans|Mindanao/.test(item.answer)))
   assert.ok(arnisReviewer.highYieldConcepts.some((item) => item.cue === 'Equipment / Weapons' && /Baston|Daga|Bangkaw/.test(item.answer)))
   assert.doesNotMatch(rendered, /Source Notes|metadata|debug|\?\?\?\?|other threats InfoSec|"cue":"Understand The"|"cue":"Insiders Employees And Ex"/i)
+  assert.doesNotMatch(rendered, /source-backed|source wording|source chronology|grouped concepts|extracted concepts|compact grounding|exact source passage|using the source wording|Explain the source-backed concept|\bclassifies\b|\bpreserves\b/i)
   assert.doesNotMatch(rendered, /\b(?:u|architect)\b[".]/i)
 })
 
@@ -592,7 +604,7 @@ function createLearningShapeSourceMap() {
         kind: 'process' as const,
         unitType: 'procedure' as const,
         learningShape: 'troubleshooting' as const,
-        summary: 'Troubleshooting follows the source-listed error isolation and testing process.',
+        summary: 'Troubleshooting follows the error isolation and testing process.',
         items: ['Identify the error', 'Isolate the component', 'Test the system', 'Document the fix'],
         sourceQuotes: ['Troubleshooting Process 1. Identify the error 2. Isolate the component 3. Test the system 4. Document the fix.'],
         importanceScore: 88,
@@ -654,6 +666,8 @@ const IT_SECURITY_SOURCE = [
   'What is IT Security • A set of cyber security strategies that prevent unauthorized access • Focuses on protecting organizational assets against cyberattacks and other threats • InfoSec - processes and tools designed to protect sensitive business information • IT Sec - securing digital data through computer network security',
   'Goal of IT Security 1. Confidentiality 2. Integrity 3. Availability',
   'Domains of IT Security 1. Network Security 2. Internet Security 3. Endpoint Security 4. Cloud Security 5. Application Security 6. Information Security 7. Operational Security 8. Mobile Security 9. IoT Security 10. User Education 11. Cyber Security',
+  'What is Cybersecurity all about? Cybersecurity involves multiple layers of protection spread across computers, networks, programs, and data. People, processes, and technology must complement one another. Unified threat management can accelerate detection, investigation, and remediation.',
+  'Impact of a Security Breach Ruined Reputation, Vandalism, Theft, Revenue Lost, Damaged Intellectual Property',
   'What is Cybersecurity? • Protection of networked systems and data from unauthorized use or harm • Refers to techniques used to protect the integrity of an organization security architecture and safeguard its data against attack, damage, or unauthorized access',
   'Importance of cybersecurity • Increasingly sophisticated attacks • Widely available hacking tools • Compliance • Rising cost of breaches • Strategic board-level concern • Cyber crime is big business',
   'Challenges of Cybersecurity • Internet of Things • Rapidly Evolving Risks • Big and Confidential Data • Organized and State-sponsored Hacker Groups • Remote Working • High-speed Internet • BYOD',
@@ -676,11 +690,15 @@ const PATHFIT_ARNIS_SOURCE = [
   'Historical Concept â€¢ Arnis developed from indigenous fighting systems and preserved Filipino culture through practical self-defense.',
   'Evolution of Arnis â€¢ Classical Arnis â€¢ Modern Arnis â€¢ Sports Arnis â€¢ Anyo â€¢ Labanan',
   'Organizations and Timeline 1975 NARAPHIL promoted national organization 1986 ARPI supported national competitions 1989 WEKAF standardized Arnis sport rules 2010 i-ARNIS supported school-based implementation',
+  'Organizations and Timeline 1970 Doce Pares Association rules were accepted by many Arnis clubs',
+  'Regional Systems Pangasinan - KALIRONGAN; Tagalogs - PANANANDATA; Ilocanos - DIDYA/KABAROAN; Ibanags - PAGKALIKALI; Pampanguenos - SINAWALI; Visayans - KINAADMAN/PAGARADMAN/ESGRIMA/ESCRIMA',
+  '3 Main Groups Northern Style - Arnis; Central Style - Arnis de Mano; Southern Style - Kali',
   'Courtesy and Salutation 1. Attention stance 2. Ready stance 3. Bow 4. Salute 5. Return to ready stance',
   'Strike Types â€¢ Forehand strike â€¢ Backhand strike â€¢ Thrust â€¢ Diagonal strike â€¢ Horizontal strike â€¢ Vertical strike',
   'Equipment and Weapons â€¢ Baston - training stick â€¢ Daga - dagger â€¢ Bolo - bladed weapon â€¢ Espada y Daga - sword and dagger â€¢ Bangkaw - six-foot pole',
   'Stick Types â€¢ Solo Baston â€¢ Doble Baston â€¢ Sibat â€¢ Bangkaw',
   'Regional Classifications â€¢ Luzon styles â€¢ Visayans classifications â€¢ Mindanao systems',
+  'Stick Types Baston / Olisi / Yantok - 24 to 28 inches; Largo mano yantok - 28 to 36 inches; Dulo y Dulo - 4 to 7 inches; Solo Baston; Doble Baston; Sibat; Bangkaw',
 ].join('\n')
 
 function createNote(overrides: Partial<DeepLearnNote> = {}): DeepLearnNote {
