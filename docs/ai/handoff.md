@@ -5,6 +5,68 @@ Last Updated: 2026-05-16
 
 ---
 
+## Session Update - 2026-05-16 (Identification Output Limit Partial Save)
+
+### What changed
+
+- Increased Deep Learn identification-stage output token caps only:
+  - full: 7000
+  - compact: 4000
+  - micro: 2500
+  - minimal: 1500
+- Added a minimal identification fallback level that asks for only 3 to 5 direct identification items.
+- Reduced identification fallback item requirements so compact and micro prompts request fewer items than full generation.
+- Made identification-stage `max_output_tokens` exhaustion non-fatal after full, compact, micro, and minimal attempts fail.
+- When identification is too large after all fallback levels, Deep Learn now continues with Quick-Answer Blocks and Likely Quiz Targets, saves valid partial sections when available, and adds the student-facing caution:
+  - `The identification review was too large to generate. Other study sections were saved when available.`
+- Added the specific reason constant `identification_output_too_large` and kept this path out of the generic structured-content failure copy.
+- Added stage-level diagnostics for stage, fallback level, max output tokens, output length when available, parsed artifact counts, partial-save status, and final validator result.
+- Added regression coverage for 5900+ char meaningful extracted text with 16+ source relations, identification token-limit exhaustion, partial valid output saving, specific size-related messaging, and minimal fallback item sizing.
+
+### Files touched
+
+- `lib/deep-learn-generation.ts`
+- `tests/deep-learn-generation.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Production showed a valid source (`1. Intro-To-IT-Security.pdf`) with completed extraction, 5908 meaningful academic characters, 16 validated source relations, and no stale fallback use. The Study Pack failed only because the Identification Review stage exceeded output token limits through staged retries. Valid academic sources should not lose the rest of the Study Pack because one reusable review section is too large.
+
+### Tests run
+
+- `npm test -- deep-learn-generation` - passed
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- deep-learn-generation deep-learn-readiness queue learn-resource-ui study-output-reviewer study-output-quiz-pack source-map` - passed
+
+### Verification result
+
+- Passed all requested verification commands.
+- Verified identification uses stage-specific caps of 7000/4000/2500/1500 rather than increasing the whole app output limit.
+- Verified minimal identification fallback requests only 3 to 5 items.
+- Verified repeated identification `max_output_tokens` failures can still produce a saved Study Pack when answer-bank and quiz-target sections are valid.
+- Verified the size-specific message is used instead of the generic structured-content failure.
+
+### Known risks
+
+- Partial saves may have no generated identification items when the model cannot fit that stage, though deterministic Source Map repair can still contribute a small identification set when grounded units are available.
+- Stage diagnostics add more server log volume during Deep Learn generation; they contain counts and status metadata, not raw source text.
+
+### Blockers
+
+- No blocker remains.
+
+### Next recommended step
+
+Deploy and retry `1. Intro-To-IT-Security.pdf`; confirm the queue job completes and logs the identification fallback attempts with `partialSaveHappened: true` only if the identification stage still exceeds limits.
+
+### Suggested commit message
+
+handle oversized identification review fallback
+
+---
+
 ## Session Update - 2026-05-16 (Study Queue Retry Diagnostics)
 
 ### What changed

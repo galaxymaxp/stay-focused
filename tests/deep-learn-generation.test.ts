@@ -9,6 +9,8 @@ import {
   buildDeepLearnGroundingWithDependencies,
   DEEP_LEARN_COMPACT_MAX_OUTPUT_TOKENS,
   DEEP_LEARN_EMPTY_STUDY_ARTIFACTS_MESSAGE,
+  DEEP_LEARN_IDENTIFICATION_OUTPUT_TOO_LARGE_MESSAGE,
+  DEEP_LEARN_IDENTIFICATION_OUTPUT_TOO_LARGE_REASON,
   DEEP_LEARN_MAX_OUTPUT_TOKENS,
   DEEP_LEARN_OUTPUT_TOO_LARGE_MESSAGE,
   DeepLearnGenerationIncompleteError,
@@ -681,7 +683,7 @@ test('staged Deep Learn generation completes through micro fallback when compact
 
   assert.equal(result.compactFallbackUsed, true)
   assert.equal(identificationCalls, 3)
-  assert.ok(result.content.identificationItems.length <= 8)
+  assert.ok(result.content.identificationItems.length <= 4)
   assert.ok(result.content.answerBank.length <= 6)
   assert.ok(result.content.likelyQuizTargets.length <= 5)
   assert.ok(result.content.cautionNotes.length <= 2)
@@ -689,37 +691,199 @@ test('staged Deep Learn generation completes through micro fallback when compact
   assert.doesNotMatch(JSON.stringify(result), /finish in one pass|Regenerate a shorter version/i)
 })
 
-test('staged Deep Learn generation rejects a minimal fallback when micro also exceeds limits', async () => {
+test('staged Deep Learn generation saves partial output when identification exceeds all fallback limits', async () => {
   let identificationCalls = 0
-  await assert.rejects(
-    () => generateDeepLearnStructuredContent(
-      createPromptInput(),
-      createPreparedGrounding(),
-      async ({ schemaName }) => {
-        if (schemaName === 'deep_learn_high_yield_stage') {
-          return jsonResponse({
-            title: 'IT Security',
-            overview: 'Large source.',
-            sections: [
-              { heading: 'Source Summary', body: 'The source explains information security basics.' },
-              { heading: 'High-Yield First', body: '- CIA triad\n- Threats and vulnerabilities' },
-            ],
-          })
+  const tokenCaps: number[] = []
+  const prompts: string[] = []
+  const result = await generateDeepLearnStructuredContent(
+    createPromptInput(),
+    createPreparedGrounding(),
+    async ({ schemaName, maxOutputTokens, promptText }) => {
+      if (schemaName === 'deep_learn_high_yield_stage') {
+        return jsonResponse({
+          title: 'IT Security',
+          overview: 'Large source.',
+          sections: [
+            { heading: 'Source Summary', body: 'The source explains information security basics.' },
+            { heading: 'High-Yield First', body: '- CIA triad\n- Threats and vulnerabilities' },
+          ],
+        })
+      }
+      if (schemaName === 'deep_learn_identification_stage') {
+        identificationCalls += 1
+        tokenCaps.push(maxOutputTokens)
+        prompts.push(promptText)
+        return {
+          status: 'incomplete',
+          output_text: '',
+          incomplete_details: { reason: 'max_output_tokens' },
         }
-        if (schemaName === 'deep_learn_identification_stage') {
-          identificationCalls += 1
-          return {
-            status: 'incomplete',
-            output_text: '',
-            incomplete_details: { reason: 'max_output_tokens' },
-          }
-        }
-        throw new Error(`Unexpected schema ${schemaName}`)
-      },
-    ),
-    DeepLearnGeneratedContentValidationError,
+      }
+      if (schemaName === 'deep_learn_quick_answers_stage') {
+        return jsonResponse({
+          sections: [{ heading: 'Quick-Answer Blocks', body: 'Short source-grounded answers remain available.' }],
+          answerBank: [answerBankItem(1), answerBankItem(2), answerBankItem(3), answerBankItem(4)],
+        })
+      }
+      return jsonResponse({
+        sections: [{ heading: 'Likely Quiz Targets', body: 'Quiz targets remain available without the identification review.' }],
+        distinctions: [distinctionItem(1)],
+        likelyQuizTargets: [quizTargetItem(1), quizTargetItem(2), quizTargetItem(3)],
+        cautionNotes: [],
+      })
+    },
   )
-  assert.equal(identificationCalls, 3)
+
+  assert.equal(result.compactFallbackUsed, true)
+  assert.equal(identificationCalls, 4)
+  assert.deepEqual(tokenCaps, [7000, 4000, 2500, 1500])
+  assert.match(prompts.at(-1) ?? '', /identificationItems: 3 to 5 strongest/i)
+  assert.equal(result.content.identificationItems.length, 0)
+  assert.ok(result.content.answerBank.length >= 3)
+  assert.ok(result.content.likelyQuizTargets.length >= 3)
+  assert.ok(result.content.cautionNotes.includes(DEEP_LEARN_IDENTIFICATION_OUTPUT_TOO_LARGE_MESSAGE))
+  const validation = validateDeepLearnContentReadyForSave(result.content)
+  assert.equal(validation.ok, true)
+  assert.equal(validation.reason, null)
+})
+
+test('meaningful extracted text with dense source relations does not fail when identification hits token limits', async () => {
+  const denseRelationSource = [
+    'Security assets include data, networks, applications, devices, credentials, and backups.',
+    'Access control includes identification, authentication, authorization, and accountability.',
+    'Defense in depth includes physical controls, technical controls, administrative controls, and monitoring.',
+    'Malware symptoms include slow performance, unexpected popups, unknown processes, deleted files, and modified files.',
+    'Incident response procedure 1. Identify the event 2. Contain affected systems 3. Eradicate malware 4. Recover services 5. Document lessons.',
+    'Password hardening procedure 1. Use long passphrases 2. Enable MFA 3. Avoid reuse 4. Rotate compromised credentials.',
+    'Risk assessment procedure 1. Identify assets 2. Identify threats 3. Estimate likelihood 4. Estimate impact 5. Prioritize controls.',
+    '2018 - The organization adopted multifactor authentication for administrative accounts.',
+    '2019 - Endpoint detection was added to laptops and servers.',
+    '2020 - Backup testing became part of the disaster recovery plan.',
+    'Firewall - network security device that filters traffic based on rules.',
+    'Encryption - method used to transform readable data into protected ciphertext.',
+    'Phishing - social engineering attack that tricks users into revealing credentials.',
+    'Vulnerability is a weakness while an exploit is a method used to take advantage of that weakness.',
+    'Threat actors use phishing because human trust can bypass technical controls.',
+    'Backup integrity matters because recovery fails when restored data is incomplete or corrupted.',
+    'Area Formula Risk equals likelihood times impact for qualitative prioritization.',
+    'The security policy applies when users handle confidential data, access systems remotely, or use personal devices.',
+    'Nursing-style triage includes assessment, intervention, monitoring, and evaluation during incident response.',
+    'Router - network equipment used to forward packets between networks.',
+  ].join('\n')
+  const sourceText = `${IT_SECURITY_SAMPLE_SOURCE}\n\n${denseRelationSource}\n\n${denseRelationSource}`
+  const sourceMap = buildAcademicSourceMap(sourceText)
+  assert.ok(sourceText.length >= 5900)
+  assert.ok((sourceMap.relations?.length ?? 0) >= 16)
+
+  const promptInput: Parameters<typeof generateDeepLearnStructuredContent>[0] = {
+    ...createContext(createLearnResource({
+      title: '1. Intro-To-IT-Security.pdf',
+      type: 'File',
+      contentType: 'application/pdf',
+      extension: 'pdf',
+      normalizedSourceType: 'pdf',
+      extractedText: sourceText,
+      extractedTextPreview: sourceText.slice(0, 420),
+      extractedCharCount: sourceText.length,
+      extractionStatus: 'completed',
+    }), createStoredResource({
+      title: '1. Intro-To-IT-Security.pdf',
+      resourceType: 'File',
+      contentType: 'application/pdf',
+      extension: 'pdf',
+      extractedText: sourceText,
+      extractedTextPreview: sourceText.slice(0, 420),
+      extractedCharCount: sourceText.length,
+      extractionStatus: 'completed',
+    })),
+    promptGrounding: buildAcademicStructuredGrounding(sourceText),
+    sourceGrounding: {
+      sourceType: 'PDF',
+      extractionQuality: 'usable',
+      sourceTextQuality: 'meaningful',
+      groundingStrategy: 'stored_extract',
+      usedAiFallback: false,
+      qualityReason: null,
+      warning: null,
+      charCount: sourceText.length,
+      sourceMap,
+    },
+    generationMode: 'text',
+  }
+  const grounding: Parameters<typeof generateDeepLearnStructuredContent>[1] = {
+    generationMode: 'text',
+    promptGrounding: buildAcademicStructuredGrounding(sourceText),
+    sourceGrounding: promptInput.sourceGrounding,
+    refreshedResource: null,
+    scanFallbackInput: null,
+  }
+
+  const result = await generateDeepLearnStructuredContent(
+    promptInput,
+    grounding,
+    async ({ schemaName }) => {
+      if (schemaName === 'deep_learn_high_yield_stage') {
+        return jsonResponse({
+          title: 'Intro To IT Security',
+          overview: 'The source explains information security, cybersecurity, threats, malware, and impact reduction.',
+          sections: [
+            { heading: 'Source Summary', body: 'The source explains information security, cybersecurity, threats, malware, and impact reduction.' },
+            { heading: 'High-Yield First', body: '- CIA triad\n- Malware types\n- Attack methods' },
+          ],
+        })
+      }
+      if (schemaName === 'deep_learn_identification_stage') {
+        return {
+          status: 'incomplete',
+          output_text: '',
+          incomplete_details: { reason: 'max_output_tokens' },
+        }
+      }
+      if (schemaName === 'deep_learn_quick_answers_stage') {
+        return jsonResponse({
+          sections: [{ heading: 'Quick-Answer Blocks', body: 'Use source-backed security definitions and attack examples.' }],
+          answerBank: [answerBankItem(1), answerBankItem(2), answerBankItem(3), answerBankItem(4)],
+        })
+      }
+      return jsonResponse({
+        sections: [{ heading: 'Likely Quiz Targets', body: 'Expect CIA triad, malware, attackers, and impact reduction.' }],
+        distinctions: [distinctionItem(1)],
+        likelyQuizTargets: [quizTargetItem(1), quizTargetItem(2), quizTargetItem(3), quizTargetItem(4)],
+        cautionNotes: [],
+      })
+    },
+  )
+
+  assert.equal(result.compactFallbackUsed, true)
+  assert.ok(result.content.identificationItems.length <= 5)
+  assert.ok(result.content.answerBank.length >= 3)
+  assert.ok(result.content.likelyQuizTargets.length >= 3)
+  assert.ok(result.content.cautionNotes.includes(DEEP_LEARN_IDENTIFICATION_OUTPUT_TOO_LARGE_MESSAGE))
+  assert.equal(validateDeepLearnContentReadyForSave(result.content).ok, true)
+})
+
+test('identification output size failures use the specific student-facing reason', () => {
+  const content = normalizeDeepLearnGeneratedContent({
+    title: 'IT Security',
+    overview: 'The source explains information security basics.',
+    sections: [
+      { heading: 'Source Summary', body: 'The source explains information security basics.' },
+      { heading: 'Quick-Answer Blocks', body: 'Use these source-grounded quick answers.' },
+      { heading: 'Likely Quiz Targets', body: 'Use these source-grounded quiz targets.' },
+    ],
+    answerBank: [answerBankItem(1), answerBankItem(2), answerBankItem(3)],
+    identificationItems: [],
+    distinctions: [],
+    likelyQuizTargets: [quizTargetItem(1), quizTargetItem(2), quizTargetItem(3)],
+    cautionNotes: [DEEP_LEARN_IDENTIFICATION_OUTPUT_TOO_LARGE_MESSAGE],
+  }, 'IT Security')
+
+  const validation = validateDeepLearnContentReadyForSave(content)
+  const error = new DeepLearnGenerationIncompleteError(DEEP_LEARN_IDENTIFICATION_OUTPUT_TOO_LARGE_REASON)
+
+  assert.equal(validation.ok, true)
+  assert.equal(error.message, DEEP_LEARN_IDENTIFICATION_OUTPUT_TOO_LARGE_MESSAGE)
+  assert.doesNotMatch(error.message, /could not build enough structured study content/i)
 })
 
 test('Deep Learn save validator rejects source-summary-only reviewer artifacts', () => {

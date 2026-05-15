@@ -38,6 +38,8 @@ export const DEEP_LEARN_MAX_OUTPUT_TOKENS = 10000
 export const DEEP_LEARN_COMPACT_MAX_OUTPUT_TOKENS = 10000
 export const DEEP_LEARN_OUTPUT_TOO_LARGE_MESSAGE = 'The model response limit was reached even after compact fallback. Try a smaller source or split the module.'
 export const DEEP_LEARN_EMPTY_STUDY_ARTIFACTS_MESSAGE = 'Deep Learn could not build enough structured study content from this source. Try a smaller source or split the module.'
+export const DEEP_LEARN_IDENTIFICATION_OUTPUT_TOO_LARGE_REASON = 'identification_output_too_large'
+export const DEEP_LEARN_IDENTIFICATION_OUTPUT_TOO_LARGE_MESSAGE = 'The identification review was too large to generate. Other study sections were saved when available.'
 const DEEP_LEARN_STAGE_TIMEOUT_MS = 120000
 const DEEP_LEARN_COMPACT_CAUTION_NOTE = 'Generated as a compact reviewer because the source was long.'
 const STRUCTURED_GROUNDING_CHAR_BUDGET = 7600
@@ -226,12 +228,14 @@ function getDeepLearnStageDefinitions(): DeepLearnStageDefinition[] {
           identificationItems: identificationItemsSchema(),
         },
       },
-      fullMaxOutputTokens: 3200,
-      compactMaxOutputTokens: 2200,
-      microMaxOutputTokens: 1100,
+      fullMaxOutputTokens: 7000,
+      compactMaxOutputTokens: 4000,
+      microMaxOutputTokens: 2500,
+      minimalMaxOutputTokens: 1500,
       fullProgress: 55,
       compactProgress: 57,
       microProgress: 59,
+      minimalProgress: 61,
     },
     {
       key: 'quick_answers',
@@ -369,7 +373,7 @@ interface DeepLearnGenerationOptions {
 }
 
 type DeepLearnStageKey = 'high_yield' | 'identification' | 'quick_answers' | 'distinctions'
-type DeepLearnFallbackLevel = 'full' | 'compact' | 'micro'
+type DeepLearnFallbackLevel = 'full' | 'compact' | 'micro' | 'minimal'
 
 interface DeepLearnStageDefinition {
   key: DeepLearnStageKey
@@ -378,9 +382,11 @@ interface DeepLearnStageDefinition {
   fullMaxOutputTokens: number
   compactMaxOutputTokens: number
   microMaxOutputTokens: number
+  minimalMaxOutputTokens?: number
   fullProgress: number
   compactProgress: number
   microProgress: number
+  minimalProgress?: number
 }
 
 interface DeepLearnStageErrorOptions {
@@ -609,6 +615,58 @@ export async function generateDeepLearnStructuredContent(
         return { content, compactFallbackUsed: true }
       } catch (microError) {
         if (microError instanceof DeepLearnGenerationStageError && microError.kind === 'size') {
+          if (microError.stage === 'identification') {
+            console.warn('[deep-learn-generation] retrying staged fallback', {
+              stage: microError.stage,
+              level: 'minimal',
+              previousLevel: microError.level,
+              kind: microError.kind,
+              reason: microError.reason,
+            })
+            await options.onProgress?.({
+              progress: 38,
+              statusMessage: 'Deep Learn is trying a minimal identification review before saving the pack.',
+              stage: 'compact_fallback',
+              compactFallbackUsed: true,
+            })
+
+            try {
+              const content = await runDeepLearnStagePlan(input, grounding, createResponse, 'minimal', options, {
+                startStage: microError.stage,
+                seedOutput: microError.partialOutput ?? compactError.partialOutput ?? error.partialOutput,
+              })
+              return { content, compactFallbackUsed: true }
+            } catch (minimalError) {
+              if (
+                minimalError instanceof DeepLearnGenerationStageError
+                && minimalError.kind === 'size'
+                && minimalError.stage === 'identification'
+              ) {
+                const content = await runDeepLearnStagePlan(input, grounding, createResponse, 'micro', options, {
+                  startStage: 'quick_answers',
+                  seedOutput: markIdentificationSkipped(
+                    minimalError.partialOutput ?? microError.partialOutput ?? compactError.partialOutput ?? error.partialOutput,
+                  ),
+                })
+                const validation = validateDeepLearnContentReadyForSave(content)
+                logDeepLearnStageDiagnostics('partial_save', {
+                  stage: 'identification',
+                  level: 'minimal',
+                  maxOutputTokens: getDeepLearnStageMaxOutputTokens(
+                    getDeepLearnStageDefinitions().find((stage) => stage.key === 'identification')!,
+                    'minimal',
+                  ),
+                  outputLength: null,
+                  parsedArtifactCounts: getRawDeepLearnArtifactCounts(content),
+                  partialSaveHappened: true,
+                  finalValidatorResult: validation,
+                })
+                return { content, compactFallbackUsed: true }
+              }
+              throw minimalError
+            }
+          }
+
           console.warn('[deep-learn-generation] saving minimal fallback after staged size limit', {
             stage: microError.stage,
             level: 'minimal',
@@ -847,6 +905,7 @@ async function runDeepLearnStagePlan(
     })
 
     try {
+      const maxOutputTokens = getDeepLearnStageMaxOutputTokens(stage, level)
       const raw = await createStageResponse(
         input,
         grounding,
@@ -857,9 +916,29 @@ async function runDeepLearnStagePlan(
       const parsed = parseStageResponse(raw, stage, level)
       mergeDeepLearnStageOutput(stageOutput, parsed)
       if (level !== 'full') trimDeepLearnStageOutput(stageOutput, level)
+      logDeepLearnStageDiagnostics('stage_completed', {
+        stage: stage.key,
+        level,
+        maxOutputTokens,
+        outputLength: raw.output_text?.length ?? null,
+        parsedArtifactCounts: getRawDeepLearnArtifactCounts(parsed),
+        partialSaveHappened: false,
+        finalValidatorResult: null,
+      })
     } catch (error) {
       if (error instanceof DeepLearnGenerationStageError) {
         error.partialOutput = cloneStageOutput(stageOutput)
+        logDeepLearnStageDiagnostics('stage_failed', {
+          stage: error.stage,
+          level: error.level,
+          maxOutputTokens: getDeepLearnStageMaxOutputTokens(stage, level),
+          outputLength: null,
+          parsedArtifactCounts: getRawDeepLearnArtifactCounts(stageOutput),
+          partialSaveHappened: false,
+          finalValidatorResult: null,
+          reason: error.reason,
+          kind: error.kind,
+        })
       }
       throw error
     }
@@ -894,19 +973,24 @@ export function validateDeepLearnContentReadyForSave(content: DeepLearnGenerated
   const hasDuplicatedConcepts = findDuplicatedReviewerConcepts(content).length > 0
   const hasLowInformationContent = hasLowInformationStudyContent(content)
   const hasComposerLeakage = hasReviewerComposerLeakage(content)
+  const hasIdentificationOutputTooLargeSkip = content.cautionNotes.some(isIdentificationOutputTooLargeNote)
   const hasStructuredStudyArtifacts = answerBankCount > 0
-    && identificationCount > 0
+    && (identificationCount > 0 || hasIdentificationOutputTooLargeSkip)
     && quizTargetCount > 0
   const hasExamReadyDensity = answerBankCount >= 3
-    && identificationCount >= 3
+    && (identificationCount >= 3 || hasIdentificationOutputTooLargeSkip)
     && quizTargetCount >= 3
     && distinctConceptCount >= 6
 
   if (!hasStructuredStudyArtifacts || !hasExamReadyDensity || hasLowInformationContent) {
     return {
       ok: false as const,
-      message: DEEP_LEARN_EMPTY_STUDY_ARTIFACTS_MESSAGE,
-      reason: hasLowInformationContent ? 'low_information_content' as const : 'insufficient_structured_artifacts' as const,
+      message: hasIdentificationOutputTooLargeSkip
+        ? DEEP_LEARN_IDENTIFICATION_OUTPUT_TOO_LARGE_MESSAGE
+        : DEEP_LEARN_EMPTY_STUDY_ARTIFACTS_MESSAGE,
+      reason: hasIdentificationOutputTooLargeSkip
+        ? DEEP_LEARN_IDENTIFICATION_OUTPUT_TOO_LARGE_REASON
+        : hasLowInformationContent ? 'low_information_content' as const : 'insufficient_structured_artifacts' as const,
       counts: { answerBankCount, identificationCount, quizTargetCount, distinctConceptCount },
     }
   }
@@ -953,6 +1037,11 @@ export function validateDeepLearnContentReadyForSave(content: DeepLearnGenerated
     reason: null,
     counts: { answerBankCount, identificationCount, quizTargetCount, distinctConceptCount },
   }
+}
+
+function isIdentificationOutputTooLargeNote(value: string) {
+  return value === DEEP_LEARN_IDENTIFICATION_OUTPUT_TOO_LARGE_MESSAGE
+    || value === DEEP_LEARN_IDENTIFICATION_OUTPUT_TOO_LARGE_REASON
 }
 
 export function assertDeepLearnContentReadyForSave(content: DeepLearnGeneratedContent) {
@@ -1177,6 +1266,8 @@ function buildDeepLearnStagePrompt(
   const compact = level !== 'full'
   const compactInstruction = level === 'micro'
     ? 'Micro fallback is active. Return only short structured arrays with the strongest source-backed items. Do not write long explanations or prose-heavy sections.'
+    : level === 'minimal'
+    ? 'Minimal fallback is active. Return the smallest useful structured arrays only. Keep answers short and omit anything nonessential.'
     : level === 'compact'
     ? 'Compact fallback is active. Keep bodies tight, keep only the highest-yield items, and prefer fewer stronger facts over broad coverage.'
     : 'Normal staged generation is active. Keep coverage grounded and useful, but still concise.'
@@ -1197,11 +1288,13 @@ function buildDeepLearnStagePrompt(
       'Build only the Identification Review stage.',
       'Return sections plus identificationItems only.',
       'sections must contain exactly one heading: Identification Review.',
-      level === 'micro'
-        ? '- identificationItems: no more than 8 key terms or direct prompts. Keep answers to one sentence.'
+      level === 'minimal'
+        ? '- identificationItems: 3 to 5 strongest direct term/prompt items only. Keep answers to one short sentence.'
+        : level === 'micro'
+        ? '- identificationItems: 3 to 4 strongest key terms or direct prompts only. Keep answers to one sentence.'
         : compact
-        ? '- identificationItems: 4 to 6 strongest direct term/prompt items only.'
-        : '- identificationItems: 8 to 12 direct source-grounded prompt/answer items.',
+        ? '- identificationItems: 5 to 7 strongest direct term/prompt items only.'
+        : '- identificationItems: 10 to 14 direct source-grounded prompt/answer items.',
       '- The section body should summarize the strongest key terms without duplicating every answer verbatim.',
     ],
     quick_answers: [
@@ -1243,11 +1336,13 @@ function buildDeepLearnStagePrompt(
     '- Do not invent facts, examples, certainty, or missing steps.',
     '- Clean raw extraction labels before using them as headings or prompts.',
     '- If evidence is partial, keep the item but reflect that uncertainty in cautionNotes or simplified wording.',
-    ...(level === 'micro' ? [
+    ...(level === 'micro' || level === 'minimal' ? [
       '',
-      'Micro fallback hard limits:',
+      `${level === 'minimal' ? 'Minimal' : 'Micro'} fallback hard limits:`,
       '- High-Yield First: max 5 bullets.',
-      '- Key Terms: max 8 terms through identificationItems.',
+      level === 'minimal'
+        ? '- Key Terms: max 5 terms through identificationItems.'
+        : '- Key Terms: max 4 terms through identificationItems.',
       '- Quick Q&A: max 6 questions through answerBank.',
       '- Likely Quiz Targets: max 5 bullets.',
       '- Caution Notes: max 2 bullets.',
@@ -1347,12 +1442,14 @@ function mergeDeepLearnStageOutput(target: Record<string, unknown>, parsed: Reco
 }
 
 function getDeepLearnStageProgress(stage: DeepLearnStageDefinition, level: DeepLearnFallbackLevel) {
+  if (level === 'minimal') return stage.minimalProgress ?? stage.microProgress
   if (level === 'micro') return stage.microProgress
   if (level === 'compact') return stage.compactProgress
   return stage.fullProgress
 }
 
 function getDeepLearnStageMaxOutputTokens(stage: DeepLearnStageDefinition, level: DeepLearnFallbackLevel) {
+  if (level === 'minimal') return stage.minimalMaxOutputTokens ?? stage.microMaxOutputTokens
   if (level === 'micro') return stage.microMaxOutputTokens
   if (level === 'compact') return stage.compactMaxOutputTokens
   return stage.fullMaxOutputTokens
@@ -1369,6 +1466,17 @@ function cloneStageOutput(value: Record<string, unknown>) {
     likelyQuizTargets: Array.isArray(value.likelyQuizTargets) ? [...value.likelyQuizTargets] : [],
     cautionNotes: Array.isArray(value.cautionNotes) ? [...value.cautionNotes] : [],
   }
+}
+
+function markIdentificationSkipped(value: Record<string, unknown> | null) {
+  const output: Record<string, unknown> = value ? cloneStageOutput(value) : {}
+  output.identificationItems = []
+  output.cautionNotes = uniqueStringList([
+    ...(Array.isArray(output.cautionNotes) ? output.cautionNotes.filter((item: unknown): item is string => typeof item === 'string') : []),
+    DEEP_LEARN_IDENTIFICATION_OUTPUT_TOO_LARGE_MESSAGE,
+    DEEP_LEARN_COMPACT_CAUTION_NOTE,
+  ])
+  return output
 }
 
 function trimDeepLearnStageOutput(output: Record<string, unknown>, level: Exclude<DeepLearnFallbackLevel, 'full'>) {
@@ -1406,11 +1514,22 @@ function trimDeepLearnContent(
 }
 
 function getFallbackLimits(level: Exclude<DeepLearnFallbackLevel, 'full'>) {
+  if (level === 'minimal') {
+    return {
+      sections: 5,
+      answerBank: 5,
+      identificationItems: 5,
+      distinctions: 1,
+      likelyQuizTargets: 5,
+      cautionNotes: 3,
+    }
+  }
+
   return level === 'micro'
     ? {
         sections: 5,
         answerBank: 6,
-        identificationItems: 8,
+        identificationItems: 4,
         distinctions: 1,
         likelyQuizTargets: 5,
         cautionNotes: 2,
@@ -3425,6 +3544,48 @@ function logDeepLearnGenerationDiagnostics(
   }
 }
 
+function logDeepLearnStageDiagnostics(
+  event: 'stage_completed' | 'stage_failed' | 'partial_save',
+  input: {
+    stage: DeepLearnStageKey
+    level: DeepLearnFallbackLevel
+    maxOutputTokens: number
+    outputLength: number | null
+    parsedArtifactCounts: ReturnType<typeof getRawDeepLearnArtifactCounts>
+    partialSaveHappened: boolean
+    finalValidatorResult: ReturnType<typeof validateDeepLearnContentReadyForSave> | null
+    reason?: string | null
+    kind?: DeepLearnGenerationStageError['kind'] | null
+  },
+) {
+  const payload = {
+    event,
+    stage: input.stage,
+    fallbackLevelAttempted: input.level,
+    maxOutputTokens: input.maxOutputTokens,
+    outputLength: input.outputLength,
+    parsedArtifactCounts: input.parsedArtifactCounts,
+    partialSaveHappened: input.partialSaveHappened,
+    finalValidatorResult: input.finalValidatorResult
+      ? {
+          ok: input.finalValidatorResult.ok,
+          reason: input.finalValidatorResult.reason,
+          message: input.finalValidatorResult.message,
+          counts: input.finalValidatorResult.counts,
+        }
+      : null,
+    reason: input.reason ?? null,
+    kind: input.kind ?? null,
+  }
+
+  if (event === 'stage_failed') {
+    console.warn('[deep-learn-generation] stage diagnostics', payload)
+    return
+  }
+
+  console.info('[deep-learn-generation] stage diagnostics', payload)
+}
+
 function getDeepLearnArtifactCounts(content: DeepLearnGeneratedContent) {
   return {
     keyTerms: content.answerBank.length,
@@ -3435,6 +3596,18 @@ function getDeepLearnArtifactCounts(content: DeepLearnGeneratedContent) {
     quickReviewNotes: content.likelyQuizTargets.length,
     answerBank: content.answerBank.length,
     distinctions: content.distinctions.length,
+  }
+}
+
+function getRawDeepLearnArtifactCounts(value: Record<string, unknown> | DeepLearnGeneratedContent) {
+  const record = value as Record<string, unknown>
+  return {
+    sections: Array.isArray(record.sections) ? record.sections.length : 0,
+    answerBank: Array.isArray(record.answerBank) ? record.answerBank.length : 0,
+    identificationItems: Array.isArray(record.identificationItems) ? record.identificationItems.length : 0,
+    distinctions: Array.isArray(record.distinctions) ? record.distinctions.length : 0,
+    likelyQuizTargets: Array.isArray(record.likelyQuizTargets) ? record.likelyQuizTargets.length : 0,
+    cautionNotes: Array.isArray(record.cautionNotes) ? record.cautionNotes.length : 0,
   }
 }
 
@@ -3562,7 +3735,9 @@ function getDeepLearnSourceNote(
 }
 
 function buildDeepLearnStageStatusMessage(stage: DeepLearnStageKey, level: DeepLearnFallbackLevel) {
-  const prefix = level === 'micro'
+  const prefix = level === 'minimal'
+    ? 'Generating minimal reviewer sections'
+    : level === 'micro'
     ? 'Generating micro reviewer sections'
     : level === 'compact'
       ? 'Generating compact reviewer sections'
@@ -3584,6 +3759,8 @@ function buildDeepLearnStageFailureMessage(options: DeepLearnStageErrorOptions) 
   if (options.kind === 'size') {
     const levelLabel = options.level === 'micro'
       ? 'micro fallback'
+      : options.level === 'minimal'
+        ? 'minimal fallback'
       : options.level === 'compact'
         ? 'compact fallback'
         : 'normal generation'
@@ -3606,6 +3783,10 @@ function buildDeepLearnStageFailureMessage(options: DeepLearnStageErrorOptions) 
 }
 
 function buildDeepLearnIncompleteMessage(reason: string) {
+  if (reason === DEEP_LEARN_IDENTIFICATION_OUTPUT_TOO_LARGE_REASON) {
+    return DEEP_LEARN_IDENTIFICATION_OUTPUT_TOO_LARGE_MESSAGE
+  }
+
   const parts = reason.split(':')
   const stageKey = (parts.length >= 3 ? parts[1] : parts[0]) as DeepLearnStageKey | undefined
   const stageLabel = stageKey
