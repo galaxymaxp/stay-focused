@@ -13,8 +13,12 @@ import {
   DEEP_LEARN_IDENTIFICATION_OUTPUT_TOO_LARGE_REASON,
   DEEP_LEARN_MAX_OUTPUT_TOKENS,
   DEEP_LEARN_OUTPUT_TOO_LARGE_MESSAGE,
+  DEEP_LEARN_OPTIONAL_STAGE_OUTPUT_TOO_LARGE_MESSAGE,
+  DEEP_LEARN_OPTIONAL_STAGE_OUTPUT_TOO_LARGE_REASON,
   DEEP_LEARN_QUICK_ANSWERS_OUTPUT_TOO_LARGE_MESSAGE,
   DEEP_LEARN_QUICK_ANSWERS_OUTPUT_TOO_LARGE_REASON,
+  DEEP_LEARN_QUIZ_TARGETS_OUTPUT_TOO_LARGE_MESSAGE,
+  DEEP_LEARN_QUIZ_TARGETS_OUTPUT_TOO_LARGE_REASON,
   DeepLearnGenerationIncompleteError,
   DeepLearnGenerationBlockedError,
   DeepLearnGeneratedContentValidationError,
@@ -969,6 +973,171 @@ test('quick-answer output size failures use the specific student-facing reason',
   assert.equal(validation.ok, true)
   assert.equal(error.message, DEEP_LEARN_QUICK_ANSWERS_OUTPUT_TOO_LARGE_MESSAGE)
   assert.doesNotMatch(error.message, /could not build enough structured study content/i)
+})
+
+test('valid source saves partial Study Pack when likely quiz targets exceed all fallback limits', async () => {
+  let quizTargetCalls = 0
+  const quizTargetTokenCaps: number[] = []
+  const result = await generateDeepLearnStructuredContent(
+    createPromptInput(),
+    createPreparedGrounding(),
+    async ({ schemaName, maxOutputTokens }) => {
+      if (schemaName === 'deep_learn_high_yield_stage') {
+        return jsonResponse({
+          title: 'Academic Systems',
+          overview: 'The source explains how academic systems organize concepts, procedures, and checks.',
+          sections: [
+            { heading: 'Source Summary', body: 'The source explains how academic systems organize concepts, procedures, and checks for reliable work.' },
+            { heading: 'High-Yield First', body: '- Concepts\n- Procedures\n- Checks' },
+          ],
+        })
+      }
+      if (schemaName === 'deep_learn_identification_stage') {
+        return jsonResponse({
+          sections: [{ heading: 'Identification Review', body: 'Practice direct source-grounded prompts.' }],
+          identificationItems: [identificationItem(1), identificationItem(2), identificationItem(3)],
+        })
+      }
+      if (schemaName === 'deep_learn_quick_answers_stage') {
+        return jsonResponse({
+          sections: [{ heading: 'Quick-Answer Blocks', body: 'Use compact answers for direct recall.' }],
+          answerBank: [answerBankItem(1), answerBankItem(2), answerBankItem(3)],
+        })
+      }
+      quizTargetCalls += 1
+      quizTargetTokenCaps.push(maxOutputTokens)
+      return {
+        status: 'incomplete',
+        output_text: '',
+        incomplete_details: { reason: 'max_output_tokens' },
+      }
+    },
+  )
+
+  assert.equal(result.compactFallbackUsed, true)
+  assert.equal(quizTargetCalls, 4)
+  assert.deepEqual(quizTargetTokenCaps, [2600, 1800, 900, 650])
+  assert.ok(result.content.sections.some((section) => section.heading === 'Source Summary'))
+  assert.ok(result.content.sections.some((section) => section.heading === 'Likely Quiz Targets'))
+  assert.ok(result.content.likelyQuizTargets.length >= 3)
+  assert.ok(result.content.likelyQuizTargets.length <= 5)
+  assert.ok(result.content.cautionNotes.includes(DEEP_LEARN_QUIZ_TARGETS_OUTPUT_TOO_LARGE_MESSAGE))
+  assert.equal(validateDeepLearnContentReadyForSave(result.content).ok, true)
+  assert.doesNotMatch(JSON.stringify(result.content), /IT Security|SDLC|Arnis|PATHFit/i)
+})
+
+test('valid source saves partial Study Pack when identification and quiz-target optional stages fail', async () => {
+  let identificationCalls = 0
+  let quizTargetCalls = 0
+  const result = await generateDeepLearnStructuredContent(
+    createPromptInput(),
+    createPreparedGrounding(),
+    async ({ schemaName }) => {
+      if (schemaName === 'deep_learn_high_yield_stage') {
+        return jsonResponse({
+          title: 'Neutral Academic Notes',
+          overview: 'The source explains concept groups, procedures, and evaluation checks.',
+          sections: [
+            { heading: 'Source Summary', body: 'The source explains concept groups, procedures, and evaluation checks for a neutral academic topic.' },
+            { heading: 'High-Yield First', body: '- Concept groups\n- Procedure order\n- Evaluation checks' },
+          ],
+        })
+      }
+      if (schemaName === 'deep_learn_identification_stage') {
+        identificationCalls += 1
+        return {
+          status: 'incomplete',
+          output_text: '',
+          incomplete_details: { reason: 'max_output_tokens' },
+        }
+      }
+      if (schemaName === 'deep_learn_quick_answers_stage') {
+        return jsonResponse({
+          sections: [{ heading: 'Quick-Answer Blocks', body: 'Other compact recall answers remain available.' }],
+          answerBank: [answerBankItem(1), answerBankItem(2), answerBankItem(3), answerBankItem(4)],
+        })
+      }
+      quizTargetCalls += 1
+      return {
+        status: 'incomplete',
+        output_text: '',
+        incomplete_details: { reason: 'max_output_tokens' },
+      }
+    },
+  )
+
+  assert.equal(result.compactFallbackUsed, true)
+  assert.equal(identificationCalls, 4)
+  assert.equal(quizTargetCalls, 1)
+  assert.ok(result.content.answerBank.length >= 3)
+  assert.equal(result.content.identificationItems.length, 0)
+  assert.ok(result.content.cautionNotes.includes(DEEP_LEARN_IDENTIFICATION_OUTPUT_TOO_LARGE_MESSAGE))
+  assert.ok(result.content.cautionNotes.includes(DEEP_LEARN_QUIZ_TARGETS_OUTPUT_TOO_LARGE_MESSAGE))
+  assert.equal(validateDeepLearnContentReadyForSave(result.content).ok, true)
+})
+
+test('optional-stage parse failure after core content saves available Study Pack sections', async () => {
+  const result = await generateDeepLearnStructuredContent(
+    createPromptInput(),
+    createPreparedGrounding(),
+    async ({ schemaName }) => {
+      if (schemaName === 'deep_learn_high_yield_stage') {
+        return jsonResponse({
+          title: 'Learning Process Notes',
+          overview: 'The source explains stages, checks, and outcomes.',
+          sections: [
+            { heading: 'Source Summary', body: 'The source explains stages, checks, and outcomes for a general learning process.' },
+            { heading: 'High-Yield First', body: '- Stages\n- Checks\n- Outcomes' },
+          ],
+        })
+      }
+      if (schemaName === 'deep_learn_identification_stage') {
+        return jsonResponse({
+          sections: [{ heading: 'Identification Review', body: 'Practice source-grounded prompts.' }],
+          identificationItems: [identificationItem(1), identificationItem(2), identificationItem(3)],
+        })
+      }
+      return {
+        status: 'completed',
+        output_text: '{not json',
+        incomplete_details: null,
+      }
+    },
+  )
+
+  assert.equal(result.compactFallbackUsed, false)
+  assert.ok(result.content.sections.some((section) => section.heading === 'Source Summary'))
+  assert.ok(result.content.cautionNotes.some((note) =>
+    note === DEEP_LEARN_QUICK_ANSWERS_OUTPUT_TOO_LARGE_MESSAGE
+    || note === DEEP_LEARN_OPTIONAL_STAGE_OUTPUT_TOO_LARGE_MESSAGE
+  ))
+  assert.equal(validateDeepLearnContentReadyForSave(result.content).ok, true)
+})
+
+test('metadata-only source still fails normal Study Pack validation despite optional skip notes', () => {
+  const content = normalizeDeepLearnGeneratedContent({
+    title: 'Upload Metadata',
+    overview: 'File title and UUID only.',
+    sections: [
+      { heading: 'Source Summary', body: 'File title: upload.pdf UUID: 11111111-1111-4111-8111-111111111111 metadata only.' },
+    ],
+    answerBank: [],
+    identificationItems: [],
+    distinctions: [],
+    likelyQuizTargets: [],
+    cautionNotes: [DEEP_LEARN_QUIZ_TARGETS_OUTPUT_TOO_LARGE_MESSAGE],
+  }, 'Upload Metadata')
+
+  const validation = validateDeepLearnContentReadyForSave(content)
+
+  assert.equal(validation.ok, false)
+  assert.equal(validation.reason, DEEP_LEARN_QUIZ_TARGETS_OUTPUT_TOO_LARGE_REASON)
+})
+
+test('optional stage incomplete reasons use student-facing copy without generic structured-content failure', () => {
+  assert.equal(new DeepLearnGenerationIncompleteError(DEEP_LEARN_QUIZ_TARGETS_OUTPUT_TOO_LARGE_REASON).message, DEEP_LEARN_QUIZ_TARGETS_OUTPUT_TOO_LARGE_MESSAGE)
+  assert.equal(new DeepLearnGenerationIncompleteError(DEEP_LEARN_OPTIONAL_STAGE_OUTPUT_TOO_LARGE_REASON).message, DEEP_LEARN_OPTIONAL_STAGE_OUTPUT_TOO_LARGE_MESSAGE)
+  assert.doesNotMatch(new DeepLearnGenerationIncompleteError(DEEP_LEARN_QUIZ_TARGETS_OUTPUT_TOO_LARGE_REASON).message, /could not build enough structured study content/i)
 })
 
 test('Deep Learn save validator rejects source-summary-only reviewer artifacts', () => {

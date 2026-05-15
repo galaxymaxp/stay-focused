@@ -26,7 +26,17 @@ import {
   getModuleWorkspace,
   resolveLearnResourceSelection,
 } from '@/lib/module-workspace'
-import { DeepLearnGenerationBlockedError, DeepLearnGenerationIncompleteError, assertDeepLearnContentReadyForSave, buildDeepLearnSourceDiagnostics, generateDeepLearnNoteForResource } from '@/lib/deep-learn-generation'
+import {
+  DEEP_LEARN_OPTIONAL_STAGE_OUTPUT_TOO_LARGE_MESSAGE,
+  DEEP_LEARN_OPTIONAL_STAGE_OUTPUT_TOO_LARGE_REASON,
+  DEEP_LEARN_QUIZ_TARGETS_OUTPUT_TOO_LARGE_MESSAGE,
+  DEEP_LEARN_QUIZ_TARGETS_OUTPUT_TOO_LARGE_REASON,
+  DeepLearnGenerationBlockedError,
+  DeepLearnGenerationIncompleteError,
+  assertDeepLearnContentReadyForSave,
+  buildDeepLearnSourceDiagnostics,
+  generateDeepLearnNoteForResource,
+} from '@/lib/deep-learn-generation'
 import {
   DEEP_LEARN_PROMPT_VERSION,
   buildDeepLearnNoteBody,
@@ -1377,6 +1387,7 @@ async function processLearnGenerationJob(input: {
     })
 
     const resultHref = buildDeepLearnNoteHref(workspace.module.id, canonicalResourceId)
+    const partialCompletionMessage = getPartialStudyPackCompletionMessage(generated.content.cautionNotes)
 
     await markQueuedJobCompleted(input.jobId, {
       resourceId: canonicalResourceId,
@@ -1384,10 +1395,11 @@ async function processLearnGenerationJob(input: {
       courseId: workspace.module.courseId ?? input.courseId ?? null,
       resourceTitle: resource.title,
       href: resultHref,
-      statusMessage: generated.compactFallbackUsed
+      statusMessage: partialCompletionMessage ?? (generated.compactFallbackUsed
         ? 'Compact study pack ready.'
-        : 'Study pack ready.',
+        : 'Study pack ready.'),
       compactFallbackUsed: generated.compactFallbackUsed,
+      partialReason: getPartialStudyPackReason(generated.content.cautionNotes),
       retryOfJobId: input.retryOfJobId ?? null,
       retryAttempt: Boolean(input.retryOfJobId),
     })
@@ -1397,7 +1409,9 @@ async function processLearnGenerationJob(input: {
       userId: input.userId,
       type: 'queue_completed',
       title: 'Study pack ready',
-      body: generated.compactFallbackUsed
+      body: partialCompletionMessage
+        ? partialCompletionMessage
+        : generated.compactFallbackUsed
         ? `Your study pack for "${resource.title}" is ready. Stay Focused generated a compact version because the source was long.`
         : `Your study pack for "${resource.title}" is ready.`,
       href: resultHref,
@@ -1464,6 +1478,12 @@ function getStringFromJobRecord(source: Record<string, unknown> | null, key: str
 function humanizeLearnGenerationFailureForQueue(message: string) {
   const trimmed = message.replace(/\s+/g, ' ').trim()
   if (!trimmed) return 'Deep Learn could not finish this Study Pack.'
+  if (/quiz_targets_output_too_large|Likely quiz targets were too large/i.test(trimmed)) {
+    return DEEP_LEARN_QUIZ_TARGETS_OUTPUT_TOO_LARGE_MESSAGE
+  }
+  if (/optional_stage_output_too_large|Some extra review sections were too large/i.test(trimmed)) {
+    return DEEP_LEARN_OPTIONAL_STAGE_OUTPUT_TOO_LARGE_MESSAGE
+  }
   if (/quick_answers_output_too_large|Quick answers were too large/i.test(trimmed)) {
     return 'Quick answers were too large to generate. Other study sections were saved when available.'
   }
@@ -1477,6 +1497,23 @@ function humanizeLearnGenerationFailureForQueue(message: string) {
     return 'Deep Learn could not build enough structured study content from the selected source.'
   }
   return trimmed.length > 150 ? `${trimmed.slice(0, 147).trim()}...` : trimmed
+}
+
+function getPartialStudyPackReason(cautionNotes: string[]) {
+  if (cautionNotes.some((note) => note === DEEP_LEARN_QUIZ_TARGETS_OUTPUT_TOO_LARGE_MESSAGE || note === DEEP_LEARN_QUIZ_TARGETS_OUTPUT_TOO_LARGE_REASON)) {
+    return DEEP_LEARN_QUIZ_TARGETS_OUTPUT_TOO_LARGE_REASON
+  }
+  if (cautionNotes.some((note) => note === DEEP_LEARN_OPTIONAL_STAGE_OUTPUT_TOO_LARGE_MESSAGE || note === DEEP_LEARN_OPTIONAL_STAGE_OUTPUT_TOO_LARGE_REASON)) {
+    return DEEP_LEARN_OPTIONAL_STAGE_OUTPUT_TOO_LARGE_REASON
+  }
+  return null
+}
+
+function getPartialStudyPackCompletionMessage(cautionNotes: string[]) {
+  const reason = getPartialStudyPackReason(cautionNotes)
+  if (reason === DEEP_LEARN_QUIZ_TARGETS_OUTPUT_TOO_LARGE_REASON) return DEEP_LEARN_QUIZ_TARGETS_OUTPUT_TOO_LARGE_MESSAGE
+  if (reason === DEEP_LEARN_OPTIONAL_STAGE_OUTPUT_TOO_LARGE_REASON) return DEEP_LEARN_OPTIONAL_STAGE_OUTPUT_TOO_LARGE_MESSAGE
+  return null
 }
 
 export async function processSourceOcrJob(input: {

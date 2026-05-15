@@ -5,6 +5,88 @@ Last Updated: 2026-05-16
 
 ---
 
+## Session Update - 2026-05-16 (Generic Optional Stage Partial Save)
+
+### What changed
+
+- Added a generic staged-generation partial-save policy for optional Deep Learn stages.
+- Added reusable helpers in `lib/deep-learn-generation.ts`:
+  - `hasUsableCoreContent(...)`
+  - `shouldSavePartialAfterStageFailure(...)`
+  - `mapStageFailureToIncompleteReason(...)`
+  - `savePartialStudyPackResult(...)`
+- Classified `high_yield` as core and downstream enrichment stages as optional.
+- Added quiz-target-specific output limit handling:
+  - reason: `quiz_targets_output_too_large`
+  - student-facing copy: `Likely quiz targets were too large to generate. Other study sections were saved.`
+- Added generic optional-stage output limit handling:
+  - reason: `optional_stage_output_too_large`
+  - student-facing copy: `Some extra review sections were too large to generate, but your Study Pack was saved.`
+- Added a minimal fallback level for the combined distinctions / likely quiz targets stage with a 650-token cap.
+- When likely quiz targets fail after all fallback levels, Deep Learn now derives up to 5 short quiz targets from already-generated identification or answer-bank items instead of requiring another large model response.
+- Optional-stage parse failures after usable core content now save available Study Pack sections instead of failing the whole pack.
+- Added final-stage diagnostics fields:
+  - `failedStage`
+  - `stageCriticality`
+  - `hasHighYield`
+  - `hasIdentification`
+  - `hasQuickAnswers`
+  - `hasQuizTargets`
+  - `hasUsableCoreContent`
+  - `shouldSavePartial`
+  - `partialReason`
+  - `finalJobStatus`
+  - `savedSectionCounts`
+- Updated queue completion status/notification copy so successfully saved partial Study Packs do not present as failed jobs.
+
+### Files touched
+
+- `lib/deep-learn-generation.ts`
+- `actions/queue-jobs.ts`
+- `tests/deep-learn-generation.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Production showed valid readable sources failing at whichever optional staged section happened to exceed model response limits next. This confirmed the failure was not extraction or source quality; it was the generation failure policy treating enrichment sections as fatal even after usable core Study Pack content already existed.
+
+### Tests run
+
+- `npm test -- deep-learn-generation` - passed
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- deep-learn-generation deep-learn-readiness queue learn-resource-ui study-output-reviewer study-output-quiz-pack source-map` - passed
+
+### Verification result
+
+- Passed all requested verification commands.
+- Verified `quiz_targets` failures retry full, compact, micro, then minimal with token caps `2600 / 1800 / 900 / 650`.
+- Verified valid source content with `high_yield`, identification, and quick answers saved when quiz targets exceeded all fallback levels.
+- Verified combined optional failures, including identification plus quiz-target failures, still save available core content.
+- Verified optional-stage malformed JSON after usable core content saves partial Study Pack sections.
+- Verified metadata-only/UUID-only source content still fails validation even if optional skip notes are present.
+- Verified regression tests do not depend on IT Security, SDLC, Arnis, PE, PATHFit, or any course-specific terms.
+
+### Known risks
+
+- Partial Study Packs can be less quiz-rich when quiz targets fail, but they preserve Source Summary, High-Yield First, and any already-generated review sections.
+- Derived quiz targets are intentionally short and based only on already-generated grounded identification or answer-bank items.
+- The combined `distinctions` stage still covers both distinctions and likely quiz targets; the saved incomplete reason uses the student-facing quiz-target label because that is the visible failure path.
+
+### Blockers
+
+- No blocker remains.
+
+### Next recommended step
+
+Deploy and retry the production source that failed at `quiz targets`. Confirm the queue job completes and logs `partialReason: quiz_targets_output_too_large` only if the minimal quiz-target fallback still exceeds output limits.
+
+### Suggested commit message
+
+save partial packs after optional stage failures
+
+---
+
 ## Session Update - 2026-05-16 (Quick Answers Output Limit Partial Save)
 
 ### What changed
