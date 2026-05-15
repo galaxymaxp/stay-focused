@@ -17,6 +17,7 @@ import {
   buildExamReviewerFromOutline,
   buildDeterministicReviewerFallback,
   buildDeepLearnContentFromSourceMap,
+  buildDeepLearnSourceDiagnostics,
   buildAcademicStructuredGrounding,
   generateDeepLearnStructuredContent,
   structureAcademicSourceText,
@@ -1682,6 +1683,109 @@ test('Deep Learn refinement action does not use hard-coded gpt-4o or empty sourc
   assert.match(source, /selectDeepLearnRefinementGrounding/)
   assert.match(source, /Selected resource source text/)
   assert.doesNotMatch(source, /Source context:[\s\S]*extractedTextPreview \?\? ''/)
+})
+
+test('Deep Learn diagnostics select meaningful extracted_text over empty visual text', async () => {
+  const extractedText = [
+    'Data organization explains how facts are arranged into fields, records, files, and databases for efficient retrieval.',
+    'A database management system controls storage, access, integrity, security, and backup of shared academic data.',
+    'Relational tables use rows and columns, while primary keys identify each record and foreign keys connect related tables.',
+    'Normalization reduces redundancy by splitting repeated groups into related tables with clear dependencies.',
+    'Indexes speed up lookup operations, but they require storage and maintenance during inserts and updates.',
+    'Good data organization improves accuracy, consistency, reporting, and decision making in information systems.',
+  ].join('\n')
+  const resource = createLearnResource({
+    title: 'Data Organization.pdf',
+    extractionStatus: 'completed',
+    extractedText,
+    extractedTextPreview: extractedText.slice(0, 300),
+    extractedCharCount: extractedText.length,
+    visualExtractionStatus: 'completed',
+    visualExtractedText: '',
+  })
+  const storedResource = createStoredResource({
+    title: 'Data Organization.pdf',
+    extractionStatus: 'completed',
+    extractedText,
+    extractedCharCount: extractedText.length,
+    visualExtractionStatus: 'completed',
+    visualExtractedText: '',
+  })
+
+  const diagnostics = buildDeepLearnSourceDiagnostics(createContext(resource, storedResource), {
+    queuedJobId: 'job-1',
+    canonicalSourceId: storedResource.id,
+  })
+
+  assert.equal(diagnostics.queuedJobId, 'job-1')
+  assert.equal(diagnostics.canonicalSourceId, storedResource.id)
+  assert.equal(diagnostics.sourceFieldUsed, 'extracted_text')
+  assert.ok(diagnostics.contentHash)
+  assert.match(diagnostics.previewStart ?? '', /Data organization explains/)
+  assert.doesNotMatch(diagnostics.previewStart ?? '', /UUID|metadata|debug/i)
+
+  const promptInput = {
+    ...createContext(resource, storedResource),
+    promptGrounding: extractedText,
+    sourceGrounding: {
+      sourceType: 'PDF',
+      extractionQuality: 'usable',
+      sourceTextQuality: 'meaningful' as const,
+      groundingStrategy: 'stored_extract' as const,
+      usedAiFallback: false,
+      qualityReason: null,
+      warning: null,
+      charCount: extractedText.length,
+      sourceMap: buildAcademicSourceMap(extractedText),
+    },
+    generationMode: 'text' as const,
+  }
+  const content = await generateDeepLearnStructuredContent(promptInput, createPreparedGrounding(), async (request) => {
+    if (request.schemaName.includes('high_yield')) return jsonResponse({ title: 'Data Organization', overview: 'Data organization supports reliable database use.', sections: [] })
+    if (request.schemaName.includes('identification')) return jsonResponse({ sections: [], identificationItems: [] })
+    if (request.schemaName.includes('quick_answers')) return jsonResponse({ sections: [], answerBank: [] })
+    return jsonResponse({ sections: [], distinctions: [], likelyQuizTargets: [], cautionNotes: [] })
+  })
+
+  assert.equal(validateDeepLearnContentReadyForSave(content.content).ok, true)
+})
+
+test('Deep Learn diagnostics select visual_extracted_text when extracted_text is metadata-only', () => {
+  const weakExtract = 'File title: Lecture.pdf\nUUID: 11111111-1111-4111-8111-111111111111\nDebug: no readable text'
+  const visualText = [
+    'Photosynthesis is the process by which plants convert light energy into chemical energy stored in glucose.',
+    'Chlorophyll absorbs light in the chloroplasts, while carbon dioxide and water are used as reactants.',
+    'The light-dependent reactions produce ATP and NADPH, and the Calvin cycle uses them to build sugars.',
+    'Oxygen is released as a byproduct when water molecules are split during the light reactions.',
+    'Photosynthesis supports food chains because producers create organic molecules from inorganic materials.',
+  ].join('\n')
+  const resource = createLearnResource({
+    title: 'Photosynthesis.pdf',
+    extractionStatus: 'metadata_only',
+    extractedText: weakExtract,
+    extractedTextPreview: weakExtract,
+    extractedCharCount: weakExtract.length,
+    visualExtractionStatus: 'completed',
+    visualExtractedText: visualText,
+  })
+
+  const diagnostics = buildDeepLearnSourceDiagnostics({
+    resource,
+    storedResource: createStoredResource({
+      title: 'Photosynthesis.pdf',
+      extractionStatus: 'metadata_only',
+      extractedText: weakExtract,
+      extractedCharCount: weakExtract.length,
+      visualExtractionStatus: 'completed',
+      visualExtractedText: visualText,
+    }),
+    module: createContext(resource, createStoredResource()).module,
+    courseName: 'Biology',
+  }, { queuedJobId: 'job-2' })
+
+  assert.equal(diagnostics.sourceFieldUsed, 'visual_extracted_text')
+  assert.match(diagnostics.previewStart ?? '', /Photosynthesis is the process/)
+  assert.doesNotMatch(diagnostics.previewStart ?? '', /11111111|Debug|File title/i)
 })
 
 function createContext(resource: ModuleSourceResource, storedResource: ModuleResource) {

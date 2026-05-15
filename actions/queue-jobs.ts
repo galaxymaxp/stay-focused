@@ -26,7 +26,7 @@ import {
   getModuleWorkspace,
   resolveLearnResourceSelection,
 } from '@/lib/module-workspace'
-import { DeepLearnGenerationBlockedError, DeepLearnGenerationIncompleteError, assertDeepLearnContentReadyForSave, generateDeepLearnNoteForResource } from '@/lib/deep-learn-generation'
+import { DeepLearnGenerationBlockedError, DeepLearnGenerationIncompleteError, assertDeepLearnContentReadyForSave, buildDeepLearnSourceDiagnostics, generateDeepLearnNoteForResource } from '@/lib/deep-learn-generation'
 import {
   DEEP_LEARN_PROMPT_VERSION,
   buildDeepLearnNoteBody,
@@ -193,6 +193,66 @@ export async function queueLearnGenerationAction(input: {
       courseId: input.courseId ?? null,
     })
     revalidatePath(`/modules/${input.moduleId}/learn`)
+  })
+
+  return { jobId: job.id, job }
+}
+
+export async function retryLearnGenerationJobAction(jobId: string): Promise<QueueJobResult> {
+  const user = await getAuthenticatedUserServer()
+  if (!user) return { jobId: '', error: 'Not authenticated.' }
+
+  const previousJob = await getQueuedJobById(jobId)
+  if (!previousJob || previousJob.userId !== user.id || previousJob.type !== 'learn_generation') {
+    return { jobId: '', error: 'Study pack job not found.' }
+  }
+  if (previousJob.status !== 'failed') {
+    return { jobId: '', error: 'Only failed Study Pack jobs can be retried.' }
+  }
+
+  const resourceId = getStringFromJobRecord(previousJob.result, 'resourceId')
+    ?? getStringFromJobRecord(previousJob.payload, 'resourceId')
+  const moduleId = getStringFromJobRecord(previousJob.result, 'moduleId')
+    ?? getStringFromJobRecord(previousJob.payload, 'moduleId')
+  const courseId = getStringFromJobRecord(previousJob.result, 'courseId')
+    ?? getStringFromJobRecord(previousJob.payload, 'courseId')
+  const resourceTitle = getStringFromJobRecord(previousJob.result, 'resourceTitle')
+    ?? getStringFromJobRecord(previousJob.payload, 'resourceTitle')
+    ?? 'Study source'
+
+  if (!resourceId || !moduleId) {
+    return { jobId: '', error: 'This old failed job is missing enough source details to retry. Open the source and generate again.' }
+  }
+
+  const activeDuplicate = await findActiveJob(user.id, 'learn_generation', 'resourceId', resourceId)
+  if (activeDuplicate) return { jobId: activeDuplicate.id, job: activeDuplicate }
+
+  const job = await createQueuedJob(
+    user.id,
+    'learn_generation',
+    `Retrying study pack: ${resourceTitle}`,
+    {
+      moduleId,
+      resourceId,
+      courseId: courseId ?? null,
+      resourceTitle,
+      retryOfJobId: previousJob.id,
+      retryAttempt: true,
+    },
+  )
+
+  if (!job) return { jobId: '', error: 'Failed to create retry job.' }
+
+  after(async () => {
+    await processLearnGenerationJob({
+      jobId: job.id,
+      userId: user.id,
+      moduleId,
+      resourceId,
+      courseId: courseId ?? null,
+      retryOfJobId: previousJob.id,
+    })
+    revalidatePath(`/modules/${moduleId}/learn`)
   })
 
   return { jobId: job.id, job }
@@ -1048,8 +1108,17 @@ async function processLearnGenerationJob(input: {
   moduleId: string
   resourceId: string
   courseId: string | null
+  retryOfJobId?: string | null
 }) {
   await markQueuedJobRunning(input.jobId, 10)
+  let latestStage = 'queued'
+  let latestStatusMessage = 'Deep Learn is preparing the Study Pack.'
+  let latestFailureContext: Record<string, unknown> = {
+    moduleId: input.moduleId,
+    resourceId: input.resourceId,
+    courseId: input.courseId,
+    retryOfJobId: input.retryOfJobId ?? null,
+  }
 
   async function canceled() {
     if (!await isQueuedJobCancelled(input.jobId)) return false
@@ -1059,7 +1128,17 @@ async function processLearnGenerationJob(input: {
   }
 
   async function fail(message: string, href?: string | null) {
-    await markQueuedJobFailed(input.jobId, message)
+    await updateQueuedJobStatus(input.jobId, 'failed', {
+      error: message,
+      completedAt: new Date().toISOString(),
+      result: {
+        ...latestFailureContext,
+        href: href ?? null,
+        failedStage: latestStage,
+        statusMessage: humanizeLearnGenerationFailureForQueue(message),
+        shortReason: humanizeLearnGenerationFailureForQueue(message),
+      },
+    })
     await createNotification({
       userId: input.userId,
       type: 'queue_failed',
@@ -1097,6 +1176,15 @@ async function processLearnGenerationJob(input: {
     }
 
     const { resource, storedResource, canonicalResourceId } = selection
+    latestFailureContext = {
+      ...latestFailureContext,
+      resourceId: canonicalResourceId ?? input.resourceId,
+      moduleId: workspace.module.id,
+      courseId: workspace.module.courseId ?? input.courseId ?? null,
+      resourceTitle: resource.title,
+      sourceTitle: resource.title,
+      retryOfJobId: input.retryOfJobId ?? null,
+    }
     const readiness = classifyDeepLearnResourceReadiness({ resource, storedResource, canonicalResourceId })
 
     if (!storedResource || !canonicalResourceId || !readiness.canGenerate) {
@@ -1140,8 +1228,11 @@ async function processLearnGenerationJob(input: {
       result: {
         resourceId: canonicalResourceId,
         moduleId: workspace.module.id,
+        courseId: workspace.module.courseId ?? input.courseId ?? null,
         resourceTitle: resource.title,
         statusMessage: 'Compacting readable source text for staged Deep Learn generation.',
+        retryOfJobId: input.retryOfJobId ?? null,
+        retryAttempt: Boolean(input.retryOfJobId),
       },
     })
     if (await canceled()) return
@@ -1153,8 +1244,27 @@ async function processLearnGenerationJob(input: {
     let generated
     let heartbeat: ReturnType<typeof setInterval> | null = null
     let latestProgress = 25
-    let latestStatusMessage = 'Compacting readable source text for staged Deep Learn generation.'
+    latestStatusMessage = 'Compacting readable source text for staged Deep Learn generation.'
     try {
+      const sourceDiagnostics = buildDeepLearnSourceDiagnostics({
+        resource,
+        storedResource,
+        module: workspace.module,
+        courseName,
+      }, {
+        queuedJobId: input.jobId,
+        canonicalSourceId: canonicalResourceId,
+      })
+      latestFailureContext = {
+        ...latestFailureContext,
+        resourceId: canonicalResourceId,
+        moduleId: workspace.module.id,
+        courseId: workspace.module.courseId ?? input.courseId ?? null,
+        resourceTitle: resource.title,
+        sourceTitle: resource.title,
+        sourceFieldUsed: sourceDiagnostics.sourceFieldUsed,
+        academicTextCharCount: sourceDiagnostics.academicTextCharCount,
+      }
       heartbeat = setInterval(() => {
         void updateQueuedJobStatus(input.jobId, 'running', {
           progress: latestProgress,
@@ -1173,17 +1283,26 @@ async function processLearnGenerationJob(input: {
         module: workspace.module,
         linkedTask,
       }, {
+        diagnosticsContext: {
+          queuedJobId: input.jobId,
+          canonicalSourceId: canonicalResourceId,
+          retryOfJobId: input.retryOfJobId ?? null,
+        },
         onProgress: async (update) => {
           latestProgress = update.progress
           latestStatusMessage = update.statusMessage
+          latestStage = update.stage
           await updateQueuedJobStatus(input.jobId, 'running', {
             progress: update.progress,
             result: {
               resourceId: canonicalResourceId,
               moduleId: workspace.module.id,
+              courseId: workspace.module.courseId ?? input.courseId ?? null,
               resourceTitle: resource.title,
               statusMessage: update.statusMessage,
               compactFallbackUsed: update.compactFallbackUsed ?? false,
+              retryOfJobId: input.retryOfJobId ?? null,
+              retryAttempt: Boolean(input.retryOfJobId),
             },
           })
         },
@@ -1262,12 +1381,15 @@ async function processLearnGenerationJob(input: {
     await markQueuedJobCompleted(input.jobId, {
       resourceId: canonicalResourceId,
       moduleId: workspace.module.id,
+      courseId: workspace.module.courseId ?? input.courseId ?? null,
       resourceTitle: resource.title,
       href: resultHref,
       statusMessage: generated.compactFallbackUsed
         ? 'Compact study pack ready.'
         : 'Study pack ready.',
       compactFallbackUsed: generated.compactFallbackUsed,
+      retryOfJobId: input.retryOfJobId ?? null,
+      retryAttempt: Boolean(input.retryOfJobId),
     })
     revalidateLearnQueuePaths(workspace.module.id, workspace.module.courseId ?? input.courseId ?? null, canonicalResourceId)
 
@@ -1286,10 +1408,24 @@ async function processLearnGenerationJob(input: {
     const message = err instanceof Error ? err.message : 'Unknown error during Deep Learn generation.'
     console.error('[queue-jobs] processLearnGenerationJob failed', {
       jobId: input.jobId,
+      resourceId: input.resourceId,
+      courseId: input.courseId,
+      retryOfJobId: input.retryOfJobId ?? null,
+      failedStage: latestStage,
       message,
       incompleteReason: err instanceof DeepLearnGenerationIncompleteError ? err.reason : null,
+      failureContext: latestFailureContext,
     })
-    await markQueuedJobFailed(input.jobId, message)
+    await updateQueuedJobStatus(input.jobId, 'failed', {
+      error: message,
+      completedAt: new Date().toISOString(),
+      result: {
+        ...latestFailureContext,
+        failedStage: latestStage,
+        statusMessage: humanizeLearnGenerationFailureForQueue(message),
+        shortReason: humanizeLearnGenerationFailureForQueue(message),
+      },
+    })
     revalidateLearnQueuePaths(input.moduleId, input.courseId ?? null, input.resourceId)
 
     await createNotification({
@@ -1318,6 +1454,26 @@ function revalidateLearnQueuePaths(moduleId: string, courseId: string | null, re
     revalidatePath(`/modules/${moduleId}/learn/resources/${encodeURIComponent(resourceId)}`)
     revalidatePath(`/modules/${moduleId}/learn/notes/${encodeURIComponent(resourceId)}`)
   }
+}
+
+function getStringFromJobRecord(source: Record<string, unknown> | null, key: string) {
+  const value = source?.[key]
+  return typeof value === 'string' && value.trim() ? value.trim() : null
+}
+
+function humanizeLearnGenerationFailureForQueue(message: string) {
+  const trimmed = message.replace(/\s+/g, ' ').trim()
+  if (!trimmed) return 'Deep Learn could not finish this Study Pack.'
+  if (/max_output_tokens|response size limit|too large/i.test(trimmed)) {
+    return 'The source was too large for the model response after compact fallback.'
+  }
+  if (/not enough readable text|readable text|source text|metadata|OCR|extract/i.test(trimmed)) {
+    return 'The selected source does not have enough readable academic text yet.'
+  }
+  if (/structured study content|answerBank|identification|quiz/i.test(trimmed)) {
+    return 'Deep Learn could not build enough structured study content from the selected source.'
+  }
+  return trimmed.length > 150 ? `${trimmed.slice(0, 147).trim()}...` : trimmed
 }
 
 export async function processSourceOcrJob(input: {

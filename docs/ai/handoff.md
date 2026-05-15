@@ -5,6 +5,65 @@ Last Updated: 2026-05-16
 
 ---
 
+## Session Update - 2026-05-16 (Study Queue Retry Diagnostics)
+
+### What changed
+
+- Added internal Deep Learn source/extraction/generation diagnostics for Study Pack generation and fallback paths.
+- Diagnostics now include queued job id, canonical/module resource ids, source title, course/module identity, Canvas file/item ids, source/html URLs, extraction statuses, extracted text lengths, selected source field, selected-field reason, academic/normalized char counts, source text quality, relation counts before/after validation, fallback mode, final artifact counts, validator result, and a sanitized dev-only preview plus content hash.
+- Added failed Study Pack queue metadata so failures record source title, failed stage, retry/original attempt status, short student-facing reason, selected field, and academic char count.
+- Added a Retry action for failed Study Pack queue cards. Retry creates a fresh `learn_generation` job with `retryOfJobId` and runs the current generation code path.
+- Updated Study Queue failed cards to show source title, created time/relative age, original vs retry attempt, failed stage, short reason, and an "Older attempt" note when a newer generation exists for the same source.
+- Confirmed from code that failed `queued_jobs` persist after deployment and `dismissQueuedJob` only sets `dismissed_at`; `getUserQueuedJobs` hides dismissed rows rather than deleting them.
+- Added regression coverage for selecting meaningful `extracted_text` over empty/weaker visual text, selecting `visual_extracted_text` when normal extracted text is metadata-only, recording preview/hash diagnostics, and allowing sparse relation composition to recover through deterministic fallback instead of failing.
+
+### Files touched
+
+- `actions/queue-jobs.ts`
+- `app/api/queue/jobs/route.ts`
+- `components/shell/QueuePanel.tsx`
+- `lib/deep-learn-generation.ts`
+- `tests/deep-learn-generation.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Old failed Study Pack jobs remained visible in Study Queue after the outline fallback shipped, making it unclear whether a current retry failed or the card was stale. The queue now separates old attempts from fresh retry jobs, and the server logs prove which source text field was selected so wrong/empty/stale source-field bugs can be diagnosed without exposing raw extraction details to students.
+
+### Tests run
+
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- deep-learn-generation deep-learn-readiness queue learn-resource-ui study-output-reviewer study-output-quiz-pack source-map` - passed
+
+### Verification result
+
+- Passed all requested verification commands.
+- Verified failed queue rows are persistent and dismissed rows are hidden via `dismissed_at`.
+- Verified Retry creates a new job rather than reusing the old failed row.
+- Verified diagnostics identify the selected source field and include sanitized preview/hash in development logs only.
+- Verified sparse relation composition can still recover through deterministic fallback on meaningful extracted text.
+
+### Known risks
+
+- The Retry button relies on old failed jobs having `moduleId` and `resourceId` in payload/result. Very old rows missing those fields show a safe retry error and still require opening the source to generate again.
+- Diagnostic logs are intentionally verbose for Deep Learn generation/fallback events; production logs omit extracted-text previews but still include source ids, titles, URLs, counts, and validator metadata.
+- The "Older attempt" label depends on the current fetched queue window. If an even newer attempt is outside the returned limit, the old row may not be labeled until dismissed.
+
+### Blockers
+
+- No blocker remains.
+
+### Next recommended step
+
+Deploy, press Retry on one of the old failed Study Pack queue cards, and confirm the new retry job logs show the selected source field, academic char count, content hash, relation counts, fallback mode, final artifact counts, and validator result.
+
+### Suggested commit message
+
+debug and retry failed study pack jobs
+
+---
+
 ## Session Update - 2026-05-16 (Outline Reviewer Fallback)
 
 ### What changed

@@ -8,6 +8,7 @@ import {
   processNextPendingSourceOcrJobForUser,
   recoverStaleCanvasSyncJobs,
   recoverStaleSourceOcrJobs,
+  retryLearnGenerationJobAction,
 } from '@/actions/queue-jobs'
 
 export const runtime = 'nodejs'
@@ -36,7 +37,7 @@ export async function PATCH(request: Request) {
   }
 
   const body = await request.json().catch(() => null) as {
-    action?: 'dismiss' | 'clear_completed' | 'cancel'
+    action?: 'dismiss' | 'clear_completed' | 'cancel' | 'retry'
     jobId?: string
   } | null
 
@@ -58,6 +59,14 @@ export async function PATCH(request: Request) {
       await processNextPendingSourceOcrJobForUser(user.id)
     })
     return NextResponse.json({ ok }, { status: ok ? 200 : 500 })
+  }
+
+  if (body?.action === 'retry' && body.jobId) {
+    const result = await retryLearnGenerationJobAction(body.jobId)
+    return NextResponse.json(
+      { ok: Boolean(result.jobId), job: result.job ?? null, error: result.error ?? null },
+      { status: result.jobId ? 200 : 400 },
+    )
   }
 
   return NextResponse.json({ ok: false, error: 'Unsupported queue action.' }, { status: 400 })

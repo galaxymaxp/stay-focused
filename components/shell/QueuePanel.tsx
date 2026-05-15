@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { ListTodo, X, CheckCircle, XCircle, Loader2, Clock, RefreshCw, AlertCircle, ExternalLink, Trash2 } from 'lucide-react'
+import { ListTodo, X, CheckCircle, XCircle, Loader2, Clock, RefreshCw, AlertCircle, ExternalLink, Trash2, RotateCcw } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import type { QueuedJob, QueuedJobStatus } from '@/lib/queue'
 import { groupQueueJobsForPanel } from '@/lib/queue-view'
@@ -139,7 +139,19 @@ function CompletedJobCard({ job, onDismiss }: { job: QueuedJob; onDismiss: (jobI
   )
 }
 
-function FailedJobCard({ job, onDismiss }: { job: QueuedJob; onDismiss: (jobId: string) => void }) {
+function FailedJobCard({
+  job,
+  jobs,
+  onDismiss,
+  onRetry,
+}: {
+  job: QueuedJob
+  jobs: QueuedJob[]
+  onDismiss: (jobId: string) => void
+  onRetry: (jobId: string) => void
+}) {
+  const details = getLearnFailureDetails(job, jobs)
+  const canRetry = job.type === 'learn_generation' && Boolean(getJobResourceId(job) && getJobModuleId(job))
   return (
     <article className="glass-panel glass-soft" style={jobCardStyle('failed')}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.65rem', alignItems: 'flex-start' }}>
@@ -149,7 +161,13 @@ function FailedJobCard({ job, onDismiss }: { job: QueuedJob; onDismiss: (jobId: 
           </span>
           <div style={{ minWidth: 0 }}>
             <p style={titleStyle}>{getFailedTitle(job)}</p>
-            <p style={{ ...statusTextStyle, color: 'var(--red)', marginTop: '0.22rem' }}>{humanizeError(job.error)}</p>
+            <p style={sourceStyle}>{details.sourceTitle}</p>
+            <p style={statusTextStyle}>{details.createdLabel}{details.retryLabel ? ` - ${details.retryLabel}` : ''}</p>
+            <p style={statusTextStyle}>Failed at {details.failedStage}</p>
+            <p style={{ ...statusTextStyle, color: 'var(--red)', marginTop: '0.22rem' }}>{details.reason}</p>
+            {details.hasNewerAttempt ? (
+              <p style={{ ...statusTextStyle, marginTop: '0.22rem' }}>Older attempt. A newer Study Pack retry exists for this source.</p>
+            ) : null}
           </div>
         </div>
         <button type="button" onClick={() => onDismiss(job.id)} className="queue-action-icon" style={ghostIconStyle} aria-label="Dismiss failed job">
@@ -157,6 +175,12 @@ function FailedJobCard({ job, onDismiss }: { job: QueuedJob; onDismiss: (jobId: 
         </button>
       </div>
       <div style={{ display: 'flex', gap: '0.42rem', flexWrap: 'wrap', marginTop: '0.72rem' }}>
+        {canRetry ? (
+          <button type="button" onClick={() => onRetry(job.id)} className="ui-button ui-button-secondary ui-button-xs">
+            <RotateCcw className="h-3.5 w-3.5" />
+            Retry
+          </button>
+        ) : null}
         <button type="button" onClick={() => onDismiss(job.id)} className="ui-button ui-button-ghost ui-button-xs">
           Dismiss
         </button>
@@ -270,6 +294,10 @@ export function QueuePanel() {
       ? { ...job, status: 'cancelled', completedAt: now, cancelRequestedAt: now, canceledAt: now, error: null }
       : job))
     void mutateQueue({ action: 'cancel', jobId })
+  }, [mutateQueue])
+
+  const retryJob = useCallback((jobId: string) => {
+    void mutateQueue({ action: 'retry', jobId })
   }, [mutateQueue])
 
   const clearCompleted = useCallback(() => {
@@ -467,7 +495,7 @@ export function QueuePanel() {
                   </QueueSection>
 
                   <QueueSection title="Needs attention" count={failedJobs.length}>
-                    {failedJobs.map((job) => <FailedJobCard key={job.id} job={job} onDismiss={dismissJob} />)}
+                    {failedJobs.map((job) => <FailedJobCard key={job.id} job={job} jobs={jobs} onDismiss={dismissJob} onRetry={retryJob} />)}
                   </QueueSection>
 
                   <QueueSection title="Canceled" count={canceledJobs.length}>
@@ -536,6 +564,61 @@ function getJobSourceName(job: QueuedJob) {
 
 function getResultHref(job: QueuedJob) {
   return getString(job.result, 'href')
+}
+
+function getJobResourceId(job: QueuedJob) {
+  return getString(job.result, 'resourceId') ?? getString(job.payload, 'resourceId')
+}
+
+function getJobModuleId(job: QueuedJob) {
+  return getString(job.result, 'moduleId') ?? getString(job.payload, 'moduleId')
+}
+
+function getLearnFailureDetails(job: QueuedJob, jobs: QueuedJob[]) {
+  const resourceId = getJobResourceId(job)
+  const createdTime = new Date(job.createdAt).getTime()
+  const hasNewerAttempt = job.type === 'learn_generation' && Boolean(resourceId) && jobs.some((candidate) =>
+    candidate.id !== job.id
+    && candidate.type === 'learn_generation'
+    && getJobResourceId(candidate) === resourceId
+    && new Date(candidate.createdAt).getTime() > createdTime
+  )
+  const retryOfJobId = getString(job.result, 'retryOfJobId') ?? getString(job.payload, 'retryOfJobId')
+  const retryAttempt = job.result?.retryAttempt === true || job.payload?.retryAttempt === true || Boolean(retryOfJobId)
+
+  return {
+    sourceTitle: getJobSourceName(job),
+    createdLabel: formatRelativeQueueTime(job.createdAt),
+    retryLabel: retryAttempt ? 'Retry attempt' : 'Original generation',
+    failedStage: labelFailedStage(getString(job.result, 'failedStage')),
+    reason: getString(job.result, 'shortReason') ?? humanizeError(job.error),
+    hasNewerAttempt,
+  }
+}
+
+function labelFailedStage(stage: string | null) {
+  if (!stage || stage === 'queued') return 'preparation'
+  if (stage === 'compacting_source') return 'source preparation'
+  if (stage === 'high_yield') return 'study pack summary'
+  if (stage === 'identification') return 'identification review'
+  if (stage === 'quick_answers') return 'quick answers'
+  if (stage === 'distinctions') return 'quiz targets'
+  if (stage === 'compact_fallback') return 'compact fallback'
+  return stage.replace(/_/g, ' ')
+}
+
+function formatRelativeQueueTime(value: string) {
+  const time = new Date(value).getTime()
+  if (!Number.isFinite(time)) return 'Created earlier'
+  const diffMs = Date.now() - time
+  if (diffMs < 60_000) return 'Created just now'
+  const minutes = Math.floor(diffMs / 60_000)
+  if (minutes < 60) return `Created ${minutes} min ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `Created ${hours} hr ago`
+  const days = Math.floor(hours / 24)
+  if (days < 7) return `Created ${days} day${days === 1 ? '' : 's'} ago`
+  return `Created ${new Date(value).toLocaleDateString()}`
 }
 
 function getString(source: Record<string, unknown> | null, key: string) {

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import OpenAI from 'openai'
 import { downloadCanvasBinarySource, normalizeCanvasUrl } from '@/lib/canvas'
 import {
@@ -360,6 +361,11 @@ type DeepLearnResponseCreator = (request: DeepLearnResponseRequest) => Promise<D
 
 interface DeepLearnGenerationOptions {
   onProgress?: (update: DeepLearnGenerationProgressUpdate) => Promise<void> | void
+  diagnosticsContext?: {
+    queuedJobId?: string | null
+    canonicalSourceId?: string | null
+    retryOfJobId?: string | null
+  }
 }
 
 type DeepLearnStageKey = 'high_yield' | 'identification' | 'quick_answers' | 'distinctions'
@@ -385,12 +391,34 @@ interface DeepLearnStageErrorOptions {
   partialOutput?: Record<string, unknown> | null
 }
 
-interface DeepLearnSourceDiagnostics {
+export interface DeepLearnSourceDiagnostics {
+  queuedJobId: string | null
+  canonicalSourceId: string | null
+  moduleResourceId: string | null
   id: string | null
   title: string | null
+  courseId: string | null
+  courseName: string | null
+  moduleId: string | null
+  moduleName: string | null
+  canvasFileId: number | null
+  canvasItemId: number | null
+  sourceUrl: string | null
+  htmlUrl: string | null
+  extractionStatus: string | null
+  visualExtractionStatus: string | null
+  extractedCharCount: number
+  extractedTextLength: number
+  visualExtractedTextLength: number
   academicTextCharCount: number
-  sourceFieldUsed: 'extracted_text' | 'visual_extracted_text' | 'extracted_text_preview' | 'none'
+  normalizedCharCount: number
+  sourceFieldUsed: 'extracted_text' | 'visual_extracted_text' | 'extracted_text_preview' | 'merged_normalized_text' | 'none'
+  sourceFieldSelectionReason: string | null
   sourceTextQualityReason: string | null
+  sourceTextQuality: string | null
+  contentHash: string | null
+  previewStart: string | null
+  previewEnd: string | null
 }
 
 export class DeepLearnGenerationBlockedError extends Error {
@@ -457,6 +485,14 @@ export async function generateDeepLearnNoteForResource(
   options: DeepLearnGenerationOptions = {},
 ): Promise<DeepLearnGenerationResult> {
   const grounding = await buildDeepLearnGrounding(input)
+  const sourceDiagnostics = buildDeepLearnSourceDiagnostics(input, options.diagnosticsContext)
+  logDeepLearnGenerationDiagnostics('source_selected', {
+    sourceDiagnostics,
+    sourceMap: grounding.sourceGrounding.sourceMap,
+    validation: null,
+    content: null,
+    fallbackMode: 'not_used',
+  })
   if (grounding.generationMode === 'text' && !isMeaningfulDeepLearnSourceText({
     text: grounding.promptGrounding,
     title: input.resource.title,
@@ -491,6 +527,14 @@ export async function generateDeepLearnNoteForResource(
     (request) => createDeepLearnResponse(client, request),
     options,
   )
+  const validation = validateDeepLearnContentReadyForSave(content)
+  logDeepLearnGenerationDiagnostics('generation_completed', {
+    sourceDiagnostics,
+    sourceMap: grounding.sourceGrounding.sourceMap,
+    validation,
+    content,
+    fallbackMode: compactFallbackUsed ? 'compact_or_micro' : 'not_used',
+  })
 
   return {
     content,
@@ -943,10 +987,35 @@ function logDeepLearnReviewerValidationDebug(
     event,
     selectedSource: sourceDiagnostics
       ? {
+          queuedJobId: sourceDiagnostics.queuedJobId,
+          canonicalSourceId: sourceDiagnostics.canonicalSourceId,
+          moduleResourceId: sourceDiagnostics.moduleResourceId,
           id: sourceDiagnostics.id,
           title: sourceDiagnostics.title,
+          courseId: sourceDiagnostics.courseId,
+          courseName: sourceDiagnostics.courseName,
+          moduleId: sourceDiagnostics.moduleId,
+          moduleName: sourceDiagnostics.moduleName,
+          canvasFileId: sourceDiagnostics.canvasFileId,
+          canvasItemId: sourceDiagnostics.canvasItemId,
+          extractionStatus: sourceDiagnostics.extractionStatus,
+          visualExtractionStatus: sourceDiagnostics.visualExtractionStatus,
+          extractedCharCount: sourceDiagnostics.extractedCharCount,
+          extractedTextLength: sourceDiagnostics.extractedTextLength,
+          visualExtractedTextLength: sourceDiagnostics.visualExtractedTextLength,
           academicTextCharCount: sourceDiagnostics.academicTextCharCount,
+          normalizedCharCount: sourceDiagnostics.normalizedCharCount,
           sourceFieldUsed: sourceDiagnostics.sourceFieldUsed,
+          sourceFieldSelectionReason: sourceDiagnostics.sourceFieldSelectionReason,
+          sourceTextQuality: sourceDiagnostics.sourceTextQuality,
+          sourceTextQualityReason: sourceDiagnostics.sourceTextQualityReason,
+          contentHash: sourceDiagnostics.contentHash,
+          preview: process.env.NODE_ENV === 'production'
+            ? null
+            : {
+                start: sourceDiagnostics.previewStart,
+                end: sourceDiagnostics.previewEnd,
+              },
         }
       : null,
     sourceMap: {
@@ -990,6 +1059,13 @@ function repairDeepLearnContentFromStructuredSource(
     const repaired = level === 'full' ? sourceMapFallback : trimDeepLearnContent(sourceMapFallback, level)
     const validation = validateDeepLearnContentReadyForSave(repaired)
     logDeepLearnReviewerValidationDebug('source_map_repair', input.sourceGrounding.sourceMap, repaired, validation, sourceDiagnostics)
+    logDeepLearnGenerationDiagnostics('fallback_used', {
+      sourceDiagnostics,
+      sourceMap: input.sourceGrounding.sourceMap,
+      validation,
+      content: repaired,
+      fallbackMode: 'source_map_repair',
+    })
     if (validation.ok) return repaired
   }
 
@@ -1009,6 +1085,13 @@ function repairDeepLearnContentFromStructuredSource(
       const repaired = level === 'full' ? outlineFallback : trimDeepLearnContent(outlineFallback, level)
       const validation = validateDeepLearnContentReadyForSave(repaired)
       logDeepLearnReviewerValidationDebug('structured_source_repair', outlineSourceMap, repaired, validation, sourceDiagnostics)
+      logDeepLearnGenerationDiagnostics('fallback_used', {
+        sourceDiagnostics,
+        sourceMap: outlineSourceMap,
+        validation,
+        content: repaired,
+        fallbackMode: 'outline_repair',
+      })
       if (validation.ok) return repaired
     }
   }
@@ -1020,6 +1103,13 @@ function repairDeepLearnContentFromStructuredSource(
   const repaired = level === 'full' ? fallback : trimDeepLearnContent(fallback, level)
   const validation = validateDeepLearnContentReadyForSave(repaired)
   logDeepLearnReviewerValidationDebug('structured_source_repair', outlineSourceMap, repaired, validation, sourceDiagnostics)
+  logDeepLearnGenerationDiagnostics('fallback_used', {
+    sourceDiagnostics,
+    sourceMap: outlineSourceMap,
+    validation,
+    content: repaired,
+    fallbackMode: 'structured_source_repair',
+  })
   return validation.ok ? repaired : null
 }
 
@@ -3153,6 +3243,59 @@ function selectBestGroundingText(resource: ModuleSourceResource) {
 }
 
 function getSelectedSourceDiagnostics(resource: ModuleSourceResource): DeepLearnSourceDiagnostics {
+  return buildDeepLearnSourceDiagnostics({ resource, storedResource: null, module: null, courseName: resource.courseName ?? null })
+}
+
+export function buildDeepLearnSourceDiagnostics(
+  input: {
+    resource: ModuleSourceResource
+    storedResource?: ModuleResource | null
+    module?: Module | null
+    courseName?: string | null
+  },
+  context: {
+    queuedJobId?: string | null
+    canonicalSourceId?: string | null
+  } = {},
+): DeepLearnSourceDiagnostics {
+  const resource = input.resource
+  const storedResource = input.storedResource ?? null
+  const selected = selectDeepLearnSourceTextCandidate(resource)
+  const normalizedText = selected ? normalizeModuleResourceStudyText(selected.quality.candidateText) : ''
+  const preview = buildSafeExtractedTextPreview(normalizedText)
+
+  return {
+    queuedJobId: context.queuedJobId ?? null,
+    canonicalSourceId: context.canonicalSourceId ?? storedResource?.id ?? resource.id ?? null,
+    moduleResourceId: storedResource?.id ?? resource.id ?? null,
+    id: resource.id ?? null,
+    title: resource.title ?? storedResource?.title ?? null,
+    courseId: storedResource?.courseId ?? input.module?.courseId ?? null,
+    courseName: resource.courseName ?? input.courseName ?? null,
+    moduleId: storedResource?.moduleId ?? input.module?.id ?? null,
+    moduleName: resource.moduleName ?? input.module?.title ?? null,
+    canvasFileId: resource.canvasFileId ?? storedResource?.canvasFileId ?? null,
+    canvasItemId: resource.canvasItemId ?? storedResource?.canvasItemId ?? null,
+    sourceUrl: resource.sourceUrl ?? storedResource?.sourceUrl ?? null,
+    htmlUrl: resource.htmlUrl ?? storedResource?.htmlUrl ?? null,
+    extractionStatus: resource.extractionStatus ?? storedResource?.extractionStatus ?? null,
+    visualExtractionStatus: resource.visualExtractionStatus ?? storedResource?.visualExtractionStatus ?? null,
+    extractedCharCount: resource.extractedCharCount ?? storedResource?.extractedCharCount ?? 0,
+    extractedTextLength: countTrimmedChars(resource.extractedText ?? storedResource?.extractedText ?? null),
+    visualExtractedTextLength: countTrimmedChars(resource.visualExtractedText ?? storedResource?.visualExtractedText ?? null),
+    academicTextCharCount: selected?.quality.candidateCharCount ?? 0,
+    normalizedCharCount: normalizedText.length,
+    sourceFieldUsed: selected?.field ?? 'none',
+    sourceFieldSelectionReason: selected?.reason ?? null,
+    sourceTextQualityReason: selected?.quality.reason ?? null,
+    sourceTextQuality: selected?.quality.quality ?? null,
+    contentHash: normalizedText ? hashDiagnosticText(normalizedText) : null,
+    previewStart: preview.start,
+    previewEnd: preview.end,
+  }
+}
+
+function selectDeepLearnSourceTextCandidate(resource: ModuleSourceResource) {
   const candidates = [
     { field: 'extracted_text' as const, text: resource.extractedText },
     {
@@ -3161,7 +3304,7 @@ function getSelectedSourceDiagnostics(resource: ModuleSourceResource): DeepLearn
     },
     { field: 'extracted_text_preview' as const, text: resource.extractedTextPreview },
   ]
-    .filter((candidate): candidate is { field: Exclude<DeepLearnSourceDiagnostics['sourceFieldUsed'], 'none'>; text: string } => typeof candidate.text === 'string' && candidate.text.trim().length > 0)
+    .filter((candidate): candidate is { field: 'extracted_text' | 'visual_extracted_text' | 'extracted_text_preview'; text: string } => typeof candidate.text === 'string' && candidate.text.trim().length > 0)
     .map((candidate) => ({
       ...candidate,
       quality: classifyExtractedTextQuality({ text: candidate.text, title: resource.title }),
@@ -3172,12 +3315,126 @@ function getSelectedSourceDiagnostics(resource: ModuleSourceResource): DeepLearn
     .sort((left, right) => right.quality.candidateCharCount - left.quality.candidateCharCount)[0]
     ?? candidates.sort((left, right) => right.quality.candidateCharCount - left.quality.candidateCharCount)[0]
 
+  if (!selected) return null
+
   return {
-    id: resource.id ?? null,
-    title: resource.title ?? null,
-    academicTextCharCount: selected?.quality.candidateCharCount ?? 0,
-    sourceFieldUsed: selected?.field ?? 'none',
-    sourceTextQualityReason: selected?.quality.reason ?? null,
+    ...selected,
+    reason: selected.quality.quality === 'meaningful'
+      ? `${selected.field} had the strongest meaningful academic text.`
+      : `${selected.field} was the longest available candidate, but it did not pass meaningful academic text checks.`,
+  }
+}
+
+function countTrimmedChars(value: string | null) {
+  return typeof value === 'string' ? value.trim().length : 0
+}
+
+function hashDiagnosticText(value: string) {
+  return createHash('sha256').update(value).digest('hex').slice(0, 16)
+}
+
+function buildSafeExtractedTextPreview(value: string) {
+  if (!value) return { start: null, end: null }
+  const sanitized = sanitizeDiagnosticPreviewText(value)
+  return {
+    start: sanitized.slice(0, 2200).trim() || null,
+    end: sanitized.length > 2200 ? sanitized.slice(-500).trim() || null : null,
+  }
+}
+
+function sanitizeDiagnosticPreviewText(value: string) {
+  return value
+    .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/gi, '[uuid]')
+    .replace(/https?:\/\/[^\s)]+/gi, '[url]')
+    .replace(/\b(?:api[_-]?key|access[_-]?token|refresh[_-]?token|secret|password|authorization)\s*[:=]\s*\S+/gi, '$1=[redacted]')
+    .split('\n')
+    .filter((line) => !/^\s*(?:file title|source type of the file|module name|course name|extraction quality reported|source text quality reported|grounding strategy used|ai fallback|debug|uuid|metadata)\s*:/i.test(line))
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
+function logDeepLearnGenerationDiagnostics(
+  event: 'source_selected' | 'generation_completed' | 'fallback_used',
+  input: {
+    sourceDiagnostics: DeepLearnSourceDiagnostics
+    sourceMap: AcademicSourceMap | null | undefined
+    validation: ReturnType<typeof validateDeepLearnContentReadyForSave> | null
+    content: DeepLearnGeneratedContent | null
+    fallbackMode: 'not_used' | 'compact_or_micro' | 'source_map_repair' | 'outline_repair' | 'structured_source_repair'
+  },
+) {
+  const sourceMapValidation = input.sourceMap ? validateAcademicSourceMap(input.sourceMap) : null
+  const payload = {
+    event,
+    selectedSource: {
+      queuedJobId: input.sourceDiagnostics.queuedJobId,
+      canonicalSourceId: input.sourceDiagnostics.canonicalSourceId,
+      moduleResourceId: input.sourceDiagnostics.moduleResourceId,
+      id: input.sourceDiagnostics.id,
+      title: input.sourceDiagnostics.title,
+      courseId: input.sourceDiagnostics.courseId,
+      courseName: input.sourceDiagnostics.courseName,
+      moduleId: input.sourceDiagnostics.moduleId,
+      moduleName: input.sourceDiagnostics.moduleName,
+      canvasFileId: input.sourceDiagnostics.canvasFileId,
+      canvasItemId: input.sourceDiagnostics.canvasItemId,
+      sourceUrl: input.sourceDiagnostics.sourceUrl,
+      htmlUrl: input.sourceDiagnostics.htmlUrl,
+      extractionStatus: input.sourceDiagnostics.extractionStatus,
+      visualExtractionStatus: input.sourceDiagnostics.visualExtractionStatus,
+      extractedCharCount: input.sourceDiagnostics.extractedCharCount,
+      extractedTextLength: input.sourceDiagnostics.extractedTextLength,
+      visualExtractedTextLength: input.sourceDiagnostics.visualExtractedTextLength,
+      selectedSourceField: input.sourceDiagnostics.sourceFieldUsed,
+      selectedSourceReason: input.sourceDiagnostics.sourceFieldSelectionReason,
+      academicTextCharCount: input.sourceDiagnostics.academicTextCharCount,
+      normalizedCharCount: input.sourceDiagnostics.normalizedCharCount,
+      sourceTextQuality: input.sourceDiagnostics.sourceTextQuality,
+      sourceTextQualityReason: input.sourceDiagnostics.sourceTextQualityReason,
+      contentHash: input.sourceDiagnostics.contentHash,
+      preview: process.env.NODE_ENV === 'production'
+        ? null
+        : {
+            start: input.sourceDiagnostics.previewStart,
+            end: input.sourceDiagnostics.previewEnd,
+          },
+    },
+    sourceMap: {
+      valid: Boolean(sourceMapValidation?.ok),
+      reason: sourceMapValidation?.reason ?? null,
+      relationCountBeforeValidation: input.sourceMap?.relations?.length ?? 0,
+      relationCountAfterValidation: countValidatedAcademicRelations(input.sourceMap),
+    },
+    generation: {
+      fallbackMode: input.fallbackMode,
+      finalArtifactCounts: input.content ? getDeepLearnArtifactCounts(input.content) : null,
+      validator: input.validation ? {
+        ok: input.validation.ok,
+        reason: input.validation.reason,
+        message: input.validation.message,
+        counts: input.validation.counts,
+      } : null,
+    },
+  }
+
+  if (event === 'source_selected' || input.validation?.ok) {
+    console.info('[deep-learn-generation] diagnostics', payload)
+  } else {
+    console.warn('[deep-learn-generation] diagnostics', payload)
+  }
+}
+
+function getDeepLearnArtifactCounts(content: DeepLearnGeneratedContent) {
+  return {
+    keyTerms: content.answerBank.length,
+    reviewerSections: content.sections.length,
+    mcqs: content.likelyQuizTargets.filter((item) => /multiple choice|mcq/i.test(`${item.target} ${item.reason}`)).length,
+    identificationQuestions: content.identificationItems.length,
+    trueFalseQuestions: content.likelyQuizTargets.filter((item) => /true\/false|true or false/i.test(`${item.target} ${item.reason}`)).length,
+    quickReviewNotes: content.likelyQuizTargets.length,
+    answerBank: content.answerBank.length,
+    distinctions: content.distinctions.length,
   }
 }
 
