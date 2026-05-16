@@ -46,6 +46,8 @@ export const DEEP_LEARN_QUIZ_TARGETS_OUTPUT_TOO_LARGE_REASON = 'quiz_targets_out
 export const DEEP_LEARN_QUIZ_TARGETS_OUTPUT_TOO_LARGE_MESSAGE = 'Likely quiz targets were too large to generate. Other study sections were saved.'
 export const DEEP_LEARN_OPTIONAL_STAGE_OUTPUT_TOO_LARGE_REASON = 'optional_stage_output_too_large'
 export const DEEP_LEARN_OPTIONAL_STAGE_OUTPUT_TOO_LARGE_MESSAGE = 'Some extra review sections were too large to generate, but your Study Pack was saved.'
+export const STRUCTURED_FACT_CARD_COMPILER_VERSION = 'structured_fact_card_compiler_v1'
+export const LEGACY_STAGED_COMPOSER_VERSION = 'legacy_staged_composer'
 const DEEP_LEARN_STAGE_TIMEOUT_MS = 120000
 const DEEP_LEARN_COMPACT_CAUTION_NOTE = 'Generated as a compact reviewer because the source was long.'
 const STRUCTURED_GROUNDING_CHAR_BUDGET = 7600
@@ -374,6 +376,7 @@ export interface DeepLearnGenerationResult {
   sourceGrounding: DeepLearnSourceGrounding
   refreshedResource: ModuleResource | null
   compactFallbackUsed: boolean
+  generatorVersion: typeof STRUCTURED_FACT_CARD_COMPILER_VERSION | typeof LEGACY_STAGED_COMPOSER_VERSION
 }
 
 interface DeepLearnPreparedBinaryInput {
@@ -400,7 +403,7 @@ interface DeepLearnPromptInput extends DeepLearnGenerationContext {
 interface DeepLearnGenerationProgressUpdate {
   progress: number
   statusMessage: string
-  stage: 'compacting_source' | 'high_yield' | 'identification' | 'quick_answers' | 'distinctions' | 'compact_fallback'
+  stage: 'compacting_source' | 'structured_compiler' | 'high_yield' | 'identification' | 'quick_answers' | 'distinctions' | 'compact_fallback'
   compactFallbackUsed?: boolean
 }
 
@@ -429,6 +432,11 @@ interface DeepLearnGenerationOptions {
     canonicalSourceId?: string | null
     retryOfJobId?: string | null
   }
+}
+
+interface DeepLearnGeneratorSelection {
+  version: typeof STRUCTURED_FACT_CARD_COMPILER_VERSION | typeof LEGACY_STAGED_COMPOSER_VERSION
+  reason: string
 }
 
 type DeepLearnStageKey = 'high_yield' | 'identification' | 'quick_answers' | 'distinctions'
@@ -550,11 +558,12 @@ export async function generateDeepLearnNoteForResource(
   input: DeepLearnGenerationContext,
   options: DeepLearnGenerationOptions = {},
 ): Promise<DeepLearnGenerationResult> {
+  const generatorSelection = selectDeepLearnGenerator()
   const grounding = await buildDeepLearnGrounding(input)
   const sourceDiagnostics = buildDeepLearnSourceDiagnostics(input, options.diagnosticsContext)
   logDeepLearnGenerationDiagnostics('source_selected', {
     sourceDiagnostics,
-    sourceMap: grounding.sourceGrounding.sourceMap,
+    sourceMap: generatorSelection.version === LEGACY_STAGED_COMPOSER_VERSION ? grounding.sourceGrounding.sourceMap : null,
     validation: null,
     content: null,
     fallbackMode: 'not_used',
@@ -572,7 +581,7 @@ export async function generateDeepLearnNoteForResource(
   }
   await options.onProgress?.({
     progress: 25,
-    statusMessage: 'Compacting readable source text for staged Deep Learn generation.',
+    statusMessage: 'Preparing readable source text for structured Study Pack generation.',
     stage: 'compacting_source',
   })
 
@@ -584,7 +593,7 @@ export async function generateDeepLearnNoteForResource(
   }
 
   const client = new OpenAI({
-    apiKey: getRequiredDeepLearnApiKey(),
+    apiKey: getRequiredDeepLearnApiKey(generatorSelection.version),
   })
 
   const { content, compactFallbackUsed } = await generateDeepLearnStructuredContent(
@@ -596,10 +605,10 @@ export async function generateDeepLearnNoteForResource(
   const validation = validateDeepLearnContentReadyForSave(content)
   logDeepLearnGenerationDiagnostics('generation_completed', {
     sourceDiagnostics,
-    sourceMap: grounding.sourceGrounding.sourceMap,
+    sourceMap: generatorSelection.version === LEGACY_STAGED_COMPOSER_VERSION ? grounding.sourceGrounding.sourceMap : null,
     validation,
     content,
-    fallbackMode: compactFallbackUsed ? 'compact_or_micro' : 'not_used',
+    fallbackMode: generatorSelection.version === LEGACY_STAGED_COMPOSER_VERSION && compactFallbackUsed ? 'compact_or_micro' : 'not_used',
   })
 
   return {
@@ -607,6 +616,7 @@ export async function generateDeepLearnNoteForResource(
     sourceGrounding: grounding.sourceGrounding,
     refreshedResource: grounding.refreshedResource,
     compactFallbackUsed,
+    generatorVersion: generatorSelection.version,
   }
 }
 
@@ -620,7 +630,17 @@ export async function generateDeepLearnStructuredContent(
   createResponse: DeepLearnResponseCreator,
   options: DeepLearnGenerationOptions = {},
 ): Promise<{ content: DeepLearnGeneratedContent; compactFallbackUsed: boolean }> {
-  if (allowsLegacyStructuredContentCompatibility() && isLegacyDeepLearnResponseMock(createResponse)) {
+  const generatorSelection = selectDeepLearnGenerator()
+  if (generatorSelection.version === LEGACY_STAGED_COMPOSER_VERSION) {
+    logDeepLearnGeneratorRouting({
+      generatorVersion: LEGACY_STAGED_COMPOSER_VERSION,
+      event: 'legacy_composer_started',
+      reason: generatorSelection.reason,
+      isRetry: Boolean(options.diagnosticsContext?.retryOfJobId),
+      sourceTitle: input.resource.title,
+      academicTextCharCount: buildDeepLearnSourceDiagnostics(input, options.diagnosticsContext).academicTextCharCount,
+      chunkCount: null,
+    })
     return generateDeepLearnStructuredContentLegacy(input, grounding, createResponse, options)
   }
   return compileDeepLearnStudyPackFromFactCards(input, grounding, createResponse, options)
@@ -641,17 +661,27 @@ async function compileDeepLearnStudyPackFromFactCards(
   const cleanedSource = cleanupStudyCompilerSource(input.promptGrounding)
   const chunks = splitStudyCompilerChunks(cleanedSource)
   const shortSource = cleanedSource.length <= STUDY_FACT_CARD_SHORT_SOURCE_CHARS
+  const selectedChunks = shortSource ? [cleanedSource] : chunks.slice(0, STUDY_FACT_CARD_MAX_CHUNKS)
+
+  logDeepLearnGeneratorRouting({
+    generatorVersion: STRUCTURED_FACT_CARD_COMPILER_VERSION,
+    event: 'structured_compiler_started',
+    reason: 'default',
+    isRetry: Boolean(options.diagnosticsContext?.retryOfJobId),
+    sourceTitle: input.resource.title,
+    academicTextCharCount: buildDeepLearnSourceDiagnostics(input, options.diagnosticsContext).academicTextCharCount,
+    chunkCount: selectedChunks.length,
+  })
 
   await options.onProgress?.({
     progress: 35,
     statusMessage: shortSource
       ? 'Compiling a compact source-faithful Study Pack.'
       : 'Extracting source facts for the Study Pack.',
-    stage: 'high_yield',
+    stage: 'structured_compiler',
   })
 
   const responses: StudyFactCardCompilerResponse[] = []
-  const selectedChunks = shortSource ? [cleanedSource] : chunks.slice(0, STUDY_FACT_CARD_MAX_CHUNKS)
   for (let index = 0; index < selectedChunks.length; index += 1) {
     const chunk = selectedChunks[index] ?? ''
     if (!chunk.trim()) continue
@@ -670,7 +700,7 @@ async function compileDeepLearnStudyPackFromFactCards(
       statusMessage: shortSource
         ? 'Assembling compact Study Pack.'
         : `Extracting study facts from source chunk ${index + 1} of ${selectedChunks.length}.`,
-      stage: index === 0 ? 'identification' : 'quick_answers',
+      stage: 'structured_compiler',
     })
   }
 
@@ -984,14 +1014,38 @@ function buildFactCardDistinctions(cards: StudyFactCard[]) {
     }))
 }
 
-function allowsLegacyStructuredContentCompatibility() {
-  return process.env.NODE_ENV === 'test' || process.env.npm_lifecycle_event === 'test'
+function selectDeepLearnGenerator(): DeepLearnGeneratorSelection {
+  const rawMode = process.env.DEEP_LEARN_GENERATOR_MODE?.trim()
+  if (rawMode === LEGACY_STAGED_COMPOSER_VERSION) {
+    return { version: LEGACY_STAGED_COMPOSER_VERSION, reason: 'DEEP_LEARN_GENERATOR_MODE=legacy_staged_composer' }
+  }
+  if (rawMode && rawMode !== STRUCTURED_FACT_CARD_COMPILER_VERSION) {
+    console.warn('[deep-learn-generation] ignoring invalid generator mode', {
+      requestedMode: rawMode,
+      defaultGeneratorVersion: STRUCTURED_FACT_CARD_COMPILER_VERSION,
+    })
+  }
+  return { version: STRUCTURED_FACT_CARD_COMPILER_VERSION, reason: 'default' }
 }
 
-function isLegacyDeepLearnResponseMock(createResponse: DeepLearnResponseCreator) {
-  const source = Function.prototype.toString.call(createResponse)
-  return /deep_learn_(?:high_yield|identification|quick_answers|distinctions)_stage/.test(source)
-    || /high_yield/.test(source) && /identification/.test(source) && /quick_answers/.test(source)
+function logDeepLearnGeneratorRouting(input: {
+  generatorVersion: typeof STRUCTURED_FACT_CARD_COMPILER_VERSION | typeof LEGACY_STAGED_COMPOSER_VERSION
+  event: 'structured_compiler_started' | 'legacy_composer_started'
+  reason: string
+  isRetry: boolean
+  sourceTitle: string
+  academicTextCharCount: number
+  chunkCount: number | null
+}) {
+  console.info('[deep-learn-generation] generator routing', {
+    generatorVersion: input.generatorVersion,
+    event: input.event,
+    reason: input.reason,
+    isRetry: input.isRetry,
+    sourceTitle: input.sourceTitle,
+    academicTextCharCount: input.academicTextCharCount,
+    chunkCount: input.chunkCount,
+  })
 }
 
 async function generateDeepLearnStructuredContentLegacy(
@@ -4496,12 +4550,12 @@ function logDeepLearnGenerationDiagnostics(
             end: input.sourceDiagnostics.previewEnd,
           },
     },
-    sourceMap: {
+    sourceMap: input.sourceMap ? {
       valid: Boolean(sourceMapValidation?.ok),
       reason: sourceMapValidation?.reason ?? null,
       relationCountBeforeValidation: input.sourceMap?.relations?.length ?? 0,
       relationCountAfterValidation: countValidatedAcademicRelations(input.sourceMap),
-    },
+    } : null,
     generation: {
       fallbackMode: input.fallbackMode,
       finalArtifactCounts: input.content ? getDeepLearnArtifactCounts(input.content) : null,
@@ -4691,9 +4745,14 @@ function chunkGroundingText(value: string, targetChars: number) {
   return chunks
 }
 
-function getRequiredDeepLearnApiKey() {
+function getRequiredDeepLearnApiKey(
+  generatorVersion: typeof STRUCTURED_FACT_CARD_COMPILER_VERSION | typeof LEGACY_STAGED_COMPOSER_VERSION = STRUCTURED_FACT_CARD_COMPILER_VERSION,
+) {
   const apiKey = process.env.OPENAI_API_KEY?.trim()
   if (!apiKey) {
+    if (generatorVersion === STRUCTURED_FACT_CARD_COMPILER_VERSION) {
+      throw new DeepLearnGenerationIncompleteError('structured_compiler_setup_missing_openai_api_key')
+    }
     throw new Error('OPENAI_API_KEY is not set.')
   }
 
@@ -4800,17 +4859,23 @@ function buildDeepLearnStageFailureMessage(options: DeepLearnStageErrorOptions) 
 }
 
 function buildDeepLearnIncompleteMessage(reason: string) {
+  if (reason === 'structured_compiler_setup_missing_openai_api_key') {
+    return 'Structured Study Pack Compiler setup error: OPENAI_API_KEY is not set.'
+  }
   if (reason === 'insufficient_structured_artifacts') {
     return DEEP_LEARN_EMPTY_STUDY_ARTIFACTS_MESSAGE
   }
   if (reason === 'invalid_structured_outputs_json') {
-    return 'High-Yield First returned malformed structured output.'
+    return 'Structured Study Pack Compiler returned malformed structured output.'
   }
   if (reason === 'empty_structured_outputs') {
-    return 'High-Yield First returned no structured output.'
+    return 'Structured Study Pack Compiler returned no structured output.'
+  }
+  if (reason === 'max_output_tokens') {
+    return 'Structured Study Pack Compiler hit the model response limit while extracting fact cards. Try a smaller source or split the module.'
   }
   if (reason.startsWith('provider:')) {
-    return `High-Yield First failed during Deep Learn generation: ${reason.slice('provider:'.length)}.`
+    return `Structured Study Pack Compiler failed during Deep Learn generation: ${reason.slice('provider:'.length)}.`
   }
   if (reason === DEEP_LEARN_IDENTIFICATION_OUTPUT_TOO_LARGE_REASON) {
     return DEEP_LEARN_IDENTIFICATION_OUTPUT_TOO_LARGE_MESSAGE

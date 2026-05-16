@@ -5,6 +5,67 @@ Last Updated: 2026-05-16
 
 ---
 
+## Session Update - 2026-05-16 (Structured Compiler Queue Routing)
+
+### What changed
+
+- Wired normal `learn_generation` queue processing to the structured fact-card compiler as the default path for both fresh and retry jobs.
+- Added explicit generator routing constants and selector:
+  - default: `structured_fact_card_compiler_v1`
+  - legacy opt-in only: `DEEP_LEARN_GENERATOR_MODE=legacy_staged_composer`
+- Removed test/mock-shape auto-routing to the legacy staged composer.
+- Added required generator routing logs for structured compiler starts and legacy composer starts.
+- Changed structured compiler progress stages to `structured_compiler` so default jobs no longer fail/report as `high_yield`, `identification`, or `quick_answers`.
+- Added `generatorVersion` to queue running/completed/failure metadata.
+- Suppressed Source Map diagnostics in normal structured compiler diagnostics; Source Map diagnostics remain available only when legacy mode is explicitly selected.
+- Added a clear setup failure for missing `OPENAI_API_KEY` in structured compiler mode.
+
+### Files touched
+
+- `lib/deep-learn-generation.ts`
+- `actions/queue-jobs.ts`
+- `tests/deep-learn-generation.test.ts`
+- `tests/queue.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Production fresh jobs from the Courses/Learn path still showed legacy staged composer behavior despite the fact-card compiler existing. The queue path needed an explicit default selector and job metadata so every normal Deep Learn job goes through the structured compiler unless legacy mode is deliberately enabled.
+
+### Tests run
+
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- deep-learn-generation queue` - passed
+
+### Verification result
+
+- Verified default generation calls `deep_learn_study_pack_compiler` and does not enter `high_yield`, `identification`, or `quick_answers`.
+- Verified structured routing diagnostics include `generatorVersion: "structured_fact_card_compiler_v1"`, `event: "structured_compiler_started"`, retry state, source title, academic text char count, and chunk count.
+- Verified legacy staged composer only runs when `DEEP_LEARN_GENERATOR_MODE=legacy_staged_composer`.
+- Verified queue source contracts cover fresh and retry jobs routing through `generateDeepLearnNoteForResource` with retry context and structured generator metadata.
+- Verified meaningful extracted text completes through the compiler path without Source Map or staged composer diagnostics.
+
+### Known risks
+
+- The legacy staged composer remains in code for explicit opt-in regression coverage and emergency rollback, but it is no longer selected by test mock shape or normal queue payloads.
+- Queue source tests assert routing contracts by source inspection rather than a full database-backed queue execution.
+
+### Blockers
+
+- No blocker remains.
+- `test_output.txt` remains untracked and was not committed.
+
+### Next recommended step
+
+Deploy and run fresh Courses/Learn generations for SDLC, IT Security, and Arnis. Confirm production logs show `structured_compiler_started` and no default failures at `high_yield`, `identification`, `quick_answers`, or study pack summary.
+
+### Suggested commit message
+
+wire deep learn jobs to structured compiler
+
+---
+
 ## Session Update - 2026-05-16 (Structured Study Pack Compiler)
 
 ### What changed

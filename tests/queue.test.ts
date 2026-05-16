@@ -402,15 +402,33 @@ test('resource extraction retries normal source reprocessing before OCR fallback
   assert.match(source, /const result = await reprocessStoredModuleResource\(resource,[\s\S]*const queuedOcrJobs = result\.update\.visualExtractionStatus === 'available'/)
 })
 
-test('learn generation queue uses staged progress updates and compact fallback completion copy', () => {
+test('learn generation queue uses structured compiler progress updates and generator metadata', () => {
   const queueSource = readFileSync('actions/queue-jobs.ts', 'utf8')
   const generationSource = readFileSync('lib/deep-learn-generation.ts', 'utf8')
   assert.match(queueSource, /progress:\s*25/)
   assert.match(queueSource, /progress:\s*85/)
-  assert.match(generationSource, /fullProgress:\s*40/)
-  assert.match(generationSource, /fullProgress:\s*55/)
-  assert.match(generationSource, /fullProgress:\s*70/)
-  assert.match(queueSource, /Compact study pack ready\./)
+  assert.match(generationSource, /STRUCTURED_FACT_CARD_COMPILER_VERSION = 'structured_fact_card_compiler_v1'/)
+  assert.match(generationSource, /event:\s*'structured_compiler_started'/)
+  assert.match(queueSource, /generatorVersion:\s*generated\.generatorVersion/)
+  assert.match(queueSource, /Preparing readable source text for structured Study Pack generation\./)
+})
+
+test('fresh and retry learn generation jobs route through the structured compiler by default', () => {
+  const queueSource = readFileSync('actions/queue-jobs.ts', 'utf8')
+  const generationSource = readFileSync('lib/deep-learn-generation.ts', 'utf8')
+  assert.match(queueSource, /queueLearnGenerationAction[\s\S]*processLearnGenerationJob\(\{[\s\S]*resourceId: input\.resourceId/)
+  assert.match(queueSource, /retryLearnGenerationJobAction[\s\S]*processLearnGenerationJob\(\{[\s\S]*retryOfJobId: previousJob\.id/)
+  assert.match(queueSource, /generateDeepLearnNoteForResource\([\s\S]*retryOfJobId: input\.retryOfJobId \?\? null/)
+  assert.match(generationSource, /selectDeepLearnGenerator\(\)[\s\S]*STRUCTURED_FACT_CARD_COMPILER_VERSION/)
+  assert.doesNotMatch(queueSource, /generatorMode/)
+})
+
+test('legacy staged composer is gated by explicit generator mode', () => {
+  const generationSource = readFileSync('lib/deep-learn-generation.ts', 'utf8')
+  assert.match(generationSource, /rawMode === LEGACY_STAGED_COMPOSER_VERSION/)
+  assert.match(generationSource, /event:\s*'legacy_composer_started'/)
+  assert.doesNotMatch(generationSource, /allowsLegacyStructuredContentCompatibility/)
+  assert.doesNotMatch(generationSource, /isLegacyDeepLearnResponseMock/)
 })
 
 test('learn generation queue maps quick-answer size failures to specific student copy', () => {

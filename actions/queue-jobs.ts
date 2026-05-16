@@ -37,6 +37,8 @@ import {
   DEEP_LEARN_QUIZ_TARGETS_OUTPUT_TOO_LARGE_REASON,
   DeepLearnGenerationBlockedError,
   DeepLearnGenerationIncompleteError,
+  type DeepLearnGenerationResult,
+  STRUCTURED_FACT_CARD_COMPILER_VERSION,
   assertDeepLearnContentReadyForSave,
   buildDeepLearnSourceDiagnostics,
   generateDeepLearnNoteForResource,
@@ -1132,6 +1134,7 @@ async function processLearnGenerationJob(input: {
     resourceId: input.resourceId,
     courseId: input.courseId,
     retryOfJobId: input.retryOfJobId ?? null,
+    generatorVersion: STRUCTURED_FACT_CARD_COMPILER_VERSION,
   }
 
   async function canceled() {
@@ -1198,6 +1201,7 @@ async function processLearnGenerationJob(input: {
       resourceTitle: resource.title,
       sourceTitle: resource.title,
       retryOfJobId: input.retryOfJobId ?? null,
+      generatorVersion: STRUCTURED_FACT_CARD_COMPILER_VERSION,
     }
     const readiness = classifyDeepLearnResourceReadiness({ resource, storedResource, canonicalResourceId })
 
@@ -1244,9 +1248,10 @@ async function processLearnGenerationJob(input: {
         moduleId: workspace.module.id,
         courseId: workspace.module.courseId ?? input.courseId ?? null,
         resourceTitle: resource.title,
-        statusMessage: 'Compacting readable source text for staged Deep Learn generation.',
+        statusMessage: 'Preparing readable source text for structured Study Pack generation.',
         retryOfJobId: input.retryOfJobId ?? null,
         retryAttempt: Boolean(input.retryOfJobId),
+        generatorVersion: STRUCTURED_FACT_CARD_COMPILER_VERSION,
       },
     })
     if (await canceled()) return
@@ -1255,10 +1260,10 @@ async function processLearnGenerationJob(input: {
       t.title.trim().toLowerCase() === resource.title.trim().toLowerCase()
     ) ?? null
 
-    let generated
+    let generated: DeepLearnGenerationResult | null = null
     let heartbeat: ReturnType<typeof setInterval> | null = null
     let latestProgress = 25
-    latestStatusMessage = 'Compacting readable source text for staged Deep Learn generation.'
+    latestStatusMessage = 'Preparing readable source text for structured Study Pack generation.'
     try {
       const sourceDiagnostics = buildDeepLearnSourceDiagnostics({
         resource,
@@ -1278,6 +1283,7 @@ async function processLearnGenerationJob(input: {
         sourceTitle: resource.title,
         sourceFieldUsed: sourceDiagnostics.sourceFieldUsed,
         academicTextCharCount: sourceDiagnostics.academicTextCharCount,
+        generatorVersion: STRUCTURED_FACT_CARD_COMPILER_VERSION,
       }
       heartbeat = setInterval(() => {
         void updateQueuedJobStatus(input.jobId, 'running', {
@@ -1287,6 +1293,7 @@ async function processLearnGenerationJob(input: {
             moduleId: workspace.module.id,
             resourceTitle: resource.title,
             statusMessage: latestStatusMessage,
+            generatorVersion: STRUCTURED_FACT_CARD_COMPILER_VERSION,
           },
         })
       }, 25000)
@@ -1317,6 +1324,7 @@ async function processLearnGenerationJob(input: {
               compactFallbackUsed: update.compactFallbackUsed ?? false,
               retryOfJobId: input.retryOfJobId ?? null,
               retryAttempt: Boolean(input.retryOfJobId),
+              generatorVersion: generated?.generatorVersion ?? STRUCTURED_FACT_CARD_COMPILER_VERSION,
             },
           })
         },
@@ -1360,6 +1368,10 @@ async function processLearnGenerationJob(input: {
         return
       }
       throw err
+    }
+
+    if (!generated) {
+      throw new Error('Deep Learn generation did not return a Study Pack.')
     }
 
     await updateQueuedJobStatus(input.jobId, 'running', { progress: 85 })
@@ -1406,6 +1418,7 @@ async function processLearnGenerationJob(input: {
       partialReason: getPartialStudyPackReason(generated.content.cautionNotes),
       retryOfJobId: input.retryOfJobId ?? null,
       retryAttempt: Boolean(input.retryOfJobId),
+      generatorVersion: generated.generatorVersion,
     })
     revalidateLearnQueuePaths(workspace.module.id, workspace.module.courseId ?? input.courseId ?? null, canonicalResourceId)
 

@@ -12,13 +12,13 @@ import {
   DEEP_LEARN_IDENTIFICATION_OUTPUT_TOO_LARGE_MESSAGE,
   DEEP_LEARN_IDENTIFICATION_OUTPUT_TOO_LARGE_REASON,
   DEEP_LEARN_MAX_OUTPUT_TOKENS,
-  DEEP_LEARN_OUTPUT_TOO_LARGE_MESSAGE,
   DEEP_LEARN_OPTIONAL_STAGE_OUTPUT_TOO_LARGE_MESSAGE,
   DEEP_LEARN_OPTIONAL_STAGE_OUTPUT_TOO_LARGE_REASON,
   DEEP_LEARN_QUICK_ANSWERS_OUTPUT_TOO_LARGE_MESSAGE,
   DEEP_LEARN_QUICK_ANSWERS_OUTPUT_TOO_LARGE_REASON,
   DEEP_LEARN_QUIZ_TARGETS_OUTPUT_TOO_LARGE_MESSAGE,
   DEEP_LEARN_QUIZ_TARGETS_OUTPUT_TOO_LARGE_REASON,
+  LEGACY_STAGED_COMPOSER_VERSION,
   DeepLearnGenerationIncompleteError,
   DeepLearnGenerationBlockedError,
   DeepLearnGeneratedContentValidationError,
@@ -43,6 +43,22 @@ import {
 } from '../lib/deep-learn-source-map'
 import type { ModuleSourceResource } from '../lib/module-workspace'
 import type { Module, ModuleResource } from '../lib/types'
+
+async function generateDeepLearnStructuredContentWithLegacyComposer(
+  ...args: Parameters<typeof generateDeepLearnStructuredContent>
+): ReturnType<typeof generateDeepLearnStructuredContent> {
+  const previousMode = process.env.DEEP_LEARN_GENERATOR_MODE
+  process.env.DEEP_LEARN_GENERATOR_MODE = LEGACY_STAGED_COMPOSER_VERSION
+  try {
+    return await generateDeepLearnStructuredContent(...args)
+  } finally {
+    if (previousMode === undefined) {
+      delete process.env.DEEP_LEARN_GENERATOR_MODE
+    } else {
+      process.env.DEEP_LEARN_GENERATOR_MODE = previousMode
+    }
+  }
+}
 
 test('buildDeepLearnGroundingWithDependencies recovers weak resources through source fetch', async () => {
   const resource = createLearnResource({
@@ -497,7 +513,7 @@ test('Deep Learn output token policy uses bounded 10000-token caps and clean stu
   assert.equal(DEEP_LEARN_COMPACT_MAX_OUTPUT_TOKENS, 10000)
 
   const error = new DeepLearnGenerationIncompleteError('max_output_tokens')
-  assert.equal(error.message, DEEP_LEARN_OUTPUT_TOO_LARGE_MESSAGE)
+  assert.equal(error.message, 'Structured Study Pack Compiler hit the model response limit while extracting fact cards. Try a smaller source or split the module.')
   assert.equal(error.reason, 'max_output_tokens')
   assert.doesNotMatch(error.message, /max_output_tokens/i)
   assert.doesNotMatch(error.message, /finish in one pass|Regenerate a shorter version/i)
@@ -534,7 +550,7 @@ test('buildDeepLearnPrompt compact retry enforces smaller output limits', () => 
 
 test('staged Deep Learn generation completes long readable sources without one giant response', async () => {
   const progress: Array<{ progress: number; statusMessage: string; compactFallbackUsed?: boolean }> = []
-  const result = await generateDeepLearnStructuredContent(
+  const result = await generateDeepLearnStructuredContentWithLegacyComposer(
     createPromptInput(),
     createPreparedGrounding(),
     async ({ schemaName }) => {
@@ -585,7 +601,7 @@ test('staged Deep Learn generation completes long readable sources without one g
 test('staged Deep Learn generation saves a compact fallback when the full quick-answer stage is too large', async () => {
   const progress: Array<{ progress: number; statusMessage: string; compactFallbackUsed?: boolean }> = []
   let quickAnswerCalls = 0
-  const result = await generateDeepLearnStructuredContent(
+  const result = await generateDeepLearnStructuredContentWithLegacyComposer(
     createPromptInput(),
     createPreparedGrounding(),
     async ({ schemaName }) => {
@@ -644,7 +660,7 @@ test('staged Deep Learn generation saves a compact fallback when the full quick-
 
 test('staged Deep Learn generation completes through micro fallback when compact also exceeds limits', async () => {
   let identificationCalls = 0
-  const result = await generateDeepLearnStructuredContent(
+  const result = await generateDeepLearnStructuredContentWithLegacyComposer(
     createPromptInput(),
     createPreparedGrounding(),
     async ({ schemaName }) => {
@@ -701,7 +717,7 @@ test('staged Deep Learn generation saves partial output when identification exce
   let identificationCalls = 0
   const tokenCaps: number[] = []
   const prompts: string[] = []
-  const result = await generateDeepLearnStructuredContent(
+  const result = await generateDeepLearnStructuredContentWithLegacyComposer(
     createPromptInput(),
     createPreparedGrounding(),
     async ({ schemaName, maxOutputTokens, promptText }) => {
@@ -824,7 +840,7 @@ test('meaningful extracted text with dense source relations does not fail when i
     scanFallbackInput: null,
   }
 
-  const result = await generateDeepLearnStructuredContent(
+  const result = await generateDeepLearnStructuredContentWithLegacyComposer(
     promptInput,
     grounding,
     async ({ schemaName }) => {
@@ -911,7 +927,7 @@ test('quick-answer output size failures save partial Study Pack content', async 
   }
   let result
   try {
-    result = await generateDeepLearnStructuredContent(
+    result = await generateDeepLearnStructuredContentWithLegacyComposer(
       createPromptInput(),
       createPreparedGrounding(),
       async ({ schemaName, maxOutputTokens, promptText }) => {
@@ -995,7 +1011,7 @@ test('partial save completes when only caution notes contain composer leakage', 
   }
   let result
   try {
-    result = await generateDeepLearnStructuredContent(
+    result = await generateDeepLearnStructuredContentWithLegacyComposer(
       createPromptInput(),
       createPreparedGrounding(),
       async ({ schemaName }) => {
@@ -1050,7 +1066,7 @@ test('partial save completes when only caution notes contain composer leakage', 
 })
 
 test('SDLC-style quick-answer partial save is not failed by internal caution note wording', async () => {
-  const result = await generateDeepLearnStructuredContent(
+  const result = await generateDeepLearnStructuredContentWithLegacyComposer(
     createPromptInput(),
     createPreparedGrounding(),
     async ({ schemaName }) => {
@@ -1127,7 +1143,7 @@ test('valid source saves partial Study Pack when likely quiz targets exceed all 
   }
   let result
   try {
-    result = await generateDeepLearnStructuredContent(
+    result = await generateDeepLearnStructuredContentWithLegacyComposer(
       createPromptInput(),
       createPreparedGrounding(),
       async ({ schemaName, maxOutputTokens }) => {
@@ -1191,7 +1207,7 @@ test('valid source saves partial Study Pack when likely quiz targets exceed all 
 test('valid source saves partial Study Pack when identification and quiz-target optional stages fail', async () => {
   let identificationCalls = 0
   let quizTargetCalls = 0
-  const result = await generateDeepLearnStructuredContent(
+  const result = await generateDeepLearnStructuredContentWithLegacyComposer(
     createPromptInput(),
     createPreparedGrounding(),
     async ({ schemaName }) => {
@@ -1239,7 +1255,7 @@ test('valid source saves partial Study Pack when identification and quiz-target 
 })
 
 test('optional-stage parse failure after core content saves available Study Pack sections', async () => {
-  const result = await generateDeepLearnStructuredContent(
+  const result = await generateDeepLearnStructuredContentWithLegacyComposer(
     createPromptInput(),
     createPreparedGrounding(),
     async ({ schemaName }) => {
@@ -1346,7 +1362,7 @@ test('Deep Learn save validator rejects source-summary-only reviewer artifacts',
 
 test('readable IT Security-like source repairs weak model output locally', async () => {
   let calls = 0
-  const result = await generateDeepLearnStructuredContent(
+  const result = await generateDeepLearnStructuredContentWithLegacyComposer(
     createItSecurityPromptInput(),
     createItSecurityPreparedGrounding(),
     async ({ schemaName }) => {
@@ -1614,7 +1630,7 @@ test('Deep Learn generation repairs sparse structured output with outline exam r
     extractedCharCount: SPARSE_RELATION_ARNIS_OUTLINE_SOURCE.length,
     extractionStatus: 'completed',
   })
-  const result = await generateDeepLearnStructuredContent(
+  const result = await generateDeepLearnStructuredContentWithLegacyComposer(
     {
       ...createContext(resource, storedResource),
       promptGrounding: buildAcademicStructuredGrounding(SPARSE_RELATION_ARNIS_OUTLINE_SOURCE),
@@ -1673,7 +1689,7 @@ test('Deep Learn generation repairs sparse structured output with outline exam r
 test('Deep Learn invalid JSON fails cleanly without fallback retry loop', async () => {
   let calls = 0
   await assert.rejects(
-    () => generateDeepLearnStructuredContent(
+    () => generateDeepLearnStructuredContentWithLegacyComposer(
       createPromptInput(),
       createPreparedGrounding(),
       async () => {
@@ -1694,7 +1710,7 @@ test('Deep Learn invalid JSON fails cleanly without fallback retry loop', async 
 test('Deep Learn empty provider response fails cleanly without fallback retry loop', async () => {
   let calls = 0
   await assert.rejects(
-    () => generateDeepLearnStructuredContent(
+    () => generateDeepLearnStructuredContentWithLegacyComposer(
       createPromptInput(),
       createPreparedGrounding(),
       async () => {
@@ -1715,7 +1731,7 @@ test('Deep Learn empty provider response fails cleanly without fallback retry lo
 test('Deep Learn provider errors fail cleanly without compact or micro retry loop', async () => {
   let calls = 0
   await assert.rejects(
-    () => generateDeepLearnStructuredContent(
+    () => generateDeepLearnStructuredContentWithLegacyComposer(
       createPromptInput(),
       createPreparedGrounding(),
       async () => {
@@ -2467,7 +2483,7 @@ test('Deep Learn diagnostics select meaningful extracted_text over empty visual 
     },
     generationMode: 'text' as const,
   }
-  const content = await generateDeepLearnStructuredContent(promptInput, createPreparedGrounding(), async (request) => {
+  const content = await generateDeepLearnStructuredContentWithLegacyComposer(promptInput, createPreparedGrounding(), async (request) => {
     if (request.schemaName.includes('high_yield')) return jsonResponse({ title: 'Data Organization', overview: 'Data organization supports reliable database use.', sections: [] })
     if (request.schemaName.includes('identification')) return jsonResponse({ sections: [], identificationItems: [] })
     if (request.schemaName.includes('quick_answers')) return jsonResponse({ sections: [], answerBank: [] })
@@ -2602,6 +2618,93 @@ test('structured Study Pack compiler uses chunked fact extraction for long sourc
   assert.ok(result.content.answerBank.length >= 6)
 })
 
+test('structured compiler is the default and never enters legacy stages', async () => {
+  const source = buildStructuredFactSource('Default compiler', 8)
+  const schemaNames: string[] = []
+  const result = await generateDeepLearnStructuredContent(createStructuredPromptInput(source, 'Default Compiler.pdf'), createStructuredPreparedGrounding(source), async (request) => {
+    schemaNames.push(request.schemaName)
+    assert.doesNotMatch(request.schemaName, /high_yield|identification|quick_answers/)
+    return factCardResponse(createSequentialFactCards('Default compiler', 6), 'Default Compiler')
+  })
+
+  assert.deepEqual(schemaNames, ['deep_learn_study_pack_compiler'])
+  assert.equal(result.content.cautionNotes.length, 0)
+  assert.equal(result.content.identificationItems.length, 6)
+})
+
+test('structured compiler routing diagnostics include fresh and retry metadata', async () => {
+  const source = buildStructuredFactSource('Routing diagnostics', 8)
+  const logs = await captureConsoleInfo(async () => {
+    await generateDeepLearnStructuredContent(createStructuredPromptInput(source, 'Fresh Source.pdf'), createStructuredPreparedGrounding(source), async () => factCardResponse(createSequentialFactCards('Routing diagnostics', 6), 'Fresh Source'), {
+      diagnosticsContext: {
+        queuedJobId: 'job-fresh',
+        canonicalSourceId: 'resource-fresh',
+        retryOfJobId: null,
+      },
+    })
+    await generateDeepLearnStructuredContent(createStructuredPromptInput(source, 'Retry Source.pdf'), createStructuredPreparedGrounding(source), async () => factCardResponse(createSequentialFactCards('Routing diagnostics', 6), 'Retry Source'), {
+      diagnosticsContext: {
+        queuedJobId: 'job-retry',
+        canonicalSourceId: 'resource-retry',
+        retryOfJobId: 'job-old',
+      },
+    })
+  })
+
+  const routingLogs = logs
+    .map((entry) => entry[1])
+    .filter((payload): payload is Record<string, unknown> => Boolean(payload) && typeof payload === 'object')
+    .filter((payload) => payload.event === 'structured_compiler_started')
+
+  assert.equal(routingLogs.length, 2)
+  assert.equal(routingLogs[0]?.generatorVersion, 'structured_fact_card_compiler_v1')
+  assert.equal(routingLogs[0]?.isRetry, false)
+  assert.equal(routingLogs[0]?.sourceTitle, 'Fresh Source.pdf')
+  assert.equal(typeof routingLogs[0]?.academicTextCharCount, 'number')
+  assert.equal(typeof routingLogs[0]?.chunkCount, 'number')
+  assert.equal(routingLogs[1]?.isRetry, true)
+})
+
+test('legacy staged composer only runs when the explicit generator flag enables it', async () => {
+  const source = buildStructuredFactSource('Legacy gated', 8)
+  const defaultSchemas: string[] = []
+  await generateDeepLearnStructuredContent(createStructuredPromptInput(source, 'Legacy Gate.pdf'), createStructuredPreparedGrounding(source), async (request) => {
+    defaultSchemas.push(request.schemaName)
+    assert.doesNotMatch(request.schemaName, /high_yield|identification|quick_answers/)
+    return factCardResponse(createSequentialFactCards('Legacy gated', 6), 'Legacy Gate')
+  })
+  assert.deepEqual(defaultSchemas, ['deep_learn_study_pack_compiler'])
+
+  const legacySchemas: string[] = []
+  await generateDeepLearnStructuredContentWithLegacyComposer(createPromptInput(), createPreparedGrounding(), async (request) => {
+    legacySchemas.push(request.schemaName)
+    if (request.schemaName.includes('high_yield')) return jsonResponse({ title: 'Legacy Gate', overview: 'Legacy gate overview.', sections: [] })
+    if (request.schemaName.includes('identification')) return jsonResponse({ sections: [], identificationItems: [] })
+    if (request.schemaName.includes('quick_answers')) return jsonResponse({ sections: [], answerBank: [] })
+    return jsonResponse({ sections: [], distinctions: [], likelyQuizTargets: [], cautionNotes: [] })
+  })
+
+  assert.ok(legacySchemas.some((name) => name.includes('high_yield')))
+  assert.ok(legacySchemas.some((name) => name.includes('identification')))
+  assert.ok(legacySchemas.some((name) => name.includes('quick_answers')))
+})
+
+test('structured compiler completes meaningful extracted text without source-map or staged diagnostics', async () => {
+  const source = buildStructuredFactSource('Clean diagnostics', 8)
+  const schemaNames: string[] = []
+  const logs = await captureConsoleInfo(async () => {
+    await generateDeepLearnStructuredContent(createStructuredPromptInput(source, 'Clean Diagnostics.pdf'), createStructuredPreparedGrounding(source), async (request) => {
+      schemaNames.push(request.schemaName)
+      return factCardResponse(createSequentialFactCards('Clean diagnostics', 6), 'Clean Diagnostics')
+    })
+  })
+
+  assert.equal(schemaNames.every((name) => !/high_yield|identification|quick_answers|source_map/i.test(name)), true)
+  const serializedLogs = JSON.stringify(logs)
+  assert.match(serializedLogs, /structured_fact_card_compiler_v1/)
+  assert.doesNotMatch(serializedLogs, /sourceMap|source_map|stage_completed|partial_save|high_yield|quick_answers/)
+})
+
 test('Deep Learn diagnostics select visual_extracted_text when extracted_text is metadata-only', () => {
   const weakExtract = 'File title: Lecture.pdf\nUUID: 11111111-1111-4111-8111-111111111111\nDebug: no readable text'
   const visualText = [
@@ -2707,6 +2810,20 @@ function factCardResponse(factCards: unknown[], title: string) {
     overview: `${title} study facts from selected source text.`,
     factCards,
   })
+}
+
+async function captureConsoleInfo(callback: () => Promise<void>) {
+  const originalInfo = console.info
+  const logs: unknown[][] = []
+  console.info = (...args: unknown[]) => {
+    logs.push(args)
+  }
+  try {
+    await callback()
+  } finally {
+    console.info = originalInfo
+  }
+  return logs
 }
 
 function buildStructuredFactSource(prefix: string, count: number) {
