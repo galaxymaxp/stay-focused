@@ -5,6 +5,71 @@ Last Updated: 2026-05-16
 
 ---
 
+## Session Update - 2026-05-16 (Partial Save Leakage Cleanup)
+
+### What changed
+
+- Added a Deep Learn save cleanup pass that removes internal Source Map bank prompts from `identificationItems` before generated content is saved.
+- Updated the Study Pack validator so Source Map bank prompts do not count toward `identificationCount` or distinct concept density.
+- Added explicit validator rejection for leaked Source Map identification prompts, including:
+  - `Recall the exam meaning of ...`
+  - `Explain the source relationship`
+  - `Explain the cause-effect relationship`
+  - `Use the source formula`
+  - `Classify the items under ...`
+  - `Explain the relationship inside ...`
+  - `Define Title Case Phrase.`
+- Adjusted deterministic Source Map definition prompts from `Define X.` to `What does X mean in this source?` so fallback reviewer content remains student-facing instead of matching internal bank phrasing.
+- Hardened optional-stage partial saves so composer leakage in `cautionNotes` or optional enrichment sections/artifacts is dropped before final validation. Core Study Pack content is still required; cleanup does not make empty content saveable.
+- Expanded the quick-answer partial-save regression to prove optional `source-backed` caution wording is removed instead of flipping the final partial save to failed.
+- Added a regression for the SDLC-style case where leaked Source Map bank prompts in `identificationItems` now fail validation with `identificationCount: 0`.
+
+### Files touched
+
+- `lib/deep-learn-generation.ts`
+- `tests/deep-learn-generation.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Production partial-save behavior had two leakage paths. In the IT Security case, a quick-answer size failure correctly selected partial save, but composer leakage in optional caution/enrichment text could make the final validation fail. In the SDLC case, compact/partial artifacts could serialize Source Map bank prompts directly into `identificationItems`, making the pack look dense while giving students internal prompt scaffolding instead of usable identification questions.
+
+### Tests run
+
+- `npm test -- deep-learn-generation` - passed
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- deep-learn-generation queue` - passed
+- Attempted exact combined command `npm run typecheck && npm run lint && npm test -- deep-learn-generation queue` - blocked by this PowerShell version because `&&` is not accepted as a statement separator.
+
+### Verification result
+
+- Passed all requested verification commands when run sequentially.
+- Verified quick-answer partial save still completes after all fallback sizes are exhausted, while optional `source-backed` caution text is removed from the saved pack.
+- Verified Source Map bank prompt leakage in `identificationItems` no longer contributes to `identificationCount`; the regression now fails validation with `source_map_identification_leakage`.
+- Verified generated Source Map fallback reviewer content still passes existing IT Security, PATHFit Arnis, quiz-pack, reviewer, and source-map regressions.
+
+### Known risks
+
+- The Source Map leakage filter intentionally rejects simple `Define Title Case Phrase.` prompts in `identificationItems`. Legitimate model-generated identification questions should use a more student-facing stem such as `What does X mean in this source?`.
+- Optional composer-leakage cleanup only drops optional caution/enrichment content during partial saves. If core sections contain composer leakage, the save still fails as intended.
+
+### Blockers
+
+- No code blocker remains.
+- The exact `&&` verification command cannot run in this PowerShell session; equivalent commands passed sequentially.
+- `test_output.txt` remains an existing untracked file and was not touched.
+
+### Next recommended step
+
+Deploy and retry the IT Security and SDLC Deep Learn jobs. Confirm IT Security saves as a completed partial pack after quick-answer fallback exhaustion, and confirm SDLC no longer saves packs whose identification review is filled by Source Map bank prompt text.
+
+### Suggested commit message
+
+fix partial-save validator to reject sourceMap leakage in identificationItems
+
+---
+
 ## Session Update - 2026-05-16 (Optional Stage Raw Reason Partial Save)
 
 ### What changed

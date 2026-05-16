@@ -923,6 +923,7 @@ test('quick-answer output size failures save partial Study Pack content', async 
           return jsonResponse({
             sections: [{ heading: 'Identification Review', body: 'Practice direct prompts from the source.' }],
             identificationItems: Array.from({ length: 12 }, (_, index) => identificationItem(index)),
+            cautionNotes: ['Use source-backed uncertainty only when the source is incomplete.'],
           })
         }
         if (schemaName === 'deep_learn_quick_answers_stage') {
@@ -958,6 +959,7 @@ test('quick-answer output size failures save partial Study Pack content', async 
   assert.ok(result.content.identificationItems.length >= 3)
   assert.ok(result.content.answerBank.length <= 3)
   assert.ok(result.content.cautionNotes.includes(DEEP_LEARN_QUICK_ANSWERS_OUTPUT_TOO_LARGE_MESSAGE))
+  assert.doesNotMatch(JSON.stringify(result.content), /source-backed/i)
   const finalQuickAnswerDiagnostic = diagnostics.findLast((item) => item.failedStage === 'quick_answers')
   assert.equal(finalQuickAnswerDiagnostic?.stageCriticality, 'optional')
   assert.equal(finalQuickAnswerDiagnostic?.rawReason, 'max_output_tokens')
@@ -1921,6 +1923,50 @@ test('Deep Learn save validator rejects leaked internal pipeline labels before s
   const validation = validateDeepLearnContentReadyForSave(content)
 
   assert.equal(validation.ok, false)
+})
+
+test('Deep Learn save validator rejects source-map bank prompts in identification items', () => {
+  const leakedPrompts = [
+    'Recall the exam meaning of Secure SDLC.',
+    'Explain the source relationship.',
+    'Explain the cause-effect relationship.',
+    'Use the source formula.',
+    'Classify the items under Development Phases.',
+    'Explain the relationship inside Security Testing.',
+    'Define Threat Modeling.',
+  ]
+  const content = normalizeDeepLearnGeneratedContent({
+    title: 'SDLC',
+    overview: 'The source explains secure software development lifecycle concepts.',
+    sections: [
+      {
+        heading: 'Source Summary',
+        body: 'The source explains secure software development lifecycle concepts, testing, threat modeling, and release controls for exam review.',
+      },
+      {
+        heading: 'High-Yield First',
+        body: 'Secure software development lifecycle review should focus on requirements, design, testing, deployment, and maintenance controls.',
+      },
+    ],
+    answerBank: [answerBankItem(1), answerBankItem(2), answerBankItem(3)],
+    identificationItems: leakedPrompts.map((prompt, index) => ({
+      ...identificationItem(index + 1),
+      prompt,
+      answer: {
+        exact: `Source-map bank answer ${index + 1}`,
+        examSafe: `Source-map bank answer ${index + 1}`,
+        simplified: null,
+      },
+    })),
+    likelyQuizTargets: [quizTargetItem(1), quizTargetItem(2), quizTargetItem(3)],
+    cautionNotes: [],
+  }, 'SDLC')
+
+  const validation = validateDeepLearnContentReadyForSave(content)
+
+  assert.equal(validation.ok, false)
+  assert.equal(validation.reason, 'source_map_identification_leakage')
+  assert.equal(validation.counts.identificationCount, 0)
 })
 
 test('normalizeDeepLearnGeneratedContent strips internal pipeline wording from saved artifacts', () => {

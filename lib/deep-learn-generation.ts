@@ -1019,7 +1019,9 @@ async function runDeepLearnStagePlan(
     } catch (error) {
       if (error instanceof DeepLearnGenerationStageError) {
         error.partialOutput = cloneStageOutput(stageOutput)
-        const normalizedPartial = normalizeDeepLearnGeneratedContent(stageOutput, input.resource.title)
+        const normalizedPartial = sanitizeDeepLearnContentForSave(
+          normalizeDeepLearnGeneratedContent(stageOutput, input.resource.title),
+        )
         const shouldSavePartial = shouldSavePartialAfterStageFailure(error, stageOutput, level, stage)
         const partialReason = shouldSavePartial ? mapStageFailureToIncompleteReason(error) : null
         logDeepLearnStageDiagnostics('stage_failed', {
@@ -1054,7 +1056,7 @@ async function runDeepLearnStagePlan(
   }
 
   const normalized = normalizeDeepLearnGeneratedContent(stageOutput, input.resource.title)
-  const content = level === 'full' ? normalized : trimDeepLearnContent(normalized, level)
+  const content = sanitizeDeepLearnContentForSave(level === 'full' ? normalized : trimDeepLearnContent(normalized, level))
   const validation = validateDeepLearnContentReadyForSave(content)
   if (validation.ok) return content
 
@@ -1077,6 +1079,7 @@ export function validateDeepLearnContentReadyForSave(content: DeepLearnGenerated
   const identificationCount = content.identificationItems.filter(hasMeaningfulIdentificationItem).length
   const quizTargetCount = content.likelyQuizTargets.filter(hasMeaningfulQuizTarget).length
   const distinctConceptCount = countDistinctStudyConcepts(content)
+  const hasSourceMapIdentificationLeakage = content.identificationItems.some(hasInternalSourceMapIdentificationPrompt)
   const hasInternalPipelineText = containsInternalPipelineText(JSON.stringify(content))
   const hasMalformedHeadings = content.sections.some((section) => isMalformedReviewerHeading(section.heading))
   const hasDuplicatedConcepts = findDuplicatedReviewerConcepts(content).length > 0
@@ -1113,7 +1116,20 @@ export function validateDeepLearnContentReadyForSave(content: DeepLearnGenerated
         : DEEP_LEARN_EMPTY_STUDY_ARTIFACTS_MESSAGE,
       reason: hasPartialOptionalSkip
         ? sizeSkipReason
-        : hasLowInformationContent ? 'low_information_content' as const : 'insufficient_structured_artifacts' as const,
+        : hasLowInformationContent
+        ? 'low_information_content' as const
+        : hasSourceMapIdentificationLeakage && identificationCount < 3
+        ? 'source_map_identification_leakage' as const
+        : 'insufficient_structured_artifacts' as const,
+      counts: { answerBankCount, identificationCount, quizTargetCount, distinctConceptCount },
+    }
+  }
+
+  if (hasSourceMapIdentificationLeakage) {
+    return {
+      ok: false as const,
+      message: 'Deep Learn could not clean internal source-map prompts from this Study Pack.',
+      reason: 'source_map_identification_leakage' as const,
       counts: { answerBankCount, identificationCount, quizTargetCount, distinctConceptCount },
     }
   }
@@ -1188,6 +1204,56 @@ function getFirstOptionalStageIncompleteReason(content: DeepLearnGeneratedConten
   if (content.cautionNotes.some(isQuickAnswersOutputTooLargeNote)) return DEEP_LEARN_QUICK_ANSWERS_OUTPUT_TOO_LARGE_REASON
   if (content.cautionNotes.some(isIdentificationOutputTooLargeNote)) return DEEP_LEARN_IDENTIFICATION_OUTPUT_TOO_LARGE_REASON
   return DEEP_LEARN_OPTIONAL_STAGE_OUTPUT_TOO_LARGE_REASON
+}
+
+function sanitizeDeepLearnContentForSave(
+  content: DeepLearnGeneratedContent,
+  options: { dropOptionalComposerLeakage?: boolean } = {},
+): DeepLearnGeneratedContent {
+  const output: DeepLearnGeneratedContent = {
+    ...content,
+    sections: [...content.sections],
+    answerBank: [...content.answerBank],
+    identificationItems: content.identificationItems.filter((item) => !hasInternalSourceMapIdentificationPrompt(item)),
+    distinctions: [...content.distinctions],
+    likelyQuizTargets: [...content.likelyQuizTargets],
+    cautionNotes: [...content.cautionNotes],
+  }
+
+  if (!options.dropOptionalComposerLeakage) return output
+
+  output.cautionNotes = output.cautionNotes.filter((note) => !hasReviewerComposerLeakageText(note) && !containsInternalPipelineText(note))
+  output.sections = output.sections.filter((section) => {
+    const rendered = `${section.heading} ${section.body}`
+    if (!hasReviewerComposerLeakageText(rendered) && !containsInternalPipelineText(rendered)) return true
+    return !isOptionalEnrichmentSectionHeading(section.heading)
+  })
+  output.distinctions = output.distinctions.filter((item) => !hasReviewerComposerLeakageText(JSON.stringify(item)) && !containsInternalPipelineText(JSON.stringify(item)))
+  output.likelyQuizTargets = output.likelyQuizTargets.filter((item) => !hasReviewerComposerLeakageText(JSON.stringify(item)) && !containsInternalPipelineText(JSON.stringify(item)))
+
+  return output
+}
+
+function isOptionalEnrichmentSectionHeading(value: string) {
+  return /\b(?:quick[-\s]?answer|likely quiz|quiz target|distinction|application|caution|exam question|multiple choice|true\/false)\b/i.test(value)
+}
+
+function hasInternalSourceMapIdentificationPrompt(item: unknown) {
+  if (!item || typeof item !== 'object') return false
+  const record = item as { prompt?: unknown }
+  return isInternalSourceMapIdentificationPrompt(record.prompt)
+}
+
+function isInternalSourceMapIdentificationPrompt(value: unknown) {
+  if (typeof value !== 'string') return false
+  const prompt = value.replace(/\s+/g, ' ').trim()
+  return /^Recall the exam meaning of\b/i.test(prompt)
+    || /^Explain the source relationship\b/i.test(prompt)
+    || /^Explain the cause-effect relationship\b/i.test(prompt)
+    || /^Use the source formula\b/i.test(prompt)
+    || /^Classify the items under\b/i.test(prompt)
+    || /^Explain the relationship inside\b/i.test(prompt)
+    || /^Define\s+[A-Z][A-Za-z0-9]*(?:\s+[A-Z][A-Za-z0-9]*){0,7}\.$/.test(prompt)
 }
 
 export function assertDeepLearnContentReadyForSave(content: DeepLearnGeneratedContent) {
@@ -1665,7 +1731,7 @@ function markIdentificationSkipped(value: Record<string, unknown> | null) {
 
 function markQuickAnswersSkipped(value: Record<string, unknown> | null) {
   const output: Record<string, unknown> = value ? cloneStageOutput(value) : {}
-  const normalized = normalizeDeepLearnGeneratedContent(output, typeof output.title === 'string' ? output.title : 'Source')
+  const normalized = sanitizeDeepLearnContentForSave(normalizeDeepLearnGeneratedContent(output, typeof output.title === 'string' ? output.title : 'Source'))
   const derivedAnswerBank = buildQuickAnswersFromIdentificationItems(normalized, getQuickAnswerRequestedCount('minimal'))
   output.answerBank = mergeFallbackArray(output.answerBank, derivedAnswerBank)
   output.sections = [
@@ -1690,7 +1756,7 @@ function markOptionalStageSkipped(value: Record<string, unknown> | null, reason:
   if (reason === DEEP_LEARN_IDENTIFICATION_OUTPUT_TOO_LARGE_REASON) return markIdentificationSkipped(output)
   if (reason === DEEP_LEARN_QUICK_ANSWERS_OUTPUT_TOO_LARGE_REASON) return markQuickAnswersSkipped(output)
 
-  const normalized = normalizeDeepLearnGeneratedContent(output, typeof output.title === 'string' ? output.title : 'Source')
+  const normalized = sanitizeDeepLearnContentForSave(normalizeDeepLearnGeneratedContent(output, typeof output.title === 'string' ? output.title : 'Source'))
   const derivedTargets = buildQuizTargetsFromExistingContent(normalized, 5)
   output.likelyQuizTargets = mergeFallbackArray(output.likelyQuizTargets, derivedTargets)
   output.sections = [
@@ -1784,7 +1850,7 @@ function shouldSavePartialAfterStageFailure(
   stage: DeepLearnStageDefinition,
 ) {
   if (getDeepLearnStageCriticality(error.stage) !== 'optional') return false
-  const normalized = normalizeDeepLearnGeneratedContent(partialOutput ?? {}, 'Source')
+  const normalized = sanitizeDeepLearnContentForSave(normalizeDeepLearnGeneratedContent(partialOutput ?? {}, 'Source'))
   if (!hasUsableCoreContent(normalized)) return false
   if (error.kind === 'invalid_json') return true
   if (error.kind !== 'size' && !isMaxOutputTokenReason(error.reason)) return false
@@ -1815,7 +1881,10 @@ function savePartialStudyPackResult(
   const reason = mapStageFailureToIncompleteReason(error)
   const marked = markOptionalStageSkipped(partialOutput, reason)
   const normalized = normalizeDeepLearnGeneratedContent(marked, input.resource.title)
-  const content = level === 'full' ? normalized : trimDeepLearnContent(normalized, level)
+  const content = sanitizeDeepLearnContentForSave(
+    level === 'full' ? normalized : trimDeepLearnContent(normalized, level),
+    { dropOptionalComposerLeakage: true },
+  )
   const validation = validateDeepLearnContentReadyForSave(content)
   logDeepLearnStageDiagnostics('partial_save', {
     stage: error.stage,
@@ -2016,7 +2085,7 @@ function buildMinimalDeepLearnFallback(
     ]),
   }
   return trimDeepLearnContent(
-    normalizeDeepLearnGeneratedContent(fallbackOutput, input.resource.title),
+    sanitizeDeepLearnContentForSave(normalizeDeepLearnGeneratedContent(fallbackOutput, input.resource.title)),
     'micro',
   )
 }
@@ -2131,7 +2200,7 @@ export function buildDeepLearnContentFromSourceMap(
     ]).filter((note) => !containsInternalPipelineText(note)).slice(0, 3),
   }
 
-  const normalized = normalizeDeepLearnGeneratedContent(output, resourceTitle)
+  const normalized = sanitizeDeepLearnContentForSave(normalizeDeepLearnGeneratedContent(output, resourceTitle))
   const validation = validateDeepLearnContentReadyForSave(normalized)
   return validation.ok ? normalized : null
 }
@@ -2366,7 +2435,7 @@ function buildSourceMapGeneratedIdentificationPrompt(unit: GeneratedSourceMapUni
   if (unit.learningShape === 'procedure' || unit.learningShape === 'lab-process') return `Sequence ${unit.title}.`
   if (unit.learningShape === 'equipment') return `Identify equipment in ${unit.title}.`
   if (unit.learningShape === 'classification' || unit.learningShape === 'taxonomy') return `Enumerate ${unit.title}.`
-  if (unit.kind === 'definition') return `Define ${unit.title}.`
+  if (unit.kind === 'definition') return `What does ${unit.title} mean in this source?`
   if (unit.items.length >= 3) return `Enumerate ${unit.title}.`
   return `Explain ${unit.title}.`
 }
@@ -2615,7 +2684,7 @@ export function buildDeterministicReviewerFallback(
     cautionNotes: Array.isArray(seedContent.cautionNotes) ? seedContent.cautionNotes : [],
   }
 
-  return normalizeDeepLearnGeneratedContent(fallbackOutput, resourceTitle)
+  return sanitizeDeepLearnContentForSave(normalizeDeepLearnGeneratedContent(fallbackOutput, resourceTitle))
 }
 
 export function buildExamReviewerFromOutline(
@@ -2756,7 +2825,7 @@ export function buildExamReviewerFromOutline(
     cautionNotes: Array.isArray(seedContent.cautionNotes) ? seedContent.cautionNotes : [],
   }
 
-  const normalized = normalizeDeepLearnGeneratedContent(fallbackOutput, resourceTitle)
+  const normalized = sanitizeDeepLearnContentForSave(normalizeDeepLearnGeneratedContent(fallbackOutput, resourceTitle))
   return validateDeepLearnContentReadyForSave(normalized).ok ? normalized : null
 }
 
@@ -3214,6 +3283,7 @@ function hasMeaningfulIdentificationItem(item: unknown) {
   if (!item || typeof item !== 'object') return false
   const record = item as { prompt?: unknown; answer?: { exact?: unknown; examSafe?: unknown; simplified?: unknown } }
   return hasMeaningfulText(record.prompt)
+    && !isInternalSourceMapIdentificationPrompt(record.prompt)
     && hasMeaningfulText(record.answer?.exact ?? record.answer?.examSafe ?? record.answer?.simplified)
 }
 
@@ -3230,7 +3300,9 @@ function hasMeaningfulText(value: unknown) {
 function countDistinctStudyConcepts(content: DeepLearnGeneratedContent) {
   const concepts = [
     ...content.answerBank.map((item) => item.cue),
-    ...content.identificationItems.map((item) => item.prompt),
+    ...content.identificationItems
+      .filter((item) => !hasInternalSourceMapIdentificationPrompt(item))
+      .map((item) => item.prompt),
     ...content.likelyQuizTargets.map((item) => item.target),
   ]
     .map((value) => normalizeAcademicLookup(value))
@@ -3247,9 +3319,12 @@ function hasLowInformationStudyContent(content: DeepLearnGeneratedContent) {
 }
 
 function hasReviewerComposerLeakage(content: DeepLearnGeneratedContent) {
-  const rendered = JSON.stringify(content)
-  return /\b(?:source-backed|source wording|source chronology|grouped concepts|extracted concepts|compact grounding|exact source passage|Source Notes)\b/i.test(rendered)
-    || /\b(?:classifies|preserves milestones|preserves chronology|using the source wording|Explain the source-backed concept)\b/i.test(rendered)
+  return hasReviewerComposerLeakageText(JSON.stringify(content))
+}
+
+function hasReviewerComposerLeakageText(value: string) {
+  return /\b(?:source-backed|source wording|source chronology|grouped concepts|extracted concepts|compact grounding|exact source passage|Source Notes)\b/i.test(value)
+    || /\b(?:classifies|preserves milestones|preserves chronology|using the source wording|Explain the source-backed concept)\b/i.test(value)
 }
 
 function isLowInformationStudyText(value: string) {
