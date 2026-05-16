@@ -5,6 +5,65 @@ Last Updated: 2026-05-16
 
 ---
 
+## Session Update - 2026-05-16 (Composer Leakage Caution Notes Fix)
+
+### What changed
+
+- Updated Deep Learn save validation so `composer_leakage` scans only student-facing study content: reviewer sections, answer bank, identification items, likely quiz targets, and distinctions.
+- Excluded `cautionNotes` from composer leakage failure decisions and added internal leakage diagnostics with `cautionNotesIgnored`.
+- Made save-time sanitization drop leaking student-facing fields/items before validating the exact artifact object that gets returned for persistence.
+- Kept Source Map prompt leakage protection, while narrowing `Define X.` rejection so legitimate define prompts with real answers can pass.
+- Tightened partial validation so high-yield-only artifacts with only skip/caution notes fail as `insufficient_structured_artifacts`, not `composer_leakage`.
+- Preserved the original `shouldSavePartial=true` decision in `partial_save` diagnostics instead of replacing it with the final validation result.
+- Scaled identification item requests and output budgets for short sources under 4,000 characters.
+- Removed the synthetic Quick-Answer section from quick-answer skip fallback while still deriving a small answer bank from valid identification items.
+
+### Files touched
+
+- `lib/deep-learn-generation.ts`
+- `tests/deep-learn-generation.test.ts`
+- `tests/queue.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Production partial-save artifacts had usable sections, answer bank, and identification items, but final validation failed as `composer_leakage` because internal/fallback wording lived only in `cautionNotes`. Those notes are metadata, not core study content, and should never flip a usable partial Study Pack back to failed.
+
+### Tests run
+
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- deep-learn-generation queue` - passed
+
+### Verification result
+
+- Verified caution-note-only composer wording validates successfully and is ignored for leakage failure.
+- Verified partial save with usable sections, answer bank, and identification items completes with `finalJobStatus: completed`.
+- Verified SDLC-style quick-answer size partials do not fail from fallback wording in caution notes.
+- Verified high-yield-only partials with no answer bank or valid identification items fail as `insufficient_structured_artifacts`.
+- Verified Source Map bank prompts are still rejected/uncounted, while a real `Define system development life cycle` item passes.
+- Verified queue source still saves the Study Pack and marks the queued job completed before failure handling.
+
+### Known risks
+
+- Short-source identification now asks for fewer items and uses lower token caps. This should reduce runaway output, but very dense short sources may produce smaller identification sets.
+- The validator reports composer leakage diagnostics for original content even when save sanitization removes the leaking field before validation succeeds.
+
+### Blockers
+
+- No blocker remains.
+- `test_output.txt` remains untracked and was not committed.
+
+### Next recommended step
+
+Deploy and retry the IT Security, SDLC, and PATHFit/M1 Arnis production sources. Confirm the first two complete as sanitized partial Study Packs, and confirm Arnis fails as `insufficient_structured_artifacts` if no answer bank or valid identification items are produced.
+
+### Suggested commit message
+
+fix composer leakage validator to ignore caution notes
+
+---
+
 ## Session Update - 2026-05-16 (Partial Save Leakage Cleanup)
 
 ### What changed

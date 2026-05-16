@@ -420,6 +420,13 @@ test('learn generation queue maps quick-answer size failures to specific student
   assert.doesNotMatch(queueSource, /quick_answers_output_too_large[\s\S]{0,220}could not build enough structured study content/i)
 })
 
+test('learn generation queue completes sanitized partial study packs instead of failing them', () => {
+  const queueSource = readFileSync('actions/queue-jobs.ts', 'utf8')
+  assert.match(queueSource, /await saveDeepLearnNote\([\s\S]*await markQueuedJobCompleted/)
+  assert.match(queueSource, /partialReason: getPartialStudyPackReason\(generated\.content\.cautionNotes\)/)
+  assert.doesNotMatch(queueSource, /composer_leakage[\s\S]{0,220}updateQueuedJobStatus\(input\.jobId, 'failed'/)
+})
+
 test('Canvas resource preservation keeps meaningful extracted text when incoming sync is weak', () => {
   const decision = evaluateResourceTextPreservation(
     createResourceForPreservation({

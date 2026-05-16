@@ -742,8 +742,8 @@ test('staged Deep Learn generation saves partial output when identification exce
 
   assert.equal(result.compactFallbackUsed, true)
   assert.equal(identificationCalls, 4)
-  assert.deepEqual(tokenCaps, [7000, 4000, 2500, 1500])
-  assert.match(prompts.at(-1) ?? '', /identificationItems: 3 to 5 strongest/i)
+  assert.deepEqual(tokenCaps, [3600, 2200, 1400, 900])
+  assert.match(prompts.at(-1) ?? '', /identificationItems: 2 to 3 strongest/i)
   assert.equal(result.content.identificationItems.length, 0)
   assert.ok(result.content.answerBank.length >= 3)
   assert.ok(result.content.likelyQuizTargets.length >= 3)
@@ -898,7 +898,13 @@ test('quick-answer output size failures save partial Study Pack content', async 
   const quickAnswerPrompts: string[] = []
   const diagnostics: Array<Record<string, unknown>> = []
   const originalWarn = console.warn
+  const originalInfo = console.info
   console.warn = (...args: unknown[]) => {
+    if (args[0] === '[deep-learn-generation] stage diagnostics' && typeof args[1] === 'object' && args[1]) {
+      diagnostics.push(args[1] as Record<string, unknown>)
+    }
+  }
+  console.info = (...args: unknown[]) => {
     if (args[0] === '[deep-learn-generation] stage diagnostics' && typeof args[1] === 'object' && args[1]) {
       diagnostics.push(args[1] as Record<string, unknown>)
     }
@@ -946,6 +952,7 @@ test('quick-answer output size failures save partial Study Pack content', async 
     )
   } finally {
     console.warn = originalWarn
+    console.info = originalInfo
   }
 
   assert.equal(result.compactFallbackUsed, true)
@@ -970,6 +977,118 @@ test('quick-answer output size failures save partial Study Pack content', async 
   assert.equal(finalQuickAnswerDiagnostic?.finalJobStatus, 'completed')
   assert.doesNotMatch(JSON.stringify(result.content), /could not build enough structured study content/i)
   assert.equal(validateDeepLearnContentReadyForSave(result.content).ok, true)
+})
+
+test('partial save completes when only caution notes contain composer leakage', async () => {
+  const diagnostics: Array<Record<string, unknown>> = []
+  const originalWarn = console.warn
+  const originalInfo = console.info
+  console.warn = (...args: unknown[]) => {
+    if (args[0] === '[deep-learn-generation] stage diagnostics' && typeof args[1] === 'object' && args[1]) {
+      diagnostics.push(args[1] as Record<string, unknown>)
+    }
+  }
+  console.info = (...args: unknown[]) => {
+    if (args[0] === '[deep-learn-generation] stage diagnostics' && typeof args[1] === 'object' && args[1]) {
+      diagnostics.push(args[1] as Record<string, unknown>)
+    }
+  }
+  let result
+  try {
+    result = await generateDeepLearnStructuredContent(
+      createPromptInput(),
+      createPreparedGrounding(),
+      async ({ schemaName }) => {
+        if (schemaName === 'deep_learn_high_yield_stage') {
+          return jsonResponse({
+            title: 'Academic Module',
+            overview: 'The source explains academic concepts and procedures.',
+            sections: [
+              { heading: 'Source Summary', body: 'The source explains academic concepts and procedures for review.' },
+              { heading: 'High-Yield First', body: 'Focus on definitions, steps, and checks from the source.' },
+            ],
+          })
+        }
+        if (schemaName === 'deep_learn_identification_stage') {
+          return jsonResponse({
+            sections: [{ heading: 'Identification Review', body: 'Practice direct prompts from the source.' }],
+            identificationItems: [identificationItem(1), identificationItem(2), identificationItem(3), identificationItem(4), identificationItem(5)],
+            cautionNotes: ['Generated as compact reviewer because the source was long.'],
+          })
+        }
+        if (schemaName === 'deep_learn_quick_answers_stage') {
+          return jsonResponse({
+            sections: [],
+            answerBank: [answerBankItem(1), answerBankItem(2), answerBankItem(3)],
+          })
+        }
+        if (schemaName === 'deep_learn_distinctions_stage') {
+          return {
+            status: 'incomplete',
+            output_text: '',
+            incomplete_details: { reason: 'max_output_tokens' },
+          }
+        }
+        return jsonResponse({ sections: [], distinctions: [], likelyQuizTargets: [], cautionNotes: [] })
+      },
+    )
+  } finally {
+    console.warn = originalWarn
+    console.info = originalInfo
+  }
+
+  assert.equal(result.compactFallbackUsed, true)
+  assert.ok(result.content.sections.length >= 3)
+  assert.equal(result.content.answerBank.length, 3)
+  assert.equal(result.content.identificationItems.length, 5)
+  assert.doesNotMatch(JSON.stringify(result.content.cautionNotes), /Generated as compact reviewer|Generated from fallback|source-backed/i)
+  const finalDiagnostic = diagnostics.findLast((item) => item.failedStage === 'distinctions' && item.event === 'partial_save')
+  assert.equal(finalDiagnostic?.event, 'partial_save')
+  assert.equal(finalDiagnostic?.shouldSavePartial, true)
+  assert.equal(finalDiagnostic?.finalJobStatus, 'completed')
+  assert.equal((finalDiagnostic?.finalValidatorResult as { reason?: string } | undefined)?.reason, null)
+})
+
+test('SDLC-style quick-answer partial save is not failed by internal caution note wording', async () => {
+  const result = await generateDeepLearnStructuredContent(
+    createPromptInput(),
+    createPreparedGrounding(),
+    async ({ schemaName }) => {
+      if (schemaName === 'deep_learn_high_yield_stage') {
+        return jsonResponse({
+          title: 'Systems Development',
+          overview: 'The source explains planning, implementation, testing, and maintenance.',
+          sections: [
+            { heading: 'Source Summary', body: 'The source explains planning, implementation, testing, and maintenance.' },
+            { heading: 'High-Yield First', body: 'Focus on lifecycle phases, control checks, and maintenance decisions.' },
+          ],
+        })
+      }
+      if (schemaName === 'deep_learn_identification_stage') {
+        return jsonResponse({
+          sections: [{ heading: 'Identification Review', body: 'Practice lifecycle terms and phase prompts.' }],
+          identificationItems: [identificationItem(1), identificationItem(2), identificationItem(3), identificationItem(4), identificationItem(5)],
+          cautionNotes: ['Generated from fallback for compact grounding.'],
+        })
+      }
+      if (schemaName === 'deep_learn_quick_answers_stage') {
+        return {
+          status: 'incomplete',
+          output_text: '',
+          incomplete_details: { reason: 'max_output_tokens' },
+        }
+      }
+      return jsonResponse({ sections: [], distinctions: [], likelyQuizTargets: [], cautionNotes: [] })
+    },
+  )
+
+  const validation = validateDeepLearnContentReadyForSave(result.content)
+
+  assert.equal(validation.ok, true)
+  assert.equal(validation.reason, null)
+  assert.equal(result.content.answerBank.length, 3)
+  assert.equal(result.content.identificationItems.length, 5)
+  assert.doesNotMatch(JSON.stringify(result.content), /compact grounding|Generated from fallback/i)
 })
 
 test('quick-answer output size failures use the specific student-facing reason', () => {
@@ -1174,7 +1293,7 @@ test('metadata-only source still fails normal Study Pack validation despite opti
   const validation = validateDeepLearnContentReadyForSave(content)
 
   assert.equal(validation.ok, false)
-  assert.equal(validation.reason, DEEP_LEARN_QUIZ_TARGETS_OUTPUT_TOO_LARGE_REASON)
+  assert.equal(validation.reason, 'insufficient_structured_artifacts')
 })
 
 test('optional-stage partial policy does not fake success when no usable core content exists', () => {
@@ -1195,7 +1314,7 @@ test('optional-stage partial policy does not fake success when no usable core co
   const validation = validateDeepLearnContentReadyForSave(content)
 
   assert.equal(validation.ok, false)
-  assert.equal(validation.reason, DEEP_LEARN_QUICK_ANSWERS_OUTPUT_TOO_LARGE_REASON)
+  assert.equal(validation.reason, 'insufficient_structured_artifacts')
 })
 
 test('optional stage incomplete reasons use student-facing copy without generic structured-content failure', () => {
@@ -1967,6 +2086,88 @@ test('Deep Learn save validator rejects source-map bank prompts in identificatio
   assert.equal(validation.ok, false)
   assert.equal(validation.reason, 'source_map_identification_leakage')
   assert.equal(validation.counts.identificationCount, 0)
+})
+
+test('Deep Learn save validator ignores internal fallback wording in caution notes', () => {
+  const content = normalizeDeepLearnGeneratedContent({
+    title: 'Academic Module',
+    overview: 'The source explains academic concepts and procedures.',
+    sections: [
+      { heading: 'Source Summary', body: 'The source explains academic concepts and procedures for review.' },
+      { heading: 'High-Yield First', body: 'Focus on definitions, steps, and checks from the source.' },
+      { heading: 'Identification Review', body: 'Practice direct source prompts for key terms and procedures.' },
+    ],
+    answerBank: [answerBankItem(1), answerBankItem(2), answerBankItem(3)],
+    identificationItems: [identificationItem(1), identificationItem(2), identificationItem(3), identificationItem(4), identificationItem(5)],
+    likelyQuizTargets: [quizTargetItem(1), quizTargetItem(2), quizTargetItem(3)],
+    cautionNotes: [
+      'Generated as compact reviewer because the source was long.',
+      'Quick answers were too large to generate from fallback.',
+    ],
+  }, 'Academic Module')
+
+  const validation = validateDeepLearnContentReadyForSave(content)
+
+  assert.equal(validation.ok, true)
+  assert.equal(validation.reason, null)
+  assert.equal(validation.composerLeakageDiagnostics.cautionNotesIgnored, true)
+})
+
+test('Deep Learn save validator fails high-yield-only partial artifacts as insufficient structured artifacts', () => {
+  const content = normalizeDeepLearnGeneratedContent({
+    title: 'Movement Skills',
+    overview: 'The source explains movement skills and learning checks.',
+    sections: [
+      { heading: 'Source Summary', body: 'The source explains movement skills, practice procedures, and safety checks.' },
+      { heading: 'High-Yield First', body: 'Focus on procedures, terms, and safe execution from the source.' },
+    ],
+    answerBank: [],
+    identificationItems: [],
+    likelyQuizTargets: [],
+    cautionNotes: [
+      DEEP_LEARN_QUICK_ANSWERS_OUTPUT_TOO_LARGE_MESSAGE,
+      'Generated from fallback because the source was long.',
+    ],
+  }, 'Movement Skills')
+
+  const validation = validateDeepLearnContentReadyForSave(content)
+
+  assert.equal(validation.ok, false)
+  assert.equal(validation.reason, 'insufficient_structured_artifacts')
+  assert.notEqual(validation.reason, 'composer_leakage')
+  assert.equal(validation.composerLeakageDiagnostics.cautionNotesIgnored, true)
+})
+
+test('Deep Learn save validator keeps legitimate Define identification items with real answers', () => {
+  const content = normalizeDeepLearnGeneratedContent({
+    title: 'Systems Notes',
+    overview: 'The source explains system development lifecycle concepts.',
+    sections: [
+      { heading: 'Source Summary', body: 'The source explains system development lifecycle concepts and review checks.' },
+      { heading: 'High-Yield First', body: 'Focus on definitions, phases, and evaluation checks.' },
+    ],
+    answerBank: [answerBankItem(1), answerBankItem(2), answerBankItem(3)],
+    identificationItems: [
+      {
+        ...identificationItem(1),
+        prompt: 'Define system development life cycle',
+        answer: {
+          exact: 'The system development life cycle is the organized process used to plan, build, test, deploy, and maintain a system.',
+          examSafe: 'The system development life cycle is an organized process for planning, building, testing, deploying, and maintaining a system.',
+          simplified: 'It is the step-by-step process for creating and maintaining a system.',
+        },
+      },
+      identificationItem(2),
+      identificationItem(3),
+    ],
+    likelyQuizTargets: [quizTargetItem(1), quizTargetItem(2), quizTargetItem(3)],
+    cautionNotes: [],
+  }, 'Systems Notes')
+
+  const validation = validateDeepLearnContentReadyForSave(content)
+
+  assert.equal(validation.ok, true)
+  assert.equal(validation.counts.identificationCount, 3)
 })
 
 test('normalizeDeepLearnGeneratedContent strips internal pipeline wording from saved artifacts', () => {

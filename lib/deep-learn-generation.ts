@@ -995,7 +995,7 @@ async function runDeepLearnStagePlan(
     })
 
     try {
-      const maxOutputTokens = getDeepLearnStageMaxOutputTokens(stage, level)
+      const maxOutputTokens = getDeepLearnStageMaxOutputTokensForInput(stage, level, input)
       const raw = await createStageResponse(
         input,
         grounding,
@@ -1027,7 +1027,7 @@ async function runDeepLearnStagePlan(
         logDeepLearnStageDiagnostics('stage_failed', {
           stage: error.stage,
           level: error.level,
-          maxOutputTokens: getDeepLearnStageMaxOutputTokens(stage, level),
+          maxOutputTokens: getDeepLearnStageMaxOutputTokensForInput(stage, level, input),
           outputLength: null,
           parsedArtifactCounts: getRawDeepLearnArtifactCounts(stageOutput),
           partialSaveHappened: shouldSavePartial,
@@ -1056,7 +1056,10 @@ async function runDeepLearnStagePlan(
   }
 
   const normalized = normalizeDeepLearnGeneratedContent(stageOutput, input.resource.title)
-  const content = sanitizeDeepLearnContentForSave(level === 'full' ? normalized : trimDeepLearnContent(normalized, level))
+  const content = sanitizeDeepLearnContentForSave(
+    level === 'full' ? normalized : trimDeepLearnContent(normalized, level),
+    { dropStudentFacingComposerLeakage: true },
+  )
   const validation = validateDeepLearnContentReadyForSave(content)
   if (validation.ok) return content
 
@@ -1075,21 +1078,29 @@ async function runDeepLearnStagePlan(
 }
 
 export function validateDeepLearnContentReadyForSave(content: DeepLearnGeneratedContent) {
-  const answerBankCount = content.answerBank.filter(hasMeaningfulAnswerBankItem).length
-  const identificationCount = content.identificationItems.filter(hasMeaningfulIdentificationItem).length
-  const quizTargetCount = content.likelyQuizTargets.filter(hasMeaningfulQuizTarget).length
-  const distinctConceptCount = countDistinctStudyConcepts(content)
+  const sanitizedContent = sanitizeDeepLearnContentForSave(content, { dropStudentFacingComposerLeakage: true })
+  const answerBankCount = sanitizedContent.answerBank.filter(hasMeaningfulAnswerBankItem).length
+  const identificationCount = sanitizedContent.identificationItems.filter(hasMeaningfulIdentificationItem).length
+  const quizTargetCount = sanitizedContent.likelyQuizTargets.filter(hasMeaningfulQuizTarget).length
+  const distinctConceptCount = countDistinctStudyConcepts(sanitizedContent)
   const hasSourceMapIdentificationLeakage = content.identificationItems.some(hasInternalSourceMapIdentificationPrompt)
-  const hasInternalPipelineText = containsInternalPipelineText(JSON.stringify(content))
-  const hasMalformedHeadings = content.sections.some((section) => isMalformedReviewerHeading(section.heading))
-  const hasDuplicatedConcepts = findDuplicatedReviewerConcepts(content).length > 0
-  const hasLowInformationContent = hasLowInformationStudyContent(content)
-  const hasComposerLeakage = hasReviewerComposerLeakage(content)
-  const hasIdentificationOutputTooLargeSkip = content.cautionNotes.some(isIdentificationOutputTooLargeNote)
-  const hasQuickAnswersOutputTooLargeSkip = content.cautionNotes.some(isQuickAnswersOutputTooLargeNote)
-  const hasOptionalStageOutputTooLargeSkip = content.cautionNotes.some(isOptionalStageOutputTooLargeNote)
+  const hasInternalPipelineText = hasInternalPipelineTextInStudentFacingContent(sanitizedContent)
+  const hasMalformedHeadings = sanitizedContent.sections.some((section) => isMalformedReviewerHeading(section.heading))
+  const hasDuplicatedConcepts = findDuplicatedReviewerConcepts(sanitizedContent).length > 0
+  const hasLowInformationContent = hasLowInformationStudyContent(sanitizedContent)
+  const composerLeakageDiagnostics = getReviewerComposerLeakageDiagnostics(content, content)
+  const remainingComposerLeakageDiagnostics = getReviewerComposerLeakageDiagnostics(sanitizedContent, sanitizedContent)
+  const hasComposerLeakage = remainingComposerLeakageDiagnostics.reviewerSections
+    || remainingComposerLeakageDiagnostics.answerBank
+    || remainingComposerLeakageDiagnostics.identificationItems
+    || remainingComposerLeakageDiagnostics.likelyQuizTargets
+    || remainingComposerLeakageDiagnostics.distinctions
+  const hasIdentificationOutputTooLargeSkip = sanitizedContent.cautionNotes.some(isIdentificationOutputTooLargeNote)
+  const hasQuickAnswersOutputTooLargeSkip = sanitizedContent.cautionNotes.some(isQuickAnswersOutputTooLargeNote)
+  const hasOptionalStageOutputTooLargeSkip = sanitizedContent.cautionNotes.some(isOptionalStageOutputTooLargeNote)
   const hasPartialOptionalSkip = hasIdentificationOutputTooLargeSkip || hasQuickAnswersOutputTooLargeSkip || hasOptionalStageOutputTooLargeSkip
-  const hasCoreContent = hasUsableCoreContent(content)
+  const hasCoreContent = hasUsableCoreContent(sanitizedContent)
+  const hasPartialStructuredCore = hasUsablePartialStructuredCore(sanitizedContent)
   const hasStructuredStudyArtifacts = (answerBankCount > 0 || hasQuickAnswersOutputTooLargeSkip)
     && (identificationCount > 0 || hasIdentificationOutputTooLargeSkip)
     && (quizTargetCount > 0 || hasOptionalStageOutputTooLargeSkip)
@@ -1098,29 +1109,25 @@ export function validateDeepLearnContentReadyForSave(content: DeepLearnGenerated
     && (quizTargetCount >= 3 || hasOptionalStageOutputTooLargeSkip)
     && distinctConceptCount >= 6
 
-  if ((hasPartialOptionalSkip ? !hasCoreContent : (!hasStructuredStudyArtifacts || !hasExamReadyDensity)) || hasLowInformationContent) {
+  if ((hasPartialOptionalSkip ? (!hasCoreContent || !hasPartialStructuredCore) : (!hasStructuredStudyArtifacts || !hasExamReadyDensity)) || hasLowInformationContent) {
     const sizeSkipMessage = hasOptionalStageOutputTooLargeSkip
       ? mapIncompleteReasonToMessage(getFirstOptionalStageIncompleteReason(content))
       : hasQuickAnswersOutputTooLargeSkip
       ? DEEP_LEARN_QUICK_ANSWERS_OUTPUT_TOO_LARGE_MESSAGE
       : DEEP_LEARN_IDENTIFICATION_OUTPUT_TOO_LARGE_MESSAGE
-    const sizeSkipReason = hasOptionalStageOutputTooLargeSkip
-      ? getFirstOptionalStageIncompleteReason(content)
-      : hasQuickAnswersOutputTooLargeSkip
-      ? DEEP_LEARN_QUICK_ANSWERS_OUTPUT_TOO_LARGE_REASON
-      : DEEP_LEARN_IDENTIFICATION_OUTPUT_TOO_LARGE_REASON
     return {
       ok: false as const,
-      message: hasPartialOptionalSkip
+      message: hasPartialOptionalSkip && hasCoreContent
         ? sizeSkipMessage
         : DEEP_LEARN_EMPTY_STUDY_ARTIFACTS_MESSAGE,
-      reason: hasPartialOptionalSkip
-        ? sizeSkipReason
-        : hasLowInformationContent
+      reason: hasLowInformationContent
         ? 'low_information_content' as const
+        : hasPartialOptionalSkip
+        ? 'insufficient_structured_artifacts' as const
         : hasSourceMapIdentificationLeakage && identificationCount < 3
         ? 'source_map_identification_leakage' as const
         : 'insufficient_structured_artifacts' as const,
+      composerLeakageDiagnostics,
       counts: { answerBankCount, identificationCount, quizTargetCount, distinctConceptCount },
     }
   }
@@ -1130,6 +1137,7 @@ export function validateDeepLearnContentReadyForSave(content: DeepLearnGenerated
       ok: false as const,
       message: 'Deep Learn could not clean internal source-map prompts from this Study Pack.',
       reason: 'source_map_identification_leakage' as const,
+      composerLeakageDiagnostics,
       counts: { answerBankCount, identificationCount, quizTargetCount, distinctConceptCount },
     }
   }
@@ -1139,6 +1147,7 @@ export function validateDeepLearnContentReadyForSave(content: DeepLearnGenerated
       ok: false as const,
       message: 'Deep Learn could not clean internal reviewer labels from this Study Pack.',
       reason: 'internal_pipeline_text' as const,
+      composerLeakageDiagnostics,
       counts: { answerBankCount, identificationCount, quizTargetCount, distinctConceptCount },
     }
   }
@@ -1148,6 +1157,7 @@ export function validateDeepLearnContentReadyForSave(content: DeepLearnGenerated
       ok: false as const,
       message: 'Deep Learn could not build clean reviewer headings from this source.',
       reason: 'malformed_headings' as const,
+      composerLeakageDiagnostics,
       counts: { answerBankCount, identificationCount, quizTargetCount, distinctConceptCount },
     }
   }
@@ -1157,6 +1167,7 @@ export function validateDeepLearnContentReadyForSave(content: DeepLearnGenerated
       ok: false as const,
       message: 'Deep Learn could not compose clean exam reviewer wording from this source.',
       reason: 'composer_leakage' as const,
+      composerLeakageDiagnostics,
       counts: { answerBankCount, identificationCount, quizTargetCount, distinctConceptCount },
     }
   }
@@ -1166,6 +1177,7 @@ export function validateDeepLearnContentReadyForSave(content: DeepLearnGenerated
       ok: false as const,
       message: 'Deep Learn could not deduplicate enough reviewer concepts from this source.',
       reason: 'duplicated_concepts' as const,
+      composerLeakageDiagnostics,
       counts: { answerBankCount, identificationCount, quizTargetCount, distinctConceptCount },
     }
   }
@@ -1174,6 +1186,7 @@ export function validateDeepLearnContentReadyForSave(content: DeepLearnGenerated
     ok: true as const,
     message: null,
     reason: null,
+    composerLeakageDiagnostics,
     counts: { answerBankCount, identificationCount, quizTargetCount, distinctConceptCount },
   }
 }
@@ -1208,7 +1221,7 @@ function getFirstOptionalStageIncompleteReason(content: DeepLearnGeneratedConten
 
 function sanitizeDeepLearnContentForSave(
   content: DeepLearnGeneratedContent,
-  options: { dropOptionalComposerLeakage?: boolean } = {},
+  options: { dropOptionalComposerLeakage?: boolean; dropStudentFacingComposerLeakage?: boolean } = {},
 ): DeepLearnGeneratedContent {
   const output: DeepLearnGeneratedContent = {
     ...content,
@@ -1220,14 +1233,20 @@ function sanitizeDeepLearnContentForSave(
     cautionNotes: [...content.cautionNotes],
   }
 
-  if (!options.dropOptionalComposerLeakage) return output
+  const shouldDropComposerLeakage = options.dropOptionalComposerLeakage || options.dropStudentFacingComposerLeakage
+  if (!shouldDropComposerLeakage) return output
 
   output.cautionNotes = output.cautionNotes.filter((note) => !hasReviewerComposerLeakageText(note) && !containsInternalPipelineText(note))
   output.sections = output.sections.filter((section) => {
     const rendered = `${section.heading} ${section.body}`
     if (!hasReviewerComposerLeakageText(rendered) && !containsInternalPipelineText(rendered)) return true
+    if (options.dropStudentFacingComposerLeakage) return false
     return !isOptionalEnrichmentSectionHeading(section.heading)
   })
+  if (options.dropStudentFacingComposerLeakage) {
+    output.answerBank = output.answerBank.filter((item) => !hasReviewerComposerLeakageText(JSON.stringify(item)) && !containsInternalPipelineText(JSON.stringify(item)))
+    output.identificationItems = output.identificationItems.filter((item) => !hasReviewerComposerLeakageText(JSON.stringify(item)) && !containsInternalPipelineText(JSON.stringify(item)))
+  }
   output.distinctions = output.distinctions.filter((item) => !hasReviewerComposerLeakageText(JSON.stringify(item)) && !containsInternalPipelineText(JSON.stringify(item)))
   output.likelyQuizTargets = output.likelyQuizTargets.filter((item) => !hasReviewerComposerLeakageText(JSON.stringify(item)) && !containsInternalPipelineText(JSON.stringify(item)))
 
@@ -1240,8 +1259,9 @@ function isOptionalEnrichmentSectionHeading(value: string) {
 
 function hasInternalSourceMapIdentificationPrompt(item: unknown) {
   if (!item || typeof item !== 'object') return false
-  const record = item as { prompt?: unknown }
-  return isInternalSourceMapIdentificationPrompt(record.prompt)
+  const record = item as { prompt?: unknown; answer?: { exact?: unknown; examSafe?: unknown; simplified?: unknown }; draftExplanation?: unknown; reviewText?: unknown }
+  if (isInternalSourceMapIdentificationPrompt(record.prompt)) return true
+  return isInternalSourceMapDefinitionPrompt(record)
 }
 
 function isInternalSourceMapIdentificationPrompt(value: unknown) {
@@ -1253,7 +1273,23 @@ function isInternalSourceMapIdentificationPrompt(value: unknown) {
     || /^Use the source formula\b/i.test(prompt)
     || /^Classify the items under\b/i.test(prompt)
     || /^Explain the relationship inside\b/i.test(prompt)
-    || /^Define\s+[A-Z][A-Za-z0-9]*(?:\s+[A-Z][A-Za-z0-9]*){0,7}\.$/.test(prompt)
+}
+
+function isInternalSourceMapDefinitionPrompt(item: { prompt?: unknown; answer?: { exact?: unknown; examSafe?: unknown; simplified?: unknown }; draftExplanation?: unknown; reviewText?: unknown }) {
+  if (typeof item.prompt !== 'string') return false
+  const prompt = item.prompt.replace(/\s+/g, ' ').trim()
+  if (!/^Define\s+[A-Z][A-Za-z0-9]*(?:\s+[A-Z][A-Za-z0-9]*){0,7}\.$/.test(prompt)) return false
+  const answerText = [
+    item.answer?.exact,
+    item.answer?.examSafe,
+    item.answer?.simplified,
+    item.draftExplanation,
+    item.reviewText,
+  ]
+    .filter((value): value is string => typeof value === 'string')
+    .join(' ')
+  return !hasMeaningfulText(answerText)
+    || /\b(?:source[-\s]?map|bank answer|generated fallback|fallback reviewer|internal prompt)\b/i.test(answerText)
 }
 
 export function assertDeepLearnContentReadyForSave(content: DeepLearnGeneratedContent) {
@@ -1485,6 +1521,7 @@ function buildDeepLearnStagePrompt(
     ? 'Compact fallback is active. Keep bodies tight, keep only the highest-yield items, and prefer fewer stronger facts over broad coverage.'
     : 'Normal staged generation is active. Keep coverage grounded and useful, but still concise.'
   const quickAnswerLimit = getQuickAnswerRequestedCount(level)
+  const identificationRange = getIdentificationRequestedRange(input, level)
   const generatedIdentificationItems = stage === 'quick_answers'
     ? formatGeneratedIdentificationItemsForQuickAnswers(priorOutput, quickAnswerLimit)
     : []
@@ -1505,13 +1542,7 @@ function buildDeepLearnStagePrompt(
       'Build only the Identification Review stage.',
       'Return sections plus identificationItems only.',
       'sections must contain exactly one heading: Identification Review.',
-      level === 'minimal'
-        ? '- identificationItems: 3 to 5 strongest direct term/prompt items only. Keep answers to one short sentence.'
-        : level === 'micro'
-        ? '- identificationItems: 3 to 4 strongest key terms or direct prompts only. Keep answers to one sentence.'
-        : compact
-        ? '- identificationItems: 5 to 7 strongest direct term/prompt items only.'
-        : '- identificationItems: 10 to 14 direct source-grounded prompt/answer items.',
+      `- identificationItems: ${identificationRange} strongest direct source-grounded term/prompt items only. Keep answers to one short sentence.`,
       '- The section body should summarize the strongest key terms without duplicating every answer verbatim.',
     ],
     quick_answers: [
@@ -1590,6 +1621,20 @@ function getQuickAnswerRequestedCount(level: DeepLearnFallbackLevel) {
   return 14
 }
 
+function getIdentificationRequestedRange(input: DeepLearnPromptInput, level: DeepLearnFallbackLevel) {
+  const sourceChars = input.sourceGrounding.charCount || input.promptGrounding.length
+  if (sourceChars <= 4000) {
+    if (level === 'minimal') return '2 to 3'
+    if (level === 'micro') return '3'
+    if (level === 'compact') return '4 to 5'
+    return '5 to 7'
+  }
+  if (level === 'minimal') return '3 to 5'
+  if (level === 'micro') return '3 to 4'
+  if (level === 'compact') return '5 to 7'
+  return '10 to 14'
+}
+
 function formatGeneratedIdentificationItemsForQuickAnswers(
   priorOutput: Record<string, unknown> | null,
   limit: number,
@@ -1615,7 +1660,7 @@ async function createStageResponse(
     createResponse({
       grounding,
       promptText: buildDeepLearnStagePrompt(input, stage.key, { level }, priorOutput),
-      maxOutputTokens: getDeepLearnStageMaxOutputTokens(stage, level),
+      maxOutputTokens: getDeepLearnStageMaxOutputTokensForInput(stage, level, input),
       schemaName: stage.schemaName,
       schema: stage.schema,
     }),
@@ -1705,6 +1750,21 @@ function getDeepLearnStageMaxOutputTokens(stage: DeepLearnStageDefinition, level
   return stage.fullMaxOutputTokens
 }
 
+function getDeepLearnStageMaxOutputTokensForInput(
+  stage: DeepLearnStageDefinition,
+  level: DeepLearnFallbackLevel,
+  input: DeepLearnPromptInput,
+) {
+  const defaultMax = getDeepLearnStageMaxOutputTokens(stage, level)
+  if (stage.key !== 'identification') return defaultMax
+  const sourceChars = input.sourceGrounding.charCount || input.promptGrounding.length
+  if (sourceChars > 4000) return defaultMax
+  if (level === 'full') return Math.min(defaultMax, 3600)
+  if (level === 'compact') return Math.min(defaultMax, 2200)
+  if (level === 'micro') return Math.min(defaultMax, 1400)
+  return Math.min(defaultMax, 900)
+}
+
 function cloneStageOutput(value: Record<string, unknown>) {
   return {
     title: value.title,
@@ -1734,15 +1794,7 @@ function markQuickAnswersSkipped(value: Record<string, unknown> | null) {
   const normalized = sanitizeDeepLearnContentForSave(normalizeDeepLearnGeneratedContent(output, typeof output.title === 'string' ? output.title : 'Source'))
   const derivedAnswerBank = buildQuickAnswersFromIdentificationItems(normalized, getQuickAnswerRequestedCount('minimal'))
   output.answerBank = mergeFallbackArray(output.answerBank, derivedAnswerBank)
-  output.sections = [
-    ...(Array.isArray(output.sections) ? output.sections : []),
-    {
-      heading: 'Quick-Answer Blocks',
-      body: derivedAnswerBank.length > 0
-        ? derivedAnswerBank.map((item) => `- ${item.cue}: ${item.compactAnswer.examSafe}`).join('\n')
-        : DEEP_LEARN_QUICK_ANSWERS_OUTPUT_TOO_LARGE_MESSAGE,
-    },
-  ]
+  output.sections = Array.isArray(output.sections) ? output.sections : []
   output.cautionNotes = uniqueStringList([
     ...(Array.isArray(output.cautionNotes) ? output.cautionNotes.filter((item: unknown): item is string => typeof item === 'string') : []),
     DEEP_LEARN_QUICK_ANSWERS_OUTPUT_TOO_LARGE_MESSAGE,
@@ -1883,7 +1935,7 @@ function savePartialStudyPackResult(
   const normalized = normalizeDeepLearnGeneratedContent(marked, input.resource.title)
   const content = sanitizeDeepLearnContentForSave(
     level === 'full' ? normalized : trimDeepLearnContent(normalized, level),
-    { dropOptionalComposerLeakage: true },
+    { dropOptionalComposerLeakage: true, dropStudentFacingComposerLeakage: true },
   )
   const validation = validateDeepLearnContentReadyForSave(content)
   logDeepLearnStageDiagnostics('partial_save', {
@@ -1902,7 +1954,7 @@ function savePartialStudyPackResult(
     hasQuickAnswers: content.answerBank.some(hasMeaningfulAnswerBankItem),
     hasQuizTargets: content.likelyQuizTargets.some(hasMeaningfulQuizTarget),
     hasUsableCoreContent: hasUsableCoreContent(content),
-    shouldSavePartial: validation.ok,
+    shouldSavePartial: true,
     partialReason: reason,
     finalJobStatus: validation.ok ? 'completed' : 'failed',
     savedSectionCounts: getRawDeepLearnArtifactCounts(content),
@@ -3318,13 +3370,39 @@ function hasLowInformationStudyContent(content: DeepLearnGeneratedContent) {
   return [...answerTexts, ...identificationTexts, ...targetTexts].some(isLowInformationStudyText)
 }
 
-function hasReviewerComposerLeakage(content: DeepLearnGeneratedContent) {
-  return hasReviewerComposerLeakageText(JSON.stringify(content))
+function hasUsablePartialStructuredCore(content: DeepLearnGeneratedContent) {
+  const answerBankCount = content.answerBank.filter(hasMeaningfulAnswerBankItem).length
+  const identificationCount = content.identificationItems.filter(hasMeaningfulIdentificationItem).length
+  const quizTargetCount = content.likelyQuizTargets.filter(hasMeaningfulQuizTarget).length
+  return answerBankCount >= 3 || identificationCount >= 3 || quizTargetCount >= 3
+}
+
+function getReviewerComposerLeakageDiagnostics(
+  studentFacingContent: DeepLearnGeneratedContent,
+  originalContent: DeepLearnGeneratedContent = studentFacingContent,
+) {
+  return {
+    reviewerSections: studentFacingContent.sections.some((section) => hasReviewerComposerLeakageText(`${section.heading} ${section.body}`)),
+    answerBank: studentFacingContent.answerBank.some((item) => hasReviewerComposerLeakageText(JSON.stringify(item))),
+    identificationItems: studentFacingContent.identificationItems.some((item) => hasReviewerComposerLeakageText(JSON.stringify(item))),
+    likelyQuizTargets: studentFacingContent.likelyQuizTargets.some((item) => hasReviewerComposerLeakageText(JSON.stringify(item))),
+    distinctions: studentFacingContent.distinctions.some((item) => hasReviewerComposerLeakageText(JSON.stringify(item))),
+    cautionNotesIgnored: originalContent.cautionNotes.some((note) => hasReviewerComposerLeakageText(note) || containsInternalPipelineText(note)),
+  }
 }
 
 function hasReviewerComposerLeakageText(value: string) {
   return /\b(?:source-backed|source wording|source chronology|grouped concepts|extracted concepts|compact grounding|exact source passage|Source Notes)\b/i.test(value)
     || /\b(?:classifies|preserves milestones|preserves chronology|using the source wording|Explain the source-backed concept)\b/i.test(value)
+    || /\b(?:Generated as compact reviewer|Generated from fallback|partial generation|partial save|fallback wording|internal generation notes?)\b/i.test(value)
+}
+
+function hasInternalPipelineTextInStudentFacingContent(content: DeepLearnGeneratedContent) {
+  return content.sections.some((section) => containsInternalPipelineText(`${section.heading} ${section.body}`))
+    || content.answerBank.some((item) => containsInternalPipelineText(JSON.stringify(item)))
+    || content.identificationItems.some((item) => containsInternalPipelineText(JSON.stringify(item)))
+    || content.distinctions.some((item) => containsInternalPipelineText(JSON.stringify(item)))
+    || content.likelyQuizTargets.some((item) => containsInternalPipelineText(JSON.stringify(item)))
 }
 
 function isLowInformationStudyText(value: string) {
@@ -4074,6 +4152,7 @@ function logDeepLearnStageDiagnostics(
           reason: input.finalValidatorResult.reason,
           message: input.finalValidatorResult.message,
           counts: input.finalValidatorResult.counts,
+          composerLeakageLocations: input.finalValidatorResult.composerLeakageDiagnostics ?? null,
         }
       : null,
     reason: input.reason ?? null,
