@@ -416,7 +416,7 @@ test('learn generation queue uses staged progress updates and compact fallback c
 test('learn generation queue maps quick-answer size failures to specific student copy', () => {
   const queueSource = readFileSync('actions/queue-jobs.ts', 'utf8')
   assert.match(queueSource, /quick_answers_output_too_large/)
-  assert.match(queueSource, /Quick answers were too large to generate\. Other study sections were saved when available\./)
+  assert.match(queueSource, /DEEP_LEARN_QUICK_ANSWERS_OUTPUT_TOO_LARGE_MESSAGE/)
   assert.doesNotMatch(queueSource, /quick_answers_output_too_large[\s\S]{0,220}could not build enough structured study content/i)
 })
 

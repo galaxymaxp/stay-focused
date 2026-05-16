@@ -27,8 +27,12 @@ import {
   resolveLearnResourceSelection,
 } from '@/lib/module-workspace'
 import {
+  DEEP_LEARN_IDENTIFICATION_OUTPUT_TOO_LARGE_MESSAGE,
+  DEEP_LEARN_IDENTIFICATION_OUTPUT_TOO_LARGE_REASON,
   DEEP_LEARN_OPTIONAL_STAGE_OUTPUT_TOO_LARGE_MESSAGE,
   DEEP_LEARN_OPTIONAL_STAGE_OUTPUT_TOO_LARGE_REASON,
+  DEEP_LEARN_QUICK_ANSWERS_OUTPUT_TOO_LARGE_MESSAGE,
+  DEEP_LEARN_QUICK_ANSWERS_OUTPUT_TOO_LARGE_REASON,
   DEEP_LEARN_QUIZ_TARGETS_OUTPUT_TOO_LARGE_MESSAGE,
   DEEP_LEARN_QUIZ_TARGETS_OUTPUT_TOO_LARGE_REASON,
   DeepLearnGenerationBlockedError,
@@ -1485,7 +1489,7 @@ function humanizeLearnGenerationFailureForQueue(message: string) {
     return DEEP_LEARN_OPTIONAL_STAGE_OUTPUT_TOO_LARGE_MESSAGE
   }
   if (/quick_answers_output_too_large|Quick answers were too large/i.test(trimmed)) {
-    return 'Quick answers were too large to generate. Other study sections were saved when available.'
+    return DEEP_LEARN_QUICK_ANSWERS_OUTPUT_TOO_LARGE_MESSAGE
   }
   if (/max_output_tokens|response size limit|too large/i.test(trimmed)) {
     return 'The source was too large for the model response after compact fallback.'
@@ -1500,6 +1504,12 @@ function humanizeLearnGenerationFailureForQueue(message: string) {
 }
 
 function getPartialStudyPackReason(cautionNotes: string[]) {
+  if (cautionNotes.some((note) => note === DEEP_LEARN_IDENTIFICATION_OUTPUT_TOO_LARGE_MESSAGE || note === DEEP_LEARN_IDENTIFICATION_OUTPUT_TOO_LARGE_REASON)) {
+    return DEEP_LEARN_IDENTIFICATION_OUTPUT_TOO_LARGE_REASON
+  }
+  if (cautionNotes.some((note) => note === DEEP_LEARN_QUICK_ANSWERS_OUTPUT_TOO_LARGE_MESSAGE || note === DEEP_LEARN_QUICK_ANSWERS_OUTPUT_TOO_LARGE_REASON)) {
+    return DEEP_LEARN_QUICK_ANSWERS_OUTPUT_TOO_LARGE_REASON
+  }
   if (cautionNotes.some((note) => note === DEEP_LEARN_QUIZ_TARGETS_OUTPUT_TOO_LARGE_MESSAGE || note === DEEP_LEARN_QUIZ_TARGETS_OUTPUT_TOO_LARGE_REASON)) {
     return DEEP_LEARN_QUIZ_TARGETS_OUTPUT_TOO_LARGE_REASON
   }
@@ -1511,6 +1521,8 @@ function getPartialStudyPackReason(cautionNotes: string[]) {
 
 function getPartialStudyPackCompletionMessage(cautionNotes: string[]) {
   const reason = getPartialStudyPackReason(cautionNotes)
+  if (reason === DEEP_LEARN_IDENTIFICATION_OUTPUT_TOO_LARGE_REASON) return DEEP_LEARN_IDENTIFICATION_OUTPUT_TOO_LARGE_MESSAGE
+  if (reason === DEEP_LEARN_QUICK_ANSWERS_OUTPUT_TOO_LARGE_REASON) return DEEP_LEARN_QUICK_ANSWERS_OUTPUT_TOO_LARGE_MESSAGE
   if (reason === DEEP_LEARN_QUIZ_TARGETS_OUTPUT_TOO_LARGE_REASON) return DEEP_LEARN_QUIZ_TARGETS_OUTPUT_TOO_LARGE_MESSAGE
   if (reason === DEEP_LEARN_OPTIONAL_STAGE_OUTPUT_TOO_LARGE_REASON) return DEEP_LEARN_OPTIONAL_STAGE_OUTPUT_TOO_LARGE_MESSAGE
   return null

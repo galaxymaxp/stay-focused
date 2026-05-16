@@ -5,6 +5,71 @@ Last Updated: 2026-05-16
 
 ---
 
+## Session Update - 2026-05-16 (Optional Stage Raw Reason Partial Save)
+
+### What changed
+
+- Fixed the generic Deep Learn partial-save decision so optional `quick_answers` and combined `distinctions` / likely quiz target failures can save a partial Study Pack after fallback exhaustion when usable core content already exists.
+- Raw `max_output_tokens` size failures now qualify directly; the decision no longer depends on the failure already being mapped to `quick_answers_output_too_large` or another normalized reason.
+- Kept `identification` classified as optional while preserving its existing stronger fallback path that attempts to continue into later sections before saving.
+- Added final-stage diagnostic fields:
+  - `normalizedStage`
+  - `rawReason`
+  - `normalizedIncompleteReason`
+  - existing final decision fields for `shouldSavePartial`, `partialSaveHappened`, `finalJobStatus`, and `savedSectionCounts`
+- Updated queue completion reason handling so saved partial packs with identification or quick-answer skip notes surface completed partial-copy instead of generic failure copy.
+- Added regressions for:
+  - `quick_answers` exhausting with raw `max_output_tokens` and saving partial content
+  - combined `distinctions` / likely quiz target exhaustion mapping to `quiz_targets_output_too_large`
+  - partial-skip content without usable core content remaining invalid
+
+### Files touched
+
+- `lib/deep-learn-generation.ts`
+- `actions/queue-jobs.ts`
+- `tests/deep-learn-generation.test.ts`
+- `tests/queue.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Production diagnostics showed optional stages with valid existing core content still producing `shouldSavePartial: false` and failing the queued job when the raw failure reason was `max_output_tokens`. Optional enrichment failures should not fail the whole Study Pack after usable core sections already exist.
+
+### Tests run
+
+- `npx tsx --test tests/deep-learn-generation.test.ts` - passed
+- `npx tsx --test tests/queue.test.ts` - passed
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- deep-learn-generation deep-learn-readiness queue learn-resource-ui study-output-reviewer study-output-quiz-pack source-map` - passed
+
+### Verification result
+
+- Passed all requested verification commands.
+- Verified quick-answer raw `max_output_tokens` failures now log `shouldSavePartial: true`, `partialSaveHappened: true`, and `finalJobStatus: completed` at the final exhausted fallback point.
+- Verified combined `distinctions` / likely quiz target failures normalize to `quiz_targets_output_too_large`, not a generic structured-content failure.
+- Verified optional skip notes cannot make content saveable without usable core Source Summary / High-Yield content.
+
+### Known risks
+
+- A quick-answer stage that exhausts all fallbacks can now save before trying later combined enrichment stages. The saved pack keeps Source Summary, High-Yield, Identification Review, and any derived minimal quick answers, but may not include likely quiz targets from that run.
+- `identification` remains optional but still uses the existing continuation path to preserve stronger answer-bank and quiz-target output when possible.
+
+### Blockers
+
+- No blocker remains.
+- `test_output.txt` was already untracked in the worktree and was not included in this change.
+
+### Next recommended step
+
+Deploy and retry the production Deep Learn jobs that failed at `quick_answers` or `distinctions` with raw `max_output_tokens`. Confirm the queue row completes and the final stage diagnostic shows `partialSaveHappened: true`.
+
+### Suggested commit message
+
+save partial packs for optional raw size failures
+
+---
+
 ## Session Update - 2026-05-16 (Generic Optional Stage Partial Save)
 
 ### What changed

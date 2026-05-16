@@ -896,44 +896,56 @@ test('quick-answer output size failures save partial Study Pack content', async 
   let quickAnswerCalls = 0
   const quickAnswerTokenCaps: number[] = []
   const quickAnswerPrompts: string[] = []
-  const result = await generateDeepLearnStructuredContent(
-    createPromptInput(),
-    createPreparedGrounding(),
-    async ({ schemaName, maxOutputTokens, promptText }) => {
-      if (schemaName === 'deep_learn_high_yield_stage') {
-        return jsonResponse({
-          title: 'Academic Module',
-          overview: 'The source explains core academic concepts and procedures.',
-          sections: [
-            { heading: 'Source Summary', body: 'The source explains core academic concepts and procedures.' },
-            { heading: 'High-Yield First', body: '- Concept groups\n- Procedures\n- Definitions' },
-          ],
-        })
-      }
-      if (schemaName === 'deep_learn_identification_stage') {
-        return jsonResponse({
-          sections: [{ heading: 'Identification Review', body: 'Practice direct prompts from the source.' }],
-          identificationItems: Array.from({ length: 12 }, (_, index) => identificationItem(index)),
-        })
-      }
-      if (schemaName === 'deep_learn_quick_answers_stage') {
-        quickAnswerCalls += 1
-        quickAnswerTokenCaps.push(maxOutputTokens)
-        quickAnswerPrompts.push(promptText)
-        return {
-          status: 'incomplete',
-          output_text: '',
-          incomplete_details: { reason: 'max_output_tokens' },
+  const diagnostics: Array<Record<string, unknown>> = []
+  const originalWarn = console.warn
+  console.warn = (...args: unknown[]) => {
+    if (args[0] === '[deep-learn-generation] stage diagnostics' && typeof args[1] === 'object' && args[1]) {
+      diagnostics.push(args[1] as Record<string, unknown>)
+    }
+  }
+  let result
+  try {
+    result = await generateDeepLearnStructuredContent(
+      createPromptInput(),
+      createPreparedGrounding(),
+      async ({ schemaName, maxOutputTokens, promptText }) => {
+        if (schemaName === 'deep_learn_high_yield_stage') {
+          return jsonResponse({
+            title: 'Academic Module',
+            overview: 'The source explains core academic concepts and procedures.',
+            sections: [
+              { heading: 'Source Summary', body: 'The source explains core academic concepts and procedures.' },
+              { heading: 'High-Yield First', body: '- Concept groups\n- Procedures\n- Definitions' },
+            ],
+          })
         }
-      }
-      return jsonResponse({
-        sections: [{ heading: 'Likely Quiz Targets', body: 'Likely quiz targets remain usable without a full quick-answer section.' }],
-        distinctions: [distinctionItem(1)],
-        likelyQuizTargets: Array.from({ length: 6 }, (_, index) => quizTargetItem(index)),
-        cautionNotes: [],
-      })
-    },
-  )
+        if (schemaName === 'deep_learn_identification_stage') {
+          return jsonResponse({
+            sections: [{ heading: 'Identification Review', body: 'Practice direct prompts from the source.' }],
+            identificationItems: Array.from({ length: 12 }, (_, index) => identificationItem(index)),
+          })
+        }
+        if (schemaName === 'deep_learn_quick_answers_stage') {
+          quickAnswerCalls += 1
+          quickAnswerTokenCaps.push(maxOutputTokens)
+          quickAnswerPrompts.push(promptText)
+          return {
+            status: 'incomplete',
+            output_text: '',
+            incomplete_details: { reason: 'max_output_tokens' },
+          }
+        }
+        return jsonResponse({
+          sections: [{ heading: 'Likely Quiz Targets', body: 'Likely quiz targets remain usable without a full quick-answer section.' }],
+          distinctions: [distinctionItem(1)],
+          likelyQuizTargets: Array.from({ length: 6 }, (_, index) => quizTargetItem(index)),
+          cautionNotes: [],
+        })
+      },
+    )
+  } finally {
+    console.warn = originalWarn
+  }
 
   assert.equal(result.compactFallbackUsed, true)
   assert.equal(quickAnswerCalls, 4)
@@ -945,8 +957,15 @@ test('quick-answer output size failures save partial Study Pack content', async 
   assert.ok(result.content.sections.some((section) => section.heading === 'Identification Review'))
   assert.ok(result.content.identificationItems.length >= 3)
   assert.ok(result.content.answerBank.length <= 3)
-  assert.ok(result.content.likelyQuizTargets.length >= 3)
   assert.ok(result.content.cautionNotes.includes(DEEP_LEARN_QUICK_ANSWERS_OUTPUT_TOO_LARGE_MESSAGE))
+  const finalQuickAnswerDiagnostic = diagnostics.findLast((item) => item.failedStage === 'quick_answers')
+  assert.equal(finalQuickAnswerDiagnostic?.stageCriticality, 'optional')
+  assert.equal(finalQuickAnswerDiagnostic?.rawReason, 'max_output_tokens')
+  assert.equal(finalQuickAnswerDiagnostic?.normalizedIncompleteReason, DEEP_LEARN_QUICK_ANSWERS_OUTPUT_TOO_LARGE_REASON)
+  assert.equal(finalQuickAnswerDiagnostic?.hasUsableCoreContent, true)
+  assert.equal(finalQuickAnswerDiagnostic?.shouldSavePartial, true)
+  assert.equal(finalQuickAnswerDiagnostic?.partialSaveHappened, true)
+  assert.equal(finalQuickAnswerDiagnostic?.finalJobStatus, 'completed')
   assert.doesNotMatch(JSON.stringify(result.content), /could not build enough structured study content/i)
   assert.equal(validateDeepLearnContentReadyForSave(result.content).ok, true)
 })
@@ -978,41 +997,53 @@ test('quick-answer output size failures use the specific student-facing reason',
 test('valid source saves partial Study Pack when likely quiz targets exceed all fallback limits', async () => {
   let quizTargetCalls = 0
   const quizTargetTokenCaps: number[] = []
-  const result = await generateDeepLearnStructuredContent(
-    createPromptInput(),
-    createPreparedGrounding(),
-    async ({ schemaName, maxOutputTokens }) => {
-      if (schemaName === 'deep_learn_high_yield_stage') {
-        return jsonResponse({
-          title: 'Academic Systems',
-          overview: 'The source explains how academic systems organize concepts, procedures, and checks.',
-          sections: [
-            { heading: 'Source Summary', body: 'The source explains how academic systems organize concepts, procedures, and checks for reliable work.' },
-            { heading: 'High-Yield First', body: '- Concepts\n- Procedures\n- Checks' },
-          ],
-        })
-      }
-      if (schemaName === 'deep_learn_identification_stage') {
-        return jsonResponse({
-          sections: [{ heading: 'Identification Review', body: 'Practice direct source-grounded prompts.' }],
-          identificationItems: [identificationItem(1), identificationItem(2), identificationItem(3)],
-        })
-      }
-      if (schemaName === 'deep_learn_quick_answers_stage') {
-        return jsonResponse({
-          sections: [{ heading: 'Quick-Answer Blocks', body: 'Use compact answers for direct recall.' }],
-          answerBank: [answerBankItem(1), answerBankItem(2), answerBankItem(3)],
-        })
-      }
-      quizTargetCalls += 1
-      quizTargetTokenCaps.push(maxOutputTokens)
-      return {
-        status: 'incomplete',
-        output_text: '',
-        incomplete_details: { reason: 'max_output_tokens' },
-      }
-    },
-  )
+  const diagnostics: Array<Record<string, unknown>> = []
+  const originalWarn = console.warn
+  console.warn = (...args: unknown[]) => {
+    if (args[0] === '[deep-learn-generation] stage diagnostics' && typeof args[1] === 'object' && args[1]) {
+      diagnostics.push(args[1] as Record<string, unknown>)
+    }
+  }
+  let result
+  try {
+    result = await generateDeepLearnStructuredContent(
+      createPromptInput(),
+      createPreparedGrounding(),
+      async ({ schemaName, maxOutputTokens }) => {
+        if (schemaName === 'deep_learn_high_yield_stage') {
+          return jsonResponse({
+            title: 'Academic Systems',
+            overview: 'The source explains how academic systems organize concepts, procedures, and checks.',
+            sections: [
+              { heading: 'Source Summary', body: 'The source explains how academic systems organize concepts, procedures, and checks for reliable work.' },
+              { heading: 'High-Yield First', body: '- Concepts\n- Procedures\n- Checks' },
+            ],
+          })
+        }
+        if (schemaName === 'deep_learn_identification_stage') {
+          return jsonResponse({
+            sections: [{ heading: 'Identification Review', body: 'Practice direct source-grounded prompts.' }],
+            identificationItems: [identificationItem(1), identificationItem(2), identificationItem(3)],
+          })
+        }
+        if (schemaName === 'deep_learn_quick_answers_stage') {
+          return jsonResponse({
+            sections: [{ heading: 'Quick-Answer Blocks', body: 'Use compact answers for direct recall.' }],
+            answerBank: [answerBankItem(1), answerBankItem(2), answerBankItem(3)],
+          })
+        }
+        quizTargetCalls += 1
+        quizTargetTokenCaps.push(maxOutputTokens)
+        return {
+          status: 'incomplete',
+          output_text: '',
+          incomplete_details: { reason: 'max_output_tokens' },
+        }
+      },
+    )
+  } finally {
+    console.warn = originalWarn
+  }
 
   assert.equal(result.compactFallbackUsed, true)
   assert.equal(quizTargetCalls, 4)
@@ -1022,8 +1053,18 @@ test('valid source saves partial Study Pack when likely quiz targets exceed all 
   assert.ok(result.content.likelyQuizTargets.length >= 3)
   assert.ok(result.content.likelyQuizTargets.length <= 5)
   assert.ok(result.content.cautionNotes.includes(DEEP_LEARN_QUIZ_TARGETS_OUTPUT_TOO_LARGE_MESSAGE))
+  const finalCombinedDiagnostic = diagnostics.findLast((item) => item.failedStage === 'distinctions')
+  assert.equal(finalCombinedDiagnostic?.normalizedStage, 'distinctions')
+  assert.equal(finalCombinedDiagnostic?.stageCriticality, 'optional')
+  assert.equal(finalCombinedDiagnostic?.rawReason, 'max_output_tokens')
+  assert.equal(finalCombinedDiagnostic?.normalizedIncompleteReason, DEEP_LEARN_QUIZ_TARGETS_OUTPUT_TOO_LARGE_REASON)
+  assert.equal(finalCombinedDiagnostic?.hasUsableCoreContent, true)
+  assert.equal(finalCombinedDiagnostic?.shouldSavePartial, true)
+  assert.equal(finalCombinedDiagnostic?.partialSaveHappened, true)
+  assert.equal(finalCombinedDiagnostic?.finalJobStatus, 'completed')
   assert.equal(validateDeepLearnContentReadyForSave(result.content).ok, true)
   assert.doesNotMatch(JSON.stringify(result.content), /IT Security|SDLC|Arnis|PATHFit/i)
+  assert.doesNotMatch(JSON.stringify(result.content), /could not build enough structured study content/i)
 })
 
 test('valid source saves partial Study Pack when identification and quiz-target optional stages fail', async () => {
@@ -1132,6 +1173,27 @@ test('metadata-only source still fails normal Study Pack validation despite opti
 
   assert.equal(validation.ok, false)
   assert.equal(validation.reason, DEEP_LEARN_QUIZ_TARGETS_OUTPUT_TOO_LARGE_REASON)
+})
+
+test('optional-stage partial policy does not fake success when no usable core content exists', () => {
+  const content = normalizeDeepLearnGeneratedContent({
+    title: 'Meaningful Academic Source',
+    overview: 'The source explains academic theory, procedure steps, evaluation criteria, and grounded examples.',
+    sections: [
+      { heading: 'Quick-Answer Blocks', body: 'Academic theory uses definitions, procedure steps, evaluation criteria, and grounded examples for assessment.' },
+      { heading: 'Likely Quiz Targets', body: 'Expect definitions, ordered procedures, criteria, and examples from the source.' },
+    ],
+    answerBank: [answerBankItem(1), answerBankItem(2), answerBankItem(3)],
+    identificationItems: [identificationItem(1), identificationItem(2), identificationItem(3)],
+    distinctions: [],
+    likelyQuizTargets: [quizTargetItem(1), quizTargetItem(2), quizTargetItem(3)],
+    cautionNotes: [DEEP_LEARN_QUICK_ANSWERS_OUTPUT_TOO_LARGE_MESSAGE],
+  }, 'Meaningful Academic Source')
+
+  const validation = validateDeepLearnContentReadyForSave(content)
+
+  assert.equal(validation.ok, false)
+  assert.equal(validation.reason, DEEP_LEARN_QUICK_ANSWERS_OUTPUT_TOO_LARGE_REASON)
 })
 
 test('optional stage incomplete reasons use student-facing copy without generic structured-content failure', () => {

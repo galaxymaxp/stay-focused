@@ -1042,6 +1042,8 @@ async function runDeepLearnStagePlan(
           partialReason,
           finalJobStatus: shouldSavePartial ? 'completed' : 'failed',
           savedSectionCounts: getRawDeepLearnArtifactCounts(stageOutput),
+          rawReason: error.reason,
+          normalizedIncompleteReason: partialReason,
         })
         if (shouldSavePartial) {
           return savePartialStudyPackResult(input, stageOutput, error, level)
@@ -1785,8 +1787,8 @@ function shouldSavePartialAfterStageFailure(
   const normalized = normalizeDeepLearnGeneratedContent(partialOutput ?? {}, 'Source')
   if (!hasUsableCoreContent(normalized)) return false
   if (error.kind === 'invalid_json') return true
-  if (error.kind !== 'size') return false
-  if (error.stage === 'identification' || error.stage === 'quick_answers') return false
+  if (error.kind !== 'size' && !isMaxOutputTokenReason(error.reason)) return false
+  if (error.stage === 'identification') return false
   return level === 'minimal' || (!stage.minimalMaxOutputTokens && level === 'micro')
 }
 
@@ -1835,6 +1837,8 @@ function savePartialStudyPackResult(
     partialReason: reason,
     finalJobStatus: validation.ok ? 'completed' : 'failed',
     savedSectionCounts: getRawDeepLearnArtifactCounts(content),
+    rawReason: error.reason,
+    normalizedIncompleteReason: reason,
   })
   if (!validation.ok) throw new DeepLearnGeneratedContentValidationError(validation.message)
   return content
@@ -3949,6 +3953,8 @@ function logDeepLearnStageDiagnostics(
     parsedQuickAnswerCount?: number | null
     finalSavedSections?: string[] | null
     reason?: string | null
+    rawReason?: string | null
+    normalizedIncompleteReason?: string | null
     kind?: DeepLearnGenerationStageError['kind'] | null
     stageCriticality?: DeepLearnStageCriticality
     hasHighYield?: boolean
@@ -3966,14 +3972,17 @@ function logDeepLearnStageDiagnostics(
     event,
     stage: input.stage,
     failedStage: input.stage,
+    normalizedStage: input.stage,
     stageCriticality: input.stageCriticality ?? getDeepLearnStageCriticality(input.stage),
+    rawReason: input.rawReason ?? input.reason ?? null,
+    normalizedIncompleteReason: input.normalizedIncompleteReason ?? input.partialReason ?? null,
     hasHighYield: input.hasHighYield ?? null,
     hasIdentification: input.hasIdentification ?? null,
     hasQuickAnswers: input.hasQuickAnswers ?? null,
     hasQuizTargets: input.hasQuizTargets ?? null,
     hasUsableCoreContent: input.hasUsableCoreContent ?? null,
     shouldSavePartial: input.shouldSavePartial ?? input.partialSaveHappened,
-    partialReason: input.partialReason ?? input.reason ?? null,
+    partialReason: input.partialReason ?? input.normalizedIncompleteReason ?? input.reason ?? null,
     finalJobStatus: input.finalJobStatus ?? null,
     savedSectionCounts: input.savedSectionCounts ?? input.parsedArtifactCounts,
     fallbackLevelAttempted: input.level,
