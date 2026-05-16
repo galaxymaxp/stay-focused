@@ -5,6 +5,65 @@ Last Updated: 2026-05-16
 
 ---
 
+## Session Update - 2026-05-16 (Structured Study Pack Compiler)
+
+### What changed
+
+- Added a new OpenAI Structured Outputs Study Pack Compiler as the primary Deep Learn generation path.
+- Added `StudyFactCard` with `kind`, `prompt`, `answer`, `sourceQuote`, `sectionTitle`, `difficulty`, and `confidence`.
+- Added deterministic source cleanup, chunk splitting, strict fact-card JSON schema, sourceQuote grounding checks, internal prompt rejection, and deterministic Study Pack assembly.
+- Assembled `answerBank`, `identificationItems`, reviewer sections, likely quiz targets, and safe optional distractors from fact cards instead of asking the model to compose staged reviewer sections.
+- Kept `cautionNotes` out of the structured compiler schema and saved new compiler packs with empty `cautionNotes`.
+- Preserved test-only compatibility for the old staged mock harness so existing regressions still exercise legacy edge cases without making that path primary.
+
+### Files touched
+
+- `lib/deep-learn-generation.ts`
+- `lib/types.ts`
+- `tests/deep-learn-generation.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Production logs showed extraction was working, but staged composition repeatedly failed during identification, quick answers, and partial-save validation. The new compiler asks the model only for small grounded fact cards, then builds student-facing Study Pack artifacts deterministically to reduce max-output failures, composer leakage, and queue inconsistency risk.
+
+### Tests run
+
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- deep-learn-generation queue` - passed
+
+### Verification result
+
+- Verified SDLC-style source produces fact cards, answer bank, identification review, and reviewer sections without requiring `quick_answers`.
+- Verified IT Security bullet-heavy source produces definition/list cards.
+- Verified Arnis short source produces definition/date/person/list cards without size fallback.
+- Verified optional MCQ/distractor assembly skips safely when answers are not compact enough for safe distractors.
+- Verified internal Source Map prompt stems and diagnostics are rejected from fact cards and saved identification items.
+- Verified no usable fact cards fail as `insufficient_structured_artifacts`.
+- Verified short sources use a single structured-output compiler call and long sources use chunked fact-card extraction.
+
+### Known risks
+
+- The old staged composer remains in the file for test compatibility and legacy regressions, but `generateDeepLearnStructuredContent` now routes primary production generation through the fact-card compiler.
+- Fact-card source grounding currently accepts exact quote inclusion or high token overlap; very paraphrased but valid model quotes may be rejected.
+- MCQs are deterministic via existing quiz builders and safe distractors, not a separate model MCQ generation call in this change.
+
+### Blockers
+
+- No blocker remains.
+- `test_output.txt` remains untracked and was not committed.
+
+### Next recommended step
+
+Deploy and retry the SDLC, IT Security, and Arnis production sources. Confirm queued jobs complete from fact-card extraction and saved Study Packs contain no `cautionNotes`, diagnostics, or Source Map bank prompt wording.
+
+### Suggested commit message
+
+add structured study pack compiler
+
+---
+
 ## Session Update - 2026-05-16 (Composer Leakage Caution Notes Fix)
 
 ### What changed

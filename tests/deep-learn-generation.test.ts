@@ -2477,6 +2477,131 @@ test('Deep Learn diagnostics select meaningful extracted_text over empty visual 
   assert.equal(validateDeepLearnContentReadyForSave(content.content).ok, true)
 })
 
+test('structured Study Pack compiler builds SDLC fact cards without quick_answers stage', async () => {
+  const source = [
+    'Systems Development Life Cycle defines a phased process for planning, analysis, design, implementation, testing, deployment, and maintenance.',
+    'Planning identifies the project scope, goals, resources, and schedule before development starts.',
+    'Analysis gathers requirements from users and studies the current system problems.',
+    'Design translates requirements into architecture, data structures, interfaces, and program specifications.',
+    'Implementation builds and installs the system based on the approved design.',
+    'Maintenance corrects errors, improves performance, and adapts the system after deployment.',
+  ].join('\n')
+  const schemas: string[] = []
+  const result = await generateDeepLearnStructuredContent(createStructuredPromptInput(source, 'SDLC Notes.pdf'), createStructuredPreparedGrounding(source), async (request) => {
+    schemas.push(request.schemaName)
+    return factCardResponse([
+      factCard('process', 'What is the Systems Development Life Cycle?', 'Systems Development Life Cycle defines a phased process for planning, analysis, design, implementation, testing, deployment, and maintenance.', 'Systems Development Life Cycle defines a phased process for planning, analysis, design, implementation, testing, deployment, and maintenance.', 'Systems Development Life Cycle'),
+      factCard('fact', 'What does planning identify?', 'Planning identifies the project scope, goals, resources, and schedule before development starts.', 'Planning identifies the project scope, goals, resources, and schedule before development starts.', 'Planning'),
+      factCard('fact', 'What does analysis gather?', 'Analysis gathers requirements from users and studies the current system problems.', 'Analysis gathers requirements from users and studies the current system problems.', 'Analysis'),
+      factCard('fact', 'What does design translate?', 'Design translates requirements into architecture, data structures, interfaces, and program specifications.', 'Design translates requirements into architecture, data structures, interfaces, and program specifications.', 'Design'),
+      factCard('fact', 'What does implementation do?', 'Implementation builds and installs the system based on the approved design.', 'Implementation builds and installs the system based on the approved design.', 'Implementation'),
+      factCard('fact', 'What does maintenance do?', 'Maintenance corrects errors, improves performance, and adapts the system after deployment.', 'Maintenance corrects errors, improves performance, and adapts the system after deployment.', 'Maintenance'),
+    ], 'SDLC')
+  })
+
+  assert.deepEqual(schemas, ['deep_learn_study_pack_compiler'])
+  assert.equal(result.content.answerBank.length, 6)
+  assert.equal(result.content.identificationItems.length, 6)
+  assert.ok(result.content.sections.some((section) => section.heading === 'Identification Review'))
+  assert.equal(result.content.cautionNotes.length, 0)
+})
+
+test('structured Study Pack compiler handles IT Security bullet definitions and lists', async () => {
+  const result = await generateDeepLearnStructuredContent(createStructuredPromptInput(BULLET_HEAVY_IT_SECURITY_SOURCE, 'IT Security Bullets.pdf'), createStructuredPreparedGrounding(BULLET_HEAVY_IT_SECURITY_SOURCE), async () => factCardResponse([
+    factCard('definition', 'What is confidentiality?', 'Confidentiality means information is protected from unauthorized access and disclosure.', 'Confidentiality: information is protected from unauthorized access and disclosure.', 'Confidentiality'),
+    factCard('definition', 'What is integrity?', 'Integrity means data stays accurate, complete, and protected from improper modification.', 'Integrity: data stays accurate, complete, and protected from improper modification.', 'Integrity'),
+    factCard('definition', 'What is availability?', 'Availability means systems and data remain accessible to authorized users when needed.', 'Availability: systems and data remain accessible to authorized users when needed.', 'Availability'),
+    factCard('list', 'What are the CIA triad items?', 'CIA triad: Confidentiality, Integrity, Availability.', 'CIA triad: Confidentiality, Integrity, Availability.', 'CIA Triad'),
+    factCard('definition', 'What is malware?', 'Malware is malicious software that damages systems, steals data, or disrupts operations.', 'Malware: malicious software that damages systems, steals data, or disrupts operations.', 'Malware'),
+    factCard('list', 'What are symptoms of malware?', 'Symptoms include slow computer speed, frequent crashes, unknown files, modified files, deleted files, unknown processes, and email sent without user consent.', 'Symptoms of malware: slow computer speed, frequent crashes, unknown files, modified files, deleted files, unknown processes, and email sent without user consent.', 'Symptoms of Malware'),
+  ], 'IT Security'))
+
+  assert.ok(result.content.answerBank.some((item) => item.kind === 'term_definition' && /Confidentiality/i.test(item.cue)))
+  assert.ok(result.content.answerBank.some((item) => /CIA Triad/i.test(item.cue)))
+  assert.ok(result.content.identificationItems.some((item) => /symptoms of malware/i.test(item.prompt)))
+})
+
+test('structured Study Pack compiler handles short Arnis dates people definitions and lists', async () => {
+  const source = [
+    'Arnis is the national martial art and sport of the Philippines.',
+    'Republic Act No. 9850 declared Arnis as the national martial art and sport in 2009.',
+    'Remy Presas founded Modern Arnis.',
+    'Arnis uses weapons such as rattan sticks, knives, and improvised weapons.',
+    'Courtesy in Arnis includes salutation before and after practice.',
+    'Striking techniques include forehand strike, backhand strike, thrust, and downward strike.',
+  ].join('\n')
+  const result = await generateDeepLearnStructuredContent(createStructuredPromptInput(source, 'Arnis.pdf'), createStructuredPreparedGrounding(source), async () => factCardResponse([
+    factCard('definition', 'What is Arnis?', 'Arnis is the national martial art and sport of the Philippines.', 'Arnis is the national martial art and sport of the Philippines.', 'Arnis'),
+    factCard('date', 'What did Republic Act No. 9850 do in 2009?', 'Republic Act No. 9850 declared Arnis as the national martial art and sport in 2009.', 'Republic Act No. 9850 declared Arnis as the national martial art and sport in 2009.', 'Republic Act No. 9850'),
+    factCard('person', 'Who founded Modern Arnis?', 'Remy Presas founded Modern Arnis.', 'Remy Presas founded Modern Arnis.', 'Remy Presas'),
+    factCard('list', 'What weapons does Arnis use?', 'Arnis uses weapons such as rattan sticks, knives, and improvised weapons.', 'Arnis uses weapons such as rattan sticks, knives, and improvised weapons.', 'Arnis Weapons'),
+    factCard('fact', 'What does courtesy in Arnis include?', 'Courtesy in Arnis includes salutation before and after practice.', 'Courtesy in Arnis includes salutation before and after practice.', 'Courtesy'),
+    factCard('list', 'What are Arnis striking techniques?', 'Striking techniques include forehand strike, backhand strike, thrust, and downward strike.', 'Striking techniques include forehand strike, backhand strike, thrust, and downward strike.', 'Striking Techniques'),
+  ], 'Arnis'))
+
+  assert.equal(result.compactFallbackUsed, false)
+  assert.ok(result.content.answerBank.some((item) => item.kind === 'date_event'))
+  assert.ok(result.content.answerBank.some((item) => item.kind === 'person_role'))
+  assert.equal(result.content.cautionNotes.length, 0)
+})
+
+test('structured Study Pack compiler skips MCQ distractors safely when not enough choices exist', async () => {
+  const cards = createSequentialFactCards('Data organization', 6).map((card) => ({
+    ...card,
+    answer: `${card.answer} This answer is intentionally long and source-specific, so it should not be used as a compact multiple-choice distractor for another fact card in the deterministic assembly path.`,
+    sourceQuote: `${card.sourceQuote} This answer is intentionally long and source-specific, so it should not be used as a compact multiple-choice distractor for another fact card in the deterministic assembly path.`,
+  }))
+  const groundedSource = cards.map((card) => card.sourceQuote).join('\n')
+  const result = await generateDeepLearnStructuredContent(createStructuredPromptInput(groundedSource, 'Data Organization.pdf'), createStructuredPreparedGrounding(groundedSource), async () => factCardResponse(cards, 'Data Organization'))
+
+  assert.equal(result.content.answerBank.every((item) => item.distractors.length === 0), true)
+  assert.equal(result.content.identificationItems.length >= 6, true)
+})
+
+test('structured Study Pack compiler rejects source-map prompts and diagnostics from saved content', async () => {
+  const source = buildStructuredFactSource('Canvas content resolution', 8)
+  const result = await generateDeepLearnStructuredContent(createStructuredPromptInput(source, 'Source Map Noise.pdf'), createStructuredPreparedGrounding(source), async () => factCardResponse([
+    factCard('fact', 'Recall the exam meaning of Source Map Bank.', 'Internal prompt wording must not be saved.', 'Canvas content resolution fact 1 explains grounded resource text for study.', 'Source Map Bank'),
+    factCard('fact', 'Explain the source relationship inside diagnostics.', 'Internal prompt wording must not be saved.', 'Canvas content resolution fact 2 explains grounded resource text for study.', 'Diagnostics'),
+    ...createSequentialFactCards('Canvas content resolution', 6),
+  ], 'Clean Study Pack'))
+
+  assert.equal(JSON.stringify(result.content).includes('Recall the exam meaning of'), false)
+  assert.equal(JSON.stringify(result.content).includes('Explain the source relationship'), false)
+  assert.equal(JSON.stringify(result.content).includes('diagnostics'), false)
+  assert.equal(result.content.identificationItems.length, 6)
+})
+
+test('structured Study Pack compiler fails with insufficient_structured_artifacts when no usable cards remain', async () => {
+  const source = buildStructuredFactSource('Bad cards', 4)
+  await assert.rejects(
+    () => generateDeepLearnStructuredContent(createStructuredPromptInput(source, 'Bad Cards.pdf'), createStructuredPreparedGrounding(source), async () => factCardResponse([
+      factCard('fact', 'Recall the exam meaning of Bad Cards.', 'Internal prompt wording must not be saved.', 'Bad cards fact 1 explains grounded resource text for study.', 'Bad Cards'),
+    ], 'Bad Cards')),
+    (error: unknown) => {
+      assert.ok(error instanceof DeepLearnGenerationIncompleteError)
+      assert.equal(error.reason, 'insufficient_structured_artifacts')
+      return true
+    },
+  )
+})
+
+test('structured Study Pack compiler uses chunked fact extraction for long sources', async () => {
+  const source = buildStructuredFactSource('Long SDLC', 36)
+  const schemaNames: string[] = []
+  const result = await generateDeepLearnStructuredContent(createStructuredPromptInput(source, 'Long SDLC.pdf'), createStructuredPreparedGrounding(source), async (request) => {
+    schemaNames.push(request.schemaName)
+    const match = request.promptText.match(/Long SDLC fact (\d+)/i)
+    const start = match ? Number(match[1]) : schemaNames.length
+    return factCardResponse(createSequentialFactCards('Long SDLC', 6, start), 'Long SDLC')
+  })
+
+  assert.ok(schemaNames.length > 1)
+  assert.equal(schemaNames.every((name) => name === 'deep_learn_fact_card_chunk'), true)
+  assert.equal(result.compactFallbackUsed, true)
+  assert.ok(result.content.answerBank.length >= 6)
+})
+
 test('Deep Learn diagnostics select visual_extracted_text when extracted_text is metadata-only', () => {
   const weakExtract = 'File title: Lecture.pdf\nUUID: 11111111-1111-4111-8111-111111111111\nDebug: no readable text'
   const visualText = [
@@ -2514,6 +2639,95 @@ test('Deep Learn diagnostics select visual_extracted_text when extracted_text is
   assert.match(diagnostics.previewStart ?? '', /Photosynthesis is the process/)
   assert.doesNotMatch(diagnostics.previewStart ?? '', /11111111|Debug|File title/i)
 })
+
+function createStructuredPromptInput(source: string, title: string): Parameters<typeof generateDeepLearnStructuredContent>[0] {
+  return {
+    ...createContext(createLearnResource({
+      title,
+      extractedText: source,
+      extractedTextPreview: source.slice(0, 420),
+      extractedCharCount: source.length,
+      extractionStatus: 'completed',
+    }), createStoredResource({
+      title,
+      extractedText: source,
+      extractedTextPreview: source.slice(0, 420),
+      extractedCharCount: source.length,
+      extractionStatus: 'completed',
+    })),
+    promptGrounding: source,
+    sourceGrounding: {
+      sourceType: 'PDF',
+      extractionQuality: 'usable',
+      sourceTextQuality: 'meaningful',
+      groundingStrategy: 'stored_extract',
+      usedAiFallback: false,
+      qualityReason: null,
+      warning: null,
+      charCount: source.length,
+    },
+    generationMode: 'text' as const,
+  }
+}
+
+function createStructuredPreparedGrounding(source: string): Parameters<typeof generateDeepLearnStructuredContent>[1] {
+  return {
+    generationMode: 'text' as const,
+    promptGrounding: source,
+    sourceGrounding: {
+      sourceType: 'PDF',
+      extractionQuality: 'usable',
+      sourceTextQuality: 'meaningful',
+      groundingStrategy: 'stored_extract' as const,
+      usedAiFallback: false,
+      qualityReason: null,
+      warning: null,
+      charCount: source.length,
+    },
+    refreshedResource: null,
+    scanFallbackInput: null,
+  }
+}
+
+function factCard(kind: string, prompt: string, answer: string, sourceQuote: string, sectionTitle: string) {
+  return {
+    kind,
+    prompt,
+    answer,
+    sourceQuote,
+    sectionTitle,
+    difficulty: 'medium',
+    confidence: 0.92,
+  }
+}
+
+function factCardResponse(factCards: unknown[], title: string) {
+  return jsonResponse({
+    title,
+    overview: `${title} study facts from selected source text.`,
+    factCards,
+  })
+}
+
+function buildStructuredFactSource(prefix: string, count: number) {
+  return Array.from({ length: count }, (_, index) => {
+    const item = index + 1
+    return `${prefix} fact ${item} explains grounded resource text for study. ${prefix} evidence ${item} supports a source-faithful answer for review.`
+  }).join('\n\n')
+}
+
+function createSequentialFactCards(prefix: string, count: number, start = 1) {
+  return Array.from({ length: count }, (_, index) => {
+    const item = start + index
+    return factCard(
+      'fact',
+      `What does ${prefix} fact ${item} explain?`,
+      `${prefix} fact ${item} explains grounded resource text for study.`,
+      `${prefix} fact ${item} explains grounded resource text for study.`,
+      `${prefix} fact ${item}`,
+    )
+  })
+}
 
 function createContext(resource: ModuleSourceResource, storedResource: ModuleResource) {
   const moduleRecord: Module = {

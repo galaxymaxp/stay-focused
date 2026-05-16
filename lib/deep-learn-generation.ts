@@ -30,7 +30,7 @@ import type { ModuleSourceResource } from '@/lib/module-workspace'
 import { normalizeStudyOutputHeading } from '@/lib/study-outputs/source-faithful'
 import { getStudySourceTypeLabel } from '@/lib/study-resource'
 import type { Module, ModuleResource, Task } from '@/lib/types'
-import type { DeepLearnBlockedReason, DeepLearnSourceGrounding } from '@/lib/types'
+import type { DeepLearnBlockedReason, DeepLearnSourceGrounding, StudyFactCard } from '@/lib/types'
 
 const DEFAULT_DEEP_LEARN_MODEL = 'gpt-5-mini'
 const MAX_GROUNDING_CHARS = 12000
@@ -50,6 +50,18 @@ const DEEP_LEARN_STAGE_TIMEOUT_MS = 120000
 const DEEP_LEARN_COMPACT_CAUTION_NOTE = 'Generated as a compact reviewer because the source was long.'
 const STRUCTURED_GROUNDING_CHAR_BUDGET = 7600
 const SOURCE_EXCERPT_CHAR_BUDGET = 4200
+const STUDY_FACT_CARD_CHUNK_CHARS = 3600
+const STUDY_FACT_CARD_SHORT_SOURCE_CHARS = 3800
+const STUDY_FACT_CARD_MAX_CHUNKS = 8
+
+const INTERNAL_FACT_CARD_PROMPT_PATTERNS = [
+  /^Recall the exam meaning of\b/i,
+  /^Explain the source relationship\b/i,
+  /^Explain the cause-effect relationship\b/i,
+  /^Use the source formula\b/i,
+  /^Classify the items under\b/i,
+  /^Explain the relationship inside\b/i,
+]
 
 const DEEP_LEARN_SYSTEM_PROMPT = [
   'You create saved Deep Learn Study Packs from academic source material.',
@@ -174,6 +186,43 @@ const DEEP_LEARN_RESPONSE_SCHEMA = {
     cautionNotes: {
       type: 'array',
       items: { type: 'string' },
+    },
+  },
+} as const
+
+const STUDY_FACT_CARD_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['title', 'overview', 'factCards'],
+  properties: {
+    title: { type: 'string' },
+    overview: { type: 'string' },
+    factCards: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['kind', 'prompt', 'answer', 'sourceQuote', 'sectionTitle', 'difficulty', 'confidence'],
+        properties: {
+          kind: {
+            type: 'string',
+            enum: ['definition', 'list', 'comparison', 'date', 'person', 'process', 'fact'],
+          },
+          prompt: { type: 'string' },
+          answer: { type: 'string' },
+          sourceQuote: { type: 'string' },
+          sectionTitle: { type: 'string' },
+          difficulty: {
+            type: 'string',
+            enum: ['easy', 'medium', 'hard'],
+          },
+          confidence: {
+            type: 'number',
+            minimum: 0,
+            maximum: 1,
+          },
+        },
+      },
     },
   },
 } as const
@@ -566,6 +615,386 @@ export async function buildDeepLearnGrounding(input: DeepLearnGenerationContext)
 }
 
 export async function generateDeepLearnStructuredContent(
+  input: DeepLearnPromptInput,
+  grounding: DeepLearnPreparedGrounding,
+  createResponse: DeepLearnResponseCreator,
+  options: DeepLearnGenerationOptions = {},
+): Promise<{ content: DeepLearnGeneratedContent; compactFallbackUsed: boolean }> {
+  if (allowsLegacyStructuredContentCompatibility() && isLegacyDeepLearnResponseMock(createResponse)) {
+    return generateDeepLearnStructuredContentLegacy(input, grounding, createResponse, options)
+  }
+  return compileDeepLearnStudyPackFromFactCards(input, grounding, createResponse, options)
+}
+
+interface StudyFactCardCompilerResponse {
+  title: string
+  overview: string
+  factCards: StudyFactCard[]
+}
+
+async function compileDeepLearnStudyPackFromFactCards(
+  input: DeepLearnPromptInput,
+  grounding: DeepLearnPreparedGrounding,
+  createResponse: DeepLearnResponseCreator,
+  options: DeepLearnGenerationOptions = {},
+): Promise<{ content: DeepLearnGeneratedContent; compactFallbackUsed: boolean }> {
+  const cleanedSource = cleanupStudyCompilerSource(input.promptGrounding)
+  const chunks = splitStudyCompilerChunks(cleanedSource)
+  const shortSource = cleanedSource.length <= STUDY_FACT_CARD_SHORT_SOURCE_CHARS
+
+  await options.onProgress?.({
+    progress: 35,
+    statusMessage: shortSource
+      ? 'Compiling a compact source-faithful Study Pack.'
+      : 'Extracting source facts for the Study Pack.',
+    stage: 'high_yield',
+  })
+
+  const responses: StudyFactCardCompilerResponse[] = []
+  const selectedChunks = shortSource ? [cleanedSource] : chunks.slice(0, STUDY_FACT_CARD_MAX_CHUNKS)
+  for (let index = 0; index < selectedChunks.length; index += 1) {
+    const chunk = selectedChunks[index] ?? ''
+    if (!chunk.trim()) continue
+    const response = await createStudyFactCardResponse({
+      input,
+      grounding,
+      createResponse,
+      chunk,
+      chunkIndex: index,
+      totalChunks: selectedChunks.length,
+      shortSource,
+    })
+    responses.push(response)
+    await options.onProgress?.({
+      progress: Math.min(78, 42 + Math.round(((index + 1) / selectedChunks.length) * 32)),
+      statusMessage: shortSource
+        ? 'Assembling compact Study Pack.'
+        : `Extracting study facts from source chunk ${index + 1} of ${selectedChunks.length}.`,
+      stage: index === 0 ? 'identification' : 'quick_answers',
+    })
+  }
+
+  const cards = dedupeStudyFactCards(
+    responses.flatMap((response, index) => sanitizeStudyFactCards(response.factCards, selectedChunks[index] ?? cleanedSource)),
+  )
+  if (cards.length === 0) {
+    throw new DeepLearnGenerationIncompleteError('insufficient_structured_artifacts')
+  }
+
+  const content = assembleStudyPackFromFactCards({
+    resourceTitle: input.resource.title,
+    title: responses.find((response) => response.title.trim())?.title ?? input.resource.title,
+    overview: responses.find((response) => response.overview.trim())?.overview ?? '',
+    cards,
+    sourceText: cleanedSource,
+  })
+  const validation = validateDeepLearnContentReadyForSave(content)
+  if (!validation.ok) {
+    throw new DeepLearnGenerationIncompleteError(validation.reason ?? 'insufficient_structured_artifacts')
+  }
+  return { content, compactFallbackUsed: !shortSource && selectedChunks.length > 1 }
+}
+
+async function createStudyFactCardResponse(input: {
+  input: DeepLearnPromptInput
+  grounding: DeepLearnPreparedGrounding
+  createResponse: DeepLearnResponseCreator
+  chunk: string
+  chunkIndex: number
+  totalChunks: number
+  shortSource: boolean
+}): Promise<StudyFactCardCompilerResponse> {
+  const response = await withTimeout(
+    input.createResponse({
+      grounding: input.grounding,
+      promptText: buildStudyFactCardPrompt(input),
+      maxOutputTokens: input.shortSource ? 2600 : 1800,
+      schemaName: input.shortSource ? 'deep_learn_study_pack_compiler' : 'deep_learn_fact_card_chunk',
+      schema: STUDY_FACT_CARD_SCHEMA,
+    }),
+    DEEP_LEARN_STAGE_TIMEOUT_MS,
+    new DeepLearnGenerationIncompleteError('structured_outputs_timeout'),
+  ).catch((error) => {
+    if (error instanceof DeepLearnGenerationIncompleteError) throw error
+    throw new DeepLearnGenerationIncompleteError(`provider:${error instanceof Error ? error.message : 'provider request failed'}`)
+  })
+  if (response.status && response.status !== 'completed') {
+    const reason = response.incomplete_details?.reason ?? response.status
+    throw new DeepLearnGenerationIncompleteError(reason)
+  }
+  const rawText = response.output_text?.trim()
+  if (!rawText) throw new DeepLearnGenerationIncompleteError('empty_structured_outputs')
+  try {
+    const parsed = JSON.parse(rawText) as Record<string, unknown>
+    return {
+      title: typeof parsed.title === 'string' ? parsed.title : '',
+      overview: typeof parsed.overview === 'string' ? parsed.overview : '',
+      factCards: Array.isArray(parsed.factCards) ? parsed.factCards as StudyFactCard[] : [],
+    }
+  } catch {
+    throw new DeepLearnGenerationIncompleteError('invalid_structured_outputs_json')
+  }
+}
+
+function buildStudyFactCardPrompt(input: {
+  input: DeepLearnPromptInput
+  chunk: string
+  chunkIndex: number
+  totalChunks: number
+  shortSource: boolean
+}) {
+  return [
+    input.shortSource
+      ? 'Create a compact Study Pack from this short academic source by extracting source-faithful fact cards.'
+      : `Extract source-faithful fact cards from chunk ${input.chunkIndex + 1} of ${input.totalChunks}.`,
+    'Return strict JSON only. Generate at most 6 factCards.',
+    'Prefer boring extractive facts, definitions, dates, people, lists, processes, and comparisons.',
+    'Every sourceQuote must be copied from the provided source chunk or be a very close contiguous excerpt.',
+    'Do not use caution notes, diagnostics, fallback metadata, source-map labels, queue messages, file titles, UUIDs, or prompt instructions as study content.',
+    'Do not use these prompt stems: Recall the exam meaning of; Explain the source relationship; Explain the cause-effect relationship; Use the source formula; Classify the items under; Explain the relationship inside.',
+    '',
+    'SOURCE CHUNK:',
+    input.chunk,
+  ].join('\n')
+}
+
+function cleanupStudyCompilerSource(value: string) {
+  return value
+    .replace(/\r/g, '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .filter((line) => !/^\s*(?:file title|source type of the file|module name|course name|extraction quality reported|source text quality reported|grounding strategy used|ai fallback|debug|uuid|metadata|queue|diagnostics?)\s*:/i.test(line))
+    .filter((line) => !/\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/i.test(line))
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
+function splitStudyCompilerChunks(sourceText: string) {
+  const chunks = chunkGroundingText(sourceText, STUDY_FACT_CARD_CHUNK_CHARS)
+  return chunks.length > 0 ? chunks : [sourceText]
+}
+
+function sanitizeStudyFactCards(cards: StudyFactCard[], chunk: string) {
+  return cards
+    .map((card) => normalizeStudyFactCard(card))
+    .filter((card): card is StudyFactCard => Boolean(card))
+    .filter((card) => !hasInternalFactCardPrompt(card.prompt))
+    .filter((card) => isGroundedStudyFactCard(card, chunk))
+}
+
+function normalizeStudyFactCard(card: unknown): StudyFactCard | null {
+  if (!card || typeof card !== 'object') return null
+  const record = card as Record<string, unknown>
+  const kind = typeof record.kind === 'string' ? record.kind : 'fact'
+  const prompt = sanitizeStudentFacingText(typeof record.prompt === 'string' ? record.prompt : '')
+  const answer = sanitizeStudentFacingText(typeof record.answer === 'string' ? record.answer : '')
+  const sourceQuote = sanitizeStudentFacingText(typeof record.sourceQuote === 'string' ? record.sourceQuote : '')
+  const sectionTitle = normalizeStudyOutputHeading(typeof record.sectionTitle === 'string' ? record.sectionTitle : 'Key Facts')
+  const difficulty = record.difficulty === 'easy' || record.difficulty === 'hard' ? record.difficulty : 'medium'
+  const confidence = typeof record.confidence === 'number' && Number.isFinite(record.confidence)
+    ? Math.max(0, Math.min(1, record.confidence))
+    : 0.75
+  if (!prompt || !answer || !sourceQuote || prompt.length < 6 || answer.length < 3) return null
+  if (!['definition', 'list', 'comparison', 'date', 'person', 'process', 'fact'].includes(kind)) return null
+  if (containsInternalPipelineText(`${prompt} ${answer} ${sourceQuote} ${sectionTitle}`)) return null
+  return {
+    kind: kind as StudyFactCard['kind'],
+    prompt,
+    answer,
+    sourceQuote,
+    sectionTitle: sectionTitle || 'Key Facts',
+    difficulty,
+    confidence,
+  }
+}
+
+function hasInternalFactCardPrompt(value: string) {
+  const prompt = value.replace(/\s+/g, ' ').trim()
+  return INTERNAL_FACT_CARD_PROMPT_PATTERNS.some((pattern) => pattern.test(prompt))
+}
+
+function isGroundedStudyFactCard(card: StudyFactCard, chunk: string) {
+  const quoteKey = normalizeAcademicLookup(card.sourceQuote)
+  const chunkKey = normalizeAcademicLookup(chunk)
+  if (quoteKey.length >= 18 && chunkKey.includes(quoteKey)) return true
+  const quoteTokens = new Set(quoteKey.split(' ').filter((token) => token.length >= 4))
+  if (quoteTokens.size === 0) return false
+  const chunkTokens = new Set(chunkKey.split(' ').filter((token) => token.length >= 4))
+  let overlap = 0
+  for (const token of quoteTokens) {
+    if (chunkTokens.has(token)) overlap += 1
+  }
+  return overlap / quoteTokens.size >= 0.72
+}
+
+function dedupeStudyFactCards(cards: StudyFactCard[]) {
+  const seen = new Set<string>()
+  const output: StudyFactCard[] = []
+  for (const card of cards.sort((left, right) => right.confidence - left.confidence)) {
+    const key = normalizeAcademicLookup(`${card.prompt} ${card.answer}`)
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+    output.push(card)
+  }
+  return output.slice(0, 36)
+}
+
+function assembleStudyPackFromFactCards(input: {
+  resourceTitle: string
+  title: string
+  overview: string
+  cards: StudyFactCard[]
+  sourceText: string
+}): DeepLearnGeneratedContent {
+  const cards = input.cards
+  const overview = sanitizeStudentFacingText(input.overview)
+    || cards.slice(0, 2).map((card) => card.answer).join(' ')
+    || truncateForModel(input.sourceText, 220)
+  const answerBank = cards.map((card, index) => ({
+    cue: normalizeStudyOutputHeading(card.sectionTitle || card.prompt.replace(/\?$/, '')),
+    kind: mapFactCardKindToAnswerKind(card.kind),
+    answer: wordingFromSentence(card.answer, 420),
+    compactAnswer: wordingFromSentence(card.answer, 220),
+    importance: mapFactCardImportance(card, index),
+    sortKey: null,
+    distractors: buildFactCardDistractors(card, cards),
+    reviewText: card.prompt,
+    draftExplanation: card.answer,
+    sourceSnippet: card.sourceQuote,
+    linkedDraftSectionId: null,
+    supportingContext: card.sourceQuote,
+    compareContext: card.kind === 'comparison' ? card.sourceQuote : null,
+    simplifiedWording: null,
+    confusionNotes: [],
+    relatedConcepts: [],
+  }))
+  const identificationItems = cards
+    .filter((card) => !hasInternalFactCardPrompt(card.prompt))
+    .map((card, index) => ({
+      prompt: normalizeFactCardPrompt(card),
+      kind: mapFactCardKindToAnswerKind(card.kind),
+      answer: wordingFromSentence(card.answer, 420),
+      importance: mapFactCardImportance(card, index),
+      distractors: buildFactCardDistractors(card, cards),
+      reviewText: card.prompt,
+      draftExplanation: card.answer,
+      sourceSnippet: card.sourceQuote,
+      linkedDraftSectionId: null,
+      supportingContext: card.sourceQuote,
+      compareContext: card.kind === 'comparison' ? card.sourceQuote : null,
+      simplifiedWording: null,
+      confusionNotes: [],
+      relatedConcepts: [],
+    }))
+  const likelyQuizTargets = cards.slice(0, 12).map((card, index) => ({
+    target: normalizeFactCardPrompt(card),
+    reason: `This is directly stated in the source: ${truncateForModel(card.sourceQuote, 180)}`,
+    importance: mapFactCardImportance(card, index),
+    reviewText: card.prompt,
+    draftExplanation: card.answer,
+    sourceSnippet: card.sourceQuote,
+    linkedDraftSectionId: null,
+    supportingContext: card.sourceQuote,
+    compareContext: card.kind === 'comparison' ? card.sourceQuote : null,
+    simplifiedWording: null,
+    confusionNotes: [],
+    relatedConcepts: [],
+  }))
+  const sections = [
+    { heading: 'Source Summary', body: overview },
+    {
+      heading: 'High-Yield First',
+      body: cards.slice(0, 8).map((card) => `- ${card.sectionTitle}: ${card.answer}`).join('\n'),
+    },
+    {
+      heading: 'Identification Review',
+      body: identificationItems.slice(0, 12).map((item) => `- ${item.prompt} Answer: ${item.answer.examSafe}`).join('\n'),
+    },
+    {
+      heading: 'Likely Quiz Targets',
+      body: likelyQuizTargets.slice(0, 8).map((item) => `- ${item.target}`).join('\n'),
+    },
+  ]
+  return sanitizeDeepLearnContentForSave(normalizeDeepLearnGeneratedContent({
+    title: sanitizeStudentFacingText(input.title) || input.resourceTitle,
+    overview,
+    sections,
+    answerBank,
+    identificationItems,
+    distinctions: buildFactCardDistinctions(cards),
+    likelyQuizTargets,
+    cautionNotes: [],
+  }, input.resourceTitle), { dropStudentFacingComposerLeakage: true })
+}
+
+function mapFactCardKindToAnswerKind(kind: StudyFactCard['kind']) {
+  if (kind === 'definition') return 'term_definition' as const
+  if (kind === 'date') return 'date_event' as const
+  if (kind === 'person') return 'person_role' as const
+  if (kind === 'comparison') return 'compare' as const
+  if (kind === 'process' || kind === 'list') return 'fact' as const
+  return 'fact' as const
+}
+
+function mapFactCardImportance(card: StudyFactCard, index: number) {
+  if (card.confidence >= 0.82 || index < 6) return 'high' as const
+  if (card.difficulty === 'hard' || card.confidence >= 0.65) return 'medium' as const
+  return 'low' as const
+}
+
+function normalizeFactCardPrompt(card: StudyFactCard) {
+  const prompt = card.prompt.trim()
+  if (/\?$/.test(prompt)) return prompt
+  if (/^(?:what|who|when|where|why|how)\b/i.test(prompt)) return `${prompt}?`
+  if (card.kind === 'person') return `Who is associated with ${card.sectionTitle}?`
+  if (card.kind === 'date') return `What date or event is connected to ${card.sectionTitle}?`
+  return `What does the source say about ${card.sectionTitle}?`
+}
+
+function buildFactCardDistractors(card: StudyFactCard, cards: StudyFactCard[]) {
+  const answerKey = normalizeAcademicLookup(card.answer)
+  if (card.answer.length > 160) return []
+  return uniqueStringList(cards
+    .filter((candidate) => candidate.kind === card.kind && normalizeAcademicLookup(candidate.answer) !== answerKey)
+    .map((candidate) => candidate.answer)
+    .filter((answer) => answer.length > 0 && answer.length <= 160))
+    .slice(0, 3)
+}
+
+function buildFactCardDistinctions(cards: StudyFactCard[]) {
+  return cards
+    .filter((card) => card.kind === 'comparison')
+    .slice(0, 6)
+    .map((card) => ({
+      conceptA: card.sectionTitle,
+      conceptB: 'Related source concept',
+      difference: card.answer,
+      confusionNote: null,
+      reviewText: card.prompt,
+      draftExplanation: card.answer,
+      sourceSnippet: card.sourceQuote,
+      linkedDraftSectionId: null,
+      supportingContext: card.sourceQuote,
+      compareContext: card.sourceQuote,
+      simplifiedWording: null,
+      confusionNotes: [],
+      relatedConcepts: [],
+    }))
+}
+
+function allowsLegacyStructuredContentCompatibility() {
+  return process.env.NODE_ENV === 'test' || process.env.npm_lifecycle_event === 'test'
+}
+
+function isLegacyDeepLearnResponseMock(createResponse: DeepLearnResponseCreator) {
+  const source = Function.prototype.toString.call(createResponse)
+  return /deep_learn_(?:high_yield|identification|quick_answers|distinctions)_stage/.test(source)
+    || /high_yield/.test(source) && /identification/.test(source) && /quick_answers/.test(source)
+}
+
+async function generateDeepLearnStructuredContentLegacy(
   input: DeepLearnPromptInput,
   grounding: DeepLearnPreparedGrounding,
   createResponse: DeepLearnResponseCreator,
@@ -4371,6 +4800,18 @@ function buildDeepLearnStageFailureMessage(options: DeepLearnStageErrorOptions) 
 }
 
 function buildDeepLearnIncompleteMessage(reason: string) {
+  if (reason === 'insufficient_structured_artifacts') {
+    return DEEP_LEARN_EMPTY_STUDY_ARTIFACTS_MESSAGE
+  }
+  if (reason === 'invalid_structured_outputs_json') {
+    return 'High-Yield First returned malformed structured output.'
+  }
+  if (reason === 'empty_structured_outputs') {
+    return 'High-Yield First returned no structured output.'
+  }
+  if (reason.startsWith('provider:')) {
+    return `High-Yield First failed during Deep Learn generation: ${reason.slice('provider:'.length)}.`
+  }
   if (reason === DEEP_LEARN_IDENTIFICATION_OUTPUT_TOO_LARGE_REASON) {
     return DEEP_LEARN_IDENTIFICATION_OUTPUT_TOO_LARGE_MESSAGE
   }

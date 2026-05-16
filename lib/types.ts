@@ -225,6 +225,16 @@ export interface DeepLearnSourceGrounding {
   sourceMap?: import('@/lib/deep-learn-source-map').AcademicSourceMap | null
 }
 
+export interface StudyFactCard {
+  kind: 'definition' | 'list' | 'comparison' | 'date' | 'person' | 'process' | 'fact'
+  prompt: string
+  answer: string
+  sourceQuote: string
+  sectionTitle: string
+  difficulty: 'easy' | 'medium' | 'hard'
+  confidence: number
+}
+
 export interface DeepLearnNote {
   id: string
   userId: string
