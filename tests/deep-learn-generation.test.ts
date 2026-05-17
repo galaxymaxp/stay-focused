@@ -60,6 +60,29 @@ async function generateDeepLearnStructuredContentWithLegacyComposer(
   }
 }
 
+async function withTemporaryEnv<T>(values: Record<string, string | undefined>, callback: () => Promise<T>): Promise<T> {
+  const previous = new Map<string, string | undefined>()
+  for (const [key, value] of Object.entries(values)) {
+    previous.set(key, process.env[key])
+    if (value === undefined) {
+      delete process.env[key]
+    } else {
+      process.env[key] = value
+    }
+  }
+  try {
+    return await callback()
+  } finally {
+    for (const [key, value] of previous) {
+      if (value === undefined) {
+        delete process.env[key]
+      } else {
+        process.env[key] = value
+      }
+    }
+  }
+}
+
 test('buildDeepLearnGroundingWithDependencies recovers weak resources through source fetch', async () => {
   const resource = createLearnResource({
     extractionStatus: 'metadata_only',
@@ -513,7 +536,7 @@ test('Deep Learn output token policy uses bounded 10000-token caps and clean stu
   assert.equal(DEEP_LEARN_COMPACT_MAX_OUTPUT_TOKENS, 10000)
 
   const error = new DeepLearnGenerationIncompleteError('max_output_tokens')
-  assert.equal(error.message, 'Structured Study Pack Compiler hit the model response limit while extracting fact cards. Try a smaller source or split the module.')
+  assert.equal(error.message, 'Study Pack generation was too large for this source. Try again or use a smaller source.')
   assert.equal(error.reason, 'max_output_tokens')
   assert.doesNotMatch(error.message, /max_output_tokens/i)
   assert.doesNotMatch(error.message, /finish in one pass|Regenerate a shorter version/i)
@@ -2588,18 +2611,19 @@ test('structured Study Pack compiler rejects source-map prompts and diagnostics 
   assert.equal(result.content.identificationItems.length, 6)
 })
 
-test('structured Study Pack compiler fails with insufficient_structured_artifacts when no usable cards remain', async () => {
+test('structured Study Pack compiler uses deterministic fallback when model cards are unusable', async () => {
   const source = buildStructuredFactSource('Bad cards', 4)
-  await assert.rejects(
-    () => generateDeepLearnStructuredContent(createStructuredPromptInput(source, 'Bad Cards.pdf'), createStructuredPreparedGrounding(source), async () => factCardResponse([
+  const result = await generateDeepLearnStructuredContent(
+    createStructuredPromptInput(source, 'Bad Cards.pdf'),
+    createStructuredPreparedGrounding(source),
+    async () => factCardResponse([
       factCard('fact', 'Recall the exam meaning of Bad Cards.', 'Internal prompt wording must not be saved.', 'Bad cards fact 1 explains grounded resource text for study.', 'Bad Cards'),
-    ], 'Bad Cards')),
-    (error: unknown) => {
-      assert.ok(error instanceof DeepLearnGenerationIncompleteError)
-      assert.equal(error.reason, 'insufficient_structured_artifacts')
-      return true
-    },
+    ], 'Bad Cards'),
   )
+
+  assert.ok(result.content.answerBank.length >= 3)
+  assert.equal(JSON.stringify(result.content).includes('Recall the exam meaning of'), false)
+  assert.equal(JSON.stringify(result.content).includes('Internal prompt wording'), false)
 })
 
 test('structured Study Pack compiler uses chunked fact extraction for long sources', async () => {
@@ -2621,15 +2645,104 @@ test('structured Study Pack compiler uses chunked fact extraction for long sourc
 test('structured compiler is the default and never enters legacy stages', async () => {
   const source = buildStructuredFactSource('Default compiler', 8)
   const schemaNames: string[] = []
+  const models: Array<string | undefined> = []
   const result = await generateDeepLearnStructuredContent(createStructuredPromptInput(source, 'Default Compiler.pdf'), createStructuredPreparedGrounding(source), async (request) => {
     schemaNames.push(request.schemaName)
+    models.push(request.model)
     assert.doesNotMatch(request.schemaName, /high_yield|identification|quick_answers/)
     return factCardResponse(createSequentialFactCards('Default compiler', 6), 'Default Compiler')
   })
 
   assert.deepEqual(schemaNames, ['deep_learn_study_pack_compiler'])
+  assert.deepEqual(models, ['gpt-5.4-mini'])
   assert.equal(result.content.cautionNotes.length, 0)
   assert.equal(result.content.identificationItems.length, 6)
+})
+
+test('structured compiler retries max_output_tokens with one primary card before fallback model', async () => {
+  const source = buildStructuredFactSource('Retry compiler', 8)
+  const calls: Array<{ model?: string; requestedCards: number; maxOutputTokens: number }> = []
+  const result = await withTemporaryEnv({
+    DEEP_LEARN_STRUCTURED_MODEL: 'mini-test-model',
+    DEEP_LEARN_STRUCTURED_FALLBACK_MODEL: 'fallback-test-model',
+    DEEP_LEARN_STRUCTURED_PREMIUM_MODEL: 'premium-test-model',
+    DEEP_LEARN_STRUCTURED_PREMIUM_FALLBACK: undefined,
+  }, () => generateDeepLearnStructuredContent(createStructuredPromptInput(source, 'Retry Compiler.pdf'), createStructuredPreparedGrounding(source), async (request) => {
+    calls.push({
+      model: request.model,
+      requestedCards: Number(request.promptText.match(/Generate exactly (\d+) factCard/)?.[1] ?? 0),
+      maxOutputTokens: request.maxOutputTokens,
+    })
+    if (calls.length === 1) {
+      return { status: 'incomplete', incomplete_details: { reason: 'max_output_tokens' }, output_text: null }
+    }
+    return factCardResponse(createSequentialFactCards('Retry compiler', 1), 'Retry Compiler')
+  }))
+
+  assert.deepEqual(calls.map((call) => call.model), ['mini-test-model', 'mini-test-model'])
+  assert.deepEqual(calls.map((call) => call.requestedCards), [3, 1])
+  assert.ok(calls[1]!.maxOutputTokens < calls[0]!.maxOutputTokens)
+  assert.equal(result.content.answerBank.length >= 1, true)
+})
+
+test('structured compiler uses GPT-5.4 fallback only after primary chunk failure', async () => {
+  const source = buildStructuredFactSource('Fallback compiler', 8)
+  const calls: Array<{ model?: string; requestedCards: number }> = []
+  const result = await withTemporaryEnv({
+    DEEP_LEARN_STRUCTURED_MODEL: 'gpt-5.4-mini-test',
+    DEEP_LEARN_STRUCTURED_FALLBACK_MODEL: 'gpt-5.4-test',
+    DEEP_LEARN_STRUCTURED_PREMIUM_MODEL: 'gpt-5.5-test',
+    DEEP_LEARN_STRUCTURED_PREMIUM_FALLBACK: undefined,
+  }, () => generateDeepLearnStructuredContent(createStructuredPromptInput(source, 'Fallback Compiler.pdf'), createStructuredPreparedGrounding(source), async (request) => {
+    calls.push({
+      model: request.model,
+      requestedCards: Number(request.promptText.match(/Generate exactly (\d+) factCard/)?.[1] ?? 0),
+    })
+    if (calls.length <= 2) {
+      return { status: 'incomplete', incomplete_details: { reason: 'max_output_tokens' }, output_text: null }
+    }
+    return factCardResponse(createSequentialFactCards('Fallback compiler', 1), 'Fallback Compiler')
+  }))
+
+  assert.deepEqual(calls.map((call) => call.model), ['gpt-5.4-mini-test', 'gpt-5.4-mini-test', 'gpt-5.4-test'])
+  assert.deepEqual(calls.map((call) => call.requestedCards), [3, 1, 1])
+  assert.equal(calls.some((call) => call.model === 'gpt-5.5-test'), false)
+  assert.ok(result.content.answerBank.length >= 1)
+})
+
+test('structured compiler does not call premium model unless explicitly enabled', async () => {
+  const source = buildStructuredFactSource('No premium compiler', 8)
+  const models: Array<string | undefined> = []
+  await withTemporaryEnv({
+    DEEP_LEARN_STRUCTURED_MODEL: 'mini-no-premium',
+    DEEP_LEARN_STRUCTURED_FALLBACK_MODEL: 'fallback-no-premium',
+    DEEP_LEARN_STRUCTURED_PREMIUM_MODEL: 'premium-should-not-run',
+    DEEP_LEARN_STRUCTURED_PREMIUM_FALLBACK: undefined,
+  }, () => generateDeepLearnStructuredContent(createStructuredPromptInput(source, 'No Premium.pdf'), createStructuredPreparedGrounding(source), async (request) => {
+    models.push(request.model)
+    return { status: 'incomplete', incomplete_details: { reason: 'max_output_tokens' }, output_text: null }
+  }))
+
+  assert.equal(models.includes('premium-should-not-run'), false)
+})
+
+test('structured compiler skips one failed chunk and completes from remaining cards', async () => {
+  const source = buildStructuredFactSource('Chunk compiler', 36)
+  const calls: Array<{ chunk: number; model?: string }> = []
+  const result = await generateDeepLearnStructuredContent(createStructuredPromptInput(source, 'Chunk Compiler.pdf'), createStructuredPreparedGrounding(source), async (request) => {
+    const chunk = Number(request.promptText.match(/chunk (\d+) of/i)?.[1] ?? 1)
+    calls.push({ chunk, model: request.model })
+    if (chunk === 1) {
+      return { status: 'incomplete', incomplete_details: { reason: 'max_output_tokens' }, output_text: null }
+    }
+    const match = request.promptText.match(/Chunk compiler fact (\d+)/i)
+    const start = match ? Number(match[1]) : chunk * 4
+    return factCardResponse(createSequentialFactCards('Chunk compiler', 3, start), 'Chunk Compiler')
+  })
+
+  assert.ok(calls.some((call) => call.chunk === 1))
+  assert.ok(calls.some((call) => call.chunk > 1))
+  assert.ok(result.content.answerBank.length >= 5)
 })
 
 test('structured compiler routing diagnostics include fresh and retry metadata', async () => {

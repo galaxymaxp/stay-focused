@@ -33,6 +33,9 @@ import type { Module, ModuleResource, Task } from '@/lib/types'
 import type { DeepLearnBlockedReason, DeepLearnSourceGrounding, StudyFactCard } from '@/lib/types'
 
 const DEFAULT_DEEP_LEARN_MODEL = 'gpt-5-mini'
+const DEFAULT_DEEP_LEARN_STRUCTURED_MODEL = 'gpt-5.4-mini'
+const DEFAULT_DEEP_LEARN_STRUCTURED_FALLBACK_MODEL = 'gpt-5.4'
+const DEFAULT_DEEP_LEARN_STRUCTURED_PREMIUM_MODEL = 'gpt-5.5'
 const MAX_GROUNDING_CHARS = 12000
 export const DEEP_LEARN_MAX_OUTPUT_TOKENS = 10000
 export const DEEP_LEARN_COMPACT_MAX_OUTPUT_TOKENS = 10000
@@ -54,7 +57,14 @@ const STRUCTURED_GROUNDING_CHAR_BUDGET = 7600
 const SOURCE_EXCERPT_CHAR_BUDGET = 4200
 const STUDY_FACT_CARD_CHUNK_CHARS = 3600
 const STUDY_FACT_CARD_SHORT_SOURCE_CHARS = 3800
-const STUDY_FACT_CARD_MAX_CHUNKS = 8
+const STUDY_FACT_CARD_MAX_CHUNKS = 6
+const STUDY_FACT_CARD_DEFAULT_REQUEST_COUNT = 3
+const STUDY_FACT_CARD_RETRY_REQUEST_COUNT = 1
+const STUDY_FACT_CARD_DEFAULT_MAX_OUTPUT_TOKENS = 1100
+const STUDY_FACT_CARD_RETRY_MAX_OUTPUT_TOKENS = 650
+const STUDY_FACT_CARD_FALLBACK_MODEL_ATTEMPT_LIMIT = 3
+const STUDY_FACT_CARD_PREMIUM_MODEL_ATTEMPT_LIMIT = 1
+const STUDY_FACT_CARD_PREMIUM_FALLBACK_ENV = 'DEEP_LEARN_STRUCTURED_PREMIUM_FALLBACK'
 
 const INTERNAL_FACT_CARD_PROMPT_PATTERNS = [
   /^Recall the exam meaning of\b/i,
@@ -421,6 +431,7 @@ interface DeepLearnResponseRequest {
   maxOutputTokens: number
   schemaName: string
   schema: Record<string, unknown>
+  model?: string
 }
 
 type DeepLearnResponseCreator = (request: DeepLearnResponseRequest) => Promise<DeepLearnResponseLike>
@@ -437,6 +448,13 @@ interface DeepLearnGenerationOptions {
 interface DeepLearnGeneratorSelection {
   version: typeof STRUCTURED_FACT_CARD_COMPILER_VERSION | typeof LEGACY_STAGED_COMPOSER_VERSION
   reason: string
+}
+
+interface DeepLearnStructuredModelConfig {
+  primaryModel: string
+  fallbackModel: string
+  premiumModel: string
+  premiumFallbackEnabled: boolean
 }
 
 type DeepLearnStageKey = 'high_yield' | 'identification' | 'quick_answers' | 'distinctions'
@@ -652,6 +670,20 @@ interface StudyFactCardCompilerResponse {
   factCards: StudyFactCard[]
 }
 
+interface StudyFactCardChunkResult {
+  title: string
+  overview: string
+  factCards: StudyFactCard[]
+  model: string | null
+  retryLevel: 'primary' | 'primary_one_card' | 'fallback' | 'premium' | 'deterministic'
+  requestedCardCount: number
+  maxOutputTokens: number
+  chunkIndex: number
+  chunkCharCount: number
+  fallbackModelAttempted: boolean
+  premiumModelAttempted: boolean
+}
+
 async function compileDeepLearnStudyPackFromFactCards(
   input: DeepLearnPromptInput,
   grounding: DeepLearnPreparedGrounding,
@@ -662,6 +694,12 @@ async function compileDeepLearnStudyPackFromFactCards(
   const chunks = splitStudyCompilerChunks(cleanedSource)
   const shortSource = cleanedSource.length <= STUDY_FACT_CARD_SHORT_SOURCE_CHARS
   const selectedChunks = shortSource ? [cleanedSource] : chunks.slice(0, STUDY_FACT_CARD_MAX_CHUNKS)
+  const modelConfig = getStructuredCompilerModelConfig()
+  const minimumFactCards = getMinimumStructuredFactCards(cleanedSource)
+  let fallbackModelUsed = 0
+  let premiumModelUsed = 0
+  let skippedChunkCount = 0
+  let deterministicFallbackUsed = false
 
   logDeepLearnGeneratorRouting({
     generatorVersion: STRUCTURED_FACT_CARD_COMPILER_VERSION,
@@ -671,6 +709,9 @@ async function compileDeepLearnStudyPackFromFactCards(
     sourceTitle: input.resource.title,
     academicTextCharCount: buildDeepLearnSourceDiagnostics(input, options.diagnosticsContext).academicTextCharCount,
     chunkCount: selectedChunks.length,
+    primaryModel: modelConfig.primaryModel,
+    fallbackModel: modelConfig.fallbackModel,
+    premiumModel: modelConfig.premiumModel,
   })
 
   await options.onProgress?.({
@@ -681,11 +722,11 @@ async function compileDeepLearnStudyPackFromFactCards(
     stage: 'structured_compiler',
   })
 
-  const responses: StudyFactCardCompilerResponse[] = []
+  const responses: StudyFactCardChunkResult[] = []
   for (let index = 0; index < selectedChunks.length; index += 1) {
     const chunk = selectedChunks[index] ?? ''
     if (!chunk.trim()) continue
-    const response = await createStudyFactCardResponse({
+    const response = await extractStudyFactCardsForChunk({
       input,
       grounding,
       createResponse,
@@ -693,8 +734,16 @@ async function compileDeepLearnStudyPackFromFactCards(
       chunkIndex: index,
       totalChunks: selectedChunks.length,
       shortSource,
+      modelConfig,
+      fallbackModelAttemptsRemaining: Math.max(0, STUDY_FACT_CARD_FALLBACK_MODEL_ATTEMPT_LIMIT - fallbackModelUsed),
     })
-    responses.push(response)
+    if (response.fallbackModelAttempted) fallbackModelUsed += 1
+    if (response.premiumModelAttempted) premiumModelUsed += 1
+    if (response.factCards.length > 0) {
+      responses.push(response)
+    } else {
+      skippedChunkCount += 1
+    }
     await options.onProgress?.({
       progress: Math.min(78, 42 + Math.round(((index + 1) / selectedChunks.length) * 32)),
       statusMessage: shortSource
@@ -704,9 +753,50 @@ async function compileDeepLearnStudyPackFromFactCards(
     })
   }
 
-  const cards = dedupeStudyFactCards(
-    responses.flatMap((response, index) => sanitizeStudyFactCards(response.factCards, selectedChunks[index] ?? cleanedSource)),
-  )
+  let cards = dedupeStudyFactCards(responses.flatMap((response) => response.factCards))
+
+  if (cards.length < minimumFactCards && modelConfig.premiumFallbackEnabled && premiumModelUsed < STUDY_FACT_CARD_PREMIUM_MODEL_ATTEMPT_LIMIT) {
+    const rescueChunk = selectedChunks.find((chunk) => chunk.trim()) ?? cleanedSource
+    const rescue = await extractStudyFactCardsForChunk({
+      input,
+      grounding,
+      createResponse,
+      chunk: rescueChunk,
+      chunkIndex: 0,
+      totalChunks: selectedChunks.length,
+      shortSource,
+      modelConfig,
+      fallbackModelAttemptsRemaining: 0,
+      forcePremium: true,
+    })
+    if (rescue.factCards.length > 0) {
+      responses.push(rescue)
+      cards = dedupeStudyFactCards(responses.flatMap((response) => response.factCards))
+    }
+    if (rescue.premiumModelAttempted) premiumModelUsed += 1
+  }
+
+  if (cards.length < minimumFactCards) {
+    const deterministicCards = buildDeterministicStudyFactCards(cleanedSource, input.resource.title)
+    if (deterministicCards.length > 0) {
+      deterministicFallbackUsed = true
+      cards = dedupeStudyFactCards([...cards, ...deterministicCards])
+    }
+  }
+
+  logStructuredCompilerSummary({
+    primaryModel: modelConfig.primaryModel,
+    fallbackModel: modelConfig.fallbackModel,
+    premiumModel: modelConfig.premiumModel,
+    fallbackModelUsed,
+    premiumModelUsed,
+    chunkCount: selectedChunks.length,
+    skippedChunkCount,
+    deterministicFallbackUsed,
+    finalFactCardCount: cards.length,
+    minimumFactCards,
+  })
+
   if (cards.length === 0) {
     throw new DeepLearnGenerationIncompleteError('insufficient_structured_artifacts')
   }
@@ -725,6 +815,136 @@ async function compileDeepLearnStudyPackFromFactCards(
   return { content, compactFallbackUsed: !shortSource && selectedChunks.length > 1 }
 }
 
+async function extractStudyFactCardsForChunk(input: {
+  input: DeepLearnPromptInput
+  grounding: DeepLearnPreparedGrounding
+  createResponse: DeepLearnResponseCreator
+  chunk: string
+  chunkIndex: number
+  totalChunks: number
+  shortSource: boolean
+  modelConfig: DeepLearnStructuredModelConfig
+  fallbackModelAttemptsRemaining: number
+  forcePremium?: boolean
+}): Promise<StudyFactCardChunkResult> {
+  const attempts = input.forcePremium
+    ? [{
+        retryLevel: 'premium' as const,
+        model: input.modelConfig.premiumModel,
+        requestedCardCount: STUDY_FACT_CARD_RETRY_REQUEST_COUNT,
+        maxOutputTokens: STUDY_FACT_CARD_RETRY_MAX_OUTPUT_TOKENS,
+      }]
+    : [
+        {
+          retryLevel: 'primary' as const,
+          model: input.modelConfig.primaryModel,
+          requestedCardCount: STUDY_FACT_CARD_DEFAULT_REQUEST_COUNT,
+          maxOutputTokens: STUDY_FACT_CARD_DEFAULT_MAX_OUTPUT_TOKENS,
+        },
+        {
+          retryLevel: 'primary_one_card' as const,
+          model: input.modelConfig.primaryModel,
+          requestedCardCount: STUDY_FACT_CARD_RETRY_REQUEST_COUNT,
+          maxOutputTokens: STUDY_FACT_CARD_RETRY_MAX_OUTPUT_TOKENS,
+        },
+        ...(input.fallbackModelAttemptsRemaining > 0
+          ? [{
+              retryLevel: 'fallback' as const,
+              model: input.modelConfig.fallbackModel,
+              requestedCardCount: STUDY_FACT_CARD_RETRY_REQUEST_COUNT,
+              maxOutputTokens: STUDY_FACT_CARD_RETRY_MAX_OUTPUT_TOKENS,
+            }]
+          : []),
+      ]
+  let fallbackModelAttempted = false
+  let premiumModelAttempted = false
+
+  for (const attempt of attempts) {
+    if (attempt.retryLevel === 'fallback') fallbackModelAttempted = true
+    if (attempt.retryLevel === 'premium') premiumModelAttempted = true
+    try {
+      const response = await createStudyFactCardResponse({
+        ...input,
+        model: attempt.model,
+        requestedCardCount: attempt.requestedCardCount,
+        maxOutputTokens: attempt.maxOutputTokens,
+      })
+      const factCards = sanitizeStudyFactCards(response.factCards, input.chunk)
+      logStructuredCompilerChunk({
+        primaryModel: input.modelConfig.primaryModel,
+        fallbackModel: input.modelConfig.fallbackModel,
+        premiumModel: input.modelConfig.premiumModel,
+        model: attempt.model,
+        chunkIndex: input.chunkIndex,
+        chunkCharCount: input.chunk.length,
+        requestedCardCount: attempt.requestedCardCount,
+        maxOutputTokens: attempt.maxOutputTokens,
+        retryLevel: attempt.retryLevel,
+        cardsExtracted: factCards.length,
+        skipped: false,
+      })
+      if (factCards.length >= getMinimumCardsForAttempt(attempt.requestedCardCount)) {
+        return {
+          title: response.title,
+          overview: response.overview,
+          factCards,
+          model: attempt.model,
+          retryLevel: attempt.retryLevel,
+          requestedCardCount: attempt.requestedCardCount,
+          maxOutputTokens: attempt.maxOutputTokens,
+          chunkIndex: input.chunkIndex,
+          chunkCharCount: input.chunk.length,
+          fallbackModelAttempted,
+          premiumModelAttempted,
+        }
+      }
+    } catch (error) {
+      const reason = error instanceof DeepLearnGenerationIncompleteError ? error.reason : error instanceof Error ? error.message : 'unknown'
+      logStructuredCompilerChunk({
+        primaryModel: input.modelConfig.primaryModel,
+        fallbackModel: input.modelConfig.fallbackModel,
+        premiumModel: input.modelConfig.premiumModel,
+        model: attempt.model,
+        chunkIndex: input.chunkIndex,
+        chunkCharCount: input.chunk.length,
+        requestedCardCount: attempt.requestedCardCount,
+        maxOutputTokens: attempt.maxOutputTokens,
+        retryLevel: attempt.retryLevel,
+        cardsExtracted: 0,
+        skipped: false,
+        reason,
+      })
+    }
+  }
+
+  logStructuredCompilerChunk({
+    primaryModel: input.modelConfig.primaryModel,
+    fallbackModel: input.modelConfig.fallbackModel,
+    premiumModel: input.modelConfig.premiumModel,
+    model: null,
+    chunkIndex: input.chunkIndex,
+    chunkCharCount: input.chunk.length,
+    requestedCardCount: 0,
+    maxOutputTokens: 0,
+    retryLevel: 'skipped',
+    cardsExtracted: 0,
+    skipped: true,
+  })
+  return {
+    title: '',
+    overview: '',
+    factCards: [],
+    model: null,
+    retryLevel: 'deterministic',
+    requestedCardCount: 0,
+    maxOutputTokens: 0,
+    chunkIndex: input.chunkIndex,
+    chunkCharCount: input.chunk.length,
+    fallbackModelAttempted,
+    premiumModelAttempted,
+  }
+}
+
 async function createStudyFactCardResponse(input: {
   input: DeepLearnPromptInput
   grounding: DeepLearnPreparedGrounding
@@ -733,14 +953,18 @@ async function createStudyFactCardResponse(input: {
   chunkIndex: number
   totalChunks: number
   shortSource: boolean
+  model: string
+  requestedCardCount: number
+  maxOutputTokens: number
 }): Promise<StudyFactCardCompilerResponse> {
   const response = await withTimeout(
     input.createResponse({
       grounding: input.grounding,
       promptText: buildStudyFactCardPrompt(input),
-      maxOutputTokens: input.shortSource ? 2600 : 1800,
+      maxOutputTokens: input.maxOutputTokens,
       schemaName: input.shortSource ? 'deep_learn_study_pack_compiler' : 'deep_learn_fact_card_chunk',
       schema: STUDY_FACT_CARD_SCHEMA,
+      model: input.model,
     }),
     DEEP_LEARN_STAGE_TIMEOUT_MS,
     new DeepLearnGenerationIncompleteError('structured_outputs_timeout'),
@@ -766,20 +990,122 @@ async function createStudyFactCardResponse(input: {
   }
 }
 
+function getMinimumCardsForAttempt(requestedCardCount: number) {
+  return requestedCardCount >= 3 ? 2 : 1
+}
+
+function getMinimumStructuredFactCards(sourceText: string) {
+  return sourceText.length <= STUDY_FACT_CARD_SHORT_SOURCE_CHARS ? 3 : 5
+}
+
+function buildDeterministicStudyFactCards(sourceText: string, resourceTitle: string): StudyFactCard[] {
+  const structured = structureAcademicSourceText(sourceText)
+  const cards: StudyFactCard[] = []
+  const pushCard = (card: Omit<StudyFactCard, 'difficulty' | 'confidence'>, confidence = 0.72) => {
+    const normalized = normalizeStudyFactCard({
+      ...card,
+      difficulty: 'medium',
+      confidence,
+    })
+    if (normalized && isGroundedStudyFactCard(normalized, sourceText)) cards.push(normalized)
+  }
+
+  for (const item of structured.termDefinitions.slice(0, 10)) {
+    pushCard({
+      kind: 'definition',
+      prompt: `What does ${item.term} mean in the source?`,
+      answer: truncateForModel(item.definition, 360),
+      sourceQuote: truncateForModel(`${item.term}: ${item.definition}`, 220),
+      sectionTitle: item.term,
+    }, 0.82)
+  }
+
+  for (const list of structured.lists.slice(0, 8)) {
+    const items = list.items.slice(0, 5).join(', ')
+    if (!items) continue
+    pushCard({
+      kind: 'list',
+      prompt: `What items does the source list under ${list.heading}?`,
+      answer: truncateForModel(items, 360),
+      sourceQuote: truncateForModel(`${list.heading}: ${items}`, 220),
+      sectionTitle: list.heading,
+    }, 0.78)
+  }
+
+  const lines = cleanupAcademicSourceLines(sourceText)
+  const sentences = extractStudySentences(structured.normalizedText)
+  for (const sentence of sentences.slice(0, 18)) {
+    const heading = findNearestHeadingForSentence(lines, sentence) ?? structured.headings[0] ?? resourceTitle
+    pushCard({
+      kind: classifyDeterministicFactCardKind(sentence),
+      prompt: buildDeterministicPromptForSentence(sentence, heading),
+      answer: truncateForModel(sentence, 360),
+      sourceQuote: truncateForModel(sentence, 220),
+      sectionTitle: heading,
+    }, 0.68)
+  }
+
+  for (const line of lines.filter((item) => /^\d+[\).]\s+\S/.test(item)).slice(0, 8)) {
+    const answer = line.replace(/^\d+[\).]\s+/, '').trim()
+    pushCard({
+      kind: 'process',
+      prompt: `What step does the source describe in ${resourceTitle}?`,
+      answer: truncateForModel(answer, 360),
+      sourceQuote: truncateForModel(line, 220),
+      sectionTitle: resourceTitle,
+    }, 0.7)
+  }
+
+  return dedupeStudyFactCards(cards).slice(0, 18)
+}
+
+function classifyDeterministicFactCardKind(sentence: string): StudyFactCard['kind'] {
+  if (/\b(?:is|are|refers to|means|defined as)\b/i.test(sentence) && /[:\-]|(?:\bis\b|\bare\b)/i.test(sentence)) return 'definition'
+  if (/\b(?:first|second|third|step|process|procedure|phase)\b/i.test(sentence)) return 'process'
+  if (/\b(?:\d{4}|january|february|march|april|may|june|july|august|september|october|november|december)\b/i.test(sentence)) return 'date'
+  if (/\b(?:person|author|founder|leader|researcher|instructor|scientist)\b/i.test(sentence)) return 'person'
+  if (/\b(?:compared with|whereas|while|unlike|difference)\b/i.test(sentence)) return 'comparison'
+  return 'fact'
+}
+
+function buildDeterministicPromptForSentence(sentence: string, heading: string) {
+  const colonMatch = sentence.match(/^([^:]{3,80}):\s+(.+)/)
+  if (colonMatch?.[1]) return `What does the source say about ${colonMatch[1].trim()}?`
+  if (/\b(?:\d{4}|january|february|march|april|may|june|july|august|september|october|november|december)\b/i.test(sentence)) {
+    return `What date or event is connected to ${heading}?`
+  }
+  return `What does the source say about ${heading}?`
+}
+
+function findNearestHeadingForSentence(lines: string[], sentence: string) {
+  const sentenceKey = normalizeAcademicLookup(sentence).slice(0, 80)
+  let currentHeading: string | null = null
+  for (const line of lines) {
+    if (line.length <= 90 && /^[A-Z0-9][A-Za-z0-9\s:()/-]+$/.test(line) && !/[.!?]$/.test(line)) {
+      currentHeading = normalizeStudyOutputHeading(line)
+    }
+    if (sentenceKey && normalizeAcademicLookup(line).includes(sentenceKey)) return currentHeading
+  }
+  return currentHeading
+}
+
 function buildStudyFactCardPrompt(input: {
   input: DeepLearnPromptInput
   chunk: string
   chunkIndex: number
   totalChunks: number
   shortSource: boolean
+  requestedCardCount: number
 }) {
   return [
     input.shortSource
       ? 'Create a compact Study Pack from this short academic source by extracting source-faithful fact cards.'
       : `Extract source-faithful fact cards from chunk ${input.chunkIndex + 1} of ${input.totalChunks}.`,
-    'Return strict JSON only. Generate at most 6 factCards.',
+    `Return strict JSON only. Generate exactly ${input.requestedCardCount} factCard${input.requestedCardCount === 1 ? '' : 's'} if the source supports it.`,
+    'Keep answers concise. Keep each sourceQuote between 80 and 220 characters when possible, and never over 240 characters.',
     'Prefer boring extractive facts, definitions, dates, people, lists, processes, and comparisons.',
     'Every sourceQuote must be copied from the provided source chunk or be a very close contiguous excerpt.',
+    'Do not generate reviewer prose, multiple-choice questions, quiz targets, caution notes, or explanations outside factCards.',
     'Do not use caution notes, diagnostics, fallback metadata, source-map labels, queue messages, file titles, UUIDs, or prompt instructions as study content.',
     'Do not use these prompt stems: Recall the exam meaning of; Explain the source relationship; Explain the cause-effect relationship; Use the source formula; Classify the items under; Explain the relationship inside.',
     '',
@@ -820,7 +1146,7 @@ function normalizeStudyFactCard(card: unknown): StudyFactCard | null {
   const kind = typeof record.kind === 'string' ? record.kind : 'fact'
   const prompt = sanitizeStudentFacingText(typeof record.prompt === 'string' ? record.prompt : '')
   const answer = sanitizeStudentFacingText(typeof record.answer === 'string' ? record.answer : '')
-  const sourceQuote = sanitizeStudentFacingText(typeof record.sourceQuote === 'string' ? record.sourceQuote : '')
+  const sourceQuote = truncateForModel(sanitizeStudentFacingText(typeof record.sourceQuote === 'string' ? record.sourceQuote : ''), 240)
   const sectionTitle = normalizeStudyOutputHeading(typeof record.sectionTitle === 'string' ? record.sectionTitle : 'Key Facts')
   const difficulty = record.difficulty === 'easy' || record.difficulty === 'hard' ? record.difficulty : 'medium'
   const confidence = typeof record.confidence === 'number' && Number.isFinite(record.confidence)
@@ -1028,6 +1354,15 @@ function selectDeepLearnGenerator(): DeepLearnGeneratorSelection {
   return { version: STRUCTURED_FACT_CARD_COMPILER_VERSION, reason: 'default' }
 }
 
+function getStructuredCompilerModelConfig(env: NodeJS.ProcessEnv = process.env): DeepLearnStructuredModelConfig {
+  return {
+    primaryModel: env.DEEP_LEARN_STRUCTURED_MODEL?.trim() || DEFAULT_DEEP_LEARN_STRUCTURED_MODEL,
+    fallbackModel: env.DEEP_LEARN_STRUCTURED_FALLBACK_MODEL?.trim() || DEFAULT_DEEP_LEARN_STRUCTURED_FALLBACK_MODEL,
+    premiumModel: env.DEEP_LEARN_STRUCTURED_PREMIUM_MODEL?.trim() || DEFAULT_DEEP_LEARN_STRUCTURED_PREMIUM_MODEL,
+    premiumFallbackEnabled: /^(?:1|true|yes|enabled)$/i.test(env[STUDY_FACT_CARD_PREMIUM_FALLBACK_ENV]?.trim() ?? ''),
+  }
+}
+
 function logDeepLearnGeneratorRouting(input: {
   generatorVersion: typeof STRUCTURED_FACT_CARD_COMPILER_VERSION | typeof LEGACY_STAGED_COMPOSER_VERSION
   event: 'structured_compiler_started' | 'legacy_composer_started'
@@ -1036,6 +1371,9 @@ function logDeepLearnGeneratorRouting(input: {
   sourceTitle: string
   academicTextCharCount: number
   chunkCount: number | null
+  primaryModel?: string
+  fallbackModel?: string
+  premiumModel?: string
 }) {
   console.info('[deep-learn-generation] generator routing', {
     generatorVersion: input.generatorVersion,
@@ -1045,6 +1383,67 @@ function logDeepLearnGeneratorRouting(input: {
     sourceTitle: input.sourceTitle,
     academicTextCharCount: input.academicTextCharCount,
     chunkCount: input.chunkCount,
+    primaryModel: input.primaryModel ?? null,
+    fallbackModel: input.fallbackModel ?? null,
+    premiumModel: input.premiumModel ?? null,
+  })
+}
+
+function logStructuredCompilerChunk(input: {
+  primaryModel: string
+  fallbackModel: string
+  premiumModel: string
+  model: string | null
+  chunkIndex: number
+  chunkCharCount: number
+  requestedCardCount: number
+  maxOutputTokens: number
+  retryLevel: 'primary' | 'primary_one_card' | 'fallback' | 'premium' | 'skipped'
+  cardsExtracted: number
+  skipped: boolean
+  reason?: string | null
+}) {
+  console.info('[deep-learn-generation] structured compiler chunk', {
+    generatorVersion: STRUCTURED_FACT_CARD_COMPILER_VERSION,
+    primaryModel: input.primaryModel,
+    fallbackModel: input.fallbackModel,
+    premiumModel: input.premiumModel,
+    model: input.model,
+    chunkIndex: input.chunkIndex,
+    chunkCharCount: input.chunkCharCount,
+    requestedCardCount: input.requestedCardCount,
+    maxOutputTokens: input.maxOutputTokens,
+    retryLevel: input.retryLevel,
+    cardsExtracted: input.cardsExtracted,
+    skipped: input.skipped,
+    reason: input.reason ?? null,
+  })
+}
+
+function logStructuredCompilerSummary(input: {
+  primaryModel: string
+  fallbackModel: string
+  premiumModel: string
+  fallbackModelUsed: number
+  premiumModelUsed: number
+  chunkCount: number
+  skippedChunkCount: number
+  deterministicFallbackUsed: boolean
+  finalFactCardCount: number
+  minimumFactCards: number
+}) {
+  console.info('[deep-learn-generation] structured compiler summary', {
+    generatorVersion: STRUCTURED_FACT_CARD_COMPILER_VERSION,
+    primaryModel: input.primaryModel,
+    fallbackModel: input.fallbackModel,
+    premiumModel: input.premiumModel,
+    fallbackModelUsed: input.fallbackModelUsed,
+    premiumModelUsed: input.premiumModelUsed,
+    chunkCount: input.chunkCount,
+    skippedChunkCount: input.skippedChunkCount,
+    deterministicFallbackUsed: input.deterministicFallbackUsed,
+    finalFactCardCount: input.finalFactCardCount,
+    minimumFactCards: input.minimumFactCards,
   })
 }
 
@@ -3928,10 +4327,11 @@ async function createDeepLearnResponse(
   request: DeepLearnResponseRequest,
 ) {
   const { grounding, promptText, maxOutputTokens, schema, schemaName } = request
+  const model = request.model?.trim() || getDeepLearnModel()
 
   return grounding.generationMode === 'scan_fallback' && grounding.scanFallbackInput
     ? client.responses.create({
-        model: getDeepLearnModel(),
+        model,
         store: false,
         instructions: DEEP_LEARN_SYSTEM_PROMPT,
         input: [{
@@ -3955,7 +4355,7 @@ async function createDeepLearnResponse(
         max_output_tokens: maxOutputTokens,
       })
     : client.responses.create({
-        model: getDeepLearnModel(),
+        model,
         store: false,
         instructions: DEEP_LEARN_SYSTEM_PROMPT,
         input: promptText,
@@ -4872,7 +5272,7 @@ function buildDeepLearnIncompleteMessage(reason: string) {
     return 'Structured Study Pack Compiler returned no structured output.'
   }
   if (reason === 'max_output_tokens') {
-    return 'Structured Study Pack Compiler hit the model response limit while extracting fact cards. Try a smaller source or split the module.'
+    return 'Study Pack generation was too large for this source. Try again or use a smaller source.'
   }
   if (reason.startsWith('provider:')) {
     return `Structured Study Pack Compiler failed during Deep Learn generation: ${reason.slice('provider:'.length)}.`

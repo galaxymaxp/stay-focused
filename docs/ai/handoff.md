@@ -1,7 +1,76 @@
 # Stay Focused — AI Session Handoff
 
 Author: galaxymaxp omgraythekid@gmail.com
-Last Updated: 2026-05-16
+Last Updated: 2026-05-17
+
+---
+
+## Session Update - 2026-05-17 (Structured Compiler Model Escalation)
+
+### What changed
+
+- Added structured compiler model env controls:
+  - `DEEP_LEARN_STRUCTURED_MODEL` defaulting to `gpt-5.4-mini`
+  - `DEEP_LEARN_STRUCTURED_FALLBACK_MODEL` defaulting to `gpt-5.4`
+  - `DEEP_LEARN_STRUCTURED_PREMIUM_MODEL` defaulting to `gpt-5.5`
+- Kept GPT-5.5 out of the normal path; premium fallback only runs when `DEEP_LEARN_STRUCTURED_PREMIUM_FALLBACK` is explicitly enabled and the job still lacks enough cards.
+- Changed fact-card extraction to request 3 cards normally, then retry the same primary model with exactly 1 card on output-limit or low-valid-card failures before attempting the fallback model.
+- Added per-job caps for processed chunks, fallback model attempts, and premium model attempts.
+- Made chunk failures non-fatal: failed chunks are skipped, successful chunk cards are retained, and deterministic fallback fills gaps from readable academic text.
+- Added deterministic extractive fact-card fallback from definitions, lists, heading-adjacent sentences, dates/events, colon patterns, and numbered steps.
+- Kept Study Pack assembly deterministic from fact cards, with no caution notes, diagnostics, sourceMap wording, fallback metadata, or queue metadata saved into student-facing content.
+- Updated structured output-limit student copy to: `Study Pack generation was too large for this source. Try again or use a smaller source.`
+- Added structured compiler diagnostics for selected models, model used per chunk, retry level, requested card count, max output tokens, chunk count/index/char count, extracted card count, skipped chunks, deterministic fallback use, and final card count.
+
+### Files touched
+
+- `lib/deep-learn-generation.ts`
+- `actions/queue-jobs.ts`
+- `tests/deep-learn-generation.test.ts`
+- `tests/queue.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Production jobs were correctly routed to `structured_fact_card_compiler_v1`, but fact-card extraction could still fail the whole job on `max_output_tokens` despite meaningful academic text. The compiler now uses a cheap primary model by default, escalates only per failed chunk, saves partial successful work, and has an extractive fallback so readable source text can still become a usable Study Pack.
+
+### Tests run
+
+- `npx tsx --test tests/deep-learn-generation.test.ts` - passed
+- `npx tsx --test tests/queue.test.ts` - passed
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- deep-learn-generation queue` - passed
+
+### Verification result
+
+- Verified the structured compiler defaults to the cheap primary model and does not enter legacy stages.
+- Verified `max_output_tokens` retries the primary model with exactly 1 requested card before fallback model escalation.
+- Verified GPT-5.4 fallback runs only after primary chunk failure.
+- Verified GPT-5.5 premium fallback is not called by default.
+- Verified one failed chunk does not fail the whole Study Pack.
+- Verified deterministic fallback creates cards from readable academic text when model calls or model cards fail.
+- Verified queue output-limit copy no longer blames missing readable academic text.
+- Verified saved structured Study Packs remain free of diagnostics, caution notes, Source Map prompt wording, and fallback metadata.
+
+### Known risks
+
+- The deterministic fallback is intentionally extractive and may produce boring cards, but it should be useful and source-grounded.
+- Defaults assume `gpt-5.4-mini`, `gpt-5.4`, and `gpt-5.5` are available in the deployment account. The env vars can override model names if availability differs.
+- Fallback model attempt counts are job-level capped; very long sources may rely more heavily on deterministic cards after the cap is reached.
+
+### Blockers
+
+- No blocker remains.
+- `test_output.txt` remains an existing untracked file and was not committed.
+
+### Next recommended step
+
+Deploy and retry the production sources that failed with `failedStage: structured_compiler` and `max_output_tokens`. Confirm logs show primary one-card retries, bounded fallback model use, and completed queue jobs with nonzero final fact-card counts.
+
+### Suggested commit message
+
+make structured compiler efficient with model escalation
 
 ---
 

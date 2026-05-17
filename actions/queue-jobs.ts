@@ -1505,7 +1505,7 @@ function humanizeLearnGenerationFailureForQueue(message: string) {
     return DEEP_LEARN_QUICK_ANSWERS_OUTPUT_TOO_LARGE_MESSAGE
   }
   if (/max_output_tokens|response size limit|too large/i.test(trimmed)) {
-    return 'The source was too large for the model response after compact fallback.'
+    return 'Study Pack generation was too large for this source. Try again or use a smaller source.'
   }
   if (/not enough readable text|readable text|source text|metadata|OCR|extract/i.test(trimmed)) {
     return 'The selected source does not have enough readable academic text yet.'

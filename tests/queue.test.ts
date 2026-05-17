@@ -438,6 +438,12 @@ test('learn generation queue maps quick-answer size failures to specific student
   assert.doesNotMatch(queueSource, /quick_answers_output_too_large[\s\S]{0,220}could not build enough structured study content/i)
 })
 
+test('learn generation queue maps structured output-limit failures without readable-text blame', () => {
+  const queueSource = readFileSync('actions/queue-jobs.ts', 'utf8')
+  assert.match(queueSource, /Study Pack generation was too large for this source\. Try again or use a smaller source\./)
+  assert.doesNotMatch(queueSource, /max_output_tokens[\s\S]{0,220}selected source does not have enough readable academic text/i)
+})
+
 test('learn generation queue completes sanitized partial study packs instead of failing them', () => {
   const queueSource = readFileSync('actions/queue-jobs.ts', 'utf8')
   assert.match(queueSource, /await saveDeepLearnNote\([\s\S]*await markQueuedJobCompleted/)
