@@ -1379,7 +1379,7 @@ async function processLearnGenerationJob(input: {
 
     assertDeepLearnContentReadyForSave(generated.content)
 
-    const noteBody = buildDeepLearnNoteBody(generated.content.sections)
+    const noteBody = generated.content.reviewerMarkdown ?? buildDeepLearnNoteBody(generated.content.sections)
     const quizReady = computeDeepLearnQuizReady(generated.content)
 
     await saveDeepLearnNote({
@@ -1391,6 +1391,7 @@ async function processLearnGenerationJob(input: {
       overview: generated.content.overview,
       sections: generated.content.sections,
       noteBody,
+      reviewerMarkdown: generated.content.reviewerMarkdown ?? null,
       answerBank: generated.content.answerBank,
       identificationItems: generated.content.identificationItems,
       distinctions: generated.content.distinctions,

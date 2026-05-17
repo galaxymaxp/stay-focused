@@ -128,8 +128,9 @@ export async function DeepLearnNoteView({
       <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
         <StatePill label={ui.statusLabel} tone={ui.tone} />
         <StatePill label={resource.type} tone="muted" />
-        {note?.status === 'ready' && <StatePill label={`${note.answerBank.length} key answer${note.answerBank.length === 1 ? '' : 's'}`} tone="muted" />}
-        {note?.status === 'ready' && <StatePill label={`${note.identificationItems.length} ID item${note.identificationItems.length === 1 ? '' : 's'}`} tone="muted" />}
+        {note?.status === 'ready' && note.reviewerMarkdown ? <StatePill label="Full reviewer" tone="accent" /> : null}
+        {note?.status === 'ready' && !note.reviewerMarkdown && <StatePill label={`${note.answerBank.length} key answer${note.answerBank.length === 1 ? '' : 's'}`} tone="muted" />}
+        {note?.status === 'ready' && !note.reviewerMarkdown && <StatePill label={`${note.identificationItems.length} ID item${note.identificationItems.length === 1 ? '' : 's'}`} tone="muted" />}
         {note?.status === 'ready' && note.mcqDrill.length > 0 && <StatePill label={`${note.mcqDrill.length} MCQ`} tone="muted" />}
         {note?.status === 'ready' && note.timeline.length > 0 && <StatePill label={`${note.timeline.length} timeline cue${note.timeline.length === 1 ? '' : 's'}`} tone="muted" />}
         {note?.status === 'ready' && note.quizReady && <StatePill label="Quiz ready" tone="accent" />}
@@ -138,7 +139,7 @@ export async function DeepLearnNoteView({
       {note?.status === 'ready' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.75rem' }}>
           <WorkspacePanel title="Pack profile">
-            <MetaLine label="Primary mode" value={note.quizReady ? 'Quiz-ready review pack' : 'Review pack with partial quiz coverage'} />
+            <MetaLine label="Primary mode" value={note.reviewerMarkdown ? 'Full exam Reviewer' : note.quizReady ? 'Quiz-ready review pack' : 'Review pack with partial quiz coverage'} />
             <MetaLine label="Key answers" value={`${note.answerBank.length}`} />
             <MetaLine label="Identification items" value={`${note.identificationItems.length}`} />
             <MetaLine label="MCQ drill items" value={`${note.mcqDrill.length}`} />

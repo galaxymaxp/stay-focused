@@ -45,6 +45,13 @@ export function StudyOutputReviewerPage({
         generatedAt={output.generatedAt ?? output.createdAt}
       />
 
+      {reviewer.reviewerMarkdown ? (
+        <div className="reviewer-panel study-output-keep-together" style={{ whiteSpace: 'normal' }}>
+          <MarkdownReviewerDocument markdown={reviewer.reviewerMarkdown} />
+        </div>
+      ) : null}
+
+      {!reviewer.reviewerMarkdown ? (
       <div className="reviewer-grid">
         <section className="reviewer-panel reviewer-panel-hero study-output-keep-together">
           <p className="reviewer-section-label">High-yield first</p>
@@ -145,6 +152,42 @@ export function StudyOutputReviewerPage({
           </section>
         ) : null}
       </div>
+      ) : null}
     </section>
+  )
+}
+
+function MarkdownReviewerDocument({ markdown }: { markdown: string }) {
+  const blocks = markdown.split(/\n{2,}/).map((block) => block.trim()).filter(Boolean)
+  return (
+    <div className="reviewer-markdown-document">
+      {blocks.map((block, index) => {
+        if (/^#\s+/.test(block)) {
+          return <h1 key={index}>{block.replace(/^#\s+/, '')}</h1>
+        }
+        if (/^##\s+/.test(block)) {
+          return <h2 key={index}>{block.replace(/^##\s+/, '')}</h2>
+        }
+        if (/^###\s+/.test(block)) {
+          return <h3 key={index}>{block.replace(/^###\s+/, '')}</h3>
+        }
+        const lines = block.split('\n').map((line) => line.trim()).filter(Boolean)
+        if (lines.every((line) => /^[-*]\s+/.test(line))) {
+          return (
+            <ul key={index}>
+              {lines.map((line) => <li key={line}>{line.replace(/^[-*]\s+/, '')}</li>)}
+            </ul>
+          )
+        }
+        if (lines.every((line) => /^\d+[.)]\s+/.test(line))) {
+          return (
+            <ol key={index}>
+              {lines.map((line) => <li key={line}>{line.replace(/^\d+[.)]\s+/, '')}</li>)}
+            </ol>
+          )
+        }
+        return <p key={index} style={{ whiteSpace: 'pre-line' }}>{block}</p>
+      })}
+    </div>
   )
 }

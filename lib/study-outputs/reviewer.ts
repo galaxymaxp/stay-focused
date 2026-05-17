@@ -51,6 +51,14 @@ export function getDeepLearnReviewerReadiness(note: DeepLearnNote | null): Revie
     }
   }
 
+  if (hasFullReviewerMarkdown(note)) {
+    return {
+      ok: true,
+      reason: 'empty',
+      message: '',
+    }
+  }
+
   const sourceMapReviewer = buildReviewerContentFromSourceMap(note)
   if (sourceMapReviewer) {
     return {
@@ -91,6 +99,25 @@ export function buildDeepLearnReviewerContent(note: DeepLearnNote): StudyOutputR
   const sourceMapReviewer = buildReviewerContentFromSourceMap(note)
   if (sourceMapReviewer) return sourceMapReviewer
 
+  if (hasFullReviewerMarkdown(note)) {
+    const markdown = note.reviewerMarkdown ?? note.noteBody
+    return {
+      version: 'reviewer-v1',
+      sourceNoteId: note.id,
+      sourceResourceId: note.resourceId,
+      title: buildReviewerTitle(note.title),
+      summary: 'Full exam Reviewer generated directly from the selected source.',
+      intro: cleanReviewerText(note.overview),
+      reviewerMarkdown: markdown,
+      highYieldConcepts: [],
+      identificationReview: [],
+      quickReviewBlocks: [],
+      distinctions: [],
+      likelyQuizTargets: [],
+      cautionNotes: note.cautionNotes.map(cleanReviewerText).filter(Boolean).slice(0, 6),
+    }
+  }
+
   const quickReviewBlocks = dedupeQuickReviewBlocks(buildQuickReviewBlocks(note))
   const title = buildReviewerTitle(note.title)
   const usedConcepts = new Set<string>()
@@ -129,6 +156,7 @@ export function buildDeepLearnReviewerContent(note: DeepLearnNote): StudyOutputR
     title,
     summary: buildReviewerSummary(note, highYieldConcepts.length, identificationReview.length),
     intro: cleanReviewerText(note.overview),
+    reviewerMarkdown: null,
     highYieldConcepts,
     identificationReview,
     quickReviewBlocks,
@@ -257,6 +285,7 @@ export function buildReviewerContentFromSourceMap(note: DeepLearnNote): StudyOut
     title: buildReviewerTitle(note.title),
     summary: `Exam Reviewer built from ${units.length} academic reviewer unit${units.length === 1 ? '' : 's'}. ${highYieldConcepts.length} high-yield recall cue${highYieldConcepts.length === 1 ? '' : 's'} and ${identificationReview.length} identification item${identificationReview.length === 1 ? '' : 's'} are ready for cram review.`,
     intro: buildSourceMapIntro(units, note.overview),
+    reviewerMarkdown: null,
     highYieldConcepts,
     identificationReview,
     quickReviewBlocks,
@@ -264,6 +293,14 @@ export function buildReviewerContentFromSourceMap(note: DeepLearnNote): StudyOut
     likelyQuizTargets,
     cautionNotes: note.cautionNotes.map(cleanReviewerText).filter(Boolean).filter((item) => !containsInternalPipelineText(item)).slice(0, 4),
   }
+}
+
+function hasFullReviewerMarkdown(note: DeepLearnNote) {
+  const markdown = note.reviewerMarkdown ?? note.noteBody
+  return /^#\s*Reviewer:/im.test(markdown)
+    && /^##\s+Complete Exam Reviewer\s*$/im.test(markdown)
+    && /^##\s+Identification Reviewer\s*$/im.test(markdown)
+    && markdown.length >= 1200
 }
 
 interface SourceMapReviewerUnit {

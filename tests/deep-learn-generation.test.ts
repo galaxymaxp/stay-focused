@@ -2724,6 +2724,107 @@ test('structured compiler repairs valid but incomplete section coverage with fal
   assert.match(JSON.stringify(result.content), /definitions, procedures, timelines, and comparisons/)
 })
 
+test('Reviewer classic markdown mode is the default and covers SDLC Phase 1 through Phase 7', async () => {
+  const fixture = getReviewerSourceFixture('multi-phase-systems-analysis')
+  const calls: Array<{ schemaName: string; model?: string; prompt: string }> = []
+  const result = await withTemporaryEnv({
+    DEEP_LEARN_REVIEWER_GENERATION_MODE: undefined,
+    DEEP_LEARN_REVIEWER_ONE_PASS_MODEL: 'gpt-5.4-classic',
+  }, () => generateDeepLearnStructuredContent(
+    createStructuredPromptInput(fixture.extractedText, fixture.title),
+    createStructuredPreparedGrounding(fixture.extractedText),
+    async (request) => {
+      calls.push({ schemaName: request.schemaName, model: request.model, prompt: request.promptText })
+      return textResponse(buildClassicReviewerMarkdown(fixture))
+    },
+  ))
+
+  assert.equal(calls[0]!.schemaName, 'deep_learn_reviewer_classic_markdown')
+  assert.equal(calls[0]!.model, 'gpt-5.4-classic')
+  assert.match(calls[0]!.prompt, /Do not return JSON/i)
+  assert.doesNotMatch(calls[0]!.prompt, /Generate exactly \d+ factCard|answerBank 12 to 16 items/i)
+  assert.ok(result.content.reviewerMarkdown)
+  for (const section of fixture.expectedMajorSections) {
+    assert.match(result.content.reviewerMarkdown!, new RegExp(escapeRegExp(section), 'i'))
+  }
+  assert.equal(result.content.answerBank.length, 0)
+})
+
+test('Reviewer classic markdown mode covers IT Security major sections without requiring card counts', async () => {
+  const fixture = getReviewerSourceFixture('taxonomy-heavy-security')
+  const result = await withTemporaryEnv({
+    DEEP_LEARN_REVIEWER_GENERATION_MODE: 'classic_markdown',
+  }, () => generateDeepLearnStructuredContent(
+    createStructuredPromptInput(fixture.extractedText, fixture.title),
+    createStructuredPreparedGrounding(fixture.extractedText),
+    async () => textResponse(buildClassicReviewerMarkdown(fixture, {
+      extraSections: [
+        'IT Security definition',
+        'InfoSec vs IT Sec',
+        'CIA triad',
+        'Domains',
+        'Cybersecurity definitions',
+        'Layered protection',
+        'People, process, and technology',
+        'Unified Threat Management',
+        'Importance',
+        'Challenges',
+        'Breach impacts',
+        'Attackers',
+        'Vulnerability, exploit, and breach',
+        'Threat types',
+        'Malware types',
+        'Symptoms',
+        'Infiltration',
+        'Denial of service',
+        'SEO poisoning',
+        'Blended attacks',
+        'Impact reduction',
+      ],
+    })),
+  ))
+
+  const markdown = result.content.reviewerMarkdown ?? ''
+  for (const expected of ['IT Security definition', 'InfoSec vs IT Sec', 'CIA triad', 'Unified Threat Management', 'Vulnerability, exploit, and breach', 'Malware types', 'Denial of service', 'SEO poisoning', 'Blended attacks', 'Impact reduction']) {
+    assert.match(markdown, new RegExp(escapeRegExp(expected), 'i'))
+  }
+  assert.equal(result.content.answerBank.length, 0)
+  assert.doesNotThrow(() => validateDeepLearnContentReadyForSave(result.content))
+})
+
+test('Reviewer classic markdown mode covers PATHFit Arnis exam areas', async () => {
+  const fixture = getReviewerSourceFixture('short-martial-arts-module')
+  const result = await withTemporaryEnv({
+    DEEP_LEARN_REVIEWER_GENERATION_MODE: 'classic_markdown',
+  }, () => generateDeepLearnStructuredContent(
+    createStructuredPromptInput(PATHFIT_ARNIS_SAMPLE_SOURCE, 'PATHFit Arnis.pdf'),
+    createStructuredPreparedGrounding(PATHFIT_ARNIS_SAMPLE_SOURCE),
+    async () => textResponse(buildClassicReviewerMarkdown(fixture, {
+      title: 'PATHFit Arnis.pdf',
+      extraSections: [
+        'Arnis definition',
+        'R.A. 9850',
+        'Historical concept',
+        'Evolvement and classifications',
+        'Organizations and timeline',
+        'Main groups',
+        'Salutation',
+        'Strikes',
+        'Arnis as sport',
+        'Equipment',
+        'Weapons',
+        'Stick types',
+      ],
+    })),
+  ))
+
+  const markdown = result.content.reviewerMarkdown ?? ''
+  for (const expected of ['Arnis definition', 'R.A. 9850', 'classifications', 'Organizations and timeline', 'Main groups', 'Salutation', 'Strikes', 'Equipment', 'Weapons', 'Stick types']) {
+    assert.match(markdown, new RegExp(escapeRegExp(expected), 'i'))
+  }
+  assert.doesNotMatch(markdown, /Key Academic Items|Classification Relationships|Academic Source Map/i)
+})
+
 test('Reviewer one-pass mode builds SDLC reviewer across Phase 1 through Phase 7', async () => {
   const fixture = getReviewerSourceFixture('multi-phase-systems-analysis')
   const calls: Array<{ schemaName: string; model?: string; prompt: string }> = []
@@ -3268,6 +3369,81 @@ function onePassReviewerResponse(fixture: ReviewerSourceFixture, content: DeepLe
     title: content.title || fixture.title,
     overview: content.overview || `${fixture.title} complete exam reviewer.`,
   })
+}
+
+function textResponse(markdown: string) {
+  return {
+    status: 'completed',
+    output_text: markdown,
+    incomplete_details: null,
+  }
+}
+
+function buildClassicReviewerMarkdown(
+  fixture: ReviewerSourceFixture,
+  options: { title?: string; extraSections?: string[] } = {},
+) {
+  const title = options.title ?? fixture.title
+  const sections = [...fixture.expectedMajorSections, ...(options.extraSections ?? [])]
+  const sourceLines = fixture.extractedText
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length >= 40)
+  const sourceDetail = sourceLines.slice(0, 18).join(' ')
+  const completeSections = sections.map((section, index) => {
+    const detail = sourceLines[index % sourceLines.length] ?? sourceDetail
+    return [
+      `### ${section}`,
+      `- Key points: ${detail}`,
+      `- Definitions: ${section} should be reviewed with the wording and listed details from the lesson.`,
+      `- Important lists/classifications: ${sourceDetail.slice(0, 360)}`,
+      `- Exam notes / likely asked details: Be able to identify, define, enumerate, and distinguish ${section} from nearby source concepts.`,
+    ].join('\n')
+  }).join('\n\n')
+  const identification = sections
+    .concat(sourceLines.slice(0, 12))
+    .slice(0, 36)
+    .map((section, index) => `${index + 1}. ${section} - ${sourceLines[index % sourceLines.length] ?? section}`)
+    .join('\n')
+  const mcqs = Array.from({ length: 18 }, (_, index) => {
+    const section = sections[index % sections.length] ?? fixture.title
+    return `${index + 1}. Which source detail is most connected to ${section}?\nA. ${sourceLines[index % sourceLines.length] ?? section}\nB. A different source section\nC. A nearby but unsupported choice\nD. A broad distractor\nAnswer: A. Explanation: The answer is stated in the selected source.`
+  }).join('\n\n')
+  const lists = sections.slice(0, 18).map((section, index) => `${index + 1}. Enumerate the important details under ${section}.`).join('\n')
+  const timeline = /timeline|date|organization|phase|1975|1989|2009|2010/i.test(`${fixture.extractedText} ${sections.join(' ')}`)
+    ? sections.filter((section) => /phase|timeline|organization|R\.?A\.?|date|1975|1989|2009|2010/i.test(section)).map((section) => `- ${section}`).join('\n') || '- Review the source dates and events in order.'
+    : 'No dates or events are emphasized in the source.'
+  const compare = /vs|distinguish|vulnerability|exploit|breach|InfoSec|IT Sec|style|classification/i.test(`${fixture.extractedText} ${sections.join(' ')}`)
+    ? '- Compare related or confusable source concepts using the source definitions and classifications.'
+    : 'No major compare/distinguish pair is emphasized in the source.'
+
+  return [
+    `# Reviewer: ${title}`,
+    '',
+    '## High-Yield Overview',
+    `- ${fixture.extractedText.slice(0, 900)}`,
+    '',
+    '## Complete Exam Reviewer',
+    completeSections,
+    '',
+    '## Identification Reviewer',
+    identification,
+    '',
+    '## Multiple Choice Practice',
+    mcqs,
+    '',
+    '## Enumeration / List Questions',
+    lists,
+    '',
+    '## Timeline / Dates',
+    timeline,
+    '',
+    '## Compare / Distinguish',
+    compare,
+    '',
+    '## Final Quick Review',
+    sections.slice(0, 24).map((section) => `- ${section}`).join('\n'),
+  ].join('\n')
 }
 
 function buildOnePassFixtureContent(

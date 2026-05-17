@@ -220,6 +220,7 @@ export async function saveDeepLearnNote(input: {
   overview?: string | null
   sections?: DeepLearnNote['sections']
   noteBody?: string | null
+  reviewerMarkdown?: string | null
   answerBank?: DeepLearnNote['answerBank']
   identificationItems?: DeepLearnNote['identificationItems']
   distinctions?: DeepLearnNote['distinctions']
@@ -237,6 +238,7 @@ export async function saveDeepLearnNote(input: {
   }
 
   const sections = input.sections ?? []
+  const reviewerMarkdown = input.reviewerMarkdown ?? input.noteBody ?? null
   const answerBank = input.answerBank ?? []
   const identificationItems = input.identificationItems ?? []
   const distinctions = input.distinctions ?? []
@@ -253,7 +255,7 @@ export async function saveDeepLearnNote(input: {
     title: input.title ?? 'Exam Prep Pack',
     overview: input.overview ?? '',
     sections,
-    note_body: input.noteBody ?? buildDeepLearnNoteBody(sections),
+    note_body: reviewerMarkdown ?? buildDeepLearnNoteBody(sections),
     core_terms: identificationItems,
     key_facts: answerBank,
     distinctions,
@@ -308,6 +310,7 @@ function adaptDeepLearnNoteRow(row: DeepLearnNoteRow): DeepLearnNote {
     overview: row.overview ?? '',
     sections: Array.isArray(row.sections) ? row.sections as DeepLearnNote['sections'] : [],
     noteBody: row.note_body ?? '',
+    reviewerMarkdown: row.note_body ?? null,
     answerBank: Array.isArray(row.key_facts) ? row.key_facts as DeepLearnNote['answerBank'] : [],
     identificationItems: Array.isArray(row.core_terms) ? row.core_terms as DeepLearnNote['identificationItems'] : [],
     distinctions: Array.isArray(row.distinctions) ? row.distinctions as DeepLearnNote['distinctions'] : [],

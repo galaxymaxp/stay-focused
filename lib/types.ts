@@ -246,6 +246,7 @@ export interface DeepLearnNote {
   overview: string
   sections: DeepLearnNoteSection[]
   noteBody: string
+  reviewerMarkdown?: string | null
   answerBank: DeepLearnAnswerBankItem[]
   identificationItems: DeepLearnIdentificationItem[]
   mcqDrill: DeepLearnMultipleChoiceItem[]
@@ -467,6 +468,7 @@ export interface StudyOutputReviewerContent {
   title: string
   summary: string
   intro: string
+  reviewerMarkdown?: string | null
   highYieldConcepts: StudyOutputReviewerHighYieldItem[]
   identificationReview: StudyOutputReviewerIdentificationItem[]
   quickReviewBlocks: StudyOutputReviewerQuickReviewBlock[]

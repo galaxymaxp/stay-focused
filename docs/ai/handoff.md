@@ -5,6 +5,77 @@ Last Updated: 2026-05-17
 
 ---
 
+## Session Update - 2026-05-17 (Restore Classic Full Reviewer Generation)
+
+### What changed
+
+- Replaced the default Deep Learn Reviewer generation path with `DEEP_LEARN_REVIEWER_GENERATION_MODE=classic_markdown`.
+- Added a Reviewer-only classic Markdown generation path that sends selected academic source text directly in one request, uses the existing 60,000 character cap, and requests one full Markdown reviewer document instead of JSON card artifacts.
+- Preserved `DEEP_LEARN_REVIEWER_GENERATION_MODE=structured_fact_card_compiler` as the rollback path and left Study Pack, Quiz, Task Output, and `task_output` generation unchanged.
+- Added `reviewerMarkdown` support through generated content, saved Deep Learn notes, and saved Reviewer study outputs.
+- Updated validation so a meaningful full Markdown reviewer can complete without answer-bank, identification, MCQ, or card-count density gates.
+- Updated the Reviewer page to render `reviewerMarkdown` as the primary document when present; the old structured card layout remains as fallback.
+- Updated Deep Learn status UI to show "Full reviewer" instead of leading with tiny key-answer / ID counts when full markdown exists.
+- Added mocked classic Reviewer tests for SDLC, IT Security, PATHFit/Arnis, and completion without structured card counts.
+
+### Files touched
+
+- `actions/deep-learn.ts`
+- `actions/queue-jobs.ts`
+- `components/DeepLearnNoteView.tsx`
+- `components/StudyOutputReviewerPage.tsx`
+- `lib/deep-learn-generation.ts`
+- `lib/deep-learn-store.ts`
+- `lib/deep-learn.ts`
+- `lib/study-outputs/reviewer.ts`
+- `lib/types.ts`
+- `tests/deep-learn-generation.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+The previous one-pass Reviewer still forced the model output into structured card artifacts, so students saw tiny sets of key answers, ID items, MCQs, and timeline cues instead of a complete reviewer. This reset makes Reviewer quality come from one full source-grounded Markdown document while keeping card artifacts secondary.
+
+### Tests run
+
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- deep-learn-generation` - passed
+- `npm test -- study-output-reviewer study-output-quiz-pack learn-resource-ui deep-learn-readiness` - passed
+- `npm test -- pdf-extractor source-ocr-updates deep-learn-readiness deep-learn-generation canvas-content-resolution learn-resource-ui queue` - passed
+- `npm test -- task-output task-output-foundation` - passed
+- `npx tsx scripts/validate-scanned-pdf.ts --pdf "C:\Users\omgra\Downloads\1.1-Data Organization.pdf"` - skipped because the local PDF file was not present
+
+### Verification result
+
+- Verified default Reviewer mode resolves to classic Markdown when the env flag is missing.
+- Verified classic Reviewer prompts request Markdown, not JSON/card fragments, and do not ask for small answer-bank counts.
+- Verified full Reviewer markdown passes save validation even with zero answer-bank/card artifacts.
+- Verified Reviewer output rendering prioritizes the complete Markdown document.
+- Verified task-output tests still pass separately.
+
+### Known risks
+
+- Full Markdown Reviewer generation may use more tokens and take longer than the structured fact-card compiler.
+- The full reviewer is stored through the existing note body path rather than a new database column, so old notes without `reviewerMarkdown` continue to render through fallback structured content.
+- Markdown rendering is intentionally simple and handles headings, paragraphs, ordered lists, and unordered lists; richer Markdown tables are not specially rendered yet.
+
+### Blockers
+
+- No code blocker remains.
+- The scanned-PDF validator could not run because `C:\Users\omgra\Downloads\1.1-Data Organization.pdf` was not found locally.
+- `test_output.txt` remains an existing untracked file and was not committed.
+
+### Next recommended step
+
+Generate live Reviewers for the known SDLC, IT Security, and PATHFit/Arnis sources and confirm the first visible Reviewer output is the full Markdown document, not the Answer Mode card list.
+
+### Suggested commit message
+
+restore classic full reviewer generation
+
+---
+
 ## Session Update - 2026-05-17 (One-Pass Reviewer Generation Reset)
 
 ### What changed

@@ -65,6 +65,7 @@ const ADMIN_METADATA_PATTERN = /\b(?:course\s+title|course\s+code|academic\s+yea
 export interface DeepLearnGeneratedContent {
   title: string
   overview: string
+  reviewerMarkdown?: string | null
   sections: DeepLearnNoteSection[]
   answerBank: DeepLearnAnswerBankItem[]
   identificationItems: DeepLearnIdentificationItem[]
@@ -159,6 +160,7 @@ export function normalizeDeepLearnGeneratedContent(
   return {
     title: cleanShortText(record.title) || fallbackTitle,
     overview: overview || fallbackTitle,
+    reviewerMarkdown: cleanMarkdown(record.reviewerMarkdown ?? record.fullReviewerMarkdown),
     sections: sections.length > 0
       ? sections
       : [{ heading: 'Support note', body: overview || fallbackTitle }],
@@ -224,6 +226,7 @@ export function buildDeepLearnNoteRecord(input: {
   overview: string
   sections: DeepLearnNoteSection[]
   noteBody: string
+  reviewerMarkdown?: string | null
   answerBank: DeepLearnAnswerBankItem[]
   identificationItems: DeepLearnIdentificationItem[]
   distinctions: DeepLearnDistinction[]
@@ -254,6 +257,7 @@ export function buildDeepLearnNoteRecord(input: {
     overview: cleanSentence(input.overview) || 'No overview available.',
     sections,
     noteBody: cleanParagraph(input.noteBody) || buildDeepLearnNoteBody(sections),
+    reviewerMarkdown: cleanMarkdown(input.reviewerMarkdown ?? input.noteBody),
     answerBank,
     identificationItems,
     mcqDrill: buildDeepLearnMcqDrill({
@@ -780,6 +784,18 @@ function cleanParagraph(value: unknown) {
 
 function normalizeLookup(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+}
+
+function cleanMarkdown(value: unknown) {
+  if (typeof value !== 'string') return null
+
+  const cleaned = sanitizeStudentFacingText(value)
+    .replace(/\r\n/g, '\n')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{4,}/g, '\n\n\n')
+    .trim()
+
+  return cleaned || null
 }
 
 export function sanitizeStudentFacingText(value: string) {
