@@ -38,6 +38,12 @@ const DEFAULT_DEEP_LEARN_STRUCTURED_PREMIUM_MODEL = 'gpt-5.5'
 const DEFAULT_DEEP_LEARN_REVIEWER_COMPILER_MODEL = DEFAULT_DEEP_LEARN_STRUCTURED_FALLBACK_MODEL
 const DEFAULT_DEEP_LEARN_REVIEWER_REPAIR_MODEL = DEFAULT_DEEP_LEARN_STRUCTURED_PREMIUM_MODEL
 const MAX_GROUNDING_CHARS = 12000
+const REVIEWER_ONE_PASS_MODE = 'one_pass'
+const REVIEWER_STRUCTURED_COMPILER_MODE = 'structured_fact_card_compiler'
+const DEFAULT_REVIEWER_GENERATION_MODE = REVIEWER_ONE_PASS_MODE
+const REVIEWER_ONE_PASS_SOURCE_CHAR_CAP = 60000
+const REVIEWER_ONE_PASS_MAX_OUTPUT_TOKENS = 16000
+const REVIEWER_ONE_PASS_REPAIR_MAX_OUTPUT_TOKENS = 16000
 export const DEEP_LEARN_MAX_OUTPUT_TOKENS = 10000
 export const DEEP_LEARN_COMPACT_MAX_OUTPUT_TOKENS = 10000
 export const DEEP_LEARN_OUTPUT_TOO_LARGE_MESSAGE = 'The model response limit was reached even after compact fallback. Try a smaller source or split the module.'
@@ -674,6 +680,9 @@ export async function generateDeepLearnStructuredContent(
     })
     return generateDeepLearnStructuredContentLegacy(input, grounding, createResponse, options)
   }
+  if (getReviewerGenerationMode() === REVIEWER_ONE_PASS_MODE) {
+    return generateOnePassReviewerContent(input, grounding, createResponse, options)
+  }
   return compileDeepLearnStudyPackFromFactCards(input, grounding, createResponse, options)
 }
 
@@ -695,6 +704,11 @@ interface StudyFactCardChunkResult {
   chunkCharCount: number
   fallbackModelAttempted: boolean
   premiumModelAttempted: boolean
+}
+
+interface OnePassReviewerModelConfig {
+  primaryModel: string
+  repairModel: string
 }
 
 export type SourceOutlineItem = {
@@ -721,6 +735,283 @@ export type SourceOutlineItem = {
   endOffset?: number
   required: boolean
 }
+
+async function generateOnePassReviewerContent(
+  input: DeepLearnPromptInput,
+  grounding: DeepLearnPreparedGrounding,
+  createResponse: DeepLearnResponseCreator,
+  options: DeepLearnGenerationOptions = {},
+): Promise<{ content: DeepLearnGeneratedContent; compactFallbackUsed: boolean }> {
+  const cleanedSource = cleanupStudyCompilerSource(input.promptGrounding)
+  const sourceText = truncateForModel(cleanedSource, getReviewerOnePassSourceCharCap())
+  const sourceWasTruncated = cleanedSource.length > sourceText.length
+  const sourceOutline = buildSourceOutline(sourceText)
+  const modelConfig = getOnePassReviewerModelConfig()
+
+  logDeepLearnGeneratorRouting({
+    generatorVersion: STRUCTURED_FACT_CARD_COMPILER_VERSION,
+    event: 'structured_compiler_started',
+    reason: `${REVIEWER_GENERATION_MODE_ENV_NAME}=${REVIEWER_ONE_PASS_MODE}`,
+    isRetry: Boolean(options.diagnosticsContext?.retryOfJobId),
+    sourceTitle: input.resource.title,
+    academicTextCharCount: buildDeepLearnSourceDiagnostics(input, options.diagnosticsContext).academicTextCharCount,
+    chunkCount: 1,
+    primaryModel: modelConfig.primaryModel,
+    fallbackModel: modelConfig.repairModel,
+    premiumModel: modelConfig.repairModel,
+    reviewerMiniUsed: false,
+    qualityMode: 'one-pass-reviewer',
+  })
+
+  await options.onProgress?.({
+    progress: 35,
+    statusMessage: 'Building a complete exam Reviewer from the selected source.',
+    stage: 'structured_compiler',
+  })
+
+  let repairAttempted = false
+  let content: DeepLearnGeneratedContent | null = null
+  let failureReason: string | null = null
+
+  try {
+    content = await createOnePassReviewerResponse({
+      input,
+      grounding,
+      createResponse,
+      sourceText,
+      sourceOutline,
+      model: modelConfig.primaryModel,
+      maxOutputTokens: REVIEWER_ONE_PASS_MAX_OUTPUT_TOKENS,
+      repairMode: false,
+    })
+  } catch (error) {
+    failureReason = error instanceof DeepLearnGenerationIncompleteError ? error.reason : error instanceof Error ? error.message : 'unknown'
+  }
+
+  if (!content) {
+    repairAttempted = true
+    content = await createOnePassReviewerResponse({
+      input,
+      grounding,
+      createResponse,
+      sourceText,
+      sourceOutline,
+      model: modelConfig.repairModel,
+      maxOutputTokens: REVIEWER_ONE_PASS_REPAIR_MAX_OUTPUT_TOKENS,
+      repairMode: true,
+      previousFailureReason: failureReason,
+    })
+  }
+
+  const validation = validateOnePassReviewerContentReadyForSave(content, sourceText)
+  const sanitized = sanitizeDeepLearnContentForSave(content, { dropStudentFacingComposerLeakage: true })
+  const headingDiagnostics = evaluateOnePassReviewerHeadingCoverage(sourceOutline, sanitized)
+
+  logStructuredCompilerSummary({
+    primaryModel: modelConfig.primaryModel,
+    fallbackModel: modelConfig.repairModel,
+    premiumModel: modelConfig.repairModel,
+    reviewerPrimaryModel: modelConfig.primaryModel,
+    reviewerFallbackModel: modelConfig.repairModel,
+    reviewerMiniUsed: false,
+    targetReviewerCards: validation.minimumUsefulCount,
+    actualReviewerCardsBeforeDedupe: validation.totalUsefulCount,
+    actualReviewerCardsAfterDedupe: validation.totalUsefulCount,
+    directCoveredSectionCount: headingDiagnostics.covered.length,
+    weakMentionSectionCount: 0,
+    uncoveredSectionCount: headingDiagnostics.uncovered.length,
+    uncoveredHeadings: headingDiagnostics.uncovered.map((item) => item.title),
+    duplicateCardsRemoved: 0,
+    fallbackRepairUsed: repairAttempted,
+    fallbackRepairModel: repairAttempted ? modelConfig.repairModel : null,
+    fallbackRepairAttemptCount: repairAttempted ? 1 : 0,
+    coveragePassed: validation.ok,
+    coverageFailureReason: validation.reason,
+    fallbackModelUsed: 0,
+    premiumModelUsed: repairAttempted ? 1 : 0,
+    chunkCount: 1,
+    skippedChunkCount: 0,
+    deterministicFallbackUsed: false,
+    finalFactCardCount: validation.totalUsefulCount,
+    minimumFactCards: validation.minimumUsefulCount,
+    outlineRequiredCount: headingDiagnostics.required.length,
+    outlineCoveredCount: headingDiagnostics.covered.length,
+    outlineMissingCount: headingDiagnostics.uncovered.length,
+  })
+
+  if (sourceWasTruncated) {
+    console.warn('[deep-learn-generation] one-pass reviewer source truncated', {
+      sourceTitle: input.resource.title,
+      originalChars: cleanedSource.length,
+      usedChars: sourceText.length,
+      cap: getReviewerOnePassSourceCharCap(),
+    })
+  }
+
+  if (!validation.ok) {
+    throw new DeepLearnGenerationIncompleteError(validation.reason ?? 'insufficient_structured_artifacts')
+  }
+
+  return { content: sanitized, compactFallbackUsed: sourceWasTruncated }
+}
+
+async function createOnePassReviewerResponse(input: {
+  input: DeepLearnPromptInput
+  grounding: DeepLearnPreparedGrounding
+  createResponse: DeepLearnResponseCreator
+  sourceText: string
+  sourceOutline: SourceOutlineItem[]
+  model: string
+  maxOutputTokens: number
+  repairMode: boolean
+  previousFailureReason?: string | null
+}) {
+  const response = await withTimeout(
+    input.createResponse({
+      grounding: input.grounding,
+      promptText: buildOnePassReviewerPrompt(input),
+      maxOutputTokens: input.maxOutputTokens,
+      schemaName: input.repairMode ? 'deep_learn_reviewer_one_pass_repair' : 'deep_learn_reviewer_one_pass',
+      schema: DEEP_LEARN_RESPONSE_SCHEMA,
+      model: input.model,
+    }),
+    DEEP_LEARN_STAGE_TIMEOUT_MS,
+    new DeepLearnGenerationIncompleteError('structured_outputs_timeout'),
+  ).catch((error) => {
+    if (error instanceof DeepLearnGenerationIncompleteError) throw error
+    throw new DeepLearnGenerationIncompleteError(`provider:${error instanceof Error ? error.message : 'provider request failed'}`)
+  })
+  if (response.status && response.status !== 'completed') {
+    throw new DeepLearnGenerationIncompleteError(response.incomplete_details?.reason ?? response.status)
+  }
+  const rawText = response.output_text?.trim()
+  if (!rawText) throw new DeepLearnGenerationIncompleteError('empty_structured_outputs')
+  try {
+    const parsed = JSON.parse(rawText) as Record<string, unknown>
+    const normalized = normalizeDeepLearnGeneratedContent(parsed, input.input.resource.title)
+    const sanitized = sanitizeDeepLearnContentForSave(normalized, { dropStudentFacingComposerLeakage: true })
+    const validation = validateOnePassReviewerContentReadyForSave(sanitized, input.sourceText)
+    if (!validation.ok) throw new DeepLearnGenerationIncompleteError(validation.reason ?? 'insufficient_structured_artifacts')
+    return sanitized
+  } catch (error) {
+    if (error instanceof DeepLearnGenerationIncompleteError) throw error
+    throw new DeepLearnGenerationIncompleteError('invalid_structured_outputs_json')
+  }
+}
+
+function buildOnePassReviewerPrompt(input: {
+  input: DeepLearnPromptInput
+  sourceText: string
+  sourceOutline: SourceOutlineItem[]
+  repairMode: boolean
+  previousFailureReason?: string | null
+}) {
+  const requiredSections = getRequiredSourceOutlineItems(input.sourceOutline)
+    .map((item) => `- ${item.title}`)
+    .join('\n')
+  return [
+    input.repairMode
+      ? 'Repair the previous Reviewer JSON by producing a complete valid JSON object in the required schema.'
+      : 'Create one complete exam-style Reviewer from the full selected academic source text in one pass.',
+    input.previousFailureReason ? `Previous internal failure reason: ${input.previousFailureReason}` : '',
+    'Use only the selected academic source text below. Do not use internet knowledge, outside facts, course metadata, file titles, UUIDs, debug labels, refusal text, diagnostics, or quality notes as study content.',
+    'Cover every major heading or section in source order. Do not collapse later sections into one shallow summary.',
+    requiredSections ? 'Major sections detected from the selected source:' : '',
+    requiredSections,
+    'Return JSON matching the schema exactly: sections, answerBank, identificationItems, distinctions, likelyQuizTargets, and cautionNotes.',
+    'Use source-specific section headings and labels. Do not use generic labels like "Key Academic Items", "Classification Relationships", or "Academic Source Map".',
+    'The answerBank must function as key answers / answer bank. The identificationItems must be direct identification questions with answers. likelyQuizTargets must include multiple-choice-style targets when the source supports them.',
+    'Include timeline items only when dates, organizations, milestones, laws, events, or chronology exist in the source. Include compare/distinguish items only when related or confusable concepts exist in the source.',
+    'If the source contains SDLC or seven development phases, explicitly cover Phase 1 through Phase 7 in order.',
+    'If the source contains PATHFit or Arnis, cover definition, R.A. 9850, historical concept, evolution/classifications, organizations/timeline, main groups, salutation, strikes, sport/equipment/weapons when present.',
+    'If the source contains IT Security, cover definitions, CIA triad, domains, cybersecurity definitions, importance, challenges, breach impact, attackers, vulnerability/exploit/breach, threats, malware, symptoms, infiltration, denial of service, blended attacks, and impact reduction when present.',
+    'Keep answers compact but complete enough for exams. Preserve source wording for definitions, lists, dates, named laws, phases, and enumerations.',
+    'Set cautionNotes to an empty array unless the source text itself has a student-facing limitation; never put internal diagnostics in cautionNotes.',
+    '',
+    'SELECTED ACADEMIC SOURCE TEXT:',
+    input.sourceText,
+  ].filter(Boolean).join('\n')
+}
+
+function validateOnePassReviewerContentReadyForSave(content: DeepLearnGeneratedContent, sourceText: string) {
+  const baseValidation = validateDeepLearnContentReadyForSave(content)
+  const counts = baseValidation.counts
+  const totalUsefulCount = counts.answerBankCount + counts.identificationCount + counts.quizTargetCount + content.sections.length
+  const minimumUsefulCount = sourceText.length <= STUDY_FACT_CARD_SHORT_SOURCE_CHARS ? 10 : 16
+  const hasUsefulDensity = counts.answerBankCount >= 4
+    && counts.identificationCount >= 4
+    && counts.quizTargetCount >= 3
+    && counts.distinctConceptCount >= 7
+    && content.sections.length >= 3
+    && totalUsefulCount >= minimumUsefulCount
+  const hasGroundedText = hasOnePassReviewerGroundedContent(content, sourceText)
+
+  if (!baseValidation.ok) {
+    return {
+      ok: false as const,
+      reason: baseValidation.reason ?? 'insufficient_structured_artifacts',
+      totalUsefulCount,
+      minimumUsefulCount,
+    }
+  }
+  if (!hasUsefulDensity) {
+    return {
+      ok: false as const,
+      reason: 'insufficient_structured_artifacts' as const,
+      totalUsefulCount,
+      minimumUsefulCount,
+    }
+  }
+  if (!hasGroundedText) {
+    return {
+      ok: false as const,
+      reason: 'low_information_content' as const,
+      totalUsefulCount,
+      minimumUsefulCount,
+    }
+  }
+  return {
+    ok: true as const,
+    reason: null,
+    totalUsefulCount,
+    minimumUsefulCount,
+  }
+}
+
+function hasOnePassReviewerGroundedContent(content: DeepLearnGeneratedContent, sourceText: string) {
+  const sourceKey = normalizeAcademicLookup(sourceText)
+  if (!sourceKey) return false
+  const itemTexts = [
+    ...content.answerBank.map((item) => `${item.cue} ${item.answer.examSafe} ${item.sourceSnippet ?? ''}`),
+    ...content.identificationItems.map((item) => `${item.prompt} ${item.answer.examSafe} ${item.sourceSnippet ?? ''}`),
+    ...content.likelyQuizTargets.map((item) => `${item.target} ${item.reason} ${item.sourceSnippet ?? ''}`),
+    ...content.sections.map((section) => `${section.heading} ${section.body}`),
+  ]
+  return itemTexts.filter((value) => {
+    const tokens = normalizeAcademicLookup(value).split(' ').filter((token) => token.length >= 5)
+    if (tokens.length < 4) return false
+    const matched = tokens.filter((token) => sourceKey.includes(token)).length
+    return matched / tokens.length >= 0.45
+  }).length >= 5
+}
+
+function evaluateOnePassReviewerHeadingCoverage(outline: SourceOutlineItem[], content: DeepLearnGeneratedContent) {
+  const required = getRequiredSourceOutlineItems(outline)
+  const contentKey = normalizeAcademicLookup(JSON.stringify(content))
+  const covered = required.filter((item) => {
+    const tokens = item.normalizedTitle.split(' ').filter((token) => token.length >= 4)
+    if (tokens.length === 0) return false
+    return tokens.filter((token) => contentKey.includes(token)).length / tokens.length >= 0.66
+  })
+  const coveredKeys = new Set(covered.map((item) => item.id))
+  return {
+    required,
+    covered,
+    uncovered: required.filter((item) => !coveredKeys.has(item.id)),
+  }
+}
+
+const REVIEWER_GENERATION_MODE_ENV_NAME = 'DEEP_LEARN_REVIEWER_GENERATION_MODE'
 
 async function compileDeepLearnStudyPackFromFactCards(
   input: DeepLearnPromptInput,
@@ -1832,6 +2123,45 @@ function selectDeepLearnGenerator(): DeepLearnGeneratorSelection {
     })
   }
   return { version: STRUCTURED_FACT_CARD_COMPILER_VERSION, reason: 'default' }
+}
+
+function getReviewerGenerationMode(env: NodeJS.ProcessEnv = process.env) {
+  const mode = env[REVIEWER_GENERATION_MODE_ENV_NAME]?.trim()
+  if (mode === REVIEWER_STRUCTURED_COMPILER_MODE) return REVIEWER_STRUCTURED_COMPILER_MODE
+  if (mode === REVIEWER_ONE_PASS_MODE || !mode) return DEFAULT_REVIEWER_GENERATION_MODE
+  console.warn('[deep-learn-generation] ignoring invalid reviewer generation mode', {
+    requestedMode: mode,
+    defaultMode: DEFAULT_REVIEWER_GENERATION_MODE,
+  })
+  return DEFAULT_REVIEWER_GENERATION_MODE
+}
+
+function getReviewerOnePassSourceCharCap(env: NodeJS.ProcessEnv = process.env) {
+  const raw = Number.parseInt(env.DEEP_LEARN_REVIEWER_ONE_PASS_SOURCE_CHAR_CAP ?? '', 10)
+  if (Number.isFinite(raw) && raw >= 30000) return raw
+  return REVIEWER_ONE_PASS_SOURCE_CHAR_CAP
+}
+
+function getOnePassReviewerModelConfig(env: NodeJS.ProcessEnv = process.env): OnePassReviewerModelConfig {
+  const configuredPrimary = env.DEEP_LEARN_REVIEWER_ONE_PASS_MODEL?.trim()
+    || env.DEEP_LEARN_REVIEWER_MODEL?.trim()
+    || env.DEEP_LEARN_REVIEWER_REPAIR_MODEL?.trim()
+    || env.DEEP_LEARN_STRUCTURED_PREMIUM_MODEL?.trim()
+    || DEFAULT_DEEP_LEARN_REVIEWER_COMPILER_MODEL
+  const configuredRepair = env.DEEP_LEARN_REVIEWER_ONE_PASS_REPAIR_MODEL?.trim()
+    || env.DEEP_LEARN_REVIEWER_REPAIR_MODEL?.trim()
+    || env.DEEP_LEARN_STRUCTURED_PREMIUM_MODEL?.trim()
+    || DEFAULT_DEEP_LEARN_REVIEWER_REPAIR_MODEL
+  const primaryModel = isMiniModelName(configuredPrimary)
+    ? (env.DEEP_LEARN_STRUCTURED_FALLBACK_MODEL?.trim() || DEFAULT_DEEP_LEARN_REVIEWER_COMPILER_MODEL)
+    : configuredPrimary
+  const repairModel = isMiniModelName(configuredRepair)
+    ? DEFAULT_DEEP_LEARN_REVIEWER_REPAIR_MODEL
+    : configuredRepair
+  return {
+    primaryModel: isMiniModelName(primaryModel) ? DEFAULT_DEEP_LEARN_REVIEWER_COMPILER_MODEL : primaryModel,
+    repairModel,
+  }
 }
 
 function getStructuredCompilerModelConfig(env: NodeJS.ProcessEnv = process.env): DeepLearnStructuredModelConfig {

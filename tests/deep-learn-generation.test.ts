@@ -50,6 +50,8 @@ import {
   type ReviewerSourceFixture,
 } from './fixtures/deep-learn-reviewer-sources'
 
+process.env.DEEP_LEARN_REVIEWER_GENERATION_MODE ??= 'structured_fact_card_compiler'
+
 async function generateDeepLearnStructuredContentWithLegacyComposer(
   ...args: Parameters<typeof generateDeepLearnStructuredContent>
 ): ReturnType<typeof generateDeepLearnStructuredContent> {
@@ -2722,6 +2724,98 @@ test('structured compiler repairs valid but incomplete section coverage with fal
   assert.match(JSON.stringify(result.content), /definitions, procedures, timelines, and comparisons/)
 })
 
+test('Reviewer one-pass mode builds SDLC reviewer across Phase 1 through Phase 7', async () => {
+  const fixture = getReviewerSourceFixture('multi-phase-systems-analysis')
+  const calls: Array<{ schemaName: string; model?: string; prompt: string }> = []
+  const result = await withTemporaryEnv({
+    DEEP_LEARN_REVIEWER_GENERATION_MODE: 'one_pass',
+    DEEP_LEARN_REVIEWER_ONE_PASS_MODEL: 'gpt-5.5-one-pass',
+    DEEP_LEARN_REVIEWER_ONE_PASS_REPAIR_MODEL: 'gpt-5.5-repair',
+  }, () => generateDeepLearnStructuredContent(
+    createStructuredPromptInput(fixture.extractedText, fixture.title),
+    createStructuredPreparedGrounding(fixture.extractedText),
+    async (request) => {
+      calls.push({ schemaName: request.schemaName, model: request.model, prompt: request.promptText })
+      return onePassReviewerResponse(fixture, buildOnePassFixtureContent(fixture, { includeAllExpectedSections: true }))
+    },
+  ))
+
+  const serialized = JSON.stringify(result.content)
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0]!.schemaName, 'deep_learn_reviewer_one_pass')
+  assert.equal(calls[0]!.model, 'gpt-5.5-one-pass')
+  assert.doesNotMatch(calls[0]!.prompt, /SOURCE CHUNK|Generate exactly \d+ factCard/i)
+  for (const section of fixture.expectedMajorSections) {
+    assert.match(serialized, new RegExp(escapeRegExp(section), 'i'))
+  }
+  assert.doesNotMatch(serialized, /Develop a High-Level Model.*Develop a High-Level Model.*Develop a High-Level Model/i)
+  assert.ok(result.content.answerBank.length >= 7)
+  assert.ok(result.content.identificationItems.length >= 7)
+  assert.ok(result.content.likelyQuizTargets.some((item) => /multiple choice/i.test(`${item.target} ${item.reason}`)))
+})
+
+test('Reviewer one-pass mode keeps PATHFit labels source-specific and covers Arnis exam areas', async () => {
+  const source = PATHFIT_ARNIS_SAMPLE_SOURCE
+  const fixture = getReviewerSourceFixture('short-martial-arts-module')
+  const result = await withTemporaryEnv({
+    DEEP_LEARN_REVIEWER_GENERATION_MODE: 'one_pass',
+  }, () => generateDeepLearnStructuredContent(
+    createStructuredPromptInput(source, 'PATHFit Arnis.pdf'),
+    createStructuredPreparedGrounding(source),
+    async () => onePassReviewerResponse(fixture, buildOnePassArnisContent()),
+  ))
+
+  const serialized = JSON.stringify(result.content)
+  assert.doesNotMatch(serialized, /Key Academic Items|Classification Relationships|Academic Source Map/i)
+  for (const expected of ['Arnis', 'RA 9850', 'Courtesy and Salutation', '3 Main Groups', 'Organizations and Timeline', 'Equipment and Weapons']) {
+    assert.match(serialized, new RegExp(escapeRegExp(expected), 'i'))
+  }
+  const alternateNameItems = result.content.answerBank.filter((item) => /alias|alternate name|also known/i.test(`${item.cue} ${item.answer.examSafe}`))
+  assert.ok(alternateNameItems.length <= 1)
+})
+
+test('Reviewer one-pass mode saves usable IT Security output instead of failing weak-section mentions', async () => {
+  const fixture = getReviewerSourceFixture('taxonomy-heavy-security')
+  const result = await withTemporaryEnv({
+    DEEP_LEARN_REVIEWER_GENERATION_MODE: 'one_pass',
+  }, () => generateDeepLearnStructuredContent(
+    createStructuredPromptInput(fixture.extractedText, fixture.title),
+    createStructuredPreparedGrounding(fixture.extractedText),
+    async () => onePassReviewerResponse(fixture, buildOnePassFixtureContent(fixture, { includeAllExpectedSections: true })),
+  ))
+
+  const serialized = JSON.stringify(result.content)
+  for (const expected of ['CIA Triad', 'Domains', 'Attackers', 'Threats', 'Malware', 'Infiltration', 'Denial of Service', 'Impact Reduction']) {
+    assert.match(serialized, new RegExp(escapeRegExp(expected), 'i'))
+  }
+  assert.ok(result.content.answerBank.length >= 8)
+  assert.ok(result.content.identificationItems.length >= 6)
+})
+
+test('Reviewer one-pass mode retries invalid JSON once with repair model', async () => {
+  const fixture = getReviewerSourceFixture('multi-phase-systems-analysis')
+  const calls: Array<{ schemaName: string; model?: string }> = []
+  const result = await withTemporaryEnv({
+    DEEP_LEARN_REVIEWER_GENERATION_MODE: 'one_pass',
+    DEEP_LEARN_REVIEWER_ONE_PASS_MODEL: 'gpt-5.4-primary',
+    DEEP_LEARN_REVIEWER_ONE_PASS_REPAIR_MODEL: 'gpt-5.5-repair',
+  }, () => generateDeepLearnStructuredContent(
+    createStructuredPromptInput(fixture.extractedText, fixture.title),
+    createStructuredPreparedGrounding(fixture.extractedText),
+    async (request) => {
+      calls.push({ schemaName: request.schemaName, model: request.model })
+      if (calls.length === 1) return { status: 'completed', output_text: '{not valid json', incomplete_details: null }
+      return onePassReviewerResponse(fixture, buildOnePassFixtureContent(fixture, { includeAllExpectedSections: true }))
+    },
+  ))
+
+  assert.deepEqual(calls, [
+    { schemaName: 'deep_learn_reviewer_one_pass', model: 'gpt-5.4-primary' },
+    { schemaName: 'deep_learn_reviewer_one_pass_repair', model: 'gpt-5.5-repair' },
+  ])
+  assert.ok(result.content.answerBank.length >= 7)
+})
+
 test('Reviewer compressed heading-list cards do not satisfy required section coverage', async () => {
   const fixture = getReviewerSourceFixture('multi-phase-systems-analysis')
   const source = fixture.extractedText
@@ -3166,6 +3260,218 @@ function getReviewerSourceFixture(id: string) {
   const fixture = reviewerSourceFixtures.find((item) => item.id === id)
   assert.ok(fixture, `Missing reviewer source fixture: ${id}`)
   return fixture
+}
+
+function onePassReviewerResponse(fixture: ReviewerSourceFixture, content: DeepLearnGeneratedContent) {
+  return jsonResponse({
+    ...content,
+    title: content.title || fixture.title,
+    overview: content.overview || `${fixture.title} complete exam reviewer.`,
+  })
+}
+
+function buildOnePassFixtureContent(
+  fixture: ReviewerSourceFixture,
+  options: { includeAllExpectedSections?: boolean } = {},
+): DeepLearnGeneratedContent {
+  const sections = (options.includeAllExpectedSections ? fixture.expectedMajorSections : fixture.expectedMajorSections.slice(0, 5))
+    .map((section) => {
+      const quote = getFixtureSectionQuote(fixture, section)
+      return {
+        heading: section,
+        body: `${quote} This section is included in source order for exam review.`,
+      }
+    })
+  const answerBank = sections.map((section, index) => answerBankFromSource(section.heading, section.body, index))
+  const identificationItems = sections.map((section, index) => identificationFromSource(section.heading, section.body, index))
+  const likelyQuizTargets = sections.slice(0, Math.max(4, Math.min(10, sections.length))).map((section, index) => quizTargetFromSource(section.heading, section.body, index))
+  return normalizeDeepLearnGeneratedContent({
+    title: fixture.title,
+    overview: `${fixture.title} complete source-faithful exam reviewer.`,
+    sections,
+    answerBank: [
+      ...answerBank,
+      ...buildItSecuritySupplementalAnswerBank(fixture),
+    ],
+    identificationItems,
+    distinctions: buildFixtureDistinctions(fixture),
+    likelyQuizTargets: [
+      ...likelyQuizTargets,
+      {
+        target: `Multiple choice: Which source statement matches ${sections[0]?.heading ?? fixture.title}?`,
+        reason: sections[0]?.body ?? fixture.notes,
+        importance: 'high',
+        reviewText: sections[0]?.heading ?? fixture.title,
+        draftExplanation: sections[0]?.body ?? fixture.notes,
+        sourceSnippet: sections[0]?.body ?? fixture.notes,
+        linkedDraftSectionId: null,
+        supportingContext: sections[0]?.body ?? fixture.notes,
+        compareContext: null,
+        simplifiedWording: null,
+        confusionNotes: [],
+        relatedConcepts: [],
+      },
+    ],
+    cautionNotes: [],
+  }, fixture.title)
+}
+
+function buildOnePassArnisContent(): DeepLearnGeneratedContent {
+  const fixture = getReviewerSourceFixture('short-martial-arts-module')
+  const sections = [
+    'Arnis Definition',
+    'Republic Act 9850',
+    'Historical Concept',
+    'Evolution and Classifications',
+    'Organizations and Timeline',
+    '3 Main Groups',
+    'Courtesy and Salutation',
+    'Strike Types',
+    'Equipment and Weapons',
+  ].map((heading) => ({
+    heading,
+    body: getArnisSourceSentence(heading),
+  }))
+  return normalizeDeepLearnGeneratedContent({
+    title: 'PATHFit Arnis Reviewer',
+    overview: 'Complete PATHFit Arnis reviewer from the selected source.',
+    sections,
+    answerBank: sections.map((section, index) => answerBankFromSource(section.heading, section.body, index)),
+    identificationItems: sections.map((section, index) => identificationFromSource(section.heading, section.body, index)),
+    distinctions: [{
+      conceptA: 'Northern Style',
+      conceptB: 'Southern Style',
+      difference: 'Northern Style is associated with Arnis while Southern Style is associated with Kali in the source.',
+      confusionNote: null,
+      reviewText: 'Northern Style vs Southern Style',
+      draftExplanation: 'Northern Style is associated with Arnis while Southern Style is associated with Kali.',
+      sourceSnippet: '3 Main Groups Northern Style - Arnis; Central Style - Arnis de Mano; Southern Style - Kali',
+      linkedDraftSectionId: null,
+      supportingContext: '3 Main Groups Northern Style - Arnis; Central Style - Arnis de Mano; Southern Style - Kali',
+      compareContext: '3 Main Groups Northern Style - Arnis; Central Style - Arnis de Mano; Southern Style - Kali',
+      simplifiedWording: null,
+      confusionNotes: [],
+      relatedConcepts: ['Central Style', 'Arnis de Mano'],
+    }],
+    likelyQuizTargets: sections.slice(0, 7).map((section, index) => quizTargetFromSource(section.heading, section.body, index)),
+    cautionNotes: [],
+  }, fixture.title)
+}
+
+function answerBankFromSource(heading: string, body: string, index: number) {
+  return {
+    cue: heading,
+    kind: /ra 9850|timeline|organizations|phase/i.test(heading) ? 'date_event' : 'term_definition',
+    answer: {
+      exact: body,
+      examSafe: body,
+      simplified: body,
+    },
+    compactAnswer: {
+      exact: body,
+      examSafe: body,
+      simplified: body,
+    },
+    importance: index < 8 ? 'high' : 'medium',
+    sortKey: null,
+    distractors: [],
+    reviewText: heading,
+    draftExplanation: body,
+    sourceSnippet: body,
+    linkedDraftSectionId: null,
+    supportingContext: body,
+    compareContext: null,
+    simplifiedWording: null,
+    confusionNotes: [],
+    relatedConcepts: [],
+  }
+}
+
+function identificationFromSource(heading: string, body: string, index: number) {
+  return {
+    prompt: `Identify what the source says about ${heading}.`,
+    kind: /ra 9850|timeline|organizations|phase/i.test(heading) ? 'date_event' : 'term_definition',
+    answer: {
+      exact: body,
+      examSafe: body,
+      simplified: null,
+    },
+    importance: index < 8 ? 'high' : 'medium',
+    distractors: [],
+    reviewText: heading,
+    draftExplanation: body,
+    sourceSnippet: body,
+    linkedDraftSectionId: null,
+    supportingContext: body,
+    compareContext: null,
+    simplifiedWording: null,
+    confusionNotes: [],
+    relatedConcepts: [],
+  }
+}
+
+function quizTargetFromSource(heading: string, body: string, index: number) {
+  return {
+    target: index % 2 === 0
+      ? `Multiple choice: Which source detail belongs to ${heading}?`
+      : `Identification: ${heading}`,
+    reason: body,
+    importance: index < 8 ? 'high' : 'medium',
+    reviewText: heading,
+    draftExplanation: body,
+    sourceSnippet: body,
+    linkedDraftSectionId: null,
+    supportingContext: body,
+    compareContext: null,
+    simplifiedWording: null,
+    confusionNotes: [],
+    relatedConcepts: [],
+  }
+}
+
+function buildFixtureDistinctions(fixture: ReviewerSourceFixture) {
+  if (fixture.id !== 'taxonomy-heavy-security') return []
+  return [{
+    conceptA: 'Vulnerability',
+    conceptB: 'Exploit',
+    difference: 'A vulnerability is the weakness, while an exploit is the method or tool used to take advantage of that weakness.',
+    confusionNote: null,
+    reviewText: 'Vulnerability vs Exploit',
+    draftExplanation: 'A vulnerability is the weakness; an exploit is the method used against it.',
+    sourceSnippet: 'A vulnerability is a weakness or flaw in hardware, software, configuration, process, or human behavior.',
+    linkedDraftSectionId: null,
+    supportingContext: 'An exploit is a method or tool used to take advantage of a vulnerability.',
+    compareContext: 'Vulnerability, Exploit, and Breach',
+    simplifiedWording: null,
+    confusionNotes: [],
+    relatedConcepts: ['Breach'],
+  }]
+}
+
+function buildItSecuritySupplementalAnswerBank(fixture: ReviewerSourceFixture) {
+  if (fixture.id !== 'taxonomy-heavy-security') return []
+  const supplemental = [
+    ['Domains', 'Domains of IT Security include network, internet, endpoint, cloud, application, information, operational, mobile, IoT, user education, and cyber security.'],
+    ['Attackers', 'Attackers include insiders, outsiders, organized attackers, cyber criminals, hacktivists, terrorists, state-sponsored hackers, black hats, grey hats, white hats, and amateurs.'],
+    ['Infiltration', 'Methods of infiltration include social engineering, password cracking, vulnerability exploitation, and advanced persistent threats.'],
+    ['Denial of Service', 'Denial of service can overwhelm traffic, send enormous data, use malicious packets, zombies, botnets, and SEO poisoning.'],
+    ['Impact Reduction', 'Impact reduction includes communicating the issue, being accountable, finding the cause, cleaning systems, and educating employees, partners, and customers.'],
+  ]
+  return supplemental.map(([heading, body], index) => answerBankFromSource(heading!, body!, index + 20))
+}
+
+function getArnisSourceSentence(heading: string) {
+  const source = PATHFIT_ARNIS_SAMPLE_SOURCE
+  if (/definition/i.test(heading)) return 'Arnis is the Philippine national martial art and sport using sticks, bladed weapons, and empty-hand techniques.'
+  if (/9850/i.test(heading)) return 'RA 9850 declared Arnis as the national martial art and sport of the Philippines.'
+  if (/historical/i.test(heading)) return 'Arnis developed from indigenous fighting systems and preserved Filipino culture through practical self-defense.'
+  if (/evolution/i.test(heading)) return 'Evolution of Arnis includes Classical Arnis, Modern Arnis, Sports Arnis, Anyo, and Labanan.'
+  if (/organizations/i.test(heading)) return 'Organizations and timeline include 1975 NARAPHIL, 1986 ARPI, 1989 WEKAF, and 2010 i-ARNIS.'
+  if (/main groups/i.test(heading)) return '3 Main Groups are Northern Style - Arnis; Central Style - Arnis de Mano; Southern Style - Kali.'
+  if (/salutation/i.test(heading)) return 'Courtesy and Salutation includes attention stance, ready stance, bow, salute, and return to ready stance.'
+  if (/strike/i.test(heading)) return 'Strike Types include forehand strike, backhand strike, thrust, diagonal strike, horizontal strike, and vertical strike.'
+  if (/equipment|weapons/i.test(heading)) return 'Equipment and Weapons include Baston, Daga, Bolo, Espada y Daga, and Bangkaw.'
+  return firstSentence(source)
 }
 
 function createReviewerFixtureCards(

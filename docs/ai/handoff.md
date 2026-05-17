@@ -5,6 +5,85 @@ Last Updated: 2026-05-17
 
 ---
 
+## Session Update - 2026-05-17 (One-Pass Reviewer Generation Reset)
+
+### What changed
+
+- Added a temporary Reviewer generation mode controlled by `DEEP_LEARN_REVIEWER_GENERATION_MODE`.
+- Defaulted the Reviewer-shaped Deep Learn artifact path to `one_pass`, with `structured_fact_card_compiler` still available as an explicit rollback/test mode.
+- Added one-pass Reviewer generation that:
+  - sends the full selected academic source text in one request, bounded by `DEEP_LEARN_REVIEWER_ONE_PASS_SOURCE_CHAR_CAP` with a default 60,000 character cap
+  - bypasses the chunked fact-card compiler, per-chunk card counts, reducers, and weak-section hard failure
+  - requests the existing `DeepLearnGeneratedContent` artifact shape directly
+  - uses a non-mini one-pass model, preferring configured GPT-5.5-style Reviewer settings and otherwise falling back to GPT-5.4
+  - retries once with the configured repair/premium Reviewer model on invalid JSON or invalid usable Reviewer output
+- Strengthened the one-pass prompt for complete exam-style output:
+  - source-faithful only
+  - no metadata/debug/refusal text
+  - source-order section coverage
+  - key answers, identification items, MCQ-style likely quiz targets, timeline/distinction items only when supported
+  - explicit SDLC, PATHFit/Arnis, and IT Security coverage instructions when those topics are present
+- Added relaxed one-pass acceptance:
+  - valid normalized schema
+  - useful answer bank, identification, quiz target, and section density
+  - source-grounded content signal
+  - no obvious internal/metadata/refusal-only content
+  - imperfect heading coverage is logged internally instead of failing the queue job
+- Kept the existing structured fact-card compiler code and tests available behind the explicit mode flag.
+
+### Files touched
+
+- `lib/deep-learn-generation.ts`
+- `tests/deep-learn-generation.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+The chunked Reviewer compiler was either too shallow or too strict: earlier versions starved later sections, while the latest coverage-first version could produce many cards and still fail because weak-section validation rejected usable output. The temporary reset prioritizes one complete exam-style Reviewer generated from the selected academic source first; optimization and chunking can be reintroduced after output quality is stable.
+
+### Tests run
+
+- `npx tsx --test tests/deep-learn-generation.test.ts` - passed
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- deep-learn-generation` - passed
+- `npm test -- study-output-reviewer study-output-quiz-pack learn-resource-ui deep-learn-readiness` - passed
+- `npm test -- pdf-extractor source-ocr-updates deep-learn-readiness deep-learn-generation canvas-content-resolution learn-resource-ui queue` - passed
+- `npx tsx scripts/validate-scanned-pdf.ts --pdf "C:\Users\omgra\Downloads\1.1-Data Organization.pdf"` - skipped because the local PDF file was not present
+
+### Verification result
+
+- Verified one-pass mode uses `deep_learn_reviewer_one_pass` and does not prompt with source chunks or fact-card counts.
+- Verified SDLC fixture output covers Phase 1 through Phase 7 and includes answer bank, identification items, and MCQ-style targets.
+- Verified PATHFit/Arnis fixture output avoids generic labels and covers Arnis definition, R.A. 9850, salutation, main groups, timeline/organizations, and weapons/equipment.
+- Verified IT Security fixture output saves usable content without failing on `weak_section_mentions` and includes CIA triad, domains, attackers, threats, malware, infiltration, denial of service, and impact reduction.
+- Verified invalid one-pass JSON retries once with the configured repair model.
+- Verified existing Study Pack compiler regression tests still pass when `DEEP_LEARN_REVIEWER_GENERATION_MODE=structured_fact_card_compiler`.
+- Verified Quiz, Reviewer rendering, Learn resource UI, readiness, extraction/OCR, and queue suites still pass.
+
+### Known risks
+
+- One-pass Reviewer generation can be slower and more expensive than chunked fact extraction for dense sources.
+- Sources beyond the one-pass character cap are truncated with internal diagnostics only; the student output does not expose debug text.
+- The saved Deep Learn note remains the shared artifact consumed by Study Pack, Reviewer, and Quiz surfaces, so this quality-first reset changes the generated note shape even though task-output paths remain unchanged.
+- The structured compiler is still present for rollback, but the default Reviewer-shaped path now depends on the model producing a complete schema in one pass.
+
+### Blockers
+
+- No code blocker remains.
+- The scanned-PDF validator could not run because `C:\Users\omgra\Downloads\1.1-Data Organization.pdf` was not found locally.
+- `test_output.txt` remains an existing untracked file and was not committed.
+
+### Next recommended step
+
+Deploy and generate Reviewers for the known SDLC, PATHFit/Arnis, and IT Security sources. Confirm production logs show `qualityMode: "one-pass-reviewer"`, `chunkCount: 1`, no fact-card chunk requests, and completed queue jobs with source-specific Reviewer sections.
+
+### Suggested commit message
+
+reset reviewer generation to one pass
+
+---
+
 ## Session Update - 2026-05-17 (Deep Learn Source Coverage Compiler)
 
 ### What changed
