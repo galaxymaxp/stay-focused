@@ -74,7 +74,7 @@ export function DeepLearnWorkspace({
               moduleId={moduleId}
               resourceId={deepLearnResourceId}
               courseId={courseId}
-              label={note?.status === 'failed' ? 'Generate again' : 'Generate Study Pack'}
+              label={note?.status === 'failed' ? 'Generate again' : 'Generate Reviewer'}
               className="ui-button ui-button-secondary ui-button-xs"
               resourceTitle={resource.title}
             />
@@ -111,13 +111,13 @@ export function DeepLearnWorkspace({
         <div className="glass-panel glass-soft deep-learn-review-pane" style={{ borderRadius: 'var(--radius-panel)', minHeight: 0, overflow: 'hidden' }}>
           {!note ? (
             <PackEmptyState
-              title="No saved learning pack yet."
-              body="Generate structured notes, key terms, review questions, and quiz-ready study material from this source."
+              title="No saved Reviewer yet."
+              body="Generate a full exam-style Markdown Reviewer from this source."
             />
           ) : note.status === 'pending' ? (
             <PackEmptyState
-              title="Generating study pack..."
-              body={note.overview || 'Deep Learn is building your saved study pack from the pinned source.'}
+              title="Generating Reviewer..."
+              body={note.overview || 'Deep Learn is building your saved Reviewer from the pinned source.'}
               loading
               tone="accent"
             />

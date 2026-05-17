@@ -211,7 +211,7 @@ export default async function LibraryItemPage({ params }: Props) {
               </Link>
               {noteHref ? (
                 <Link href={noteHref} className="ui-button ui-button-ghost ui-button-xs" style={{ textDecoration: 'none' }}>
-                  Open Study Pack
+                  Open Full Reviewer
                 </Link>
               ) : null}
               {taskWorkspaceHref ? (

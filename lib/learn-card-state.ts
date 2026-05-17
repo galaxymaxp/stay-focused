@@ -3,8 +3,8 @@ import type { QueuedJob } from '@/lib/queue'
 
 export interface LearnCardSavedPackState {
   status: 'ready'
-  summary: 'Study pack ready.'
-  primaryLabel: 'Open study pack'
+  summary: 'Full Reviewer ready.'
+  primaryLabel: 'Open Reviewer'
   href: string
   error: null
 }
@@ -52,8 +52,8 @@ export function buildSavedLegacyPackState(draft: DraftShelfItem | null): LearnCa
   if (!draft) return null
   return {
     status: 'ready',
-    summary: 'Study pack ready.',
-    primaryLabel: 'Open study pack',
+    summary: 'Full Reviewer ready.',
+    primaryLabel: 'Open Reviewer',
     href: buildStudyLibraryDetailHref(draft.id),
     error: null,
   }
@@ -78,30 +78,30 @@ export function buildLearnGenerationQueueState(
   if (job.status === 'running') {
     return {
       status: 'pending',
-      summary: `Generating study pack... ${Math.max(0, Math.min(job.progress, 100))}%`,
-      primaryLabel: 'Generating study pack...',
+      summary: `Generating Reviewer... ${Math.max(0, Math.min(job.progress, 100))}%`,
+      primaryLabel: 'Generating Reviewer...',
       href: href ?? null,
       error: null,
     }
   }
   if (job.status === 'completed') {
     if (!shouldTrustCompletedLearnQueueJob(options.hasSavedPack)) return null
-    return { status: 'ready', summary: getString(job.result, 'statusMessage') ?? 'Study pack ready.', primaryLabel: 'Open study pack', href, error: null }
+    return { status: 'ready', summary: getString(job.result, 'statusMessage') ?? 'Full Reviewer ready.', primaryLabel: 'Open Reviewer', href, error: null }
   }
   if (job.status === 'failed') {
     if (options.hasSavedPack && isQueueJobOlderThanSavedPack(job, options.savedPackUpdatedAt ?? null)) return null
     const error = cleanStudyPackQueueError(job.error)
-    return { status: 'failed', summary: error, primaryLabel: 'Regenerate Study Pack', href: null, error }
+    return { status: 'failed', summary: error, primaryLabel: 'Regenerate Reviewer', href: null, error }
   }
   return null
 }
 
 export function cleanStudyPackQueueError(error: string | null) {
-  const fallback = 'Study pack failed.'
+  const fallback = 'Reviewer generation failed.'
   if (!error) return fallback
   const trimmed = error.replace(/\s+/g, ' ').trim()
   if (/max_output_tokens/i.test(trimmed)) {
-    return 'The model response limit was reached even after compact fallback. Try a smaller source or split the module.'
+    return 'Reviewer generation could not finish. Try again from the source.'
   }
   return trimmed || fallback
 }

@@ -222,7 +222,7 @@ function getEmptyStateDescription({
   if (kindFilter === 'learning') return 'Open a module and generate a Learn item to save it here.'
   if (kindFilter === 'tasks') return 'Start from a task and generate an output to see it here.'
   if (hasAnyItems && hasScopedFilters) return 'Try a broader library view to reopen another saved item.'
-  return "Generate Study Packs, Reviewers, Quizzes, or Activities and they'll appear here."
+  return "Generate Reviewers, Quizzes, or Activities and they'll appear here."
 }
 
 function getEmptyStateActionLabel({

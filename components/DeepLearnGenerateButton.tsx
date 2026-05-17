@@ -11,7 +11,7 @@ export function DeepLearnGenerateButton({
   resourceId,
   courseId = null,
   resourceTitle = '',
-  label = 'Generate Study Pack',
+  label = 'Generate Reviewer',
   className = 'ui-button ui-button-secondary ui-button-xs',
   disabledReason = null,
 }: {
@@ -45,7 +45,7 @@ export function DeepLearnGenerateButton({
       window.dispatchEvent(new CustomEvent('stay-focused:queue-refresh', {
         detail: { job: result.job ?? null },
       }))
-      dispatchInAppToast({ title: 'Study pack added to queue.', description: 'Check the queue indicator above to track progress.', tone: 'success' })
+      dispatchInAppToast({ title: 'Reviewer added to queue.', description: 'Check the queue indicator above to track progress.', tone: 'success' })
       setTimeout(() => setState('idle'), 4000)
     }
   }

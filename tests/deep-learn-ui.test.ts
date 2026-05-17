@@ -4,14 +4,14 @@ import { getDeepLearnResourceUiState } from '../lib/deep-learn-ui'
 import { buildDeepLearnNoteRecord } from '../lib/deep-learn'
 import type { DeepLearnNote } from '../lib/types'
 
-test('resources without a pack default to Study Pack generation', () => {
+test('resources without a Reviewer default to Reviewer generation', () => {
   const state = getDeepLearnResourceUiState('module-1', 'resource-1', null)
 
   assert.equal(state.status, 'not_started')
   assert.equal(state.statusLabel, 'Pack')
-  assert.equal(state.primaryLabel, 'Generate Study Pack')
+  assert.equal(state.primaryLabel, 'Generate Reviewer')
   assert.equal(state.quizReady, false)
-  assert.match(state.summary, /Study Pack/i)
+  assert.match(state.summary, /Reviewer/i)
 })
 
 test('ready packs surface quiz-ready state and pack-first actions', () => {
@@ -23,7 +23,7 @@ test('ready packs surface quiz-ready state and pack-first actions', () => {
 
   assert.equal(state.status, 'ready')
   assert.equal(state.statusLabel, 'Review Ready')
-  assert.equal(state.primaryLabel, 'Open Study Pack')
+  assert.equal(state.primaryLabel, 'Open Reviewer')
   assert.equal(state.quizReady, true)
   assert.match(state.detail, /Reviewer.*Quiz/i)
 })
@@ -92,7 +92,7 @@ test('failed packs shift the action to rebuild', () => {
   }))
 
   assert.equal(state.status, 'failed')
-  assert.equal(state.primaryLabel, 'Generate Study Pack')
+  assert.equal(state.primaryLabel, 'Generate Reviewer')
   assert.match(state.summary, /too weak/i)
 })
 

@@ -55,7 +55,7 @@ test('old-user or old-course draft does not count for the current Learn card', (
   assert.equal(match, null)
 })
 
-test('valid current-user draft by source_resource_id shows study pack ready', () => {
+test('valid current-user draft by source_resource_id shows Reviewer ready', () => {
   const draft = createDraftShelfItem({
     id: 'draft-current',
     userId: 'user-current',
@@ -74,12 +74,12 @@ test('valid current-user draft by source_resource_id shows study pack ready', ()
   const state = buildSavedLegacyPackState(match)
 
   assert.equal(state?.status, 'ready')
-  assert.equal(state?.summary, 'Study pack ready.')
-  assert.equal(state?.primaryLabel, 'Open study pack')
+  assert.equal(state?.summary, 'Full Reviewer ready.')
+  assert.equal(state?.primaryLabel, 'Open Reviewer')
   assert.equal(state?.href, '/library/draft-current')
 })
 
-test('valid current-user draft by canonical source id shows study pack ready', () => {
+test('valid current-user draft by canonical source id shows Reviewer ready', () => {
   const draft = createDraftShelfItem({
     id: 'draft-canonical',
     userId: 'user-current',
@@ -135,7 +135,7 @@ test('failed Deep Learn attempt stays separate from readable source readiness co
   })
 
   assert.equal(state?.status, 'failed')
-  assert.equal(state?.primaryLabel, 'Regenerate Study Pack')
+  assert.equal(state?.primaryLabel, 'Regenerate Reviewer')
   assert.equal(state?.error, 'Provider returned malformed structured output.')
   assert.notEqual(state?.summary, 'Failed')
 })
@@ -172,8 +172,8 @@ test('new generation queue item is not blocked by an old failed attempt', () => 
 test('old one-pass too-large wording is not returned for queue errors', () => {
   const message = cleanStudyPackQueueError('max_output_tokens')
 
-  assert.match(message, /model response limit was reached even after compact fallback/i)
-  assert.doesNotMatch(message, /finish in one pass|Regenerate a shorter version/i)
+  assert.match(message, /Reviewer generation could not finish/i)
+  assert.doesNotMatch(message, /compact fallback|finish in one pass|Regenerate a shorter version|split the module/i)
 })
 
 test('Learn page does not turn source readiness label into Failed for study-pack failures', () => {

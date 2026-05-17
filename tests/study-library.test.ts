@@ -62,14 +62,14 @@ test('legacy sheet and quiz database kinds map to three student-facing Deep Lear
   assert.equal(getStudyOutputKindLabel('task_output'), 'Activity')
 })
 
-test('Deep Learn source card exposes only Study Pack Reviewer and Quiz actions', () => {
+test('Deep Learn source card exposes Reviewer and Quiz actions', () => {
   const source = readFileSync('components/DeepLearnNoteView.tsx', 'utf8')
   const sourceCard = readFileSync('components/StudyResourceAccordionList.tsx', 'utf8')
 
-  assert.match(source, /Open Study Pack/)
+  assert.match(source, /Open Full Reviewer/)
   assert.match(source, /MakeReviewerButton/)
   assert.match(source, /MakeQuizPackButton/)
-  assert.match(sourceCard, /Generate Study Pack/)
+  assert.match(sourceCard, /Generate Reviewer/)
   assert.match(sourceCard, /MakeReviewerButton/)
   assert.match(sourceCard, /MakeQuizPackButton/)
   assert.doesNotMatch(sourceCard, /<SourceSummaryBadge/)
@@ -87,7 +87,8 @@ test('student-facing queue copy does not use old one-pass retry wording', () => 
 
   assert.doesNotMatch(queuePanel, /This study output was too large to finish in one pass\. Regenerate a shorter version\./)
   assert.doesNotMatch(learnPage, /This study output was too large to finish in one pass\. Regenerate a shorter version\./)
-  assert.match(queuePanel, /model response limit was reached even after compact fallback/i)
+  assert.match(queuePanel, /Reviewer generation could not finish/i)
+  assert.doesNotMatch(queuePanel, /compact fallback|Try a smaller source or split the module/i)
 })
 
 test('unsupported study output subtype stays visible with a safe subtitle', () => {

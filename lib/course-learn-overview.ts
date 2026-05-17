@@ -81,7 +81,7 @@ export interface CourseLearnStudyMaterialRow {
   deepLearnTone: 'accent' | 'warning' | 'muted'
   deepLearnSummary: string
   deepLearnDetail: string
-  deepLearnPrimaryLabel: 'Generate Study Pack' | 'Open Study Pack' | 'Open Source'
+  deepLearnPrimaryLabel: 'Generate Reviewer' | 'Open Reviewer' | 'Open Source'
   deepLearnNoteHref: string
   deepLearnQuizHref: string
   deepLearnQuizReady: boolean

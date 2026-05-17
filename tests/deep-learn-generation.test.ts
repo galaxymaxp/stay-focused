@@ -28,7 +28,6 @@ import {
   buildDeepLearnContentFromSourceMap,
   buildDeepLearnSourceDiagnostics,
   buildAcademicStructuredGrounding,
-  buildSourceOutline,
   generateDeepLearnStructuredContent,
   structureAcademicSourceText,
   validateDeepLearnContentReadyForSave,
@@ -49,8 +48,6 @@ import {
   reviewerSourceFixtures,
   type ReviewerSourceFixture,
 } from './fixtures/deep-learn-reviewer-sources'
-
-process.env.DEEP_LEARN_REVIEWER_GENERATION_MODE ??= 'structured_fact_card_compiler'
 
 async function generateDeepLearnStructuredContentWithLegacyComposer(
   ...args: Parameters<typeof generateDeepLearnStructuredContent>
@@ -544,10 +541,10 @@ test('Deep Learn output token policy uses bounded 10000-token caps and clean stu
   assert.equal(DEEP_LEARN_COMPACT_MAX_OUTPUT_TOKENS, 10000)
 
   const error = new DeepLearnGenerationIncompleteError('max_output_tokens')
-  assert.equal(error.message, 'Study Pack generation was too large for this source. Try again or use a smaller source.')
+  assert.equal(error.message, 'Reviewer generation could not finish. Try again from the source.')
   assert.equal(error.reason, 'max_output_tokens')
   assert.doesNotMatch(error.message, /max_output_tokens/i)
-  assert.doesNotMatch(error.message, /finish in one pass|Regenerate a shorter version/i)
+  assert.doesNotMatch(error.message, /finish in one pass|Regenerate a shorter version|split the module/i)
 })
 
 test('buildDeepLearnPrompt compact retry enforces smaller output limits', () => {
@@ -2524,380 +2521,264 @@ test('Deep Learn diagnostics select meaningful extracted_text over empty visual 
   assert.equal(validateDeepLearnContentReadyForSave(content.content).ok, true)
 })
 
-test('structured Study Pack compiler builds SDLC fact cards without quick_answers stage', async () => {
-  const source = [
-    'Systems Development Life Cycle defines a phased process for planning, analysis, design, implementation, testing, deployment, and maintenance.',
-    'Planning identifies the project scope, goals, resources, and schedule before development starts.',
-    'Analysis gathers requirements from users and studies the current system problems.',
-    'Design translates requirements into architecture, data structures, interfaces, and program specifications.',
-    'Implementation builds and installs the system based on the approved design.',
-    'Maintenance corrects errors, improves performance, and adapts the system after deployment.',
+function getReviewerSourceFixture(id: string) {
+  const fixture = reviewerSourceFixtures.find((item) => item.id === id)
+  assert.ok(fixture, `Missing reviewer source fixture: ${id}`)
+  return fixture
+}
+
+async function captureConsoleInfo(callback: () => Promise<void>) {
+  const originalInfo = console.info
+  const logs: unknown[][] = []
+  console.info = (...args: unknown[]) => {
+    logs.push(args)
+  }
+  try {
+    await callback()
+  } finally {
+    console.info = originalInfo
+  }
+  return logs
+}
+
+function textResponse(markdown: string) {
+  return {
+    status: 'completed',
+    output_text: markdown,
+    incomplete_details: null,
+  }
+}
+
+function buildClassicReviewerMarkdown(
+  fixture: ReviewerSourceFixture,
+  options: { title?: string; extraSections?: string[] } = {},
+) {
+  const title = options.title ?? fixture.title
+  const sections = [...fixture.expectedMajorSections, ...(options.extraSections ?? [])]
+  const sourceLines = fixture.extractedText
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length >= 40)
+  const sourceDetail = sourceLines.slice(0, 18).join(' ')
+  const completeSections = sections.map((section, index) => {
+    const detail = sourceLines[index % sourceLines.length] ?? sourceDetail
+    return [
+      `### ${section}`,
+      `- Key points: ${detail}`,
+      `- Definitions: ${section} should be reviewed with the wording and listed details from the lesson.`,
+      `- Important lists/classifications: ${sourceDetail.slice(0, 360)}`,
+      `- Exam notes / likely asked details: Be able to identify, define, enumerate, and distinguish ${section} from nearby source concepts.`,
+    ].join('\n')
+  }).join('\n\n')
+  const identification = sections
+    .concat(sourceLines.slice(0, 12))
+    .slice(0, 36)
+    .map((section, index) => `${index + 1}. ${section} - ${sourceLines[index % sourceLines.length] ?? section}`)
+    .join('\n')
+  const mcqs = Array.from({ length: 18 }, (_, index) => {
+    const section = sections[index % sections.length] ?? fixture.title
+    return `${index + 1}. Which source detail is most connected to ${section}?\nA. ${sourceLines[index % sourceLines.length] ?? section}\nB. A different source section\nC. A nearby but unsupported choice\nD. A broad distractor\nAnswer: A. Explanation: The answer is stated in the selected source.`
+  }).join('\n\n')
+  const lists = sections.slice(0, 18).map((section, index) => `${index + 1}. Enumerate the important details under ${section}.`).join('\n')
+  const timeline = /timeline|date|organization|phase|1975|1989|2009|2010/i.test(`${fixture.extractedText} ${sections.join(' ')}`)
+    ? sections.filter((section) => /phase|timeline|organization|R\.?A\.?|date|1975|1989|2009|2010/i.test(section)).map((section) => `- ${section}`).join('\n') || '- Review the source dates and events in order.'
+    : 'No dates or events are emphasized in the source.'
+  const compare = /vs|distinguish|vulnerability|exploit|breach|InfoSec|IT Sec|style|classification/i.test(`${fixture.extractedText} ${sections.join(' ')}`)
+    ? '- Compare related or confusable source concepts using the source definitions and classifications.'
+    : 'No major compare/distinguish pair is emphasized in the source.'
+
+  return [
+    `# Reviewer: ${title}`,
+    '',
+    '## High-Yield Overview',
+    `- ${fixture.extractedText.slice(0, 900)}`,
+    '',
+    '## Complete Exam Reviewer',
+    completeSections,
+    '',
+    '## Identification Reviewer',
+    identification,
+    '',
+    '## Multiple Choice Practice',
+    mcqs,
+    '',
+    '## Enumeration / List Questions',
+    lists,
+    '',
+    '## Timeline / Dates',
+    timeline,
+    '',
+    '## Compare / Distinguish',
+    compare,
+    '',
+    '## Final Quick Review',
+    sections.slice(0, 24).map((section) => `- ${section}`).join('\n'),
   ].join('\n')
-  const schemas: string[] = []
-  const result = await generateDeepLearnStructuredContent(createStructuredPromptInput(source, 'SDLC Notes.pdf'), createStructuredPreparedGrounding(source), async (request) => {
-    schemas.push(request.schemaName)
-    return factCardResponse([
-      factCard('process', 'What is the Systems Development Life Cycle?', 'Systems Development Life Cycle defines a phased process for planning, analysis, design, implementation, testing, deployment, and maintenance.', 'Systems Development Life Cycle defines a phased process for planning, analysis, design, implementation, testing, deployment, and maintenance.', 'Systems Development Life Cycle'),
-      factCard('fact', 'What does planning identify?', 'Planning identifies the project scope, goals, resources, and schedule before development starts.', 'Planning identifies the project scope, goals, resources, and schedule before development starts.', 'Planning'),
-      factCard('fact', 'What does analysis gather?', 'Analysis gathers requirements from users and studies the current system problems.', 'Analysis gathers requirements from users and studies the current system problems.', 'Analysis'),
-      factCard('fact', 'What does design translate?', 'Design translates requirements into architecture, data structures, interfaces, and program specifications.', 'Design translates requirements into architecture, data structures, interfaces, and program specifications.', 'Design'),
-      factCard('fact', 'What does implementation do?', 'Implementation builds and installs the system based on the approved design.', 'Implementation builds and installs the system based on the approved design.', 'Implementation'),
-      factCard('fact', 'What does maintenance do?', 'Maintenance corrects errors, improves performance, and adapts the system after deployment.', 'Maintenance corrects errors, improves performance, and adapts the system after deployment.', 'Maintenance'),
-    ], 'SDLC')
+}
+
+test('Reviewer generation uses only the classic Markdown path and logs quality diagnostics', async () => {
+  const fixture = getReviewerSourceFixture('multi-phase-systems-analysis')
+  const logs = await captureConsoleInfo(async () => {
+    const result = await withTemporaryEnv({
+      DEEP_LEARN_REVIEWER_GENERATION_MODE: 'structured_fact_card_compiler',
+      DEEP_LEARN_REVIEWER_ONE_PASS_MODEL: 'gpt-5.4-classic',
+      DEEP_LEARN_REVIEWER_ONE_PASS_REPAIR_MODEL: 'gpt-5.5-classic-repair',
+    }, () => generateDeepLearnStructuredContent(
+      createStructuredPromptInput(fixture.extractedText, fixture.title),
+      createStructuredPreparedGrounding(fixture.extractedText),
+      async (request) => {
+        assert.equal(request.schemaName, 'deep_learn_reviewer_classic_markdown')
+        assert.equal(request.model, 'gpt-5.4-classic')
+        assert.match(request.promptText, /Do not return JSON/i)
+        assert.doesNotMatch(request.promptText, /factCard|answerBank|Generate exactly|coverage-first/i)
+        return textResponse(buildClassicReviewerMarkdown(fixture))
+      },
+      { diagnosticsContext: { queuedJobId: 'job-classic', canonicalSourceId: 'resource-classic', retryOfJobId: null } },
+    ))
+
+    assert.ok(result.content.reviewerMarkdown)
+    assert.equal(result.content.answerBank.length, 0)
+    assert.equal(result.content.identificationItems.length, 0)
+    assert.equal(result.compactFallbackUsed, false)
   })
 
-  assert.equal(schemas[0], 'deep_learn_study_pack_compiler')
-  assert.equal(schemas.every((schema) => schema === 'deep_learn_study_pack_compiler'), true)
-  assert.ok(result.content.answerBank.length >= 6)
-  assert.ok(result.content.identificationItems.length >= 6)
-  assert.ok(result.content.sections.some((section) => section.heading === 'Identification Review'))
-  assert.equal(result.content.cautionNotes.length, 0)
+  const routing = logs.map((entry) => entry[1]).find((entry): entry is Record<string, unknown> => Boolean(entry && typeof entry === 'object' && (entry as Record<string, unknown>).event === 'classic_markdown_reviewer_started'))
+  assert.equal(routing?.generatorVersion, 'classic_markdown_reviewer_v1')
+  assert.equal(routing?.qualityMode, 'classic-markdown-reviewer')
+
+  const summary = logs.map((entry) => entry[1]).find((entry): entry is Record<string, unknown> => Boolean(entry && typeof entry === 'object' && (entry as Record<string, unknown>).structuredCompilerUsed === false))
+  assert.equal(summary?.qualityMode, 'classic-markdown-reviewer')
+  assert.equal(summary?.structuredCompilerUsed, false)
+  assert.equal(typeof summary?.reviewerMarkdownLength, 'number')
+  assert.equal(typeof summary?.sourceCharCount, 'number')
+  assert.equal(summary?.sourceWasTruncated, false)
 })
 
-test('structured Study Pack compiler handles IT Security bullet definitions and lists', async () => {
-  const result = await generateDeepLearnStructuredContent(createStructuredPromptInput(BULLET_HEAVY_IT_SECURITY_SOURCE, 'IT Security Bullets.pdf'), createStructuredPreparedGrounding(BULLET_HEAVY_IT_SECURITY_SOURCE), async () => factCardResponse([
-    factCard('definition', 'What is confidentiality?', 'Confidentiality means information is protected from unauthorized access and disclosure.', 'Confidentiality: information is protected from unauthorized access and disclosure.', 'Confidentiality'),
-    factCard('definition', 'What is integrity?', 'Integrity means data stays accurate, complete, and protected from improper modification.', 'Integrity: data stays accurate, complete, and protected from improper modification.', 'Integrity'),
-    factCard('definition', 'What is availability?', 'Availability means systems and data remain accessible to authorized users when needed.', 'Availability: systems and data remain accessible to authorized users when needed.', 'Availability'),
-    factCard('list', 'What are the CIA triad items?', 'CIA triad: Confidentiality, Integrity, Availability.', 'CIA triad: Confidentiality, Integrity, Availability.', 'CIA Triad'),
-    factCard('definition', 'What is malware?', 'Malware is malicious software that damages systems, steals data, or disrupts operations.', 'Malware: malicious software that damages systems, steals data, or disrupts operations.', 'Malware'),
-    factCard('list', 'What are symptoms of malware?', 'Symptoms include slow computer speed, frequent crashes, unknown files, modified files, deleted files, unknown processes, and email sent without user consent.', 'Symptoms of malware: slow computer speed, frequent crashes, unknown files, modified files, deleted files, unknown processes, and email sent without user consent.', 'Symptoms of Malware'),
-  ], 'IT Security'))
-
-  assert.ok(result.content.answerBank.some((item) => item.kind === 'term_definition' && /Confidentiality/i.test(item.cue)))
-  assert.ok(result.content.answerBank.some((item) => /CIA Triad/i.test(item.cue)))
-  assert.ok(result.content.identificationItems.some((item) => /symptoms of malware/i.test(item.prompt)))
-})
-
-test('structured Study Pack compiler handles short Arnis dates people definitions and lists', async () => {
-  const source = [
-    'Arnis is the national martial art and sport of the Philippines.',
-    'Republic Act No. 9850 declared Arnis as the national martial art and sport in 2009.',
-    'Remy Presas founded Modern Arnis.',
-    'Arnis uses weapons such as rattan sticks, knives, and improvised weapons.',
-    'Courtesy in Arnis includes salutation before and after practice.',
-    'Striking techniques include forehand strike, backhand strike, thrust, and downward strike.',
-  ].join('\n')
-  const result = await generateDeepLearnStructuredContent(createStructuredPromptInput(source, 'Arnis.pdf'), createStructuredPreparedGrounding(source), async () => factCardResponse([
-    factCard('definition', 'What is Arnis?', 'Arnis is the national martial art and sport of the Philippines.', 'Arnis is the national martial art and sport of the Philippines.', 'Arnis'),
-    factCard('date', 'What did Republic Act No. 9850 do in 2009?', 'Republic Act No. 9850 declared Arnis as the national martial art and sport in 2009.', 'Republic Act No. 9850 declared Arnis as the national martial art and sport in 2009.', 'Republic Act No. 9850'),
-    factCard('person', 'Who founded Modern Arnis?', 'Remy Presas founded Modern Arnis.', 'Remy Presas founded Modern Arnis.', 'Remy Presas'),
-    factCard('list', 'What weapons does Arnis use?', 'Arnis uses weapons such as rattan sticks, knives, and improvised weapons.', 'Arnis uses weapons such as rattan sticks, knives, and improvised weapons.', 'Arnis Weapons'),
-    factCard('fact', 'What does courtesy in Arnis include?', 'Courtesy in Arnis includes salutation before and after practice.', 'Courtesy in Arnis includes salutation before and after practice.', 'Courtesy'),
-    factCard('list', 'What are Arnis striking techniques?', 'Striking techniques include forehand strike, backhand strike, thrust, and downward strike.', 'Striking techniques include forehand strike, backhand strike, thrust, and downward strike.', 'Striking Techniques'),
-  ], 'Arnis'))
-
-  assert.equal(result.compactFallbackUsed, false)
-  assert.ok(result.content.answerBank.some((item) => item.kind === 'date_event'))
-  assert.ok(result.content.answerBank.some((item) => item.kind === 'person_role'))
-  assert.equal(result.content.cautionNotes.length, 0)
-})
-
-test('structured Study Pack compiler skips MCQ distractors safely when not enough choices exist', async () => {
-  const cards = createSequentialFactCards('Data organization', 16).map((card) => ({
-    ...card,
-    sectionTitle: card.sourceQuote,
-    answer: `${card.answer} This answer is intentionally long and source-specific, so it should not be used as a compact multiple-choice distractor for another fact card in the deterministic assembly path.`,
-  }))
-  const groundedSource = cards.map((card) => card.sourceQuote).join('\n')
-  const result = await generateDeepLearnStructuredContent(createStructuredPromptInput(groundedSource, 'Data Organization.pdf'), createStructuredPreparedGrounding(groundedSource), async () => factCardResponse(cards, 'Data Organization'))
-
-  const longAnswerItems = result.content.answerBank.filter((item) => /intentionally long and source-specific/i.test(item.answer.examSafe))
-  assert.equal(longAnswerItems.every((item) => item.distractors.length === 0), true)
-  assert.equal(result.content.identificationItems.length >= 6, true)
-})
-
-test('structured Study Pack compiler rejects source-map prompts and diagnostics from saved content', async () => {
-  const source = buildStructuredFactSource('Canvas content resolution', 8)
-  const result = await generateDeepLearnStructuredContent(createStructuredPromptInput(source, 'Source Map Noise.pdf'), createStructuredPreparedGrounding(source), async () => factCardResponse([
-    factCard('fact', 'Recall the exam meaning of Source Map Bank.', 'Internal prompt wording must not be saved.', 'Canvas content resolution fact 1 explains grounded resource text for study.', 'Source Map Bank'),
-    factCard('fact', 'Explain the source relationship inside diagnostics.', 'Internal prompt wording must not be saved.', 'Canvas content resolution fact 2 explains grounded resource text for study.', 'Diagnostics'),
-    ...createSequentialFactCards('Canvas content resolution', 6),
-  ], 'Clean Study Pack'))
-
-  assert.equal(JSON.stringify(result.content).includes('Recall the exam meaning of'), false)
-  assert.equal(JSON.stringify(result.content).includes('Explain the source relationship'), false)
-  assert.equal(JSON.stringify(result.content).includes('diagnostics'), false)
-  assert.ok(result.content.identificationItems.length >= 6)
-})
-
-test('structured Study Pack compiler uses deterministic fallback when model cards are unusable', async () => {
-  const source = buildStructuredFactSource('Bad cards', 4)
+test('Reviewer classic markdown covers SDLC Phase 1 through Phase 7', async () => {
+  const fixture = getReviewerSourceFixture('multi-phase-systems-analysis')
   const result = await generateDeepLearnStructuredContent(
-    createStructuredPromptInput(source, 'Bad Cards.pdf'),
-    createStructuredPreparedGrounding(source),
-    async () => factCardResponse([
-      factCard('fact', 'Recall the exam meaning of Bad Cards.', 'Internal prompt wording must not be saved.', 'Bad cards fact 1 explains grounded resource text for study.', 'Bad Cards'),
-    ], 'Bad Cards'),
+    createStructuredPromptInput(fixture.extractedText, fixture.title),
+    createStructuredPreparedGrounding(fixture.extractedText),
+    async () => textResponse(buildClassicReviewerMarkdown(fixture)),
   )
 
-  assert.ok(result.content.answerBank.length >= 3)
-  assert.equal(JSON.stringify(result.content).includes('Recall the exam meaning of'), false)
-  assert.equal(JSON.stringify(result.content).includes('Internal prompt wording'), false)
-})
-
-test('structured Study Pack compiler uses chunked fact extraction for long sources', async () => {
-  const source = buildStructuredFactSource('Long SDLC', 36)
-  const schemaNames: string[] = []
-  const result = await generateDeepLearnStructuredContent(createStructuredPromptInput(source, 'Long SDLC.pdf'), createStructuredPreparedGrounding(source), async (request) => {
-    schemaNames.push(request.schemaName)
-    const match = request.promptText.match(/Long SDLC fact (\d+)/i)
-    const start = match ? Number(match[1]) : schemaNames.length
-    return factCardResponse(createSequentialFactCards('Long SDLC', 6, start), 'Long SDLC')
-  })
-
-  assert.ok(schemaNames.length > 1)
-  assert.equal(schemaNames.every((name) => name === 'deep_learn_fact_card_chunk'), true)
-  assert.equal(result.compactFallbackUsed, true)
-  assert.ok(result.content.answerBank.length >= 6)
-})
-
-test('source outline marks high-confidence academic sections without treating every bullet as required', () => {
-  const source = [
-    'Learning Objectives',
-    '- Define data organization.',
-    '- Identify common data structures.',
-    '- Explain why indexing supports retrieval.',
-    '1. Data Tables',
-    'Data tables arrange records in rows and fields in columns.',
-    '2. Indexing',
-    'Indexing creates lookup paths that help locate records efficiently.',
-    'Common Categories',
-    'Types include hierarchical, relational, and network organization.',
-  ].join('\n')
-
-  const outline = buildSourceOutline(source)
-  const requiredTitles = outline.filter((item) => item.required).map((item) => item.title)
-
-  assert.ok(requiredTitles.includes('Learning Objectives'))
-  assert.ok(requiredTitles.includes('Data Tables'))
-  assert.ok(requiredTitles.includes('Indexing'))
-  assert.ok(requiredTitles.includes('Common Categories'))
-  assert.equal(requiredTitles.some((title) => /Define data organization/i.test(title)), false)
-})
-
-test('structured compiler repairs valid but incomplete section coverage with fallback model', async () => {
-  const source = [
-    'Module Overview',
-    'The module explains how a learner should prepare structured academic materials.',
-    'Step One',
-    'Step one gathers the source material and identifies the learning goal.',
-    'Step Two',
-    'Step two organizes the concepts into usable review sections.',
-    'Step Three',
-    'Step three checks coverage so later concepts are not omitted.',
-    'Key Categories',
-    'Categories include definitions, procedures, timelines, and comparisons.',
-  ].join('\n')
-  const calls: Array<{ model?: string; prompt: string }> = []
-
-  const result = await withTemporaryEnv({
-    DEEP_LEARN_STRUCTURED_MODEL: 'mini-coverage-test',
-    DEEP_LEARN_STRUCTURED_FALLBACK_MODEL: 'fallback-coverage-test',
-    DEEP_LEARN_STRUCTURED_PREMIUM_MODEL: 'fallback-coverage-test',
-    DEEP_LEARN_STRUCTURED_PREMIUM_FALLBACK: undefined,
-  }, () => generateDeepLearnStructuredContent(createStructuredPromptInput(source, 'Coverage Source.pdf'), createStructuredPreparedGrounding(source), async (request) => {
-    calls.push({ model: request.model, prompt: request.promptText })
-    if (request.model === 'fallback-coverage-test') {
-      return factCardResponse([
-        factCard('process', 'What happens in Step Three?', 'Step three checks coverage so later concepts are not omitted.', 'Step three checks coverage so later concepts are not omitted.', 'Step Three'),
-        factCard('list', 'What categories does the source include?', 'Categories include definitions, procedures, timelines, and comparisons.', 'Categories include definitions, procedures, timelines, and comparisons.', 'Key Categories'),
-        factCard('fact', 'Why does Step Three matter?', 'Step three checks coverage so later concepts are not omitted.', 'Step three checks coverage so later concepts are not omitted.', 'Step Three Coverage'),
-        factCard('list', 'Which review categories are named?', 'Definitions, procedures, timelines, and comparisons are named categories.', 'Categories include definitions, procedures, timelines, and comparisons.', 'Key Categories'),
-        factCard('fact', 'What does the module explain?', 'The module explains how a learner should prepare structured academic materials.', 'The module explains how a learner should prepare structured academic materials.', 'Module Overview'),
-        factCard('process', 'What happens in Step One?', 'Step one gathers the source material and identifies the learning goal.', 'Step one gathers the source material and identifies the learning goal.', 'Step One'),
-        factCard('process', 'What happens in Step Two?', 'Step two organizes the concepts into usable review sections.', 'Step two organizes the concepts into usable review sections.', 'Step Two'),
-        factCard('fact', 'What learning goal is identified in Step One?', 'Step one gathers the source material and identifies the learning goal.', 'Step one gathers the source material and identifies the learning goal.', 'Step One Learning Goal'),
-        factCard('fact', 'What review sections are organized in Step Two?', 'Step two organizes the concepts into usable review sections.', 'Step two organizes the concepts into usable review sections.', 'Step Two Review Sections'),
-        factCard('fact', 'What later concepts are checked in Step Three?', 'Step three checks coverage so later concepts are not omitted.', 'Step three checks coverage so later concepts are not omitted.', 'Step Three Later Concepts'),
-      ], 'Coverage Source')
-    }
-    return factCardResponse([
-      factCard('fact', 'What does the module explain?', 'The module explains how a learner should prepare structured academic materials.', 'The module explains how a learner should prepare structured academic materials.', 'Module Overview'),
-      factCard('process', 'What happens in Step One?', 'Step one gathers the source material and identifies the learning goal.', 'Step one gathers the source material and identifies the learning goal.', 'Step One'),
-      factCard('process', 'What happens in Step Two?', 'Step two organizes the concepts into usable review sections.', 'Step two organizes the concepts into usable review sections.', 'Step Two'),
-    ], 'Coverage Source')
-  }))
-
-  assert.ok(calls.some((call) => call.model === 'fallback-coverage-test'))
-  assert.match(JSON.stringify(result.content), /Step Three/)
-  assert.match(JSON.stringify(result.content), /definitions, procedures, timelines, and comparisons/)
-})
-
-test('Reviewer classic markdown mode is the default and covers SDLC Phase 1 through Phase 7', async () => {
-  const fixture = getReviewerSourceFixture('multi-phase-systems-analysis')
-  const calls: Array<{ schemaName: string; model?: string; prompt: string }> = []
-  const result = await withTemporaryEnv({
-    DEEP_LEARN_REVIEWER_GENERATION_MODE: undefined,
-    DEEP_LEARN_REVIEWER_ONE_PASS_MODEL: 'gpt-5.4-classic',
-  }, () => generateDeepLearnStructuredContent(
-    createStructuredPromptInput(fixture.extractedText, fixture.title),
-    createStructuredPreparedGrounding(fixture.extractedText),
-    async (request) => {
-      calls.push({ schemaName: request.schemaName, model: request.model, prompt: request.promptText })
-      return textResponse(buildClassicReviewerMarkdown(fixture))
-    },
-  ))
-
-  assert.equal(calls[0]!.schemaName, 'deep_learn_reviewer_classic_markdown')
-  assert.equal(calls[0]!.model, 'gpt-5.4-classic')
-  assert.match(calls[0]!.prompt, /Do not return JSON/i)
-  assert.doesNotMatch(calls[0]!.prompt, /Generate exactly \d+ factCard|answerBank 12 to 16 items/i)
-  assert.ok(result.content.reviewerMarkdown)
-  for (const section of fixture.expectedMajorSections) {
-    assert.match(result.content.reviewerMarkdown!, new RegExp(escapeRegExp(section), 'i'))
-  }
-  assert.equal(result.content.answerBank.length, 0)
-})
-
-test('Reviewer classic markdown mode covers IT Security major sections without requiring card counts', async () => {
-  const fixture = getReviewerSourceFixture('taxonomy-heavy-security')
-  const result = await withTemporaryEnv({
-    DEEP_LEARN_REVIEWER_GENERATION_MODE: 'classic_markdown',
-  }, () => generateDeepLearnStructuredContent(
-    createStructuredPromptInput(fixture.extractedText, fixture.title),
-    createStructuredPreparedGrounding(fixture.extractedText),
-    async () => textResponse(buildClassicReviewerMarkdown(fixture, {
-      extraSections: [
-        'IT Security definition',
-        'InfoSec vs IT Sec',
-        'CIA triad',
-        'Domains',
-        'Cybersecurity definitions',
-        'Layered protection',
-        'People, process, and technology',
-        'Unified Threat Management',
-        'Importance',
-        'Challenges',
-        'Breach impacts',
-        'Attackers',
-        'Vulnerability, exploit, and breach',
-        'Threat types',
-        'Malware types',
-        'Symptoms',
-        'Infiltration',
-        'Denial of service',
-        'SEO poisoning',
-        'Blended attacks',
-        'Impact reduction',
-      ],
-    })),
-  ))
-
   const markdown = result.content.reviewerMarkdown ?? ''
-  for (const expected of ['IT Security definition', 'InfoSec vs IT Sec', 'CIA triad', 'Unified Threat Management', 'Vulnerability, exploit, and breach', 'Malware types', 'Denial of service', 'SEO poisoning', 'Blended attacks', 'Impact reduction']) {
-    assert.match(markdown, new RegExp(escapeRegExp(expected), 'i'))
+  for (const section of fixture.expectedMajorSections) {
+    assert.match(markdown, new RegExp(escapeRegExp(section), 'i'))
   }
-  assert.equal(result.content.answerBank.length, 0)
   assert.doesNotThrow(() => validateDeepLearnContentReadyForSave(result.content))
 })
 
-test('Reviewer classic markdown mode covers PATHFit Arnis exam areas', async () => {
-  const fixture = getReviewerSourceFixture('short-martial-arts-module')
-  const result = await withTemporaryEnv({
-    DEEP_LEARN_REVIEWER_GENERATION_MODE: 'classic_markdown',
-  }, () => generateDeepLearnStructuredContent(
-    createStructuredPromptInput(PATHFIT_ARNIS_SAMPLE_SOURCE, 'PATHFit Arnis.pdf'),
-    createStructuredPreparedGrounding(PATHFIT_ARNIS_SAMPLE_SOURCE),
-    async () => textResponse(buildClassicReviewerMarkdown(fixture, {
-      title: 'PATHFit Arnis.pdf',
-      extraSections: [
-        'Arnis definition',
-        'R.A. 9850',
-        'Historical concept',
-        'Evolvement and classifications',
-        'Organizations and timeline',
-        'Main groups',
-        'Salutation',
-        'Strikes',
-        'Arnis as sport',
-        'Equipment',
-        'Weapons',
-        'Stick types',
-      ],
-    })),
-  ))
+test('Reviewer classic markdown saves IT Security source around 5908 chars without structured fields', async () => {
+  const source = IT_SECURITY_SAMPLE_SOURCE.repeat(Math.ceil(5908 / IT_SECURITY_SAMPLE_SOURCE.length)).slice(0, 5908)
+  const fixture = {
+    ...getReviewerSourceFixture('taxonomy-heavy-security'),
+    extractedText: source,
+    expectedMajorSections: [
+      'IT Security',
+      'InfoSec vs IT Sec',
+      'CIA Triad',
+      'Domains of IT Security',
+      'Cybersecurity',
+      'People / Process / Technology',
+      'Unified Threat Management',
+      'Importance of Cybersecurity',
+      'Challenges of Cybersecurity',
+      'Impact of a Security Breach',
+      'Types of Attackers',
+      'Vulnerability / Exploit / Breach',
+      'Cybersecurity Threat Types',
+      'Malware Types',
+      'Malware Symptoms',
+      'Methods of Infiltration',
+      'Denial of Service Methods',
+      'SEO Poisoning',
+      'Blended Attacks',
+      'Impact Reduction',
+    ],
+  }
+  const result = await generateDeepLearnStructuredContent(
+    createStructuredPromptInput(source, 'Intro-To-IT-Security.pdf'),
+    createStructuredPreparedGrounding(source),
+    async () => textResponse(buildClassicReviewerMarkdown(fixture)),
+  )
 
   const markdown = result.content.reviewerMarkdown ?? ''
-  for (const expected of ['Arnis definition', 'R.A. 9850', 'classifications', 'Organizations and timeline', 'Main groups', 'Salutation', 'Strikes', 'Equipment', 'Weapons', 'Stick types']) {
+  for (const expected of [
+    'IT Security',
+    'InfoSec vs IT Sec',
+    'CIA Triad',
+    'Domains of IT Security',
+    'Cybersecurity',
+    'People / Process / Technology',
+    'Unified Threat Management',
+    'Importance of Cybersecurity',
+    'Challenges of Cybersecurity',
+    'Impact of a Security Breach',
+    'Types of Attackers',
+    'Vulnerability / Exploit / Breach',
+    'Cybersecurity Threat Types',
+    'Malware Types',
+    'Malware Symptoms',
+    'Methods of Infiltration',
+    'Denial of Service Methods',
+    'SEO Poisoning',
+    'Blended Attacks',
+    'Impact Reduction',
+  ]) {
     assert.match(markdown, new RegExp(escapeRegExp(expected), 'i'))
   }
-  assert.doesNotMatch(markdown, /Key Academic Items|Classification Relationships|Academic Source Map/i)
+  assert.equal(result.content.answerBank.length, 0)
+  assert.equal(result.content.identificationItems.length, 0)
+  assert.doesNotThrow(() => validateDeepLearnContentReadyForSave(result.content))
 })
 
-test('Reviewer one-pass mode builds SDLC reviewer across Phase 1 through Phase 7', async () => {
-  const fixture = getReviewerSourceFixture('multi-phase-systems-analysis')
-  const calls: Array<{ schemaName: string; model?: string; prompt: string }> = []
-  const result = await withTemporaryEnv({
-    DEEP_LEARN_REVIEWER_GENERATION_MODE: 'one_pass',
-    DEEP_LEARN_REVIEWER_ONE_PASS_MODEL: 'gpt-5.5-one-pass',
-    DEEP_LEARN_REVIEWER_ONE_PASS_REPAIR_MODEL: 'gpt-5.5-repair',
-  }, () => generateDeepLearnStructuredContent(
-    createStructuredPromptInput(fixture.extractedText, fixture.title),
-    createStructuredPreparedGrounding(fixture.extractedText),
-    async (request) => {
-      calls.push({ schemaName: request.schemaName, model: request.model, prompt: request.promptText })
-      return onePassReviewerResponse(fixture, buildOnePassFixtureContent(fixture, { includeAllExpectedSections: true }))
-    },
-  ))
-
-  const serialized = JSON.stringify(result.content)
-  assert.equal(calls.length, 1)
-  assert.equal(calls[0]!.schemaName, 'deep_learn_reviewer_one_pass')
-  assert.equal(calls[0]!.model, 'gpt-5.5-one-pass')
-  assert.doesNotMatch(calls[0]!.prompt, /SOURCE CHUNK|Generate exactly \d+ factCard/i)
-  for (const section of fixture.expectedMajorSections) {
-    assert.match(serialized, new RegExp(escapeRegExp(section), 'i'))
-  }
-  assert.doesNotMatch(serialized, /Develop a High-Level Model.*Develop a High-Level Model.*Develop a High-Level Model/i)
-  assert.ok(result.content.answerBank.length >= 7)
-  assert.ok(result.content.identificationItems.length >= 7)
-  assert.ok(result.content.likelyQuizTargets.some((item) => /multiple choice/i.test(`${item.target} ${item.reason}`)))
-})
-
-test('Reviewer one-pass mode keeps PATHFit labels source-specific and covers Arnis exam areas', async () => {
-  const source = PATHFIT_ARNIS_SAMPLE_SOURCE
+test('Reviewer classic markdown covers PATHFit Arnis exam areas', async () => {
   const fixture = getReviewerSourceFixture('short-martial-arts-module')
-  const result = await withTemporaryEnv({
-    DEEP_LEARN_REVIEWER_GENERATION_MODE: 'one_pass',
-  }, () => generateDeepLearnStructuredContent(
-    createStructuredPromptInput(source, 'PATHFit Arnis.pdf'),
-    createStructuredPreparedGrounding(source),
-    async () => onePassReviewerResponse(fixture, buildOnePassArnisContent()),
-  ))
+  const result = await generateDeepLearnStructuredContent(
+    createStructuredPromptInput(PATHFIT_ARNIS_SAMPLE_SOURCE, 'PATHFit Arnis.pdf'),
+    createStructuredPreparedGrounding(PATHFIT_ARNIS_SAMPLE_SOURCE),
+    async () => textResponse(buildClassicReviewerMarkdown({
+      ...fixture,
+      extractedText: PATHFIT_ARNIS_SAMPLE_SOURCE,
+      expectedMajorSections: [
+        'Arnis',
+        'RA 9850',
+        'Historical Concept',
+        'Evolution / Classifications',
+        'Organizations / Timeline',
+        'Main Groups',
+        'Courtesy / Salutation',
+        'Strike Types',
+        'Arnis as a sport',
+        'Equipment / Weapons',
+        'Stick Types',
+      ],
+    })),
+  )
 
-  const serialized = JSON.stringify(result.content)
-  assert.doesNotMatch(serialized, /Key Academic Items|Classification Relationships|Academic Source Map/i)
-  for (const expected of ['Arnis', 'RA 9850', 'Courtesy and Salutation', '3 Main Groups', 'Organizations and Timeline', 'Equipment and Weapons']) {
-    assert.match(serialized, new RegExp(escapeRegExp(expected), 'i'))
+  const markdown = result.content.reviewerMarkdown ?? ''
+  for (const expected of [
+    'Arnis',
+    'RA 9850',
+    'Historical Concept',
+    'Evolution / Classifications',
+    'Organizations / Timeline',
+    'Main Groups',
+    'Courtesy / Salutation',
+    'Strike Types',
+    'Arnis as a sport',
+    'Equipment / Weapons',
+    'Stick Types',
+  ]) {
+    assert.match(markdown, new RegExp(escapeRegExp(expected), 'i'))
   }
-  const alternateNameItems = result.content.answerBank.filter((item) => /alias|alternate name|also known/i.test(`${item.cue} ${item.answer.examSafe}`))
-  assert.ok(alternateNameItems.length <= 1)
 })
 
-test('Reviewer one-pass mode saves usable IT Security output instead of failing weak-section mentions', async () => {
-  const fixture = getReviewerSourceFixture('taxonomy-heavy-security')
-  const result = await withTemporaryEnv({
-    DEEP_LEARN_REVIEWER_GENERATION_MODE: 'one_pass',
-  }, () => generateDeepLearnStructuredContent(
-    createStructuredPromptInput(fixture.extractedText, fixture.title),
-    createStructuredPreparedGrounding(fixture.extractedText),
-    async () => onePassReviewerResponse(fixture, buildOnePassFixtureContent(fixture, { includeAllExpectedSections: true })),
-  ))
-
-  const serialized = JSON.stringify(result.content)
-  for (const expected of ['CIA Triad', 'Domains', 'Attackers', 'Threats', 'Malware', 'Infiltration', 'Denial of Service', 'Impact Reduction']) {
-    assert.match(serialized, new RegExp(escapeRegExp(expected), 'i'))
-  }
-  assert.ok(result.content.answerBank.length >= 8)
-  assert.ok(result.content.identificationItems.length >= 6)
-})
-
-test('Reviewer one-pass mode retries invalid JSON once with repair model', async () => {
+test('Reviewer classic markdown retries once for unusable Markdown', async () => {
   const fixture = getReviewerSourceFixture('multi-phase-systems-analysis')
   const calls: Array<{ schemaName: string; model?: string }> = []
   const result = await withTemporaryEnv({
-    DEEP_LEARN_REVIEWER_GENERATION_MODE: 'one_pass',
     DEEP_LEARN_REVIEWER_ONE_PASS_MODEL: 'gpt-5.4-primary',
     DEEP_LEARN_REVIEWER_ONE_PASS_REPAIR_MODEL: 'gpt-5.5-repair',
   }, () => generateDeepLearnStructuredContent(
@@ -2905,134 +2786,16 @@ test('Reviewer one-pass mode retries invalid JSON once with repair model', async
     createStructuredPreparedGrounding(fixture.extractedText),
     async (request) => {
       calls.push({ schemaName: request.schemaName, model: request.model })
-      if (calls.length === 1) return { status: 'completed', output_text: '{not valid json', incomplete_details: null }
-      return onePassReviewerResponse(fixture, buildOnePassFixtureContent(fixture, { includeAllExpectedSections: true }))
+      if (calls.length === 1) return textResponse('too short')
+      return textResponse(buildClassicReviewerMarkdown(fixture))
     },
   ))
 
   assert.deepEqual(calls, [
-    { schemaName: 'deep_learn_reviewer_one_pass', model: 'gpt-5.4-primary' },
-    { schemaName: 'deep_learn_reviewer_one_pass_repair', model: 'gpt-5.5-repair' },
+    { schemaName: 'deep_learn_reviewer_classic_markdown', model: 'gpt-5.4-primary' },
+    { schemaName: 'deep_learn_reviewer_classic_markdown', model: 'gpt-5.5-repair' },
   ])
-  assert.ok(result.content.answerBank.length >= 7)
-})
-
-test('Reviewer compressed heading-list cards do not satisfy required section coverage', async () => {
-  const fixture = getReviewerSourceFixture('multi-phase-systems-analysis')
-  const source = fixture.extractedText
-  const calls: Array<{ model?: string; prompt: string }> = []
-
-  await assert.rejects(
-    () => withTemporaryEnv({
-      DEEP_LEARN_STRUCTURED_FALLBACK_MODEL: 'gpt-5.4-reviewer-test',
-      DEEP_LEARN_STRUCTURED_PREMIUM_MODEL: 'gpt-5.5-repair-test',
-    }, () => generateDeepLearnStructuredContent(createStructuredPromptInput(source, fixture.title), createStructuredPreparedGrounding(source), async (request) => {
-      calls.push({ model: request.model, prompt: request.promptText })
-      if (request.model === 'gpt-5.5-repair-test') {
-        return factCardResponse([], `${fixture.title} Repair`)
-      }
-      const compressedLaterSections = fixture.expectedMajorSections.slice(1).join('; ')
-      return factCardResponse([
-        factCard(
-          'fact',
-          `What is the purpose of ${fixture.expectedMajorSections[0]}?`,
-          'The first phase identifies organizational problems, opportunities, and objectives so the analyst understands why a new or improved system is being considered.',
-          'The first phase of systems analysis begins when the analyst identifies problems, opportunities, and objectives.',
-          fixture.expectedMajorSections[0]!,
-        ),
-        factCard(
-          'list',
-          'What are the remaining major sections?',
-          compressedLaterSections,
-          compressedLaterSections,
-          'Remaining Major Sections',
-        ),
-      ], fixture.title)
-    })),
-    /Deep Learn could not build enough structured study content/i,
-  )
-
-  assert.equal(calls[0]!.model, 'gpt-5.4-reviewer-test')
-  assert.equal(calls.some((call) => call.model === 'gpt-5.5-repair-test'), true)
-  assert.equal(calls.some((call) => call.model?.includes('mini')), false)
-  assert.ok(calls.some((call) => /Repair the Reviewer answer bank/i.test(call.prompt)))
-})
-
-test('dense Reviewer source expands target cards beyond old compact caps', async () => {
-  const fixture = getReviewerSourceFixture('taxonomy-heavy-security')
-  const source = fixture.extractedText
-  const calls: Array<{ requestedCards: number; maxOutputTokens: number; model?: string }> = []
-  const logs = await captureConsoleInfo(async () => {
-    const result = await withTemporaryEnv({
-      DEEP_LEARN_STRUCTURED_FALLBACK_MODEL: 'gpt-5.4-dense',
-      DEEP_LEARN_STRUCTURED_PREMIUM_MODEL: 'gpt-5.5-dense',
-    }, () => generateDeepLearnStructuredContent(createStructuredPromptInput(source, fixture.title), createStructuredPreparedGrounding(source), async (request) => {
-      calls.push({
-        model: request.model,
-        requestedCards: Number(request.promptText.match(/Generate exactly (\d+) factCard/)?.[1] ?? 0),
-        maxOutputTokens: request.maxOutputTokens,
-      })
-      return factCardResponse(createReviewerFixtureCards(fixture, { includeDensityCards: true }), fixture.title)
-    }))
-    assert.ok(result.content.answerBank.length > 12)
-    assert.match(JSON.stringify(result.content), /Detection, Investigation, and Remediation/)
-    assert.match(JSON.stringify(result.content), /Security Practices and Controls/)
-  })
-  const summary = logs.map((entry) => entry[1]).find((entry): entry is Record<string, unknown> => Boolean(entry && typeof entry === 'object' && (entry as Record<string, unknown>).coveragePassed === true))
-
-  assert.equal(calls[0]!.model, 'gpt-5.4-dense')
-  assert.ok(calls[0]!.requestedCards > 5)
-  assert.ok(calls[0]!.maxOutputTokens > 1100)
-  assert.ok(Number(summary?.targetReviewerCards ?? 0) > 12)
-})
-
-test('Reviewer duplicate shallow cards are removed and missing coverage triggers GPT-5.5 repair', async () => {
-  const fixture = getReviewerSourceFixture('taxonomy-heavy-security')
-  const source = fixture.extractedText
-  const calls: Array<{ model?: string }> = []
-  const result = await withTemporaryEnv({
-    DEEP_LEARN_STRUCTURED_FALLBACK_MODEL: 'gpt-5.4-duplicates',
-    DEEP_LEARN_STRUCTURED_PREMIUM_MODEL: 'gpt-5.5-duplicates',
-  }, () => generateDeepLearnStructuredContent(createStructuredPromptInput(source, fixture.title), createStructuredPreparedGrounding(source), async (request) => {
-    calls.push({ model: request.model })
-    if (request.model === 'gpt-5.5-duplicates') {
-      return factCardResponse(createReviewerFixtureCards(fixture, { includeDensityCards: true }), `${fixture.title} Repair`)
-    }
-    return factCardResponse([
-      factCard('fact', 'What is ruined reputation?', 'Ruined Reputation', 'Ruined reputation occurs when customers, partners, or the public lose confidence in the organization.', 'Impact of Security Breaches'),
-      factCard('fact', 'What is ruined reputation?', 'Ruined Reputation', 'Ruined reputation occurs when customers, partners, or the public lose confidence in the organization.', 'Impact of Security Breaches'),
-      factCard('fact', 'What is vandalism?', 'Vandalism', 'Vandalism may involve defaced websites, altered files, or destroyed data.', 'Impact of Security Breaches'),
-      factCard('fact', 'What is theft?', 'Theft', 'Theft may involve stolen credentials, financial data, personal information, or trade secrets.', 'Impact of Security Breaches'),
-      factCard('fact', 'What is revenue loss?', 'Revenue Lost', 'Revenue loss can happen when systems are unavailable, customers leave, operations stop, or recovery costs increase.', 'Impact of Security Breaches'),
-    ], fixture.title)
-  }))
-
-  const cues = result.content.answerBank.map((item) => item.cue)
-  assert.equal(cues.filter((cue) => /Ruined Reputation/i.test(cue)).length <= 1, true)
-  assert.equal(calls.some((call) => call.model === 'gpt-5.5-duplicates'), true)
-  assert.match(JSON.stringify(result.content), /Unified Threat Management/)
-  assert.match(JSON.stringify(result.content), /Detection, Investigation, and Remediation/)
-})
-
-test('short Reviewer source uses GPT-5.4 without bloating supporting bullets', async () => {
-  const fixture = getReviewerSourceFixture('short-martial-arts-module')
-  const source = fixture.extractedText
-  const models: Array<string | undefined> = []
-  const result = await withTemporaryEnv({
-    DEEP_LEARN_STRUCTURED_MODEL: 'mini-short-should-not-run',
-    DEEP_LEARN_STRUCTURED_FALLBACK_MODEL: 'gpt-5.4-short',
-    DEEP_LEARN_STRUCTURED_PREMIUM_MODEL: 'gpt-5.5-short',
-  }, () => generateDeepLearnStructuredContent(createStructuredPromptInput(source, fixture.title), createStructuredPreparedGrounding(source), async (request) => {
-    models.push(request.model)
-    return factCardResponse(createReviewerFixtureCards(fixture), fixture.title)
-  }))
-
-  assert.equal(models[0], 'gpt-5.4-short')
-  assert.equal(models.includes('mini-short-should-not-run'), false)
-  assert.ok(result.content.answerBank.length <= 20)
-  for (const section of fixture.expectedMajorSections) {
-    assert.match(JSON.stringify(result.content), new RegExp(escapeRegExp(section), 'i'))
-  }
+  assert.ok(result.content.reviewerMarkdown)
 })
 
 test('task_output model routing remains on task-specific mini defaults', () => {
@@ -3042,193 +2805,6 @@ test('task_output model routing remains on task-specific mini defaults', () => {
   assert.match(source, /OPENAI_DO_NOW_MODEL/)
   assert.doesNotMatch(source, /DEEP_LEARN_REVIEWER_COMPILER_MODEL|DEEP_LEARN_STRUCTURED_FALLBACK_MODEL/)
 })
-
-test('structured compiler is the default and never enters legacy stages', async () => {
-  const source = buildStructuredFactSource('Default compiler', 8)
-  const schemaNames: string[] = []
-  const models: Array<string | undefined> = []
-  const result = await generateDeepLearnStructuredContent(createStructuredPromptInput(source, 'Default Compiler.pdf'), createStructuredPreparedGrounding(source), async (request) => {
-    schemaNames.push(request.schemaName)
-    models.push(request.model)
-    assert.doesNotMatch(request.schemaName, /high_yield|identification|quick_answers/)
-    return factCardResponse(createSequentialFactCards('Default compiler', 6), 'Default Compiler')
-  })
-
-  assert.equal(schemaNames[0], 'deep_learn_study_pack_compiler')
-  assert.equal(schemaNames.every((name) => name === 'deep_learn_study_pack_compiler'), true)
-  assert.equal(models[0], 'gpt-5.4')
-  assert.equal(models.includes('gpt-5.4-mini'), false)
-  assert.equal(result.content.cautionNotes.length, 0)
-  assert.ok(result.content.identificationItems.length >= 6)
-})
-
-test('Reviewer compiler retries max_output_tokens with non-mini primary before GPT-5.5 repair', async () => {
-  const source = buildStructuredFactSource('Retry compiler', 8)
-  const calls: Array<{ model?: string; requestedCards: number; maxOutputTokens: number }> = []
-  const result = await withTemporaryEnv({
-    DEEP_LEARN_STRUCTURED_MODEL: 'mini-test-model',
-    DEEP_LEARN_STRUCTURED_FALLBACK_MODEL: 'gpt-5.4-test-model',
-    DEEP_LEARN_STRUCTURED_PREMIUM_MODEL: 'gpt-5.5-test-model',
-    DEEP_LEARN_STRUCTURED_PREMIUM_FALLBACK: undefined,
-  }, () => generateDeepLearnStructuredContent(createStructuredPromptInput(source, 'Retry Compiler.pdf'), createStructuredPreparedGrounding(source), async (request) => {
-    calls.push({
-      model: request.model,
-      requestedCards: Number(request.promptText.match(/Generate exactly (\d+) factCard/)?.[1] ?? 0),
-      maxOutputTokens: request.maxOutputTokens,
-    })
-    if (calls.length === 1) {
-      return { status: 'incomplete', incomplete_details: { reason: 'max_output_tokens' }, output_text: null }
-    }
-    return factCardResponse(createSequentialFactCards('Retry compiler', 1), 'Retry Compiler')
-  }))
-
-  assert.deepEqual(calls.map((call) => call.model), ['gpt-5.4-test-model', 'gpt-5.4-test-model', 'gpt-5.5-test-model'])
-  assert.ok(calls[0]!.requestedCards > 5)
-  assert.equal(calls[1]!.requestedCards, 1)
-  assert.ok(calls[2]!.requestedCards > 1)
-  assert.ok(calls[1]!.maxOutputTokens < calls[0]!.maxOutputTokens)
-  assert.equal(result.content.answerBank.length >= 1, true)
-})
-
-test('Reviewer compiler uses GPT-5.4 primary and GPT-5.5 fallback repair', async () => {
-  const source = buildStructuredFactSource('Fallback compiler', 8)
-  const calls: Array<{ model?: string; requestedCards: number }> = []
-  const result = await withTemporaryEnv({
-    DEEP_LEARN_STRUCTURED_MODEL: 'gpt-5.4-mini-test',
-    DEEP_LEARN_STRUCTURED_FALLBACK_MODEL: 'gpt-5.4-test',
-    DEEP_LEARN_STRUCTURED_PREMIUM_MODEL: 'gpt-5.5-test',
-    DEEP_LEARN_STRUCTURED_PREMIUM_FALLBACK: undefined,
-  }, () => generateDeepLearnStructuredContent(createStructuredPromptInput(source, 'Fallback Compiler.pdf'), createStructuredPreparedGrounding(source), async (request) => {
-    calls.push({
-      model: request.model,
-      requestedCards: Number(request.promptText.match(/Generate exactly (\d+) factCard/)?.[1] ?? 0),
-    })
-    if (calls.length <= 2) {
-      return { status: 'incomplete', incomplete_details: { reason: 'max_output_tokens' }, output_text: null }
-    }
-    return factCardResponse(createSequentialFactCards('Fallback compiler', 1), 'Fallback Compiler')
-  }))
-
-  assert.equal(calls[0]!.model, 'gpt-5.4-test')
-  assert.equal(calls.some((call) => call.model === 'gpt-5.4-mini-test'), false)
-  assert.equal(calls.some((call) => call.model === 'gpt-5.5-test'), true)
-  assert.ok(calls[0]!.requestedCards > 5)
-  assert.equal(calls[1]!.requestedCards, 1)
-  assert.ok(calls[2]!.requestedCards >= 1)
-  assert.ok(result.content.answerBank.length >= 1)
-})
-
-test('Reviewer compiler uses GPT-5.5 repair even without premium opt-in flag', async () => {
-  const source = buildStructuredFactSource('No premium compiler', 8)
-  const models: Array<string | undefined> = []
-  await withTemporaryEnv({
-    DEEP_LEARN_STRUCTURED_MODEL: 'mini-no-premium',
-    DEEP_LEARN_STRUCTURED_FALLBACK_MODEL: 'gpt-5.4-no-premium',
-    DEEP_LEARN_STRUCTURED_PREMIUM_MODEL: 'gpt-5.5-repair',
-    DEEP_LEARN_STRUCTURED_PREMIUM_FALLBACK: undefined,
-  }, () => generateDeepLearnStructuredContent(createStructuredPromptInput(source, 'No Premium.pdf'), createStructuredPreparedGrounding(source), async (request) => {
-    models.push(request.model)
-    return { status: 'incomplete', incomplete_details: { reason: 'max_output_tokens' }, output_text: null }
-  }))
-
-  assert.equal(models.includes('mini-no-premium'), false)
-  assert.equal(models.includes('gpt-5.4-no-premium'), true)
-  assert.equal(models.includes('gpt-5.5-repair'), true)
-})
-
-test('structured compiler skips one failed chunk and completes from remaining cards', async () => {
-  const source = buildStructuredFactSource('Chunk compiler', 36)
-  const calls: Array<{ chunk: number; model?: string }> = []
-  const result = await generateDeepLearnStructuredContent(createStructuredPromptInput(source, 'Chunk Compiler.pdf'), createStructuredPreparedGrounding(source), async (request) => {
-    const chunk = Number(request.promptText.match(/chunk (\d+) of/i)?.[1] ?? 1)
-    calls.push({ chunk, model: request.model })
-    if (chunk === 1) {
-      return { status: 'incomplete', incomplete_details: { reason: 'max_output_tokens' }, output_text: null }
-    }
-    const match = request.promptText.match(/Chunk compiler fact (\d+)/i)
-    const start = match ? Number(match[1]) : chunk * 4
-    return factCardResponse(createSequentialFactCards('Chunk compiler', 3, start), 'Chunk Compiler')
-  })
-
-  assert.ok(calls.some((call) => call.chunk === 1))
-  assert.ok(calls.some((call) => call.chunk > 1))
-  assert.ok(result.content.answerBank.length >= 5)
-})
-
-test('structured compiler routing diagnostics include fresh and retry metadata', async () => {
-  const source = buildStructuredFactSource('Routing diagnostics', 8)
-  const logs = await captureConsoleInfo(async () => {
-    await generateDeepLearnStructuredContent(createStructuredPromptInput(source, 'Fresh Source.pdf'), createStructuredPreparedGrounding(source), async () => factCardResponse(createSequentialFactCards('Routing diagnostics', 6), 'Fresh Source'), {
-      diagnosticsContext: {
-        queuedJobId: 'job-fresh',
-        canonicalSourceId: 'resource-fresh',
-        retryOfJobId: null,
-      },
-    })
-    await generateDeepLearnStructuredContent(createStructuredPromptInput(source, 'Retry Source.pdf'), createStructuredPreparedGrounding(source), async () => factCardResponse(createSequentialFactCards('Routing diagnostics', 6), 'Retry Source'), {
-      diagnosticsContext: {
-        queuedJobId: 'job-retry',
-        canonicalSourceId: 'resource-retry',
-        retryOfJobId: 'job-old',
-      },
-    })
-  })
-
-  const routingLogs = logs
-    .map((entry) => entry[1])
-    .filter((payload): payload is Record<string, unknown> => Boolean(payload) && typeof payload === 'object')
-    .filter((payload) => payload.event === 'structured_compiler_started')
-
-  assert.equal(routingLogs.length, 2)
-  assert.equal(routingLogs[0]?.generatorVersion, 'structured_fact_card_compiler_v1')
-  assert.equal(routingLogs[0]?.isRetry, false)
-  assert.equal(routingLogs[0]?.sourceTitle, 'Fresh Source.pdf')
-  assert.equal(typeof routingLogs[0]?.academicTextCharCount, 'number')
-  assert.equal(typeof routingLogs[0]?.chunkCount, 'number')
-  assert.equal(routingLogs[1]?.isRetry, true)
-})
-
-test('legacy staged composer only runs when the explicit generator flag enables it', async () => {
-  const source = buildStructuredFactSource('Legacy gated', 8)
-  const defaultSchemas: string[] = []
-  await generateDeepLearnStructuredContent(createStructuredPromptInput(source, 'Legacy Gate.pdf'), createStructuredPreparedGrounding(source), async (request) => {
-    defaultSchemas.push(request.schemaName)
-    assert.doesNotMatch(request.schemaName, /high_yield|identification|quick_answers/)
-    return factCardResponse(createSequentialFactCards('Legacy gated', 6), 'Legacy Gate')
-  })
-  assert.equal(defaultSchemas[0], 'deep_learn_study_pack_compiler')
-  assert.equal(defaultSchemas.every((schema) => schema === 'deep_learn_study_pack_compiler'), true)
-
-  const legacySchemas: string[] = []
-  await generateDeepLearnStructuredContentWithLegacyComposer(createPromptInput(), createPreparedGrounding(), async (request) => {
-    legacySchemas.push(request.schemaName)
-    if (request.schemaName.includes('high_yield')) return jsonResponse({ title: 'Legacy Gate', overview: 'Legacy gate overview.', sections: [] })
-    if (request.schemaName.includes('identification')) return jsonResponse({ sections: [], identificationItems: [] })
-    if (request.schemaName.includes('quick_answers')) return jsonResponse({ sections: [], answerBank: [] })
-    return jsonResponse({ sections: [], distinctions: [], likelyQuizTargets: [], cautionNotes: [] })
-  })
-
-  assert.ok(legacySchemas.some((name) => name.includes('high_yield')))
-  assert.ok(legacySchemas.some((name) => name.includes('identification')))
-  assert.ok(legacySchemas.some((name) => name.includes('quick_answers')))
-})
-
-test('structured compiler completes meaningful extracted text without source-map or staged diagnostics', async () => {
-  const source = buildStructuredFactSource('Clean diagnostics', 8)
-  const schemaNames: string[] = []
-  const logs = await captureConsoleInfo(async () => {
-    await generateDeepLearnStructuredContent(createStructuredPromptInput(source, 'Clean Diagnostics.pdf'), createStructuredPreparedGrounding(source), async (request) => {
-      schemaNames.push(request.schemaName)
-      return factCardResponse(createSequentialFactCards('Clean diagnostics', 6), 'Clean Diagnostics')
-    })
-  })
-
-  assert.equal(schemaNames.every((name) => !/high_yield|identification|quick_answers|source_map/i.test(name)), true)
-  const serializedLogs = JSON.stringify(logs)
-  assert.match(serializedLogs, /structured_fact_card_compiler_v1/)
-  assert.doesNotMatch(serializedLogs, /sourceMap|source_map|stage_completed|partial_save|high_yield|quick_answers/)
-})
-
 test('Deep Learn diagnostics select visual_extracted_text when extracted_text is metadata-only', () => {
   const weakExtract = 'File title: Lecture.pdf\nUUID: 11111111-1111-4111-8111-111111111111\nDebug: no readable text'
   const visualText = [
@@ -3316,517 +2892,8 @@ function createStructuredPreparedGrounding(source: string): Parameters<typeof ge
   }
 }
 
-function factCard(kind: string, prompt: string, answer: string, sourceQuote: string, sectionTitle: string) {
-  return {
-    kind,
-    prompt,
-    answer,
-    sourceQuote,
-    sectionTitle,
-    difficulty: 'medium',
-    confidence: 0.92,
-  }
-}
-
-function factCardResponse(factCards: unknown[], title: string) {
-  return jsonResponse({
-    title,
-    overview: `${title} study facts from selected source text.`,
-    factCards,
-  })
-}
-
-async function captureConsoleInfo(callback: () => Promise<void>) {
-  const originalInfo = console.info
-  const logs: unknown[][] = []
-  console.info = (...args: unknown[]) => {
-    logs.push(args)
-  }
-  try {
-    await callback()
-  } finally {
-    console.info = originalInfo
-  }
-  return logs
-}
-
-function buildStructuredFactSource(prefix: string, count: number) {
-  return Array.from({ length: count }, (_, index) => {
-    const item = index + 1
-    return `${prefix} fact ${item} explains grounded resource text for study. ${prefix} evidence ${item} supports a source-faithful answer for review.`
-  }).join('\n\n')
-}
-
-function getReviewerSourceFixture(id: string) {
-  const fixture = reviewerSourceFixtures.find((item) => item.id === id)
-  assert.ok(fixture, `Missing reviewer source fixture: ${id}`)
-  return fixture
-}
-
-function onePassReviewerResponse(fixture: ReviewerSourceFixture, content: DeepLearnGeneratedContent) {
-  return jsonResponse({
-    ...content,
-    title: content.title || fixture.title,
-    overview: content.overview || `${fixture.title} complete exam reviewer.`,
-  })
-}
-
-function textResponse(markdown: string) {
-  return {
-    status: 'completed',
-    output_text: markdown,
-    incomplete_details: null,
-  }
-}
-
-function buildClassicReviewerMarkdown(
-  fixture: ReviewerSourceFixture,
-  options: { title?: string; extraSections?: string[] } = {},
-) {
-  const title = options.title ?? fixture.title
-  const sections = [...fixture.expectedMajorSections, ...(options.extraSections ?? [])]
-  const sourceLines = fixture.extractedText
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line.length >= 40)
-  const sourceDetail = sourceLines.slice(0, 18).join(' ')
-  const completeSections = sections.map((section, index) => {
-    const detail = sourceLines[index % sourceLines.length] ?? sourceDetail
-    return [
-      `### ${section}`,
-      `- Key points: ${detail}`,
-      `- Definitions: ${section} should be reviewed with the wording and listed details from the lesson.`,
-      `- Important lists/classifications: ${sourceDetail.slice(0, 360)}`,
-      `- Exam notes / likely asked details: Be able to identify, define, enumerate, and distinguish ${section} from nearby source concepts.`,
-    ].join('\n')
-  }).join('\n\n')
-  const identification = sections
-    .concat(sourceLines.slice(0, 12))
-    .slice(0, 36)
-    .map((section, index) => `${index + 1}. ${section} - ${sourceLines[index % sourceLines.length] ?? section}`)
-    .join('\n')
-  const mcqs = Array.from({ length: 18 }, (_, index) => {
-    const section = sections[index % sections.length] ?? fixture.title
-    return `${index + 1}. Which source detail is most connected to ${section}?\nA. ${sourceLines[index % sourceLines.length] ?? section}\nB. A different source section\nC. A nearby but unsupported choice\nD. A broad distractor\nAnswer: A. Explanation: The answer is stated in the selected source.`
-  }).join('\n\n')
-  const lists = sections.slice(0, 18).map((section, index) => `${index + 1}. Enumerate the important details under ${section}.`).join('\n')
-  const timeline = /timeline|date|organization|phase|1975|1989|2009|2010/i.test(`${fixture.extractedText} ${sections.join(' ')}`)
-    ? sections.filter((section) => /phase|timeline|organization|R\.?A\.?|date|1975|1989|2009|2010/i.test(section)).map((section) => `- ${section}`).join('\n') || '- Review the source dates and events in order.'
-    : 'No dates or events are emphasized in the source.'
-  const compare = /vs|distinguish|vulnerability|exploit|breach|InfoSec|IT Sec|style|classification/i.test(`${fixture.extractedText} ${sections.join(' ')}`)
-    ? '- Compare related or confusable source concepts using the source definitions and classifications.'
-    : 'No major compare/distinguish pair is emphasized in the source.'
-
-  return [
-    `# Reviewer: ${title}`,
-    '',
-    '## High-Yield Overview',
-    `- ${fixture.extractedText.slice(0, 900)}`,
-    '',
-    '## Complete Exam Reviewer',
-    completeSections,
-    '',
-    '## Identification Reviewer',
-    identification,
-    '',
-    '## Multiple Choice Practice',
-    mcqs,
-    '',
-    '## Enumeration / List Questions',
-    lists,
-    '',
-    '## Timeline / Dates',
-    timeline,
-    '',
-    '## Compare / Distinguish',
-    compare,
-    '',
-    '## Final Quick Review',
-    sections.slice(0, 24).map((section) => `- ${section}`).join('\n'),
-  ].join('\n')
-}
-
-function buildOnePassFixtureContent(
-  fixture: ReviewerSourceFixture,
-  options: { includeAllExpectedSections?: boolean } = {},
-): DeepLearnGeneratedContent {
-  const sections = (options.includeAllExpectedSections ? fixture.expectedMajorSections : fixture.expectedMajorSections.slice(0, 5))
-    .map((section) => {
-      const quote = getFixtureSectionQuote(fixture, section)
-      return {
-        heading: section,
-        body: `${quote} This section is included in source order for exam review.`,
-      }
-    })
-  const answerBank = sections.map((section, index) => answerBankFromSource(section.heading, section.body, index))
-  const identificationItems = sections.map((section, index) => identificationFromSource(section.heading, section.body, index))
-  const likelyQuizTargets = sections.slice(0, Math.max(4, Math.min(10, sections.length))).map((section, index) => quizTargetFromSource(section.heading, section.body, index))
-  return normalizeDeepLearnGeneratedContent({
-    title: fixture.title,
-    overview: `${fixture.title} complete source-faithful exam reviewer.`,
-    sections,
-    answerBank: [
-      ...answerBank,
-      ...buildItSecuritySupplementalAnswerBank(fixture),
-    ],
-    identificationItems,
-    distinctions: buildFixtureDistinctions(fixture),
-    likelyQuizTargets: [
-      ...likelyQuizTargets,
-      {
-        target: `Multiple choice: Which source statement matches ${sections[0]?.heading ?? fixture.title}?`,
-        reason: sections[0]?.body ?? fixture.notes,
-        importance: 'high',
-        reviewText: sections[0]?.heading ?? fixture.title,
-        draftExplanation: sections[0]?.body ?? fixture.notes,
-        sourceSnippet: sections[0]?.body ?? fixture.notes,
-        linkedDraftSectionId: null,
-        supportingContext: sections[0]?.body ?? fixture.notes,
-        compareContext: null,
-        simplifiedWording: null,
-        confusionNotes: [],
-        relatedConcepts: [],
-      },
-    ],
-    cautionNotes: [],
-  }, fixture.title)
-}
-
-function buildOnePassArnisContent(): DeepLearnGeneratedContent {
-  const fixture = getReviewerSourceFixture('short-martial-arts-module')
-  const sections = [
-    'Arnis Definition',
-    'Republic Act 9850',
-    'Historical Concept',
-    'Evolution and Classifications',
-    'Organizations and Timeline',
-    '3 Main Groups',
-    'Courtesy and Salutation',
-    'Strike Types',
-    'Equipment and Weapons',
-  ].map((heading) => ({
-    heading,
-    body: getArnisSourceSentence(heading),
-  }))
-  return normalizeDeepLearnGeneratedContent({
-    title: 'PATHFit Arnis Reviewer',
-    overview: 'Complete PATHFit Arnis reviewer from the selected source.',
-    sections,
-    answerBank: sections.map((section, index) => answerBankFromSource(section.heading, section.body, index)),
-    identificationItems: sections.map((section, index) => identificationFromSource(section.heading, section.body, index)),
-    distinctions: [{
-      conceptA: 'Northern Style',
-      conceptB: 'Southern Style',
-      difference: 'Northern Style is associated with Arnis while Southern Style is associated with Kali in the source.',
-      confusionNote: null,
-      reviewText: 'Northern Style vs Southern Style',
-      draftExplanation: 'Northern Style is associated with Arnis while Southern Style is associated with Kali.',
-      sourceSnippet: '3 Main Groups Northern Style - Arnis; Central Style - Arnis de Mano; Southern Style - Kali',
-      linkedDraftSectionId: null,
-      supportingContext: '3 Main Groups Northern Style - Arnis; Central Style - Arnis de Mano; Southern Style - Kali',
-      compareContext: '3 Main Groups Northern Style - Arnis; Central Style - Arnis de Mano; Southern Style - Kali',
-      simplifiedWording: null,
-      confusionNotes: [],
-      relatedConcepts: ['Central Style', 'Arnis de Mano'],
-    }],
-    likelyQuizTargets: sections.slice(0, 7).map((section, index) => quizTargetFromSource(section.heading, section.body, index)),
-    cautionNotes: [],
-  }, fixture.title)
-}
-
-function answerBankFromSource(heading: string, body: string, index: number) {
-  return {
-    cue: heading,
-    kind: /ra 9850|timeline|organizations|phase/i.test(heading) ? 'date_event' : 'term_definition',
-    answer: {
-      exact: body,
-      examSafe: body,
-      simplified: body,
-    },
-    compactAnswer: {
-      exact: body,
-      examSafe: body,
-      simplified: body,
-    },
-    importance: index < 8 ? 'high' : 'medium',
-    sortKey: null,
-    distractors: [],
-    reviewText: heading,
-    draftExplanation: body,
-    sourceSnippet: body,
-    linkedDraftSectionId: null,
-    supportingContext: body,
-    compareContext: null,
-    simplifiedWording: null,
-    confusionNotes: [],
-    relatedConcepts: [],
-  }
-}
-
-function identificationFromSource(heading: string, body: string, index: number) {
-  return {
-    prompt: `Identify what the source says about ${heading}.`,
-    kind: /ra 9850|timeline|organizations|phase/i.test(heading) ? 'date_event' : 'term_definition',
-    answer: {
-      exact: body,
-      examSafe: body,
-      simplified: null,
-    },
-    importance: index < 8 ? 'high' : 'medium',
-    distractors: [],
-    reviewText: heading,
-    draftExplanation: body,
-    sourceSnippet: body,
-    linkedDraftSectionId: null,
-    supportingContext: body,
-    compareContext: null,
-    simplifiedWording: null,
-    confusionNotes: [],
-    relatedConcepts: [],
-  }
-}
-
-function quizTargetFromSource(heading: string, body: string, index: number) {
-  return {
-    target: index % 2 === 0
-      ? `Multiple choice: Which source detail belongs to ${heading}?`
-      : `Identification: ${heading}`,
-    reason: body,
-    importance: index < 8 ? 'high' : 'medium',
-    reviewText: heading,
-    draftExplanation: body,
-    sourceSnippet: body,
-    linkedDraftSectionId: null,
-    supportingContext: body,
-    compareContext: null,
-    simplifiedWording: null,
-    confusionNotes: [],
-    relatedConcepts: [],
-  }
-}
-
-function buildFixtureDistinctions(fixture: ReviewerSourceFixture) {
-  if (fixture.id !== 'taxonomy-heavy-security') return []
-  return [{
-    conceptA: 'Vulnerability',
-    conceptB: 'Exploit',
-    difference: 'A vulnerability is the weakness, while an exploit is the method or tool used to take advantage of that weakness.',
-    confusionNote: null,
-    reviewText: 'Vulnerability vs Exploit',
-    draftExplanation: 'A vulnerability is the weakness; an exploit is the method used against it.',
-    sourceSnippet: 'A vulnerability is a weakness or flaw in hardware, software, configuration, process, or human behavior.',
-    linkedDraftSectionId: null,
-    supportingContext: 'An exploit is a method or tool used to take advantage of a vulnerability.',
-    compareContext: 'Vulnerability, Exploit, and Breach',
-    simplifiedWording: null,
-    confusionNotes: [],
-    relatedConcepts: ['Breach'],
-  }]
-}
-
-function buildItSecuritySupplementalAnswerBank(fixture: ReviewerSourceFixture) {
-  if (fixture.id !== 'taxonomy-heavy-security') return []
-  const supplemental = [
-    ['Domains', 'Domains of IT Security include network, internet, endpoint, cloud, application, information, operational, mobile, IoT, user education, and cyber security.'],
-    ['Attackers', 'Attackers include insiders, outsiders, organized attackers, cyber criminals, hacktivists, terrorists, state-sponsored hackers, black hats, grey hats, white hats, and amateurs.'],
-    ['Infiltration', 'Methods of infiltration include social engineering, password cracking, vulnerability exploitation, and advanced persistent threats.'],
-    ['Denial of Service', 'Denial of service can overwhelm traffic, send enormous data, use malicious packets, zombies, botnets, and SEO poisoning.'],
-    ['Impact Reduction', 'Impact reduction includes communicating the issue, being accountable, finding the cause, cleaning systems, and educating employees, partners, and customers.'],
-  ]
-  return supplemental.map(([heading, body], index) => answerBankFromSource(heading!, body!, index + 20))
-}
-
-function getArnisSourceSentence(heading: string) {
-  const source = PATHFIT_ARNIS_SAMPLE_SOURCE
-  if (/definition/i.test(heading)) return 'Arnis is the Philippine national martial art and sport using sticks, bladed weapons, and empty-hand techniques.'
-  if (/9850/i.test(heading)) return 'RA 9850 declared Arnis as the national martial art and sport of the Philippines.'
-  if (/historical/i.test(heading)) return 'Arnis developed from indigenous fighting systems and preserved Filipino culture through practical self-defense.'
-  if (/evolution/i.test(heading)) return 'Evolution of Arnis includes Classical Arnis, Modern Arnis, Sports Arnis, Anyo, and Labanan.'
-  if (/organizations/i.test(heading)) return 'Organizations and timeline include 1975 NARAPHIL, 1986 ARPI, 1989 WEKAF, and 2010 i-ARNIS.'
-  if (/main groups/i.test(heading)) return '3 Main Groups are Northern Style - Arnis; Central Style - Arnis de Mano; Southern Style - Kali.'
-  if (/salutation/i.test(heading)) return 'Courtesy and Salutation includes attention stance, ready stance, bow, salute, and return to ready stance.'
-  if (/strike/i.test(heading)) return 'Strike Types include forehand strike, backhand strike, thrust, diagonal strike, horizontal strike, and vertical strike.'
-  if (/equipment|weapons/i.test(heading)) return 'Equipment and Weapons include Baston, Daga, Bolo, Espada y Daga, and Bangkaw.'
-  return firstSentence(source)
-}
-
-function createReviewerFixtureCards(
-  fixture: ReviewerSourceFixture,
-  options: { includeDensityCards?: boolean } = {},
-) {
-  const sections = uniqueFixtureSections([
-    ...fixture.expectedMajorSections,
-    ...buildSourceOutline(fixture.extractedText)
-      .filter((item) => item.required)
-      .map((item) => item.title),
-  ])
-  const sectionCards = sections.map((section) => {
-    const quote = getFixtureSectionQuote(fixture, section)
-    if (/^summary$/i.test(section)) {
-      const summaryQuote = 'It should not duplicate broad cards when a specific section needs direct review coverage.'
-      return factCard(
-        'fact',
-        'What complete review coverage does the Summary require?',
-        summaryQuote,
-        summaryQuote,
-        section,
-      )
-    }
-    return factCard(
-      /definition|triad|malware|equipment|background/i.test(section) ? 'definition' : 'fact',
-      `What should you remember about ${section}?`,
-      `${section}: ${quote}`,
-      quote,
-      section,
-    )
-  })
-
-  if (!options.includeDensityCards) {
-    return [
-      ...sectionCards,
-      ...createFixtureSupportCards(fixture, Math.max(0, 20 - sectionCards.length)),
-    ]
-  }
-
-  return [
-    ...sectionCards,
-    factCard(
-      'list',
-      'What controls support confidentiality?',
-      'Passwords, access permissions, encryption, and data classification support confidentiality.',
-      'Examples include passwords, access permissions, encryption, and data classification.',
-      'CIA Triad',
-    ),
-    factCard(
-      'list',
-      'What controls support availability?',
-      'Backups, redundancy, disaster recovery, failover systems, and maintenance planning support availability.',
-      'Availability controls include backups, redundancy, disaster recovery, failover systems, and maintenance planning.',
-      'CIA Triad',
-    ),
-    factCard(
-      'classification',
-      'How do vulnerability, exploit, and breach differ?',
-      'A vulnerability is the weakness, an exploit is the method used against it, and a breach is the successful security violation.',
-      'A vulnerability is a weakness or flaw in hardware, software, configuration, process, or human behavior.',
-      'Vulnerability, Exploit, and Breach',
-    ),
-    factCard(
-      'process',
-      'How do detection, investigation, and remediation connect?',
-      'Detection identifies suspicious activity, investigation determines what happened, and remediation fixes the problem and reduces future risk.',
-      'Detection is the process of identifying suspicious activity, policy violations, malware, unauthorized access, or signs of compromise.',
-      'Detection, Investigation, and Remediation',
-    ),
-    factCard(
-      'classification',
-      'How do threats and attacks differ?',
-      'A threat is anything that can cause harm, while an attack is an intentional attempt to exploit a weakness.',
-      'A threat is anything that can cause harm to information, systems, or users.',
-      'Threats and Attacks',
-    ),
-    factCard(
-      'definition',
-      'What makes a host a zombie?',
-      'A zombie is an infected host controlled remotely by an attacker without the user knowing.',
-      "A zombie is an infected host controlled remotely by an attacker without the user's knowledge.",
-      'Botnets and Zombies',
-    ),
-    factCard(
-      'list',
-      'What breach impacts should a reviewer remember?',
-      'A breach can damage reputation, cause vandalism or theft, reduce revenue, damage intellectual property, create legal penalties, and reduce trust.',
-      'A security breach can cause ruined reputation, vandalism, theft, revenue loss, damaged intellectual property, legal penalties, and loss of customer trust.',
-      'Impact of Security Breaches',
-    ),
-    factCard(
-      'fact',
-      'Why does UTM need monitoring?',
-      'UTM simplifies central security administration, but it still must be configured and monitored properly.',
-      'However, UTM must be configured and monitored properly.',
-      'Unified Threat Management',
-    ),
-    factCard(
-      'process',
-      'Why does remediation reduce future risk?',
-      'Remediation removes the immediate problem and improves controls through actions such as patching, password resets, backup restoration, and configuration changes.',
-      'Remediation may include removing malware, resetting passwords, patching software, changing configurations, restoring backups, blocking malicious addresses, and improving controls.',
-      'Detection, Investigation, and Remediation',
-    ),
-    factCard(
-      'fact',
-      'Why does least privilege matter?',
-      'Least privilege limits users to only the permissions needed for their role, reducing the harm from misuse or compromise.',
-      'Users should only have the permissions needed for their role.',
-      'Security Practices and Controls',
-    ),
-  ]
-}
-
-function uniqueFixtureSections(sections: string[]) {
-  const seen = new Set<string>()
-  return sections.filter((section) => {
-    const normalized = normalizeForFixtureLookup(section)
-    if (!normalized || seen.has(normalized)) {
-      return false
-    }
-    seen.add(normalized)
-    return true
-  })
-}
-
-function createFixtureSupportCards(fixture: ReviewerSourceFixture, count: number) {
-  return Array.from({ length: count }, (_, index) => {
-    const section = fixture.expectedMajorSections[index % fixture.expectedMajorSections.length]!
-    const quote = getFixtureSectionQuote(fixture, section)
-    return factCard(
-      'fact',
-      `What extra review detail ${index + 1} matters for ${section}?`,
-      `${section} review detail ${index + 1} is grounded in this source point: ${quote}`,
-      quote,
-      section,
-    )
-  })
-}
-
-function getFixtureSectionQuote(fixture: ReviewerSourceFixture, section: string) {
-  const normalizedSection = normalizeForFixtureLookup(section)
-  const paragraphs = fixture.extractedText.split(/\n\s*\n/)
-  const headingIndex = paragraphs.findIndex((paragraph) => {
-    const normalizedParagraph = normalizeForFixtureLookup(paragraph)
-    return normalizedParagraph === normalizedSection || normalizedParagraph.includes(normalizedSection)
-  })
-  const candidate = headingIndex >= 0 ? paragraphs[headingIndex + 1] : ''
-  const fallback = paragraphs.find((paragraph) => normalizeForFixtureLookup(paragraph).includes(normalizedSection.split(' ').at(0) ?? normalizedSection))
-  return firstSentence(candidate || fallback || section)
-}
-
-function firstSentence(value: string) {
-  return value
-    .replace(/\s+/g, ' ')
-    .split(/(?<=\.)\s+/)[0]!
-    .trim()
-}
-
-function normalizeForFixtureLookup(value: string) {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
-}
-
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}
-
-function createSequentialFactCards(prefix: string, count: number, start = 1) {
-  return Array.from({ length: count }, (_, index) => {
-    const item = start + index
-    return factCard(
-      'fact',
-      `What does ${prefix} fact ${item} explain?`,
-      `${prefix} fact ${item} explains grounded resource text for study.`,
-      `${prefix} fact ${item} explains grounded resource text for study.`,
-      `${prefix} fact ${item}`,
-    )
-  })
 }
 
 function createContext(resource: ModuleSourceResource, storedResource: ModuleResource) {
@@ -4235,3 +3302,4 @@ function quizTargetItem(index: number) {
     relatedConcepts: [],
   }
 }
+

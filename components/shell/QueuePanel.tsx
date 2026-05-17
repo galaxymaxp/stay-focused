@@ -163,10 +163,10 @@ function FailedJobCard({
             <p style={titleStyle}>{getFailedTitle(job)}</p>
             <p style={sourceStyle}>{details.sourceTitle}</p>
             <p style={statusTextStyle}>{details.createdLabel}{details.retryLabel ? ` - ${details.retryLabel}` : ''}</p>
-            <p style={statusTextStyle}>Failed at {details.failedStage}</p>
+            {details.failedStage ? <p style={statusTextStyle}>Failed at {details.failedStage}</p> : null}
             <p style={{ ...statusTextStyle, color: 'var(--red)', marginTop: '0.22rem' }}>{details.reason}</p>
             {details.hasNewerAttempt ? (
-              <p style={{ ...statusTextStyle, marginTop: '0.22rem' }}>Older attempt. A newer Study Pack retry exists for this source.</p>
+              <p style={{ ...statusTextStyle, marginTop: '0.22rem' }}>Older attempt. A newer Reviewer attempt exists for this source.</p>
             ) : null}
           </div>
         </div>
@@ -485,7 +485,7 @@ export function QueuePanel() {
                   <ListTodo className="h-7 w-7 mx-auto" style={{ color: 'var(--text-muted)' }} />
                   <p style={{ margin: '0.55rem 0 0', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: 650 }}>Nothing in the queue.</p>
                   <p style={{ margin: '0.22rem 0 0', fontSize: '12px', lineHeight: 1.5, color: 'var(--text-muted)' }}>
-                    Generate a study pack or sync Canvas to see progress here.
+                    Generate a Reviewer or sync Canvas to see progress here.
                   </p>
                 </div>
               ) : (
@@ -526,7 +526,7 @@ export function QueuePanel() {
 
 function formatQueueTitle(job: QueuedJob) {
   if (job.type === 'learn_generation') {
-    return `Generating study pack: ${getJobSourceName(job)}`
+    return `Generating Reviewer: ${getJobSourceName(job)}`
   }
   if (job.type === 'task_output' || job.type === 'do_generation') {
     return `Generating task output: ${getJobSourceName(job)}`
@@ -589,7 +589,7 @@ function getLearnFailureDetails(job: QueuedJob, jobs: QueuedJob[]) {
   return {
     sourceTitle: getJobSourceName(job),
     createdLabel: formatRelativeQueueTime(job.createdAt),
-    retryLabel: retryAttempt ? 'Retry attempt' : 'Original generation',
+    retryLabel: retryAttempt ? 'Retry attempt' : 'Reviewer generation',
     failedStage: labelFailedStage(getString(job.result, 'failedStage')),
     reason: getString(job.result, 'shortReason') ?? humanizeError(job.error),
     hasNewerAttempt,
@@ -599,11 +599,12 @@ function getLearnFailureDetails(job: QueuedJob, jobs: QueuedJob[]) {
 function labelFailedStage(stage: string | null) {
   if (!stage || stage === 'queued') return 'preparation'
   if (stage === 'compacting_source') return 'source preparation'
+  if (stage === 'reviewer_markdown' || stage === 'structured_compiler') return 'Reviewer generation'
   if (stage === 'high_yield') return 'study pack summary'
   if (stage === 'identification') return 'identification review'
   if (stage === 'quick_answers') return 'quick answers'
   if (stage === 'distinctions') return 'quiz targets'
-  if (stage === 'compact_fallback') return 'compact fallback'
+  if (stage === 'compact_fallback') return 'Reviewer fallback'
   return stage.replace(/_/g, ' ')
 }
 
@@ -646,12 +647,13 @@ function getTaskContextTitle(job: QueuedJob) {
 }
 
 function cleanJobTitle(title: string) {
-  return title.replace(/^Deep Learn:\s*/i, 'Generating study pack: ').trim()
+  return title.replace(/^Deep Learn:\s*/i, 'Generating Reviewer: ').trim()
 }
 
 function stripKnownPrefix(title: string) {
   const stripped = title
     .replace(/^Generating study pack:\s*/i, '')
+    .replace(/^Generating Reviewer:\s*/i, '')
     .replace(/^Generating task output:\s*/i, '')
     .replace(/^Deep Learn:\s*/i, '')
     .replace(/^Do Now:\s*/i, '')
@@ -689,8 +691,8 @@ function getActiveStatus(job: QueuedJob, progress: number) {
     return 'Finishing up'
   }
   if (progress < 30) return 'Reading the source'
-  if (progress < 75) return 'Building notes, key terms, and questions'
-  if (progress < 100) return 'Saving the study pack'
+  if (progress < 75) return 'Building the full Reviewer'
+  if (progress < 100) return 'Saving the Reviewer'
   return 'Finishing up'
 }
 
@@ -698,9 +700,7 @@ function getCompletedTitle(job: QueuedJob) {
   if (job.type === 'canvas_sync') return 'Canvas sync complete'
   if (job.type === SOURCE_OCR_JOB_TYPE) return 'Scanned PDF prepared'
   if (job.type === RESOURCE_EXTRACTION_JOB_TYPE) return 'Source prepared'
-  if (job.type === 'learn_generation') return getString(job.result, 'compactFallbackUsed') === 'true' || job.result?.compactFallbackUsed === true
-    ? 'Compact study pack ready'
-    : 'Study pack ready'
+  if (job.type === 'learn_generation') return 'Full Reviewer ready'
   if (job.type === 'task_output' || job.type === 'do_generation') return 'Activity ready'
   return 'Job complete'
 }
@@ -709,7 +709,7 @@ function getFailedTitle(job: QueuedJob) {
   if (job.type === 'canvas_sync') return 'Canvas sync failed'
   if (job.type === SOURCE_OCR_JOB_TYPE) return 'Scanned PDF preparation failed'
   if (job.type === RESOURCE_EXTRACTION_JOB_TYPE) return 'Source preparation failed'
-  if (job.type === 'learn_generation') return 'Study pack failed'
+  if (job.type === 'learn_generation') return 'Reviewer generation failed'
   if (job.type === 'task_output' || job.type === 'do_generation') return 'Activity failed'
   return `Failed: ${getJobSourceName(job)}`
 }
@@ -718,7 +718,7 @@ function getCanceledTitle(job: QueuedJob) {
   if (job.type === 'canvas_sync') return 'Canvas sync canceled'
   if (job.type === SOURCE_OCR_JOB_TYPE) return 'Scanning canceled'
   if (job.type === RESOURCE_EXTRACTION_JOB_TYPE) return 'Preparation canceled'
-  if (job.type === 'learn_generation') return 'Study pack canceled'
+  if (job.type === 'learn_generation') return 'Reviewer generation canceled'
   if (job.type === 'task_output' || job.type === 'do_generation') return 'Activity canceled'
   return 'Job canceled'
 }
@@ -758,7 +758,7 @@ function humanizeError(error: string | null) {
   const trimmed = error.replace(/\s+/g, ' ').trim()
   if (!trimmed) return fallback
   if (/max_output_tokens/i.test(trimmed)) {
-    return 'The model response limit was reached even after compact fallback. Try a smaller source or split the module.'
+    return 'Reviewer generation could not finish. Try again from the source.'
   }
   return trimmed.length > 150 ? `${trimmed.slice(0, 147).trim()}...` : trimmed
 }

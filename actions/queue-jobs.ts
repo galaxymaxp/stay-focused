@@ -38,7 +38,7 @@ import {
   DeepLearnGenerationBlockedError,
   DeepLearnGenerationIncompleteError,
   type DeepLearnGenerationResult,
-  STRUCTURED_FACT_CARD_COMPILER_VERSION,
+  CLASSIC_MARKDOWN_REVIEWER_VERSION,
   assertDeepLearnContentReadyForSave,
   buildDeepLearnSourceDiagnostics,
   generateDeepLearnNoteForResource,
@@ -189,7 +189,7 @@ export async function queueLearnGenerationAction(input: {
   const job = await createQueuedJob(
     user.id,
     'learn_generation',
-    `Generating study pack: ${input.resourceTitle}`,
+    `Generating Reviewer: ${input.resourceTitle}`,
     {
       moduleId: input.moduleId,
       resourceId: input.resourceId,
@@ -246,7 +246,7 @@ export async function retryLearnGenerationJobAction(jobId: string): Promise<Queu
   const job = await createQueuedJob(
     user.id,
     'learn_generation',
-    `Retrying study pack: ${resourceTitle}`,
+    `Retrying Reviewer: ${resourceTitle}`,
     {
       moduleId,
       resourceId,
@@ -1134,7 +1134,9 @@ async function processLearnGenerationJob(input: {
     resourceId: input.resourceId,
     courseId: input.courseId,
     retryOfJobId: input.retryOfJobId ?? null,
-    generatorVersion: STRUCTURED_FACT_CARD_COMPILER_VERSION,
+    generatorVersion: CLASSIC_MARKDOWN_REVIEWER_VERSION,
+    qualityMode: 'classic-markdown-reviewer',
+    structuredCompilerUsed: false,
   }
 
   async function canceled() {
@@ -1159,7 +1161,7 @@ async function processLearnGenerationJob(input: {
     await createNotification({
       userId: input.userId,
       type: 'queue_failed',
-      title: 'Study pack failed',
+      title: 'Reviewer generation failed',
       body: message,
       href: href ?? (input.courseId ? `/modules/${input.moduleId}/learn` : undefined),
       severity: 'error',
@@ -1201,7 +1203,9 @@ async function processLearnGenerationJob(input: {
       resourceTitle: resource.title,
       sourceTitle: resource.title,
       retryOfJobId: input.retryOfJobId ?? null,
-      generatorVersion: STRUCTURED_FACT_CARD_COMPILER_VERSION,
+      generatorVersion: CLASSIC_MARKDOWN_REVIEWER_VERSION,
+      qualityMode: 'classic-markdown-reviewer',
+      structuredCompilerUsed: false,
     }
     const readiness = classifyDeepLearnResourceReadiness({ resource, storedResource, canonicalResourceId })
 
@@ -1219,7 +1223,7 @@ async function processLearnGenerationJob(input: {
       resourceId: canonicalResourceId,
       status: 'pending',
       title: resource.title,
-      overview: 'Deep Learn is preparing the study pack.',
+      overview: 'Deep Learn is preparing the exam Reviewer.',
       sections: [],
       noteBody: '',
       answerBank: [],
@@ -1248,10 +1252,12 @@ async function processLearnGenerationJob(input: {
         moduleId: workspace.module.id,
         courseId: workspace.module.courseId ?? input.courseId ?? null,
         resourceTitle: resource.title,
-        statusMessage: 'Preparing readable source text for structured Study Pack generation.',
+        statusMessage: 'Preparing readable source text for Reviewer generation.',
         retryOfJobId: input.retryOfJobId ?? null,
         retryAttempt: Boolean(input.retryOfJobId),
-        generatorVersion: STRUCTURED_FACT_CARD_COMPILER_VERSION,
+        generatorVersion: CLASSIC_MARKDOWN_REVIEWER_VERSION,
+        qualityMode: 'classic-markdown-reviewer',
+        structuredCompilerUsed: false,
       },
     })
     if (await canceled()) return
@@ -1263,7 +1269,7 @@ async function processLearnGenerationJob(input: {
     let generated: DeepLearnGenerationResult | null = null
     let heartbeat: ReturnType<typeof setInterval> | null = null
     let latestProgress = 25
-    latestStatusMessage = 'Preparing readable source text for structured Study Pack generation.'
+    latestStatusMessage = 'Preparing readable source text for Reviewer generation.'
     try {
       const sourceDiagnostics = buildDeepLearnSourceDiagnostics({
         resource,
@@ -1283,7 +1289,9 @@ async function processLearnGenerationJob(input: {
         sourceTitle: resource.title,
         sourceFieldUsed: sourceDiagnostics.sourceFieldUsed,
         academicTextCharCount: sourceDiagnostics.academicTextCharCount,
-        generatorVersion: STRUCTURED_FACT_CARD_COMPILER_VERSION,
+        generatorVersion: CLASSIC_MARKDOWN_REVIEWER_VERSION,
+        qualityMode: 'classic-markdown-reviewer',
+        structuredCompilerUsed: false,
       }
       heartbeat = setInterval(() => {
         void updateQueuedJobStatus(input.jobId, 'running', {
@@ -1293,7 +1301,9 @@ async function processLearnGenerationJob(input: {
             moduleId: workspace.module.id,
             resourceTitle: resource.title,
             statusMessage: latestStatusMessage,
-            generatorVersion: STRUCTURED_FACT_CARD_COMPILER_VERSION,
+            generatorVersion: CLASSIC_MARKDOWN_REVIEWER_VERSION,
+            qualityMode: 'classic-markdown-reviewer',
+            structuredCompilerUsed: false,
           },
         })
       }, 25000)
@@ -1324,7 +1334,9 @@ async function processLearnGenerationJob(input: {
               compactFallbackUsed: update.compactFallbackUsed ?? false,
               retryOfJobId: input.retryOfJobId ?? null,
               retryAttempt: Boolean(input.retryOfJobId),
-              generatorVersion: generated?.generatorVersion ?? STRUCTURED_FACT_CARD_COMPILER_VERSION,
+              generatorVersion: generated?.generatorVersion ?? CLASSIC_MARKDOWN_REVIEWER_VERSION,
+              qualityMode: 'classic-markdown-reviewer',
+              structuredCompilerUsed: false,
             },
           })
         },
@@ -1413,25 +1425,29 @@ async function processLearnGenerationJob(input: {
       resourceTitle: resource.title,
       href: resultHref,
       statusMessage: partialCompletionMessage ?? (generated.compactFallbackUsed
-        ? 'Compact study pack ready.'
-        : 'Study pack ready.'),
+        ? 'Full Reviewer ready. Source text was truncated to fit provider limits.'
+        : 'Full Reviewer ready.'),
       compactFallbackUsed: generated.compactFallbackUsed,
       partialReason: getPartialStudyPackReason(generated.content.cautionNotes),
       retryOfJobId: input.retryOfJobId ?? null,
       retryAttempt: Boolean(input.retryOfJobId),
       generatorVersion: generated.generatorVersion,
+      qualityMode: 'classic-markdown-reviewer',
+      structuredCompilerUsed: false,
+      reviewerMarkdownLength: generated.content.reviewerMarkdown?.length ?? 0,
+      sourceCharCount: generated.sourceGrounding.charCount,
     })
     revalidateLearnQueuePaths(workspace.module.id, workspace.module.courseId ?? input.courseId ?? null, canonicalResourceId)
 
     await createNotification({
       userId: input.userId,
       type: 'queue_completed',
-      title: 'Study pack ready',
+      title: 'Full Reviewer ready',
       body: partialCompletionMessage
         ? partialCompletionMessage
         : generated.compactFallbackUsed
-        ? `Your study pack for "${resource.title}" is ready. Stay Focused generated a compact version because the source was long.`
-        : `Your study pack for "${resource.title}" is ready.`,
+        ? `Your full Reviewer for "${resource.title}" is ready. The source was trimmed to fit provider limits.`
+        : `Your full Reviewer for "${resource.title}" is ready.`,
       href: resultHref,
       severity: 'success',
       metadata: { jobId: input.jobId, dedupeKey: `learn:${canonicalResourceId}` },
@@ -1463,7 +1479,7 @@ async function processLearnGenerationJob(input: {
     await createNotification({
       userId: input.userId,
       type: 'queue_failed',
-      title: 'Study pack failed',
+      title: 'Reviewer generation failed',
       body: message,
       severity: 'error',
       metadata: { jobId: input.jobId, dedupeKey: `learn-fail:${input.jobId}` },
@@ -1495,7 +1511,7 @@ function getStringFromJobRecord(source: Record<string, unknown> | null, key: str
 
 function humanizeLearnGenerationFailureForQueue(message: string) {
   const trimmed = message.replace(/\s+/g, ' ').trim()
-  if (!trimmed) return 'Deep Learn could not finish this Study Pack.'
+  if (!trimmed) return 'Deep Learn could not finish this Reviewer.'
   if (/quiz_targets_output_too_large|Likely quiz targets were too large/i.test(trimmed)) {
     return DEEP_LEARN_QUIZ_TARGETS_OUTPUT_TOO_LARGE_MESSAGE
   }
@@ -1506,13 +1522,13 @@ function humanizeLearnGenerationFailureForQueue(message: string) {
     return DEEP_LEARN_QUICK_ANSWERS_OUTPUT_TOO_LARGE_MESSAGE
   }
   if (/max_output_tokens|response size limit|too large/i.test(trimmed)) {
-    return 'Study Pack generation was too large for this source. Try again or use a smaller source.'
+    return 'Reviewer generation could not finish. Try again from the source.'
   }
   if (/not enough readable text|readable text|source text|metadata|OCR|extract/i.test(trimmed)) {
     return 'The selected source does not have enough readable academic text yet.'
   }
   if (/structured study content|answerBank|identification|quiz/i.test(trimmed)) {
-    return 'Deep Learn could not build enough structured study content from the selected source.'
+    return 'Deep Learn could not build a complete Reviewer from the selected source.'
   }
   return trimmed.length > 150 ? `${trimmed.slice(0, 147).trim()}...` : trimmed
 }

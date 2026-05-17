@@ -12,7 +12,7 @@ export interface DeepLearnResourceUiState {
   tone: 'accent' | 'warning' | 'muted'
   noteHref: string
   quizHref: string
-  primaryLabel: 'Generate Study Pack' | 'Open Study Pack' | 'Open Source'
+  primaryLabel: 'Generate Reviewer' | 'Open Reviewer' | 'Open Source'
   summary: string
   detail: string
   quizReady: boolean
@@ -81,14 +81,14 @@ export function getDeepLearnResourceUiState(
       tone: 'muted',
       noteHref,
       quizHref,
-      primaryLabel: 'Generate Study Pack',
+      primaryLabel: 'Generate Reviewer',
       summary: readiness?.summary
-        ?? 'Turn this resource into a Study Pack for understanding, application, and source-backed review.',
+        ?? 'Turn this resource into a full source-backed exam Reviewer.',
       detail: readiness?.state === 'scan_fallback'
         ? readiness.detail
         : readiness?.state === 'partial_text'
           ? readiness.detail
-          : 'Deep Learn builds a Study Pack first, then Reviewer and Quiz use the same grounded source material.',
+          : 'Deep Learn builds a full exam Reviewer from the selected academic source.',
       quizReady: false,
     }
   }
@@ -100,9 +100,9 @@ export function getDeepLearnResourceUiState(
       tone: 'warning',
       noteHref,
       quizHref,
-      primaryLabel: 'Open Study Pack',
-      summary: note.overview || 'Deep Learn is building the saved Study Pack.',
-      detail: 'Generation is in progress. Open the Study Pack to refresh status, or keep the source support nearby while it finishes.',
+      primaryLabel: 'Open Reviewer',
+      summary: note.overview || 'Deep Learn is building the saved Reviewer.',
+      detail: 'Generation is in progress. Open the Reviewer to refresh status, or keep the source support nearby while it finishes.',
       quizReady: false,
     }
   }
@@ -114,9 +114,9 @@ export function getDeepLearnResourceUiState(
       tone: 'warning',
       noteHref,
       quizHref,
-      primaryLabel: 'Generate Study Pack',
-      summary: note.errorMessage || 'Deep Learn could not produce a trustworthy Study Pack from the current source evidence.',
-      detail: 'Retry after checking the source, or use the source fallback while the Study Pack is unavailable.',
+      primaryLabel: 'Generate Reviewer',
+      summary: note.errorMessage || 'Deep Learn could not produce a trustworthy Reviewer from the current source evidence.',
+      detail: 'Retry after checking the source, or use the source fallback while the Reviewer is unavailable.',
       quizReady: false,
     }
   }
@@ -127,11 +127,11 @@ export function getDeepLearnResourceUiState(
     tone: 'accent',
     noteHref,
     quizHref,
-    primaryLabel: 'Open Study Pack',
+    primaryLabel: 'Open Reviewer',
     summary: note.overview,
     detail: note.quizReady
-      ? 'This saved Study Pack is ready. Reviewer handles source-exact memorization, and Quiz handles practice.'
-      : 'This saved Study Pack is ready for understanding and review, but the current source coverage is still thin for the full quiz lane.',
+      ? 'This saved Reviewer is ready. Quiz handles practice separately.'
+      : 'This saved Reviewer is ready for source-backed review, but the current structured quiz coverage is still thin.',
     quizReady: note.quizReady,
   }
 }

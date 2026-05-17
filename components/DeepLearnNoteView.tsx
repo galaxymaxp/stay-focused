@@ -96,7 +96,7 @@ export async function DeepLearnNoteView({
               moduleId={moduleId}
               resourceId={resolvedDeepLearnResourceId}
               courseId={courseId}
-              label={ui.status === 'failed' ? 'Generate Study Pack' : ui.primaryLabel}
+              label={ui.status === 'failed' ? 'Generate Reviewer' : ui.primaryLabel}
               className="ui-button ui-button-secondary ui-button-xs"
               disabledReason={disabledReason}
             />
@@ -108,7 +108,7 @@ export async function DeepLearnNoteView({
           )}
           {note?.status === 'ready' && (
             <Link href={studyPackHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
-              Open Study Pack
+              Open Full Reviewer
             </Link>
           )}
           {note?.status === 'ready' && (

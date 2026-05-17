@@ -96,9 +96,6 @@ export function buildDeepLearnReviewerContent(note: DeepLearnNote): StudyOutputR
     throw new Error(readiness.message)
   }
 
-  const sourceMapReviewer = buildReviewerContentFromSourceMap(note)
-  if (sourceMapReviewer) return sourceMapReviewer
-
   if (hasFullReviewerMarkdown(note)) {
     const markdown = note.reviewerMarkdown ?? note.noteBody
     return {
@@ -117,6 +114,9 @@ export function buildDeepLearnReviewerContent(note: DeepLearnNote): StudyOutputR
       cautionNotes: note.cautionNotes.map(cleanReviewerText).filter(Boolean).slice(0, 6),
     }
   }
+
+  const sourceMapReviewer = buildReviewerContentFromSourceMap(note)
+  if (sourceMapReviewer) return sourceMapReviewer
 
   const quickReviewBlocks = dedupeQuickReviewBlocks(buildQuickReviewBlocks(note))
   const title = buildReviewerTitle(note.title)

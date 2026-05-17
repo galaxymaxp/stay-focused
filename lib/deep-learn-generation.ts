@@ -38,18 +38,15 @@ const DEFAULT_DEEP_LEARN_STRUCTURED_PREMIUM_MODEL = 'gpt-5.5'
 const DEFAULT_DEEP_LEARN_REVIEWER_COMPILER_MODEL = DEFAULT_DEEP_LEARN_STRUCTURED_FALLBACK_MODEL
 const DEFAULT_DEEP_LEARN_REVIEWER_REPAIR_MODEL = DEFAULT_DEEP_LEARN_STRUCTURED_PREMIUM_MODEL
 const MAX_GROUNDING_CHARS = 12000
-const REVIEWER_CLASSIC_MARKDOWN_MODE = 'classic_markdown'
 const REVIEWER_ONE_PASS_MODE = 'one_pass'
-const REVIEWER_STRUCTURED_COMPILER_MODE = 'structured_fact_card_compiler'
-const DEFAULT_REVIEWER_GENERATION_MODE = REVIEWER_CLASSIC_MARKDOWN_MODE
 const REVIEWER_ONE_PASS_SOURCE_CHAR_CAP = 60000
 const REVIEWER_ONE_PASS_MAX_OUTPUT_TOKENS = 16000
 const REVIEWER_ONE_PASS_REPAIR_MAX_OUTPUT_TOKENS = 16000
 const REVIEWER_CLASSIC_MARKDOWN_SCHEMA_NAME = 'deep_learn_reviewer_classic_markdown'
 export const DEEP_LEARN_MAX_OUTPUT_TOKENS = 10000
 export const DEEP_LEARN_COMPACT_MAX_OUTPUT_TOKENS = 10000
-export const DEEP_LEARN_OUTPUT_TOO_LARGE_MESSAGE = 'The model response limit was reached even after compact fallback. Try a smaller source or split the module.'
-export const DEEP_LEARN_EMPTY_STUDY_ARTIFACTS_MESSAGE = 'Deep Learn could not build enough structured study content from this source. Try a smaller source or split the module.'
+export const DEEP_LEARN_OUTPUT_TOO_LARGE_MESSAGE = 'Reviewer generation could not finish. Try again from the source.'
+export const DEEP_LEARN_EMPTY_STUDY_ARTIFACTS_MESSAGE = 'Deep Learn could not build a complete Reviewer from this source.'
 export const DEEP_LEARN_IDENTIFICATION_OUTPUT_TOO_LARGE_REASON = 'identification_output_too_large'
 export const DEEP_LEARN_IDENTIFICATION_OUTPUT_TOO_LARGE_MESSAGE = 'The identification review was too large to generate. Other study sections were saved when available.'
 export const DEEP_LEARN_QUICK_ANSWERS_OUTPUT_TOO_LARGE_REASON = 'quick_answers_output_too_large'
@@ -60,6 +57,7 @@ export const DEEP_LEARN_OPTIONAL_STAGE_OUTPUT_TOO_LARGE_REASON = 'optional_stage
 export const DEEP_LEARN_OPTIONAL_STAGE_OUTPUT_TOO_LARGE_MESSAGE = 'Some extra review sections were too large to generate, but your Study Pack was saved.'
 export const STRUCTURED_FACT_CARD_COMPILER_VERSION = 'structured_fact_card_compiler_v1'
 export const LEGACY_STAGED_COMPOSER_VERSION = 'legacy_staged_composer'
+export const CLASSIC_MARKDOWN_REVIEWER_VERSION = 'classic_markdown_reviewer_v1'
 const DEEP_LEARN_STAGE_TIMEOUT_MS = 120000
 const DEEP_LEARN_COMPACT_CAUTION_NOTE = 'Generated as a compact reviewer because the source was long.'
 const STRUCTURED_GROUNDING_CHAR_BUDGET = 7600
@@ -398,7 +396,7 @@ export interface DeepLearnGenerationResult {
   sourceGrounding: DeepLearnSourceGrounding
   refreshedResource: ModuleResource | null
   compactFallbackUsed: boolean
-  generatorVersion: typeof STRUCTURED_FACT_CARD_COMPILER_VERSION | typeof LEGACY_STAGED_COMPOSER_VERSION
+  generatorVersion: typeof CLASSIC_MARKDOWN_REVIEWER_VERSION | typeof STRUCTURED_FACT_CARD_COMPILER_VERSION | typeof LEGACY_STAGED_COMPOSER_VERSION
 }
 
 interface DeepLearnPreparedBinaryInput {
@@ -425,7 +423,7 @@ interface DeepLearnPromptInput extends DeepLearnGenerationContext {
 interface DeepLearnGenerationProgressUpdate {
   progress: number
   statusMessage: string
-  stage: 'compacting_source' | 'structured_compiler' | 'high_yield' | 'identification' | 'quick_answers' | 'distinctions' | 'compact_fallback'
+  stage: 'compacting_source' | 'reviewer_markdown' | 'structured_compiler' | 'high_yield' | 'identification' | 'quick_answers' | 'distinctions' | 'compact_fallback'
   compactFallbackUsed?: boolean
 }
 
@@ -458,8 +456,28 @@ interface DeepLearnGenerationOptions {
 }
 
 interface DeepLearnGeneratorSelection {
-  version: typeof STRUCTURED_FACT_CARD_COMPILER_VERSION | typeof LEGACY_STAGED_COMPOSER_VERSION
+  version: typeof CLASSIC_MARKDOWN_REVIEWER_VERSION | typeof STRUCTURED_FACT_CARD_COMPILER_VERSION | typeof LEGACY_STAGED_COMPOSER_VERSION
   reason: string
+}
+
+interface StudyFactCardCompilerResponse {
+  title: string
+  overview: string
+  factCards: StudyFactCard[]
+}
+
+interface StudyFactCardChunkResult {
+  title: string
+  overview: string
+  factCards: StudyFactCard[]
+  model: string | null
+  retryLevel: 'primary' | 'primary_one_card' | 'fallback' | 'premium' | 'deterministic'
+  requestedCardCount: number
+  maxOutputTokens: number
+  chunkIndex: number
+  chunkCharCount: number
+  fallbackModelAttempted: boolean
+  premiumModelAttempted: boolean
 }
 
 interface DeepLearnStructuredModelConfig {
@@ -620,7 +638,7 @@ export async function generateDeepLearnNoteForResource(
   }
   await options.onProgress?.({
     progress: 25,
-    statusMessage: 'Preparing readable source text for structured Study Pack generation.',
+    statusMessage: 'Preparing readable source text for Reviewer generation.',
     stage: 'compacting_source',
   })
 
@@ -682,33 +700,7 @@ export async function generateDeepLearnStructuredContent(
     })
     return generateDeepLearnStructuredContentLegacy(input, grounding, createResponse, options)
   }
-  if (getReviewerGenerationMode() === REVIEWER_CLASSIC_MARKDOWN_MODE) {
-    return generateClassicMarkdownReviewerContent(input, grounding, createResponse, options)
-  }
-  if (getReviewerGenerationMode() === REVIEWER_ONE_PASS_MODE) {
-    return generateOnePassReviewerContent(input, grounding, createResponse, options)
-  }
-  return compileDeepLearnStudyPackFromFactCards(input, grounding, createResponse, options)
-}
-
-interface StudyFactCardCompilerResponse {
-  title: string
-  overview: string
-  factCards: StudyFactCard[]
-}
-
-interface StudyFactCardChunkResult {
-  title: string
-  overview: string
-  factCards: StudyFactCard[]
-  model: string | null
-  retryLevel: 'primary' | 'primary_one_card' | 'fallback' | 'premium' | 'deterministic'
-  requestedCardCount: number
-  maxOutputTokens: number
-  chunkIndex: number
-  chunkCharCount: number
-  fallbackModelAttempted: boolean
-  premiumModelAttempted: boolean
+  return generateClassicMarkdownReviewerContent(input, grounding, createResponse, options)
 }
 
 interface OnePassReviewerModelConfig {
@@ -760,9 +752,9 @@ async function generateClassicMarkdownReviewerContent(
   const modelConfig = getOnePassReviewerModelConfig()
 
   logDeepLearnGeneratorRouting({
-    generatorVersion: STRUCTURED_FACT_CARD_COMPILER_VERSION,
-    event: 'structured_compiler_started',
-    reason: `${REVIEWER_GENERATION_MODE_ENV_NAME}=${REVIEWER_CLASSIC_MARKDOWN_MODE}`,
+    generatorVersion: CLASSIC_MARKDOWN_REVIEWER_VERSION,
+    event: 'classic_markdown_reviewer_started',
+    reason: 'default',
     isRetry: Boolean(options.diagnosticsContext?.retryOfJobId),
     sourceTitle: input.resource.title,
     academicTextCharCount: buildDeepLearnSourceDiagnostics(input, options.diagnosticsContext).academicTextCharCount,
@@ -777,7 +769,7 @@ async function generateClassicMarkdownReviewerContent(
   await options.onProgress?.({
     progress: 35,
     statusMessage: 'Building a full exam Reviewer from the selected source.',
-    stage: 'structured_compiler',
+    stage: 'reviewer_markdown',
   })
 
   let result: ClassicReviewerMarkdownResult | null = null
@@ -815,36 +807,19 @@ async function generateClassicMarkdownReviewerContent(
   const validation = validateDeepLearnContentReadyForSave(content)
   const headingDiagnostics = evaluateReviewerMarkdownHeadingCoverage(sourceOutline, result.markdown)
 
-  logStructuredCompilerSummary({
+  logClassicMarkdownReviewerSummary({
     primaryModel: modelConfig.primaryModel,
-    fallbackModel: modelConfig.repairModel,
-    premiumModel: modelConfig.repairModel,
-    reviewerPrimaryModel: modelConfig.primaryModel,
-    reviewerFallbackModel: modelConfig.repairModel,
-    reviewerMiniUsed: false,
-    targetReviewerCards: 0,
-    actualReviewerCardsBeforeDedupe: 0,
-    actualReviewerCardsAfterDedupe: 0,
-    directCoveredSectionCount: headingDiagnostics.covered.length,
-    weakMentionSectionCount: 0,
-    uncoveredSectionCount: headingDiagnostics.uncovered.length,
-    uncoveredHeadings: headingDiagnostics.uncovered.map((item) => item.title),
-    duplicateCardsRemoved: 0,
-    fallbackRepairUsed: result.repairAttempted,
-    fallbackRepairModel: result.repairAttempted ? result.model : null,
-    fallbackRepairAttemptCount: result.repairAttempted ? 1 : 0,
-    coveragePassed: validation.ok,
-    coverageFailureReason: validation.reason,
-    fallbackModelUsed: 0,
-    premiumModelUsed: result.repairAttempted ? 1 : 0,
-    chunkCount: 1,
-    skippedChunkCount: 0,
-    deterministicFallbackUsed: false,
-    finalFactCardCount: 0,
-    minimumFactCards: 0,
+    repairModel: modelConfig.repairModel,
+    repairAttempted: result.repairAttempted,
+    reviewerMarkdownLength: result.markdown.length,
+    sourceCharCount: sourceText.length,
+    sourceWasTruncated,
     outlineRequiredCount: headingDiagnostics.required.length,
     outlineCoveredCount: headingDiagnostics.covered.length,
     outlineMissingCount: headingDiagnostics.uncovered.length,
+    uncoveredHeadings: headingDiagnostics.uncovered.map((item) => item.title),
+    validationPassed: validation.ok,
+    validationFailureReason: validation.reason,
   })
 
   if (sourceWasTruncated) {
@@ -2426,22 +2401,10 @@ function selectDeepLearnGenerator(): DeepLearnGeneratorSelection {
   if (rawMode && rawMode !== STRUCTURED_FACT_CARD_COMPILER_VERSION) {
     console.warn('[deep-learn-generation] ignoring invalid generator mode', {
       requestedMode: rawMode,
-      defaultGeneratorVersion: STRUCTURED_FACT_CARD_COMPILER_VERSION,
+      defaultGeneratorVersion: CLASSIC_MARKDOWN_REVIEWER_VERSION,
     })
   }
-  return { version: STRUCTURED_FACT_CARD_COMPILER_VERSION, reason: 'default' }
-}
-
-function getReviewerGenerationMode(env: NodeJS.ProcessEnv = process.env): typeof REVIEWER_CLASSIC_MARKDOWN_MODE | typeof REVIEWER_ONE_PASS_MODE | typeof REVIEWER_STRUCTURED_COMPILER_MODE {
-  const mode = env[REVIEWER_GENERATION_MODE_ENV_NAME]?.trim()
-  if (mode === REVIEWER_STRUCTURED_COMPILER_MODE) return REVIEWER_STRUCTURED_COMPILER_MODE
-  if (mode === REVIEWER_CLASSIC_MARKDOWN_MODE || !mode) return DEFAULT_REVIEWER_GENERATION_MODE
-  if (mode === REVIEWER_ONE_PASS_MODE) return REVIEWER_ONE_PASS_MODE
-  console.warn('[deep-learn-generation] ignoring invalid reviewer generation mode', {
-    requestedMode: mode,
-    defaultMode: DEFAULT_REVIEWER_GENERATION_MODE,
-  })
-  return DEFAULT_REVIEWER_GENERATION_MODE
+  return { version: CLASSIC_MARKDOWN_REVIEWER_VERSION, reason: 'default' }
 }
 
 function getReviewerOnePassSourceCharCap(env: NodeJS.ProcessEnv = process.env) {
@@ -2498,8 +2461,8 @@ function isMiniModelName(model: string) {
 }
 
 function logDeepLearnGeneratorRouting(input: {
-  generatorVersion: typeof STRUCTURED_FACT_CARD_COMPILER_VERSION | typeof LEGACY_STAGED_COMPOSER_VERSION
-  event: 'structured_compiler_started' | 'legacy_composer_started'
+  generatorVersion: typeof CLASSIC_MARKDOWN_REVIEWER_VERSION | typeof STRUCTURED_FACT_CARD_COMPILER_VERSION | typeof LEGACY_STAGED_COMPOSER_VERSION
+  event: 'classic_markdown_reviewer_started' | 'structured_compiler_started' | 'legacy_composer_started'
   reason: string
   isRetry: boolean
   sourceTitle: string
@@ -2622,6 +2585,39 @@ function logStructuredCompilerSummary(input: {
     outlineRequiredCount: input.outlineRequiredCount ?? null,
     outlineCoveredCount: input.outlineCoveredCount ?? null,
     outlineMissingCount: input.outlineMissingCount ?? null,
+  })
+}
+
+function logClassicMarkdownReviewerSummary(input: {
+  primaryModel: string
+  repairModel: string
+  repairAttempted: boolean
+  reviewerMarkdownLength: number
+  sourceCharCount: number
+  sourceWasTruncated: boolean
+  outlineRequiredCount: number
+  outlineCoveredCount: number
+  outlineMissingCount: number
+  uncoveredHeadings: string[]
+  validationPassed: boolean
+  validationFailureReason: string | null
+}) {
+  console.info('[deep-learn-generation] classic markdown reviewer summary', {
+    generatorVersion: CLASSIC_MARKDOWN_REVIEWER_VERSION,
+    qualityMode: 'classic-markdown-reviewer',
+    structuredCompilerUsed: false,
+    primaryModel: input.primaryModel,
+    repairModel: input.repairModel,
+    repairAttempted: input.repairAttempted,
+    reviewerMarkdownLength: input.reviewerMarkdownLength,
+    sourceCharCount: input.sourceCharCount,
+    sourceWasTruncated: input.sourceWasTruncated,
+    outlineRequiredCount: input.outlineRequiredCount,
+    outlineCoveredCount: input.outlineCoveredCount,
+    outlineMissingCount: input.outlineMissingCount,
+    uncoveredHeadings: input.uncoveredHeadings,
+    validationPassed: input.validationPassed,
+    validationFailureReason: input.validationFailureReason,
   })
 }
 
@@ -6347,7 +6343,7 @@ function chunkGroundingText(value: string, targetChars: number) {
 }
 
 function getRequiredDeepLearnApiKey(
-  generatorVersion: typeof STRUCTURED_FACT_CARD_COMPILER_VERSION | typeof LEGACY_STAGED_COMPOSER_VERSION = STRUCTURED_FACT_CARD_COMPILER_VERSION,
+  generatorVersion: typeof CLASSIC_MARKDOWN_REVIEWER_VERSION | typeof STRUCTURED_FACT_CARD_COMPILER_VERSION | typeof LEGACY_STAGED_COMPOSER_VERSION = CLASSIC_MARKDOWN_REVIEWER_VERSION,
 ) {
   const apiKey = process.env.OPENAI_API_KEY?.trim()
   if (!apiKey) {
@@ -6461,22 +6457,22 @@ function buildDeepLearnStageFailureMessage(options: DeepLearnStageErrorOptions) 
 
 function buildDeepLearnIncompleteMessage(reason: string) {
   if (reason === 'structured_compiler_setup_missing_openai_api_key') {
-    return 'Structured Study Pack Compiler setup error: OPENAI_API_KEY is not set.'
+    return 'Reviewer generation setup error: OPENAI_API_KEY is not set.'
   }
-  if (reason === 'insufficient_structured_artifacts') {
+  if (reason === 'insufficient_structured_artifacts' || reason === 'insufficient_reviewer_markdown') {
     return DEEP_LEARN_EMPTY_STUDY_ARTIFACTS_MESSAGE
   }
   if (reason === 'invalid_structured_outputs_json') {
-    return 'Structured Study Pack Compiler returned malformed structured output.'
+    return 'Reviewer generation returned malformed output.'
   }
   if (reason === 'empty_structured_outputs') {
-    return 'Structured Study Pack Compiler returned no structured output.'
+    return 'Reviewer generation returned no output.'
   }
   if (reason === 'max_output_tokens') {
-    return 'Study Pack generation was too large for this source. Try again or use a smaller source.'
+    return DEEP_LEARN_OUTPUT_TOO_LARGE_MESSAGE
   }
   if (reason.startsWith('provider:')) {
-    return `Structured Study Pack Compiler failed during Deep Learn generation: ${reason.slice('provider:'.length)}.`
+    return `Reviewer generation failed during Deep Learn generation: ${reason.slice('provider:'.length)}.`
   }
   if (reason === DEEP_LEARN_IDENTIFICATION_OUTPUT_TOO_LARGE_REASON) {
     return DEEP_LEARN_IDENTIFICATION_OUTPUT_TOO_LARGE_MESSAGE

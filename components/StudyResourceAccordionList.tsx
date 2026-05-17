@@ -244,7 +244,7 @@ export function StudyResourceAccordionList({
 
                   {item.deepLearnStatus === 'pending' && (
                     <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.78rem 0.82rem', display: 'grid', gap: '0.35rem' }}>
-                      <p className="ui-kicker" style={{ margin: 0 }}>Generating study pack...</p>
+                      <p className="ui-kicker" style={{ margin: 0 }}>Generating Reviewer...</p>
                       <p style={{ margin: 0, fontSize: '12px', lineHeight: 1.58, color: 'var(--text-secondary)' }}>
                         {item.deepLearnSummary || 'Added to queue.'}
                       </p>
@@ -253,12 +253,12 @@ export function StudyResourceAccordionList({
 
                   {item.deepLearnNoteFailure && (
                     <div className="ui-card-soft" style={{ borderRadius: 'var(--radius-tight)', padding: '0.9rem 0.95rem' }}>
-                      <p className="ui-kicker" style={{ margin: 0 }}>Study pack failed</p>
+                      <p className="ui-kicker" style={{ margin: 0 }}>Reviewer generation failed</p>
                       <p style={{ margin: '0.38rem 0 0', fontSize: '12px', lineHeight: 1.6, color: 'var(--red)' }}>
                         {item.deepLearnNoteFailure}
                       </p>
                       <p style={{ margin: '0.35rem 0 0', fontSize: '12px', lineHeight: 1.55, color: 'var(--text-muted)' }}>
-                        The source can still be ready even when the last study pack attempt fails. Retry generation or check the source if this keeps happening.
+                        The source can still be ready even when the last Reviewer attempt fails. Retry generation or check the source if this keeps happening.
                       </p>
                     </div>
                   )}
@@ -267,11 +267,11 @@ export function StudyResourceAccordionList({
                   <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
                     {item.deepLearnStatus === 'pending' ? (
                       <button type="button" disabled className="ui-button ui-button-secondary ui-button-xs" style={{ opacity: 0.7 }}>
-                        {item.deepLearnPrimaryLabel ?? 'Generating study pack...'}
+                        {item.deepLearnPrimaryLabel ?? 'Generating Reviewer...'}
                       </button>
                     ) : shouldShowDeepLearnWorkspaceAction(item) ? (
                       <Link href={item.deepLearnNoteHref} className="ui-button ui-button-secondary ui-button-xs" style={{ textDecoration: 'none' }}>
-                        {item.deepLearnStatus === 'ready' ? 'Open study pack' : 'Open workspace'}
+                        {item.deepLearnStatus === 'ready' ? 'Open Reviewer' : 'Open workspace'}
                       </Link>
                     ) : shouldShowScanPdfAction(item) ? (
                       <OcrSourceButton
@@ -292,7 +292,7 @@ export function StudyResourceAccordionList({
                         moduleId={item.moduleId}
                         resourceId={item.canonicalResourceId ?? item.id}
                         courseId={item.courseId ?? null}
-                        label={item.deepLearnStatus === 'failed' ? item.deepLearnPrimaryLabel ?? 'Regenerate Study Pack' : 'Generate Study Pack'}
+                        label={item.deepLearnStatus === 'failed' ? item.deepLearnPrimaryLabel ?? 'Regenerate Reviewer' : 'Generate Reviewer'}
                         disabledReason={item.deepLearnDisabledReason}
                         resourceTitle={item.title}
                       />

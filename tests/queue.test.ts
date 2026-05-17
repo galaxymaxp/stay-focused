@@ -402,25 +402,26 @@ test('resource extraction retries normal source reprocessing before OCR fallback
   assert.match(source, /const result = await reprocessStoredModuleResource\(resource,[\s\S]*const queuedOcrJobs = result\.update\.visualExtractionStatus === 'available'/)
 })
 
-test('learn generation queue uses structured compiler progress updates and generator metadata', () => {
+test('learn generation queue uses classic Markdown Reviewer progress and metadata', () => {
   const queueSource = readFileSync('actions/queue-jobs.ts', 'utf8')
   const generationSource = readFileSync('lib/deep-learn-generation.ts', 'utf8')
   assert.match(queueSource, /progress:\s*25/)
   assert.match(queueSource, /progress:\s*85/)
-  assert.match(generationSource, /STRUCTURED_FACT_CARD_COMPILER_VERSION = 'structured_fact_card_compiler_v1'/)
-  assert.match(generationSource, /event:\s*'structured_compiler_started'/)
+  assert.match(generationSource, /CLASSIC_MARKDOWN_REVIEWER_VERSION = 'classic_markdown_reviewer_v1'/)
+  assert.match(generationSource, /event:\s*'classic_markdown_reviewer_started'/)
   assert.match(queueSource, /generatorVersion:\s*generated\.generatorVersion/)
-  assert.match(queueSource, /Preparing readable source text for structured Study Pack generation\./)
+  assert.match(queueSource, /Preparing readable source text for Reviewer generation\./)
+  assert.match(queueSource, /structuredCompilerUsed:\s*false/)
 })
 
-test('fresh and retry learn generation jobs route through the structured compiler by default', () => {
+test('fresh and retry learn generation jobs route through classic Markdown Reviewer by default', () => {
   const queueSource = readFileSync('actions/queue-jobs.ts', 'utf8')
   const generationSource = readFileSync('lib/deep-learn-generation.ts', 'utf8')
   assert.match(queueSource, /queueLearnGenerationAction[\s\S]*processLearnGenerationJob\(\{[\s\S]*resourceId: input\.resourceId/)
   assert.match(queueSource, /retryLearnGenerationJobAction[\s\S]*processLearnGenerationJob\(\{[\s\S]*retryOfJobId: previousJob\.id/)
   assert.match(queueSource, /generateDeepLearnNoteForResource\([\s\S]*retryOfJobId: input\.retryOfJobId \?\? null/)
-  assert.match(generationSource, /selectDeepLearnGenerator\(\)[\s\S]*STRUCTURED_FACT_CARD_COMPILER_VERSION/)
-  assert.doesNotMatch(queueSource, /generatorMode/)
+  assert.match(generationSource, /selectDeepLearnGenerator\(\)[\s\S]*CLASSIC_MARKDOWN_REVIEWER_VERSION/)
+  assert.doesNotMatch(queueSource, /generatorMode|structured_fact_card_compiler_v1/)
 })
 
 test('legacy staged composer is gated by explicit generator mode', () => {
@@ -438,9 +439,10 @@ test('learn generation queue maps quick-answer size failures to specific student
   assert.doesNotMatch(queueSource, /quick_answers_output_too_large[\s\S]{0,220}could not build enough structured study content/i)
 })
 
-test('learn generation queue maps structured output-limit failures without readable-text blame', () => {
+test('learn generation queue no longer shows compact fallback output-limit advice for Reviewer', () => {
   const queueSource = readFileSync('actions/queue-jobs.ts', 'utf8')
-  assert.match(queueSource, /Study Pack generation was too large for this source\. Try again or use a smaller source\./)
+  assert.match(queueSource, /Reviewer generation could not finish\. Try again from the source\./)
+  assert.doesNotMatch(queueSource, /Try a smaller source or split the module/)
   assert.doesNotMatch(queueSource, /max_output_tokens[\s\S]{0,220}selected source does not have enough readable academic text/i)
 })
 

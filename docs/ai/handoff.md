@@ -10405,6 +10405,88 @@ add offline Reviewer source fixtures
 
 ## Session Update - 2026-05-13 (Fix sync timestamp reporting)
 
+## 2026-05-18 — Deep Learn Reviewer classic Markdown path
+
+### What changed
+- Rerouted active Deep Learn Reviewer generation to the quality-first one-pass Markdown path.
+- Added the active generator version `classic_markdown_reviewer_v1` and classic Reviewer diagnostics:
+  - `qualityMode: "classic-markdown-reviewer"`
+  - `structuredCompilerUsed: false`
+  - `reviewerMarkdownLength`
+  - `sourceCharCount`
+  - `sourceWasTruncated`
+- Made the full `reviewerMarkdown` artifact the primary Reviewer output before legacy structured/source-map fallbacks.
+- Updated Deep Learn source cards, queue labels, library links, and note/workspace states from Study Pack/Original generation wording to Reviewer / Full Reviewer / Exam Reviewer wording.
+- Filtered superseded failed `learn_generation` queue jobs when a newer completed classic Markdown Reviewer exists for the same source.
+- Rewrote Reviewer generation tests away from structured compiler/card-count assertions and added coverage for SDLC, IT Security, PATHFit/Arnis, classic diagnostics, queue retry routing, and success without answerBank/keyTerms/card counts.
+
+### Files touched
+- `actions/deep-learn.ts`
+- `actions/queue-jobs.ts`
+- `app/(app)/library/[id]/page.tsx`
+- `app/(app)/library/page.tsx`
+- `components/DeepLearnGenerateButton.tsx`
+- `components/DeepLearnNoteView.tsx`
+- `components/DeepLearnWorkspace.tsx`
+- `components/StudyResourceAccordionList.tsx`
+- `components/shell/QueuePanel.tsx`
+- `lib/course-learn-overview.ts`
+- `lib/deep-learn-generation.ts`
+- `lib/deep-learn-ui.ts`
+- `lib/learn-card-state.ts`
+- `lib/queue-view.ts`
+- `lib/study-outputs/reviewer.ts`
+- `tests/deep-learn-generation.test.ts`
+- `tests/deep-learn-ui.test.ts`
+- `tests/learn-card-state.test.ts`
+- `tests/queue.test.ts`
+- `tests/study-library.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+The active Reviewer path could still surface old structured compiler failures such as `structured_fact_card_compiler_v1`, coverage-first diagnostics, compact fallback failures, "Original generation", and "Study pack failed". The refactor makes active Reviewer generation a simple selected academic source text -> one full Markdown Reviewer -> save `reviewerMarkdown` flow, while keeping legacy display compatibility for older saved records.
+
+### Tests run
+- `npm run typecheck`
+- `npm run lint`
+- `npx tsx --test tests/deep-learn-generation.test.ts`
+- `npm test -- deep-learn-generation`
+- `npm test -- study-output-reviewer study-output-quiz-pack learn-resource-ui deep-learn-readiness`
+- `npm test -- pdf-extractor source-ocr-updates deep-learn-readiness deep-learn-generation canvas-content-resolution learn-resource-ui queue`
+- `npm test -- task-output task-output-foundation`
+- Scanned PDF validator check: `Test-Path "C:\Users\omgra\Downloads\1.1-Data Organization.pdf"` returned `False`, so the optional validator was skipped.
+
+### Verification result
+- Passed:
+  - typecheck
+  - lint
+  - targeted Deep Learn generation test
+  - requested npm test batches
+- Verified in tests:
+  - active Reviewer generation logs `classic-markdown-reviewer`
+  - active Reviewer generation logs `structuredCompilerUsed: false`
+  - active Reviewer generation stores `reviewerMarkdown`
+  - IT Security, SDLC, and PATHFit/Arnis Reviewer Markdown covers expected source sections
+  - Reviewer success does not depend on answerBank/keyTerms/card counts
+  - queue retry uses the classic Markdown Reviewer path
+  - old failed structured compiler jobs are filtered from blocking UI when superseded by a newer Reviewer
+
+### Known risks
+- `lib/deep-learn-generation.ts` still contains two inactive legacy compiler functions, and lint reports them as warnings only:
+  - `generateOnePassReviewerContent`
+  - `compileDeepLearnStudyPackFromFactCards`
+- The active default path no longer calls those functions, but a future cleanup should delete the remaining dead compiler implementation once legacy staged-composer tests are split away safely.
+- The optional scanned PDF validator could not run because the private local PDF was not present.
+
+### Blockers
+- No blockers for the active Reviewer refactor.
+
+### Next recommended step
+Delete the remaining inactive compiler-era functions from `lib/deep-learn-generation.ts` in a narrow follow-up once legacy staged-composer fixture coverage is isolated, so lint becomes warning-free and the file no longer carries dead architecture.
+
+### Suggested commit message
+simplify reviewer generation architecture
+
 ### What changed
 - Replaced the misleading `/sync` "Last sync" model with a derived activity summary that separates:
   - `Last Canvas update`
