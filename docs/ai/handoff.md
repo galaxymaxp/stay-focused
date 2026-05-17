@@ -5,6 +5,74 @@ Last Updated: 2026-05-17
 
 ---
 
+## Session Update - 2026-05-17 (Deep Learn Source Coverage Compiler)
+
+### What changed
+
+- Added a deterministic `SourceOutlineItem` outline builder for Deep Learn source text before model generation.
+- Made the structured fact-card compiler section-aware:
+  - high-confidence headings, numbered sections, learning objectives, definitions, taxonomies, procedures, timelines, and formulas can become required outline items
+  - ordinary bullets are not treated as required sections by default
+  - source spans are retained so missed sections can be repaired from focused source context
+- Replaced the fixed 3-card limiter for complex sections with bounded dynamic card requests:
+  - normal low-complexity chunks still request 3 cards
+  - complex outline-aware chunks can request up to 5 cards
+  - output caps scale up to a bounded 1,800 tokens for those chunks
+- Added source-outline coverage validation before final Study Pack assembly.
+- Added targeted fallback repair for valid-but-incomplete coverage, so fallback models can run when the primary model returns technically valid JSON but misses required source sections.
+- Extended deterministic fallback to prioritize missing outline sections before general extractive cards.
+- Added structured compiler diagnostics for required, covered, and missing outline counts.
+- Added regressions for source outline detection and incomplete-section fallback repair.
+
+### Files touched
+
+- `lib/deep-learn-generation.ts`
+- `tests/deep-learn-generation.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Production evidence showed the structured compiler treated valid JSON with enough total cards as success even when major source sections were missing. The fix makes completion depend on source coverage, not just total card count, and repairs missing sections with focused fallback calls instead of regenerating an entire pack.
+
+### Tests run
+
+- `npx tsx --test tests/deep-learn-generation.test.ts` - passed
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- pdf-extractor source-ocr-updates deep-learn-readiness deep-learn-generation canvas-content-resolution learn-resource-ui queue` - passed
+- `npx tsx scripts/validate-scanned-pdf.ts --pdf "C:\Users\omgra\Downloads\1.1-Data Organization.pdf"` - skipped because the local PDF file was not present
+
+### Verification result
+
+- Verified the compiler builds a high-confidence source outline before generation.
+- Verified bullets under an objective heading do not individually block completion.
+- Verified low-complexity sources keep the existing 3-card primary request and 1-card retry behavior.
+- Verified valid-but-incomplete model output triggers fallback repair and includes previously missed later sections.
+- Verified long sources still use chunked fact-card extraction.
+- Verified metadata, diagnostics, Source Map prompt stems, and internal labels remain excluded from saved study content.
+
+### Known risks
+
+- The outline detector is conservative. Very weakly formatted sources may still rely on normal chunking and deterministic fallback rather than strict section coverage.
+- The repair pass is bounded to avoid runaway cost, so very long sources with many missed required sections may still need another retry after deployment.
+- Dynamic requests can increase per-chunk output budget for complex sections, but the cap remains bounded at 1,800 tokens.
+
+### Blockers
+
+- No code blocker remains.
+- The scanned-PDF validator could not run because `C:\Users\omgra\Downloads\1.1-Data Organization.pdf` was not found locally.
+- `test_output.txt` remains an existing untracked file and was not committed.
+
+### Next recommended step
+
+Deploy and retry representative Deep Learn sources from different source types. Confirm logs show nonzero `outlineRequiredCount`, `outlineCoveredCount`, and targeted fallback repair only when coverage is incomplete.
+
+### Suggested commit message
+
+fix deep learn source coverage compiler
+
+---
+
 ## Session Update - 2026-05-17 (Structured Compiler Model Escalation)
 
 ### What changed

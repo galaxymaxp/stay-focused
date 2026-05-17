@@ -59,12 +59,15 @@ const STUDY_FACT_CARD_CHUNK_CHARS = 3600
 const STUDY_FACT_CARD_SHORT_SOURCE_CHARS = 3800
 const STUDY_FACT_CARD_MAX_CHUNKS = 6
 const STUDY_FACT_CARD_DEFAULT_REQUEST_COUNT = 3
+const STUDY_FACT_CARD_MAX_REQUEST_COUNT = 5
 const STUDY_FACT_CARD_RETRY_REQUEST_COUNT = 1
 const STUDY_FACT_CARD_DEFAULT_MAX_OUTPUT_TOKENS = 1100
+const STUDY_FACT_CARD_MAX_OUTPUT_TOKENS = 1800
 const STUDY_FACT_CARD_RETRY_MAX_OUTPUT_TOKENS = 650
 const STUDY_FACT_CARD_FALLBACK_MODEL_ATTEMPT_LIMIT = 3
 const STUDY_FACT_CARD_PREMIUM_MODEL_ATTEMPT_LIMIT = 1
 const STUDY_FACT_CARD_PREMIUM_FALLBACK_ENV = 'DEEP_LEARN_STRUCTURED_PREMIUM_FALLBACK'
+const STUDY_FACT_CARD_OUTLINE_REPAIR_LIMIT = 4
 
 const INTERNAL_FACT_CARD_PROMPT_PATTERNS = [
   /^Recall the exam meaning of\b/i,
@@ -684,6 +687,31 @@ interface StudyFactCardChunkResult {
   premiumModelAttempted: boolean
 }
 
+export type SourceOutlineItem = {
+  id: string
+  title: string
+  normalizedTitle: string
+  level: 'major' | 'supporting' | 'detail'
+  kind:
+    | 'phase'
+    | 'step'
+    | 'module'
+    | 'lesson'
+    | 'numbered_heading'
+    | 'lettered_sequence'
+    | 'objective'
+    | 'definition'
+    | 'taxonomy'
+    | 'procedure'
+    | 'timeline'
+    | 'formula'
+    | 'heading'
+  confidence: number
+  startOffset?: number
+  endOffset?: number
+  required: boolean
+}
+
 async function compileDeepLearnStudyPackFromFactCards(
   input: DeepLearnPromptInput,
   grounding: DeepLearnPreparedGrounding,
@@ -691,11 +719,15 @@ async function compileDeepLearnStudyPackFromFactCards(
   options: DeepLearnGenerationOptions = {},
 ): Promise<{ content: DeepLearnGeneratedContent; compactFallbackUsed: boolean }> {
   const cleanedSource = cleanupStudyCompilerSource(input.promptGrounding)
-  const chunks = splitStudyCompilerChunks(cleanedSource)
+  const sourceOutline = buildSourceOutline(cleanedSource)
+  const chunkPlan = buildStudyCompilerChunkPlan(cleanedSource, sourceOutline)
   const shortSource = cleanedSource.length <= STUDY_FACT_CARD_SHORT_SOURCE_CHARS
-  const selectedChunks = shortSource ? [cleanedSource] : chunks.slice(0, STUDY_FACT_CARD_MAX_CHUNKS)
+  const requiredOutlineItems = getRequiredSourceOutlineItems(sourceOutline)
+  const selectedChunks = shortSource && requiredOutlineItems.length <= 4
+    ? [{ text: cleanedSource, outlineItems: requiredOutlineItems }]
+    : chunkPlan
   const modelConfig = getStructuredCompilerModelConfig()
-  const minimumFactCards = getMinimumStructuredFactCards(cleanedSource)
+  const minimumFactCards = getMinimumStructuredFactCards(cleanedSource, sourceOutline)
   let fallbackModelUsed = 0
   let premiumModelUsed = 0
   let skippedChunkCount = 0
@@ -724,8 +756,10 @@ async function compileDeepLearnStudyPackFromFactCards(
 
   const responses: StudyFactCardChunkResult[] = []
   for (let index = 0; index < selectedChunks.length; index += 1) {
-    const chunk = selectedChunks[index] ?? ''
+    const chunkPlanItem = selectedChunks[index]
+    const chunk = chunkPlanItem?.text ?? ''
     if (!chunk.trim()) continue
+    const requestedCardCount = getRequestedFactCardsForChunk(chunk, chunkPlanItem?.outlineItems ?? [])
     const response = await extractStudyFactCardsForChunk({
       input,
       grounding,
@@ -735,6 +769,9 @@ async function compileDeepLearnStudyPackFromFactCards(
       totalChunks: selectedChunks.length,
       shortSource,
       modelConfig,
+      requestedCardCount,
+      maxOutputTokens: getMaxOutputTokensForRequestedCards(requestedCardCount),
+      outlineItems: chunkPlanItem?.outlineItems ?? [],
       fallbackModelAttemptsRemaining: Math.max(0, STUDY_FACT_CARD_FALLBACK_MODEL_ATTEMPT_LIMIT - fallbackModelUsed),
     })
     if (response.fallbackModelAttempted) fallbackModelUsed += 1
@@ -754,9 +791,40 @@ async function compileDeepLearnStudyPackFromFactCards(
   }
 
   let cards = dedupeStudyFactCards(responses.flatMap((response) => response.factCards))
+  let coverage = evaluateSourceOutlineCoverage(sourceOutline, cards)
+
+  if (coverage.missingRequired.length > 0 && fallbackModelUsed < STUDY_FACT_CARD_FALLBACK_MODEL_ATTEMPT_LIMIT) {
+    for (const missing of coverage.missingRequired.slice(0, STUDY_FACT_CARD_OUTLINE_REPAIR_LIMIT)) {
+      if (fallbackModelUsed >= STUDY_FACT_CARD_FALLBACK_MODEL_ATTEMPT_LIMIT) break
+      const repairChunk = getOutlineItemSourceSpan(cleanedSource, missing)
+      if (!repairChunk.trim()) continue
+      const repair = await extractStudyFactCardsForChunk({
+        input,
+        grounding,
+        createResponse,
+        chunk: repairChunk,
+        chunkIndex: selectedChunks.length + fallbackModelUsed,
+        totalChunks: selectedChunks.length,
+        shortSource,
+        modelConfig,
+        requestedCardCount: 2,
+        maxOutputTokens: 900,
+        outlineItems: [missing],
+        fallbackModelAttemptsRemaining: 1,
+        preferFallback: true,
+      })
+      if (repair.fallbackModelAttempted) fallbackModelUsed += 1
+      if (repair.premiumModelAttempted) premiumModelUsed += 1
+      if (repair.factCards.length > 0) {
+        responses.push(repair)
+        cards = dedupeStudyFactCards(responses.flatMap((response) => response.factCards))
+        coverage = evaluateSourceOutlineCoverage(sourceOutline, cards)
+      }
+    }
+  }
 
   if (cards.length < minimumFactCards && modelConfig.premiumFallbackEnabled && premiumModelUsed < STUDY_FACT_CARD_PREMIUM_MODEL_ATTEMPT_LIMIT) {
-    const rescueChunk = selectedChunks.find((chunk) => chunk.trim()) ?? cleanedSource
+    const rescueChunk = selectedChunks.find((chunk) => chunk.text.trim())?.text ?? cleanedSource
     const rescue = await extractStudyFactCardsForChunk({
       input,
       grounding,
@@ -766,6 +834,9 @@ async function compileDeepLearnStudyPackFromFactCards(
       totalChunks: selectedChunks.length,
       shortSource,
       modelConfig,
+      requestedCardCount: STUDY_FACT_CARD_RETRY_REQUEST_COUNT,
+      maxOutputTokens: STUDY_FACT_CARD_RETRY_MAX_OUTPUT_TOKENS,
+      outlineItems: coverage.missingRequired.slice(0, 2),
       fallbackModelAttemptsRemaining: 0,
       forcePremium: true,
     })
@@ -776,13 +847,15 @@ async function compileDeepLearnStudyPackFromFactCards(
     if (rescue.premiumModelAttempted) premiumModelUsed += 1
   }
 
-  if (cards.length < minimumFactCards) {
-    const deterministicCards = buildDeterministicStudyFactCards(cleanedSource, input.resource.title)
+  coverage = evaluateSourceOutlineCoverage(sourceOutline, cards)
+  if (cards.length < minimumFactCards || coverage.missingRequired.length > 0) {
+    const deterministicCards = buildDeterministicStudyFactCards(cleanedSource, input.resource.title, coverage.missingRequired)
     if (deterministicCards.length > 0) {
       deterministicFallbackUsed = true
       cards = dedupeStudyFactCards([...cards, ...deterministicCards])
     }
   }
+  coverage = evaluateSourceOutlineCoverage(sourceOutline, cards)
 
   logStructuredCompilerSummary({
     primaryModel: modelConfig.primaryModel,
@@ -795,9 +868,12 @@ async function compileDeepLearnStudyPackFromFactCards(
     deterministicFallbackUsed,
     finalFactCardCount: cards.length,
     minimumFactCards,
+    outlineRequiredCount: coverage.requiredCount,
+    outlineCoveredCount: coverage.coveredRequiredCount,
+    outlineMissingCount: coverage.missingRequired.length,
   })
 
-  if (cards.length === 0) {
+  if (cards.length === 0 || coverage.missingRequired.length > Math.max(1, Math.floor(coverage.requiredCount * 0.25))) {
     throw new DeepLearnGenerationIncompleteError('insufficient_structured_artifacts')
   }
 
@@ -824,22 +900,33 @@ async function extractStudyFactCardsForChunk(input: {
   totalChunks: number
   shortSource: boolean
   modelConfig: DeepLearnStructuredModelConfig
+  requestedCardCount: number
+  maxOutputTokens: number
+  outlineItems: SourceOutlineItem[]
   fallbackModelAttemptsRemaining: number
   forcePremium?: boolean
+  preferFallback?: boolean
 }): Promise<StudyFactCardChunkResult> {
   const attempts = input.forcePremium
     ? [{
         retryLevel: 'premium' as const,
         model: input.modelConfig.premiumModel,
-        requestedCardCount: STUDY_FACT_CARD_RETRY_REQUEST_COUNT,
-        maxOutputTokens: STUDY_FACT_CARD_RETRY_MAX_OUTPUT_TOKENS,
+        requestedCardCount: input.requestedCardCount,
+        maxOutputTokens: input.maxOutputTokens,
       }]
-    : [
+    : input.preferFallback && input.fallbackModelAttemptsRemaining > 0
+      ? [{
+          retryLevel: 'fallback' as const,
+          model: input.modelConfig.fallbackModel,
+          requestedCardCount: input.requestedCardCount,
+          maxOutputTokens: input.maxOutputTokens,
+        }]
+      : [
         {
           retryLevel: 'primary' as const,
           model: input.modelConfig.primaryModel,
-          requestedCardCount: STUDY_FACT_CARD_DEFAULT_REQUEST_COUNT,
-          maxOutputTokens: STUDY_FACT_CARD_DEFAULT_MAX_OUTPUT_TOKENS,
+          requestedCardCount: input.requestedCardCount,
+          maxOutputTokens: input.maxOutputTokens,
         },
         {
           retryLevel: 'primary_one_card' as const,
@@ -994,11 +1081,13 @@ function getMinimumCardsForAttempt(requestedCardCount: number) {
   return requestedCardCount >= 3 ? 2 : 1
 }
 
-function getMinimumStructuredFactCards(sourceText: string) {
-  return sourceText.length <= STUDY_FACT_CARD_SHORT_SOURCE_CHARS ? 3 : 5
+function getMinimumStructuredFactCards(sourceText: string, outline: SourceOutlineItem[] = []) {
+  const requiredCount = getRequiredSourceOutlineItems(outline).length
+  const sourceMinimum = sourceText.length <= STUDY_FACT_CARD_SHORT_SOURCE_CHARS ? 3 : 5
+  return Math.min(18, Math.max(sourceMinimum, Math.ceil(requiredCount * 0.75)))
 }
 
-function buildDeterministicStudyFactCards(sourceText: string, resourceTitle: string): StudyFactCard[] {
+function buildDeterministicStudyFactCards(sourceText: string, resourceTitle: string, priorityOutline: SourceOutlineItem[] = []): StudyFactCard[] {
   const structured = structureAcademicSourceText(sourceText)
   const cards: StudyFactCard[] = []
   const pushCard = (card: Omit<StudyFactCard, 'difficulty' | 'confidence'>, confidence = 0.72) => {
@@ -1008,6 +1097,19 @@ function buildDeterministicStudyFactCards(sourceText: string, resourceTitle: str
       confidence,
     })
     if (normalized && isGroundedStudyFactCard(normalized, sourceText)) cards.push(normalized)
+  }
+
+  for (const item of priorityOutline.slice(0, 8)) {
+    const span = getOutlineItemSourceSpan(sourceText, item)
+    const sentence = extractStudySentences(span)[0] ?? cleanupAcademicSourceLines(span)[0] ?? ''
+    if (!sentence) continue
+    pushCard({
+      kind: mapSourceOutlineKindToFactCardKind(item.kind),
+      prompt: buildPromptForSourceOutlineItem(item),
+      answer: truncateForModel(sentence, 360),
+      sourceQuote: truncateForModel(sentence, 220),
+      sectionTitle: item.title,
+    }, 0.8)
   }
 
   for (const item of structured.termDefinitions.slice(0, 10)) {
@@ -1056,7 +1158,7 @@ function buildDeterministicStudyFactCards(sourceText: string, resourceTitle: str
     }, 0.7)
   }
 
-  return dedupeStudyFactCards(cards).slice(0, 18)
+  return dedupeStudyFactCards(cards).slice(0, 24)
 }
 
 function classifyDeterministicFactCardKind(sentence: string): StudyFactCard['kind'] {
@@ -1096,12 +1198,20 @@ function buildStudyFactCardPrompt(input: {
   totalChunks: number
   shortSource: boolean
   requestedCardCount: number
+  outlineItems?: SourceOutlineItem[]
 }) {
+  const requiredOutline = (input.outlineItems ?? [])
+    .filter((item) => item.required)
+    .slice(0, 6)
+    .map((item) => `- ${item.title} (${item.kind})`)
+    .join('\n')
   return [
     input.shortSource
       ? 'Create a compact Study Pack from this short academic source by extracting source-faithful fact cards.'
       : `Extract source-faithful fact cards from chunk ${input.chunkIndex + 1} of ${input.totalChunks}.`,
     `Return strict JSON only. Generate exactly ${input.requestedCardCount} factCard${input.requestedCardCount === 1 ? '' : 's'} if the source supports it.`,
+    requiredOutline ? 'Cover these required source outline sections before optional details:' : '',
+    requiredOutline,
     'Keep answers concise. Keep each sourceQuote between 80 and 220 characters when possible, and never over 240 characters.',
     'Prefer boring extractive facts, definitions, dates, people, lists, processes, and comparisons.',
     'Every sourceQuote must be copied from the provided source chunk or be a very close contiguous excerpt.',
@@ -1130,6 +1240,211 @@ function cleanupStudyCompilerSource(value: string) {
 function splitStudyCompilerChunks(sourceText: string) {
   const chunks = chunkGroundingText(sourceText, STUDY_FACT_CARD_CHUNK_CHARS)
   return chunks.length > 0 ? chunks : [sourceText]
+}
+
+export function buildSourceOutline(sourceText: string): SourceOutlineItem[] {
+  const lines = cleanupAcademicSourceLines(sourceText)
+  const structured = structureAcademicSourceText(sourceText)
+  const items: SourceOutlineItem[] = []
+  const seen = new Set<string>()
+  const addItem = (item: Omit<SourceOutlineItem, 'id' | 'normalizedTitle'>) => {
+    const title = normalizeStudyOutputHeading(item.title)
+    const normalizedTitle = normalizeAcademicLookup(title)
+    if (!title || !normalizedTitle || seen.has(normalizedTitle)) return
+    seen.add(normalizedTitle)
+    items.push({
+      ...item,
+      id: `outline-${items.length + 1}`,
+      title,
+      normalizedTitle,
+    })
+  }
+
+  for (const line of lines) {
+    const offset = sourceText.indexOf(line)
+    const heading = detectAcademicHeading(line)
+    const numbered = line.match(/^(\d+(?:\.\d+)*|[A-I])[.)]\s+(.{3,90})$/)
+    const kind = classifySourceOutlineKind(heading ?? numbered?.[2] ?? line)
+    if (heading || numbered) {
+      const title = heading ?? numbered?.[2] ?? line
+      const confidence = heading ? 0.82 : 0.78
+      addItem({
+        title,
+        level: confidence >= 0.78 ? 'major' : 'supporting',
+        kind: numbered?.[1] && /^[A-I]$/.test(numbered[1]) ? 'lettered_sequence' : kind,
+        confidence,
+        startOffset: offset >= 0 ? offset : undefined,
+        endOffset: offset >= 0 ? Math.min(sourceText.length, offset + Math.max(line.length, 900)) : undefined,
+        required: confidence >= 0.78,
+      })
+    }
+  }
+
+  for (const heading of structured.headingConfidence) {
+    const offset = findSourceOffsetForTitle(sourceText, heading.heading)
+    addItem({
+      title: heading.heading,
+      level: heading.confidence >= 0.82 ? 'major' : 'supporting',
+      kind: classifySourceOutlineKind(heading.heading),
+      confidence: heading.confidence,
+      startOffset: offset,
+      endOffset: offset == null ? undefined : Math.min(sourceText.length, offset + 1100),
+      required: heading.confidence >= 0.82,
+    })
+  }
+
+  for (const list of structured.lists) {
+    const offset = findSourceOffsetForTitle(sourceText, list.heading) ?? findSourceOffsetForTitle(sourceText, list.items[0] ?? '')
+    addItem({
+      title: list.heading,
+      level: list.items.length >= 3 ? 'major' : 'supporting',
+      kind: classifySourceOutlineKind(list.heading) === 'procedure' ? 'procedure' : 'taxonomy',
+      confidence: list.items.length >= 3 ? 0.9 : 0.78,
+      startOffset: offset,
+      endOffset: offset == null ? undefined : Math.min(sourceText.length, offset + 1200),
+      required: list.items.length >= 3,
+    })
+  }
+
+  for (const definition of structured.termDefinitions.slice(0, 12)) {
+    const offset = findSourceOffsetForTitle(sourceText, definition.term)
+    addItem({
+      title: definition.term,
+      level: 'supporting',
+      kind: 'definition',
+      confidence: 0.76,
+      startOffset: offset,
+      endOffset: offset == null ? undefined : Math.min(sourceText.length, offset + 500),
+      required: structured.termDefinitions.length <= 4,
+    })
+  }
+
+  const required = items.filter((item) => item.required)
+  if (required.length === 0) {
+    for (const sentence of extractStudySentences(sourceText).slice(0, Math.min(4, Math.ceil(sourceText.length / 1200)))) {
+      const offset = sourceText.indexOf(sentence)
+      addItem({
+        title: buildSentenceCue(sentence, 'Key Academic Material'),
+        level: 'major',
+        kind: classifySourceOutlineKind(sentence),
+        confidence: 0.7,
+        startOffset: offset >= 0 ? offset : undefined,
+        endOffset: offset >= 0 ? Math.min(sourceText.length, offset + sentence.length + 500) : undefined,
+        required: true,
+      })
+    }
+  }
+
+  return items
+    .sort((left, right) => (left.startOffset ?? Number.MAX_SAFE_INTEGER) - (right.startOffset ?? Number.MAX_SAFE_INTEGER) || right.confidence - left.confidence)
+    .slice(0, 24)
+}
+
+function buildStudyCompilerChunkPlan(sourceText: string, outline: SourceOutlineItem[]) {
+  const required = getRequiredSourceOutlineItems(outline)
+  if (required.length === 0) {
+    return splitStudyCompilerChunks(sourceText).slice(0, STUDY_FACT_CARD_MAX_CHUNKS).map((text) => ({ text, outlineItems: [] as SourceOutlineItem[] }))
+  }
+  const maxChunks = Math.min(10, Math.max(STUDY_FACT_CARD_MAX_CHUNKS, required.length))
+  const chunks = required.slice(0, maxChunks).map((item) => {
+    const text = getOutlineItemSourceSpan(sourceText, item)
+    const related = outline.filter((candidate) => candidate.id === item.id || (
+      candidate.startOffset != null
+      && item.startOffset != null
+      && Math.abs(candidate.startOffset - item.startOffset) < 900
+    ))
+    return { text, outlineItems: related.length > 0 ? related : [item] }
+  })
+  return chunks.length > 0 ? chunks : splitStudyCompilerChunks(sourceText).slice(0, STUDY_FACT_CARD_MAX_CHUNKS).map((text) => ({ text, outlineItems: [] as SourceOutlineItem[] }))
+}
+
+function getRequestedFactCardsForChunk(chunk: string, outlineItems: SourceOutlineItem[]) {
+  const requiredCount = outlineItems.filter((item) => item.required && item.confidence >= 0.78).length
+  const complexity = requiredCount
+    + (/\b(?:include|includes|types?|categories|steps?|phases?|methods?|formula|timeline)\b/i.test(chunk) ? 1 : 0)
+    + Math.floor(chunk.length / 1800)
+  return Math.max(STUDY_FACT_CARD_DEFAULT_REQUEST_COUNT, Math.min(STUDY_FACT_CARD_MAX_REQUEST_COUNT, STUDY_FACT_CARD_DEFAULT_REQUEST_COUNT + complexity))
+}
+
+function getMaxOutputTokensForRequestedCards(requestedCardCount: number) {
+  return Math.min(STUDY_FACT_CARD_MAX_OUTPUT_TOKENS, STUDY_FACT_CARD_DEFAULT_MAX_OUTPUT_TOKENS + Math.max(0, requestedCardCount - 3) * 300)
+}
+
+function evaluateSourceOutlineCoverage(outline: SourceOutlineItem[], cards: StudyFactCard[]) {
+  const required = getRequiredSourceOutlineItems(outline)
+  const missingRequired = required.filter((item) => !cards.some((card) => isFactCardCoveringOutlineItem(card, item)))
+  return {
+    requiredCount: required.length,
+    coveredRequiredCount: required.length - missingRequired.length,
+    missingRequired,
+  }
+}
+
+function getRequiredSourceOutlineItems(outline: SourceOutlineItem[]) {
+  return outline.filter((item) => item.required && item.confidence >= 0.76)
+}
+
+function isFactCardCoveringOutlineItem(card: StudyFactCard, item: SourceOutlineItem) {
+  const titleKey = item.normalizedTitle
+  const cardKey = normalizeAcademicLookup(`${card.sectionTitle} ${card.prompt} ${card.answer} ${card.sourceQuote}`)
+  if (titleKey.length >= 4 && cardKey.includes(titleKey)) return true
+  const titleTokens = titleKey.split(' ').filter((token) => token.length >= 4)
+  if (titleTokens.length === 0) return false
+  const matched = titleTokens.filter((token) => cardKey.includes(token)).length
+  return matched / titleTokens.length >= 0.66
+}
+
+function getOutlineItemSourceSpan(sourceText: string, item: SourceOutlineItem) {
+  const start = item.startOffset ?? findSourceOffsetForTitle(sourceText, item.title) ?? 0
+  const end = item.endOffset ?? Math.min(sourceText.length, start + STUDY_FACT_CARD_CHUNK_CHARS)
+  const expandedStart = Math.max(0, start - 120)
+  const expandedEnd = Math.min(sourceText.length, Math.max(end, start + 900))
+  return sourceText.slice(expandedStart, expandedEnd).trim() || sourceText.slice(0, STUDY_FACT_CARD_CHUNK_CHARS)
+}
+
+function findSourceOffsetForTitle(sourceText: string, title: string) {
+  if (!title) return undefined
+  const direct = sourceText.toLowerCase().indexOf(title.toLowerCase())
+  if (direct >= 0) return direct
+  const titleKey = normalizeAcademicLookup(title)
+  const lines = sourceText.split('\n')
+  let cursor = 0
+  for (const line of lines) {
+    if (normalizeAcademicLookup(line).includes(titleKey)) return cursor
+    cursor += line.length + 1
+  }
+  return undefined
+}
+
+function classifySourceOutlineKind(value: string): SourceOutlineItem['kind'] {
+  if (/\bphase\b/i.test(value)) return 'phase'
+  if (/\bstep|procedure|process|method\b/i.test(value)) return 'procedure'
+  if (/\bmodule|unit\b/i.test(value)) return 'module'
+  if (/\blesson\b/i.test(value)) return 'lesson'
+  if (/^\d+(?:\.\d+)*[.)]?\s+/.test(value)) return 'numbered_heading'
+  if (/^[A-I][.)]\s+/.test(value)) return 'lettered_sequence'
+  if (/\bobjectives?|learning outcomes?\b/i.test(value)) return 'objective'
+  if (/\bdefinition|defined as|refers to|means\b/i.test(value)) return 'definition'
+  if (/\btypes?|categories|classifications?|domains?|components|principles\b/i.test(value)) return 'taxonomy'
+  if (/\b(?:\d{4}|timeline|history|chronolog|date)\b/i.test(value)) return 'timeline'
+  if (/\bformula|equation|calculate|compute\b/i.test(value)) return 'formula'
+  return 'heading'
+}
+
+function mapSourceOutlineKindToFactCardKind(kind: SourceOutlineItem['kind']): StudyFactCard['kind'] {
+  if (kind === 'definition') return 'definition'
+  if (kind === 'taxonomy' || kind === 'objective') return 'list'
+  if (kind === 'timeline') return 'date'
+  if (kind === 'phase' || kind === 'step' || kind === 'procedure' || kind === 'lettered_sequence' || kind === 'numbered_heading') return 'process'
+  return 'fact'
+}
+
+function buildPromptForSourceOutlineItem(item: SourceOutlineItem) {
+  if (item.kind === 'definition') return `What does ${item.title} mean in the source?`
+  if (item.kind === 'taxonomy') return `What does the source list or classify under ${item.title}?`
+  if (item.kind === 'timeline') return `What date or timeline detail is connected to ${item.title}?`
+  if (item.kind === 'phase' || item.kind === 'step' || item.kind === 'procedure') return `What does the source say to do in ${item.title}?`
+  return `What does the source say about ${item.title}?`
 }
 
 function sanitizeStudyFactCards(cards: StudyFactCard[], chunk: string) {
@@ -1431,6 +1746,9 @@ function logStructuredCompilerSummary(input: {
   deterministicFallbackUsed: boolean
   finalFactCardCount: number
   minimumFactCards: number
+  outlineRequiredCount?: number
+  outlineCoveredCount?: number
+  outlineMissingCount?: number
 }) {
   console.info('[deep-learn-generation] structured compiler summary', {
     generatorVersion: STRUCTURED_FACT_CARD_COMPILER_VERSION,
@@ -1444,6 +1762,9 @@ function logStructuredCompilerSummary(input: {
     deterministicFallbackUsed: input.deterministicFallbackUsed,
     finalFactCardCount: input.finalFactCardCount,
     minimumFactCards: input.minimumFactCards,
+    outlineRequiredCount: input.outlineRequiredCount ?? null,
+    outlineCoveredCount: input.outlineCoveredCount ?? null,
+    outlineMissingCount: input.outlineMissingCount ?? null,
   })
 }
 

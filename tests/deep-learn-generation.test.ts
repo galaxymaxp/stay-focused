@@ -27,6 +27,7 @@ import {
   buildDeepLearnContentFromSourceMap,
   buildDeepLearnSourceDiagnostics,
   buildAcademicStructuredGrounding,
+  buildSourceOutline,
   generateDeepLearnStructuredContent,
   structureAcademicSourceText,
   validateDeepLearnContentReadyForSave,
@@ -2640,6 +2641,69 @@ test('structured Study Pack compiler uses chunked fact extraction for long sourc
   assert.equal(schemaNames.every((name) => name === 'deep_learn_fact_card_chunk'), true)
   assert.equal(result.compactFallbackUsed, true)
   assert.ok(result.content.answerBank.length >= 6)
+})
+
+test('source outline marks high-confidence academic sections without treating every bullet as required', () => {
+  const source = [
+    'Learning Objectives',
+    '- Define data organization.',
+    '- Identify common data structures.',
+    '- Explain why indexing supports retrieval.',
+    '1. Data Tables',
+    'Data tables arrange records in rows and fields in columns.',
+    '2. Indexing',
+    'Indexing creates lookup paths that help locate records efficiently.',
+    'Common Categories',
+    'Types include hierarchical, relational, and network organization.',
+  ].join('\n')
+
+  const outline = buildSourceOutline(source)
+  const requiredTitles = outline.filter((item) => item.required).map((item) => item.title)
+
+  assert.ok(requiredTitles.includes('Learning Objectives'))
+  assert.ok(requiredTitles.includes('Data Tables'))
+  assert.ok(requiredTitles.includes('Indexing'))
+  assert.ok(requiredTitles.includes('Common Categories'))
+  assert.equal(requiredTitles.some((title) => /Define data organization/i.test(title)), false)
+})
+
+test('structured compiler repairs valid but incomplete section coverage with fallback model', async () => {
+  const source = [
+    'Module Overview',
+    'The module explains how a learner should prepare structured academic materials.',
+    'Step One',
+    'Step one gathers the source material and identifies the learning goal.',
+    'Step Two',
+    'Step two organizes the concepts into usable review sections.',
+    'Step Three',
+    'Step three checks coverage so later concepts are not omitted.',
+    'Key Categories',
+    'Categories include definitions, procedures, timelines, and comparisons.',
+  ].join('\n')
+  const calls: Array<{ model?: string; prompt: string }> = []
+
+  const result = await withTemporaryEnv({
+    DEEP_LEARN_STRUCTURED_MODEL: 'mini-coverage-test',
+    DEEP_LEARN_STRUCTURED_FALLBACK_MODEL: 'fallback-coverage-test',
+    DEEP_LEARN_STRUCTURED_PREMIUM_FALLBACK: undefined,
+  }, () => generateDeepLearnStructuredContent(createStructuredPromptInput(source, 'Coverage Source.pdf'), createStructuredPreparedGrounding(source), async (request) => {
+    calls.push({ model: request.model, prompt: request.promptText })
+    if (request.model === 'fallback-coverage-test') {
+      return factCardResponse([
+        factCard('process', 'What happens in Step Three?', 'Step three checks coverage so later concepts are not omitted.', 'Step three checks coverage so later concepts are not omitted.', 'Step Three'),
+        factCard('list', 'What categories does the source include?', 'Categories include definitions, procedures, timelines, and comparisons.', 'Categories include definitions, procedures, timelines, and comparisons.', 'Key Categories'),
+      ], 'Coverage Source')
+    }
+    return factCardResponse([
+      factCard('fact', 'What does the module explain?', 'The module explains how a learner should prepare structured academic materials.', 'The module explains how a learner should prepare structured academic materials.', 'Module Overview'),
+      factCard('process', 'What happens in Step One?', 'Step one gathers the source material and identifies the learning goal.', 'Step one gathers the source material and identifies the learning goal.', 'Step One'),
+      factCard('process', 'What happens in Step Two?', 'Step two organizes the concepts into usable review sections.', 'Step two organizes the concepts into usable review sections.', 'Step Two'),
+    ], 'Coverage Source')
+  }))
+
+  assert.ok(calls.some((call) => call.model === 'fallback-coverage-test'))
+  assert.match(JSON.stringify(result.content), /Step Three/)
+  assert.match(JSON.stringify(result.content), /definitions, procedures, timelines, and comparisons/)
 })
 
 test('structured compiler is the default and never enters legacy stages', async () => {
