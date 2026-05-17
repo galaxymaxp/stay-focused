@@ -10201,6 +10201,58 @@ Deploy this commit, generate Reviewers for the known SDLC-like and IT Security s
 ### Suggested commit message
 use stronger Reviewer compiler model
 
+## Session Update - 2026-05-17 (Add offline Reviewer source fixtures)
+
+### What changed
+- Added offline extracted-text fixtures for representative Deep Learn Reviewer coverage failures:
+  - multi-phase systems-analysis style source
+  - taxonomy-heavy information-security style source
+  - short physical-education martial-arts style module
+- Updated Reviewer coverage tests to use the fixture texts and expected major section lists instead of inline synthetic source strings.
+- Kept the implementation source-agnostic; no SDLC, IT Security, Arnis, course, instructor, or file-name logic was added.
+- Did not run the website or browser verification; this was an offline mocked-model test fixture update.
+
+### Files touched
+- `tests/fixtures/deep-learn-reviewer-sources.ts`
+- `tests/deep-learn-generation.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+The previous Reviewer tests used small generated snippets that did not closely match the production failure pattern. The new fixtures preserve representative extracted academic source shapes so coverage tests exercise later-phase omissions, taxonomy duplication, compressed heading-list cards, and short-source non-bloat behavior without relying on live OpenAI calls or browser/product runs.
+
+### Tests run
+- `npx tsx --test tests/deep-learn-generation.test.ts`
+- `npx tsx --test --test-name-pattern "short Reviewer source" tests/deep-learn-generation.test.ts`
+- `npm run typecheck`
+- `npm run lint`
+- `npm test -- deep-learn-generation`
+
+### Verification result
+- Passed:
+  - direct `tests/deep-learn-generation.test.ts` run: 92 tests
+  - short Reviewer fixture targeted run
+  - `npm run typecheck`
+  - `npm run lint`
+  - `npm test -- deep-learn-generation`: 660 tests
+- Verified offline:
+  - compressed multi-phase heading-list cards still fail coverage and trigger GPT-5.5 repair
+  - taxonomy-heavy sources expand Reviewer targets and preserve later sections
+  - duplicate shallow impact cards are removed and repair covers missing taxonomy sections
+  - short module sources stay bounded while still covering required outline items
+
+### Known risks
+- The fixture texts intentionally mirror production-like extracted content but are still offline representatives, not private production files.
+- The short fixture currently drives a 20-card target because deterministic outline detection treats its major headings and summary as required; the test keeps this bounded and verifies it does not exceed that output size.
+
+### Blockers
+- No blockers.
+
+### Next recommended step
+Use these fixtures as the baseline for any future Reviewer coverage tuning before checking live deployments.
+
+### Suggested commit message
+add offline Reviewer source fixtures
+
 ## Session Update - 2026-05-13 (Fix sync timestamp reporting)
 
 ### What changed

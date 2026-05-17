@@ -45,6 +45,10 @@ import {
 } from '../lib/deep-learn-source-map'
 import type { ModuleSourceResource } from '../lib/module-workspace'
 import type { Module, ModuleResource } from '../lib/types'
+import {
+  reviewerSourceFixtures,
+  type ReviewerSourceFixture,
+} from './fixtures/deep-learn-reviewer-sources'
 
 async function generateDeepLearnStructuredContentWithLegacyComposer(
   ...args: Parameters<typeof generateDeepLearnStructuredContent>
@@ -2719,22 +2723,36 @@ test('structured compiler repairs valid but incomplete section coverage with fal
 })
 
 test('Reviewer compressed heading-list cards do not satisfy required section coverage', async () => {
-  const source = buildSevenSectionAcademicSource()
+  const fixture = getReviewerSourceFixture('multi-phase-systems-analysis')
+  const source = fixture.extractedText
   const calls: Array<{ model?: string; prompt: string }> = []
 
   await assert.rejects(
     () => withTemporaryEnv({
       DEEP_LEARN_STRUCTURED_FALLBACK_MODEL: 'gpt-5.4-reviewer-test',
       DEEP_LEARN_STRUCTURED_PREMIUM_MODEL: 'gpt-5.5-repair-test',
-    }, () => generateDeepLearnStructuredContent(createStructuredPromptInput(source, 'Seven Sections.pdf'), createStructuredPreparedGrounding(source), async (request) => {
+    }, () => generateDeepLearnStructuredContent(createStructuredPromptInput(source, fixture.title), createStructuredPreparedGrounding(source), async (request) => {
       calls.push({ model: request.model, prompt: request.promptText })
       if (request.model === 'gpt-5.5-repair-test') {
-        return factCardResponse([], 'Seven Sections Repair')
+        return factCardResponse([], `${fixture.title} Repair`)
       }
+      const compressedLaterSections = fixture.expectedMajorSections.slice(1).join('; ')
       return factCardResponse([
-        factCard('fact', 'What does Section 1 teach?', 'Section 1 teaches the first academic concept with concrete review substance.', 'Section 1 teaches the first academic concept with concrete review substance.', 'Section 1'),
-        factCard('list', 'What are the later sections?', 'Section 2 - concept two; Section 3 - concept three; Section 4 - concept four; Section 5 - concept five; Section 6 - concept six; Section 7 - concept seven.', 'Section 2 teaches the second academic concept with concrete review substance.', 'Later Sections'),
-      ], 'Seven Sections')
+        factCard(
+          'fact',
+          `What is the purpose of ${fixture.expectedMajorSections[0]}?`,
+          'The first phase identifies organizational problems, opportunities, and objectives so the analyst understands why a new or improved system is being considered.',
+          'The first phase of systems analysis begins when the analyst identifies problems, opportunities, and objectives.',
+          fixture.expectedMajorSections[0]!,
+        ),
+        factCard(
+          'list',
+          'What are the remaining major sections?',
+          compressedLaterSections,
+          compressedLaterSections,
+          'Remaining Major Sections',
+        ),
+      ], fixture.title)
     })),
     /Deep Learn could not build enough structured study content/i,
   )
@@ -2746,22 +2764,24 @@ test('Reviewer compressed heading-list cards do not satisfy required section cov
 })
 
 test('dense Reviewer source expands target cards beyond old compact caps', async () => {
-  const source = buildDenseAcademicSource()
+  const fixture = getReviewerSourceFixture('taxonomy-heavy-security')
+  const source = fixture.extractedText
   const calls: Array<{ requestedCards: number; maxOutputTokens: number; model?: string }> = []
   const logs = await captureConsoleInfo(async () => {
     const result = await withTemporaryEnv({
       DEEP_LEARN_STRUCTURED_FALLBACK_MODEL: 'gpt-5.4-dense',
       DEEP_LEARN_STRUCTURED_PREMIUM_MODEL: 'gpt-5.5-dense',
-    }, () => generateDeepLearnStructuredContent(createStructuredPromptInput(source, 'Dense Source.pdf'), createStructuredPreparedGrounding(source), async (request) => {
+    }, () => generateDeepLearnStructuredContent(createStructuredPromptInput(source, fixture.title), createStructuredPreparedGrounding(source), async (request) => {
       calls.push({
         model: request.model,
         requestedCards: Number(request.promptText.match(/Generate exactly (\d+) factCard/)?.[1] ?? 0),
         maxOutputTokens: request.maxOutputTokens,
       })
-      return factCardResponse(createDenseSourceCards(), 'Dense Source')
+      return factCardResponse(createReviewerFixtureCards(fixture, { includeDensityCards: true }), fixture.title)
     }))
     assert.ok(result.content.answerBank.length > 12)
-    assert.match(JSON.stringify(result.content), /Section 10/)
+    assert.match(JSON.stringify(result.content), /Detection, Investigation, and Remediation/)
+    assert.match(JSON.stringify(result.content), /Security Practices and Controls/)
   })
   const summary = logs.map((entry) => entry[1]).find((entry): entry is Record<string, unknown> => Boolean(entry && typeof entry === 'object' && (entry as Record<string, unknown>).coveragePassed === true))
 
@@ -2772,68 +2792,52 @@ test('dense Reviewer source expands target cards beyond old compact caps', async
 })
 
 test('Reviewer duplicate shallow cards are removed and missing coverage triggers GPT-5.5 repair', async () => {
-  const source = [
-    'Security Effects',
-    'Vandalism damages systems by changing or destroying digital property.',
-    'Theft removes confidential information and creates privacy and financial harm.',
-    'Revenue Lost reduces income when operations, customer trust, or transactions are disrupted.',
-    'Recovery Planning restores systems through backups, incident response, and tested procedures.',
-  ].join('\n')
+  const fixture = getReviewerSourceFixture('taxonomy-heavy-security')
+  const source = fixture.extractedText
   const calls: Array<{ model?: string }> = []
   const result = await withTemporaryEnv({
     DEEP_LEARN_STRUCTURED_FALLBACK_MODEL: 'gpt-5.4-duplicates',
     DEEP_LEARN_STRUCTURED_PREMIUM_MODEL: 'gpt-5.5-duplicates',
-  }, () => generateDeepLearnStructuredContent(createStructuredPromptInput(source, 'Security Effects.pdf'), createStructuredPreparedGrounding(source), async (request) => {
+  }, () => generateDeepLearnStructuredContent(createStructuredPromptInput(source, fixture.title), createStructuredPreparedGrounding(source), async (request) => {
     calls.push({ model: request.model })
     if (request.model === 'gpt-5.5-duplicates') {
-      return factCardResponse([
-        factCard('fact', 'How does theft harm security?', 'Theft removes confidential information and creates privacy and financial harm.', 'Theft removes confidential information and creates privacy and financial harm.', 'Theft'),
-        factCard('process', 'What does recovery planning restore?', 'Recovery Planning restores systems through backups, incident response, and tested procedures.', 'Recovery Planning restores systems through backups, incident response, and tested procedures.', 'Recovery Planning'),
-        factCard('fact', 'How does revenue loss affect operations?', 'Revenue Lost reduces income when operations, customer trust, or transactions are disrupted.', 'Revenue Lost reduces income when operations, customer trust, or transactions are disrupted.', 'Revenue Lost'),
-      ], 'Security Effects Repair')
+      return factCardResponse(createReviewerFixtureCards(fixture, { includeDensityCards: true }), `${fixture.title} Repair`)
     }
     return factCardResponse([
-      factCard('fact', 'What is vandalism?', 'Vandalism', 'Vandalism damages systems by changing or destroying digital property.', 'Vandalism'),
-      factCard('fact', 'What is vandalism?', 'Vandalism', 'Vandalism damages systems by changing or destroying digital property.', 'Vandalism'),
-      factCard('fact', 'What is theft?', 'Theft', 'Theft removes confidential information and creates privacy and financial harm.', 'Theft'),
-      factCard('fact', 'What is revenue lost?', 'Revenue Lost', 'Revenue Lost reduces income when operations, customer trust, or transactions are disrupted.', 'Revenue Lost'),
-    ], 'Security Effects')
+      factCard('fact', 'What is ruined reputation?', 'Ruined Reputation', 'Ruined reputation occurs when customers, partners, or the public lose confidence in the organization.', 'Impact of Security Breaches'),
+      factCard('fact', 'What is ruined reputation?', 'Ruined Reputation', 'Ruined reputation occurs when customers, partners, or the public lose confidence in the organization.', 'Impact of Security Breaches'),
+      factCard('fact', 'What is vandalism?', 'Vandalism', 'Vandalism may involve defaced websites, altered files, or destroyed data.', 'Impact of Security Breaches'),
+      factCard('fact', 'What is theft?', 'Theft', 'Theft may involve stolen credentials, financial data, personal information, or trade secrets.', 'Impact of Security Breaches'),
+      factCard('fact', 'What is revenue loss?', 'Revenue Lost', 'Revenue loss can happen when systems are unavailable, customers leave, operations stop, or recovery costs increase.', 'Impact of Security Breaches'),
+    ], fixture.title)
   }))
 
   const cues = result.content.answerBank.map((item) => item.cue)
-  assert.equal(cues.filter((cue) => /Vandalism/i.test(cue)).length <= 1, true)
+  assert.equal(cues.filter((cue) => /Ruined Reputation/i.test(cue)).length <= 1, true)
   assert.equal(calls.some((call) => call.model === 'gpt-5.5-duplicates'), true)
-  assert.match(JSON.stringify(result.content), /Recovery Planning/)
+  assert.match(JSON.stringify(result.content), /Unified Threat Management/)
+  assert.match(JSON.stringify(result.content), /Detection, Investigation, and Remediation/)
 })
 
 test('short Reviewer source uses GPT-5.4 without bloating supporting bullets', async () => {
-  const source = [
-    'Short Academic Topic',
-    'The topic defines a concise concept for exam review.',
-    '- Supporting reminder one',
-    '- Supporting reminder two',
-    'The final sentence explains why the concept matters for students.',
-  ].join('\n')
+  const fixture = getReviewerSourceFixture('short-martial-arts-module')
+  const source = fixture.extractedText
   const models: Array<string | undefined> = []
   const result = await withTemporaryEnv({
     DEEP_LEARN_STRUCTURED_MODEL: 'mini-short-should-not-run',
     DEEP_LEARN_STRUCTURED_FALLBACK_MODEL: 'gpt-5.4-short',
     DEEP_LEARN_STRUCTURED_PREMIUM_MODEL: 'gpt-5.5-short',
-  }, () => generateDeepLearnStructuredContent(createStructuredPromptInput(source, 'Short Source.pdf'), createStructuredPreparedGrounding(source), async (request) => {
+  }, () => generateDeepLearnStructuredContent(createStructuredPromptInput(source, fixture.title), createStructuredPreparedGrounding(source), async (request) => {
     models.push(request.model)
-    return factCardResponse([
-      factCard('definition', 'What does the short topic define?', 'The topic defines a concise concept for exam review.', 'The topic defines a concise concept for exam review.', 'Short Academic Topic'),
-      factCard('fact', 'Why does the concept matter?', 'The final sentence explains why the concept matters for students.', 'The final sentence explains why the concept matters for students.', 'Concept Importance'),
-      factCard('fact', 'What is supporting reminder one?', 'Supporting reminder one is a brief review reminder.', 'Supporting reminder one', 'Supporting Reminder'),
-      factCard('fact', 'What is supporting reminder two?', 'Supporting reminder two is a brief review reminder.', 'Supporting reminder two', 'Supporting Reminder'),
-      factCard('fact', 'How should students use the topic?', 'Students should use the concise concept for exam review.', 'concise concept for exam review', 'Exam Review'),
-      factCard('fact', 'What is the source scope?', 'The source is a short academic topic with two supporting reminders.', 'Short Academic Topic', 'Source Scope'),
-    ], 'Short Source')
+    return factCardResponse(createReviewerFixtureCards(fixture), fixture.title)
   }))
 
   assert.equal(models[0], 'gpt-5.4-short')
   assert.equal(models.includes('mini-short-should-not-run'), false)
   assert.ok(result.content.answerBank.length <= 20)
+  for (const section of fixture.expectedMajorSections) {
+    assert.match(JSON.stringify(result.content), new RegExp(escapeRegExp(section), 'i'))
+  }
 })
 
 test('task_output model routing remains on task-specific mini defaults', () => {
@@ -3158,56 +3162,176 @@ function buildStructuredFactSource(prefix: string, count: number) {
   }).join('\n\n')
 }
 
-function buildSevenSectionAcademicSource() {
-  return Array.from({ length: 7 }, (_, index) => {
-    const section = index + 1
-    return [
-      `Section ${section}`,
-      `${section}. Section ${section} Academic Concept`,
-      `Section ${section} teaches the ${ordinalWord(section)} academic concept with concrete review substance.`,
-      `Section ${section} evidence explains why this concept matters for exam preparation.`,
-    ].join('\n')
-  }).join('\n')
+function getReviewerSourceFixture(id: string) {
+  const fixture = reviewerSourceFixtures.find((item) => item.id === id)
+  assert.ok(fixture, `Missing reviewer source fixture: ${id}`)
+  return fixture
 }
 
-function buildDenseAcademicSource() {
-  const sections = Array.from({ length: 10 }, (_, index) => {
-    const section = index + 1
-    return [
-      `Section ${section}`,
-      `Section ${section} defines dense concept ${section} for academic review.`,
-      `Section ${section} includes category ${section}A, category ${section}B, and category ${section}C.`,
-      `Section ${section} procedure requires prepare, apply, check, and revise steps.`,
-    ].join('\n')
-  })
-  return [
-    ...sections,
-    'Key Definitions',
-    'Alpha means the first required definition in the dense source.',
-    'Beta means the second required definition in the dense source.',
-    'Gamma means the third required definition in the dense source.',
-  ].join('\n')
-}
-
-function createDenseSourceCards() {
-  return Array.from({ length: 14 }, (_, index) => {
-    const section = Math.min(index + 1, 10)
-    const title = index < 10 ? `Section ${section}` : ['Alpha', 'Beta', 'Gamma', 'Key Definitions'][index - 10] ?? 'Key Definitions'
-    const quote = index < 10
-      ? `Section ${section} defines dense concept ${section} for academic review.`
-      : `${title} means the ${index - 9 === 1 ? 'first' : index - 9 === 2 ? 'second' : 'third'} required definition in the dense source.`
+function createReviewerFixtureCards(
+  fixture: ReviewerSourceFixture,
+  options: { includeDensityCards?: boolean } = {},
+) {
+  const sections = uniqueFixtureSections([
+    ...fixture.expectedMajorSections,
+    ...buildSourceOutline(fixture.extractedText)
+      .filter((item) => item.required)
+      .map((item) => item.title),
+  ])
+  const sectionCards = sections.map((section) => {
+    const quote = getFixtureSectionQuote(fixture, section)
+    if (/^summary$/i.test(section)) {
+      const summaryQuote = 'It should not duplicate broad cards when a specific section needs direct review coverage.'
+      return factCard(
+        'fact',
+        'What complete review coverage does the Summary require?',
+        summaryQuote,
+        summaryQuote,
+        section,
+      )
+    }
     return factCard(
-      index < 10 ? 'process' : 'definition',
-      `What does ${title} teach?`,
+      /definition|triad|malware|equipment|background/i.test(section) ? 'definition' : 'fact',
+      `What should you remember about ${section}?`,
+      `${section}: ${quote}`,
       quote,
+      section,
+    )
+  })
+
+  if (!options.includeDensityCards) {
+    return [
+      ...sectionCards,
+      ...createFixtureSupportCards(fixture, Math.max(0, 20 - sectionCards.length)),
+    ]
+  }
+
+  return [
+    ...sectionCards,
+    factCard(
+      'list',
+      'What controls support confidentiality?',
+      'Passwords, access permissions, encryption, and data classification support confidentiality.',
+      'Examples include passwords, access permissions, encryption, and data classification.',
+      'CIA Triad',
+    ),
+    factCard(
+      'list',
+      'What controls support availability?',
+      'Backups, redundancy, disaster recovery, failover systems, and maintenance planning support availability.',
+      'Availability controls include backups, redundancy, disaster recovery, failover systems, and maintenance planning.',
+      'CIA Triad',
+    ),
+    factCard(
+      'classification',
+      'How do vulnerability, exploit, and breach differ?',
+      'A vulnerability is the weakness, an exploit is the method used against it, and a breach is the successful security violation.',
+      'A vulnerability is a weakness or flaw in hardware, software, configuration, process, or human behavior.',
+      'Vulnerability, Exploit, and Breach',
+    ),
+    factCard(
+      'process',
+      'How do detection, investigation, and remediation connect?',
+      'Detection identifies suspicious activity, investigation determines what happened, and remediation fixes the problem and reduces future risk.',
+      'Detection is the process of identifying suspicious activity, policy violations, malware, unauthorized access, or signs of compromise.',
+      'Detection, Investigation, and Remediation',
+    ),
+    factCard(
+      'classification',
+      'How do threats and attacks differ?',
+      'A threat is anything that can cause harm, while an attack is an intentional attempt to exploit a weakness.',
+      'A threat is anything that can cause harm to information, systems, or users.',
+      'Threats and Attacks',
+    ),
+    factCard(
+      'definition',
+      'What makes a host a zombie?',
+      'A zombie is an infected host controlled remotely by an attacker without the user knowing.',
+      "A zombie is an infected host controlled remotely by an attacker without the user's knowledge.",
+      'Botnets and Zombies',
+    ),
+    factCard(
+      'list',
+      'What breach impacts should a reviewer remember?',
+      'A breach can damage reputation, cause vandalism or theft, reduce revenue, damage intellectual property, create legal penalties, and reduce trust.',
+      'A security breach can cause ruined reputation, vandalism, theft, revenue loss, damaged intellectual property, legal penalties, and loss of customer trust.',
+      'Impact of Security Breaches',
+    ),
+    factCard(
+      'fact',
+      'Why does UTM need monitoring?',
+      'UTM simplifies central security administration, but it still must be configured and monitored properly.',
+      'However, UTM must be configured and monitored properly.',
+      'Unified Threat Management',
+    ),
+    factCard(
+      'process',
+      'Why does remediation reduce future risk?',
+      'Remediation removes the immediate problem and improves controls through actions such as patching, password resets, backup restoration, and configuration changes.',
+      'Remediation may include removing malware, resetting passwords, patching software, changing configurations, restoring backups, blocking malicious addresses, and improving controls.',
+      'Detection, Investigation, and Remediation',
+    ),
+    factCard(
+      'fact',
+      'Why does least privilege matter?',
+      'Least privilege limits users to only the permissions needed for their role, reducing the harm from misuse or compromise.',
+      'Users should only have the permissions needed for their role.',
+      'Security Practices and Controls',
+    ),
+  ]
+}
+
+function uniqueFixtureSections(sections: string[]) {
+  const seen = new Set<string>()
+  return sections.filter((section) => {
+    const normalized = normalizeForFixtureLookup(section)
+    if (!normalized || seen.has(normalized)) {
+      return false
+    }
+    seen.add(normalized)
+    return true
+  })
+}
+
+function createFixtureSupportCards(fixture: ReviewerSourceFixture, count: number) {
+  return Array.from({ length: count }, (_, index) => {
+    const section = fixture.expectedMajorSections[index % fixture.expectedMajorSections.length]!
+    const quote = getFixtureSectionQuote(fixture, section)
+    return factCard(
+      'fact',
+      `What extra review detail ${index + 1} matters for ${section}?`,
+      `${section} review detail ${index + 1} is grounded in this source point: ${quote}`,
       quote,
-      title,
+      section,
     )
   })
 }
 
-function ordinalWord(value: number) {
-  return ['zeroth', 'first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh'][value] ?? `${value}th`
+function getFixtureSectionQuote(fixture: ReviewerSourceFixture, section: string) {
+  const normalizedSection = normalizeForFixtureLookup(section)
+  const paragraphs = fixture.extractedText.split(/\n\s*\n/)
+  const headingIndex = paragraphs.findIndex((paragraph) => {
+    const normalizedParagraph = normalizeForFixtureLookup(paragraph)
+    return normalizedParagraph === normalizedSection || normalizedParagraph.includes(normalizedSection)
+  })
+  const candidate = headingIndex >= 0 ? paragraphs[headingIndex + 1] : ''
+  const fallback = paragraphs.find((paragraph) => normalizeForFixtureLookup(paragraph).includes(normalizedSection.split(' ').at(0) ?? normalizedSection))
+  return firstSentence(candidate || fallback || section)
+}
+
+function firstSentence(value: string) {
+  return value
+    .replace(/\s+/g, ' ')
+    .split(/(?<=\.)\s+/)[0]!
+    .trim()
+}
+
+function normalizeForFixtureLookup(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 function createSequentialFactCards(prefix: string, count: number, start = 1) {
