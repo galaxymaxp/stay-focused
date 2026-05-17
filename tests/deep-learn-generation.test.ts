@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import {
   normalizeDeepLearnGeneratedContent,
@@ -2539,9 +2540,10 @@ test('structured Study Pack compiler builds SDLC fact cards without quick_answer
     ], 'SDLC')
   })
 
-  assert.deepEqual(schemas, ['deep_learn_study_pack_compiler'])
-  assert.equal(result.content.answerBank.length, 6)
-  assert.equal(result.content.identificationItems.length, 6)
+  assert.equal(schemas[0], 'deep_learn_study_pack_compiler')
+  assert.equal(schemas.every((schema) => schema === 'deep_learn_study_pack_compiler'), true)
+  assert.ok(result.content.answerBank.length >= 6)
+  assert.ok(result.content.identificationItems.length >= 6)
   assert.ok(result.content.sections.some((section) => section.heading === 'Identification Review'))
   assert.equal(result.content.cautionNotes.length, 0)
 })
@@ -2586,15 +2588,16 @@ test('structured Study Pack compiler handles short Arnis dates people definition
 })
 
 test('structured Study Pack compiler skips MCQ distractors safely when not enough choices exist', async () => {
-  const cards = createSequentialFactCards('Data organization', 6).map((card) => ({
+  const cards = createSequentialFactCards('Data organization', 16).map((card) => ({
     ...card,
+    sectionTitle: card.sourceQuote,
     answer: `${card.answer} This answer is intentionally long and source-specific, so it should not be used as a compact multiple-choice distractor for another fact card in the deterministic assembly path.`,
-    sourceQuote: `${card.sourceQuote} This answer is intentionally long and source-specific, so it should not be used as a compact multiple-choice distractor for another fact card in the deterministic assembly path.`,
   }))
   const groundedSource = cards.map((card) => card.sourceQuote).join('\n')
   const result = await generateDeepLearnStructuredContent(createStructuredPromptInput(groundedSource, 'Data Organization.pdf'), createStructuredPreparedGrounding(groundedSource), async () => factCardResponse(cards, 'Data Organization'))
 
-  assert.equal(result.content.answerBank.every((item) => item.distractors.length === 0), true)
+  const longAnswerItems = result.content.answerBank.filter((item) => /intentionally long and source-specific/i.test(item.answer.examSafe))
+  assert.equal(longAnswerItems.every((item) => item.distractors.length === 0), true)
   assert.equal(result.content.identificationItems.length >= 6, true)
 })
 
@@ -2609,7 +2612,7 @@ test('structured Study Pack compiler rejects source-map prompts and diagnostics 
   assert.equal(JSON.stringify(result.content).includes('Recall the exam meaning of'), false)
   assert.equal(JSON.stringify(result.content).includes('Explain the source relationship'), false)
   assert.equal(JSON.stringify(result.content).includes('diagnostics'), false)
-  assert.equal(result.content.identificationItems.length, 6)
+  assert.ok(result.content.identificationItems.length >= 6)
 })
 
 test('structured Study Pack compiler uses deterministic fallback when model cards are unusable', async () => {
@@ -2685,6 +2688,7 @@ test('structured compiler repairs valid but incomplete section coverage with fal
   const result = await withTemporaryEnv({
     DEEP_LEARN_STRUCTURED_MODEL: 'mini-coverage-test',
     DEEP_LEARN_STRUCTURED_FALLBACK_MODEL: 'fallback-coverage-test',
+    DEEP_LEARN_STRUCTURED_PREMIUM_MODEL: 'fallback-coverage-test',
     DEEP_LEARN_STRUCTURED_PREMIUM_FALLBACK: undefined,
   }, () => generateDeepLearnStructuredContent(createStructuredPromptInput(source, 'Coverage Source.pdf'), createStructuredPreparedGrounding(source), async (request) => {
     calls.push({ model: request.model, prompt: request.promptText })
@@ -2692,6 +2696,14 @@ test('structured compiler repairs valid but incomplete section coverage with fal
       return factCardResponse([
         factCard('process', 'What happens in Step Three?', 'Step three checks coverage so later concepts are not omitted.', 'Step three checks coverage so later concepts are not omitted.', 'Step Three'),
         factCard('list', 'What categories does the source include?', 'Categories include definitions, procedures, timelines, and comparisons.', 'Categories include definitions, procedures, timelines, and comparisons.', 'Key Categories'),
+        factCard('fact', 'Why does Step Three matter?', 'Step three checks coverage so later concepts are not omitted.', 'Step three checks coverage so later concepts are not omitted.', 'Step Three Coverage'),
+        factCard('list', 'Which review categories are named?', 'Definitions, procedures, timelines, and comparisons are named categories.', 'Categories include definitions, procedures, timelines, and comparisons.', 'Key Categories'),
+        factCard('fact', 'What does the module explain?', 'The module explains how a learner should prepare structured academic materials.', 'The module explains how a learner should prepare structured academic materials.', 'Module Overview'),
+        factCard('process', 'What happens in Step One?', 'Step one gathers the source material and identifies the learning goal.', 'Step one gathers the source material and identifies the learning goal.', 'Step One'),
+        factCard('process', 'What happens in Step Two?', 'Step two organizes the concepts into usable review sections.', 'Step two organizes the concepts into usable review sections.', 'Step Two'),
+        factCard('fact', 'What learning goal is identified in Step One?', 'Step one gathers the source material and identifies the learning goal.', 'Step one gathers the source material and identifies the learning goal.', 'Step One Learning Goal'),
+        factCard('fact', 'What review sections are organized in Step Two?', 'Step two organizes the concepts into usable review sections.', 'Step two organizes the concepts into usable review sections.', 'Step Two Review Sections'),
+        factCard('fact', 'What later concepts are checked in Step Three?', 'Step three checks coverage so later concepts are not omitted.', 'Step three checks coverage so later concepts are not omitted.', 'Step Three Later Concepts'),
       ], 'Coverage Source')
     }
     return factCardResponse([
@@ -2706,6 +2718,132 @@ test('structured compiler repairs valid but incomplete section coverage with fal
   assert.match(JSON.stringify(result.content), /definitions, procedures, timelines, and comparisons/)
 })
 
+test('Reviewer compressed heading-list cards do not satisfy required section coverage', async () => {
+  const source = buildSevenSectionAcademicSource()
+  const calls: Array<{ model?: string; prompt: string }> = []
+
+  await assert.rejects(
+    () => withTemporaryEnv({
+      DEEP_LEARN_STRUCTURED_FALLBACK_MODEL: 'gpt-5.4-reviewer-test',
+      DEEP_LEARN_STRUCTURED_PREMIUM_MODEL: 'gpt-5.5-repair-test',
+    }, () => generateDeepLearnStructuredContent(createStructuredPromptInput(source, 'Seven Sections.pdf'), createStructuredPreparedGrounding(source), async (request) => {
+      calls.push({ model: request.model, prompt: request.promptText })
+      if (request.model === 'gpt-5.5-repair-test') {
+        return factCardResponse([], 'Seven Sections Repair')
+      }
+      return factCardResponse([
+        factCard('fact', 'What does Section 1 teach?', 'Section 1 teaches the first academic concept with concrete review substance.', 'Section 1 teaches the first academic concept with concrete review substance.', 'Section 1'),
+        factCard('list', 'What are the later sections?', 'Section 2 - concept two; Section 3 - concept three; Section 4 - concept four; Section 5 - concept five; Section 6 - concept six; Section 7 - concept seven.', 'Section 2 teaches the second academic concept with concrete review substance.', 'Later Sections'),
+      ], 'Seven Sections')
+    })),
+    /Deep Learn could not build enough structured study content/i,
+  )
+
+  assert.equal(calls[0]!.model, 'gpt-5.4-reviewer-test')
+  assert.equal(calls.some((call) => call.model === 'gpt-5.5-repair-test'), true)
+  assert.equal(calls.some((call) => call.model?.includes('mini')), false)
+  assert.ok(calls.some((call) => /Repair the Reviewer answer bank/i.test(call.prompt)))
+})
+
+test('dense Reviewer source expands target cards beyond old compact caps', async () => {
+  const source = buildDenseAcademicSource()
+  const calls: Array<{ requestedCards: number; maxOutputTokens: number; model?: string }> = []
+  const logs = await captureConsoleInfo(async () => {
+    const result = await withTemporaryEnv({
+      DEEP_LEARN_STRUCTURED_FALLBACK_MODEL: 'gpt-5.4-dense',
+      DEEP_LEARN_STRUCTURED_PREMIUM_MODEL: 'gpt-5.5-dense',
+    }, () => generateDeepLearnStructuredContent(createStructuredPromptInput(source, 'Dense Source.pdf'), createStructuredPreparedGrounding(source), async (request) => {
+      calls.push({
+        model: request.model,
+        requestedCards: Number(request.promptText.match(/Generate exactly (\d+) factCard/)?.[1] ?? 0),
+        maxOutputTokens: request.maxOutputTokens,
+      })
+      return factCardResponse(createDenseSourceCards(), 'Dense Source')
+    }))
+    assert.ok(result.content.answerBank.length > 12)
+    assert.match(JSON.stringify(result.content), /Section 10/)
+  })
+  const summary = logs.map((entry) => entry[1]).find((entry): entry is Record<string, unknown> => Boolean(entry && typeof entry === 'object' && (entry as Record<string, unknown>).coveragePassed === true))
+
+  assert.equal(calls[0]!.model, 'gpt-5.4-dense')
+  assert.ok(calls[0]!.requestedCards > 5)
+  assert.ok(calls[0]!.maxOutputTokens > 1100)
+  assert.ok(Number(summary?.targetReviewerCards ?? 0) > 12)
+})
+
+test('Reviewer duplicate shallow cards are removed and missing coverage triggers GPT-5.5 repair', async () => {
+  const source = [
+    'Security Effects',
+    'Vandalism damages systems by changing or destroying digital property.',
+    'Theft removes confidential information and creates privacy and financial harm.',
+    'Revenue Lost reduces income when operations, customer trust, or transactions are disrupted.',
+    'Recovery Planning restores systems through backups, incident response, and tested procedures.',
+  ].join('\n')
+  const calls: Array<{ model?: string }> = []
+  const result = await withTemporaryEnv({
+    DEEP_LEARN_STRUCTURED_FALLBACK_MODEL: 'gpt-5.4-duplicates',
+    DEEP_LEARN_STRUCTURED_PREMIUM_MODEL: 'gpt-5.5-duplicates',
+  }, () => generateDeepLearnStructuredContent(createStructuredPromptInput(source, 'Security Effects.pdf'), createStructuredPreparedGrounding(source), async (request) => {
+    calls.push({ model: request.model })
+    if (request.model === 'gpt-5.5-duplicates') {
+      return factCardResponse([
+        factCard('fact', 'How does theft harm security?', 'Theft removes confidential information and creates privacy and financial harm.', 'Theft removes confidential information and creates privacy and financial harm.', 'Theft'),
+        factCard('process', 'What does recovery planning restore?', 'Recovery Planning restores systems through backups, incident response, and tested procedures.', 'Recovery Planning restores systems through backups, incident response, and tested procedures.', 'Recovery Planning'),
+        factCard('fact', 'How does revenue loss affect operations?', 'Revenue Lost reduces income when operations, customer trust, or transactions are disrupted.', 'Revenue Lost reduces income when operations, customer trust, or transactions are disrupted.', 'Revenue Lost'),
+      ], 'Security Effects Repair')
+    }
+    return factCardResponse([
+      factCard('fact', 'What is vandalism?', 'Vandalism', 'Vandalism damages systems by changing or destroying digital property.', 'Vandalism'),
+      factCard('fact', 'What is vandalism?', 'Vandalism', 'Vandalism damages systems by changing or destroying digital property.', 'Vandalism'),
+      factCard('fact', 'What is theft?', 'Theft', 'Theft removes confidential information and creates privacy and financial harm.', 'Theft'),
+      factCard('fact', 'What is revenue lost?', 'Revenue Lost', 'Revenue Lost reduces income when operations, customer trust, or transactions are disrupted.', 'Revenue Lost'),
+    ], 'Security Effects')
+  }))
+
+  const cues = result.content.answerBank.map((item) => item.cue)
+  assert.equal(cues.filter((cue) => /Vandalism/i.test(cue)).length <= 1, true)
+  assert.equal(calls.some((call) => call.model === 'gpt-5.5-duplicates'), true)
+  assert.match(JSON.stringify(result.content), /Recovery Planning/)
+})
+
+test('short Reviewer source uses GPT-5.4 without bloating supporting bullets', async () => {
+  const source = [
+    'Short Academic Topic',
+    'The topic defines a concise concept for exam review.',
+    '- Supporting reminder one',
+    '- Supporting reminder two',
+    'The final sentence explains why the concept matters for students.',
+  ].join('\n')
+  const models: Array<string | undefined> = []
+  const result = await withTemporaryEnv({
+    DEEP_LEARN_STRUCTURED_MODEL: 'mini-short-should-not-run',
+    DEEP_LEARN_STRUCTURED_FALLBACK_MODEL: 'gpt-5.4-short',
+    DEEP_LEARN_STRUCTURED_PREMIUM_MODEL: 'gpt-5.5-short',
+  }, () => generateDeepLearnStructuredContent(createStructuredPromptInput(source, 'Short Source.pdf'), createStructuredPreparedGrounding(source), async (request) => {
+    models.push(request.model)
+    return factCardResponse([
+      factCard('definition', 'What does the short topic define?', 'The topic defines a concise concept for exam review.', 'The topic defines a concise concept for exam review.', 'Short Academic Topic'),
+      factCard('fact', 'Why does the concept matter?', 'The final sentence explains why the concept matters for students.', 'The final sentence explains why the concept matters for students.', 'Concept Importance'),
+      factCard('fact', 'What is supporting reminder one?', 'Supporting reminder one is a brief review reminder.', 'Supporting reminder one', 'Supporting Reminder'),
+      factCard('fact', 'What is supporting reminder two?', 'Supporting reminder two is a brief review reminder.', 'Supporting reminder two', 'Supporting Reminder'),
+      factCard('fact', 'How should students use the topic?', 'Students should use the concise concept for exam review.', 'concise concept for exam review', 'Exam Review'),
+      factCard('fact', 'What is the source scope?', 'The source is a short academic topic with two supporting reminders.', 'Short Academic Topic', 'Source Scope'),
+    ], 'Short Source')
+  }))
+
+  assert.equal(models[0], 'gpt-5.4-short')
+  assert.equal(models.includes('mini-short-should-not-run'), false)
+  assert.ok(result.content.answerBank.length <= 20)
+})
+
+test('task_output model routing remains on task-specific mini defaults', () => {
+  const source = readFileSync('app/api/task-output/route.ts', 'utf8')
+  assert.match(source, /DEFAULT_TASK_OUTPUT_MODEL = 'gpt-5-mini'/)
+  assert.match(source, /OPENAI_TASK_OUTPUT_MODEL/)
+  assert.match(source, /OPENAI_DO_NOW_MODEL/)
+  assert.doesNotMatch(source, /DEEP_LEARN_REVIEWER_COMPILER_MODEL|DEEP_LEARN_STRUCTURED_FALLBACK_MODEL/)
+})
+
 test('structured compiler is the default and never enters legacy stages', async () => {
   const source = buildStructuredFactSource('Default compiler', 8)
   const schemaNames: string[] = []
@@ -2717,19 +2855,21 @@ test('structured compiler is the default and never enters legacy stages', async 
     return factCardResponse(createSequentialFactCards('Default compiler', 6), 'Default Compiler')
   })
 
-  assert.deepEqual(schemaNames, ['deep_learn_study_pack_compiler'])
-  assert.deepEqual(models, ['gpt-5.4-mini'])
+  assert.equal(schemaNames[0], 'deep_learn_study_pack_compiler')
+  assert.equal(schemaNames.every((name) => name === 'deep_learn_study_pack_compiler'), true)
+  assert.equal(models[0], 'gpt-5.4')
+  assert.equal(models.includes('gpt-5.4-mini'), false)
   assert.equal(result.content.cautionNotes.length, 0)
-  assert.equal(result.content.identificationItems.length, 6)
+  assert.ok(result.content.identificationItems.length >= 6)
 })
 
-test('structured compiler retries max_output_tokens with one primary card before fallback model', async () => {
+test('Reviewer compiler retries max_output_tokens with non-mini primary before GPT-5.5 repair', async () => {
   const source = buildStructuredFactSource('Retry compiler', 8)
   const calls: Array<{ model?: string; requestedCards: number; maxOutputTokens: number }> = []
   const result = await withTemporaryEnv({
     DEEP_LEARN_STRUCTURED_MODEL: 'mini-test-model',
-    DEEP_LEARN_STRUCTURED_FALLBACK_MODEL: 'fallback-test-model',
-    DEEP_LEARN_STRUCTURED_PREMIUM_MODEL: 'premium-test-model',
+    DEEP_LEARN_STRUCTURED_FALLBACK_MODEL: 'gpt-5.4-test-model',
+    DEEP_LEARN_STRUCTURED_PREMIUM_MODEL: 'gpt-5.5-test-model',
     DEEP_LEARN_STRUCTURED_PREMIUM_FALLBACK: undefined,
   }, () => generateDeepLearnStructuredContent(createStructuredPromptInput(source, 'Retry Compiler.pdf'), createStructuredPreparedGrounding(source), async (request) => {
     calls.push({
@@ -2743,13 +2883,15 @@ test('structured compiler retries max_output_tokens with one primary card before
     return factCardResponse(createSequentialFactCards('Retry compiler', 1), 'Retry Compiler')
   }))
 
-  assert.deepEqual(calls.map((call) => call.model), ['mini-test-model', 'mini-test-model'])
-  assert.deepEqual(calls.map((call) => call.requestedCards), [3, 1])
+  assert.deepEqual(calls.map((call) => call.model), ['gpt-5.4-test-model', 'gpt-5.4-test-model', 'gpt-5.5-test-model'])
+  assert.ok(calls[0]!.requestedCards > 5)
+  assert.equal(calls[1]!.requestedCards, 1)
+  assert.ok(calls[2]!.requestedCards > 1)
   assert.ok(calls[1]!.maxOutputTokens < calls[0]!.maxOutputTokens)
   assert.equal(result.content.answerBank.length >= 1, true)
 })
 
-test('structured compiler uses GPT-5.4 fallback only after primary chunk failure', async () => {
+test('Reviewer compiler uses GPT-5.4 primary and GPT-5.5 fallback repair', async () => {
   const source = buildStructuredFactSource('Fallback compiler', 8)
   const calls: Array<{ model?: string; requestedCards: number }> = []
   const result = await withTemporaryEnv({
@@ -2768,26 +2910,31 @@ test('structured compiler uses GPT-5.4 fallback only after primary chunk failure
     return factCardResponse(createSequentialFactCards('Fallback compiler', 1), 'Fallback Compiler')
   }))
 
-  assert.deepEqual(calls.map((call) => call.model), ['gpt-5.4-mini-test', 'gpt-5.4-mini-test', 'gpt-5.4-test'])
-  assert.deepEqual(calls.map((call) => call.requestedCards), [3, 1, 1])
-  assert.equal(calls.some((call) => call.model === 'gpt-5.5-test'), false)
+  assert.equal(calls[0]!.model, 'gpt-5.4-test')
+  assert.equal(calls.some((call) => call.model === 'gpt-5.4-mini-test'), false)
+  assert.equal(calls.some((call) => call.model === 'gpt-5.5-test'), true)
+  assert.ok(calls[0]!.requestedCards > 5)
+  assert.equal(calls[1]!.requestedCards, 1)
+  assert.ok(calls[2]!.requestedCards >= 1)
   assert.ok(result.content.answerBank.length >= 1)
 })
 
-test('structured compiler does not call premium model unless explicitly enabled', async () => {
+test('Reviewer compiler uses GPT-5.5 repair even without premium opt-in flag', async () => {
   const source = buildStructuredFactSource('No premium compiler', 8)
   const models: Array<string | undefined> = []
   await withTemporaryEnv({
     DEEP_LEARN_STRUCTURED_MODEL: 'mini-no-premium',
-    DEEP_LEARN_STRUCTURED_FALLBACK_MODEL: 'fallback-no-premium',
-    DEEP_LEARN_STRUCTURED_PREMIUM_MODEL: 'premium-should-not-run',
+    DEEP_LEARN_STRUCTURED_FALLBACK_MODEL: 'gpt-5.4-no-premium',
+    DEEP_LEARN_STRUCTURED_PREMIUM_MODEL: 'gpt-5.5-repair',
     DEEP_LEARN_STRUCTURED_PREMIUM_FALLBACK: undefined,
   }, () => generateDeepLearnStructuredContent(createStructuredPromptInput(source, 'No Premium.pdf'), createStructuredPreparedGrounding(source), async (request) => {
     models.push(request.model)
     return { status: 'incomplete', incomplete_details: { reason: 'max_output_tokens' }, output_text: null }
   }))
 
-  assert.equal(models.includes('premium-should-not-run'), false)
+  assert.equal(models.includes('mini-no-premium'), false)
+  assert.equal(models.includes('gpt-5.4-no-premium'), true)
+  assert.equal(models.includes('gpt-5.5-repair'), true)
 })
 
 test('structured compiler skips one failed chunk and completes from remaining cards', async () => {
@@ -2850,7 +2997,8 @@ test('legacy staged composer only runs when the explicit generator flag enables 
     assert.doesNotMatch(request.schemaName, /high_yield|identification|quick_answers/)
     return factCardResponse(createSequentialFactCards('Legacy gated', 6), 'Legacy Gate')
   })
-  assert.deepEqual(defaultSchemas, ['deep_learn_study_pack_compiler'])
+  assert.equal(defaultSchemas[0], 'deep_learn_study_pack_compiler')
+  assert.equal(defaultSchemas.every((schema) => schema === 'deep_learn_study_pack_compiler'), true)
 
   const legacySchemas: string[] = []
   await generateDeepLearnStructuredContentWithLegacyComposer(createPromptInput(), createPreparedGrounding(), async (request) => {
@@ -3008,6 +3156,58 @@ function buildStructuredFactSource(prefix: string, count: number) {
     const item = index + 1
     return `${prefix} fact ${item} explains grounded resource text for study. ${prefix} evidence ${item} supports a source-faithful answer for review.`
   }).join('\n\n')
+}
+
+function buildSevenSectionAcademicSource() {
+  return Array.from({ length: 7 }, (_, index) => {
+    const section = index + 1
+    return [
+      `Section ${section}`,
+      `${section}. Section ${section} Academic Concept`,
+      `Section ${section} teaches the ${ordinalWord(section)} academic concept with concrete review substance.`,
+      `Section ${section} evidence explains why this concept matters for exam preparation.`,
+    ].join('\n')
+  }).join('\n')
+}
+
+function buildDenseAcademicSource() {
+  const sections = Array.from({ length: 10 }, (_, index) => {
+    const section = index + 1
+    return [
+      `Section ${section}`,
+      `Section ${section} defines dense concept ${section} for academic review.`,
+      `Section ${section} includes category ${section}A, category ${section}B, and category ${section}C.`,
+      `Section ${section} procedure requires prepare, apply, check, and revise steps.`,
+    ].join('\n')
+  })
+  return [
+    ...sections,
+    'Key Definitions',
+    'Alpha means the first required definition in the dense source.',
+    'Beta means the second required definition in the dense source.',
+    'Gamma means the third required definition in the dense source.',
+  ].join('\n')
+}
+
+function createDenseSourceCards() {
+  return Array.from({ length: 14 }, (_, index) => {
+    const section = Math.min(index + 1, 10)
+    const title = index < 10 ? `Section ${section}` : ['Alpha', 'Beta', 'Gamma', 'Key Definitions'][index - 10] ?? 'Key Definitions'
+    const quote = index < 10
+      ? `Section ${section} defines dense concept ${section} for academic review.`
+      : `${title} means the ${index - 9 === 1 ? 'first' : index - 9 === 2 ? 'second' : 'third'} required definition in the dense source.`
+    return factCard(
+      index < 10 ? 'process' : 'definition',
+      `What does ${title} teach?`,
+      quote,
+      quote,
+      title,
+    )
+  })
+}
+
+function ordinalWord(value: number) {
+  return ['zeroth', 'first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh'][value] ?? `${value}th`
 }
 
 function createSequentialFactCards(prefix: string, count: number, start = 1) {

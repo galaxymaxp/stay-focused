@@ -33,9 +33,10 @@ import type { Module, ModuleResource, Task } from '@/lib/types'
 import type { DeepLearnBlockedReason, DeepLearnSourceGrounding, StudyFactCard } from '@/lib/types'
 
 const DEFAULT_DEEP_LEARN_MODEL = 'gpt-5-mini'
-const DEFAULT_DEEP_LEARN_STRUCTURED_MODEL = 'gpt-5.4-mini'
 const DEFAULT_DEEP_LEARN_STRUCTURED_FALLBACK_MODEL = 'gpt-5.4'
 const DEFAULT_DEEP_LEARN_STRUCTURED_PREMIUM_MODEL = 'gpt-5.5'
+const DEFAULT_DEEP_LEARN_REVIEWER_COMPILER_MODEL = DEFAULT_DEEP_LEARN_STRUCTURED_FALLBACK_MODEL
+const DEFAULT_DEEP_LEARN_REVIEWER_REPAIR_MODEL = DEFAULT_DEEP_LEARN_STRUCTURED_PREMIUM_MODEL
 const MAX_GROUNDING_CHARS = 12000
 export const DEEP_LEARN_MAX_OUTPUT_TOKENS = 10000
 export const DEEP_LEARN_COMPACT_MAX_OUTPUT_TOKENS = 10000
@@ -57,17 +58,17 @@ const STRUCTURED_GROUNDING_CHAR_BUDGET = 7600
 const SOURCE_EXCERPT_CHAR_BUDGET = 4200
 const STUDY_FACT_CARD_CHUNK_CHARS = 3600
 const STUDY_FACT_CARD_SHORT_SOURCE_CHARS = 3800
-const STUDY_FACT_CARD_MAX_CHUNKS = 6
-const STUDY_FACT_CARD_DEFAULT_REQUEST_COUNT = 3
-const STUDY_FACT_CARD_MAX_REQUEST_COUNT = 5
+const STUDY_FACT_CARD_MAX_CHUNKS = 16
+const STUDY_FACT_CARD_DEFAULT_REQUEST_COUNT = 6
+const STUDY_FACT_CARD_MAX_REQUEST_COUNT = 12
 const STUDY_FACT_CARD_RETRY_REQUEST_COUNT = 1
-const STUDY_FACT_CARD_DEFAULT_MAX_OUTPUT_TOKENS = 1100
-const STUDY_FACT_CARD_MAX_OUTPUT_TOKENS = 1800
+const STUDY_FACT_CARD_DEFAULT_MAX_OUTPUT_TOKENS = 3600
+const STUDY_FACT_CARD_MAX_OUTPUT_TOKENS = 7200
 const STUDY_FACT_CARD_RETRY_MAX_OUTPUT_TOKENS = 650
 const STUDY_FACT_CARD_FALLBACK_MODEL_ATTEMPT_LIMIT = 3
-const STUDY_FACT_CARD_PREMIUM_MODEL_ATTEMPT_LIMIT = 1
-const STUDY_FACT_CARD_PREMIUM_FALLBACK_ENV = 'DEEP_LEARN_STRUCTURED_PREMIUM_FALLBACK'
-const STUDY_FACT_CARD_OUTLINE_REPAIR_LIMIT = 4
+const STUDY_FACT_CARD_PREMIUM_MODEL_ATTEMPT_LIMIT = 6
+const STUDY_FACT_CARD_OUTLINE_REPAIR_LIMIT = 12
+const REVIEWER_DEDUPE_CARD_LIMIT = 80
 
 const INTERNAL_FACT_CARD_PROMPT_PATTERNS = [
   /^Recall the exam meaning of\b/i,
@@ -458,6 +459,15 @@ interface DeepLearnStructuredModelConfig {
   fallbackModel: string
   premiumModel: string
   premiumFallbackEnabled: boolean
+  allowMini: boolean
+  qualityMode: 'coverage-first'
+}
+
+type SectionCoverageLevel = 'direct' | 'weak_mention' | 'not_covered'
+
+interface SourceOutlineCoverageItem {
+  item: SourceOutlineItem
+  level: SectionCoverageLevel
 }
 
 type DeepLearnStageKey = 'high_yield' | 'identification' | 'quick_answers' | 'distinctions'
@@ -732,6 +742,9 @@ async function compileDeepLearnStudyPackFromFactCards(
   let premiumModelUsed = 0
   let skippedChunkCount = 0
   let deterministicFallbackUsed = false
+  let fallbackRepairUsed = false
+  let fallbackRepairAttemptCount = 0
+  let duplicateCardsRemoved = 0
 
   logDeepLearnGeneratorRouting({
     generatorVersion: STRUCTURED_FACT_CARD_COMPILER_VERSION,
@@ -744,6 +757,8 @@ async function compileDeepLearnStudyPackFromFactCards(
     primaryModel: modelConfig.primaryModel,
     fallbackModel: modelConfig.fallbackModel,
     premiumModel: modelConfig.premiumModel,
+    reviewerMiniUsed: false,
+    qualityMode: modelConfig.qualityMode,
   })
 
   await options.onProgress?.({
@@ -759,7 +774,7 @@ async function compileDeepLearnStudyPackFromFactCards(
     const chunkPlanItem = selectedChunks[index]
     const chunk = chunkPlanItem?.text ?? ''
     if (!chunk.trim()) continue
-    const requestedCardCount = getRequestedFactCardsForChunk(chunk, chunkPlanItem?.outlineItems ?? [])
+    const requestedCardCount = getRequestedFactCardsForChunk(chunk, chunkPlanItem?.outlineItems ?? [], sourceOutline)
     const response = await extractStudyFactCardsForChunk({
       input,
       grounding,
@@ -790,41 +805,50 @@ async function compileDeepLearnStudyPackFromFactCards(
     })
   }
 
-  let cards = dedupeStudyFactCards(responses.flatMap((response) => response.factCards))
+  let dedupeResult = dedupeStudyFactCardsWithStats(responses.flatMap((response) => response.factCards))
+  let cards = dedupeResult.cards
+  duplicateCardsRemoved += dedupeResult.removedCount
   let coverage = evaluateSourceOutlineCoverage(sourceOutline, cards)
 
-  if (coverage.missingRequired.length > 0 && fallbackModelUsed < STUDY_FACT_CARD_FALLBACK_MODEL_ATTEMPT_LIMIT) {
-    for (const missing of coverage.missingRequired.slice(0, STUDY_FACT_CARD_OUTLINE_REPAIR_LIMIT)) {
-      if (fallbackModelUsed >= STUDY_FACT_CARD_FALLBACK_MODEL_ATTEMPT_LIMIT) break
+  if (coverage.incompleteRequired.length > 0 && premiumModelUsed < STUDY_FACT_CARD_PREMIUM_MODEL_ATTEMPT_LIMIT) {
+    fallbackRepairUsed = true
+    for (const missing of coverage.incompleteRequired.slice(0, STUDY_FACT_CARD_OUTLINE_REPAIR_LIMIT)) {
+      if (premiumModelUsed >= STUDY_FACT_CARD_PREMIUM_MODEL_ATTEMPT_LIMIT) break
       const repairChunk = getOutlineItemSourceSpan(cleanedSource, missing)
       if (!repairChunk.trim()) continue
+      fallbackRepairAttemptCount += 1
       const repair = await extractStudyFactCardsForChunk({
         input,
         grounding,
         createResponse,
         chunk: repairChunk,
-        chunkIndex: selectedChunks.length + fallbackModelUsed,
+        chunkIndex: selectedChunks.length + premiumModelUsed,
         totalChunks: selectedChunks.length,
         shortSource,
         modelConfig,
-        requestedCardCount: 2,
-        maxOutputTokens: 900,
+        requestedCardCount: getReviewerRepairCardCount(missing),
+        maxOutputTokens: getReviewerRepairMaxOutputTokens(missing),
         outlineItems: [missing],
-        fallbackModelAttemptsRemaining: 1,
-        preferFallback: true,
+        fallbackModelAttemptsRemaining: 0,
+        forcePremium: true,
+        repairMode: true,
       })
       if (repair.fallbackModelAttempted) fallbackModelUsed += 1
       if (repair.premiumModelAttempted) premiumModelUsed += 1
       if (repair.factCards.length > 0) {
         responses.push(repair)
-        cards = dedupeStudyFactCards(responses.flatMap((response) => response.factCards))
+        dedupeResult = dedupeStudyFactCardsWithStats(responses.flatMap((response) => response.factCards))
+        cards = dedupeResult.cards
+        duplicateCardsRemoved = dedupeResult.removedCount
         coverage = evaluateSourceOutlineCoverage(sourceOutline, cards)
       }
     }
   }
 
-  if (cards.length < minimumFactCards && modelConfig.premiumFallbackEnabled && premiumModelUsed < STUDY_FACT_CARD_PREMIUM_MODEL_ATTEMPT_LIMIT) {
+  if (cards.length < minimumFactCards && premiumModelUsed < STUDY_FACT_CARD_PREMIUM_MODEL_ATTEMPT_LIMIT) {
     const rescueChunk = selectedChunks.find((chunk) => chunk.text.trim())?.text ?? cleanedSource
+    fallbackRepairUsed = true
+    fallbackRepairAttemptCount += 1
     const rescue = await extractStudyFactCardsForChunk({
       input,
       grounding,
@@ -834,33 +858,62 @@ async function compileDeepLearnStudyPackFromFactCards(
       totalChunks: selectedChunks.length,
       shortSource,
       modelConfig,
-      requestedCardCount: STUDY_FACT_CARD_RETRY_REQUEST_COUNT,
-      maxOutputTokens: STUDY_FACT_CARD_RETRY_MAX_OUTPUT_TOKENS,
-      outlineItems: coverage.missingRequired.slice(0, 2),
+      requestedCardCount: Math.min(8, Math.max(3, minimumFactCards - cards.length)),
+      maxOutputTokens: 4800,
+      outlineItems: coverage.incompleteRequired.slice(0, 4),
       fallbackModelAttemptsRemaining: 0,
       forcePremium: true,
+      repairMode: true,
     })
     if (rescue.factCards.length > 0) {
       responses.push(rescue)
-      cards = dedupeStudyFactCards(responses.flatMap((response) => response.factCards))
+      dedupeResult = dedupeStudyFactCardsWithStats(responses.flatMap((response) => response.factCards))
+      cards = dedupeResult.cards
+      duplicateCardsRemoved = dedupeResult.removedCount
     }
     if (rescue.premiumModelAttempted) premiumModelUsed += 1
   }
 
   coverage = evaluateSourceOutlineCoverage(sourceOutline, cards)
-  if (cards.length < minimumFactCards || coverage.missingRequired.length > 0) {
-    const deterministicCards = buildDeterministicStudyFactCards(cleanedSource, input.resource.title, coverage.missingRequired)
+  if (cards.length < minimumFactCards && (coverage.incompleteRequired.length === 0 || coverage.weakMention.length === 0 || cards.length === 0)) {
+    const deterministicCards = buildDeterministicStudyFactCards(cleanedSource, input.resource.title, cards.length === 0 ? coverage.incompleteRequired : [])
     if (deterministicCards.length > 0) {
       deterministicFallbackUsed = true
-      cards = dedupeStudyFactCards([...cards, ...deterministicCards])
+      dedupeResult = dedupeStudyFactCardsWithStats([...cards, ...deterministicCards])
+      cards = dedupeResult.cards
+      duplicateCardsRemoved = dedupeResult.removedCount
     }
   }
   coverage = evaluateSourceOutlineCoverage(sourceOutline, cards)
+  const coveragePassed = cards.length >= minimumFactCards && coverage.incompleteRequired.length === 0
+  const coverageFailureReason = coveragePassed
+    ? null
+    : cards.length < minimumFactCards
+      ? 'below_target_reviewer_cards'
+      : coverage.weakMention.length > 0
+        ? 'weak_section_mentions'
+        : 'missing_required_sections'
 
   logStructuredCompilerSummary({
     primaryModel: modelConfig.primaryModel,
     fallbackModel: modelConfig.fallbackModel,
     premiumModel: modelConfig.premiumModel,
+    reviewerPrimaryModel: modelConfig.primaryModel,
+    reviewerFallbackModel: modelConfig.premiumModel,
+    reviewerMiniUsed: false,
+    targetReviewerCards: minimumFactCards,
+    actualReviewerCardsBeforeDedupe: responses.flatMap((response) => response.factCards).length,
+    actualReviewerCardsAfterDedupe: cards.length,
+    directCoveredSectionCount: coverage.direct.length,
+    weakMentionSectionCount: coverage.weakMention.length,
+    uncoveredSectionCount: coverage.notCovered.length,
+    uncoveredHeadings: coverage.incompleteRequired.map((item) => item.title),
+    duplicateCardsRemoved,
+    fallbackRepairUsed,
+    fallbackRepairModel: fallbackRepairUsed ? modelConfig.premiumModel : null,
+    fallbackRepairAttemptCount,
+    coveragePassed,
+    coverageFailureReason,
     fallbackModelUsed,
     premiumModelUsed,
     chunkCount: selectedChunks.length,
@@ -870,10 +923,10 @@ async function compileDeepLearnStudyPackFromFactCards(
     minimumFactCards,
     outlineRequiredCount: coverage.requiredCount,
     outlineCoveredCount: coverage.coveredRequiredCount,
-    outlineMissingCount: coverage.missingRequired.length,
+    outlineMissingCount: coverage.notCovered.length,
   })
 
-  if (cards.length === 0 || coverage.missingRequired.length > Math.max(1, Math.floor(coverage.requiredCount * 0.25))) {
+  if (!coveragePassed) {
     throw new DeepLearnGenerationIncompleteError('insufficient_structured_artifacts')
   }
 
@@ -906,6 +959,7 @@ async function extractStudyFactCardsForChunk(input: {
   fallbackModelAttemptsRemaining: number
   forcePremium?: boolean
   preferFallback?: boolean
+  repairMode?: boolean
 }): Promise<StudyFactCardChunkResult> {
   const attempts = input.forcePremium
     ? [{
@@ -1043,6 +1097,7 @@ async function createStudyFactCardResponse(input: {
   model: string
   requestedCardCount: number
   maxOutputTokens: number
+  repairMode?: boolean
 }): Promise<StudyFactCardCompilerResponse> {
   const response = await withTimeout(
     input.createResponse({
@@ -1082,9 +1137,27 @@ function getMinimumCardsForAttempt(requestedCardCount: number) {
 }
 
 function getMinimumStructuredFactCards(sourceText: string, outline: SourceOutlineItem[] = []) {
-  const requiredCount = getRequiredSourceOutlineItems(outline).length
-  const sourceMinimum = sourceText.length <= STUDY_FACT_CARD_SHORT_SOURCE_CHARS ? 3 : 5
-  return Math.min(18, Math.max(sourceMinimum, Math.ceil(requiredCount * 0.75)))
+  const required = getRequiredSourceOutlineItems(outline)
+  const requiredCount = required.length
+  const sourceMinimum = sourceText.length <= STUDY_FACT_CARD_SHORT_SOURCE_CHARS ? 8 : 12
+  const densityCards = estimateReviewerDensityCards(sourceText, outline)
+  const broadOperationalCap = sourceText.length <= STUDY_FACT_CARD_SHORT_SOURCE_CHARS
+    ? 20
+    : sourceText.length <= 12000
+      ? 45
+      : 80
+  return Math.min(broadOperationalCap, Math.max(sourceMinimum, requiredCount + densityCards))
+}
+
+function estimateReviewerDensityCards(sourceText: string, outline: SourceOutlineItem[] = []) {
+  const structured = structureAcademicSourceText(sourceText)
+  const definitionCount = Math.min(16, structured.termDefinitions.length)
+  const procedureCount = outline.filter((item) => ['phase', 'procedure', 'numbered_heading', 'lettered_sequence'].includes(item.kind)).length
+  const taxonomyCount = structured.lists.filter((list) => list.items.length >= 3).length
+  const formulaCount = (sourceText.match(/\b(?:formula|equation|calculate|compute)\b/gi) ?? []).length
+  const timelineGroupCount = (sourceText.match(/\b(?:timeline|\d{4})\b/gi) ?? []).length > 0 ? 1 : 0
+  const importantSubstepGroupCount = structured.lists.filter((list) => list.items.length >= 5).length
+  return definitionCount + procedureCount + taxonomyCount + formulaCount + timelineGroupCount + importantSubstepGroupCount
 }
 
 function buildDeterministicStudyFactCards(sourceText: string, resourceTitle: string, priorityOutline: SourceOutlineItem[] = []): StudyFactCard[] {
@@ -1199,6 +1272,7 @@ function buildStudyFactCardPrompt(input: {
   shortSource: boolean
   requestedCardCount: number
   outlineItems?: SourceOutlineItem[]
+  repairMode?: boolean
 }) {
   const requiredOutline = (input.outlineItems ?? [])
     .filter((item) => item.required)
@@ -1206,12 +1280,17 @@ function buildStudyFactCardPrompt(input: {
     .map((item) => `- ${item.title} (${item.kind})`)
     .join('\n')
   return [
-    input.shortSource
+    input.repairMode
+      ? 'Repair the Reviewer answer bank for only the missing or weak source sections in this chunk.'
+      : input.shortSource
       ? 'Create a compact Study Pack from this short academic source by extracting source-faithful fact cards.'
       : `Extract source-faithful fact cards from chunk ${input.chunkIndex + 1} of ${input.totalChunks}.`,
     `Return strict JSON only. Generate exactly ${input.requestedCardCount} factCard${input.requestedCardCount === 1 ? '' : 's'} if the source supports it.`,
     requiredOutline ? 'Cover these required source outline sections before optional details:' : '',
     requiredOutline,
+    input.repairMode
+      ? 'Generate only for the missing or weak sections listed above. Do not repeat already covered cards. Do not create heading-list summary cards. Each card must primarily teach one missing section with academic substance from the source span.'
+      : '',
     'Keep answers concise. Keep each sourceQuote between 80 and 220 characters when possible, and never over 240 characters.',
     'Prefer boring extractive facts, definitions, dates, people, lists, processes, and comparisons.',
     'Every sourceQuote must be copied from the provided source chunk or be a very close contiguous excerpt.',
@@ -1358,25 +1437,44 @@ function buildStudyCompilerChunkPlan(sourceText: string, outline: SourceOutlineI
   return chunks.length > 0 ? chunks : splitStudyCompilerChunks(sourceText).slice(0, STUDY_FACT_CARD_MAX_CHUNKS).map((text) => ({ text, outlineItems: [] as SourceOutlineItem[] }))
 }
 
-function getRequestedFactCardsForChunk(chunk: string, outlineItems: SourceOutlineItem[]) {
+function getRequestedFactCardsForChunk(chunk: string, outlineItems: SourceOutlineItem[], fullOutline: SourceOutlineItem[] = []) {
   const requiredCount = outlineItems.filter((item) => item.required && item.confidence >= 0.78).length
   const complexity = requiredCount
     + (/\b(?:include|includes|types?|categories|steps?|phases?|methods?|formula|timeline)\b/i.test(chunk) ? 1 : 0)
-    + Math.floor(chunk.length / 1800)
+    + Math.floor(chunk.length / 1200)
+    + Math.min(3, estimateReviewerDensityCards(chunk, outlineItems.length > 0 ? outlineItems : fullOutline))
   return Math.max(STUDY_FACT_CARD_DEFAULT_REQUEST_COUNT, Math.min(STUDY_FACT_CARD_MAX_REQUEST_COUNT, STUDY_FACT_CARD_DEFAULT_REQUEST_COUNT + complexity))
 }
 
 function getMaxOutputTokensForRequestedCards(requestedCardCount: number) {
-  return Math.min(STUDY_FACT_CARD_MAX_OUTPUT_TOKENS, STUDY_FACT_CARD_DEFAULT_MAX_OUTPUT_TOKENS + Math.max(0, requestedCardCount - 3) * 300)
+  return Math.min(STUDY_FACT_CARD_MAX_OUTPUT_TOKENS, STUDY_FACT_CARD_DEFAULT_MAX_OUTPUT_TOKENS + Math.max(0, requestedCardCount - STUDY_FACT_CARD_DEFAULT_REQUEST_COUNT) * 500)
+}
+
+function getReviewerRepairCardCount(item: SourceOutlineItem) {
+  if (item.kind === 'taxonomy' || item.kind === 'procedure' || item.kind === 'phase') return 3
+  return 2
+}
+
+function getReviewerRepairMaxOutputTokens(item: SourceOutlineItem) {
+  return item.kind === 'taxonomy' || item.kind === 'procedure' || item.kind === 'phase' ? 3200 : 2400
 }
 
 function evaluateSourceOutlineCoverage(outline: SourceOutlineItem[], cards: StudyFactCard[]) {
   const required = getRequiredSourceOutlineItems(outline)
-  const missingRequired = required.filter((item) => !cards.some((card) => isFactCardCoveringOutlineItem(card, item)))
+  const coverage = required.map((item): SourceOutlineCoverageItem => ({
+    item,
+    level: getBestCoverageLevelForOutlineItem(cards, item, required),
+  }))
+  const direct = coverage.filter((entry) => entry.level === 'direct').map((entry) => entry.item)
+  const weakMention = coverage.filter((entry) => entry.level === 'weak_mention').map((entry) => entry.item)
+  const notCovered = coverage.filter((entry) => entry.level === 'not_covered').map((entry) => entry.item)
   return {
     requiredCount: required.length,
-    coveredRequiredCount: required.length - missingRequired.length,
-    missingRequired,
+    coveredRequiredCount: direct.length,
+    direct,
+    weakMention,
+    notCovered,
+    incompleteRequired: [...weakMention, ...notCovered],
   }
 }
 
@@ -1384,14 +1482,53 @@ function getRequiredSourceOutlineItems(outline: SourceOutlineItem[]) {
   return outline.filter((item) => item.required && item.confidence >= 0.76)
 }
 
-function isFactCardCoveringOutlineItem(card: StudyFactCard, item: SourceOutlineItem) {
+function getBestCoverageLevelForOutlineItem(cards: StudyFactCard[], item: SourceOutlineItem, required: SourceOutlineItem[]): SectionCoverageLevel {
+  let hasWeakMention = false
+  for (const card of cards) {
+    const level = getFactCardCoverageLevel(card, item, required)
+    if (level === 'direct') return 'direct'
+    if (level === 'weak_mention') hasWeakMention = true
+  }
+  return hasWeakMention ? 'weak_mention' : 'not_covered'
+}
+
+function getFactCardCoverageLevel(card: StudyFactCard, item: SourceOutlineItem, required: SourceOutlineItem[]): SectionCoverageLevel {
   const titleKey = item.normalizedTitle
+  const sectionPromptKey = normalizeAcademicLookup(`${card.sectionTitle} ${card.prompt}`)
   const cardKey = normalizeAcademicLookup(`${card.sectionTitle} ${card.prompt} ${card.answer} ${card.sourceQuote}`)
-  if (titleKey.length >= 4 && cardKey.includes(titleKey)) return true
+  const answerKey = normalizeAcademicLookup(`${card.answer} ${card.sourceQuote}`)
   const titleTokens = titleKey.split(' ').filter((token) => token.length >= 4)
-  if (titleTokens.length === 0) return false
-  const matched = titleTokens.filter((token) => cardKey.includes(token)).length
-  return matched / titleTokens.length >= 0.66
+  const sectionPromptMatched = titleTokens.filter((token) => sectionPromptKey.includes(token)).length
+  const cardMatched = titleTokens.filter((token) => cardKey.includes(token)).length
+  const primarilyTargetsSection = titleKey.length >= 4 && (
+    sectionPromptKey.includes(titleKey)
+    || (titleTokens.length > 0 && sectionPromptMatched / titleTokens.length >= 0.66)
+  )
+  const mentionsSection = titleKey.length >= 4 && cardKey.includes(titleKey)
+  const compressedHeadingList = isCompressedHeadingListCard(card, required)
+  if ((mentionsSection || primarilyTargetsSection) && compressedHeadingList) return 'weak_mention'
+  if (primarilyTargetsSection && hasMeaningfulReviewerSubstance(card, item, answerKey)) return 'direct'
+  if (titleTokens.length === 0) return 'not_covered'
+  const matched = cardMatched
+  if (matched / titleTokens.length < 0.66) return 'not_covered'
+  if (isCompressedHeadingListCard(card, required)) return 'weak_mention'
+  return primarilyTargetsSection && hasMeaningfulReviewerSubstance(card, item, answerKey) ? 'direct' : 'weak_mention'
+}
+
+function hasMeaningfulReviewerSubstance(card: StudyFactCard, item: SourceOutlineItem, answerKey: string) {
+  const answerTokens = answerKey.split(' ').filter((token) => token.length >= 4)
+  if (answerTokens.length < 6 && card.answer.length < 45) return false
+  const titleOnly = normalizeAcademicLookup(card.answer) === item.normalizedTitle
+  if (titleOnly) return false
+  return !/^(?:phase|step|section|module|unit|lesson)?\s*\d+$/i.test(card.answer.trim())
+}
+
+function isCompressedHeadingListCard(card: StudyFactCard, required: SourceOutlineItem[]) {
+  const cardKey = normalizeAcademicLookup(`${card.prompt} ${card.answer} ${card.sourceQuote}`)
+  const mentionedRequired = required.filter((item) => item.normalizedTitle.length >= 4 && cardKey.includes(item.normalizedTitle)).length
+  if (mentionedRequired >= 3) return true
+  const listMarkerCount = (card.answer.match(/\b(?:phase|step|section|unit|module|lesson)\s+\d+\b/gi) ?? []).length
+  return listMarkerCount >= 3 && card.answer.length < 420
 }
 
 function getOutlineItemSourceSpan(sourceText: string, item: SourceOutlineItem) {
@@ -1501,15 +1638,43 @@ function isGroundedStudyFactCard(card: StudyFactCard, chunk: string) {
 }
 
 function dedupeStudyFactCards(cards: StudyFactCard[]) {
+  return dedupeStudyFactCardsWithStats(cards).cards
+}
+
+function dedupeStudyFactCardsWithStats(cards: StudyFactCard[]) {
   const seen = new Set<string>()
+  const seenConcepts = new Map<string, StudyFactCard>()
   const output: StudyFactCard[] = []
+  let removedCount = 0
   for (const card of cards.sort((left, right) => right.confidence - left.confidence)) {
-    const key = normalizeAcademicLookup(`${card.prompt} ${card.answer}`)
-    if (!key || seen.has(key)) continue
+    const key = normalizeAcademicLookup(`${card.sectionTitle} ${card.prompt} ${card.answer} ${card.sourceQuote}`)
+    const promptAnswerKey = normalizeAcademicLookup(`${card.prompt} ${card.answer}`)
+    const conceptKey = normalizeAcademicLookup(card.sectionTitle || card.prompt)
+    const shallowOneWord = isShallowRepeatedReviewerCard(card)
+    if (!key || seen.has(key) || seen.has(promptAnswerKey)) {
+      removedCount += 1
+      continue
+    }
+    if (shallowOneWord && conceptKey && seenConcepts.has(conceptKey)) {
+      removedCount += 1
+      continue
+    }
     seen.add(key)
+    seen.add(promptAnswerKey)
+    if (conceptKey) seenConcepts.set(conceptKey, card)
     output.push(card)
   }
-  return output.slice(0, 36)
+  if (output.length > REVIEWER_DEDUPE_CARD_LIMIT) removedCount += output.length - REVIEWER_DEDUPE_CARD_LIMIT
+  return { cards: output.slice(0, REVIEWER_DEDUPE_CARD_LIMIT), removedCount }
+}
+
+function isShallowRepeatedReviewerCard(card: StudyFactCard) {
+  const answerWords = normalizeAcademicLookup(card.answer).split(' ').filter(Boolean)
+  const promptWords = normalizeAcademicLookup(card.prompt).split(' ').filter(Boolean)
+  if (answerWords.length <= 2 && promptWords.length <= 8) return true
+  const titleKey = normalizeAcademicLookup(card.sectionTitle)
+  const answerKey = normalizeAcademicLookup(card.answer)
+  return Boolean(titleKey && answerKey && titleKey === answerKey)
 }
 
 function assembleStudyPackFromFactCards(input: {
@@ -1670,12 +1835,28 @@ function selectDeepLearnGenerator(): DeepLearnGeneratorSelection {
 }
 
 function getStructuredCompilerModelConfig(env: NodeJS.ProcessEnv = process.env): DeepLearnStructuredModelConfig {
+  const configuredPrimary = env.DEEP_LEARN_REVIEWER_COMPILER_MODEL?.trim()
+    || env.DEEP_LEARN_STRUCTURED_REVIEWER_MODEL?.trim()
+    || env.DEEP_LEARN_STRUCTURED_FALLBACK_MODEL?.trim()
+    || DEFAULT_DEEP_LEARN_REVIEWER_COMPILER_MODEL
+  const configuredRepair = env.DEEP_LEARN_REVIEWER_REPAIR_MODEL?.trim()
+    || env.DEEP_LEARN_STRUCTURED_PREMIUM_MODEL?.trim()
+    || DEFAULT_DEEP_LEARN_REVIEWER_REPAIR_MODEL
+  const nonMiniPrimary = isMiniModelName(configuredPrimary)
+    ? (env.DEEP_LEARN_STRUCTURED_FALLBACK_MODEL?.trim() || DEFAULT_DEEP_LEARN_REVIEWER_COMPILER_MODEL)
+    : configuredPrimary
   return {
-    primaryModel: env.DEEP_LEARN_STRUCTURED_MODEL?.trim() || DEFAULT_DEEP_LEARN_STRUCTURED_MODEL,
-    fallbackModel: env.DEEP_LEARN_STRUCTURED_FALLBACK_MODEL?.trim() || DEFAULT_DEEP_LEARN_STRUCTURED_FALLBACK_MODEL,
-    premiumModel: env.DEEP_LEARN_STRUCTURED_PREMIUM_MODEL?.trim() || DEFAULT_DEEP_LEARN_STRUCTURED_PREMIUM_MODEL,
-    premiumFallbackEnabled: /^(?:1|true|yes|enabled)$/i.test(env[STUDY_FACT_CARD_PREMIUM_FALLBACK_ENV]?.trim() ?? ''),
+    primaryModel: isMiniModelName(nonMiniPrimary) ? DEFAULT_DEEP_LEARN_REVIEWER_COMPILER_MODEL : nonMiniPrimary,
+    fallbackModel: isMiniModelName(configuredRepair) ? DEFAULT_DEEP_LEARN_REVIEWER_REPAIR_MODEL : configuredRepair,
+    premiumModel: isMiniModelName(configuredRepair) ? DEFAULT_DEEP_LEARN_REVIEWER_REPAIR_MODEL : configuredRepair,
+    premiumFallbackEnabled: true,
+    allowMini: false,
+    qualityMode: 'coverage-first',
   }
+}
+
+function isMiniModelName(model: string) {
+  return /\bmini\b/i.test(model)
 }
 
 function logDeepLearnGeneratorRouting(input: {
@@ -1689,6 +1870,8 @@ function logDeepLearnGeneratorRouting(input: {
   primaryModel?: string
   fallbackModel?: string
   premiumModel?: string
+  reviewerMiniUsed?: boolean
+  qualityMode?: string
 }) {
   console.info('[deep-learn-generation] generator routing', {
     generatorVersion: input.generatorVersion,
@@ -1701,6 +1884,8 @@ function logDeepLearnGeneratorRouting(input: {
     primaryModel: input.primaryModel ?? null,
     fallbackModel: input.fallbackModel ?? null,
     premiumModel: input.premiumModel ?? null,
+    reviewerMiniUsed: input.reviewerMiniUsed ?? null,
+    qualityMode: input.qualityMode ?? null,
   })
 }
 
@@ -1739,6 +1924,22 @@ function logStructuredCompilerSummary(input: {
   primaryModel: string
   fallbackModel: string
   premiumModel: string
+  reviewerPrimaryModel?: string
+  reviewerFallbackModel?: string
+  reviewerMiniUsed?: boolean
+  targetReviewerCards?: number
+  actualReviewerCardsBeforeDedupe?: number
+  actualReviewerCardsAfterDedupe?: number
+  directCoveredSectionCount?: number
+  weakMentionSectionCount?: number
+  uncoveredSectionCount?: number
+  uncoveredHeadings?: string[]
+  duplicateCardsRemoved?: number
+  fallbackRepairUsed?: boolean
+  fallbackRepairModel?: string | null
+  fallbackRepairAttemptCount?: number
+  coveragePassed?: boolean
+  coverageFailureReason?: string | null
   fallbackModelUsed: number
   premiumModelUsed: number
   chunkCount: number
@@ -1755,6 +1956,24 @@ function logStructuredCompilerSummary(input: {
     primaryModel: input.primaryModel,
     fallbackModel: input.fallbackModel,
     premiumModel: input.premiumModel,
+    reviewerPrimaryModel: input.reviewerPrimaryModel ?? input.primaryModel,
+    reviewerFallbackModel: input.reviewerFallbackModel ?? input.premiumModel,
+    reviewerMiniUsed: input.reviewerMiniUsed ?? false,
+    outlineItemCount: (input.outlineRequiredCount ?? 0) + (input.outlineMissingCount ?? 0),
+    requiredMajorSectionCount: input.outlineRequiredCount ?? null,
+    targetReviewerCards: input.targetReviewerCards ?? input.minimumFactCards,
+    actualReviewerCardsBeforeDedupe: input.actualReviewerCardsBeforeDedupe ?? null,
+    actualReviewerCardsAfterDedupe: input.actualReviewerCardsAfterDedupe ?? input.finalFactCardCount,
+    directCoveredSectionCount: input.directCoveredSectionCount ?? input.outlineCoveredCount ?? null,
+    weakMentionSectionCount: input.weakMentionSectionCount ?? null,
+    uncoveredSectionCount: input.uncoveredSectionCount ?? input.outlineMissingCount ?? null,
+    uncoveredHeadings: input.uncoveredHeadings ?? [],
+    duplicateCardsRemoved: input.duplicateCardsRemoved ?? 0,
+    fallbackRepairUsed: input.fallbackRepairUsed ?? false,
+    fallbackRepairModel: input.fallbackRepairModel ?? null,
+    fallbackRepairAttemptCount: input.fallbackRepairAttemptCount ?? 0,
+    coveragePassed: input.coveragePassed ?? null,
+    coverageFailureReason: input.coverageFailureReason ?? null,
     fallbackModelUsed: input.fallbackModelUsed,
     premiumModelUsed: input.premiumModelUsed,
     chunkCount: input.chunkCount,

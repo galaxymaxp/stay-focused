@@ -10130,6 +10130,77 @@ The job result included:
 
 This confirms the lightweight external cron path works and avoids the previous `refreshing_resources` / `refreshing_tasks` hang.
 
+## Session Update - 2026-05-17 (Use stronger Reviewer compiler model)
+
+### What changed
+- Updated the Deep Learn Reviewer / Answer Bank structured compiler path to use a Reviewer-specific coverage-first model profile:
+  - primary Reviewer compiler resolves to the configured non-mini model, defaulting to `gpt-5.4`
+  - targeted Reviewer repair resolves to the configured premium model, defaulting to `gpt-5.5`
+  - mini models are rejected for Reviewer generation, repair, and coverage decisions
+- Kept Tasks and task-output routing unchanged; this change is scoped to the Deep Learn Reviewer / Answer Bank generation path.
+- Loosened Reviewer-only generation limits with coverage-first dynamic targets, higher Reviewer output-token budgets, and broader operational caps for dense sources.
+- Strengthened section coverage validation so compressed heading-list cards only count as weak mentions; required sections now need direct, substantive cards.
+- Added Reviewer duplicate/wasted-card detection before final validation and repair.
+- Changed targeted repair to send only missing or weak sections to the premium repair model and avoid full regeneration unless output is unusable.
+- Added internal Reviewer diagnostics for model routing, outline size, target/actual card counts, direct/weak/uncovered section counts, duplicate removals, fallback repair usage, and coverage pass/failure reason.
+
+### Files touched
+- `lib/deep-learn-generation.ts`
+- `tests/deep-learn-generation.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+Manual verification showed meaningful source extraction but incomplete Reviewer coverage: later source sections were compressed into list cards or omitted, and repeated shallow cards wasted answer-bank space. Reviewer is the serious exam/review path, so it now starts with the configured non-mini/GPT-5.4 compiler and uses configured premium/GPT-5.5 only for targeted missing-section repair. This keeps quality-focused Reviewer behavior separate from Tasks, where mini routing remains acceptable and unchanged.
+
+### Tests added/updated
+- Added mocked-model coverage for Reviewer primary model routing and no-mini usage.
+- Added GPT-5.5 targeted repair coverage when GPT-5.4 returns valid JSON with missing required sections.
+- Added compressed heading-list coverage tests to ensure weak mentions do not unlock readiness.
+- Added dense-source target sizing tests so Reviewer output expands beyond old mini-era caps.
+- Added duplicate/wasted-card removal tests that trigger repair when dedupe reveals missing coverage.
+- Added short-source regression coverage so small sources stay complete without bloating.
+- Added non-Reviewer/task-output routing regression coverage.
+
+### Commands run
+- `git status --short`
+- `npx tsx --test tests/deep-learn-generation.test.ts`
+- `npm run typecheck`
+- `npm run lint`
+- `npm test -- deep-learn-generation`
+- `npm test -- task-output task-output-foundation`
+- `npm test -- pdf-extractor source-ocr-updates deep-learn-readiness deep-learn-generation canvas-content-resolution learn-resource-ui queue`
+- `npm test -- study-output-reviewer study-output-quiz-pack learn-resource-ui deep-learn-readiness`
+
+### Verification result
+- Passed:
+  - direct `tests/deep-learn-generation.test.ts` run: 92 tests
+  - `npm run typecheck`
+  - `npm run lint`
+  - requested focused/broader npm test commands; each npm test invocation completed with 660 passing tests
+- Verified by mocked assertions:
+  - Reviewer primary model is non-mini/GPT-5.4 by default
+  - Reviewer fallback repair uses GPT-5.5 by default
+  - Reviewer mini usage is false
+  - compressed heading lists do not satisfy required section coverage
+  - repeated shallow cards are removed
+  - dense sources request larger Reviewer banks
+  - task-output routing remains task-specific and mini-compatible
+
+### Known risks
+- Coverage detection is intentionally stricter and may fail Reviewer generation rather than saving incomplete banks when model output only weakly mentions required sections.
+- The new higher Reviewer token budgets and broader card targets increase Reviewer generation cost and provider latency, though operational caps remain in place.
+- Manual production verification with real uploaded SDLC / IT Security / PATHFit sources is still recommended after deployment.
+
+### Blockers
+- No blocker in automated verification.
+- Browser/live production verification was not run in this session because the requested mocked automated coverage passed and no authenticated production check was required to complete the code path fix.
+
+### Next recommended step
+Deploy this commit, generate Reviewers for the known SDLC-like and IT Security sources, and confirm logs show `reviewerMiniUsed: false`, `reviewerPrimaryModel: gpt-5.4`, targeted `gpt-5.5` repair only when needed, direct cards for all major sections, and duplicate shallow cards removed.
+
+### Suggested commit message
+use stronger Reviewer compiler model
+
 ## Session Update - 2026-05-13 (Fix sync timestamp reporting)
 
 ### What changed
