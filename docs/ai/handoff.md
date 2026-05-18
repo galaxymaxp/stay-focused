@@ -1,7 +1,72 @@
 # Stay Focused — AI Session Handoff
 
 Author: galaxymaxp omgraythekid@gmail.com
-Last Updated: 2026-05-17
+Last Updated: 2026-05-18
+
+---
+
+## Session Update - 2026-05-18 (Reviewer Markdown Layout Cleanup)
+
+### What changed
+
+- Added a lightweight, non-blocking Reviewer Markdown layout normalizer for the temporary simple Reviewer path.
+- The simple Reviewer flow now normalizes layout after the model response and before saving `reviewerMarkdown`.
+- Added a shared Reviewer Markdown renderer used by both the full study output page and the Deep Learn review surface.
+- Improved Reviewer Markdown CSS for academic spacing, heading hierarchy, readable lists, label callouts, answer keys, and print-friendly output.
+- Kept the simple source-to-Markdown path permissive: no strict heading validation, quiz-count validation, answer-bank generation, likely-quiz-target generation, structured compiler, or repair maze was reintroduced.
+
+### Files touched
+
+- `app/globals.css`
+- `components/DeepLearnReviewPackSurface.tsx`
+- `components/ReviewerMarkdownDocument.tsx`
+- `components/StudyOutputReviewerPage.tsx`
+- `lib/deep-learn-generation.ts`
+- `lib/reviewer-markdown-layout.ts`
+- `tests/deep-learn-generation.test.ts`
+- `tests/study-output-reviewer.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+The simple Reviewer path was producing useful source-grounded Markdown, but compact model output could render as jammed inline sections, one-line lists, cramped answer keys, or accidental code blocks. The fix is intentionally a layout normalizer and renderer polish layer, not a validation gate, so useful compact output still saves and renders.
+
+### Tests run
+
+- `npm run typecheck` - passed
+- `npm run lint` - passed with existing unused legacy Reviewer compiler warnings in `lib/deep-learn-generation.ts`
+- `npx tsx --test tests/deep-learn-generation.test.ts` - passed during focused development
+- `npx tsx --test tests/study-output-reviewer.test.ts` - passed during focused development
+- `npm test -- deep-learn-generation` - passed
+- `npm test -- study-output-reviewer study-output-quiz-pack learn-resource-ui deep-learn-readiness` - passed
+- `npm test -- pdf-extractor source-ocr-updates deep-learn-generation canvas-content-resolution learn-resource-ui queue` - passed
+
+### Verification result
+
+- Verified inline numbered Reviewer content is split into multiline numbered lists when safe.
+- Verified indented answer key lines are normalized so they do not render as code blocks.
+- Verified MCQ answer choices remain separate and intact.
+- Verified headings and repeated labels get clearer spacing/hierarchy.
+- Verified compact useful `reviewerMarkdown` still saves successfully and is not rejected for layout-only issues.
+- Verified existing Deep Learn generation, Reviewer UI, Quiz Pack, readiness, extraction/OCR, learn-resource UI, and queue suites pass in the requested batches.
+
+### Known risks
+
+- The normalizer is heuristic by design. It may not perfectly fix every odd model formatting pattern, but it should not block useful output.
+- Lint still reports pre-existing unused legacy Reviewer helper warnings because this branch bypasses that architecture.
+- `test_output.txt` remains an untracked local file and was not included.
+
+### Blockers
+
+- No code blocker remains.
+
+### Next recommended step
+
+Generate a fresh Reviewer for `1. Intro-To-IT-Security.pdf` and inspect the saved `reviewerMarkdown` plus rendered page for real-world spacing before deciding whether to tune prompt wording or add more normalization heuristics.
+
+### Suggested commit message
+
+clean up reviewer markdown layout
 
 ---
 

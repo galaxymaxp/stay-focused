@@ -29,6 +29,7 @@ import { getModuleResourceQualityInfo, normalizeModuleResourceStudyText } from '
 import type { ModuleSourceResource } from '@/lib/module-workspace'
 import { normalizeStudyOutputHeading } from '@/lib/study-outputs/source-faithful'
 import { getStudySourceTypeLabel } from '@/lib/study-resource'
+import { normalizeReviewerMarkdownLayout } from '@/lib/reviewer-markdown-layout'
 import type { Module, ModuleResource, Task } from '@/lib/types'
 import type { DeepLearnBlockedReason, DeepLearnSourceGrounding, StudyFactCard } from '@/lib/types'
 
@@ -865,7 +866,7 @@ async function generateSimpleReviewerMarkdown(input: {
   if (response.status && response.status !== 'completed') {
     throw new DeepLearnGenerationIncompleteError(response.incomplete_details?.reason ?? response.status)
   }
-  const markdown = sanitizeReviewerMarkdown(response.output_text ?? '')
+  const markdown = normalizeReviewerMarkdownLayout(sanitizeReviewerMarkdown(response.output_text ?? ''))
   if (!markdown) {
     throw new DeepLearnGenerationIncompleteError('empty_reviewer_markdown')
   }

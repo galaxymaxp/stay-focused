@@ -78,6 +78,35 @@ test('simple reviewer Markdown renders directly without structured fallback sect
   assert.doesNotMatch(markup, /Key Answers|Likely quiz targets|No compact answer bank|reviewer-grid/i)
 })
 
+test('simple reviewer Markdown renders answer keys and choices as readable lists', () => {
+  const markdown = [
+    '# IT Security Reviewer',
+    '',
+    '1. What is the CIA triad? A. Confidentiality, Integrity, Availability B. Speed, Storage, Access C. Malware, Botnet, Virus D. Cloud, Mobile, IoT',
+    '',
+    '## Answer Key',
+    '    1. A - CIA means Confidentiality, Integrity, and Availability.',
+  ].join('\n')
+  const reviewer = buildDeepLearnReviewerContent(createNote({
+    reviewerMarkdown: markdown,
+    noteBody: markdown,
+    answerBank: [],
+    identificationItems: [],
+    distinctions: [],
+    likelyQuizTargets: [],
+  }))
+  const markup = renderToStaticMarkup(createElement(StudyOutputReviewerPage, {
+    output: createReviewerOutput(reviewer),
+    courseLabel: null,
+    moduleTitle: null,
+  }))
+
+  assert.match(markup, /<ol/)
+  assert.match(markup, /Confidentiality, Integrity, Availability/)
+  assert.match(markup, /CIA means Confidentiality/)
+  assert.doesNotMatch(markup, /<pre|<code/)
+})
+
 test('reviewer structure stays exam-oriented and limited', () => {
   const reviewer = buildDeepLearnReviewerContent(createNote())
 

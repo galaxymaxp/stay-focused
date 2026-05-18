@@ -48,6 +48,7 @@ import {
   reviewerSourceFixtures,
   type ReviewerSourceFixture,
 } from './fixtures/deep-learn-reviewer-sources'
+import { normalizeReviewerMarkdownLayout } from '../lib/reviewer-markdown-layout'
 
 async function generateDeepLearnStructuredContentWithLegacyComposer(
   ...args: Parameters<typeof generateDeepLearnStructuredContent>
@@ -2790,6 +2791,46 @@ test('compact Markdown output saves successfully', async () => {
   assert.equal(result.content.answerBank.length, 0)
 })
 
+test('Reviewer Markdown layout normalizer converts safe inline numbered lists', () => {
+  const normalized = normalizeReviewerMarkdownLayout('Components 1. Confidentiality 2. Integrity 3. Availability')
+
+  assert.equal(normalized, [
+    'Components',
+    '',
+    '1. Confidentiality',
+    '2. Integrity',
+    '3. Availability',
+  ].join('\n'))
+})
+
+test('Reviewer Markdown layout normalizer removes answer key code indentation', () => {
+  const normalized = normalizeReviewerMarkdownLayout([
+    '## Answer Key',
+    '    1. B - Integrity keeps data accurate.',
+    '    2. A - Confidentiality protects access.',
+  ].join('\n'))
+
+  assert.match(normalized, /^1\. B - Integrity/m)
+  assert.doesNotMatch(normalized, /^\s{4,}1\./m)
+})
+
+test('Reviewer Markdown layout normalizer preserves MCQ choices as separate options', () => {
+  const normalized = normalizeReviewerMarkdownLayout('1. What is the CIA triad? A. Confidentiality, Integrity, Availability B. Speed, Storage, Access C. Malware, Botnet, Virus D. Cloud, Mobile, IoT')
+
+  assert.match(normalized, /^1\. What is the CIA triad\?/m)
+  assert.match(normalized, /^A\. Confidentiality, Integrity, Availability/m)
+  assert.match(normalized, /^B\. Speed, Storage, Access/m)
+  assert.match(normalized, /^C\. Malware, Botnet, Virus/m)
+  assert.match(normalized, /^D\. Cloud, Mobile, IoT/m)
+})
+
+test('Reviewer Markdown layout normalizer spaces headings', () => {
+  const normalized = normalizeReviewerMarkdownLayout('Intro\n## Key Concepts\nSource wording: IT Security protects assets.')
+
+  assert.match(normalized, /Intro\n\n## Key Concepts\n\n/)
+  assert.match(normalized, /\*\*Source wording:\*\* IT Security protects assets\./)
+})
+
 test('missing exact Reviewer headings still saves Markdown', async () => {
   const fixture = getReviewerSourceFixture('taxonomy-heavy-security')
   const markdown = [
@@ -2807,7 +2848,7 @@ test('missing exact Reviewer headings still saves Markdown', async () => {
     async () => textResponse(markdown),
   )
 
-  assert.equal(result.content.reviewerMarkdown, markdown)
+  assert.equal(result.content.reviewerMarkdown, normalizeReviewerMarkdownLayout(markdown))
 })
 
 test('lower quiz count still saves Reviewer Markdown', async () => {
@@ -2829,7 +2870,7 @@ test('lower quiz count still saves Reviewer Markdown', async () => {
     async () => textResponse(markdown),
   )
 
-  assert.equal(result.content.reviewerMarkdown, markdown)
+  assert.equal(result.content.reviewerMarkdown, normalizeReviewerMarkdownLayout(markdown))
 })
 
 test('empty model output fails cleanly', async () => {
