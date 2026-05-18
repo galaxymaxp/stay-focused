@@ -750,6 +750,11 @@ async function generateClassicMarkdownReviewerContent(
   const sourceWasTruncated = cleanedSource.length > sourceText.length
   const sourceOutline = buildSourceOutline(sourceText)
   const modelConfig = getOnePassReviewerModelConfig()
+  const sourceDiagnostics = buildDeepLearnSourceDiagnostics(input, options.diagnosticsContext)
+
+  if (sourceDiagnostics.sourceTextQuality !== 'meaningful' || sourceDiagnostics.academicTextCharCount < 120) {
+    throw new DeepLearnGenerationIncompleteError('insufficient_academic_source_text')
+  }
 
   logDeepLearnGeneratorRouting({
     generatorVersion: CLASSIC_MARKDOWN_REVIEWER_VERSION,
@@ -757,7 +762,7 @@ async function generateClassicMarkdownReviewerContent(
     reason: 'default',
     isRetry: Boolean(options.diagnosticsContext?.retryOfJobId),
     sourceTitle: input.resource.title,
-    academicTextCharCount: buildDeepLearnSourceDiagnostics(input, options.diagnosticsContext).academicTextCharCount,
+    academicTextCharCount: sourceDiagnostics.academicTextCharCount,
     chunkCount: 1,
     primaryModel: modelConfig.primaryModel,
     fallbackModel: modelConfig.repairModel,
@@ -875,6 +880,10 @@ async function generateClassicMarkdownReviewerContent(
 function shouldAttemptClassicReviewerRepair(reason: string | null) {
   return reason === null
     || reason === 'insufficient_reviewer_markdown'
+    || reason === 'empty_reviewer_markdown'
+    || reason === 'tiny_reviewer_markdown'
+    || reason === 'not_study_like_reviewer_markdown'
+    || reason === 'raw_source_dump'
     || reason === 'internal_pipeline_text'
     || reason === 'composer_leakage'
     || reason === 'malformed_headings'
@@ -913,8 +922,9 @@ async function createClassicMarkdownReviewerResponse(input: {
     throw new DeepLearnGenerationIncompleteError(response.incomplete_details?.reason ?? response.status)
   }
   const markdown = sanitizeReviewerMarkdown(response.output_text ?? '')
-  if (!isMeaningfulReviewerMarkdown(markdown, input.sourceText)) {
-    throw new DeepLearnGenerationIncompleteError('insufficient_reviewer_markdown')
+  const acceptance = validateClassicReviewerMarkdownForSave(markdown, input.sourceText)
+  if (!acceptance.ok) {
+    throw new DeepLearnGenerationIncompleteError(acceptance.reason)
   }
   return { markdown, model: input.model, repairAttempted: input.repairMode }
 }
@@ -1038,21 +1048,47 @@ function sanitizeReviewerMarkdown(value: string) {
     .trim()
 }
 
-function isMeaningfulReviewerMarkdown(markdown: string | null | undefined, sourceText: string) {
+function validateClassicReviewerMarkdownForSave(markdown: string | null | undefined, sourceText: string) {
   const text = markdown?.trim() ?? ''
-  if (text.length < 1200) return false
-  if (!/^#\s*Reviewer:/im.test(text)) return false
-  for (const heading of ['High-Yield Overview', 'Complete Exam Reviewer', 'Identification Reviewer', 'Multiple Choice Practice', 'Enumeration / List Questions', 'Final Quick Review']) {
-    if (!new RegExp(`^##\\s+${escapeRegExp(heading)}\\s*$`, 'im').test(text)) return false
+  if (!text) return { ok: false as const, reason: 'empty_reviewer_markdown' as const }
+  if (text.length < 650) return { ok: false as const, reason: 'tiny_reviewer_markdown' as const }
+  if (hasReviewerComposerLeakageText(text) || containsInternalPipelineText(text)) {
+    return { ok: false as const, reason: 'internal_pipeline_text' as const }
   }
-  if (hasReviewerComposerLeakageText(text) || containsInternalPipelineText(text)) return false
-  const tokens = normalizeAcademicLookup(text).split(' ').filter((token) => token.length >= 5)
-  if (tokens.length < 80) return false
+  if (isMostlyRawSourceDump(text, sourceText)) return { ok: false as const, reason: 'raw_source_dump' as const }
+  if (!hasStudyLikeReviewerShape(text)) return { ok: false as const, reason: 'not_study_like_reviewer_markdown' as const }
+
+  return { ok: true as const, reason: null }
+}
+
+function hasStudyLikeReviewerShape(markdown: string) {
+  const headingCount = (markdown.match(/^#{1,3}\s+\S.+$/gm) ?? []).length
+  const bulletCount = (markdown.match(/^\s*(?:[-*]|\d+[.)])\s+\S.+$/gm) ?? []).length
+  const questionCount = (markdown.match(/\?/g) ?? []).length
+  const hasStudyLanguage = /\b(?:overview|key concepts?|definitions?|important|classification|compare|distinguish|identification|multiple[-\s]?choice|practice|answer key|quick review|reviewer|exam|study)\b/i.test(markdown)
+  const hasTransformedStructure = headingCount >= 1 || bulletCount >= 4 || questionCount >= 2
+  const tokens = normalizeAcademicLookup(markdown).split(' ').filter((token) => token.length >= 5)
+  return hasStudyLanguage && hasTransformedStructure && tokens.length >= 60
+}
+
+function isMostlyRawSourceDump(markdown: string, sourceText: string) {
   const sourceKey = normalizeAcademicLookup(sourceText)
-  if (!sourceKey) return true
-  const sample = tokens.slice(0, 500)
-  const matched = sample.filter((token) => sourceKey.includes(token)).length
-  return matched / sample.length >= 0.1
+  if (!sourceKey || sourceKey.length < 500) return false
+
+  const outputKey = normalizeAcademicLookup(markdown.replace(/^#{1,6}\s+/gm, '').replace(/^\s*(?:[-*]|\d+[.)])\s+/gm, ''))
+  if (outputKey.length >= 900 && sourceKey.includes(outputKey.slice(0, Math.min(1800, outputKey.length)))) return true
+
+  const candidateLines = markdown
+    .split(/\n+/)
+    .map((line) => normalizeAcademicLookup(line.replace(/^#{1,6}\s+/, '').replace(/^\s*(?:[-*]|\d+[.)])\s+/, '')))
+    .filter((line) => line.length >= 90)
+  if (candidateLines.length === 0) return false
+
+  const copiedChars = candidateLines
+    .filter((line) => sourceKey.includes(line))
+    .reduce((total, line) => total + line.length, 0)
+  const totalChars = candidateLines.reduce((total, line) => total + line.length, 0)
+  return totalChars >= 900 && copiedChars / totalChars >= 0.7
 }
 
 function evaluateReviewerMarkdownHeadingCoverage(outline: SourceOutlineItem[], markdown: string) {
@@ -3403,12 +3439,8 @@ function sanitizeDeepLearnContentForSave(
 
 function isMeaningfulSavedReviewerMarkdown(markdown: string | null | undefined) {
   const text = markdown?.trim() ?? ''
-  if (text.length < 1200) return false
-  if (!/^#\s*Reviewer:/im.test(text)) return false
-  for (const heading of ['High-Yield Overview', 'Complete Exam Reviewer', 'Identification Reviewer', 'Multiple Choice Practice', 'Enumeration / List Questions', 'Final Quick Review']) {
-    if (!new RegExp(`^##\\s+${escapeRegExp(heading)}\\s*$`, 'im').test(text)) return false
-  }
-  return !hasReviewerComposerLeakageText(text) && !containsInternalPipelineText(text)
+  if (text.length < 650) return false
+  return hasStudyLikeReviewerShape(text) && !hasReviewerComposerLeakageText(text) && !containsInternalPipelineText(text)
 }
 
 function isOptionalEnrichmentSectionHeading(value: string) {
@@ -6541,7 +6573,18 @@ function buildDeepLearnIncompleteMessage(reason: string) {
   if (reason === 'structured_compiler_setup_missing_openai_api_key') {
     return 'Reviewer generation setup error: OPENAI_API_KEY is not set.'
   }
-  if (reason === 'insufficient_structured_artifacts' || reason === 'insufficient_reviewer_markdown') {
+  if (reason === 'insufficient_academic_source_text') {
+    return BAD_OCR_BLOCKED_MESSAGE
+  }
+  if (
+    reason === 'insufficient_structured_artifacts'
+    || reason === 'insufficient_reviewer_markdown'
+    || reason === 'empty_reviewer_markdown'
+    || reason === 'tiny_reviewer_markdown'
+    || reason === 'not_study_like_reviewer_markdown'
+    || reason === 'raw_source_dump'
+    || reason === 'internal_pipeline_text'
+  ) {
     return DEEP_LEARN_EMPTY_STUDY_ARTIFACTS_MESSAGE
   }
   if (reason === 'invalid_structured_outputs_json') {

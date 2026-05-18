@@ -1,7 +1,70 @@
 # Stay Focused — AI Session Handoff
 
 Author: galaxymaxp omgraythekid@gmail.com
-Last Updated: 2026-05-17
+Last Updated: 2026-05-18
+
+---
+
+## Session Update - 2026-05-18 (Simplify Reviewer Markdown Acceptance)
+
+### What changed
+
+- Replaced strict classic Reviewer Markdown validation with lightweight acceptance:
+  - blocks empty/tiny output
+  - blocks internal/debug/pipeline leakage
+  - blocks mostly raw copied source dumps
+  - requires study-like transformed Markdown structure
+- Removed exact heading/title/section-count requirements from the active Reviewer save gate.
+- Kept meaningful academic source checks before AI generation for the classic Markdown path.
+- Kept one fallback retry for genuinely bad Reviewer output.
+- Added regressions for compact useful Markdown, missing exact headings, low quiz count, internal leakage retry, raw source dump retry, and metadata-only source blocking before AI calls.
+
+### Files touched
+
+- `lib/deep-learn-generation.ts`
+- `tests/deep-learn-generation.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Production showed a meaningful 5,908-character academic source failing at `reviewer_markdown` with `insufficient_reviewer_markdown`. Reviewer generation should accept useful transformed Markdown even when compact or imperfectly formatted instead of grading exact section coverage.
+
+### Tests run
+
+- `npx tsx --test tests/deep-learn-generation.test.ts` - passed
+- `npm run typecheck` - passed
+- `npm run lint` - passed with existing warnings for inactive legacy functions
+- `npm test -- deep-learn-generation` - passed
+- `npm test -- study-output-reviewer study-output-quiz-pack learn-resource-ui deep-learn-readiness` - passed
+- `npm test -- pdf-extractor source-ocr-updates deep-learn-generation canvas-content-resolution learn-resource-ui queue` - passed
+- `Test-Path "C:\Users\omgra\Downloads\1.1-Data Organization.pdf"` returned `False`; scanned PDF validator skipped because the local private PDF is absent
+
+### Verification result
+
+- Verified compact but useful Reviewer Markdown saves as `reviewerMarkdown` without answer-bank or likely-quiz-target artifacts.
+- Verified missing exact headings and lower-than-requested quiz count do not fail the job.
+- Verified empty/tiny output, internal leakage, and raw source dumps trigger the fallback retry path.
+- Verified metadata-only source text is blocked before the Reviewer model is called.
+- Verified Task Output, Quiz Pack, Learn resource UI, readiness, OCR/extraction, and queue regressions still pass.
+
+### Known risks
+
+- Lightweight raw-copy detection is heuristic; highly extractive but transformed outputs may still require live monitoring.
+- Lint still reports the pre-existing unused inactive legacy functions in `lib/deep-learn-generation.ts`.
+
+### Blockers
+
+- No code blocker remains.
+- Optional scanned-PDF validation could not run because `C:\Users\omgra\Downloads\1.1-Data Organization.pdf` is not present locally.
+- Existing untracked `test_output.txt` remains uncommitted.
+
+### Next recommended step
+
+Deploy PR #20 and retry `1. Intro-To-IT-Security.pdf`; confirm the queue completes with `classic_markdown_reviewer_v1`, saves `reviewerMarkdown`, and does not report `insufficient_reviewer_markdown` for meaningful 5k-7k character sources.
+
+### Suggested commit message
+
+simplify reviewer markdown generation
 
 ---
 

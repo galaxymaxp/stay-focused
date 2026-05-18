@@ -2733,6 +2733,47 @@ test('Reviewer classic markdown saves IT Security source around 5908 chars witho
   assert.doesNotThrow(() => validateDeepLearnContentReadyForSave(result.content))
 })
 
+test('Reviewer accepts compact useful Markdown without exact headings or requested quiz count', async () => {
+  const source = IT_SECURITY_SAMPLE_SOURCE.repeat(Math.ceil(5908 / IT_SECURITY_SAMPLE_SOURCE.length)).slice(0, 5908)
+  const compactMarkdown = [
+    '# Intro to IT Security Reviewer',
+    '',
+    '## Fast Overview',
+    '- IT security protects information systems by combining people, process, and technology.',
+    '- Confidentiality, integrity, and availability explain the main security goals.',
+    '- Threats include malware, denial of service, attacker misuse, and exploitation of vulnerabilities.',
+    '',
+    '## Concepts to Know',
+    '- InfoSec focuses on information in any form, while IT Security focuses on technology systems and data handled by those systems.',
+    '- A vulnerability is a weakness, an exploit is the method used against it, and a breach is the successful compromise.',
+    '- Unified Threat Management combines multiple protections into one coordinated security approach.',
+    '- Malware can infiltrate through downloads, attachments, poisoned links, or compromised websites.',
+    '',
+    '## Practice',
+    '1. Which CIA goal protects information from unauthorized disclosure? A. Availability B. Confidentiality C. Integrity D. Enumeration',
+    '2. Short answer: Distinguish vulnerability, exploit, and breach using the source definitions.',
+    '',
+    '## Answers',
+    '- 1: B. Confidentiality.',
+    '- 2: A vulnerability is the weakness, the exploit is the attack technique, and the breach is the successful compromise.',
+    '',
+    '## Quick Review',
+    '- Memorize CIA, attacker types, malware types, denial-of-service methods, and impact reduction steps.',
+    '- Compare related terms rather than treating them as synonyms.',
+  ].join('\n')
+
+  const result = await generateDeepLearnStructuredContent(
+    createStructuredPromptInput(source, 'Intro-To-IT-Security.pdf'),
+    createStructuredPreparedGrounding(source),
+    async () => textResponse(compactMarkdown),
+  )
+
+  assert.equal(result.content.reviewerMarkdown, compactMarkdown)
+  assert.equal(result.content.answerBank.length, 0)
+  assert.equal(result.content.likelyQuizTargets.length, 0)
+  assert.doesNotThrow(() => validateDeepLearnContentReadyForSave(result.content))
+})
+
 test('Reviewer classic markdown covers PATHFit Arnis exam areas', async () => {
   const fixture = getReviewerSourceFixture('short-martial-arts-module')
   const result = await generateDeepLearnStructuredContent(
@@ -2835,6 +2876,48 @@ test('Reviewer classic markdown rejects old placeholder/debug leakage and repair
   assert.doesNotMatch(result.content.reviewerMarkdown ?? '', /No compact answer bank was recovered|repair payload|raw source|metadata-only/i)
 })
 
+test('Reviewer retries raw copied source dump and saves transformed fallback Markdown', async () => {
+  const fixture = getReviewerSourceFixture('taxonomy-heavy-security')
+  const source = IT_SECURITY_SAMPLE_SOURCE.repeat(Math.ceil(6200 / IT_SECURITY_SAMPLE_SOURCE.length)).slice(0, 6200)
+  const calls: string[] = []
+  const result = await generateDeepLearnStructuredContent(
+    createStructuredPromptInput(source, fixture.title),
+    createStructuredPreparedGrounding(source),
+    async () => {
+      calls.push('call')
+      if (calls.length === 1) return textResponse(source.slice(0, 2400))
+      return textResponse(buildClassicReviewerMarkdown({ ...fixture, extractedText: source }))
+    },
+  )
+
+  assert.equal(calls.length, 2)
+  assert.ok(result.content.reviewerMarkdown)
+  assert.match(result.content.reviewerMarkdown ?? '', /Multiple Choice Practice|Final Quick Review/i)
+})
+
+test('Reviewer blocks metadata-only source before AI generation', async () => {
+  let calls = 0
+  const weakSource = [
+    'File title: Intro-To-IT-Security.pdf',
+    'UUID: 11111111-1111-4111-8111-111111111111',
+    'Debug: no readable text was extracted from this source.',
+    'Quality note: metadata only.',
+  ].join('\n')
+
+  await assert.rejects(
+    () => generateDeepLearnStructuredContent(
+      createStructuredPromptInput(weakSource, 'Intro-To-IT-Security.pdf'),
+      createStructuredPreparedGrounding(weakSource),
+      async () => {
+        calls += 1
+        return textResponse(buildClassicReviewerMarkdown(getReviewerSourceFixture('taxonomy-heavy-security')))
+      },
+    ),
+    /not enough readable academic text|could not find enough readable academic text|Could not extract enough readable text|not find enough usable study text/i,
+  )
+  assert.equal(calls, 0)
+})
+
 test('Reviewer source cleanup collapses duplicated full-source blocks', async () => {
   const fixture = getReviewerSourceFixture('taxonomy-heavy-security')
   const duplicatedSource = `${fixture.extractedText}\n\n${fixture.extractedText}`
@@ -2927,7 +3010,7 @@ test('Reviewer repair failure returns clean student-facing incomplete message', 
     )),
     (error: unknown) => {
       assert.ok(error instanceof DeepLearnGenerationIncompleteError)
-      assert.equal(error.reason, 'insufficient_reviewer_markdown')
+      assert.equal(error.reason, 'tiny_reviewer_markdown')
       assert.equal(
         error.message,
         'Deep Learn could not build a complete Reviewer from this source.',
