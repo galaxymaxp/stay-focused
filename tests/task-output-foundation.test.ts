@@ -196,6 +196,248 @@ test('generic blank report template is rejected as ready', () => {
   assert.equal(readiness.status, 'draft_outline_only')
 })
 
+test('copied assignment instructions alone are not ready', () => {
+  const request = buildTaskOutputRequest({
+    taskId: 'task-copy',
+    taskTitle: 'Compare Two Readings',
+    taskDetails: 'Compare the two assigned readings from the module. Explain one similarity, one difference, and one takeaway using course evidence.',
+    deadline: null,
+    priority: 'medium',
+    courseName: 'Humanities',
+    moduleTitle: 'Readings',
+    resourceSnippet: 'The readings discuss civic identity and community responsibility in different historical periods.',
+    sourceText: 'Reading A frames civic identity as shared responsibility. Reading B frames civic identity as participation in public decision-making.',
+    sourceNote: null,
+    moduleSummary: null,
+  }, {
+    preset: 'report',
+    outputType: 'docx',
+  })
+
+  const readiness = evaluateTaskOutputReadiness({
+    request,
+    previewContent: 'Compare the two assigned readings from the module. Explain one similarity, one difference, and one takeaway using course evidence.',
+  })
+
+  assert.equal(readiness.ready, false)
+  assert.equal(readiness.status, 'draft_outline_only')
+  assert.ok(readiness.reasons.includes('copied_assignment_instructions'))
+})
+
+test('outline-only output is saved but not marked ready', () => {
+  const request = buildTaskOutputRequest({
+    taskId: 'task-outline',
+    taskTitle: 'Policy Analysis',
+    taskDetails: 'Analyze the policy using the module framework.',
+    deadline: null,
+    priority: 'medium',
+    courseName: 'Social Science',
+    moduleTitle: 'Policy',
+    resourceSnippet: 'The module framework asks students to identify the policy goal, stakeholders, tradeoffs, and evidence.',
+    sourceText: 'Stakeholder analysis compares who benefits, who carries costs, and what assumptions support the proposal.',
+    sourceNote: null,
+    moduleSummary: null,
+  }, {
+    preset: 'report',
+    outputType: 'pdf',
+  })
+
+  const output = normalizeTaskOutputModelResponse({
+    title: 'Policy Analysis Draft',
+    summary: 'Useful outline.',
+    previewMode: 'rich_text',
+    previewContent: [
+      'Introduction',
+      'State the policy goal.',
+      '',
+      'Stakeholders',
+      'Add the main stakeholder groups.',
+      '',
+      'Analysis',
+      'Fill in this section with evidence from the module.',
+      '',
+      'Conclusion',
+      'Replace placeholders with the final claim.',
+    ].join('\n'),
+    stylesheet: null,
+    script: null,
+    groundingNote: 'Grounded in task text.',
+    limitationNote: null,
+    warnings: [],
+    requirementsUsed: request.requirements,
+    selectedContextUsed: request.selectedContext,
+  }, request, null)
+
+  assert.equal(output.version, 'task-output-v1')
+  assert.equal(output.readinessStatus, 'draft_outline_only')
+})
+
+test('research-heavy task with no factual source becomes Needs research', () => {
+  const request = buildTaskOutputRequest({
+    taskId: 'task-research',
+    taskTitle: 'Assignment No. 3/Research: Top 10',
+    taskDetails: 'Investigate and analyze the top 10 most infamous malware, viruses, and security threats from the past decade.',
+    deadline: null,
+    priority: 'high',
+    courseName: 'IT Security',
+    moduleTitle: 'Security Threats',
+    resourceSnippet: null,
+    sourceText: null,
+    sourceNote: null,
+    moduleSummary: null,
+  }, {
+    preset: 'report',
+    outputType: 'docx',
+  })
+
+  const readiness = evaluateTaskOutputReadiness({
+    request,
+    previewContent: [
+      'Research-ready draft',
+      '',
+      'Selection criteria: impact, spread, technical significance, and relevance within the past decade.',
+      'Research fields: name, year, threat type, attack method, affected systems, impact, mitigation, and citation.',
+      'Recommended source categories: government advisories, vendor threat reports, academic or security research, and incident writeups.',
+      'Citation checklist: collect author or organization, publication date, title, URL, and access date for each source.',
+    ].join('\n'),
+  })
+
+  assert.equal(readiness.status, 'needs_research')
+  assert.equal(readiness.label, 'Needs research')
+})
+
+test('course-specific task with no readable source becomes Needs source content', () => {
+  const request = buildTaskOutputRequest({
+    taskId: 'task-source-needed',
+    taskTitle: 'Module Reading Response',
+    taskDetails: 'Answer using the module reading and course notes: What is the author’s main argument?',
+    deadline: null,
+    priority: 'medium',
+    courseName: 'Reading Seminar',
+    moduleTitle: 'Module 2',
+    resourceSnippet: null,
+    sourceText: null,
+    sourceNote: null,
+    moduleSummary: null,
+  }, {
+    preset: 'report',
+    outputType: 'docx',
+  })
+
+  const readiness = evaluateTaskOutputReadiness({
+    request,
+    previewContent: 'The response needs the module reading before it can identify the author’s main argument safely.',
+  })
+
+  assert.equal(readiness.status, 'needs_course_source_content')
+  assert.equal(readiness.label, 'Needs source content')
+})
+
+test('completed answer with substantive source-grounded content is ready', () => {
+  const request = buildTaskOutputRequest({
+    taskId: 'task-complete',
+    taskTitle: 'Water Cycle Analysis',
+    taskDetails: 'Explain how evaporation, condensation, and precipitation work together in the water cycle.',
+    deadline: null,
+    priority: 'medium',
+    courseName: 'Earth Science',
+    moduleTitle: 'Weather Systems',
+    resourceSnippet: 'Evaporation moves water from the surface into the atmosphere as vapor when heat energy is added.',
+    sourceText: 'Condensation happens when water vapor cools and forms droplets in clouds. Precipitation returns water to Earth as rain, snow, sleet, or hail, which keeps the cycle moving.',
+    sourceNote: null,
+    moduleSummary: null,
+  }, {
+    preset: 'report',
+    outputType: 'pdf',
+  })
+
+  const readiness = evaluateTaskOutputReadiness({
+    request,
+    previewContent: [
+      'Evaporation, condensation, and precipitation work together as connected stages of the water cycle. Evaporation begins when heat energy changes surface water into water vapor, moving moisture into the atmosphere. As that vapor cools, condensation forms tiny droplets that gather into clouds. Precipitation then returns the water to Earth as rain, snow, sleet, or hail, which lets the cycle continue through new runoff, collection, and later evaporation.',
+      '',
+      'This sequence matters because each stage depends on the one before it. Without evaporation, there is not enough water vapor for cloud formation. Without condensation, the vapor would not collect into droplets. Without precipitation, water would not return to the surface where people, plants, rivers, and oceans can use it again.',
+    ].join('\n'),
+  })
+
+  assert.equal(readiness.status, 'ready')
+  assert.equal(readiness.ready, true)
+})
+
+test('refinement prompt includes original task, source context, previous output, and user instruction', () => {
+  const request = buildTaskOutputRequest({
+    taskId: 'task-refine',
+    taskTitle: 'Discussion Post',
+    taskDetails: 'Write a discussion post explaining one benefit of regular physical activity for students.',
+    deadline: null,
+    priority: 'medium',
+    courseName: 'PATHFit',
+    moduleTitle: 'Wellness',
+    resourceSnippet: 'The module says regular physical activity can reduce stress and support daily energy.',
+    sourceText: 'Consistent movement supports wellness by improving mood, stamina, and stress management routines.',
+    sourceNote: null,
+    moduleSummary: null,
+  }, {
+    preset: 'report',
+    outputType: 'docx',
+  })
+  const refinedRequest = {
+    ...request,
+    previousOutput: 'Regular activity helps students manage stress and stay energized.',
+    refinementInstruction: 'Make this sound more formal.',
+  }
+
+  const prompt = buildTaskOutputUserPrompt(refinedRequest)
+
+  assert.match(prompt, /Task title: Discussion Post/)
+  assert.match(prompt, /regular physical activity can reduce stress/)
+  assert.match(prompt, /Previous output to revise:/)
+  assert.match(prompt, /Regular activity helps students manage stress/)
+  assert.match(prompt, /User refinement request:/)
+  assert.match(prompt, /Make this sound more formal/)
+  assert.doesNotMatch(prompt, /Source key:/)
+})
+
+test('refinement does not bypass readiness rules', () => {
+  const request = buildTaskOutputRequest({
+    taskId: 'task-refine-research',
+    taskTitle: 'Current Events Analysis',
+    taskDetails: 'Research and analyze three current cybersecurity incidents with citations.',
+    deadline: null,
+    priority: 'medium',
+    courseName: 'Security',
+    moduleTitle: 'Current Threats',
+    resourceSnippet: null,
+    sourceText: null,
+    sourceNote: null,
+    moduleSummary: null,
+  }, {
+    preset: 'report',
+    outputType: 'docx',
+  })
+  const refinedRequest = {
+    ...request,
+    previousOutput: 'Research plan with citation checklist.',
+    refinementInstruction: 'Make it look complete.',
+  }
+
+  const output = normalizeTaskOutputModelResponse({
+    title: 'Current Events Analysis',
+    summary: 'Refined report.',
+    previewMode: 'rich_text',
+    previewContent: 'Incident 1: Add source. Incident 2: Add source. Incident 3: Add source. References: add citations.',
+    stylesheet: null,
+    script: null,
+    groundingNote: 'No factual sources were surfaced.',
+    limitationNote: null,
+    warnings: [],
+    requirementsUsed: request.requirements,
+    selectedContextUsed: [],
+  }, refinedRequest, null)
+
+  assert.equal(output.readinessStatus, 'needs_research')
+})
+
 test('weak task-output grounding falls back to scaffold-only export bundle', () => {
   const request = buildTaskOutputRequest({
     taskId: 'task-2',

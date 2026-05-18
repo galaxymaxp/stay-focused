@@ -690,7 +690,7 @@ function getCompletedTaskOutputJobLabel(job: QueuedJob) {
   const status = getStringFromRecord(job.result, 'readinessStatus')
   if (status === 'draft_outline_only') return 'Draft outline only'
   if (status === 'needs_research') return 'Needs research'
-  if (status === 'needs_course_source_content') return 'Needs course/source content'
+  if (status === 'needs_course_source_content') return 'Needs source content'
   if (status === 'insufficient_content') return 'Could not generate enough usable content'
   return 'Output ready'
 }

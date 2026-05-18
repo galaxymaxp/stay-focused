@@ -2,13 +2,17 @@
 
 import { revalidatePath } from 'next/cache'
 import { getDeepLearnNoteForResource } from '@/lib/deep-learn-store'
+import { buildTaskDraftContextText, type TaskDraftContext } from '@/lib/do-now'
+import { extractCourseName, getModuleWorkspace } from '@/lib/module-workspace'
 import { getSafeStudyOutputActionErrorMessage } from '@/lib/study-output-action-errors'
 import { StudyOutputSaveError } from '@/lib/study-output-errors'
-import { findTaskOutputStudyOutput, saveStudyOutput } from '@/lib/study-outputs/store'
+import { findTaskOutputStudyOutput, getStudyOutputById, saveStudyOutput } from '@/lib/study-outputs/store'
 import { serializeErrorForLogging } from '@/lib/supabase'
 import { buildDeepLearnQuizPackContent } from '@/lib/study-outputs/quiz-pack'
 import { buildDeepLearnReviewerContent } from '@/lib/study-outputs/reviewer'
 import { buildDeepLearnSheetContent } from '@/lib/study-outputs/sheets'
+import { buildTaskOutputRequest, isTaskOutputApiResponse } from '@/lib/task-output'
+import { resolveGroundedTaskOutputContext } from '@/lib/task-output-context'
 import type { StudyOutputContent, StudyOutputSheetMode, StudyOutputTaskOutputContent } from '@/lib/types'
 
 type DeepLearnStudyOutputActionResult =
@@ -106,6 +110,104 @@ export async function saveTaskOutputStudyOutputAction(input: {
   return {
     id: saved.id,
     href: `/library/${encodeURIComponent(saved.id)}`,
+  }
+}
+
+export async function refineTaskOutputStudyOutputAction(input: {
+  outputId: string
+  instruction: string
+}): Promise<DeepLearnStudyOutputActionResult> {
+  const instruction = input.instruction.replace(/\s+/g, ' ').trim()
+  if (!instruction) return { ok: false, error: 'Add a short refinement request first.' }
+  if (instruction.length > 500) return { ok: false, error: 'Keep the refinement request under 500 characters.' }
+
+  try {
+    const output = await getStudyOutputById(input.outputId)
+    if (!output || output.outputKind !== 'task_output' || output.content.version !== 'task-output-v1') {
+      return { ok: false, error: 'This saved task output could not be reopened for refinement.' }
+    }
+    if (!output.moduleId || !output.sourceTaskId) {
+      return { ok: false, error: 'This task output is missing its original task workspace link.' }
+    }
+
+    const workspace = await getModuleWorkspace(output.moduleId)
+    if (!workspace) {
+      return { ok: false, error: 'The original task workspace could not be loaded.' }
+    }
+
+    const task = workspace.tasks.find((candidate) => candidate.id === output.sourceTaskId) ?? null
+    const taskOutput = output.content
+    const baseContext: TaskDraftContext = {
+      taskId: output.sourceTaskId,
+      moduleId: output.moduleId,
+      courseId: output.courseId ?? workspace.module.courseId ?? null,
+      taskTitle: task?.title ?? taskOutput.taskTitle,
+      taskDetails: task?.details ?? null,
+      deadline: task?.deadline ?? null,
+      priority: task?.priority ?? null,
+      courseName: extractCourseName(workspace.module.raw_content) ?? 'Course',
+      moduleTitle: workspace.module.title,
+      moduleSummary: null,
+      resourceSnippet: null,
+      sourceText: null,
+      sourceNote: null,
+      canvasUrl: task?.canvasUrl ?? null,
+      learnHref: null,
+      sourceTitle: null,
+      sourceType: null,
+      sourceHref: null,
+    }
+    const groundedContext = await resolveGroundedTaskOutputContext(output.moduleId, output.sourceTaskId, baseContext)
+    const request = buildTaskOutputRequest(groundedContext, {
+      preset: taskOutput.preset,
+      outputType: taskOutput.outputType,
+    })
+    const previousOutput = buildTaskDraftContextText(taskOutput.previewContent, 8000)
+    const apiPayload = {
+      ...request,
+      previousOutput,
+      previousTaskOutput: taskOutput,
+      refinementInstruction: instruction,
+    }
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL
+      || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null)
+      || 'http://localhost:3000'
+    const resp = await fetch(`${baseUrl}/api/task-output`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(apiPayload),
+    })
+    if (!resp.ok) {
+      return { ok: false, error: `Task output refinement returned ${resp.status}.` }
+    }
+
+    const data = await resp.json() as { ok: boolean; output?: unknown; error?: string }
+    if (!data.ok || !isTaskOutputApiResponse(data)) {
+      return { ok: false, error: data.error ?? 'Task output refinement returned an empty preview.' }
+    }
+
+    const saved = await saveTaskOutputStudyOutputAction({
+      taskId: output.sourceTaskId,
+      moduleId: output.moduleId,
+      courseId: output.courseId ?? workspace.module.courseId ?? null,
+      taskTitle: groundedContext.taskTitle,
+      preset: taskOutput.preset,
+      outputType: taskOutput.outputType,
+      content: data.output,
+    })
+
+    return { ok: true, id: saved.id, href: saved.href }
+  } catch (error) {
+    console.error('[study-outputs] refineTaskOutputStudyOutputAction failed', {
+      outputId: input.outputId,
+      error: serializeErrorForLogging(error),
+    })
+
+    const message = error instanceof StudyOutputSaveError
+      ? error.message
+      : getSafeStudyOutputActionErrorMessage('task_output', error)
+
+    return { ok: false, error: message }
   }
 }
 

@@ -5,6 +5,84 @@ Last Updated: 2026-05-18
 
 ---
 
+## Session Update - 2026-05-18 (Task Output Readiness And Refinement)
+
+### What changed
+
+- Tightened Task Output readiness evaluation so placeholder templates, copied assignment instructions, empty tables, meta "student should" language, and heading-only drafts cannot be marked `Output ready`.
+- Classified research-heavy assignments with no factual surfaced source context as `Needs research`, including the malware/top-10 style assignment case.
+- Classified course/module-specific assignments with missing readable source context as `Needs source content`.
+- Moved task-output related source resolution into `lib/task-output-context.ts` and stopped mixing the Canvas assignment prompt into selected source text.
+- Updated Task Output prompts to include a clean source-context status, previous output, and user refinement request while removing internal source keys from the model prompt.
+- Added saved Task Output refinement from Study Library: the form sends the original task, related source context, prior output, and requested change through the same readiness gate before saving the revised content.
+- Updated student-facing task-output status copy from `Needs course/source content` to `Needs source content`.
+- Added focused tests for placeholder rejection, copied instruction rejection, outline-only classification, needs-research classification, needs-source-content classification, completed output readiness, and refinement prompt/readiness behavior.
+
+### Files touched
+
+- `actions/queue-jobs.ts`
+- `actions/study-outputs.ts`
+- `app/api/task-output/route.ts`
+- `app/modules/[id]/tasks/page.tsx`
+- `components/StudyOutputTaskOutputPage.tsx`
+- `components/TaskOutputRefinementForm.tsx`
+- `lib/task-output.ts`
+- `lib/task-output-context.ts`
+- `tests/task-output-foundation.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Task Output could save a blank or placeholder-heavy report scaffold as if it were ready. Research tasks with only Canvas instructions also needed an honest non-final state instead of relying on generic model knowledge. The change keeps Task Output grounded in Canvas task instructions plus readable related source text first, uses honest status labels when source or research is missing, and lets students refine saved outputs without bypassing the same grounding/readiness rules.
+
+### Tests run
+
+- `npx tsx --test tests/task-output-foundation.test.ts`
+- `npx tsc --noEmit --pretty false`
+- `npm run typecheck`
+- `npm run lint` - passed with existing unused legacy Reviewer warnings in `lib/deep-learn-generation.ts`
+- `npx tsx --test tests/study-output-print.test.ts`
+- `npm test -- task-output task-output-foundation`
+- `npm test -- queue`
+- `npm test -- canvas-content-resolution learn-resource-ui`
+- `npm test -- pdf-extractor source-ocr-updates deep-learn-readiness deep-learn-generation canvas-content-resolution learn-resource-ui queue`
+- Optional scanned PDF validator skipped: `C:\Users\omgra\Downloads\1.1-Data Organization.pdf` was not present locally.
+
+### Verification result
+
+- Verified blank report templates and placeholder-heavy outputs are saved as non-ready states.
+- Verified copied assignment instructions alone are not ready.
+- Verified outline-only output remains saved but is labeled `Draft outline only`.
+- Verified research-heavy assignments with no factual source context become `Needs research`.
+- Verified course-specific assignments with no readable source context become `Needs source content`.
+- Verified substantive source-grounded output can still become `Output ready`.
+- Verified refinement prompts include the original Canvas task, readable source context, previous output, and the user's requested change.
+- Verified refinement output still passes through the readiness evaluator.
+- Verified queue, Canvas content resolution, Learn UI, extraction/OCR, Deep Learn readiness/generation, and print rendering suites still pass.
+
+### Known risks
+
+- No external research/retrieval path was added; research-heavy tasks without factual Canvas/source context intentionally remain `Needs research`.
+- The refinement action runs synchronously from the saved output page and refreshes the page after save; it does not queue a separate background job yet.
+- Related source selection is still title/module heuristic based; it avoids stale prompt-as-source leakage, but live assignments should be checked for whether enough related Canvas materials are selected.
+- Lint still reports pre-existing unused legacy Reviewer helper warnings in `lib/deep-learn-generation.ts`.
+- `test_output.txt` remains an untracked local file and was not included.
+
+### Blockers
+
+- No code blocker remains.
+- Manual production QA still needs an authenticated run against a real research-style Canvas assignment.
+
+### Next recommended step
+
+Generate Task Output for `Assignment No. 3/Research: Top 10` in the live app. With only Canvas instructions and no approved factual source context, confirm it shows `Needs research` or `Draft outline only`, provides a useful research-ready structure, and does not show `Output ready`.
+
+### Suggested commit message
+
+improve task output generation and refinement
+
+---
+
 ## Session Update - 2026-05-18 (Task Refresh Status Tracking)
 
 ### What changed

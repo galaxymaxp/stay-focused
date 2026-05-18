@@ -3,6 +3,7 @@
 import { Download, Printer } from 'lucide-react'
 import { GeneratedContentState } from '@/components/generated-content/GeneratedContentState'
 import { StudyOutputPrintHeader } from '@/components/StudyOutputPrintHeader'
+import { TaskOutputRefinementForm } from '@/components/TaskOutputRefinementForm'
 import { isTaskOutputStudyOutputContent } from '@/lib/study-output-content'
 import { buildTaskOutputActivitySubmissionHtml } from '@/lib/task-output-template'
 import type { StudyOutput, StudyOutputTaskOutputContent } from '@/lib/types'
@@ -107,6 +108,8 @@ export function StudyOutputTaskOutputPage({
             <p className="reviewer-muted" style={{ marginTop: '0.6rem' }}>{taskOutput.limitationNote}</p>
           ) : null}
         </section>
+
+        <TaskOutputRefinementForm outputId={output.id} />
 
         <section className="reviewer-panel study-output-keep-together">
           <p className="reviewer-section-label">Requirements used</p>

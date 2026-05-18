@@ -27,6 +27,8 @@ export interface TaskOutputRequest {
   selectedContext: string[]
   groundingStatus: TaskOutputGroundingStatus
   detectedFormat: TaskOutputDetectedFormat
+  previousOutput?: string | null
+  refinementInstruction?: string | null
 }
 
 export type TaskOutputDetectedFormat =
@@ -150,7 +152,6 @@ export function buildTaskOutputUserPrompt(input: TaskOutputRequest) {
     `Requested output type: ${input.outputType}`,
     `Detected task format: ${input.detectedFormat}`,
     `Grounding strength: ${input.groundingStatus}`,
-    `Source key: ${input.sourceKey}`,
     '',
     'Instructions:',
     input.instructions,
@@ -165,8 +166,29 @@ export function buildTaskOutputUserPrompt(input: TaskOutputRequest) {
       ? input.selectedContext.map((item) => `- ${item}`).join('\n')
       : '- No extra selected context was surfaced.',
     '',
+    'Source context status:',
+    input.selectedContext.length > 0
+      ? '- Readable related Canvas/course source text is included above.'
+      : '- No readable related Canvas/course source text was available. Do not treat the task title, file titles, metadata, or assignment wording as factual source content.',
+    input.previousOutput
+      ? [
+          '',
+          'Previous output to revise:',
+          input.previousOutput,
+        ].join('\n')
+      : '',
+    input.refinementInstruction
+      ? [
+          '',
+          'User refinement request:',
+          input.refinementInstruction,
+        ].join('\n')
+      : '',
+    '',
     'Contract:',
     '- Stay strictly grounded in the surfaced task data.',
+    '- The original Canvas task remains the anchor even when revising a previous output.',
+    '- A user refinement may change tone, format, length, organization, or emphasis, but it may not turn unsupported facts into course-confirmed facts.',
     '- Produce the submission-ready answer/content before any notes about limitations.',
     '- Do not output a generic scaffold with headings like Purpose, Deliverable focus, Grounded context, or Next edit pass when grounding is marked grounded.',
     '- Apply instructor format constraints exactly, especially sentence counts and required sections.',
@@ -320,7 +342,11 @@ export function isTaskOutputContent(value: unknown): value is StudyOutputTaskOut
 
 function buildTaskOutputRevisionHistory(previous: StudyOutputTaskOutputContent | null, request: TaskOutputRequest) {
   const history = previous?.revisionHistory ?? []
-  const nextLabel = history.length === 0 ? 'Initial generation' : `Revision ${history.length + 1}`
+  const nextLabel = history.length === 0
+    ? 'Initial generation'
+    : request.refinementInstruction
+      ? `Refinement ${history.length + 1}`
+      : `Revision ${history.length + 1}`
   return [
     createRevisionEntry(request, nextLabel, request.groundingStatus),
     ...history,
@@ -345,10 +371,8 @@ function createRevisionEntry(
 
 function buildSelectedContext(context: TaskDraftContext) {
   return sanitizeStringList([
-    context.taskDetails,
     context.resourceSnippet,
     context.sourceText,
-    context.sourceNote,
   ].map(sanitizeGroundedTextBlock), 6)
 }
 
@@ -535,6 +559,12 @@ export function evaluateTaskOutputReadiness(input: {
 }): TaskOutputReadinessEvaluation {
   const text = stripHtml(cleanBlock(input.previewContent))
   const normalized = normalizeComparisonText(text)
+  const taskText = normalizeComparisonText([
+    input.request.title,
+    input.request.instructions,
+    input.request.requirements.join(' '),
+  ].join(' '))
+  const selectedContextText = normalizeComparisonText(input.request.selectedContext.join(' '))
   const reasons: string[] = []
 
   const substantiveWords = normalized
@@ -559,18 +589,47 @@ export function evaluateTaskOutputReadiness(input: {
     .split('\n')
     .filter((line) => /^(?:#{1,3}\s*)?(purpose|deliverable focus|grounded context|next edit pass|introduction|background|analysis|conclusion|references|recommendations|source requirements|research plan)\s*:?\s*$/i.test(line.trim()))
     .length
-  const hasResearchRequirement = /\b(research|investigate|analy[sz]e|top\s+\d+|past decade|sources?|references?|citations?)\b/i.test(`${input.request.title} ${input.request.instructions} ${input.request.requirements.join(' ')}`)
-  const hasOnlyAssignmentInstructions = input.request.groundingStatus === 'grounded'
-    && input.request.selectedContext.join(' ').length < 240
-    && hasResearchRequirement
+  const emptyTableRows = text
+    .split('\n')
+    .filter((line) => /\|/.test(line) && /\b(tbd|n\/a|fill|research needed|source needed)\b|_{3,}|\[\s*\]/i.test(line))
+    .length
+  const metaInstructionSentences = countMatches(normalized, [
+    /\bstudents should\b/g,
+    /\bthe student should\b/g,
+    /\bthis report should\b/g,
+    /\bthis section should\b/g,
+  ])
+  const hasResearchRequirement = /\b(research|investigate|top\s+\d+|past decade|sources?|references?|citations?|case stud(?:y|ies)|current events?|recent examples?)\b/i.test(taskText)
+  const hasCourseSourceRequirement = /\b(course|module|class|lecture|reading|readings|textbook|canvas|source|sources|provided material|notes|rubric)\b/i.test(taskText)
+  const selectedContextChars = selectedContextText.length
+  const hasInsufficientResearchSource = hasResearchRequirement && selectedContextChars < 500
+  const hasMissingCourseSource = !hasResearchRequirement && hasCourseSourceRequirement && selectedContextChars < 220
+  const contentWords = new Set(substantiveWords)
+  const instructionWords = new Set(taskText.split(/\s+/).filter((word) => /^[a-z][a-z'-]{3,}$/i.test(word)))
+  const copiedInstructionWords = [...contentWords].filter((word) => instructionWords.has(word)).length
+  const newContentWords = [...contentWords].filter((word) => !instructionWords.has(word)).length
+  const copiedInstructionsOnly = instructionWords.size >= 8
+    && copiedInstructionWords >= Math.min(12, instructionWords.size)
+    && newContentWords < 26
+  const exactInstructionRestated = input.request.instructions.length >= 60
+    && normalized.includes(normalizeComparisonText(input.request.instructions).slice(0, 80))
+    && newContentWords < 35
+  const sameAsInstructions = normalized === normalizeComparisonText(input.request.instructions)
+  const assignmentTextRestated = normalized.length >= 60
+    && taskText.includes(normalized)
+    && newContentWords < 20
 
   if (input.request.groundingStatus === 'limited') reasons.push('limited_grounding')
   if (underscoreRuns >= 2) reasons.push('blank_lines_or_underscores')
   if (placeholderPhrases >= 2) reasons.push('placeholder_language')
   if (emptyFieldLines >= 3) reasons.push('empty_fields')
+  if (emptyTableRows >= 2) reasons.push('empty_table')
+  if (metaInstructionSentences >= 2) reasons.push('meta_instruction_language')
   if (genericHeadingCount >= 5 && uniqueSubstantiveWords.size < 55) reasons.push('generic_template_headings')
   if (uniqueSubstantiveWords.size < 35 && text.length < 900) reasons.push('too_little_substantive_content')
-  if (hasOnlyAssignmentInstructions) reasons.push('external_research_required')
+  if (sameAsInstructions || assignmentTextRestated || copiedInstructionsOnly || exactInstructionRestated) reasons.push('copied_assignment_instructions')
+  if (hasInsufficientResearchSource) reasons.push('external_research_required')
+  if (hasMissingCourseSource) reasons.push('course_source_content_required')
 
   if (reasons.includes('external_research_required')) {
     return {
@@ -581,19 +640,19 @@ export function evaluateTaskOutputReadiness(input: {
     }
   }
 
-  if (input.request.groundingStatus === 'limited') {
+  if (reasons.some((reason) => reason === 'blank_lines_or_underscores' || reason === 'placeholder_language' || reason === 'empty_fields' || reason === 'empty_table' || reason === 'meta_instruction_language' || reason === 'generic_template_headings' || reason === 'copied_assignment_instructions')) {
     return {
-      status: 'needs_course_source_content',
-      label: 'Needs course/source content',
+      status: 'draft_outline_only',
+      label: 'Draft outline only',
       ready: false,
       reasons,
     }
   }
 
-  if (reasons.some((reason) => reason === 'blank_lines_or_underscores' || reason === 'placeholder_language' || reason === 'empty_fields' || reason === 'generic_template_headings')) {
+  if (reasons.includes('course_source_content_required') || input.request.groundingStatus === 'limited') {
     return {
-      status: 'draft_outline_only',
-      label: 'Draft outline only',
+      status: 'needs_course_source_content',
+      label: 'Needs source content',
       ready: false,
       reasons,
     }

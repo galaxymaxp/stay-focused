@@ -6,6 +6,7 @@ import {
   buildTaskOutputRequest,
   buildTaskOutputUserPrompt,
   detectTaskOutputFormat,
+  isTaskOutputContent,
   normalizeTaskOutputModelResponse,
   type TaskOutputModelResponse,
   type TaskOutputRequest,
@@ -140,6 +141,8 @@ function readTaskOutputRequest(body: unknown): TaskOutputRequest | null {
         preset,
         outputType,
       }),
+      previousOutput: normalizeBlockString(body.previousOutput, 8000) ?? null,
+      refinementInstruction: normalizeString(body.refinementInstruction, 500) ?? null,
     }
   }
 
@@ -147,7 +150,17 @@ function readTaskOutputRequest(body: unknown): TaskOutputRequest | null {
   const legacyPreset = normalizePreset(body.preset)
   const legacyOutputType = normalizeOutputType(body.outputType)
   if (!legacyContext || !legacyPreset || !legacyOutputType) return null
-  return buildTaskOutputRequest(legacyContext, { preset: legacyPreset, outputType: legacyOutputType })
+  const request = buildTaskOutputRequest(legacyContext, { preset: legacyPreset, outputType: legacyOutputType })
+  return {
+    ...request,
+    previousOutput: normalizeBlockString(body.previousOutput, 8000) ?? null,
+    refinementInstruction: normalizeString(body.refinementInstruction, 500) ?? null,
+  }
+}
+
+function readPreviousTaskOutput(body: unknown) {
+  if (!isPlainRecord(body)) return null
+  return isTaskOutputContent(body.previousTaskOutput) ? body.previousTaskOutput : null
 }
 
 function normalizeModelOutput(raw: unknown): TaskOutputModelResponse | null {
@@ -182,6 +195,7 @@ export async function POST(req: NextRequest) {
   if (!requestBody) {
     return NextResponse.json({ ok: false, error: 'taskId, preset, outputType, title, instructions, and sourceKey are required' }, { status: 400 })
   }
+  const previousTaskOutput = readPreviousTaskOutput(rawBody)
 
   const fallback = buildTaskOutputFallback(requestBody)
   if (requestBody.groundingStatus === 'limited') {
@@ -216,7 +230,7 @@ export async function POST(req: NextRequest) {
       throw new Error('Model response did not match the expected task output shape')
     }
 
-    const output = normalizeTaskOutputModelResponse(normalized, requestBody, null)
+    const output = normalizeTaskOutputModelResponse(normalized, requestBody, previousTaskOutput)
     return NextResponse.json({
       ok: true,
       output,
