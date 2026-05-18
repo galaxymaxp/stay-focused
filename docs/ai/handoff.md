@@ -10676,3 +10676,56 @@ Production jobs with meaningful selected source text could still fail immediatel
 ### Suggested commit message
 
 repair insufficient reviewer markdown fallback
+
+---
+
+## Session Update - 2026-05-18 (Repair final reviewer validation failures)
+
+### What changed
+
+- Added validation-stage repair logic in classic markdown Reviewer generation: when first-pass markdown exists but fails final save validation, one repair-model attempt now runs before final failure.
+- Repair prompt now includes previous markdown and missing-section diagnostics so fallback can fix structure/content gaps rather than restarting blind.
+- Replaced hardcoded course-specific classic Reviewer coverage instructions with source-agnostic coverage rules.
+- Extended classic summary diagnostics logging with primary/repair markdown lengths, validator results, and final failure reason.
+- Added tests for validation-triggered repair success and source-agnostic prompt rules.
+
+### Files touched
+
+- `lib/deep-learn-generation.ts`
+- `tests/deep-learn-generation.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Production logs showed meaningful sources still failing with `insufficient_reviewer_markdown` and `fallbackMode: not_used` because repair was only reached for pre-result failures. This update makes post-validation failure trigger one fallback repair as well.
+
+### Tests run
+
+- `npm run typecheck`
+- `npm run lint`
+- `npm test -- deep-learn-generation` (script arg shape incompatible in this environment)
+- `npm test -- study-output-reviewer study-output-quiz-pack learn-resource-ui deep-learn-readiness` (script arg shape incompatible in this environment)
+- `npm test -- pdf-extractor source-ocr-updates deep-learn-generation canvas-content-resolution learn-resource-ui queue` (script arg shape incompatible in this environment)
+- `npx tsx --test tests/deep-learn-generation.test.ts` (passed)
+
+### Verification result
+
+- Final validation failures now trigger one repair attempt using configured repair model.
+- Repaired reviewer markdown is saved when validation passes.
+- Prompt no longer includes hardcoded IT Security/SDLC/PATHFit/Arnis rules.
+
+### Known risks
+
+- Single repair attempt may still fail for severely malformed provider output; this remains intentional for latency/cost control.
+
+### Blockers
+
+- None.
+
+### Next recommended step
+
+- Add queue metadata assertions so validation-triggered repair is explicitly surfaced as fallback-used in production job result telemetry.
+
+### Suggested commit message
+
+repair final reviewer validation failures

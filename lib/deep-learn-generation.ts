@@ -803,11 +803,17 @@ async function generateClassicMarkdownReviewerContent(
     })
   }
 
-  let content = buildDeepLearnContentFromReviewerMarkdown(result.markdown, input.resource.title)
+  const primaryMarkdown = result.markdown
+  const primaryMarkdownLength = primaryMarkdown.length
+  let content = buildDeepLearnContentFromReviewerMarkdown(primaryMarkdown, input.resource.title)
   let validation = validateDeepLearnContentReadyForSave(content)
+  const primaryValidationReason = validation.reason ?? null
   let headingDiagnostics = evaluateReviewerMarkdownHeadingCoverage(sourceOutline, result.markdown)
+  let repairMarkdownLength: number | null = null
+  let repairValidationReason: string | null = null
+  let finalFailureReason: string | null = null
 
-  if (!validation.ok && !result.repairAttempted) {
+  if (!validation.ok && !result.repairAttempted && shouldAttemptClassicReviewerRepair(validation.reason)) {
     const repaired = await createClassicMarkdownReviewerResponse({
       input,
       grounding,
@@ -818,12 +824,17 @@ async function generateClassicMarkdownReviewerContent(
       maxOutputTokens: REVIEWER_ONE_PASS_REPAIR_MAX_OUTPUT_TOKENS,
       repairMode: true,
       previousFailureReason: validation.reason ?? 'insufficient_reviewer_markdown',
+      previousMarkdown: primaryMarkdown,
+      missingSectionTitles: headingDiagnostics.uncovered.map((item) => item.title),
     })
     result = { ...repaired, repairAttempted: true }
+    repairMarkdownLength = result.markdown.length
     content = buildDeepLearnContentFromReviewerMarkdown(result.markdown, input.resource.title)
     validation = validateDeepLearnContentReadyForSave(content)
+    repairValidationReason = validation.reason ?? null
     headingDiagnostics = evaluateReviewerMarkdownHeadingCoverage(sourceOutline, result.markdown)
   }
+  if (!validation.ok) finalFailureReason = validation.reason ?? 'insufficient_reviewer_markdown'
 
   logClassicMarkdownReviewerSummary({
     primaryModel: modelConfig.primaryModel,
@@ -838,6 +849,11 @@ async function generateClassicMarkdownReviewerContent(
     uncoveredHeadings: headingDiagnostics.uncovered.map((item) => item.title),
     validationPassed: validation.ok,
     validationFailureReason: validation.reason,
+    primaryMarkdownLength,
+    primaryValidationReason,
+    repairMarkdownLength,
+    repairValidationReason,
+    finalFailureReason,
   })
 
   if (sourceWasTruncated) {
@@ -856,6 +872,14 @@ async function generateClassicMarkdownReviewerContent(
   return { content, compactFallbackUsed: sourceWasTruncated }
 }
 
+function shouldAttemptClassicReviewerRepair(reason: string | null) {
+  return reason === null
+    || reason === 'insufficient_reviewer_markdown'
+    || reason === 'internal_pipeline_text'
+    || reason === 'composer_leakage'
+    || reason === 'malformed_headings'
+}
+
 async function createClassicMarkdownReviewerResponse(input: {
   input: DeepLearnPromptInput
   grounding: DeepLearnPreparedGrounding
@@ -866,6 +890,8 @@ async function createClassicMarkdownReviewerResponse(input: {
   maxOutputTokens: number
   repairMode: boolean
   previousFailureReason?: string | null
+  previousMarkdown?: string | null
+  missingSectionTitles?: string[]
 }): Promise<ClassicReviewerMarkdownResult> {
   const response = await withTimeout(
     input.createResponse({
@@ -899,6 +925,8 @@ function buildClassicMarkdownReviewerPrompt(input: {
   sourceOutline: SourceOutlineItem[]
   repairMode: boolean
   previousFailureReason?: string | null
+  previousMarkdown?: string | null
+  missingSectionTitles?: string[]
 }) {
   const requiredSections = getRequiredSourceOutlineItems(input.sourceOutline)
     .map((item) => `- ${item.title}`)
@@ -914,6 +942,11 @@ function buildClassicMarkdownReviewerPrompt(input: {
     'Do not over-summarize. Preserve all major source sections in source order and keep exam/reviewer wording suitable for memorization.',
     requiredSections ? 'Major sections detected from the selected source:' : '',
     requiredSections,
+    '',
+    input.repairMode && input.previousMarkdown ? 'Previous markdown to repair (fix quality and keep source-faithful):' : '',
+    input.repairMode && input.previousMarkdown ? input.previousMarkdown : '',
+    input.repairMode && input.missingSectionTitles && input.missingSectionTitles.length > 0 ? 'Missing or weak major sections to cover:' : '',
+    input.repairMode && input.missingSectionTitles && input.missingSectionTitles.length > 0 ? input.missingSectionTitles.map((title) => `- ${title}`).join('\n') : '',
     '',
     'Required Markdown structure:',
     `# Reviewer: ${input.input.resource.title}`,
@@ -943,9 +976,11 @@ function buildClassicMarkdownReviewerPrompt(input: {
     'Compact cram checklist.',
     '',
     'Coverage rules:',
-    '- For IT Security, cover: IT Security definition, InfoSec vs IT Sec, CIA triad, domains, cybersecurity definitions, layered protection, people/process/technology, UTM, importance, challenges, breach impacts, attackers, vulnerability/exploit/breach, threat types, malware types, symptoms, infiltration, denial of service, SEO poisoning, blended attacks, and impact reduction when present.',
-    '- For SDLC, cover Phase 1 through Phase 7 directly when present.',
-    '- For PATHFit/Arnis, cover definition, R.A. 9850, historical concept, evolvement/classifications, timeline/organizations, main groups, salutation, strikes, Arnis as sport, equipment, weapons, and stick types when present.',
+    '- Cover every detected major heading from the source in source order.',
+    '- Cover definitions, enumerations/lists, classifications/taxonomies, and procedures/steps when present.',
+    '- Cover compare/distinguish concepts only when present in the source.',
+    '- Cover formulas/calculations only when present in the source.',
+    '- Cover dates/timelines only when present in the source.',
     '',
     'SELECTED ACADEMIC SOURCE TEXT:',
     input.sourceText,
@@ -2638,6 +2673,11 @@ function logClassicMarkdownReviewerSummary(input: {
   uncoveredHeadings: string[]
   validationPassed: boolean
   validationFailureReason: string | null
+  primaryMarkdownLength: number
+  primaryValidationReason: string | null
+  repairMarkdownLength: number | null
+  repairValidationReason: string | null
+  finalFailureReason: string | null
 }) {
   console.info('[deep-learn-generation] classic markdown reviewer summary', {
     generatorVersion: CLASSIC_MARKDOWN_REVIEWER_VERSION,
@@ -2655,6 +2695,11 @@ function logClassicMarkdownReviewerSummary(input: {
     uncoveredHeadings: input.uncoveredHeadings,
     validationPassed: input.validationPassed,
     validationFailureReason: input.validationFailureReason,
+    primaryMarkdownLength: input.primaryMarkdownLength,
+    primaryValidatorResult: input.primaryValidationReason,
+    repairMarkdownLength: input.repairMarkdownLength,
+    repairValidatorResult: input.repairValidationReason,
+    finalFailureReason: input.finalFailureReason,
   })
 }
 

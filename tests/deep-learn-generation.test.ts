@@ -2895,6 +2895,23 @@ test('Reviewer validation failure triggers fallback repair and saves repaired ma
   assert.match(result.content.reviewerMarkdown ?? '', /^#\s*Reviewer:/m)
 })
 
+test('Reviewer prompt coverage rules are source-agnostic with no hardcoded course names', async () => {
+  const fixture = getReviewerSourceFixture('taxonomy-heavy-security')
+  let prompt = ''
+  await generateDeepLearnStructuredContent(
+    createStructuredPromptInput(fixture.extractedText, fixture.title),
+    createStructuredPreparedGrounding(fixture.extractedText),
+    async (request) => {
+      prompt = request.promptText
+      return textResponse(buildClassicReviewerMarkdown(fixture))
+    },
+  )
+
+  assert.match(prompt, /Cover every detected major heading from the source in source order/i)
+  assert.match(prompt, /Cover definitions, enumerations\/lists, classifications\/taxonomies, and procedures\/steps when present/i)
+  assert.doesNotMatch(prompt, /\bIT Security\b|\bSDLC\b|\bPATHFit\b|\bArnis\b/i)
+})
+
 test('Reviewer repair failure returns clean student-facing incomplete message', async () => {
   const fixture = getReviewerSourceFixture('taxonomy-heavy-security')
   const source = IT_SECURITY_SAMPLE_SOURCE.repeat(Math.ceil(6200 / IT_SECURITY_SAMPLE_SOURCE.length)).slice(0, 6200)
