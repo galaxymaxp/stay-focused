@@ -1389,7 +1389,9 @@ async function processLearnGenerationJob(input: {
     await updateQueuedJobStatus(input.jobId, 'running', { progress: 85 })
     if (await canceled()) return
 
-    assertDeepLearnContentReadyForSave(generated.content)
+    if (!generated.content.reviewerMarkdown?.trim()) {
+      assertDeepLearnContentReadyForSave(generated.content)
+    }
 
     const noteBody = generated.content.reviewerMarkdown ?? buildDeepLearnNoteBody(generated.content.sections)
     const quizReady = computeDeepLearnQuizReady(generated.content)
@@ -1436,6 +1438,9 @@ async function processLearnGenerationJob(input: {
       structuredCompilerUsed: false,
       reviewerMarkdownLength: generated.content.reviewerMarkdown?.length ?? 0,
       sourceCharCount: generated.sourceGrounding.charCount,
+      simpleReviewerMode: Boolean(generated.content.reviewerMarkdown?.trim()),
+      outputChars: generated.content.reviewerMarkdown?.length ?? 0,
+      savedReviewerMarkdown: Boolean(generated.content.reviewerMarkdown?.trim()),
     })
     revalidateLearnQueuePaths(workspace.module.id, workspace.module.courseId ?? input.courseId ?? null, canonicalResourceId)
 

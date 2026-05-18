@@ -257,7 +257,7 @@ export function buildDeepLearnNoteRecord(input: {
     overview: cleanSentence(input.overview) || 'No overview available.',
     sections,
     noteBody: cleanParagraph(input.noteBody) || buildDeepLearnNoteBody(sections),
-    reviewerMarkdown: cleanMarkdown(input.reviewerMarkdown ?? input.noteBody),
+    reviewerMarkdown: cleanMarkdown(input.reviewerMarkdown),
     answerBank,
     identificationItems,
     mcqDrill: buildDeepLearnMcqDrill({

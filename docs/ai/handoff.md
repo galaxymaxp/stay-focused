@@ -5,6 +5,80 @@ Last Updated: 2026-05-17
 
 ---
 
+## Session Update - 2026-05-18 (Temporary Simple Reviewer Markdown Output)
+
+### What changed
+
+- Replaced the active classic Markdown Reviewer generation branch with a temporary simple Reviewer path:
+  - meaningful selected academic source text goes directly to the configured Reviewer model
+  - the raw Markdown response is saved as `reviewerMarkdown`
+  - compact Markdown, missing exact headings, low quiz counts, and internal/debug wording no longer hard-fail this path
+  - only empty/bad source text blocks before the model call, and only empty provider output fails after the call
+- Bypassed the Reviewer save validator and queue assertion when `reviewerMarkdown` exists.
+- Kept Task Output, Quiz Pack, Study Sheet, OCR readiness, and Canvas sync behavior unchanged.
+- Updated Reviewer rendering so saved `reviewerMarkdown` renders directly and hides structured Reviewer sections such as Key Answers, Likely Quiz Targets, answer bank cards, and quiz target rankings.
+- Added simple Reviewer logs for `simpleReviewerMode`, `sourceTitle`, `sourceChars`, `selectedSourceField`, `model`, `outputChars`, and `savedReviewerMarkdown`.
+- Tightened local note normalization so only explicit `reviewerMarkdown` activates simple Markdown rendering; legacy note-body fallback tests still use the structured path.
+
+### Files touched
+
+- `actions/queue-jobs.ts`
+- `components/DeepLearnReviewPackSurface.tsx`
+- `lib/deep-learn-generation.ts`
+- `lib/deep-learn.ts`
+- `lib/study-outputs/reviewer.ts`
+- `tests/deep-learn-generation.test.ts`
+- `tests/study-output-reviewer.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+The current Reviewer architecture was still over-validating good extracted academic text through heading, section, quiz-count, internal-label, structured compiler, answer-bank, quiz-target, and repair-stage gates. This branch intentionally proves the simplest path first: selected meaningful source text -> AI Markdown -> save `reviewerMarkdown` -> render the Markdown.
+
+### Tests run
+
+- `npm run typecheck` - passed
+- `npm run lint` - passed with existing unused legacy Reviewer compiler warnings
+- `npx tsx --test tests/deep-learn-generation.test.ts` - passed
+- `npx tsx --test tests/study-output-reviewer.test.ts` - passed after tightening explicit Markdown detection
+- `npm test -- deep-learn-generation` - passed
+- `npm test -- study-output-reviewer study-output-quiz-pack learn-resource-ui deep-learn-readiness` - passed
+- `npm test -- pdf-extractor source-ocr-updates deep-learn-generation canvas-content-resolution learn-resource-ui queue` - passed
+- `Test-Path "C:\Users\omgra\Downloads\1.1-Data Organization.pdf"` returned `False`, so the optional scanned-PDF validator was skipped.
+
+### Verification result
+
+- Verified meaningful academic source calls the Reviewer model and saves `reviewerMarkdown`.
+- Verified compact Markdown output saves successfully.
+- Verified missing exact Reviewer headings still saves.
+- Verified lower quiz count still saves.
+- Verified empty model output fails with `empty_reviewer_markdown`.
+- Verified bad/metadata-only source is blocked before the model call.
+- Verified Reviewer pages and the Deep Learn review surface render Markdown directly when `reviewerMarkdown` exists and hide old structured sections.
+- Verified Quiz Pack, Learn resource UI, readiness, extraction/OCR, queue, and Task Output-adjacent suites still pass through the requested batches.
+
+### Known risks
+
+- This is intentionally temporary and permissive: raw Markdown can include wording that older strict gates would reject.
+- The simple Reviewer path does not create answer-bank or quiz-target artifacts, so Reviewer display is the raw document while Quiz Pack still depends on existing quiz/source-map paths.
+- Lint still reports pre-existing unused legacy compiler warnings in `lib/deep-learn-generation.ts`.
+- `test_output.txt` remains an existing untracked local file and was not included.
+
+### Blockers
+
+- No code blocker remains.
+- The optional private scanned PDF validator could not run because `C:\Users\omgra\Downloads\1.1-Data Organization.pdf` is not present locally.
+
+### Next recommended step
+
+Generate a live Reviewer for `1. Intro-To-IT-Security.pdf` and confirm logs show `simpleReviewerMode: true`, `selectedSourceField: "extracted_text"`, output characters greater than zero, and `savedReviewerMarkdown: true`, then inspect the rendered Markdown before reintroducing any quality gates.
+
+### Suggested commit message
+
+add simple reviewer markdown output path
+
+---
+
 ## Session Update - 2026-05-17 (Restore Classic Full Reviewer Generation)
 
 ### What changed

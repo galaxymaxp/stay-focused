@@ -50,6 +50,34 @@ test('metadata-only grounded Deep Learn packs are rejected', () => {
   assert.equal(blocked.reason, 'metadata_only')
 })
 
+test('simple reviewer Markdown renders directly without structured fallback sections', () => {
+  const markdown = [
+    '# IT Security Reviewer',
+    '',
+    'Confidentiality, integrity, and availability are core goals.',
+    '',
+    '## Practice',
+    '1. Define confidentiality.',
+  ].join('\n')
+  const reviewer = buildDeepLearnReviewerContent(createNote({
+    reviewerMarkdown: markdown,
+    noteBody: markdown,
+    answerBank: [],
+    identificationItems: [],
+    distinctions: [],
+    likelyQuizTargets: [],
+  }))
+  const markup = renderToStaticMarkup(createElement(StudyOutputReviewerPage, {
+    output: createReviewerOutput(reviewer),
+    courseLabel: null,
+    moduleTitle: null,
+  }))
+
+  assert.equal(reviewer.reviewerMarkdown, markdown)
+  assert.match(markup, /IT Security Reviewer/)
+  assert.doesNotMatch(markup, /Key Answers|Likely quiz targets|No compact answer bank|reviewer-grid/i)
+})
+
 test('reviewer structure stays exam-oriented and limited', () => {
   const reviewer = buildDeepLearnReviewerContent(createNote())
 

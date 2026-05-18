@@ -296,11 +296,7 @@ export function buildReviewerContentFromSourceMap(note: DeepLearnNote): StudyOut
 }
 
 function hasFullReviewerMarkdown(note: DeepLearnNote) {
-  const markdown = note.reviewerMarkdown ?? note.noteBody
-  return /^#\s*Reviewer:/im.test(markdown)
-    && /^##\s+Complete Exam Reviewer\s*$/im.test(markdown)
-    && /^##\s+Identification Reviewer\s*$/im.test(markdown)
-    && markdown.length >= 1200
+  return Boolean(note.reviewerMarkdown?.trim())
 }
 
 interface SourceMapReviewerUnit {
