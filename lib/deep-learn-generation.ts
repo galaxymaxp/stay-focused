@@ -1877,7 +1877,7 @@ function buildStudyFactCardPrompt(input: {
 }
 
 function cleanupStudyCompilerSource(value: string) {
-  return value
+  const cleaned = value
     .replace(/\r/g, '')
     .split('\n')
     .map((line) => line.trim())
@@ -1887,6 +1887,25 @@ function cleanupStudyCompilerSource(value: string) {
     .join('\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim()
+
+  return collapseDuplicatedSourceBlocks(cleaned)
+}
+
+function collapseDuplicatedSourceBlocks(value: string) {
+  const normalized = value.trim()
+  if (normalized.length < 200) return normalized
+  const lines = normalized.split('\n').map((line) => line.trim()).filter(Boolean)
+  if (lines.length < 8) return normalized
+  const midpoint = Math.floor(lines.length / 2)
+  if (midpoint < 4) return normalized
+  const firstHalf = lines.slice(0, midpoint)
+  const secondHalf = lines.slice(midpoint)
+  const overlap = Math.min(firstHalf.length, secondHalf.length)
+  if (overlap < 6) return normalized
+  const firstKey = normalizeAcademicLookup(firstHalf.slice(0, overlap).join(' '))
+  const secondKey = normalizeAcademicLookup(secondHalf.slice(0, overlap).join(' '))
+  if (!firstKey || !secondKey || firstKey !== secondKey) return normalized
+  return firstHalf.join('\n')
 }
 
 function splitStudyCompilerChunks(sourceText: string) {
@@ -5493,7 +5512,7 @@ function isLowInformationStudyText(value: string) {
 }
 
 function containsInternalPipelineText(value: string) {
-  return /\b(?:Reconstructed lists|Clean source summary fragments|Normalized headings|Detected concepts|Academic headings|Concept hierarchy|Term definitions|Duplicate OCR\/source fragments collapsed)\b/i.test(value)
+  return /\b(?:Reconstructed lists|Clean source summary fragments|Normalized headings|Detected concepts|Academic headings|Concept hierarchy|Term definitions|Duplicate OCR\/source fragments collapsed|No compact answer bank was recovered|The pack does not yet rank likely quiz targets|compact answer bank|likely quiz targets not ranked|recovered from this source|parser failed|repair payload|raw source|metadata-only)\b/i.test(value)
 }
 
 function isMalformedReviewerHeading(value: string) {

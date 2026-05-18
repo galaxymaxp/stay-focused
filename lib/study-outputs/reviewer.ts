@@ -990,7 +990,7 @@ function cleanReviewerText(value: string) {
 }
 
 function containsInternalPipelineText(value: string) {
-  return /\b(?:Reconstructed lists|Clean source summary fragments|Normalized headings|Detected concepts|Academic headings|Concept hierarchy|Term definitions|Duplicate OCR\/source fragments collapsed)\b/i.test(value)
+  return /\b(?:Reconstructed lists|Clean source summary fragments|Normalized headings|Detected concepts|Academic headings|Concept hierarchy|Term definitions|Duplicate OCR\/source fragments collapsed|No compact answer bank was recovered|The pack does not yet rank likely quiz targets|compact answer bank|likely quiz targets not ranked|recovered from this source|parser failed|repair payload|raw source|metadata-only)\b/i.test(value)
 }
 
 function dedupeQuickReviewBlocks(blocks: ReturnType<typeof buildQuickReviewBlocks>) {

@@ -2798,6 +2798,63 @@ test('Reviewer classic markdown retries once for unusable Markdown', async () =>
   assert.ok(result.content.reviewerMarkdown)
 })
 
+test('Reviewer classic markdown rejects old placeholder/debug leakage and repairs once', async () => {
+  const fixture = getReviewerSourceFixture('taxonomy-heavy-security')
+  const calls: string[] = []
+  const result = await withTemporaryEnv({
+    DEEP_LEARN_REVIEWER_ONE_PASS_MODEL: 'gpt-5.4-primary',
+    DEEP_LEARN_REVIEWER_ONE_PASS_REPAIR_MODEL: 'gpt-5.5-repair',
+  }, () => generateDeepLearnStructuredContent(
+    createStructuredPromptInput(fixture.extractedText, fixture.title),
+    createStructuredPreparedGrounding(fixture.extractedText),
+    async (request) => {
+      calls.push(request.model ?? 'none')
+      if (calls.length === 1) {
+        return textResponse([
+          `# Reviewer: ${fixture.title}`,
+          '## High-Yield Overview',
+          '- No compact answer bank was recovered from this source.',
+          '## Complete Exam Reviewer',
+          '- raw source',
+          '## Identification Reviewer',
+          '- parser failed',
+          '## Multiple Choice Practice',
+          '- repair payload',
+          '## Enumeration / List Questions',
+          '- metadata-only',
+          '## Final Quick Review',
+          '- recovered from this source',
+        ].join('\n'))
+      }
+      return textResponse(buildClassicReviewerMarkdown(fixture))
+    },
+  ))
+
+  assert.deepEqual(calls, ['gpt-5.4-primary', 'gpt-5.5-repair'])
+  assert.ok(result.content.reviewerMarkdown)
+  assert.doesNotMatch(result.content.reviewerMarkdown ?? '', /No compact answer bank was recovered|repair payload|raw source|metadata-only/i)
+})
+
+test('Reviewer source cleanup collapses duplicated full-source blocks', async () => {
+  const fixture = getReviewerSourceFixture('taxonomy-heavy-security')
+  const duplicatedSource = `${fixture.extractedText}\n\n${fixture.extractedText}`
+  let capturedPrompt = ''
+  await generateDeepLearnStructuredContent(
+    createStructuredPromptInput(duplicatedSource, fixture.title),
+    createStructuredPreparedGrounding(duplicatedSource),
+    async (request) => {
+      capturedPrompt = request.promptText
+      return textResponse(buildClassicReviewerMarkdown(fixture))
+    },
+  )
+
+  assert.match(capturedPrompt, /SELECTED ACADEMIC SOURCE TEXT:/)
+  const sourceBody = capturedPrompt.split('SELECTED ACADEMIC SOURCE TEXT:')[1] ?? ''
+  const keyNeedle = fixture.extractedText.slice(0, 120).trim()
+  const keyMatches = sourceBody.split(keyNeedle).length - 1
+  assert.equal(keyMatches, 1)
+})
+
 test('task_output model routing remains on task-specific mini defaults', () => {
   const source = readFileSync('app/api/task-output/route.ts', 'utf8')
   assert.match(source, /DEFAULT_TASK_OUTPUT_MODEL = 'gpt-5-mini'/)
@@ -3302,4 +3359,3 @@ function quizTargetItem(index: number) {
     relatedConcepts: [],
   }
 }
-

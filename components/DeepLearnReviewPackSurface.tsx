@@ -132,7 +132,7 @@ export function DeepLearnReviewPackSurface({ note }: { note: DeepLearnNote }) {
         <div style={{ display: 'grid', gap: '0.9rem' }}>
           {preset === 'answer_bank' && (
             <section data-review-support-scope className="glass-panel glass-soft" style={{ borderRadius: 'var(--radius-panel)', padding: '1rem' }}>
-              <p className="ui-kicker">Key Answers / Answer Bank</p>
+              <p className="ui-kicker">Key Answers</p>
               {note.answerBank.length > 0 ? (
                 <ul style={{ listStyle: 'none', padding: 0, margin: '0.7rem 0 0', display: 'grid', gap: '0.7rem' }}>
                   {note.answerBank.map((item) => {
@@ -150,7 +150,7 @@ export function DeepLearnReviewPackSurface({ note }: { note: DeepLearnNote }) {
                   })}
                 </ul>
               ) : (
-                <EmptyBody body="No compact answer bank was recovered from this source." />
+                <EmptyBody body="Key answers are not available for this reviewer yet." />
               )}
             </section>
           )}
@@ -295,7 +295,7 @@ export function DeepLearnReviewPackSurface({ note }: { note: DeepLearnNote }) {
                 })}
               </ul>
             ) : (
-              <EmptyBody body="The pack does not yet rank likely quiz targets." />
+              <EmptyBody body="Likely quiz targets are not available for this reviewer yet." />
             )}
           </section>
         </div>

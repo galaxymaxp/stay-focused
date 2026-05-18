@@ -10566,3 +10566,59 @@ The job result included:
 - `taskRefreshWarning: "Skipped during external cron to keep announcement sync responsive."`
 
 This confirms the lightweight external cron path works and avoids the previous `refreshing_resources` / `refreshing_tasks` hang.
+
+---
+
+## Session Update - 2026-05-18 (Deep Learn Reviewer Architecture Cleanup)
+
+### What changed
+
+- Hardened Reviewer source cleanup by collapsing duplicated full-source blocks before classic markdown generation, preventing repeated OCR/source dumps from being fed into the Reviewer prompt.
+- Expanded internal pipeline leakage detection to reject old student-facing placeholder/debug terms (including compact answer-bank and quiz-target fallback artifacts) in generation validation and reviewer adapters.
+- Updated legacy review-pack surface copy to remove old architecture labels and avoid exposing failure phrasing tied to compact answer-bank/quiz-target fallback internals.
+- Added tests covering:
+  - placeholder/debug leakage rejection with one repair attempt
+  - duplicated full-source input collapsing in classic Reviewer prompts
+
+### Files touched
+
+- `lib/deep-learn-generation.ts`
+- `lib/study-outputs/reviewer.ts`
+- `components/DeepLearnReviewPackSurface.tsx`
+- `tests/deep-learn-generation.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Recent IT Security Reviewer output still leaked old failed structured architecture labels and placeholder text, and repeated source blocks were still entering generation paths. This cleanup enforces one clean student-facing Reviewer quality bar and removes stale fallback language from output paths.
+
+### Tests run
+
+- `npm run typecheck` - passed
+- `npm run lint` - passed
+- `npm test -- deep-learn-generation` - passed
+- `npm test -- study-output-reviewer study-output-quiz-pack learn-resource-ui deep-learn-readiness` - passed
+- `npm test -- pdf-extractor source-ocr-updates deep-learn-generation canvas-content-resolution learn-resource-ui queue` - passed
+
+### Verification result
+
+- Reviewer generation now rejects markdown containing old placeholder/debug labels and performs one configured repair retry.
+- Duplicated full-source input is collapsed before model prompting, reducing duplicated reviewer sections from repeated OCR text.
+- Student-facing review pack copy no longer shows old answer-bank/quiz-target placeholder language.
+
+### Known risks
+
+- Duplicate-block collapse currently targets common 50/50 full-text duplication patterns and may miss some non-symmetric duplication shapes.
+- Legacy Study Pack surface still exists for older notes without `reviewerMarkdown`; while labels are cleaned, deeper removal of card-mode UI remains a future simplification item.
+
+### Blockers
+
+- None.
+
+### Next recommended step
+
+- Add a queue-level integration test that simulates duplicated OCR input plus placeholder-heavy first-pass model output and verifies saved Reviewer markdown remains clean after repair.
+
+### Suggested commit message
+
+clean up Deep Learn reviewer architecture
