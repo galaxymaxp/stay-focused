@@ -44,7 +44,6 @@ export function NotificationsPanel() {
             title: notification.title,
             description: notification.body ?? 'Open Updates for details.',
             tone: notification.severity === 'error' ? 'error' : notification.severity === 'success' ? 'success' : 'info',
-            tag: notification.id,
           })
           showBrowserNotification(notification.title, notification.body ?? 'Open Stay Focused for details.', notification.id)
         }
