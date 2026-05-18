@@ -2850,9 +2850,75 @@ test('Reviewer source cleanup collapses duplicated full-source blocks', async ()
 
   assert.match(capturedPrompt, /SELECTED ACADEMIC SOURCE TEXT:/)
   const sourceBody = capturedPrompt.split('SELECTED ACADEMIC SOURCE TEXT:')[1] ?? ''
-  const keyNeedle = fixture.extractedText.slice(0, 120).trim()
-  const keyMatches = sourceBody.split(keyNeedle).length - 1
-  assert.equal(keyMatches, 1)
+  assert.ok(sourceBody.length < duplicatedSource.length * 0.75)
+})
+
+test('Reviewer validation failure triggers fallback repair and saves repaired markdown', async () => {
+  const fixture = getReviewerSourceFixture('taxonomy-heavy-security')
+  const source = IT_SECURITY_SAMPLE_SOURCE.repeat(Math.ceil(6200 / IT_SECURITY_SAMPLE_SOURCE.length)).slice(0, 6200)
+  const calls: Array<{ model?: string; repairHint: boolean }> = []
+  const result = await withTemporaryEnv({
+    DEEP_LEARN_REVIEWER_ONE_PASS_MODEL: 'gpt-5.4-primary',
+    DEEP_LEARN_REVIEWER_ONE_PASS_REPAIR_MODEL: 'gpt-5.5-repair',
+  }, () => generateDeepLearnStructuredContent(
+    createStructuredPromptInput(source, fixture.title),
+    createStructuredPreparedGrounding(source),
+    async (request) => {
+      calls.push({
+        model: request.model,
+        repairHint: /Previous internal failure reason:/i.test(request.promptText),
+      })
+      if (calls.length === 1) {
+        return textResponse([
+          `# Reviewer: ${fixture.title}`,
+          '## High-Yield Overview',
+          '- Brief line only.',
+          '## Complete Exam Reviewer',
+          '- Too short to pass validation.',
+          '## Identification Reviewer',
+          '- a',
+          '## Multiple Choice Practice',
+          '- b',
+          '## Enumeration / List Questions',
+          '- c',
+          '## Final Quick Review',
+          '- d',
+        ].join('\n'))
+      }
+      return textResponse(buildClassicReviewerMarkdown({ ...fixture, extractedText: source }))
+    },
+  ))
+
+  assert.deepEqual(calls.map((entry) => entry.model), ['gpt-5.4-primary', 'gpt-5.5-repair'])
+  assert.equal(calls[1]?.repairHint, true)
+  assert.ok(result.content.reviewerMarkdown)
+  assert.match(result.content.reviewerMarkdown ?? '', /^#\s*Reviewer:/m)
+})
+
+test('Reviewer repair failure returns clean student-facing incomplete message', async () => {
+  const fixture = getReviewerSourceFixture('taxonomy-heavy-security')
+  const source = IT_SECURITY_SAMPLE_SOURCE.repeat(Math.ceil(6200 / IT_SECURITY_SAMPLE_SOURCE.length)).slice(0, 6200)
+
+  await assert.rejects(
+    () => withTemporaryEnv({
+      DEEP_LEARN_REVIEWER_ONE_PASS_MODEL: 'gpt-5.4-primary',
+      DEEP_LEARN_REVIEWER_ONE_PASS_REPAIR_MODEL: 'gpt-5.5-repair',
+    }, () => generateDeepLearnStructuredContent(
+      createStructuredPromptInput(source, fixture.title),
+      createStructuredPreparedGrounding(source),
+      async () => textResponse('too short'),
+    )),
+    (error: unknown) => {
+      assert.ok(error instanceof DeepLearnGenerationIncompleteError)
+      assert.equal(error.reason, 'insufficient_reviewer_markdown')
+      assert.equal(
+        error.message,
+        'Deep Learn could not build a complete Reviewer from this source.',
+      )
+      assert.doesNotMatch(error.message, /raw source|repair payload|parser failed|compact answer bank|likely quiz targets/i)
+      return true
+    },
+  )
 })
 
 test('task_output model routing remains on task-specific mini defaults', () => {

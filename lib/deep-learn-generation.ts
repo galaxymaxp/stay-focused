@@ -803,9 +803,27 @@ async function generateClassicMarkdownReviewerContent(
     })
   }
 
-  const content = buildDeepLearnContentFromReviewerMarkdown(result.markdown, input.resource.title)
-  const validation = validateDeepLearnContentReadyForSave(content)
-  const headingDiagnostics = evaluateReviewerMarkdownHeadingCoverage(sourceOutline, result.markdown)
+  let content = buildDeepLearnContentFromReviewerMarkdown(result.markdown, input.resource.title)
+  let validation = validateDeepLearnContentReadyForSave(content)
+  let headingDiagnostics = evaluateReviewerMarkdownHeadingCoverage(sourceOutline, result.markdown)
+
+  if (!validation.ok && !result.repairAttempted) {
+    const repaired = await createClassicMarkdownReviewerResponse({
+      input,
+      grounding,
+      createResponse,
+      sourceText,
+      sourceOutline,
+      model: modelConfig.repairModel,
+      maxOutputTokens: REVIEWER_ONE_PASS_REPAIR_MAX_OUTPUT_TOKENS,
+      repairMode: true,
+      previousFailureReason: validation.reason ?? 'insufficient_reviewer_markdown',
+    })
+    result = { ...repaired, repairAttempted: true }
+    content = buildDeepLearnContentFromReviewerMarkdown(result.markdown, input.resource.title)
+    validation = validateDeepLearnContentReadyForSave(content)
+    headingDiagnostics = evaluateReviewerMarkdownHeadingCoverage(sourceOutline, result.markdown)
+  }
 
   logClassicMarkdownReviewerSummary({
     primaryModel: modelConfig.primaryModel,

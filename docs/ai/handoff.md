@@ -10622,3 +10622,57 @@ Recent IT Security Reviewer output still leaked old failed structured architectu
 ### Suggested commit message
 
 clean up Deep Learn reviewer architecture
+
+---
+
+## Session Update - 2026-05-18 (Repair insufficient reviewer markdown fallback)
+
+### What changed
+
+- Fixed classic Reviewer fallback flow so `insufficient_reviewer_markdown` from post-generation validation now triggers one repair attempt with the configured repair model before failing.
+- Preserved repaired markdown as primary `reviewerMarkdown` when repair succeeds.
+- Added regression tests for:
+  - meaningful ~6.2k source with first-pass validation failure triggering repair
+  - successful repair persisting valid markdown
+  - failed repair returning only the clean student-facing incomplete message (no debug/raw placeholder leakage)
+
+### Files touched
+
+- `lib/deep-learn-generation.ts`
+- `tests/deep-learn-generation.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Production jobs with meaningful selected source text could still fail immediately on `insufficient_reviewer_markdown` when first-pass markdown was present but failed save validation, and fallback mode stayed `not_used`. The fix ensures one repair retry is attempted in that path.
+
+### Tests run
+
+- `npm run typecheck`
+- `npm run lint`
+- `npm test -- deep-learn-generation` (command shape still incompatible with repo script args in this environment)
+- `npm test -- study-output-reviewer study-output-quiz-pack learn-resource-ui deep-learn-readiness` (command shape still incompatible with repo script args in this environment)
+- `npm test -- pdf-extractor source-ocr-updates deep-learn-generation canvas-content-resolution learn-resource-ui queue` (command shape still incompatible with repo script args in this environment)
+- `npx tsx --test tests/deep-learn-generation.test.ts`
+
+### Verification result
+
+- Validation-driven insufficient markdown now performs a repair request with fallback model once.
+- Repaired markdown is accepted and saved when valid.
+- If repair remains insufficient, returned message stays clean and student-facing.
+
+### Known risks
+
+- The fallback remains single-attempt by design to control cost/latency.
+
+### Blockers
+
+- None.
+
+### Next recommended step
+
+- Add queue-level telemetry assertion that explicitly records validation-triggered repair usage so logs clearly distinguish prompt-level failure from validation-level failure.
+
+### Suggested commit message
+
+repair insufficient reviewer markdown fallback
