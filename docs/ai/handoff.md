@@ -5,6 +5,97 @@ Last Updated: 2026-05-18
 
 ---
 
+## Session Update - 2026-05-18 (Automatic Task Refresh And Output Readiness)
+
+### What changed
+
+- Added a bounded background Canvas task refresh path:
+  - new `/api/cron/task-refresh` route scans already-synced courses for Canvas-connected users
+  - external cron sync now refreshes Canvas assignment-backed task rows instead of reporting task refresh as skipped
+  - task refresh upserts both canonical `task_items` and legacy module `tasks` rows by stable `canvas_assignment_id`
+  - due date, title, details, Canvas URL, priority/type defaults, and Canvas completion state are refreshed without running OCR, extraction, Deep Learn, or task output generation inline
+  - manual student completion is preserved when possible
+- Added durable `task_refresh_activity` logging and surfaced `Last task refresh` on Sync Courses.
+- Made Sync Courses status less optimistic: synced accounts with no task refresh or no resource refresh now show `Needs attention` instead of globally implying updated.
+- Added task output readiness metadata:
+  - placeholder-heavy outputs are labeled `Draft outline only`
+  - research-style outputs with only assignment instructions are labeled `Needs research`
+  - limited-grounding outputs are labeled `Needs course/source content`
+  - completed task-output jobs and saved task-output pages use the readiness label instead of always saying `Output ready`
+- Strengthened the task-output prompt so research-style assignments do not become unsupported completed reports when no factual source content is available.
+
+### Files touched
+
+- `actions/canvas.ts`
+- `actions/queue-jobs.ts`
+- `app/api/cron/task-refresh/route.ts`
+- `app/modules/[id]/tasks/page.tsx`
+- `app/sync/page.tsx`
+- `components/StudyOutputTaskOutputPage.tsx`
+- `components/SyncCoursesPageClient.tsx`
+- `components/shell/QueuePanel.tsx`
+- `lib/canvas-task-refresh.ts`
+- `lib/sync-activity.ts`
+- `lib/task-output.ts`
+- `lib/task-refresh-activity.ts`
+- `lib/types.ts`
+- `supabase/migrations/20260518110000_add_task_refresh_activity.sql`
+- `tests/canvas-task-refresh.test.ts`
+- `tests/sync-activity.test.ts`
+- `tests/task-output-foundation.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Background external sync was fetching Canvas assignments for event detection, but task refresh was explicitly skipped to avoid earlier resource/task stalls. That meant newly posted assignments could be discovered by manual sync but not reliably appear for students who waited for background sync. Task outputs also had no generic readiness gate, so blank report scaffolds could be saved and displayed as final.
+
+### Tests run
+
+- `npx tsx --test tests/task-output-foundation.test.ts`
+- `npx tsx --test tests/canvas-task-refresh.test.ts`
+- `npx tsx --test tests/sync-activity.test.ts`
+- `npx tsx --test tests/canvas-task-refresh.test.ts tests/sync-activity.test.ts tests/task-output-foundation.test.ts`
+- `npm run typecheck`
+- `npm run lint` - passed with existing unused legacy Reviewer compiler warnings in `lib/deep-learn-generation.ts`
+- `npm test -- queue`
+- `npm test -- task-output task-output-foundation`
+- `npm test -- canvas-content-resolution learn-resource-ui`
+- `npm test -- pdf-extractor source-ocr-updates deep-learn-readiness deep-learn-generation canvas-content-resolution learn-resource-ui queue`
+- Optional scanned PDF validator skipped: `C:\Users\omgra\Downloads\1.1-Data Organization.pdf` was not present locally.
+
+### Verification result
+
+- Verified automatic task refresh can build stable Canvas task drafts from assignments.
+- Verified missing assignment-style rows can be inserted without manual sync using `canvas_assignment_id`.
+- Verified task refresh updates due dates while preserving manual completion state.
+- Verified Sync Courses activity can report task refresh separately and include it in Last Canvas update.
+- Verified placeholder-heavy report templates are not marked ready.
+- Verified research-style outputs with only assignment instructions are labeled `Needs research`.
+- Verified broad queue, task output, Canvas content, Learn UI, extraction/OCR, Deep Learn, and readiness suites pass.
+
+### Known risks
+
+- The new task refresh route currently uses Canvas assignments as the canonical task-like source. Canvas quizzes and graded discussions usually appear through assignments, but ungraded discussions that are not represented as assignments still depend on module/resource refresh detection.
+- No database uniqueness constraint was added for `canvas_assignment_id`; duplicate prevention is handled in code by looking up existing rows before insert.
+- Existing historical task refresh activity cannot be backfilled, so `Last task refresh` starts after this migration/route runs.
+- Lint still reports pre-existing unused legacy Reviewer helper warnings in `lib/deep-learn-generation.ts`.
+- `test_output.txt` remains an untracked local file and was not included.
+
+### Blockers
+
+- No code blocker remains.
+- The optional private scanned PDF validator could not run because the local PDF was not present.
+
+### Next recommended step
+
+Deploy the migration and schedule `/api/cron/task-refresh` with the same bearer secret cadence as external sync. After deployment, trigger `/api/cron/task-refresh` for a real Canvas-connected account and confirm Sync Courses shows `Last task refresh` plus the previously missing assignment without a manual course sync.
+
+### Suggested commit message
+
+fix automatic task refresh and output readiness
+
+---
+
 ## Session Update - 2026-05-18 (Reviewer Markdown Layout Cleanup)
 
 ### What changed

@@ -1904,6 +1904,9 @@ async function processDoGenerationJob(input: {
       content: data.output,
     })
     const resultHref = saved.href
+    const readinessStatus = data.output.readinessStatus ?? 'ready'
+    const readinessLabel = data.output.readinessLabel ?? 'Output ready'
+    const outputReady = readinessStatus === 'ready'
 
     await markQueuedJobCompleted(input.jobId, {
       taskId: input.taskId,
@@ -1912,6 +1915,8 @@ async function processDoGenerationJob(input: {
       href: resultHref,
       outputId: saved.id,
       output: data.output,
+      readinessStatus,
+      readinessLabel,
       preset: input.preset,
       outputType: input.outputType,
     })
@@ -1919,10 +1924,12 @@ async function processDoGenerationJob(input: {
     await createNotification({
       userId: input.userId,
       type: 'queue_completed',
-      title: 'Task output ready',
-      body: `Your task output for "${groundedContext.taskTitle}" is ready.`,
+      title: outputReady ? 'Task output ready' : readinessLabel,
+      body: outputReady
+        ? `Your task output for "${groundedContext.taskTitle}" is ready.`
+        : `Your task output for "${groundedContext.taskTitle}" needs more source content or research before it is final.`,
       href: resultHref,
-      severity: 'success',
+      severity: outputReady ? 'success' : 'info',
       metadata: { jobId: input.jobId, jobType: 'task_output', taskId: input.taskId, dedupeKey: `task:${input.taskId}` },
     })
   } catch (err) {

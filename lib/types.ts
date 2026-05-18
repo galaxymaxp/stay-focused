@@ -379,6 +379,12 @@ export type TaskOutputTargetType = 'docx' | 'pdf' | 'ppt' | 'html' | 'css' | 'js
 export type TaskOutputPreset = 'report' | 'presentation' | 'reviewer' | 'webpage' | 'documentation'
 export type TaskOutputPreviewMode = 'rich_text' | 'html' | 'code'
 export type TaskOutputGroundingStatus = 'grounded' | 'limited'
+export type TaskOutputReadinessStatus =
+  | 'ready'
+  | 'draft_outline_only'
+  | 'needs_research'
+  | 'needs_course_source_content'
+  | 'insufficient_content'
 
 export interface DraftRefinementEntry {
   instruction: string
@@ -592,6 +598,8 @@ export interface StudyOutputTaskOutputContent {
   requirements: string[]
   selectedContext: string[]
   groundingStatus: TaskOutputGroundingStatus
+  readinessStatus?: TaskOutputReadinessStatus
+  readinessLabel?: string
   groundingNote: string
   limitationNote: string | null
   warnings: string[]

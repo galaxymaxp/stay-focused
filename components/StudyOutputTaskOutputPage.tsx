@@ -89,6 +89,9 @@ export function StudyOutputTaskOutputPage({
         <span>{taskOutput.preset}</span>
         <span>{taskOutput.outputType.toUpperCase()}</span>
         <span>{taskOutput.groundingStatus === 'limited' ? 'Limited grounding' : 'Grounded output'}</span>
+        {taskOutput.readinessStatus && taskOutput.readinessStatus !== 'ready' ? (
+          <span>{taskOutput.readinessLabel ?? 'Needs more content'}</span>
+        ) : null}
       </div>
 
       <div

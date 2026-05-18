@@ -8,6 +8,7 @@ import type {
   TaskOutputGroundingStatus,
   TaskOutputPreset,
   TaskOutputPreviewMode,
+  TaskOutputReadinessStatus,
   TaskOutputTargetType,
 } from '@/lib/types'
 
@@ -57,6 +58,13 @@ export interface TaskOutputApiResponse {
   cacheStatus: 'hit' | 'miss'
 }
 
+export interface TaskOutputReadinessEvaluation {
+  status: TaskOutputReadinessStatus
+  label: string
+  ready: boolean
+  reasons: string[]
+}
+
 export const TASK_OUTPUT_SYSTEM_PROMPT = [
   'You are Stay Focused\'s grounded task-output generator.',
   '',
@@ -71,6 +79,7 @@ export const TASK_OUTPUT_SYSTEM_PROMPT = [
   '- If the task asks for 2-3 sentences, return 2-3 polished sentences and nothing longer unless the requested export wrapper requires it.',
   '- For reports, documents, HTML, PDF, DOCX, and presentation exports, wrap the actual answer/content in the selected format instead of outputting only section placeholders.',
   '- If the source text is genuinely weak or missing, state exactly what is missing and return only a conservative scaffold/draft that is safe.',
+  '- For research-style assignments, if the surfaced Canvas/module text contains only the assignment prompt and not enough factual source content, do not invent a completed report. Return a research plan, filled structure, and source requirements instead.',
   '- Do not use generic motivational filler, fake confidence, or decorative academic fluff.',
   '- Prefer compact, export-ready structure over long explanations.',
   '- Keep presentation, report, reviewer, webpage, and documentation outputs aligned with the requested preset and target output type.',
@@ -164,6 +173,7 @@ export function buildTaskOutputUserPrompt(input: TaskOutputRequest) {
     '- No fake citations.',
     '- No fabricated requirements.',
     '- If grounding is limited, say what readable assignment/source text is missing and keep any draft conservative.',
+    '- If the task requires external research and no factual research sources are surfaced, label the output as research-needed rather than final.',
     '- Make the output feel submission-ready, not like tutoring notes.',
   ].join('\n')
 }
@@ -173,6 +183,15 @@ export function buildTaskOutputFallback(input: TaskOutputRequest): StudyOutputTa
   const previewContent = input.groundingStatus === 'grounded'
     ? buildGroundedAnswerPreview(input, previewMode)
     : buildFallbackPreview(input, previewMode)
+  const readiness = evaluateTaskOutputReadiness({
+    request: input,
+    previewContent,
+    summary: buildTaskOutputSummary(input, input.groundingStatus !== 'grounded'),
+    warnings: [],
+    limitationNote: input.groundingStatus === 'limited'
+      ? 'Add real task evidence, source detail, or class-specific content before submission.'
+      : null,
+  })
   const warning = input.groundingStatus === 'limited'
     ? 'Limited readable source text was available, so this stays as a conservative scaffold.'
     : 'This first-pass output stays tightly grounded in the surfaced task requirements.'
@@ -197,6 +216,8 @@ export function buildTaskOutputFallback(input: TaskOutputRequest): StudyOutputTa
     requirements: input.requirements.slice(0, 8),
     selectedContext: input.selectedContext.slice(0, 6),
     groundingStatus: input.groundingStatus,
+    readinessStatus: readiness.status,
+    readinessLabel: readiness.label,
     groundingNote: input.groundingStatus === 'limited'
       ? 'Only partial readable task/source text was available, so this output is a scaffold anchored to surfaced requirements only.'
       : 'This output is a direct first-pass answer grounded in the surfaced task prompt, requirements, and readable course/source context.',
@@ -239,6 +260,13 @@ export function normalizeTaskOutputModelResponse(
     script: cleanBlock(response.script ?? null),
     metadata: buildTaskOutputExportMetadata(request),
   })
+  const readiness = evaluateTaskOutputReadiness({
+    request,
+    previewContent,
+    summary: cleanInline(response.summary),
+    warnings: response.warnings ?? [],
+    limitationNote,
+  })
 
   const content: StudyOutputTaskOutputContent = {
     version: 'task-output-v1',
@@ -256,6 +284,8 @@ export function normalizeTaskOutputModelResponse(
     requirements: sanitizeStringList(response.requirementsUsed?.length ? response.requirementsUsed : request.requirements, 8),
     selectedContext: sanitizeStringList(response.selectedContextUsed?.length ? response.selectedContextUsed : request.selectedContext, 6),
     groundingStatus: request.groundingStatus,
+    readinessStatus: readiness.status,
+    readinessLabel: readiness.label,
     groundingNote,
     limitationNote: request.groundingStatus === 'limited'
       ? limitationNote ?? 'Add course-specific facts or source details before submitting this output.'
@@ -496,6 +526,96 @@ export function detectTaskOutputFormat(input: {
   return 'essay_report'
 }
 
+export function evaluateTaskOutputReadiness(input: {
+  request: TaskOutputRequest
+  previewContent: string
+  summary?: string | null
+  warnings?: string[]
+  limitationNote?: string | null
+}): TaskOutputReadinessEvaluation {
+  const text = stripHtml(cleanBlock(input.previewContent))
+  const normalized = normalizeComparisonText(text)
+  const reasons: string[] = []
+
+  const substantiveWords = normalized
+    .split(/\s+/)
+    .filter((word) => /^[a-z][a-z'-]{3,}$/i.test(word))
+    .filter((word) => !TEMPLATE_STOP_WORDS.has(word))
+  const uniqueSubstantiveWords = new Set(substantiveWords)
+  const underscoreRuns = (input.previewContent.match(/_{4,}/g) ?? []).length
+  const placeholderPhrases = countMatches(normalized, [
+    /\bfill in (?:this|the) section\b/g,
+    /\breplace (?:the )?placeholders?\b/g,
+    /\badd (?:real|course-specific|your|the strongest|grounded) (?:task )?(?:evidence|detail|details|content)\b/g,
+    /\bwrite (?:your|the) answer here\b/g,
+    /\bplaceholder\b/g,
+    /\btbd\b/g,
+  ])
+  const emptyFieldLines = text
+    .split('\n')
+    .filter((line) => /^\s*(?:[A-Z][A-Za-z /-]{2,40}|[-*]\s*[A-Z][A-Za-z /-]{2,40})\s*:\s*(?:_+|--+|\[.*?\])?\s*$/.test(line))
+    .length
+  const genericHeadingCount = text
+    .split('\n')
+    .filter((line) => /^(?:#{1,3}\s*)?(purpose|deliverable focus|grounded context|next edit pass|introduction|background|analysis|conclusion|references|recommendations|source requirements|research plan)\s*:?\s*$/i.test(line.trim()))
+    .length
+  const hasResearchRequirement = /\b(research|investigate|analy[sz]e|top\s+\d+|past decade|sources?|references?|citations?)\b/i.test(`${input.request.title} ${input.request.instructions} ${input.request.requirements.join(' ')}`)
+  const hasOnlyAssignmentInstructions = input.request.groundingStatus === 'grounded'
+    && input.request.selectedContext.join(' ').length < 240
+    && hasResearchRequirement
+
+  if (input.request.groundingStatus === 'limited') reasons.push('limited_grounding')
+  if (underscoreRuns >= 2) reasons.push('blank_lines_or_underscores')
+  if (placeholderPhrases >= 2) reasons.push('placeholder_language')
+  if (emptyFieldLines >= 3) reasons.push('empty_fields')
+  if (genericHeadingCount >= 5 && uniqueSubstantiveWords.size < 55) reasons.push('generic_template_headings')
+  if (uniqueSubstantiveWords.size < 35 && text.length < 900) reasons.push('too_little_substantive_content')
+  if (hasOnlyAssignmentInstructions) reasons.push('external_research_required')
+
+  if (reasons.includes('external_research_required')) {
+    return {
+      status: 'needs_research',
+      label: 'Needs research',
+      ready: false,
+      reasons,
+    }
+  }
+
+  if (input.request.groundingStatus === 'limited') {
+    return {
+      status: 'needs_course_source_content',
+      label: 'Needs course/source content',
+      ready: false,
+      reasons,
+    }
+  }
+
+  if (reasons.some((reason) => reason === 'blank_lines_or_underscores' || reason === 'placeholder_language' || reason === 'empty_fields' || reason === 'generic_template_headings')) {
+    return {
+      status: 'draft_outline_only',
+      label: 'Draft outline only',
+      ready: false,
+      reasons,
+    }
+  }
+
+  if (reasons.length > 0) {
+    return {
+      status: 'insufficient_content',
+      label: 'Could not generate enough usable content',
+      ready: false,
+      reasons,
+    }
+  }
+
+  return {
+    status: 'ready',
+    label: 'Output ready',
+    ready: true,
+    reasons: [],
+  }
+}
+
 function hasActionableAssignmentPrompt(text: string) {
   const normalized = cleanBlock(text)
   if (normalized.length >= 80) return true
@@ -732,6 +852,10 @@ function stripHtml(value: string) {
   return value.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
 }
 
+function countMatches(value: string, patterns: RegExp[]) {
+  return patterns.reduce((count, pattern) => count + (value.match(pattern)?.length ?? 0), 0)
+}
+
 function escapeHtml(value: string) {
   return value
     .replace(/&/g, '&amp;')
@@ -753,6 +877,29 @@ const NUMBER_WORDS: Record<string, number> = {
   five: 5,
   six: 6,
 }
+
+const TEMPLATE_STOP_WORDS = new Set([
+  'purpose',
+  'deliverable',
+  'focus',
+  'grounded',
+  'context',
+  'next',
+  'edit',
+  'pass',
+  'introduction',
+  'background',
+  'analysis',
+  'conclusion',
+  'references',
+  'recommendations',
+  'section',
+  'source',
+  'requirements',
+  'placeholder',
+  'fill',
+  'replace',
+])
 
 export function buildTaskOutputPromptPreview(input: TaskOutputRequest, output?: StudyOutputTaskOutputContent | null) {
   const prompt = buildTaskOutputUserPrompt(input)

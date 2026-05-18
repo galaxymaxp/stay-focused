@@ -284,6 +284,12 @@ export function SyncCoursesPageClient({
           tone={syncActivity.lastResourceRefresh?.tone ?? 'neutral'}
         />
         <SummaryCard
+          label="Last task refresh"
+          title={syncActivity.lastTaskRefresh?.title ?? 'No task refresh yet'}
+          detail={syncActivity.lastTaskRefresh?.detail ?? 'Task refreshes check already-synced courses for new assignments, quizzes, discussions, and due-date changes.'}
+          tone={syncActivity.lastTaskRefresh?.tone ?? 'neutral'}
+        />
+        <SummaryCard
           label="Status"
           title={statusSummary.title}
           detail={statusSummary.detail}
@@ -752,6 +758,12 @@ function getStatusSummary({
   }
   if (syncActivity.lastBackgroundSync?.tone === 'warning') {
     return { title: 'Needs review', detail: 'The latest background sync had warnings or missed part of the refresh path.', tone: 'warning' as const }
+  }
+  if (hasSyncedCourses && !syncActivity.lastTaskRefresh) {
+    return { title: 'Needs attention', detail: 'No task refresh has run yet for this account.', tone: 'warning' as const }
+  }
+  if (hasSyncedCourses && !syncActivity.lastResourceRefresh) {
+    return { title: 'Needs attention', detail: 'No resource refresh has run yet for this account.', tone: 'warning' as const }
   }
   if (syncActivity.lastCanvasUpdate?.tone === 'warning') {
     return { title: 'Needs review', detail: 'The latest Canvas update finished with warnings.', tone: 'warning' as const }

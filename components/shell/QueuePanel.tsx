@@ -701,7 +701,11 @@ function getCompletedTitle(job: QueuedJob) {
   if (job.type === SOURCE_OCR_JOB_TYPE) return 'Scanned PDF prepared'
   if (job.type === RESOURCE_EXTRACTION_JOB_TYPE) return 'Source prepared'
   if (job.type === 'learn_generation') return 'Full Reviewer ready'
-  if (job.type === 'task_output' || job.type === 'do_generation') return 'Activity ready'
+  if (job.type === 'task_output' || job.type === 'do_generation') {
+    const label = typeof job.result?.readinessLabel === 'string' ? job.result.readinessLabel.trim() : ''
+    if (label) return label
+    return 'Activity ready'
+  }
   return 'Job complete'
 }
 

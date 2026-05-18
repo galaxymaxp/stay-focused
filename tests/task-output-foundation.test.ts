@@ -5,6 +5,7 @@ import {
   buildTaskOutputRequest,
   buildTaskOutputUserPrompt,
   detectTaskOutputFormat,
+  evaluateTaskOutputReadiness,
   normalizeTaskOutputModelResponse,
 } from '../lib/task-output'
 import type { StudyOutputTaskOutputContent } from '../lib/types'
@@ -107,6 +108,92 @@ test('task output format detection covers common assignment shapes', () => {
     title: 'Activity Sheet',
     instructions: 'Complete the worksheet table.',
   }), 'activity_sheet')
+})
+
+test('placeholder-heavy task output is saved as outline only instead of ready', () => {
+  const request = buildTaskOutputRequest({
+    taskId: 'task-template',
+    taskTitle: 'Security Threat Report',
+    taskDetails: 'Investigate and analyze the top 10 most infamous malware, viruses, and security threats from the past decade.',
+    deadline: '2026-05-20',
+    priority: 'high',
+    courseName: 'Security',
+    moduleTitle: 'Threats',
+    resourceSnippet: 'The assignment asks for an investigation report with analysis and sources.',
+    sourceText: null,
+    sourceNote: null,
+    moduleSummary: null,
+  }, {
+    preset: 'report',
+    outputType: 'docx',
+  })
+
+  const output = normalizeTaskOutputModelResponse({
+    title: 'Security Threat Report',
+    summary: 'Report template.',
+    previewMode: 'rich_text',
+    previewContent: [
+      'Introduction',
+      '',
+      'Background: ______________________________',
+      'Threat 1: ______________________________',
+      'Threat 2: ______________________________',
+      'Analysis: Fill in this section with research.',
+      'Recommendations: Replace placeholders with your findings.',
+      'References',
+      '',
+      'Add real evidence here.',
+    ].join('\n'),
+    stylesheet: null,
+    script: null,
+    groundingNote: 'Grounded in the assignment prompt.',
+    limitationNote: null,
+    warnings: [],
+    requirementsUsed: request.requirements,
+    selectedContextUsed: request.selectedContext,
+  }, request, null)
+
+  assert.equal(output.readinessStatus, 'needs_research')
+  assert.equal(output.readinessLabel, 'Needs research')
+})
+
+test('generic blank report template is rejected as ready', () => {
+  const request = buildTaskOutputRequest({
+    taskId: 'task-blank',
+    taskTitle: 'Course Report',
+    taskDetails: 'Write a report using the course notes.',
+    deadline: null,
+    priority: 'medium',
+    courseName: 'Writing',
+    moduleTitle: 'Reports',
+    resourceSnippet: 'Use the report format.',
+    sourceText: 'The report requires introduction, analysis, conclusion, and references.',
+    sourceNote: null,
+    moduleSummary: null,
+  }, {
+    preset: 'report',
+    outputType: 'pdf',
+  })
+
+  const readiness = evaluateTaskOutputReadiness({
+    request,
+    previewContent: [
+      'Introduction',
+      'Purpose',
+      'Background',
+      'Analysis',
+      'Conclusion',
+      'References',
+      'Name: __________________',
+      'Date: __________________',
+      'Section: __________________',
+      'Fill in this section after research.',
+      'Replace placeholders before submission.',
+    ].join('\n'),
+  })
+
+  assert.equal(readiness.ready, false)
+  assert.equal(readiness.status, 'draft_outline_only')
 })
 
 test('weak task-output grounding falls back to scaffold-only export bundle', () => {

@@ -657,11 +657,12 @@ function TaskOutputQueuePill({ job }: { job: QueuedJob }) {
       ? 'Added to queue'
       : `Generating ${Math.max(0, Math.min(job.progress, 100))}%`
     : job.status === 'completed'
-      ? 'Output ready'
+      ? getCompletedTaskOutputJobLabel(job)
       : job.status === 'failed'
         ? 'Output failed'
         : null
   if (!label) return null
+  const completedReady = job.status === 'completed' && getStringFromRecord(job.result, 'readinessStatus') !== 'ready' && getStringFromRecord(job.result, 'readinessStatus') !== null
 
   return (
     <span className="ui-chip" style={{
@@ -671,7 +672,9 @@ function TaskOutputQueuePill({ job }: { job: QueuedJob }) {
       background: job.status === 'failed'
         ? 'color-mix(in srgb, var(--red-light) 34%, var(--surface-soft) 66%)'
         : job.status === 'completed'
-          ? 'color-mix(in srgb, var(--green-light) 34%, var(--surface-soft) 66%)'
+          ? completedReady
+            ? 'color-mix(in srgb, var(--amber-light) 38%, var(--surface-soft) 62%)'
+            : 'color-mix(in srgb, var(--green-light) 34%, var(--surface-soft) 66%)'
           : 'color-mix(in srgb, var(--accent-light) 44%, var(--surface-soft) 56%)',
       color: job.status === 'failed' ? 'var(--red)' : 'var(--text-primary)',
       border: '1px solid var(--border-subtle)',
@@ -679,6 +682,22 @@ function TaskOutputQueuePill({ job }: { job: QueuedJob }) {
       {label}
     </span>
   )
+}
+
+function getCompletedTaskOutputJobLabel(job: QueuedJob) {
+  const label = getStringFromRecord(job.result, 'readinessLabel')
+  if (label) return label
+  const status = getStringFromRecord(job.result, 'readinessStatus')
+  if (status === 'draft_outline_only') return 'Draft outline only'
+  if (status === 'needs_research') return 'Needs research'
+  if (status === 'needs_course_source_content') return 'Needs course/source content'
+  if (status === 'insufficient_content') return 'Could not generate enough usable content'
+  return 'Output ready'
+}
+
+function getStringFromRecord(source: Record<string, unknown> | null, key: string) {
+  const value = source?.[key]
+  return typeof value === 'string' && value.trim() ? value.trim() : null
 }
 
 function suggestedOrderTypeChipStyle(type: 'task' | 'learn' | 'review' | 'quiz' | 'module' | 'announcement') {

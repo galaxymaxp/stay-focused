@@ -25,16 +25,24 @@ export interface ResourceRefreshActivityRow {
   created_at: string | null
 }
 
+export interface TaskRefreshActivityRow {
+  status: string | null
+  detail: string | null
+  created_at: string | null
+}
+
 export interface SyncActivitySummary {
   lastCanvasUpdate: SyncActivityCardSnapshot | null
   lastFullManualSync: SyncActivityCardSnapshot | null
   lastBackgroundSync: SyncActivityCardSnapshot | null
   lastResourceRefresh: SyncActivityCardSnapshot | null
+  lastTaskRefresh: SyncActivityCardSnapshot | null
 }
 
 export function buildSyncActivitySummary(input: {
   queueRows: QueueActivityRow[]
   resourceRefreshRows: ResourceRefreshActivityRow[]
+  taskRefreshRows?: TaskRefreshActivityRow[]
 }): SyncActivitySummary {
   const manualSyncs = input.queueRows
     .filter((row) => getQueueMode(row) !== EXTERNAL_CANVAS_SYNC_MODE)
@@ -47,13 +55,17 @@ export function buildSyncActivitySummary(input: {
     .filter((row): row is SyncActivityCardSnapshot => Boolean(row))
 
   const resourceRefreshes = input.resourceRefreshRows
-    .map(toResourceRefreshSnapshot)
+    .map((row) => toRefreshActivitySnapshot(row, 'resource'))
+    .filter((row): row is SyncActivityCardSnapshot => Boolean(row))
+  const taskRefreshes = (input.taskRefreshRows ?? [])
+    .map((row) => toRefreshActivitySnapshot(row, 'task'))
     .filter((row): row is SyncActivityCardSnapshot => Boolean(row))
 
   const latestSuccessfulCandidates = [
     manualSyncs.find((row) => row.successfulUpdate) ?? null,
     backgroundSyncs.find((row) => row.successfulUpdate) ?? null,
     resourceRefreshes.find((row) => row.successfulUpdate) ?? null,
+    taskRefreshes.find((row) => row.successfulUpdate) ?? null,
   ].filter((row): row is SyncActivityCardSnapshot => row !== null && Boolean(row.occurredAt))
 
   const lastCanvasUpdate = latestSuccessfulCandidates.sort(compareSnapshotsByTimeDesc)[0] ?? null
@@ -63,6 +75,7 @@ export function buildSyncActivitySummary(input: {
     lastFullManualSync: manualSyncs[0] ?? null,
     lastBackgroundSync: backgroundSyncs[0] ?? null,
     lastResourceRefresh: resourceRefreshes[0] ?? null,
+    lastTaskRefresh: taskRefreshes[0] ?? null,
   }
 }
 
@@ -113,7 +126,7 @@ function toQueueSnapshot(row: QueueActivityRow, source: 'manual' | 'background')
   }
 }
 
-function toResourceRefreshSnapshot(row: ResourceRefreshActivityRow): SyncActivityCardSnapshot | null {
+function toRefreshActivitySnapshot(row: ResourceRefreshActivityRow | TaskRefreshActivityRow, source: 'resource' | 'task'): SyncActivityCardSnapshot | null {
   if (!row.created_at) return null
 
   const tone = row.status === 'failed'
@@ -124,7 +137,9 @@ function toResourceRefreshSnapshot(row: ResourceRefreshActivityRow): SyncActivit
 
   return {
     title: formatActivityTime(row.created_at),
-    detail: row.detail?.trim() || 'A resource refresh ran for one of your synced courses.',
+    detail: row.detail?.trim() || (source === 'task'
+      ? 'A task refresh ran for one of your synced courses.'
+      : 'A resource refresh ran for one of your synced courses.'),
     tone,
     occurredAt: row.created_at,
     successfulUpdate: row.status === 'completed' || row.status === 'warning',

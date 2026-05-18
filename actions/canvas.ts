@@ -31,6 +31,12 @@ import {
   type ExistingCanvasResourceSnapshot,
 } from '@/lib/canvas-resource-refresh'
 import {
+  buildCanvasTaskRefreshDrafts,
+  hasCanvasTaskRefreshRowChanged,
+  prepareCanvasTaskRefreshRow,
+  type ExistingCanvasTaskSnapshot,
+} from '@/lib/canvas-task-refresh'
+import {
   buildCanvasContentPlaceholderResult,
   resolveCanvasContentForWorkspaceItem,
   type ResolveCanvasAttachmentDownloadInput,
@@ -76,6 +82,7 @@ import {
   type SeenCanvasState,
 } from '@/lib/canvas-update-events'
 import { attemptCanvasDigestForUser } from '@/lib/canvas-digest'
+import { buildTaskRefreshActivityDetail, recordTaskRefreshActivity } from '@/lib/task-refresh-activity'
 import {
   markQueuedJobCompleted,
   markQueuedJobFailed,
@@ -166,6 +173,14 @@ interface ResourceMetadataRefreshSummary {
   resourcesInserted: number
   resourcesUpdated: number
   skipped: number
+  warnings: string[]
+}
+
+interface TaskMetadataRefreshSummary {
+  assignmentsChecked: number
+  tasksInserted: number
+  tasksUpdated: number
+  tasksSkipped: number
   warnings: string[]
 }
 
@@ -638,6 +653,138 @@ export async function refreshCanvasModuleResourceMetadataForCourse(input: {
   }
 }
 
+export async function refreshCanvasTaskMetadataForCourse(input: {
+  userId: string
+  courseId: string
+  moduleId?: string | null
+  courseName: string
+  assignments: CanvasAssignment[]
+}): Promise<TaskMetadataRefreshSummary> {
+  const supabase = createSupabaseServiceRoleClient()
+  if (!supabase) throw new Error('Service database client unavailable.')
+
+  const existingModule = input.moduleId
+    ? { id: input.moduleId }
+    : await findExistingSyncedModule(supabase, input.courseId, {
+        courseName: input.courseName,
+        courseCode: undefined,
+      })
+
+  if (!existingModule) {
+    return {
+      assignmentsChecked: 0,
+      tasksInserted: 0,
+      tasksUpdated: 0,
+      tasksSkipped: 0,
+      warnings: [`${input.courseName}: synced module not found locally.`],
+    }
+  }
+
+  const drafts = buildCanvasTaskRefreshDrafts(input.assignments)
+  const canvasAssignmentIds = drafts.map((draft) => draft.canvasAssignmentId)
+  const [taskItemRows, legacyTaskRows] = await Promise.all([
+    loadExistingCanvasTaskRows({
+      supabase,
+      tableName: 'task_items',
+      userId: input.userId,
+      courseId: input.courseId,
+      moduleId: existingModule.id,
+      canvasAssignmentIds,
+    }),
+    loadExistingCanvasTaskRows({
+      supabase,
+      tableName: 'tasks',
+      userId: input.userId,
+      courseId: null,
+      moduleId: existingModule.id,
+      canvasAssignmentIds,
+    }),
+  ])
+  const warnings: string[] = []
+  let tasksInserted = 0
+  let tasksUpdated = 0
+  let tasksSkipped = 0
+
+  for (const draft of drafts) {
+    const taskItemExisting = taskItemRows.get(draft.canvasAssignmentId) ?? null
+    const taskItemRow = prepareCanvasTaskRefreshRow(draft, taskItemExisting)
+
+    if (taskItemExisting) {
+      if (hasCanvasTaskRefreshRowChanged(taskItemExisting, taskItemRow)) {
+        const { error } = await supabase
+          .from('task_items')
+          .update(taskItemRow)
+          .eq('id', taskItemExisting.id)
+          .eq('user_id', input.userId)
+        if (error) warnings.push(`${input.courseName}: failed to update ${draft.title}.`)
+        else tasksUpdated += 1
+      } else {
+        tasksSkipped += 1
+      }
+    } else {
+      const { error } = await supabase
+        .from('task_items')
+        .insert(sanitizeDatabaseValue({
+          user_id: input.userId,
+          course_id: input.courseId,
+          module_id: existingModule.id,
+          extracted_from: input.courseName,
+          planning_annotation: null,
+          ...taskItemRow,
+        }))
+      if (error) warnings.push(`${input.courseName}: failed to add ${draft.title}.`)
+      else tasksInserted += 1
+    }
+
+    const legacyExisting = legacyTaskRows.get(draft.canvasAssignmentId) ?? null
+    const legacyRow = prepareCanvasTaskRefreshRow(draft, legacyExisting)
+    if (legacyExisting) {
+      if (hasCanvasTaskRefreshRowChanged(legacyExisting, legacyRow)) {
+        const { error } = await supabase
+          .from('tasks')
+          .update({
+            title: legacyRow.title,
+            details: legacyRow.details,
+            deadline: legacyRow.deadline,
+            canvas_url: legacyRow.canvas_url,
+            canvas_assignment_id: legacyRow.canvas_assignment_id,
+            priority: legacyRow.priority,
+            status: legacyRow.status,
+            completion_origin: legacyRow.completion_origin,
+            planning_annotation: null,
+          })
+          .eq('id', legacyExisting.id)
+        if (error) warnings.push(`${input.courseName}: failed to update legacy task ${draft.title}.`)
+      }
+    } else {
+      const { error } = await supabase
+        .from('tasks')
+        .insert(sanitizeDatabaseValue({
+          user_id: input.userId,
+          module_id: existingModule.id,
+          title: legacyRow.title,
+          details: legacyRow.details,
+          deadline: legacyRow.deadline,
+          canvas_url: legacyRow.canvas_url,
+          canvas_assignment_id: legacyRow.canvas_assignment_id,
+          priority: legacyRow.priority,
+          status: legacyRow.status,
+          completion_origin: legacyRow.completion_origin,
+          planning_annotation: null,
+        }))
+      if (error) warnings.push(`${input.courseName}: failed to add legacy task ${draft.title}.`)
+    }
+  }
+
+  return {
+    assignmentsChecked: drafts.length,
+    tasksInserted,
+    tasksUpdated,
+    tasksSkipped,
+    warnings,
+  }
+}
+
 async function runExternalCanvasSyncJob(job: QueuedJob) {
   const supabase = createSupabaseServiceRoleClient()
   if (!supabase) throw new Error('Service database client unavailable.')
@@ -725,10 +872,34 @@ async function runExternalCanvasSyncJob(job: QueuedJob) {
     canvasAssignmentIds: assignments.map((a) => a.id),
   })
 
-  const taskRefresh = {
-    updated: 0,
-  }
-  const taskRefreshWarning = 'Skipped during external cron to keep announcement sync responsive.'
+  const taskRefresh = await refreshCanvasTaskMetadataForCourse({
+    userId: job.userId,
+    courseId: courseRecord.id,
+    moduleId: existingModule.id,
+    courseName: databaseSafeCourse.name,
+    assignments,
+  })
+  await recordTaskRefreshActivity({
+    userId: job.userId,
+    courseId: courseRecord.id,
+    status: taskRefresh.warnings.length > 0 ? 'warning' : 'completed',
+    detail: buildTaskRefreshActivityDetail({
+      courseName: databaseSafeCourse.name,
+      tasksInserted: taskRefresh.tasksInserted,
+      tasksUpdated: taskRefresh.tasksUpdated,
+      warnings: taskRefresh.warnings,
+    }),
+    warnings: taskRefresh.warnings,
+    metadata: {
+      assignmentsChecked: taskRefresh.assignmentsChecked,
+      tasksInserted: taskRefresh.tasksInserted,
+      tasksUpdated: taskRefresh.tasksUpdated,
+      tasksSkipped: taskRefresh.tasksSkipped,
+    },
+  })
+  const taskRefreshWarning = taskRefresh.warnings.length > 0
+    ? taskRefresh.warnings.join(' ')
+    : null
 
   const seenCanvasStates = await loadSeenCanvasStates({
     supabase,
@@ -810,9 +981,11 @@ async function runExternalCanvasSyncJob(job: QueuedJob) {
     resourcesUpdated: resourceRefresh.updated,
     resourcesPreserved: resourceRefresh.preserved,
     resourcesSkippedMissing: resourceRefresh.missing,
-    tasksUpdated: taskRefresh.updated,
+    tasksInserted: taskRefresh.tasksInserted,
+    tasksUpdated: taskRefresh.tasksUpdated,
+    tasksSkipped: taskRefresh.tasksSkipped,
     resourceRefreshWarning,
-    taskRefreshWarning,
+    ...(taskRefreshWarning ? { taskRefreshWarning } : {}),
     queuedOcrJobIds: autoOcrJobs.map((ocrJob) => ocrJob.id),
     queuedOcrJobCount: autoOcrJobs.length,
     canvasUpdateEventCount: eventInsert.inserted,
@@ -998,6 +1171,65 @@ async function loadExistingTaskDeadlines(input: {
       map.set(row.canvas_assignment_id, row.deadline ?? null)
     }
   }
+  return map
+}
+
+async function loadExistingCanvasTaskRows(input: {
+  supabase: CanvasSyncSupabaseClient
+  tableName: 'task_items' | 'tasks'
+  userId: string
+  courseId: string | null
+  moduleId: string
+  canvasAssignmentIds: number[]
+}): Promise<Map<number, ExistingCanvasTaskSnapshot>> {
+  if (input.canvasAssignmentIds.length === 0) return new Map()
+
+  const { data, error } = input.tableName === 'task_items'
+    ? await input.supabase
+        .from('task_items')
+        .select('id, title, details, deadline, canvas_url, canvas_assignment_id, status, completion_origin, priority, task_type, estimated_minutes')
+        .eq('user_id', input.userId)
+        .eq('module_id', input.moduleId)
+        .eq('course_id', input.courseId)
+        .in('canvas_assignment_id', input.canvasAssignmentIds)
+    : await input.supabase
+        .from('tasks')
+        .select('id, title, details, deadline, canvas_url, canvas_assignment_id, status, completion_origin, priority')
+        .eq('user_id', input.userId)
+        .eq('module_id', input.moduleId)
+        .in('canvas_assignment_id', input.canvasAssignmentIds)
+  if (error || !data) {
+    console.warn('[task-refresh] existing task lookup failed', {
+      tableName: input.tableName,
+      userId: input.userId,
+      moduleId: input.moduleId,
+      code: error?.code ?? null,
+      message: error?.message ?? null,
+    })
+    return new Map()
+  }
+
+  const map = new Map<number, ExistingCanvasTaskSnapshot>()
+  for (const row of data as Record<string, unknown>[]) {
+    const canvasAssignmentId = typeof row.canvas_assignment_id === 'number' ? row.canvas_assignment_id : null
+    if (!canvasAssignmentId || map.has(canvasAssignmentId)) continue
+    map.set(canvasAssignmentId, {
+      id: row.id as string,
+      title: typeof row.title === 'string' ? row.title : 'Canvas task',
+      details: typeof row.details === 'string' ? row.details : null,
+      deadline: typeof row.deadline === 'string' ? row.deadline : null,
+      canvasUrl: typeof row.canvas_url === 'string' ? row.canvas_url : null,
+      status: row.status === 'completed' ? 'completed' : 'pending',
+      completionOrigin: row.completion_origin === 'manual' || row.completion_origin === 'canvas' ? row.completion_origin : null,
+      priority: row.priority === 'high' || row.priority === 'low' ? row.priority : 'medium',
+      taskType: row.task_type === 'quiz' || row.task_type === 'reading' || row.task_type === 'prep' || row.task_type === 'discussion' || row.task_type === 'project'
+        ? row.task_type
+        : 'assignment',
+      estimatedMinutes: typeof row.estimated_minutes === 'number' ? row.estimated_minutes : 45,
+      canvasAssignmentId,
+    })
+  }
+
   return map
 }
 

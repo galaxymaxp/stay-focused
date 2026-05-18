@@ -4,7 +4,7 @@ import { SyncCoursesPageClient } from '@/components/SyncCoursesPageClient'
 import { createAuthenticatedSupabaseServerClient, getAuthenticatedUserServer } from '@/lib/auth-server'
 import { buildCanvasCourseSyncKey } from '@/lib/canvas-sync'
 import { createSupabaseServiceRoleClient } from '@/lib/supabase-service'
-import { buildSyncActivitySummary, type QueueActivityRow, type ResourceRefreshActivityRow } from '@/lib/sync-activity'
+import { buildSyncActivitySummary, type QueueActivityRow, type ResourceRefreshActivityRow, type TaskRefreshActivityRow } from '@/lib/sync-activity'
 
 export default async function SyncCoursesPage() {
   const user = await getAuthenticatedUserServer()
@@ -134,7 +134,7 @@ export default async function SyncCoursesPage() {
     )
   )
   const activityClient = createSupabaseServiceRoleClient() ?? db
-  const [queueRowsResult, resourceRefreshRowsResult] = activityClient
+  const [queueRowsResult, resourceRefreshRowsResult, taskRefreshRowsResult] = activityClient
     ? await Promise.all([
         activityClient
           .from('queued_jobs')
@@ -149,12 +149,19 @@ export default async function SyncCoursesPage() {
           .eq('user_id', user.id)
           .order('created_at', { ascending: false })
           .limit(50),
+        activityClient
+          .from('task_refresh_activity')
+          .select('status, detail, created_at')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false })
+          .limit(50),
       ])
-    : [{ data: [] }, { data: [] }]
+    : [{ data: [] }, { data: [] }, { data: [] }]
 
   const syncActivity = buildSyncActivitySummary({
     queueRows: (queueRowsResult.data ?? []) as QueueActivityRow[],
     resourceRefreshRows: (resourceRefreshRowsResult.data ?? []) as ResourceRefreshActivityRow[],
+    taskRefreshRows: (taskRefreshRowsResult.data ?? []) as TaskRefreshActivityRow[],
   })
   const courseNameById = new Map(
     (ownedCourses ?? [])

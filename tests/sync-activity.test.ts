@@ -29,13 +29,21 @@ test('sync activity summary separates manual, background, and resource refresh t
         created_at: '2026-05-13T22:00:00.000Z',
       },
     ],
+    taskRefreshRows: [
+      {
+        status: 'completed',
+        detail: 'Current Biology refreshed with 1 task change.',
+        created_at: '2026-05-13T22:15:00.000Z',
+      },
+    ],
   })
 
   assert.match(summary.lastFullManualSync?.detail ?? '', /full manual sync finished cleanly/i)
   assert.match(summary.lastBackgroundSync?.detail ?? '', /background sync finished with warnings/i)
   assert.equal(summary.lastBackgroundSync?.tone, 'warning')
   assert.match(summary.lastResourceRefresh?.detail ?? '', /refreshed with 3 source changes/i)
-  assert.equal(summary.lastCanvasUpdate?.occurredAt, '2026-05-13T22:00:00.000Z')
+  assert.match(summary.lastTaskRefresh?.detail ?? '', /1 task change/i)
+  assert.equal(summary.lastCanvasUpdate?.occurredAt, '2026-05-13T22:15:00.000Z')
 })
 
 test('last canvas update ignores failed background syncs when choosing latest successful update', () => {
@@ -59,6 +67,7 @@ test('last canvas update ignores failed background syncs when choosing latest su
       },
     ],
     resourceRefreshRows: [],
+    taskRefreshRows: [],
   })
 
   assert.equal(summary.lastCanvasUpdate?.occurredAt, '2026-05-11T05:07:24.000Z')
@@ -81,6 +90,7 @@ test('background sync summary still recognizes external cron jobs when mode is o
       },
     ],
     resourceRefreshRows: [],
+    taskRefreshRows: [],
   })
 
   assert.equal(summary.lastBackgroundSync?.occurredAt, '2026-05-13T05:58:47.000Z')
