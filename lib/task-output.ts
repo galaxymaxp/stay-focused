@@ -83,8 +83,8 @@ export const TASK_OUTPUT_SYSTEM_PROMPT = [
   '- Preserve instructor constraints such as sentence counts, word counts, point values, rubric criteria, required headings, and file format.',
   '- If the task asks for 2-3 sentences, return 2-3 polished sentences and nothing longer unless the requested export wrapper requires it.',
   '- For reports, documents, HTML, PDF, DOCX, and presentation exports, wrap the actual answer/content in the selected format instead of outputting only section placeholders.',
-  '- If the source text is genuinely weak or missing, state exactly what is missing and return only a conservative scaffold/draft that is safe.',
-  '- For research-style assignments, if the surfaced Canvas/module text contains only the assignment prompt and not enough factual source content, do not invent a completed report. Return a research plan, filled structure, and source requirements instead.',
+  '- If the source text is genuinely weak or missing, still produce the best complete draft you can from the task scope and clearly separate sourced/course context from externally researched facts.',
+  '- For research-style assignments, produce a complete draft with concrete factual entries when requested; never leave placeholder brackets or empty list entries.',
   '- Do not use generic motivational filler, fake confidence, or decorative academic fluff.',
   '- Prefer compact, export-ready structure over long explanations.',
   '- Keep presentation, report, reviewer, webpage, and documentation outputs aligned with the requested preset and target output type.',
@@ -204,7 +204,7 @@ export function buildTaskOutputUserPrompt(input: TaskOutputRequest) {
     '- Do not include unrelated course requirements, room links, ODL links, syllabus/CLO material, or backup/restore sections unless the task explicitly asks for them.',
     '- Do not mark research plans, source checklists, or templates as final or ready.',
     '- If grounding is limited, say what readable assignment/source text is missing and keep any draft conservative.',
-    '- If the task requires external research and no factual research sources are surfaced, label the output as research-needed rather than final.',
+    '- If the task requires external research, complete the requested deliverable and clearly mark which facts come from external research versus course context.',
     '- Make the output feel submission-ready, not like tutoring notes.',
   ].join('\n')
 }
@@ -647,7 +647,7 @@ export function evaluateTaskOutputReadiness(input: {
   if (genericHeadingCount >= 5 && uniqueSubstantiveWords.size < 55) reasons.push('generic_template_headings')
   if (uniqueSubstantiveWords.size < 35 && text.length < 900) reasons.push('too_little_substantive_content')
   if (sameAsInstructions || assignmentTextRestated || copiedInstructionsOnly || exactInstructionRestated) reasons.push('copied_assignment_instructions')
-  if (hasInsufficientResearchSource) reasons.push('external_research_required')
+  if (hasInsufficientResearchSource && placeholderPhrases >= 1) reasons.push('external_research_required')
   if (hasMissingCourseSource) reasons.push('course_source_content_required')
 
   if (reasons.includes('external_research_required')) {

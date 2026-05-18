@@ -11027,3 +11027,53 @@ The job result included:
 - `taskRefreshWarning: "Skipped during external cron to keep announcement sync responsive."`
 
 This confirms the lightweight external cron path works and avoids the previous `refreshing_resources` / `refreshing_tasks` hang.
+
+---
+
+## Session Update - 2026-05-18 (Task Output Completeness + Notification Visibility)
+
+### What changed
+
+- Updated Task Output generation contract to produce complete deliverables for research-style assignments instead of scaffold-only language.
+- Removed explicit instruction that forced `research-needed` framing when users requested final task output.
+- Relaxed readiness gating so research assignments are no longer auto-marked `Needs research` solely due to limited selected context; they are only marked that way when placeholder/research-checklist scaffolding remains.
+- Removed raw notification UUID tags from in-app toast rendering path for fetched notifications.
+
+### Files touched
+
+- `lib/task-output.ts`
+- `components/shell/NotificationsPanel.tsx`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Task outputs were staying in placeholder/research-needed mode for assignments that expected fully written submissions, and student-facing toasts could expose raw notification IDs.
+
+### Tests run
+
+- `npm run typecheck`
+- `npm run lint`
+- `npx tsx --test tests/task-output-foundation.test.ts tests/study-output-print.test.ts tests/queue.test.ts tests/canvas-digest.test.ts tests/canvas-task-refresh.test.ts tests/study-output-reviewer.test.ts tests/study-output-sheet.test.ts tests/study-output-quiz-pack.test.ts tests/learn-resource-ui.test.ts tests/canvas-content-resolution.test.ts`
+
+### Verification result
+
+- Task output prompt now asks for complete researched drafts (no placeholder brackets/empty entries).
+- Research tasks with thin context are no longer automatically downgraded solely for low selected-context length.
+- In-app notifications fetched from server no longer surface raw notification IDs as toast tags.
+
+### Known risks
+
+- Task-output quality for research-heavy tasks still depends on model output quality and does not add a new retrieval pipeline.
+- Print/export blank-page issue was not reproduced via static tests in this session and may still need browser-runtime QA.
+
+### Blockers
+
+- None.
+
+### Next recommended step
+
+- Run authenticated browser QA for Study Library print/export and queue notifications in app shell to confirm viewport placement and no blank pages.
+
+### Suggested commit message
+
+`fix task outputs and queue notifications`

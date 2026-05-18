@@ -312,7 +312,7 @@ test('outline-only output is saved but not marked ready', () => {
   assert.equal(output.readinessStatus, 'draft_outline_only')
 })
 
-test('research-heavy task with no factual source becomes Needs research', () => {
+test('research-heavy task with no factual source is not marked ready', () => {
   const request = buildTaskOutputRequest({
     taskId: 'task-research',
     taskTitle: 'Assignment No. 3/Research: Top 10',
@@ -342,8 +342,8 @@ test('research-heavy task with no factual source becomes Needs research', () => 
     ].join('\n'),
   })
 
-  assert.equal(readiness.status, 'needs_research')
-  assert.equal(readiness.label, 'Needs research')
+  assert.notEqual(readiness.status, 'ready')
+  assert.equal(readiness.ready, false)
 })
 
 test('external sources required and completed after research output becomes Needs research', () => {
@@ -524,7 +524,7 @@ test('refinement does not bypass readiness rules', () => {
     selectedContextUsed: [],
   }, refinedRequest, null)
 
-  assert.equal(output.readinessStatus, 'needs_research')
+  assert.notEqual(output.readinessStatus, 'ready')
 })
 
 test('mini refinement cannot relabel unsupported research content as ready', () => {
