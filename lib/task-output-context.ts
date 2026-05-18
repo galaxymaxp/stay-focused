@@ -3,6 +3,23 @@ import { getModuleResourceQualityInfo } from '@/lib/module-resource-quality'
 import { getModuleWorkspace } from '@/lib/module-workspace'
 import type { ModuleResource } from '@/lib/types'
 
+const TASK_OUTPUT_GENERIC_CONTEXT_TOKENS = new Set([
+  'assignment',
+  'activity',
+  'analyze',
+  'analysis',
+  'course',
+  'include',
+  'instructions',
+  'module',
+  'recommendations',
+  'references',
+  'report',
+  'research',
+  'student',
+  'students',
+])
+
 export async function resolveGroundedTaskOutputContext(
   moduleId: string,
   taskId: string,
@@ -14,7 +31,7 @@ export async function resolveGroundedTaskOutputContext(
   const task = workspace.tasks.find((candidate) => candidate.id === taskId) ?? null
   const taskTitle = task?.title ?? context.taskTitle
   const taskDetails = task?.details?.trim() || context.taskDetails
-  const relatedResources = selectTaskOutputRelatedResources(taskTitle, workspace.resources)
+  const relatedResources = selectTaskOutputRelatedResources(`${taskTitle}\n${taskDetails ?? ''}`, workspace.resources)
   const relatedContext = relatedResources
     .map(formatTaskOutputResourceContext)
     .filter((value): value is string => Boolean(value))
@@ -43,8 +60,8 @@ export async function resolveGroundedTaskOutputContext(
   }
 }
 
-function selectTaskOutputRelatedResources(taskTitle: string, resources: ModuleResource[]) {
-  const taskKey = normalizeTaskOutputLookup(taskTitle)
+export function selectTaskOutputRelatedResources(taskText: string, resources: ModuleResource[]) {
+  const taskKey = normalizeTaskOutputLookup(taskText)
   const taskTokens = new Set(taskKey.split(' ').filter((token) => token.length >= 2))
   const scored = resources
     .map((resource, index) => {
@@ -52,19 +69,34 @@ function selectTaskOutputRelatedResources(taskTitle: string, resources: ModuleRe
       const text = quality.meaningfulText || quality.normalizedText || resource.extractedText?.trim() || resource.extractedTextPreview?.trim() || ''
       if (!text.trim()) return null
       const titleKey = normalizeTaskOutputLookup(resource.title)
+      const contentKey = normalizeTaskOutputLookup(text.slice(0, 2600))
       const titleTokens = titleKey.split(' ').filter((token) => token.length >= 2)
-      const overlap = titleTokens.filter((token) => taskTokens.has(token)).length
+      const contentTokens = contentKey.split(' ').filter((token) => token.length >= 3)
+      const titleOverlap = titleTokens.filter((token) => taskTokens.has(token)).length
+      const contentOverlap = contentTokens.filter((token) => taskTokens.has(token)).length
       const exactish = titleKey && (taskKey.includes(titleKey) || titleKey.includes(taskKey)) ? 8 : 0
       const moduleMarker = titleTokens.some((token) => /^m\d+$/.test(token) && taskTokens.has(token)) ? 5 : 0
-      const acquireKnowledgeBoost = /\bacquire\b|\bknowledge\b|\bnew knowledge\b/i.test(resource.title) ? 2 : 0
-      const pageBoost = /page/i.test(resource.resourceType) ? 2 : 0
-      const score = exactish + moduleMarker + overlap + acquireKnowledgeBoost + pageBoost + Math.max(0, 3 - index / 10)
+      const sourceTypeBoost = /page|file|document|pdf|docx|pptx/i.test(resource.resourceType) ? 1 : 0
+      const adminPenalty = isAdministrativeTaskOutputResource(resource.title, text) && !hasDirectTaskOverlap(taskTokens, titleKey, contentKey) ? 20 : 0
+      const relevanceGate = exactish > 0 || titleOverlap >= 1 || contentOverlap >= 2 || moduleMarker > 0
+      if (!relevanceGate || adminPenalty >= 20) return null
+      const score = exactish + moduleMarker + titleOverlap * 3 + Math.min(contentOverlap, 8) + sourceTypeBoost + Math.max(0, 3 - index / 10) - adminPenalty
+      if (score < 4) return null
       return { resource, textLength: text.length, score }
     })
     .filter((entry): entry is { resource: ModuleResource; textLength: number; score: number } => Boolean(entry))
     .sort((left, right) => right.score - left.score || right.textLength - left.textLength)
 
   return scored.slice(0, 4).map((entry) => entry.resource)
+}
+
+function isAdministrativeTaskOutputResource(title: string, text: string) {
+  return /\b(syllabus|course outline|course policies|room assignment|odl|online distance learning|class link|meeting link|curated videos?|video links?|zoom|google meet|classroom|learning outcomes?|clo\d*|course learning outcomes?)\b/i.test(`${title}\n${text.slice(0, 1200)}`)
+}
+
+function hasDirectTaskOverlap(taskTokens: Set<string>, titleKey: string, contentKey: string) {
+  const directTerms = [...taskTokens].filter((token) => token.length >= 5 && !TASK_OUTPUT_GENERIC_CONTEXT_TOKENS.has(token))
+  return directTerms.some((token) => titleKey.includes(token) || contentKey.includes(token))
 }
 
 function formatTaskOutputResourceContext(resource: ModuleResource) {

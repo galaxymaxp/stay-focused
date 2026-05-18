@@ -8,7 +8,9 @@ import {
   evaluateTaskOutputReadiness,
   normalizeTaskOutputModelResponse,
 } from '../lib/task-output'
-import type { StudyOutputTaskOutputContent } from '../lib/types'
+import { getTaskOutputModelForRequest, requiresNewUnsupportedFacts } from '../lib/task-output-model-routing'
+import { selectTaskOutputRelatedResources } from '../lib/task-output-context'
+import type { ModuleResource, StudyOutputTaskOutputContent } from '../lib/types'
 
 test('task output request stays grounded in task instructions and readable selected context', () => {
   const context = {
@@ -108,6 +110,44 @@ test('task output format detection covers common assignment shapes', () => {
     title: 'Activity Sheet',
     instructions: 'Complete the worksheet table.',
   }), 'activity_sheet')
+})
+
+test('initial task output generation uses configured GPT-5.4 non-mini model', () => {
+  const routing = getTaskOutputModelForRequest({
+    previousOutput: null,
+    refinementInstruction: null,
+  }, {} as unknown as NodeJS.ProcessEnv)
+
+  assert.equal(routing.mode, 'initial_full')
+  assert.equal(routing.model, 'gpt-5.4')
+  assert.doesNotMatch(routing.model, /mini/i)
+})
+
+test('tone and format refinement uses configured mini model', () => {
+  const routing = getTaskOutputModelForRequest({
+    previousOutput: 'Needs research draft.',
+    refinementInstruction: 'Make this more formal and turn it into a table.',
+  }, {
+    OPENAI_TASK_OUTPUT_FULL_MODEL: 'gpt-5.4-full',
+    OPENAI_TASK_OUTPUT_REFINEMENT_MODEL: 'gpt-5-mini-refine',
+  } as unknown as NodeJS.ProcessEnv)
+
+  assert.equal(routing.mode, 'refinement_reshape')
+  assert.equal(routing.model, 'gpt-5-mini-refine')
+})
+
+test('factual or citation refinement routes away from mini', () => {
+  const routing = getTaskOutputModelForRequest({
+    previousOutput: 'Needs research draft.',
+    refinementInstruction: 'Make it complete with APA references and the top 10 malware.',
+  }, {
+    OPENAI_TASK_OUTPUT_FULL_MODEL: 'gpt-5.4-full',
+    OPENAI_TASK_OUTPUT_REFINEMENT_MODEL: 'gpt-5-mini-refine',
+  } as unknown as NodeJS.ProcessEnv)
+
+  assert.equal(routing.mode, 'refinement_needs_facts')
+  assert.equal(routing.model, 'gpt-5.4-full')
+  assert.equal(requiresNewUnsupportedFacts('Add APA references and current examples.'), true)
 })
 
 test('placeholder-heavy task output is saved as outline only instead of ready', () => {
@@ -306,6 +346,55 @@ test('research-heavy task with no factual source becomes Needs research', () => 
   assert.equal(readiness.label, 'Needs research')
 })
 
+test('external sources required and completed after research output becomes Needs research', () => {
+  const request = buildTaskOutputRequest({
+    taskId: 'task-research-template',
+    taskTitle: 'Assignment No. 3/Research: Top 10',
+    taskDetails: 'Investigate and analyze the top 10 most infamous malware, viruses, and security threats from the past decade. Research origins, impact, propagation methods, mitigation strategies, cybersecurity significance, lessons learned, recommendations, and include APA references.',
+    deadline: null,
+    priority: 'high',
+    courseName: 'IT Security',
+    moduleTitle: 'Security Threats',
+    resourceSnippet: null,
+    sourceText: null,
+    sourceNote: null,
+    moduleSummary: null,
+  }, {
+    preset: 'report',
+    outputType: 'docx',
+  })
+
+  const readiness = evaluateTaskOutputReadiness({
+    request,
+    previewContent: [
+      'Top 10 Malware Research Report',
+      '',
+      'External factual sources are required before this can be completed.',
+      'Threat analyses must be completed after research.',
+      'References',
+      'APA references to be added after research.',
+    ].join('\n'),
+  })
+
+  assert.equal(readiness.status, 'needs_research')
+})
+
+test('task output context excludes unrelated admin and backup sources for malware research', () => {
+  const resources = [
+    createResource('Course Syllabus', 'CLO4 requires students to prepare a Backup and Restore Plan and submit administrative requirements.'),
+    createResource('Room Assignment and ODL Links', 'Room assignment, Zoom link, ODL link, and class schedule information.'),
+    createResource('Curated Videos', 'General course video links and playlist reminders.'),
+    createResource('Malware Case Studies', 'Malware propagation methods include phishing attachments, exploit kits, drive-by downloads, and lateral movement. Mitigation strategies include patching, backups, endpoint detection, network segmentation, and user awareness.'),
+  ]
+
+  const selected = selectTaskOutputRelatedResources(
+    'Assignment No. 3/Research: Top 10 Investigate and analyze the top 10 most infamous malware, viruses, and security threats from the past decade. Include APA references.',
+    resources,
+  )
+
+  assert.deepEqual(selected.map((resource) => resource.title), ['Malware Case Studies'])
+})
+
 test('course-specific task with no readable source becomes Needs source content', () => {
   const request = buildTaskOutputRequest({
     taskId: 'task-source-needed',
@@ -438,6 +527,46 @@ test('refinement does not bypass readiness rules', () => {
   assert.equal(output.readinessStatus, 'needs_research')
 })
 
+test('mini refinement cannot relabel unsupported research content as ready', () => {
+  const request = buildTaskOutputRequest({
+    taskId: 'task-refine-unsupported',
+    taskTitle: 'Assignment No. 3/Research: Top 10',
+    taskDetails: 'Investigate and analyze the top 10 most infamous malware, viruses, and security threats from the past decade. Include APA references.',
+    deadline: null,
+    priority: 'high',
+    courseName: 'IT Security',
+    moduleTitle: 'Threats',
+    resourceSnippet: null,
+    sourceText: null,
+    sourceNote: null,
+    moduleSummary: null,
+  }, {
+    preset: 'report',
+    outputType: 'docx',
+  })
+
+  const output = normalizeTaskOutputModelResponse({
+    title: 'Top 10 Malware Report',
+    summary: 'Looks polished.',
+    previewMode: 'rich_text',
+    previewContent: 'This report still requires external sources and APA references. Threat analyses must be completed after research.',
+    stylesheet: null,
+    script: null,
+    groundingNote: 'No factual source context was surfaced.',
+    limitationNote: null,
+    warnings: [],
+    requirementsUsed: request.requirements,
+    selectedContextUsed: [],
+  }, {
+    ...request,
+    previousOutput: 'Research outline.',
+    refinementInstruction: 'Make it more formal.',
+  }, null)
+
+  assert.notEqual(output.readinessStatus, 'ready')
+  assert.equal(output.readinessStatus, 'needs_research')
+})
+
 test('weak task-output grounding falls back to scaffold-only export bundle', () => {
   const request = buildTaskOutputRequest({
     taskId: 'task-2',
@@ -542,3 +671,31 @@ test('task output HTML exports stay deterministic and revision history appends n
   assert.equal(normalized.revisionHistory[0]?.label, 'Revision 2')
   assert.equal(normalized.revisionHistory[1]?.label, 'Initial generation')
 })
+
+function createResource(title: string, text: string): ModuleResource {
+  return {
+    id: title.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+    moduleId: 'module-1',
+    title,
+    resourceType: 'page',
+    contentType: 'text/html',
+    fileName: null,
+    fileSize: null,
+    sourceUrl: null,
+    htmlUrl: null,
+    extractedText: text,
+    extractedTextPreview: text,
+    extractedCharCount: text.length,
+    extractionStatus: 'completed',
+    extractionError: null,
+    extractionProvider: null,
+    visualExtractionStatus: null,
+    visualExtractedText: null,
+    visualExtractionError: null,
+    pageCount: null,
+    pagesProcessed: null,
+    metadata: null,
+    createdAt: '2026-05-18T00:00:00.000Z',
+    updatedAt: '2026-05-18T00:00:00.000Z',
+  } as unknown as ModuleResource
+}

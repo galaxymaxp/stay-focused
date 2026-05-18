@@ -32,6 +32,16 @@ export function StudyOutputTaskOutputPage({
     ? taskOutput.exports.find((item) => item.filename.endsWith('.html'))?.content ?? null
     : null
   const activityExportHtml = printableHtml?.includes('activity-submission') ? printableHtml : null
+  const readinessStatus = taskOutput.readinessStatus ?? 'ready'
+  const groundingLabel = readinessStatus === 'ready'
+    ? (taskOutput.groundingStatus === 'limited' ? 'Limited grounding' : 'Grounded output')
+    : readinessStatus === 'needs_research'
+      ? 'Research needed'
+      : readinessStatus === 'draft_outline_only'
+        ? 'Draft outline'
+        : readinessStatus === 'needs_course_source_content'
+          ? 'Needs source content'
+          : 'Needs review'
   const activitySubmissionHtml = activityExportHtml ?? buildTaskOutputActivitySubmissionHtml({
     title: taskOutput.title,
     taskTitle: taskOutput.taskTitle,
@@ -89,7 +99,7 @@ export function StudyOutputTaskOutputPage({
         {moduleTitle ? <span>{moduleTitle}</span> : null}
         <span>{taskOutput.preset}</span>
         <span>{taskOutput.outputType.toUpperCase()}</span>
-        <span>{taskOutput.groundingStatus === 'limited' ? 'Limited grounding' : 'Grounded output'}</span>
+        <span>{groundingLabel}</span>
         {taskOutput.readinessStatus && taskOutput.readinessStatus !== 'ready' ? (
           <span>{taskOutput.readinessLabel ?? 'Needs more content'}</span>
         ) : null}

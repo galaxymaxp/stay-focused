@@ -75,7 +75,10 @@ export const TASK_OUTPUT_SYSTEM_PROMPT = [
   'Rules:',
   '- Ground every part of the output in the task data provided in this request.',
   '- Do not invent requirements, rubric criteria, or missing deliverable details.',
-  '- Do not invent citations, quotations, page numbers, references, or sources.',
+    '- Do not invent citations, quotations, page numbers, references, or sources.',
+    '- Do not fabricate external facts, threat names, dates, impact figures, recommendations, or APA references from model memory.',
+    '- Do not present model-memory facts as course-confirmed or externally sourced.',
+    '- Do not include unrelated course requirements, course outcomes, room links, syllabus policies, or extra deliverables not requested by the assignment.',
   '- Generate the actual answer/content first. Do not return a planning scaffold when enough prompt/source context exists.',
   '- Preserve instructor constraints such as sentence counts, word counts, point values, rubric criteria, required headings, and file format.',
   '- If the task asks for 2-3 sentences, return 2-3 polished sentences and nothing longer unless the requested export wrapper requires it.',
@@ -189,11 +192,17 @@ export function buildTaskOutputUserPrompt(input: TaskOutputRequest) {
     '- Stay strictly grounded in the surfaced task data.',
     '- The original Canvas task remains the anchor even when revising a previous output.',
     '- A user refinement may change tone, format, length, organization, or emphasis, but it may not turn unsupported facts into course-confirmed facts.',
+    '- For refinement, preserve the previous output\'s factual boundaries. You may reshape supported content; you may not add unsupported facts, citations, threat names, dates, impact figures, or external claims.',
     '- Produce the submission-ready answer/content before any notes about limitations.',
     '- Do not output a generic scaffold with headings like Purpose, Deliverable focus, Grounded context, or Next edit pass when grounding is marked grounded.',
     '- Apply instructor format constraints exactly, especially sentence counts and required sections.',
     '- No fake citations.',
+    '- Do not invent APA references.',
+    '- Do not fabricate external facts.',
+    '- Do not present generic model-memory facts as course-confirmed.',
     '- No fabricated requirements.',
+    '- Do not include unrelated course requirements, room links, ODL links, syllabus/CLO material, or backup/restore sections unless the task explicitly asks for them.',
+    '- Do not mark research plans, source checklists, or templates as final or ready.',
     '- If grounding is limited, say what readable assignment/source text is missing and keep any draft conservative.',
     '- If the task requires external research and no factual research sources are surfaced, label the output as research-needed rather than final.',
     '- Make the output feel submission-ready, not like tutoring notes.',
@@ -578,6 +587,15 @@ export function evaluateTaskOutputReadiness(input: {
     /\breplace (?:the )?placeholders?\b/g,
     /\badd (?:real|course-specific|your|the strongest|grounded) (?:task )?(?:evidence|detail|details|content)\b/g,
     /\bwrite (?:your|the) answer here\b/g,
+    /\bto be completed after research\b/g,
+    /\bmust be completed after research\b/g,
+    /\bcomplete(?:d)? after research\b/g,
+    /\bexternal (?:factual )?sources? (?:are|is) required\b/g,
+    /\bexternal research (?:is )?required\b/g,
+    /\brequires external sources\b/g,
+    /\bresearch checklist\b/g,
+    /\bfinalization checklist\b/g,
+    /\bcandidate selection criteria\b/g,
     /\bplaceholder\b/g,
     /\btbd\b/g,
   ])
@@ -622,6 +640,7 @@ export function evaluateTaskOutputReadiness(input: {
   if (input.request.groundingStatus === 'limited') reasons.push('limited_grounding')
   if (underscoreRuns >= 2) reasons.push('blank_lines_or_underscores')
   if (placeholderPhrases >= 2) reasons.push('placeholder_language')
+  if (hasResearchRequirement && placeholderPhrases >= 1) reasons.push('external_research_required')
   if (emptyFieldLines >= 3) reasons.push('empty_fields')
   if (emptyTableRows >= 2) reasons.push('empty_table')
   if (metaInstructionSentences >= 2) reasons.push('meta_instruction_language')

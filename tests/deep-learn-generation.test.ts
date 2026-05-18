@@ -2933,11 +2933,12 @@ test('Reviewer simple markdown does not retry unusable compact output', async ()
   assert.equal(result.content.reviewerMarkdown, 'too short')
 })
 
-test('task_output model routing remains on task-specific mini defaults', () => {
+test('task_output model routing keeps full generation separate from Deep Learn models', () => {
   const source = readFileSync('app/api/task-output/route.ts', 'utf8')
-  assert.match(source, /DEFAULT_TASK_OUTPUT_MODEL = 'gpt-5-mini'/)
-  assert.match(source, /OPENAI_TASK_OUTPUT_MODEL/)
-  assert.match(source, /OPENAI_DO_NOW_MODEL/)
+  const routingSource = readFileSync('lib/task-output-model-routing.ts', 'utf8')
+  assert.match(routingSource, /DEFAULT_TASK_OUTPUT_FULL_MODEL = 'gpt-5\.4'/)
+  assert.match(routingSource, /DEFAULT_TASK_OUTPUT_REFINEMENT_MODEL = 'gpt-5-mini'/)
+  assert.match(source, /getTaskOutputModelForRequest/)
   assert.doesNotMatch(source, /DEEP_LEARN_REVIEWER_COMPILER_MODEL|DEEP_LEARN_STRUCTURED_FALLBACK_MODEL/)
 })
 test('Deep Learn diagnostics select visual_extracted_text when extracted_text is metadata-only', () => {

@@ -35,7 +35,7 @@ export function TaskOutputRefinementForm({ outputId }: { outputId: string }) {
       <div>
         <p className="reviewer-section-label">Refine this output</p>
         <p className="reviewer-muted" style={{ marginTop: '0.25rem' }}>
-          Ask for changes like: make it shorter, turn it into a table, follow instructor format.
+          Ask for format or wording changes. Refinement cannot create missing facts, sources, or citations.
         </p>
       </div>
       <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'stretch', flexWrap: 'wrap' }}>

@@ -5,6 +5,79 @@ Last Updated: 2026-05-18
 
 ---
 
+## Session Update - 2026-05-18 (Task Output Routing And Refinement)
+
+### What changed
+
+- Added Task Output model routing so initial/full generation uses the configured non-mini GPT-5.4 path while reshape-only refinement uses the configured mini path.
+- Added deterministic refinement classification: tone, format, organization, length, and wording requests can use mini; requests for new facts, citations, APA references, research completion, or missing content route away from mini and preserve non-ready status when no approved source/research path exists.
+- Strengthened Task Output prompts to forbid model-memory facts, fake APA references, unrelated syllabus/ODL/CLO/admin content, and extra deliverables not requested by the Canvas assignment.
+- Tightened readiness evaluation for research outlines that say external sources are required, content is to be completed after research, finalization checklists, candidate criteria, and research-only scaffolds.
+- Improved related Canvas source selection so task title/instructions dominate, admin pages are penalized, and unrelated syllabus, room/ODL links, curated video links, and backup/restore content do not get selected for unrelated malware research tasks.
+- Updated Task Output UI labels so non-ready research/outline/source-needed outputs do not display as grounded ready outputs.
+- Updated refinement UI copy to clarify that refinement can improve wording/format but cannot create missing facts, sources, or citations.
+
+### Files touched
+
+- `app/api/task-output/route.ts`
+- `components/StudyOutputTaskOutputPage.tsx`
+- `components/TaskOutputRefinementForm.tsx`
+- `lib/task-output.ts`
+- `lib/task-output-context.ts`
+- `lib/task-output-model-routing.ts`
+- `tests/deep-learn-generation.test.ts`
+- `tests/task-output-foundation.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+The observed Assignment No. 3 research output was a useful outline but was saved as ready, overclaimed grounding, and used weak/unrelated Canvas context. The new routing gives full Task Output writing the stronger configured model, keeps cheap mini usage for safe reshape-only refinements, and relies on deterministic gates for source sufficiency, relevance, and readiness instead of trusting model claims.
+
+### Tests run
+
+- `npx tsx --test tests/task-output-foundation.test.ts`
+- `npx tsc --noEmit --pretty false`
+- `npm run typecheck`
+- `npm run lint` - passed with existing unused legacy Reviewer warnings in `lib/deep-learn-generation.ts`
+- `npm test -- task-output task-output-foundation`
+- `npm test -- queue`
+- `npm test -- canvas-content-resolution learn-resource-ui`
+- `npm test -- pdf-extractor source-ocr-updates deep-learn-readiness deep-learn-generation canvas-content-resolution learn-resource-ui queue`
+- Optional scanned PDF validator skipped: `C:\Users\omgra\Downloads\1.1-Data Organization.pdf` was not present locally.
+
+### Verification result
+
+- Verified initial Task Output routing defaults to `gpt-5.4` and not mini.
+- Verified reshape-only refinement uses the configured mini model.
+- Verified factual/citation/completion refinement routes away from mini.
+- Verified mini refinement cannot relabel unsupported research output as ready.
+- Verified incomplete research outlines, placeholder-heavy output, copied instructions, and "external sources required / completed after research" content are not ready.
+- Verified substantive source-grounded content can still become `Output ready`.
+- Verified unrelated syllabus/CLO, room/ODL links, curated videos, and backup/restore source context are excluded from a malware research task when not directly relevant.
+- Verified Task Output page labels avoid saying `Grounded output` for research-needed, draft-outline, or source-needed outputs.
+
+### Known risks
+
+- No external research/retrieval pathway was added in this session; research-heavy tasks without factual Canvas/source context intentionally remain `Needs research` or `Draft outline only`.
+- The relevance filter is still heuristic. It is stricter for admin/stale sources, but live Canvas modules should still be QA'd with real course data.
+- Lint still reports pre-existing unused legacy Reviewer helper warnings in `lib/deep-learn-generation.ts`.
+- `test_output.txt` remains an untracked local file and was not included.
+
+### Blockers
+
+- No code blocker remains.
+- Manual production QA still needs an authenticated run against the real Assignment No. 3 task.
+
+### Next recommended step
+
+Run live QA for `Assignment No. 3/Research: Top 10`: confirm initial generation uses the full Task Output model, shows `Needs research` or `Draft outline only` without unrelated syllabus/room/backup context, and that tone/format refinement uses mini while preserving the non-ready research-needed state.
+
+### Suggested commit message
+
+`improve task output routing and refinement`
+
+---
+
 ## Session Update - 2026-05-18 (Task Output Readiness And Refinement)
 
 ### What changed

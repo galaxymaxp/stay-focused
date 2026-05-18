@@ -11,25 +11,20 @@ import {
   type TaskOutputModelResponse,
   type TaskOutputRequest,
 } from '@/lib/task-output'
+import { classifyTaskOutputGenerationMode, getTaskOutputModelForRequest } from '@/lib/task-output-model-routing'
 import type { TaskDraftContext } from '@/lib/do-now'
 import type { TaskOutputPreset, TaskOutputTargetType } from '@/lib/types'
 
 export const runtime = 'nodejs'
 
-const DEFAULT_TASK_OUTPUT_MODEL = 'gpt-5-mini'
-
 function getOpenAIConfig() {
   const apiKey = process.env.OPENAI_API_KEY?.trim()
-  const model = process.env.OPENAI_TASK_OUTPUT_MODEL?.trim()
-    || process.env.OPENAI_DO_NOW_MODEL?.trim()
-    || process.env.OPENAI_MODEL?.trim()
-    || DEFAULT_TASK_OUTPUT_MODEL
 
   if (!apiKey) {
     throw new Error('OPENAI_API_KEY is not set')
   }
 
-  return { apiKey, model }
+  return { apiKey }
 }
 
 function normalizeString(value: unknown, maxLength: number) {
@@ -198,14 +193,35 @@ export async function POST(req: NextRequest) {
   const previousTaskOutput = readPreviousTaskOutput(rawBody)
 
   const fallback = buildTaskOutputFallback(requestBody)
+  const generationMode = classifyTaskOutputGenerationMode(requestBody)
+  if (previousTaskOutput && generationMode === 'refinement_needs_facts' && (previousTaskOutput.readinessStatus ?? 'ready') !== 'ready') {
+    const output = normalizeTaskOutputModelResponse({
+      title: previousTaskOutput.title,
+      summary: previousTaskOutput.summary,
+      previewMode: previousTaskOutput.previewMode,
+      previewContent: previousTaskOutput.previewContent,
+      stylesheet: previousTaskOutput.stylesheet,
+      script: previousTaskOutput.script,
+      groundingNote: previousTaskOutput.groundingNote,
+      limitationNote: previousTaskOutput.limitationNote ?? 'This refinement asks for new factual support or citations, but no approved research/source path was available. The output still needs research before it can be final.',
+      warnings: [
+        ...previousTaskOutput.warnings,
+        'The requested refinement needs new factual support or citations. Stay Focused did not invent unsupported facts.',
+      ],
+      requirementsUsed: previousTaskOutput.requirements,
+      selectedContextUsed: previousTaskOutput.selectedContext,
+    }, requestBody, previousTaskOutput)
+
+    return NextResponse.json({ ok: true, output, cacheStatus: 'miss' as const })
+  }
+
   if (requestBody.groundingStatus === 'limited') {
     return NextResponse.json({ ok: true, output: fallback, cacheStatus: 'miss' as const })
   }
 
   let apiKey: string
-  let model: string
   try {
-    ({ apiKey, model } = getOpenAIConfig())
+    ({ apiKey } = getOpenAIConfig())
   } catch (error) {
     console.error('Task output API configuration error:', error)
     return NextResponse.json({ ok: true, output: fallback, cacheStatus: 'miss' as const })
@@ -213,6 +229,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const client = new OpenAI({ apiKey })
+    const { model } = getTaskOutputModelForRequest(requestBody)
     const response = await client.responses.create({
       model,
       store: false,
