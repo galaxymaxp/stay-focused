@@ -1,7 +1,146 @@
 # Stay Focused — AI Session Handoff
 
 Author: galaxymaxp omgraythekid@gmail.com
-Last Updated: 2026-05-17
+Last Updated: 2026-05-18
+
+---
+
+## Session Update - 2026-05-18 (Reviewer Markdown Layout Cleanup)
+
+### What changed
+
+- Added a lightweight, non-blocking Reviewer Markdown layout normalizer for the temporary simple Reviewer path.
+- The simple Reviewer flow now normalizes layout after the model response and before saving `reviewerMarkdown`.
+- Added a shared Reviewer Markdown renderer used by both the full study output page and the Deep Learn review surface.
+- Improved Reviewer Markdown CSS for academic spacing, heading hierarchy, readable lists, label callouts, answer keys, and print-friendly output.
+- Kept the simple source-to-Markdown path permissive: no strict heading validation, quiz-count validation, answer-bank generation, likely-quiz-target generation, structured compiler, or repair maze was reintroduced.
+
+### Files touched
+
+- `app/globals.css`
+- `components/DeepLearnReviewPackSurface.tsx`
+- `components/ReviewerMarkdownDocument.tsx`
+- `components/StudyOutputReviewerPage.tsx`
+- `lib/deep-learn-generation.ts`
+- `lib/reviewer-markdown-layout.ts`
+- `tests/deep-learn-generation.test.ts`
+- `tests/study-output-reviewer.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+The simple Reviewer path was producing useful source-grounded Markdown, but compact model output could render as jammed inline sections, one-line lists, cramped answer keys, or accidental code blocks. The fix is intentionally a layout normalizer and renderer polish layer, not a validation gate, so useful compact output still saves and renders.
+
+### Tests run
+
+- `npm run typecheck` - passed
+- `npm run lint` - passed with existing unused legacy Reviewer compiler warnings in `lib/deep-learn-generation.ts`
+- `npx tsx --test tests/deep-learn-generation.test.ts` - passed during focused development
+- `npx tsx --test tests/study-output-reviewer.test.ts` - passed during focused development
+- `npm test -- deep-learn-generation` - passed
+- `npm test -- study-output-reviewer study-output-quiz-pack learn-resource-ui deep-learn-readiness` - passed
+- `npm test -- pdf-extractor source-ocr-updates deep-learn-generation canvas-content-resolution learn-resource-ui queue` - passed
+
+### Verification result
+
+- Verified inline numbered Reviewer content is split into multiline numbered lists when safe.
+- Verified indented answer key lines are normalized so they do not render as code blocks.
+- Verified MCQ answer choices remain separate and intact.
+- Verified headings and repeated labels get clearer spacing/hierarchy.
+- Verified compact useful `reviewerMarkdown` still saves successfully and is not rejected for layout-only issues.
+- Verified existing Deep Learn generation, Reviewer UI, Quiz Pack, readiness, extraction/OCR, learn-resource UI, and queue suites pass in the requested batches.
+
+### Known risks
+
+- The normalizer is heuristic by design. It may not perfectly fix every odd model formatting pattern, but it should not block useful output.
+- Lint still reports pre-existing unused legacy Reviewer helper warnings because this branch bypasses that architecture.
+- `test_output.txt` remains an untracked local file and was not included.
+
+### Blockers
+
+- No code blocker remains.
+
+### Next recommended step
+
+Generate a fresh Reviewer for `1. Intro-To-IT-Security.pdf` and inspect the saved `reviewerMarkdown` plus rendered page for real-world spacing before deciding whether to tune prompt wording or add more normalization heuristics.
+
+### Suggested commit message
+
+clean up reviewer markdown layout
+
+---
+
+## Session Update - 2026-05-18 (Temporary Simple Reviewer Markdown Output)
+
+### What changed
+
+- Replaced the active classic Markdown Reviewer generation branch with a temporary simple Reviewer path:
+  - meaningful selected academic source text goes directly to the configured Reviewer model
+  - the raw Markdown response is saved as `reviewerMarkdown`
+  - compact Markdown, missing exact headings, low quiz counts, and internal/debug wording no longer hard-fail this path
+  - only empty/bad source text blocks before the model call, and only empty provider output fails after the call
+- Bypassed the Reviewer save validator and queue assertion when `reviewerMarkdown` exists.
+- Kept Task Output, Quiz Pack, Study Sheet, OCR readiness, and Canvas sync behavior unchanged.
+- Updated Reviewer rendering so saved `reviewerMarkdown` renders directly and hides structured Reviewer sections such as Key Answers, Likely Quiz Targets, answer bank cards, and quiz target rankings.
+- Added simple Reviewer logs for `simpleReviewerMode`, `sourceTitle`, `sourceChars`, `selectedSourceField`, `model`, `outputChars`, and `savedReviewerMarkdown`.
+- Tightened local note normalization so only explicit `reviewerMarkdown` activates simple Markdown rendering; legacy note-body fallback tests still use the structured path.
+
+### Files touched
+
+- `actions/queue-jobs.ts`
+- `components/DeepLearnReviewPackSurface.tsx`
+- `lib/deep-learn-generation.ts`
+- `lib/deep-learn.ts`
+- `lib/study-outputs/reviewer.ts`
+- `tests/deep-learn-generation.test.ts`
+- `tests/study-output-reviewer.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+The current Reviewer architecture was still over-validating good extracted academic text through heading, section, quiz-count, internal-label, structured compiler, answer-bank, quiz-target, and repair-stage gates. This branch intentionally proves the simplest path first: selected meaningful source text -> AI Markdown -> save `reviewerMarkdown` -> render the Markdown.
+
+### Tests run
+
+- `npm run typecheck` - passed
+- `npm run lint` - passed with existing unused legacy Reviewer compiler warnings
+- `npx tsx --test tests/deep-learn-generation.test.ts` - passed
+- `npx tsx --test tests/study-output-reviewer.test.ts` - passed after tightening explicit Markdown detection
+- `npm test -- deep-learn-generation` - passed
+- `npm test -- study-output-reviewer study-output-quiz-pack learn-resource-ui deep-learn-readiness` - passed
+- `npm test -- pdf-extractor source-ocr-updates deep-learn-generation canvas-content-resolution learn-resource-ui queue` - passed
+- `Test-Path "C:\Users\omgra\Downloads\1.1-Data Organization.pdf"` returned `False`, so the optional scanned-PDF validator was skipped.
+
+### Verification result
+
+- Verified meaningful academic source calls the Reviewer model and saves `reviewerMarkdown`.
+- Verified compact Markdown output saves successfully.
+- Verified missing exact Reviewer headings still saves.
+- Verified lower quiz count still saves.
+- Verified empty model output fails with `empty_reviewer_markdown`.
+- Verified bad/metadata-only source is blocked before the model call.
+- Verified Reviewer pages and the Deep Learn review surface render Markdown directly when `reviewerMarkdown` exists and hide old structured sections.
+- Verified Quiz Pack, Learn resource UI, readiness, extraction/OCR, queue, and Task Output-adjacent suites still pass through the requested batches.
+
+### Known risks
+
+- This is intentionally temporary and permissive: raw Markdown can include wording that older strict gates would reject.
+- The simple Reviewer path does not create answer-bank or quiz-target artifacts, so Reviewer display is the raw document while Quiz Pack still depends on existing quiz/source-map paths.
+- Lint still reports pre-existing unused legacy compiler warnings in `lib/deep-learn-generation.ts`.
+- `test_output.txt` remains an existing untracked local file and was not included.
+
+### Blockers
+
+- No code blocker remains.
+- The optional private scanned PDF validator could not run because `C:\Users\omgra\Downloads\1.1-Data Organization.pdf` is not present locally.
+
+### Next recommended step
+
+Generate a live Reviewer for `1. Intro-To-IT-Security.pdf` and confirm logs show `simpleReviewerMode: true`, `selectedSourceField: "extracted_text"`, output characters greater than zero, and `savedReviewerMarkdown: true`, then inspect the rendered Markdown before reintroducing any quality gates.
+
+### Suggested commit message
+
+add simple reviewer markdown output path
 
 ---
 

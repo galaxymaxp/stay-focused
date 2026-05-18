@@ -1,6 +1,7 @@
 import { GeneratedContentState } from '@/components/generated-content/GeneratedContentState'
 import { isReviewerStudyOutputContent } from '@/lib/study-output-content'
 import { ReviewerPrintButton } from '@/components/ReviewerPrintButton'
+import { ReviewerMarkdownDocument } from '@/components/ReviewerMarkdownDocument'
 import { StudyOutputPrintHeader } from '@/components/StudyOutputPrintHeader'
 import type { StudyOutput } from '@/lib/types'
 
@@ -46,8 +47,8 @@ export function StudyOutputReviewerPage({
       />
 
       {reviewer.reviewerMarkdown ? (
-        <div className="reviewer-panel study-output-keep-together" style={{ whiteSpace: 'normal' }}>
-          <MarkdownReviewerDocument markdown={reviewer.reviewerMarkdown} />
+        <div className="reviewer-panel reviewer-markdown-panel study-output-keep-together" style={{ whiteSpace: 'normal' }}>
+          <ReviewerMarkdownDocument markdown={reviewer.reviewerMarkdown} />
         </div>
       ) : null}
 
@@ -154,40 +155,5 @@ export function StudyOutputReviewerPage({
       </div>
       ) : null}
     </section>
-  )
-}
-
-function MarkdownReviewerDocument({ markdown }: { markdown: string }) {
-  const blocks = markdown.split(/\n{2,}/).map((block) => block.trim()).filter(Boolean)
-  return (
-    <div className="reviewer-markdown-document">
-      {blocks.map((block, index) => {
-        if (/^#\s+/.test(block)) {
-          return <h1 key={index}>{block.replace(/^#\s+/, '')}</h1>
-        }
-        if (/^##\s+/.test(block)) {
-          return <h2 key={index}>{block.replace(/^##\s+/, '')}</h2>
-        }
-        if (/^###\s+/.test(block)) {
-          return <h3 key={index}>{block.replace(/^###\s+/, '')}</h3>
-        }
-        const lines = block.split('\n').map((line) => line.trim()).filter(Boolean)
-        if (lines.every((line) => /^[-*]\s+/.test(line))) {
-          return (
-            <ul key={index}>
-              {lines.map((line) => <li key={line}>{line.replace(/^[-*]\s+/, '')}</li>)}
-            </ul>
-          )
-        }
-        if (lines.every((line) => /^\d+[.)]\s+/.test(line))) {
-          return (
-            <ol key={index}>
-              {lines.map((line) => <li key={line}>{line.replace(/^\d+[.)]\s+/, '')}</li>)}
-            </ol>
-          )
-        }
-        return <p key={index} style={{ whiteSpace: 'pre-line' }}>{block}</p>
-      })}
-    </div>
   )
 }

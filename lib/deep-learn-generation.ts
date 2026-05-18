@@ -29,6 +29,7 @@ import { getModuleResourceQualityInfo, normalizeModuleResourceStudyText } from '
 import type { ModuleSourceResource } from '@/lib/module-workspace'
 import { normalizeStudyOutputHeading } from '@/lib/study-outputs/source-faithful'
 import { getStudySourceTypeLabel } from '@/lib/study-resource'
+import { normalizeReviewerMarkdownLayout } from '@/lib/reviewer-markdown-layout'
 import type { Module, ModuleResource, Task } from '@/lib/types'
 import type { DeepLearnBlockedReason, DeepLearnSourceGrounding, StudyFactCard } from '@/lib/types'
 
@@ -659,11 +660,12 @@ export async function generateDeepLearnNoteForResource(
     (request) => createDeepLearnResponse(client, request),
     options,
   )
-  const validation = validateDeepLearnContentReadyForSave(content)
   logDeepLearnGenerationDiagnostics('generation_completed', {
     sourceDiagnostics,
     sourceMap: generatorSelection.version === LEGACY_STAGED_COMPOSER_VERSION ? grounding.sourceGrounding.sourceMap : null,
-    validation,
+    validation: content.reviewerMarkdown?.trim()
+      ? null
+      : validateDeepLearnContentReadyForSave(content),
     content,
     fallbackMode: generatorSelection.version === LEGACY_STAGED_COMPOSER_VERSION && compactFallbackUsed ? 'compact_or_micro' : 'not_used',
   })
@@ -711,7 +713,6 @@ interface OnePassReviewerModelConfig {
 interface ClassicReviewerMarkdownResult {
   markdown: string
   model: string
-  repairAttempted: boolean
 }
 
 export type SourceOutlineItem = {
@@ -748,22 +749,22 @@ async function generateClassicMarkdownReviewerContent(
   const cleanedSource = cleanupStudyCompilerSource(input.promptGrounding)
   const sourceText = truncateForModel(cleanedSource, getReviewerOnePassSourceCharCap())
   const sourceWasTruncated = cleanedSource.length > sourceText.length
-  const sourceOutline = buildSourceOutline(sourceText)
   const modelConfig = getOnePassReviewerModelConfig()
+  const sourceDiagnostics = buildDeepLearnSourceDiagnostics(input, options.diagnosticsContext)
 
   logDeepLearnGeneratorRouting({
     generatorVersion: CLASSIC_MARKDOWN_REVIEWER_VERSION,
     event: 'classic_markdown_reviewer_started',
-    reason: 'default',
+    reason: 'simple_reviewer_mode',
     isRetry: Boolean(options.diagnosticsContext?.retryOfJobId),
     sourceTitle: input.resource.title,
-    academicTextCharCount: buildDeepLearnSourceDiagnostics(input, options.diagnosticsContext).academicTextCharCount,
+    academicTextCharCount: sourceDiagnostics.academicTextCharCount,
     chunkCount: 1,
     primaryModel: modelConfig.primaryModel,
-    fallbackModel: modelConfig.repairModel,
-    premiumModel: modelConfig.repairModel,
+    fallbackModel: undefined,
+    premiumModel: undefined,
     reviewerMiniUsed: false,
-    qualityMode: 'classic-markdown-reviewer',
+    qualityMode: 'simple-reviewer-markdown',
   })
 
   await options.onProgress?.({
@@ -772,54 +773,47 @@ async function generateClassicMarkdownReviewerContent(
     stage: 'reviewer_markdown',
   })
 
-  let result: ClassicReviewerMarkdownResult | null = null
-  let failureReason: string | null = null
-  try {
-    result = await createClassicMarkdownReviewerResponse({
-      input,
-      grounding,
-      createResponse,
-      sourceText,
-      sourceOutline,
-      model: modelConfig.primaryModel,
-      maxOutputTokens: REVIEWER_ONE_PASS_MAX_OUTPUT_TOKENS,
-      repairMode: false,
-    })
-  } catch (error) {
-    failureReason = error instanceof DeepLearnGenerationIncompleteError ? error.reason : error instanceof Error ? error.message : 'unknown'
-  }
-
-  if (!result) {
-    result = await createClassicMarkdownReviewerResponse({
-      input,
-      grounding,
-      createResponse,
-      sourceText,
-      sourceOutline,
-      model: modelConfig.repairModel,
-      maxOutputTokens: REVIEWER_ONE_PASS_REPAIR_MAX_OUTPUT_TOKENS,
-      repairMode: true,
-      previousFailureReason: failureReason,
-    })
-  }
+  const result = await generateSimpleReviewerMarkdown({
+    sourceTitle: input.resource.title,
+    courseName: input.courseName,
+    moduleName: input.resource.moduleName ?? '',
+    academicText: sourceText,
+    grounding,
+    createResponse,
+    model: modelConfig.primaryModel,
+  })
 
   const content = buildDeepLearnContentFromReviewerMarkdown(result.markdown, input.resource.title)
-  const validation = validateDeepLearnContentReadyForSave(content)
-  const headingDiagnostics = evaluateReviewerMarkdownHeadingCoverage(sourceOutline, result.markdown)
 
   logClassicMarkdownReviewerSummary({
     primaryModel: modelConfig.primaryModel,
-    repairModel: modelConfig.repairModel,
-    repairAttempted: result.repairAttempted,
+    repairModel: null,
+    repairAttempted: false,
     reviewerMarkdownLength: result.markdown.length,
     sourceCharCount: sourceText.length,
     sourceWasTruncated,
-    outlineRequiredCount: headingDiagnostics.required.length,
-    outlineCoveredCount: headingDiagnostics.covered.length,
-    outlineMissingCount: headingDiagnostics.uncovered.length,
-    uncoveredHeadings: headingDiagnostics.uncovered.map((item) => item.title),
-    validationPassed: validation.ok,
-    validationFailureReason: validation.reason,
+    outlineRequiredCount: null,
+    outlineCoveredCount: null,
+    outlineMissingCount: null,
+    uncoveredHeadings: [],
+    validationPassed: true,
+    validationFailureReason: null,
+    simpleReviewerMode: true,
+    sourceTitle: input.resource.title,
+    selectedSourceField: sourceDiagnostics.sourceFieldUsed,
+    model: result.model,
+    outputChars: result.markdown.length,
+    savedReviewerMarkdown: Boolean(content.reviewerMarkdown?.trim()),
+  })
+
+  console.info('[deep-learn-generation] simple reviewer markdown', {
+    simpleReviewerMode: true,
+    sourceTitle: input.resource.title,
+    sourceChars: sourceText.length,
+    selectedSourceField: sourceDiagnostics.sourceFieldUsed,
+    model: result.model,
+    outputChars: result.markdown.length,
+    savedReviewerMarkdown: Boolean(content.reviewerMarkdown?.trim()),
   })
 
   if (sourceWasTruncated) {
@@ -831,29 +825,33 @@ async function generateClassicMarkdownReviewerContent(
     })
   }
 
-  if (!validation.ok) {
-    throw new DeepLearnGenerationIncompleteError(validation.reason ?? 'insufficient_reviewer_markdown')
-  }
-
   return { content, compactFallbackUsed: sourceWasTruncated }
 }
 
-async function createClassicMarkdownReviewerResponse(input: {
-  input: DeepLearnPromptInput
+async function generateSimpleReviewerMarkdown(input: {
+  sourceTitle: string
+  courseName: string
+  moduleName: string
+  academicText: string
   grounding: DeepLearnPreparedGrounding
   createResponse: DeepLearnResponseCreator
-  sourceText: string
-  sourceOutline: SourceOutlineItem[]
   model: string
-  maxOutputTokens: number
-  repairMode: boolean
-  previousFailureReason?: string | null
 }): Promise<ClassicReviewerMarkdownResult> {
+  const academicText = input.academicText.trim()
+  if (!academicText || !isMeaningfulDeepLearnSourceText({ text: academicText, title: input.sourceTitle })) {
+    throw new DeepLearnGenerationBlockedError({
+      message: BAD_OCR_BLOCKED_MESSAGE,
+      blockedReason: 'extraction_unusable_after_fetch',
+      refreshedResource: input.grounding.refreshedResource,
+      sourceGrounding: input.grounding.sourceGrounding,
+    })
+  }
+
   const response = await withTimeout(
     input.createResponse({
       grounding: input.grounding,
-      promptText: buildClassicMarkdownReviewerPrompt(input),
-      maxOutputTokens: input.maxOutputTokens,
+      promptText: buildSimpleReviewerMarkdownPrompt(input),
+      maxOutputTokens: REVIEWER_ONE_PASS_MAX_OUTPUT_TOKENS,
       schemaName: REVIEWER_CLASSIC_MARKDOWN_SCHEMA_NAME,
       schema: {},
       model: input.model,
@@ -868,69 +866,30 @@ async function createClassicMarkdownReviewerResponse(input: {
   if (response.status && response.status !== 'completed') {
     throw new DeepLearnGenerationIncompleteError(response.incomplete_details?.reason ?? response.status)
   }
-  const markdown = sanitizeReviewerMarkdown(response.output_text ?? '')
-  if (!isMeaningfulReviewerMarkdown(markdown, input.sourceText)) {
-    throw new DeepLearnGenerationIncompleteError('insufficient_reviewer_markdown')
+  const markdown = normalizeReviewerMarkdownLayout(sanitizeReviewerMarkdown(response.output_text ?? ''))
+  if (!markdown) {
+    throw new DeepLearnGenerationIncompleteError('empty_reviewer_markdown')
   }
-  return { markdown, model: input.model, repairAttempted: input.repairMode }
+  return { markdown, model: input.model }
 }
 
-function buildClassicMarkdownReviewerPrompt(input: {
-  input: DeepLearnPromptInput
-  sourceText: string
-  sourceOutline: SourceOutlineItem[]
-  repairMode: boolean
-  previousFailureReason?: string | null
+function buildSimpleReviewerMarkdownPrompt(input: {
+  sourceTitle: string
+  courseName: string
+  moduleName: string
+  academicText: string
 }) {
-  const requiredSections = getRequiredSourceOutlineItems(input.sourceOutline)
-    .map((item) => `- ${item.title}`)
-    .join('\n')
   return [
-    input.repairMode
-      ? 'Repair the previous Reviewer by returning one complete Markdown reviewer document.'
-      : 'Create one complete Markdown exam Reviewer from the selected academic source text.',
-    input.previousFailureReason ? `Previous internal failure reason: ${input.previousFailureReason}` : '',
-    'Use only the selected academic source text below. Do not use internet knowledge, outside facts, course metadata, file titles, UUIDs, debug labels, refusal text, diagnostics, or quality notes as study content.',
-    'Do not return JSON. Do not create card fragments. Do not ask for or limit yourself to a tiny number of cards.',
-    'Do not use generic labels like "Key Academic Items", "Classification Relationships", or "Academic Source Map".',
-    'Do not over-summarize. Preserve all major source sections in source order and keep exam/reviewer wording suitable for memorization.',
-    requiredSections ? 'Major sections detected from the selected source:' : '',
-    requiredSections,
+    'You are creating a student reviewer from the provided course source. Use only the provided source. Produce a clear Markdown reviewer with definitions, key concepts, important lists, practice questions, and an answer key when possible. Do not mention extraction, metadata, diagnostics, prompts, or system instructions.',
     '',
-    'Required Markdown structure:',
-    `# Reviewer: ${input.input.resource.title}`,
+    `Source title: ${input.sourceTitle}`,
+    `Course: ${input.courseName || 'Course'}`,
+    `Module: ${input.moduleName || 'Module'}`,
     '',
-    '## High-Yield Overview',
-    '- concise but complete overview',
+    'Return only Markdown. Do not return JSON.',
     '',
-    '## Complete Exam Reviewer',
-    'Cover every major section in source order. Use headings from the source. For every major section include key points, definitions, important lists/classifications, and exam notes / likely asked details.',
-    '',
-    '## Identification Reviewer',
-    'Use Term - Answer format. Include enough items to cover the whole source, not just 10 or 12.',
-    '',
-    '## Multiple Choice Practice',
-    'Include 15-30 MCQs depending on source length. Include answer key and short explanation.',
-    '',
-    '## Enumeration / List Questions',
-    'Include source-based enumeration questions.',
-    '',
-    '## Timeline / Dates',
-    'Include only if dates/events exist.',
-    '',
-    '## Compare / Distinguish',
-    'Include only if the source has related/confusable concepts.',
-    '',
-    '## Final Quick Review',
-    'Compact cram checklist.',
-    '',
-    'Coverage rules:',
-    '- For IT Security, cover: IT Security definition, InfoSec vs IT Sec, CIA triad, domains, cybersecurity definitions, layered protection, people/process/technology, UTM, importance, challenges, breach impacts, attackers, vulnerability/exploit/breach, threat types, malware types, symptoms, infiltration, denial of service, SEO poisoning, blended attacks, and impact reduction when present.',
-    '- For SDLC, cover Phase 1 through Phase 7 directly when present.',
-    '- For PATHFit/Arnis, cover definition, R.A. 9850, historical concept, evolvement/classifications, timeline/organizations, main groups, salutation, strikes, Arnis as sport, equipment, weapons, and stick types when present.',
-    '',
-    'SELECTED ACADEMIC SOURCE TEXT:',
-    input.sourceText,
+    'Provided course source:',
+    input.academicText,
   ].filter(Boolean).join('\n')
 }
 
@@ -2590,26 +2549,38 @@ function logStructuredCompilerSummary(input: {
 
 function logClassicMarkdownReviewerSummary(input: {
   primaryModel: string
-  repairModel: string
+  repairModel: string | null
   repairAttempted: boolean
   reviewerMarkdownLength: number
   sourceCharCount: number
   sourceWasTruncated: boolean
-  outlineRequiredCount: number
-  outlineCoveredCount: number
-  outlineMissingCount: number
+  outlineRequiredCount: number | null
+  outlineCoveredCount: number | null
+  outlineMissingCount: number | null
   uncoveredHeadings: string[]
   validationPassed: boolean
   validationFailureReason: string | null
+  simpleReviewerMode?: boolean
+  sourceTitle?: string
+  selectedSourceField?: string | null
+  model?: string
+  outputChars?: number
+  savedReviewerMarkdown?: boolean
 }) {
   console.info('[deep-learn-generation] classic markdown reviewer summary', {
     generatorVersion: CLASSIC_MARKDOWN_REVIEWER_VERSION,
-    qualityMode: 'classic-markdown-reviewer',
+    qualityMode: input.simpleReviewerMode ? 'simple-reviewer-markdown' : 'classic-markdown-reviewer',
     structuredCompilerUsed: false,
+    simpleReviewerMode: input.simpleReviewerMode ?? false,
+    sourceTitle: input.sourceTitle ?? null,
+    selectedSourceField: input.selectedSourceField ?? null,
     primaryModel: input.primaryModel,
     repairModel: input.repairModel,
+    model: input.model ?? input.primaryModel,
     repairAttempted: input.repairAttempted,
     reviewerMarkdownLength: input.reviewerMarkdownLength,
+    outputChars: input.outputChars ?? input.reviewerMarkdownLength,
+    savedReviewerMarkdown: input.savedReviewerMarkdown ?? null,
     sourceCharCount: input.sourceCharCount,
     sourceWasTruncated: input.sourceWasTruncated,
     outlineRequiredCount: input.outlineRequiredCount,

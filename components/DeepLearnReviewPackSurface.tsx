@@ -3,6 +3,7 @@
 import type { KeyboardEvent, MouseEvent, PointerEvent } from 'react'
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { ReviewerMarkdownDocument } from '@/components/ReviewerMarkdownDocument'
 import { resolveDeepLearnWording } from '@/lib/deep-learn'
 import type { DeepLearnNote, DeepLearnReviewLinkFields } from '@/lib/types'
 
@@ -44,6 +45,14 @@ export function DeepLearnReviewPackSurface({ note }: { note: DeepLearnNote }) {
     document.addEventListener('click', closeSupport)
     return () => document.removeEventListener('click', closeSupport)
   }, [activeSupport])
+
+  if (note.reviewerMarkdown?.trim()) {
+    return (
+      <div className="contained-scroll-frame deep-learn-review-results">
+        <ReviewerMarkdownDocument markdown={note.reviewerMarkdown} compact />
+      </div>
+    )
+  }
 
   function toggleSupport(key: string, item: DeepLearnReviewLinkFields, target: HTMLElement) {
     const modes = getSupportModes(item)

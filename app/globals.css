@@ -4509,6 +4509,116 @@ details[open] > .ui-interactive-summary,
   color: var(--text-muted) !important;
 }
 
+.reviewer-markdown-panel {
+  padding: clamp(1rem, 2.2vw, 1.45rem);
+}
+
+.reviewer-markdown-document {
+  display: grid;
+  gap: 0.78rem;
+  width: min(100%, 78ch);
+  margin: 0 auto;
+  color: var(--text-primary);
+}
+
+.reviewer-markdown-document-compact {
+  width: 100%;
+  padding: 1rem;
+}
+
+.reviewer-markdown-document h1,
+.reviewer-markdown-document h2,
+.reviewer-markdown-document h3,
+.reviewer-markdown-document p,
+.reviewer-markdown-document ul,
+.reviewer-markdown-document ol {
+  margin: 0;
+}
+
+.reviewer-markdown-document h1 {
+  font-size: clamp(1.45rem, 2.4vw, 2rem);
+  line-height: 1.16;
+  font-weight: 780;
+}
+
+.reviewer-markdown-document h2 {
+  margin-top: 0.85rem;
+  padding: 0.72rem 0.85rem;
+  border: 1px solid color-mix(in srgb, var(--accent-border) 16%, var(--border-subtle) 84%);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface-selected) 42%, var(--surface-soft) 58%);
+  font-size: clamp(1rem, 1.55vw, 1.22rem);
+  line-height: 1.28;
+  font-weight: 760;
+}
+
+.reviewer-markdown-document h3 {
+  margin-top: 0.35rem;
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--border-subtle) 82%, transparent);
+  font-size: 0.95rem;
+  line-height: 1.35;
+  font-weight: 730;
+}
+
+.reviewer-markdown-document p {
+  font-size: 0.91rem;
+  line-height: 1.75;
+  color: var(--text-secondary);
+}
+
+.reviewer-markdown-document strong {
+  color: var(--text-primary);
+  font-weight: 740;
+}
+
+.reviewer-markdown-document ul,
+.reviewer-markdown-document ol {
+  display: grid;
+  gap: 0.42rem;
+  padding-left: 1.35rem;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.68;
+}
+
+.reviewer-markdown-document li {
+  padding-left: 0.12rem;
+}
+
+.reviewer-markdown-answer-choices {
+  list-style: upper-alpha;
+}
+
+.reviewer-markdown-label {
+  padding: 0.68rem 0.78rem;
+  border: 1px solid color-mix(in srgb, var(--border-subtle) 82%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface-base) 78%, transparent);
+}
+
+.reviewer-markdown-label-source {
+  color: var(--text-muted) !important;
+  background: color-mix(in srgb, var(--surface-soft) 68%, transparent);
+}
+
+.reviewer-markdown-label-key,
+.reviewer-markdown-label-answer {
+  border-color: color-mix(in srgb, var(--accent-border) 20%, var(--border-subtle) 80%);
+  background: color-mix(in srgb, var(--surface-selected) 28%, var(--surface-base) 72%);
+}
+
+.reviewer-markdown-label-practice {
+  background: color-mix(in srgb, var(--surface-soft) 84%, transparent);
+}
+
+.reviewer-markdown-document hr {
+  width: 100%;
+  margin: 0.4rem 0;
+  border: 0;
+  border-top: 1px solid color-mix(in srgb, var(--border-subtle) 78%, transparent);
+}
+
 .reviewer-print-only {
   display: none;
 }
@@ -4829,6 +4939,8 @@ details[open] > .ui-interactive-summary,
   .reviewer-caution-list li,
   .reviewer-mini-card p,
   .reviewer-mini-card li,
+  .reviewer-markdown-document p,
+  .reviewer-markdown-document li,
   .study-output-print-question-prompt {
     color: #111111 !important;
     font-size: 10.5pt;
@@ -4838,9 +4950,48 @@ details[open] > .ui-interactive-summary,
   .reviewer-mini-card h3,
   .reviewer-mini-card strong,
   .reviewer-answer-list strong,
-  .reviewer-target-list strong {
+  .reviewer-target-list strong,
+  .reviewer-markdown-document strong {
     color: #111111 !important;
     font-size: 10.5pt;
+  }
+
+  .reviewer-markdown-document {
+    width: 100%;
+    gap: 0.35rem;
+    padding: 0 !important;
+  }
+
+  .reviewer-markdown-document h1 {
+    font-size: 15pt;
+  }
+
+  .reviewer-markdown-document h2 {
+    margin-top: 0.42rem;
+    padding: 0.2rem 0;
+    border: 0;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.2);
+    border-radius: 0;
+    background: #ffffff !important;
+    font-size: 12pt;
+  }
+
+  .reviewer-markdown-document h3 {
+    margin-top: 0.25rem;
+    font-size: 10.8pt;
+  }
+
+  .reviewer-markdown-document ul,
+  .reviewer-markdown-document ol {
+    gap: 0.18rem;
+    padding-left: 0.95rem;
+  }
+
+  .reviewer-markdown-label {
+    padding: 0.24rem 0;
+    border: 0;
+    border-radius: 0;
+    background: #ffffff !important;
   }
 
   .reviewer-answer-list,

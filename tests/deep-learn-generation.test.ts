@@ -48,6 +48,7 @@ import {
   reviewerSourceFixtures,
   type ReviewerSourceFixture,
 } from './fixtures/deep-learn-reviewer-sources'
+import { normalizeReviewerMarkdownLayout } from '../lib/reviewer-markdown-layout'
 
 async function generateDeepLearnStructuredContentWithLegacyComposer(
   ...args: Parameters<typeof generateDeepLearnStructuredContent>
@@ -2616,7 +2617,7 @@ function buildClassicReviewerMarkdown(
   ].join('\n')
 }
 
-test('Reviewer generation uses only the classic Markdown path and logs quality diagnostics', async () => {
+test('meaningful academic source calls model and saves reviewerMarkdown in simple mode', async () => {
   const fixture = getReviewerSourceFixture('multi-phase-systems-analysis')
   const logs = await captureConsoleInfo(async () => {
     const result = await withTemporaryEnv({
@@ -2629,7 +2630,8 @@ test('Reviewer generation uses only the classic Markdown path and logs quality d
       async (request) => {
         assert.equal(request.schemaName, 'deep_learn_reviewer_classic_markdown')
         assert.equal(request.model, 'gpt-5.4-classic')
-        assert.match(request.promptText, /Do not return JSON/i)
+        assert.match(request.promptText, /You are creating a student reviewer/i)
+        assert.match(request.promptText, /Return only Markdown/i)
         assert.doesNotMatch(request.promptText, /factCard|answerBank|Generate exactly|coverage-first/i)
         return textResponse(buildClassicReviewerMarkdown(fixture))
       },
@@ -2644,14 +2646,16 @@ test('Reviewer generation uses only the classic Markdown path and logs quality d
 
   const routing = logs.map((entry) => entry[1]).find((entry): entry is Record<string, unknown> => Boolean(entry && typeof entry === 'object' && (entry as Record<string, unknown>).event === 'classic_markdown_reviewer_started'))
   assert.equal(routing?.generatorVersion, 'classic_markdown_reviewer_v1')
-  assert.equal(routing?.qualityMode, 'classic-markdown-reviewer')
+  assert.equal(routing?.qualityMode, 'simple-reviewer-markdown')
 
   const summary = logs.map((entry) => entry[1]).find((entry): entry is Record<string, unknown> => Boolean(entry && typeof entry === 'object' && (entry as Record<string, unknown>).structuredCompilerUsed === false))
-  assert.equal(summary?.qualityMode, 'classic-markdown-reviewer')
+  assert.equal(summary?.qualityMode, 'simple-reviewer-markdown')
   assert.equal(summary?.structuredCompilerUsed, false)
+  assert.equal(summary?.simpleReviewerMode, true)
   assert.equal(typeof summary?.reviewerMarkdownLength, 'number')
   assert.equal(typeof summary?.sourceCharCount, 'number')
   assert.equal(summary?.sourceWasTruncated, false)
+  assert.equal(summary?.savedReviewerMarkdown, true)
 })
 
 test('Reviewer classic markdown covers SDLC Phase 1 through Phase 7', async () => {
@@ -2775,7 +2779,140 @@ test('Reviewer classic markdown covers PATHFit Arnis exam areas', async () => {
   }
 })
 
-test('Reviewer classic markdown retries once for unusable Markdown', async () => {
+test('compact Markdown output saves successfully', async () => {
+  const fixture = getReviewerSourceFixture('multi-phase-systems-analysis')
+  const result = await generateDeepLearnStructuredContent(
+    createStructuredPromptInput(fixture.extractedText, fixture.title),
+    createStructuredPreparedGrounding(fixture.extractedText),
+    async () => textResponse('## Key Concepts\n\n- Planning defines scope.\n- Testing checks whether the system works.'),
+  )
+
+  assert.equal(result.content.reviewerMarkdown, '## Key Concepts\n\n- Planning defines scope.\n- Testing checks whether the system works.')
+  assert.equal(result.content.answerBank.length, 0)
+})
+
+test('Reviewer Markdown layout normalizer converts safe inline numbered lists', () => {
+  const normalized = normalizeReviewerMarkdownLayout('Components 1. Confidentiality 2. Integrity 3. Availability')
+
+  assert.equal(normalized, [
+    'Components',
+    '',
+    '1. Confidentiality',
+    '2. Integrity',
+    '3. Availability',
+  ].join('\n'))
+})
+
+test('Reviewer Markdown layout normalizer removes answer key code indentation', () => {
+  const normalized = normalizeReviewerMarkdownLayout([
+    '## Answer Key',
+    '    1. B - Integrity keeps data accurate.',
+    '    2. A - Confidentiality protects access.',
+  ].join('\n'))
+
+  assert.match(normalized, /^1\. B - Integrity/m)
+  assert.doesNotMatch(normalized, /^\s{4,}1\./m)
+})
+
+test('Reviewer Markdown layout normalizer preserves MCQ choices as separate options', () => {
+  const normalized = normalizeReviewerMarkdownLayout('1. What is the CIA triad? A. Confidentiality, Integrity, Availability B. Speed, Storage, Access C. Malware, Botnet, Virus D. Cloud, Mobile, IoT')
+
+  assert.match(normalized, /^1\. What is the CIA triad\?/m)
+  assert.match(normalized, /^A\. Confidentiality, Integrity, Availability/m)
+  assert.match(normalized, /^B\. Speed, Storage, Access/m)
+  assert.match(normalized, /^C\. Malware, Botnet, Virus/m)
+  assert.match(normalized, /^D\. Cloud, Mobile, IoT/m)
+})
+
+test('Reviewer Markdown layout normalizer spaces headings', () => {
+  const normalized = normalizeReviewerMarkdownLayout('Intro\n## Key Concepts\nSource wording: IT Security protects assets.')
+
+  assert.match(normalized, /Intro\n\n## Key Concepts\n\n/)
+  assert.match(normalized, /\*\*Source wording:\*\* IT Security protects assets\./)
+})
+
+test('missing exact Reviewer headings still saves Markdown', async () => {
+  const fixture = getReviewerSourceFixture('taxonomy-heavy-security')
+  const markdown = [
+    '# IT Security Study Notes',
+    '',
+    'Security protects confidentiality, integrity, and availability.',
+    '',
+    '### Practice',
+    '1. What is the CIA triad?',
+  ].join('\n')
+
+  const result = await generateDeepLearnStructuredContent(
+    createStructuredPromptInput(fixture.extractedText, fixture.title),
+    createStructuredPreparedGrounding(fixture.extractedText),
+    async () => textResponse(markdown),
+  )
+
+  assert.equal(result.content.reviewerMarkdown, normalizeReviewerMarkdownLayout(markdown))
+})
+
+test('lower quiz count still saves Reviewer Markdown', async () => {
+  const fixture = getReviewerSourceFixture('short-martial-arts-module')
+  const markdown = [
+    '# Arnis Reviewer',
+    '',
+    'Arnis is the national martial art and sport of the Philippines.',
+    '',
+    '## Practice Question',
+    '1. What law declared Arnis the national martial art and sport?',
+    '',
+    'Answer: RA 9850.',
+  ].join('\n')
+
+  const result = await generateDeepLearnStructuredContent(
+    createStructuredPromptInput(fixture.extractedText, fixture.title),
+    createStructuredPreparedGrounding(fixture.extractedText),
+    async () => textResponse(markdown),
+  )
+
+  assert.equal(result.content.reviewerMarkdown, normalizeReviewerMarkdownLayout(markdown))
+})
+
+test('empty model output fails cleanly', async () => {
+  const fixture = getReviewerSourceFixture('multi-phase-systems-analysis')
+
+  await assert.rejects(
+    () => generateDeepLearnStructuredContent(
+      createStructuredPromptInput(fixture.extractedText, fixture.title),
+      createStructuredPreparedGrounding(fixture.extractedText),
+      async () => textResponse('   '),
+    ),
+    (error: unknown) => {
+      assert.ok(error instanceof DeepLearnGenerationIncompleteError)
+      assert.equal(error.reason, 'empty_reviewer_markdown')
+      return true
+    },
+  )
+})
+
+test('bad or empty source is blocked before model call in simple Reviewer mode', async () => {
+  let calls = 0
+
+  await assert.rejects(
+    () => generateDeepLearnStructuredContent(
+      createStructuredPromptInput('File title: Intro-To-IT-Security.pdf\nUUID: 11111111-1111-4111-8111-111111111111', 'Intro-To-IT-Security.pdf'),
+      createStructuredPreparedGrounding('File title: Intro-To-IT-Security.pdf\nUUID: 11111111-1111-4111-8111-111111111111'),
+      async () => {
+        calls += 1
+        return textResponse('should not be called')
+      },
+    ),
+    (error: unknown) => {
+      assert.ok(error instanceof DeepLearnGenerationBlockedError)
+      assert.equal(error.blockedReason, 'extraction_unusable_after_fetch')
+      return true
+    },
+  )
+
+  assert.equal(calls, 0)
+})
+
+test('Reviewer simple markdown does not retry unusable compact output', async () => {
   const fixture = getReviewerSourceFixture('multi-phase-systems-analysis')
   const calls: Array<{ schemaName: string; model?: string }> = []
   const result = await withTemporaryEnv({
@@ -2786,16 +2923,14 @@ test('Reviewer classic markdown retries once for unusable Markdown', async () =>
     createStructuredPreparedGrounding(fixture.extractedText),
     async (request) => {
       calls.push({ schemaName: request.schemaName, model: request.model })
-      if (calls.length === 1) return textResponse('too short')
-      return textResponse(buildClassicReviewerMarkdown(fixture))
+      return textResponse('too short')
     },
   ))
 
   assert.deepEqual(calls, [
     { schemaName: 'deep_learn_reviewer_classic_markdown', model: 'gpt-5.4-primary' },
-    { schemaName: 'deep_learn_reviewer_classic_markdown', model: 'gpt-5.5-repair' },
   ])
-  assert.ok(result.content.reviewerMarkdown)
+  assert.equal(result.content.reviewerMarkdown, 'too short')
 })
 
 test('task_output model routing remains on task-specific mini defaults', () => {
