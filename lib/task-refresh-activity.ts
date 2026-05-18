@@ -61,3 +61,44 @@ export function buildTaskRefreshActivityDetail(input: {
     ? `${input.courseName} refreshed with ${changedCount} task ${changedCount === 1 ? 'change' : 'changes'}.`
     : `${input.courseName} task refresh finished with no new task changes.`
 }
+
+export function buildTaskRefreshRunActivity(input: {
+  userId: string
+  coursesChecked: number
+  assignmentsChecked: number
+  tasksInserted: number
+  tasksUpdated: number
+  tasksSkipped: number
+  failures: number
+  warnings: string[]
+}) {
+  const status: TaskRefreshActivityStatus = input.failures > 0 && input.failures >= Math.max(1, input.coursesChecked)
+    ? 'failed'
+    : input.warnings.length > 0
+      ? 'warning'
+      : 'completed'
+
+  return {
+    userId: input.userId,
+    courseId: null,
+    status,
+    detail: status === 'failed'
+      ? 'Synced courses task refresh failed.'
+      : buildTaskRefreshActivityDetail({
+          courseName: 'Synced courses',
+          tasksInserted: input.tasksInserted,
+          tasksUpdated: input.tasksUpdated,
+          warnings: input.warnings,
+        }),
+    warnings: input.warnings,
+    metadata: {
+      usersChecked: 1,
+      coursesChecked: input.coursesChecked,
+      assignmentsChecked: input.assignmentsChecked,
+      tasksInserted: input.tasksInserted,
+      tasksUpdated: input.tasksUpdated,
+      tasksSkipped: input.tasksSkipped,
+      warningsCount: input.warnings.length,
+    },
+  }
+}

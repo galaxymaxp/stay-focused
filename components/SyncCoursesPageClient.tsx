@@ -16,6 +16,7 @@ import { buildCanvasCourseSyncKey } from '@/lib/canvas-sync'
 import { dispatchInAppToast } from '@/lib/notifications'
 import type { QueuedJob } from '@/lib/queue'
 import type { SyncActivitySummary } from '@/lib/sync-activity'
+import { getStatusSummary } from '@/lib/sync-courses-status'
 
 interface SyncedCanvasModule {
   id: string
@@ -286,7 +287,7 @@ export function SyncCoursesPageClient({
         <SummaryCard
           label="Last task refresh"
           title={syncActivity.lastTaskRefresh?.title ?? 'No task refresh yet'}
-          detail={syncActivity.lastTaskRefresh?.detail ?? 'Task refreshes check already-synced courses for new assignments, quizzes, discussions, and due-date changes.'}
+          detail={syncActivity.lastTaskRefresh?.detail ?? 'Task refresh checks already-synced courses for new assignments, quizzes, discussions, and due-date changes.'}
           tone={syncActivity.lastTaskRefresh?.tone ?? 'neutral'}
         />
         <SummaryCard
@@ -732,47 +733,6 @@ function pruneUnavailableSelectedCourseIds(
   const nextSelectedIds = selectedIds.filter((id) => availableIds.has(id))
 
   return nextSelectedIds.length === selectedIds.length ? selectedIds : nextSelectedIds
-}
-
-function getStatusSummary({
-  isLoadingCourses,
-  isCanvasJobActive,
-  courseLoadError,
-  syncActivity,
-  hasSyncedCourses,
-}: {
-  isLoadingCourses: boolean
-  isCanvasJobActive: boolean
-  courseLoadError: string | null
-  syncActivity: SyncActivitySummary
-  hasSyncedCourses: boolean
-}) {
-  if (isCanvasJobActive) {
-    return { title: 'Syncing', detail: 'Course content is updating in the background.', tone: 'neutral' as const }
-  }
-  if (isLoadingCourses) {
-    return { title: 'Refreshing', detail: 'Reading your available Canvas courses.', tone: 'neutral' as const }
-  }
-  if (courseLoadError) {
-    return { title: 'Needs sync', detail: 'Course list could not refresh. Try again from this page.', tone: 'warning' as const }
-  }
-  if (syncActivity.lastBackgroundSync?.tone === 'warning') {
-    return { title: 'Needs review', detail: 'The latest background sync had warnings or missed part of the refresh path.', tone: 'warning' as const }
-  }
-  if (hasSyncedCourses && !syncActivity.lastTaskRefresh) {
-    return { title: 'Needs attention', detail: 'No task refresh has run yet for this account.', tone: 'warning' as const }
-  }
-  if (hasSyncedCourses && !syncActivity.lastResourceRefresh) {
-    return { title: 'Needs attention', detail: 'No resource refresh has run yet for this account.', tone: 'warning' as const }
-  }
-  if (syncActivity.lastCanvasUpdate?.tone === 'warning') {
-    return { title: 'Needs review', detail: 'The latest Canvas update finished with warnings.', tone: 'warning' as const }
-  }
-  if (hasSyncedCourses) {
-    return { title: 'Updated', detail: 'Synced courses are ready for planning.', tone: 'success' as const }
-  }
-
-  return { title: 'Ready', detail: 'Choose courses to bring into Stay Focused.', tone: 'neutral' as const }
 }
 
 function courseProgressBadgeStyle(state: CourseSyncState): CSSProperties {

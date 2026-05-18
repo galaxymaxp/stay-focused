@@ -22,12 +22,18 @@ export interface QueueActivityRow {
 export interface ResourceRefreshActivityRow {
   status: string | null
   detail: string | null
+  warnings?: unknown
+  metadata?: Record<string, unknown> | null
+  course_id?: string | null
   created_at: string | null
 }
 
 export interface TaskRefreshActivityRow {
   status: string | null
   detail: string | null
+  warnings?: unknown
+  metadata?: Record<string, unknown> | null
+  course_id?: string | null
   created_at: string | null
 }
 
@@ -137,13 +143,61 @@ function toRefreshActivitySnapshot(row: ResourceRefreshActivityRow | TaskRefresh
 
   return {
     title: formatActivityTime(row.created_at),
-    detail: row.detail?.trim() || (source === 'task'
-      ? 'A task refresh ran for one of your synced courses.'
-      : 'A resource refresh ran for one of your synced courses.'),
+    detail: source === 'task'
+      ? buildTaskRefreshSnapshotDetail(row as TaskRefreshActivityRow)
+      : row.detail?.trim() || 'A resource refresh ran for one of your synced courses.',
     tone,
     occurredAt: row.created_at,
     successfulUpdate: row.status === 'completed' || row.status === 'warning',
   }
+}
+
+function buildTaskRefreshSnapshotDetail(row: TaskRefreshActivityRow) {
+  if (row.status === 'failed') {
+    return 'Task refresh could not finish. Try reconnecting Canvas or run Refresh Courses.'
+  }
+
+  const statsText = buildTaskRefreshStatsText(row.metadata ?? null)
+  if (row.status === 'warning') {
+    const warningText = buildStudentFriendlyTaskWarning(row.warnings)
+    return ['Task refresh completed with warnings.', statsText, warningText].filter(Boolean).join(' ')
+  }
+
+  return ['Task refresh completed cleanly.', statsText].filter(Boolean).join(' ')
+}
+
+function buildTaskRefreshStatsText(metadata: Record<string, unknown> | null) {
+  if (!metadata) return ''
+
+  const inserted = readFiniteNumber(metadata.tasksInserted)
+  const updated = readFiniteNumber(metadata.tasksUpdated)
+  if (inserted === null && updated === null) return ''
+
+  const newCount = inserted ?? 0
+  const updatedCount = updated ?? 0
+  if (newCount === 0 && updatedCount === 0) return 'No new task changes were found.'
+  return `Found ${newCount} new ${newCount === 1 ? 'task' : 'tasks'} and updated ${updatedCount}.`
+}
+
+function buildStudentFriendlyTaskWarning(warnings: unknown) {
+  const values = Array.isArray(warnings)
+    ? warnings.filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    : []
+  if (values.length === 0) return 'Some course updates need review.'
+
+  if (values.some((value) => /access token|token|unauthorized|forbidden|verify|reconnect|connection/i.test(value))) {
+    return 'One Canvas connection may need to be reconnected.'
+  }
+
+  if (values.some((value) => /course list|synced courses|load/i.test(value))) {
+    return 'Some Canvas courses could not be checked this time.'
+  }
+
+  return 'Some course updates need review.'
+}
+
+function readFiniteNumber(value: unknown) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
 
 function hasQueueWarnings(row: QueueActivityRow) {

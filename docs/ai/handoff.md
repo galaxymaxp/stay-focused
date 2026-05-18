@@ -5,6 +5,86 @@ Last Updated: 2026-05-18
 
 ---
 
+## Session Update - 2026-05-18 (Task Refresh Status Tracking)
+
+### What changed
+
+- Fixed task-refresh activity tracking so `/api/cron/task-refresh` now records an account-level task refresh activity row after each checked Canvas account, in addition to existing per-course rows.
+- Stored aggregate task refresh metadata for the account row: users/courses checked, assignments checked, tasks inserted/updated/skipped, and warning count.
+- Preserved the existing Canvas course-list fallback behavior; fallback warnings now also contribute to the visible task refresh warning state.
+- Updated the Sync Courses loader to select task/resource activity metadata and warnings, not just status/detail/timestamp.
+- Updated Sync Courses task refresh copy so completed, warning, and failed task refreshes are shown as student-facing states instead of raw per-course/debug detail.
+- Added a small shared status helper for Sync Courses so warning/failed/no-refresh states can be tested without importing the client page.
+- Added a minimal migration to grant authenticated reads on `task_refresh_activity` and reload PostgREST schema, matching the resource refresh activity table behavior.
+
+### Files touched
+
+- `app/api/cron/task-refresh/route.ts`
+- `app/sync/page.tsx`
+- `components/SyncCoursesPageClient.tsx`
+- `lib/sync-activity.ts`
+- `lib/sync-courses-status.ts`
+- `lib/task-refresh-activity.ts`
+- `supabase/migrations/20260518170000_grant_task_refresh_activity_select.sql`
+- `tests/canvas-task-refresh.test.ts`
+- `tests/sync-activity.test.ts`
+- `tests/sync-courses-status.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Task discovery/upsert was working, but Sync Courses could still show `No task refresh yet` because the activity table read path did not include metadata/warnings and the task activity migration was missing the same authenticated read grant/schema reload used by resource refresh activity. The cron also only wrote per-course rows, which made account-level status brittle. The fix keeps task upserts unchanged and adds a durable per-account latest-run summary.
+
+### Tests run
+
+- `npx tsx --test tests/sync-activity.test.ts`
+- `npx tsx --test tests/sync-courses-status.test.ts`
+- `npx tsx --test tests/canvas-task-refresh.test.ts`
+- `npm run typecheck`
+- `npm run lint` - passed with existing unused legacy Reviewer warnings in `lib/deep-learn-generation.ts`
+- `npm test -- queue`
+- `npm test -- task-output task-output-foundation`
+- `npm test -- canvas-content-resolution learn-resource-ui`
+- `npm test -- canvas-task-refresh sync-activity sync-courses-status`
+- `npm test -- pdf-extractor source-ocr-updates deep-learn-readiness deep-learn-generation canvas-content-resolution learn-resource-ui queue`
+- Optional scanned PDF validator skipped: `C:\Users\omgra\Downloads\1.1-Data Organization.pdf` was not present locally.
+
+### Verification result
+
+- Verified task refresh account activity records successful aggregate metadata.
+- Verified warning runs still count as a task refresh and produce student-friendly reconnect/course warning copy.
+- Verified failed task refresh rows are visible but do not count as successful Canvas updates.
+- Verified Sync Courses status no longer says `No task refresh has run yet for this account.` after recorded task refresh activity.
+- Verified existing Canvas assignment-backed task draft/update behavior still passes.
+- Manual production verification still needed after migration/build deployment:
+  1. Deploy migration/build.
+  2. Trigger `curl.exe -X GET "https://stay-focused-ten.vercel.app/api/cron/task-refresh" -H "Authorization: Bearer YOUR_CRON_SECRET"`.
+  3. Refresh Sync Courses.
+  4. Confirm `Last Task Refresh` shows a real timestamp instead of `No task refresh yet`.
+  5. Confirm Home/Tasks still show Assignment No. 3 without manual sync.
+
+### Known risks
+
+- Historical task refreshes before this change are not backfilled; the account-level row starts with the next task-refresh cron run.
+- The UI summarizes warnings intentionally; raw Canvas warning strings remain internal and are not surfaced directly.
+- Lint still reports pre-existing unused legacy Reviewer helper warnings in `lib/deep-learn-generation.ts`.
+- `test_output.txt` remains an untracked local file and was not included.
+
+### Blockers
+
+- No code blocker remains.
+- Production verification requires deploying the new migration/build and triggering the secured cron endpoint with the real `CRON_SECRET`.
+
+### Next recommended step
+
+Deploy the migration/build, trigger `/api/cron/task-refresh`, then refresh Sync Courses and confirm the `Last Task Refresh` card shows the current run timestamp plus completed/warning copy.
+
+### Suggested commit message
+
+fix task refresh status tracking
+
+---
+
 ## Session Update - 2026-05-18 (Automatic Task Refresh And Output Readiness)
 
 ### What changed

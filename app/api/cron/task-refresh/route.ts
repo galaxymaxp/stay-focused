@@ -2,7 +2,7 @@ import { type NextRequest, NextResponse } from 'next/server'
 import { refreshCanvasTaskMetadataForCourse } from '@/actions/canvas'
 import { getAssignments, getCourses, normalizeCanvasUrl } from '@/lib/canvas'
 import { getResourceRefreshCourseCandidateLimit, prioritizeResourceRefreshCourses } from '@/lib/resource-refresh-priority'
-import { buildTaskRefreshActivityDetail, recordTaskRefreshActivity } from '@/lib/task-refresh-activity'
+import { buildTaskRefreshActivityDetail, buildTaskRefreshRunActivity, recordTaskRefreshActivity } from '@/lib/task-refresh-activity'
 import { createSupabaseServiceRoleClient } from '@/lib/supabase-service'
 
 export const runtime = 'nodejs'
@@ -83,6 +83,15 @@ export async function GET(req: NextRequest) {
     if (summary.coursesChecked >= courseLimit) break
     if (!row.user_id || !row.canvas_api_url || !row.canvas_access_token) continue
     summary.usersChecked += 1
+    const userSummary = {
+      coursesChecked: 0,
+      assignmentsChecked: 0,
+      tasksInserted: 0,
+      tasksUpdated: 0,
+      tasksSkipped: 0,
+      failures: 0,
+      warnings: [] as string[],
+    }
 
     const normalizedCanvasUrl = normalizeCanvasUrl(row.canvas_api_url)
     let activeCanvasCourseIds = new Set<number>()
@@ -99,6 +108,7 @@ export async function GET(req: NextRequest) {
         userId: row.user_id,
         message: error instanceof Error ? error.message : String(error),
       })
+      userSummary.warnings.push('Could not load a Canvas course list; using locally synced courses.')
     }
 
     const { data: courseRows, error: courseError } = await supabase
@@ -112,6 +122,17 @@ export async function GET(req: NextRequest) {
 
     if (courseError) {
       summary.warnings.push('Could not load synced courses for one account.')
+      userSummary.warnings.push('Could not load synced courses for this account.')
+      await recordTaskRefreshActivity(buildTaskRefreshRunActivity({
+        userId: row.user_id,
+        coursesChecked: 0,
+        assignmentsChecked: 0,
+        tasksInserted: 0,
+        tasksUpdated: 0,
+        tasksSkipped: 0,
+        failures: 1,
+        warnings: userSummary.warnings,
+      }))
       continue
     }
 
@@ -138,6 +159,7 @@ export async function GET(req: NextRequest) {
       }
 
       summary.coursesChecked += 1
+      userSummary.coursesChecked += 1
       try {
         const assignments = await getAssignments(course.canvasCourseId, {
           url: normalizedCanvasUrl,
@@ -156,6 +178,11 @@ export async function GET(req: NextRequest) {
         summary.tasksUpdated += result.tasksUpdated
         summary.tasksSkipped += result.tasksSkipped
         summary.warnings.push(...result.warnings)
+        userSummary.assignmentsChecked += result.assignmentsChecked
+        userSummary.tasksInserted += result.tasksInserted
+        userSummary.tasksUpdated += result.tasksUpdated
+        userSummary.tasksSkipped += result.tasksSkipped
+        userSummary.warnings.push(...result.warnings)
         await recordTaskRefreshActivity({
           userId: row.user_id,
           courseId: course.id,
@@ -177,6 +204,8 @@ export async function GET(req: NextRequest) {
       } catch (error) {
         const warning = `${course.name}: ${error instanceof Error ? error.message : 'task refresh failed'}`
         summary.warnings.push(warning)
+        userSummary.failures += 1
+        userSummary.warnings.push(warning)
         await recordTaskRefreshActivity({
           userId: row.user_id,
           courseId: course.id,
@@ -186,6 +215,19 @@ export async function GET(req: NextRequest) {
           metadata: {},
         })
       }
+    }
+
+    if (userSummary.coursesChecked > 0 || userSummary.warnings.length > 0) {
+      await recordTaskRefreshActivity(buildTaskRefreshRunActivity({
+        userId: row.user_id,
+        coursesChecked: userSummary.coursesChecked,
+        assignmentsChecked: userSummary.assignmentsChecked,
+        tasksInserted: userSummary.tasksInserted,
+        tasksUpdated: userSummary.tasksUpdated,
+        tasksSkipped: userSummary.tasksSkipped,
+        failures: userSummary.failures,
+        warnings: userSummary.warnings,
+      }))
     }
   }
 

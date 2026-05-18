@@ -33,6 +33,10 @@ test('sync activity summary separates manual, background, and resource refresh t
       {
         status: 'completed',
         detail: 'Current Biology refreshed with 1 task change.',
+        metadata: {
+          tasksInserted: 1,
+          tasksUpdated: 0,
+        },
         created_at: '2026-05-13T22:15:00.000Z',
       },
     ],
@@ -42,7 +46,7 @@ test('sync activity summary separates manual, background, and resource refresh t
   assert.match(summary.lastBackgroundSync?.detail ?? '', /background sync finished with warnings/i)
   assert.equal(summary.lastBackgroundSync?.tone, 'warning')
   assert.match(summary.lastResourceRefresh?.detail ?? '', /refreshed with 3 source changes/i)
-  assert.match(summary.lastTaskRefresh?.detail ?? '', /1 task change/i)
+  assert.match(summary.lastTaskRefresh?.detail ?? '', /Found 1 new task and updated 0/i)
   assert.equal(summary.lastCanvasUpdate?.occurredAt, '2026-05-13T22:15:00.000Z')
 })
 
@@ -95,4 +99,82 @@ test('background sync summary still recognizes external cron jobs when mode is o
 
   assert.equal(summary.lastBackgroundSync?.occurredAt, '2026-05-13T05:58:47.000Z')
   assert.match(summary.lastBackgroundSync?.detail ?? '', /background sync finished cleanly/i)
+})
+
+test('task refresh summary uses recorded metadata for latest task refresh state', () => {
+  const summary = buildSyncActivitySummary({
+    queueRows: [],
+    resourceRefreshRows: [],
+    taskRefreshRows: [
+      {
+        status: 'completed',
+        detail: 'Synced courses refreshed with 19 task changes.',
+        warnings: [],
+        metadata: {
+          usersChecked: 1,
+          coursesChecked: 8,
+          assignmentsChecked: 21,
+          tasksInserted: 9,
+          tasksUpdated: 10,
+          tasksSkipped: 2,
+        },
+        course_id: null,
+        created_at: '2026-05-18T10:00:00.000Z',
+      },
+    ],
+  })
+
+  assert.equal(summary.lastTaskRefresh?.occurredAt, '2026-05-18T10:00:00.000Z')
+  assert.equal(summary.lastTaskRefresh?.tone, 'success')
+  assert.match(summary.lastTaskRefresh?.detail ?? '', /Task refresh completed cleanly/i)
+  assert.match(summary.lastTaskRefresh?.detail ?? '', /Found 9 new tasks and updated 10/i)
+  assert.equal(summary.lastCanvasUpdate?.occurredAt, '2026-05-18T10:00:00.000Z')
+})
+
+test('task refresh warnings still count as a latest Canvas update with student-friendly copy', () => {
+  const summary = buildSyncActivitySummary({
+    queueRows: [],
+    resourceRefreshRows: [],
+    taskRefreshRows: [
+      {
+        status: 'warning',
+        detail: 'Synced courses task refresh finished, but some items need review.',
+        warnings: ['CC19: Canvas could not verify that access token. Double-check it and try again.'],
+        metadata: {
+          tasksInserted: 9,
+          tasksUpdated: 10,
+        },
+        course_id: null,
+        created_at: '2026-05-18T10:00:00.000Z',
+      },
+    ],
+  })
+
+  assert.equal(summary.lastTaskRefresh?.tone, 'warning')
+  assert.equal(summary.lastTaskRefresh?.successfulUpdate, true)
+  assert.match(summary.lastTaskRefresh?.detail ?? '', /completed with warnings/i)
+  assert.match(summary.lastTaskRefresh?.detail ?? '', /One Canvas connection may need to be reconnected/i)
+  assert.equal(summary.lastCanvasUpdate?.occurredAt, '2026-05-18T10:00:00.000Z')
+})
+
+test('failed task refresh is visible but not counted as a successful Canvas update', () => {
+  const summary = buildSyncActivitySummary({
+    queueRows: [],
+    resourceRefreshRows: [],
+    taskRefreshRows: [
+      {
+        status: 'failed',
+        detail: 'Synced courses task refresh failed.',
+        warnings: ['Canvas failed.'],
+        metadata: {},
+        course_id: null,
+        created_at: '2026-05-18T10:00:00.000Z',
+      },
+    ],
+  })
+
+  assert.equal(summary.lastTaskRefresh?.tone, 'warning')
+  assert.equal(summary.lastTaskRefresh?.successfulUpdate, false)
+  assert.match(summary.lastTaskRefresh?.detail ?? '', /Task refresh could not finish/i)
+  assert.equal(summary.lastCanvasUpdate, null)
 })

@@ -5,6 +5,7 @@ import {
   hasCanvasTaskRefreshRowChanged,
   prepareCanvasTaskRefreshRow,
 } from '../lib/canvas-task-refresh'
+import { buildTaskRefreshRunActivity } from '../lib/task-refresh-activity'
 import type { CanvasAssignment } from '../lib/canvas'
 
 test('background task refresh builds stable Canvas task drafts from assignments', () => {
@@ -75,4 +76,40 @@ test('task refresh updates due dates while preserving manual completion', () => 
     estimatedMinutes: 20,
     canvasAssignmentId: 42,
   }, prepared), true)
+})
+
+test('task refresh cron records account-level successful activity metadata', () => {
+  const activity = buildTaskRefreshRunActivity({
+    userId: 'user-1',
+    coursesChecked: 8,
+    assignmentsChecked: 21,
+    tasksInserted: 9,
+    tasksUpdated: 10,
+    tasksSkipped: 2,
+    failures: 0,
+    warnings: [],
+  })
+
+  assert.equal(activity.courseId, null)
+  assert.equal(activity.status, 'completed')
+  assert.equal(activity.metadata.assignmentsChecked, 21)
+  assert.equal(activity.metadata.tasksInserted, 9)
+  assert.equal(activity.metadata.tasksUpdated, 10)
+})
+
+test('task refresh cron records warning activity without treating the run as missing', () => {
+  const activity = buildTaskRefreshRunActivity({
+    userId: 'user-1',
+    coursesChecked: 8,
+    assignmentsChecked: 21,
+    tasksInserted: 9,
+    tasksUpdated: 10,
+    tasksSkipped: 2,
+    failures: 1,
+    warnings: ['Canvas could not verify that access token.'],
+  })
+
+  assert.equal(activity.courseId, null)
+  assert.equal(activity.status, 'warning')
+  assert.equal(activity.metadata.warningsCount, 1)
 })

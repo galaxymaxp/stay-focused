@@ -145,13 +145,13 @@ export default async function SyncCoursesPage() {
           .limit(100),
         activityClient
           .from('resource_refresh_activity')
-          .select('status, detail, created_at')
+          .select('status, detail, warnings, metadata, course_id, created_at')
           .eq('user_id', user.id)
           .order('created_at', { ascending: false })
           .limit(50),
         activityClient
           .from('task_refresh_activity')
-          .select('status, detail, created_at')
+          .select('status, detail, warnings, metadata, course_id, created_at')
           .eq('user_id', user.id)
           .order('created_at', { ascending: false })
           .limit(50),
