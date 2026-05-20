@@ -11027,3 +11027,46 @@ The job result included:
 - `taskRefreshWarning: "Skipped during external cron to keep announcement sync responsive."`
 
 This confirms the lightweight external cron path works and avoids the previous `refreshing_resources` / `refreshing_tasks` hang.
+
+## Session Update - 2026-05-20 (Reviewer source-organization-first pipeline)
+
+### What changed
+- Refactored classic Reviewer generation to build an intermediate organized source profile before final Markdown reviewer generation.
+- Added source-organization helpers to normalize extracted text, split source into logical sections, detect candidate term anchors, and derive compact answer-bank/quiz-target seed metadata with stable section/term IDs.
+- Rewrote the classic Reviewer prompt to enforce a source-organization-first flow and required student-facing section order:
+  1) Pinned Source Overview
+  2) Exact Source Reviewer
+  3) Key Terms / Answer Bank
+  4) Likely Quiz Targets
+  5) Review Questions with answer key.
+- Added explicit prompt rules to prevent non-source invention, forbid extraction/debug/metadata leakage, and prevent empty placeholders when terms exist.
+- Added tests to verify prompt includes organized-source instructions and that metadata/debug lines are filtered from the organized source profile while retaining term/source anchors.
+
+### Files touched
+- `lib/deep-learn-generation.ts`
+- `tests/deep-learn-generation.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+Reviewer was previously fed near-raw source text and produced blob-like outputs with weak recovery of compact answer-bank and quiz-target material. The new intermediate organized-source layer ensures the selected source is structured first, then used as the generation backbone for exact-source reviewer output and future hover term-explanation mapping.
+
+### Tests run
+- `npm run typecheck`
+- `npm run lint`
+- `npm test -- deep-learn-generation deep-learn-readiness study-output-reviewer study-output-quiz-pack source-map`
+
+### Verification result
+Pending full command run completion.
+
+### Known risks
+- Term-anchor extraction currently uses deterministic capitalization/list heuristics and may under-capture uncommon lowercase domain terms in some sources.
+- UI now relies on reviewer Markdown structure from the prompt; further rendering polish for collapsible raw-source fallback may need a separate UI pass.
+
+### Blockers
+- None.
+
+### Next recommended step
+Run live Reviewer generation against known blob-like extracted sources to validate pinned-source readability and answer-bank/quiz-target recovery quality in product UI.
+
+### Suggested commit message
+refactor reviewer source organization
