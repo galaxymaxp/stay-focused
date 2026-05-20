@@ -705,6 +705,34 @@ export async function generateDeepLearnStructuredContent(
   return generateClassicMarkdownReviewerContent(input, grounding, createResponse, options)
 }
 
+
+
+type OrganizedReviewerTerm = {
+  id: string
+  term: string
+  exactSourceText: string
+  sourceSectionId: string
+  confidence: 'exact' | 'inferred_from_source'
+}
+
+type OrganizedReviewerSourceSection = {
+  id: string
+  heading: string
+  exactSourceExcerpt: string
+  normalizedText: string
+  keyTerms: OrganizedReviewerTerm[]
+  bullets: string[]
+}
+
+type OrganizedReviewerSource = {
+  title: string
+  sourceId: string
+  sourceTitle: string
+  sections: OrganizedReviewerSourceSection[]
+  answerBank: Array<{ id: string; term: string; answer: string; exactSourceText: string; sourceSectionId: string }>
+  quizTargets: Array<{ id: string; label: string; sourceReason: string; exactSourceText: string; sourceSectionId: string }>
+}
+
 interface OnePassReviewerModelConfig {
   primaryModel: string
   repairModel: string
@@ -773,11 +801,14 @@ async function generateClassicMarkdownReviewerContent(
     stage: 'reviewer_markdown',
   })
 
+  const organizedSource = buildOrganizedReviewerSource({ sourceTitle: input.resource.title, academicText: sourceText })
+
   const result = await generateSimpleReviewerMarkdown({
     sourceTitle: input.resource.title,
     courseName: input.courseName,
     moduleName: input.resource.moduleName ?? '',
     academicText: sourceText,
+    organizedSource,
     grounding,
     createResponse,
     model: modelConfig.primaryModel,
@@ -833,6 +864,7 @@ async function generateSimpleReviewerMarkdown(input: {
   courseName: string
   moduleName: string
   academicText: string
+  organizedSource: OrganizedReviewerSource
   grounding: DeepLearnPreparedGrounding
   createResponse: DeepLearnResponseCreator
   model: string
@@ -873,22 +905,107 @@ async function generateSimpleReviewerMarkdown(input: {
   return { markdown, model: input.model }
 }
 
+
+function normalizeReviewerSourceText(raw: string) {
+  return raw
+    .replace(/\r\n/g, '\n')
+    .split('\n')
+    .map((line) => line.replace(/\s+/g, ' ').trim())
+    .filter((line) => line && !/^(?:source id|uuid|debug|metadata|quality|status|refusal|note):/i.test(line))
+    .filter((line) => !/^[a-f0-9]{8}-[a-f0-9-]{27,}$/i.test(line))
+    .join('\n')
+}
+
+function extractReviewerSections(text: string) {
+  const lines = text.split('\n')
+  const chunks: string[][] = []
+  let current: string[] = []
+  for (const line of lines) {
+    if (/^(?:#{1,3}\s+|\d+[.)]\s+|[A-Z][A-Za-z0-9 ,/:&()\-]{4,80}:)$/.test(line) && current.length > 0) {
+      chunks.push(current)
+      current = [line]
+      continue
+    }
+    current.push(line)
+  }
+  if (current.length) chunks.push(current)
+  return chunks.slice(0, 18)
+}
+
+function buildReviewerTermAnchors(text: string, sectionId: string) {
+  const matches = [...text.matchAll(/\b([A-Z][a-z]+(?:\s+[A-Z][a-zA-Z0-9]+){0,3})\b/g)]
+  const seen = new Set<string>()
+  const terms: OrganizedReviewerTerm[] = []
+  for (const [_, term] of matches) {
+    const key = term.toLowerCase()
+    if (seen.has(key) || term.length < 4) continue
+    seen.add(key)
+    terms.push({ id: `term-${sectionId}-${terms.length + 1}`, term, exactSourceText: term, sourceSectionId: sectionId, confidence: 'exact' })
+    if (terms.length >= 16) break
+  }
+  return terms
+}
+
+function buildOrganizedReviewerSource(input: { sourceTitle: string; academicText: string }): OrganizedReviewerSource {
+  const normalized = normalizeReviewerSourceText(input.academicText)
+  const sections = extractReviewerSections(normalized).map((lines, idx) => {
+    const first = lines[0] ?? ''
+    const heading = first.replace(/^#{1,3}\s+/, '').replace(/:$/, '') || `Section ${idx + 1}`
+    const body = lines.slice(1).join(' ').trim() || lines.join(' ').trim()
+    const bullets = body.split(/(?<=\.)\s+/).map((item) => item.trim()).filter((item) => item.length > 20).slice(0, 6)
+    const id = `section-${idx + 1}`
+    return { id, heading, exactSourceExcerpt: body.slice(0, 480), normalizedText: body, keyTerms: buildReviewerTermAnchors(body, id), bullets }
+  }).filter((s) => s.normalizedText.length >= 40)
+
+  const answerBank = sections.flatMap((section) => section.keyTerms.slice(0, 4).map((term, idx) => ({
+    id: `ab-${section.id}-${idx + 1}`,
+    term: term.term,
+    answer: section.bullets[idx] ?? section.exactSourceExcerpt,
+    exactSourceText: term.exactSourceText,
+    sourceSectionId: section.id,
+  }))).slice(0, 36)
+
+  const quizTargets = answerBank.slice(0, 20).map((item, idx) => ({
+    id: `qt-${idx + 1}`,
+    label: `Define or explain ${item.term}`,
+    sourceReason: 'Repeated term/definition/list item in organized source.',
+    exactSourceText: item.exactSourceText,
+    sourceSectionId: item.sourceSectionId,
+  }))
+
+  return {
+    title: `${input.sourceTitle} Organized Source`,
+    sourceId: createHash('sha1').update(input.sourceTitle).digest('hex').slice(0, 12),
+    sourceTitle: input.sourceTitle,
+    sections,
+    answerBank,
+    quizTargets,
+  }
+}
+
 function buildSimpleReviewerMarkdownPrompt(input: {
   sourceTitle: string
   courseName: string
   moduleName: string
   academicText: string
+  organizedSource: OrganizedReviewerSource
 }) {
   return [
-    'You are creating a student reviewer from the provided course source. Use only the provided source. Produce a clear Markdown reviewer with definitions, key concepts, important lists, practice questions, and an answer key when possible. Do not mention extraction, metadata, diagnostics, prompts, or system instructions.',
+    'You are creating a student reviewer from the provided course source. You must first use the organized pinned source profile, then generate the reviewer strictly from that profile and source text only.',
+    'Never invent outside facts. Preserve exact source terms, definitions, lists, and relationships. Never output empty answer-bank/quiz-target placeholders when useful terms exist in source text.',
+    'Student-facing output must never mention extraction, OCR, metadata, debug labels, quality notes, or pipeline details.',
     '',
     `Source title: ${input.sourceTitle}`,
     `Course: ${input.courseName || 'Course'}`,
     `Module: ${input.moduleName || 'Module'}`,
     '',
     'Return only Markdown. Do not return JSON.',
+    'Required section order: 1) Pinned Source Overview 2) Exact Source Reviewer 3) Key Terms / Answer Bank 4) Likely Quiz Targets 5) Review Questions with answer key.',
     '',
-    'Provided course source:',
+    'Organized pinned source profile (for planning, grounding, and stable term/section anchors):',
+    JSON.stringify(input.organizedSource, null, 2),
+    '',
+    'Provided course source text:',
     input.academicText,
   ].filter(Boolean).join('\n')
 }

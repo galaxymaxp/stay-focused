@@ -2631,6 +2631,8 @@ test('meaningful academic source calls model and saves reviewerMarkdown in simpl
         assert.equal(request.schemaName, 'deep_learn_reviewer_classic_markdown')
         assert.equal(request.model, 'gpt-5.4-classic')
         assert.match(request.promptText, /You are creating a student reviewer/i)
+        assert.match(request.promptText, /Required section order:/i)
+        assert.match(request.promptText, /Organized pinned source profile/i)
         assert.match(request.promptText, /Return only Markdown/i)
         assert.doesNotMatch(request.promptText, /factCard|answerBank|Generate exactly|coverage-first/i)
         return textResponse(buildClassicReviewerMarkdown(fixture))
@@ -2656,6 +2658,28 @@ test('meaningful academic source calls model and saves reviewerMarkdown in simpl
   assert.equal(typeof summary?.sourceCharCount, 'number')
   assert.equal(summary?.sourceWasTruncated, false)
   assert.equal(summary?.savedReviewerMarkdown, true)
+})
+
+test('simple reviewer prompt strips metadata/debug lines from organized source profile', async () => {
+  const noisySource = [
+    'UUID: 123e4567-e89b-12d3-a456-426614174000',
+    'Debug: extraction trace',
+    'IT Security protects data from unauthorized access.',
+    'Confidentiality: Ensures only authorized users can access information.',
+  ].join('\n')
+
+  await generateDeepLearnStructuredContent(
+    createStructuredPromptInput(noisySource, 'Noisy Source.pdf'),
+    createStructuredPreparedGrounding(noisySource),
+    async (request) => {
+      assert.match(request.promptText, /Confidentiality/i)
+      assert.doesNotMatch(request.promptText, /Debug: extraction trace/i)
+      assert.doesNotMatch(request.promptText, /UUID:/i)
+      assert.match(request.promptText, /term-section-/i)
+      assert.match(request.promptText, /sourceSectionId/i)
+      return textResponse('## Pinned Source Overview\n\n- Ready')
+    },
+  )
 })
 
 test('Reviewer classic markdown covers SDLC Phase 1 through Phase 7', async () => {
@@ -3438,4 +3462,3 @@ function quizTargetItem(index: number) {
     relatedConcepts: [],
   }
 }
-
