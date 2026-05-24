@@ -131,6 +131,7 @@ test('resource refresh metadata path still creates resource extraction queue job
   assert.match(canvasSource, /queueResourceExtractionJobs\(\{[\s\S]*resources: resourcesNeedingPreparation/)
   assert.match(canvasSource, /shouldQueueCanvasResourceRefreshPreparation\(insertedResource\)/)
   assert.match(canvasSource, /shouldQueueCanvasResourceRefreshPreparation\(updatedResource\)/)
+  assert.match(canvasSource, /!hasCanvasResourceRefreshRowChanged[\s\S]*shouldQueueCanvasResourceRefreshPreparation\(existing\)[\s\S]*resourcesNeedingPreparation\.push\(existing\)/)
   assert.doesNotMatch(canvasSource, /refreshCanvasModuleResourceMetadataForCourse[\s\S]{0,6000}processPendingResourceExtractionJobs/)
   assert.doesNotMatch(canvasSource, /refreshCanvasModuleResourceMetadataForCourse[\s\S]{0,6000}processSourceOcrJob/)
 })

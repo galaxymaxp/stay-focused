@@ -2271,7 +2271,7 @@ async function processResourceExtractionJob(input: {
       return { started: true, status: 'completed' }
     }
 
-    const queuedOcrJobs = result.update.visualExtractionStatus === 'available'
+    const queuedOcrJobs = isScannedPdfOcrCandidate(updatedResource)
       ? await autoEnqueueSourceOcrJobs({
           userId: input.userId,
           moduleId: input.moduleId,

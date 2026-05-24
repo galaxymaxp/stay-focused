@@ -1,4 +1,5 @@
 import { getNormalizedModuleResourceSourceType } from '@/lib/module-resource-capability'
+import { classifyExtractedTextQuality } from '@/lib/extracted-text-quality'
 import type { ModuleResource } from '@/lib/types'
 
 const PROCESSABLE_TYPES = new Set(['pdf', 'pptx', 'docx', 'doc', 'text', 'markdown', 'csv', 'html', 'page', 'assignment', 'discussion', 'file', 'module_item'])
@@ -56,10 +57,26 @@ export function normalizeSourceProcessingResult(input: {
     }
   }
 
-  const cleanedText = input.extractedText?.trim() ?? ''
-  const cleanedPreview = input.extractedTextPreview?.trim() ?? ''
-  const readableLength = input.extractedCharCount > 0 ? input.extractedCharCount : cleanedText.length || cleanedPreview.length
-  const hasReadyText = readableLength >= READY_TEXT_THRESHOLD && Boolean(cleanedText || cleanedPreview)
+  const textQuality = classifyExtractedTextQuality({
+    text: input.extractedText,
+    title: input.resource.title,
+    minMeaningfulChars: READY_TEXT_THRESHOLD,
+  })
+  const previewQuality = classifyExtractedTextQuality({
+    text: input.extractedTextPreview,
+    title: input.resource.title,
+    minMeaningfulChars: READY_TEXT_THRESHOLD,
+  })
+  const bestQuality = textQuality.usable
+    ? textQuality
+    : previewQuality.usable
+      ? previewQuality
+      : textQuality.candidateCharCount >= previewQuality.candidateCharCount
+        ? textQuality
+        : previewQuality
+  const cleanedText = bestQuality.candidateText.trim()
+  const readableLength = bestQuality.candidateCharCount
+  const hasReadyText = bestQuality.usable && readableLength >= READY_TEXT_THRESHOLD && Boolean(cleanedText)
 
   if (!hasReadyText) {
     return {
@@ -72,7 +89,8 @@ export function normalizeSourceProcessingResult(input: {
       metadata: {
         ...input.metadata,
         lastProcessingOutcome: 'empty',
-        lastProcessingReason: 'No readable text found.',
+        lastProcessingReason: bestQuality.reason,
+        extractedTextQuality: bestQuality.quality,
       },
       outcome: 'empty',
     }
@@ -81,14 +99,15 @@ export function normalizeSourceProcessingResult(input: {
   return {
     ...input,
     extractionStatus: 'completed',
-    extractedText: cleanedText || cleanedPreview,
-    extractedTextPreview: (cleanedPreview || cleanedText).slice(0, 420),
+    extractedText: cleanedText,
+    extractedTextPreview: cleanedText.slice(0, 420),
     extractedCharCount: readableLength,
     extractionError: null,
     metadata: {
       ...input.metadata,
       lastProcessingOutcome: 'ready',
       lastProcessingReadableCharCount: readableLength,
+      extractedTextQuality: bestQuality.quality,
     },
     outcome: 'ready',
   }

@@ -317,6 +317,32 @@ test('empty extraction becomes empty_or_metadata_only', () => {
   assert.match(readiness.message, /could not find readable text/i)
 })
 
+test('metadata and refusal extraction text are blocked even when long', () => {
+  const metadataText = [
+    'Document Title: 1.1-Data Organization.pdf',
+    'Resource ID: 550e8400-e29b-41d4-a716-446655440000',
+    'Extraction Quality: too short',
+    "I'm unable to transcribe text from images or scanned documents at this time.",
+    'Quality Note: OCR confidence low',
+  ].join('\n')
+
+  const result = normalizeSourceProcessingResult({
+    resource: createResource({ title: '1.1-Data Organization.pdf' }),
+    extractionStatus: 'completed',
+    extractedText: metadataText,
+    extractedTextPreview: metadataText,
+    extractedCharCount: metadataText.length,
+    extractionError: null,
+    metadata: {},
+  })
+
+  assert.equal(result.outcome, 'empty')
+  assert.equal(result.extractionStatus, 'empty')
+  assert.equal(result.extractedText, null)
+  assert.equal(result.extractedCharCount, 0)
+  assert.equal(result.metadata.extractedTextQuality, 'refusal')
+})
+
 test('pending or missing extraction status stays needs_processing for supported files', () => {
   const pendingReadiness = normalizeSourceReadiness({
     resource: createLearnResource({ extractionStatus: 'pending', sourceUrl: 'https://canvas.example/files/1/download', extension: 'pptx' }),

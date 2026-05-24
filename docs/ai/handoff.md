@@ -5,6 +5,75 @@ Last Updated: 2026-05-25
 
 ---
 
+## Session Update - 2026-05-25 (Harden Resource Extraction Queue Readiness)
+
+### What changed
+
+- Kept `/api/cron/resource-refresh` metadata-and-queue-only; no extraction/OCR worker was added to the cron route.
+- Hardened resource refresh queuing so unchanged but still unprocessed Canvas resources are re-considered for `resource_extraction` jobs instead of being skipped only because metadata was unchanged.
+- Tightened normal source processing so metadata, UUID/debug labels, file-title-only text, boilerplate, and OCR refusal text cannot become completed extracted text just because the text is long enough.
+- Changed the extraction worker's OCR handoff to evaluate the persisted updated resource with `isScannedPdfOcrCandidate`, so weak/empty/scanned PDF outcomes queue `source_ocr` after normal extraction.
+- Preserved the existing refresh identity behavior: extracted/OCR text remains when Canvas file identity is unchanged and is cleared when the Canvas file identity changes.
+
+### Files touched
+
+- `actions/canvas.ts`
+- `actions/queue-jobs.ts`
+- `lib/source-processing.ts`
+- `tests/canvas-resource-refresh.test.ts`
+- `tests/queue.test.ts`
+- `tests/source-repair.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Phase 2 needed the post-refresh preparation path to reliably move metadata-only Canvas resources into normal extraction, OCR only after weak/scanned extraction, and Deep Learn readiness only after meaningful academic text exists. The previous path could skip unchanged metadata-only resources during refresh and trusted raw extraction character count too much.
+
+### Current product direction
+
+Stay Focused remains schedule-first over Canvas. Resource refresh should stay fast and queue-only, while background preparation makes source text ready for Deep Learn without exposing technical extraction/OCR complexity as the student's main workflow.
+
+### Tests run
+
+- `git status --short`: clean before editing.
+- `npm --version`: failed because `npm` is not available on PATH in this shell.
+- Direct typecheck equivalent: bundled Node running `node_modules/typescript/bin/tsc --noEmit`: passed.
+- Direct lint equivalent: bundled Node running `node_modules/eslint/bin/eslint.js`: passed with 4 existing unused Reviewer warnings in `lib/deep-learn-generation.ts`.
+- Focused direct tests with bundled Node + `tsx`: `tests/canvas-resource-refresh.test.ts tests/source-repair.test.ts tests/source-ocr-updates.test.ts tests/deep-learn-readiness.test.ts tests/queue.test.ts`: passed, 118/118 tests.
+- Requested relevant direct tests with bundled Node + `tsx`: `tests/canvas-resource-refresh.test.ts tests/source-ocr-updates.test.ts tests/deep-learn-readiness.test.ts tests/queue.test.ts tests/pdf-extractor.test.ts tests/canvas-content-resolution.test.ts tests/learn-resource-ui.test.ts`: passed, 127/127 tests.
+- `git diff --check`: passed with existing CRLF normalization warnings only.
+- Optional scanned PDF validator skipped: `C:\Users\omgra\Downloads\1.1-Data Organization.pdf` was not present locally.
+
+### Verification result
+
+- Verified resource refresh still has no inline extraction/OCR worker, no `after()`, and no `processPendingResourceExtractionJobs` call.
+- Verified new/metadata-only resources with source URLs are queued for extraction and unchanged pending resources remain eligible for queueing.
+- Verified unchanged Canvas file identity preserves extracted/OCR text and changed identity clears it.
+- Verified normal extraction blocks metadata/refusal/debug-only content from becoming ready.
+- Verified OCR completion mirrors meaningful text into normal extracted fields and refusal/metadata OCR remains blocked.
+- Verified Deep Learn readiness unlocks only when meaningful extracted/OCR text exists.
+
+### Known risks
+
+- `npm`/`npx` are still unavailable on PATH in this shell, so verification used direct bundled Node invocations instead of `npm run ...`.
+- The repo's `npm test -- <names>` behavior is still known to expand broadly and may hit the unrelated Windows path-encoding `canvas-digest` issue when npm is available.
+- Lint still reports pre-existing unused Reviewer helper warnings only.
+
+### Blockers
+
+- No Phase 2 code blocker remains.
+- Local command blocker: `npm` is unavailable on PATH.
+
+### Next recommended step
+
+Deploy and run a live Canvas resource refresh on a course with a newly discovered scanned PDF; confirm the resource shows Preparing, then Scanning if normal extraction is weak/image-only, then Ready only after meaningful OCR text is mirrored into extracted text.
+
+### Suggested commit message
+
+`harden resource extraction queue readiness`
+
+---
+
 ## Session Update - 2026-05-25 (Verify Resource Refresh Metadata Boundary)
 
 ### What changed

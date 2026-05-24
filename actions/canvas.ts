@@ -595,6 +595,9 @@ export async function refreshCanvasModuleResourceMetadataForCourse(input: {
     }
 
     if (!hasCanvasResourceRefreshRowChanged(toExistingCanvasResourceSnapshot(existing), prepared.row)) {
+      if (shouldQueueCanvasResourceRefreshPreparation(existing)) {
+        resourcesNeedingPreparation.push(existing)
+      }
       skipped += 1
       continue
     }

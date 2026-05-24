@@ -399,7 +399,7 @@ test('daily cost queue guard enforces OCR user and course caps', () => {
 
 test('resource extraction retries normal source reprocessing before OCR fallback queueing', () => {
   const source = readFileSync('actions/queue-jobs.ts', 'utf8')
-  assert.match(source, /const result = await reprocessStoredModuleResource\(resource,[\s\S]*const queuedOcrJobs = result\.update\.visualExtractionStatus === 'available'/)
+  assert.match(source, /const result = await reprocessStoredModuleResource\(resource,[\s\S]*const queuedOcrJobs = isScannedPdfOcrCandidate\(updatedResource\)/)
 })
 
 test('learn generation queue uses classic Markdown Reviewer progress and metadata', () => {
