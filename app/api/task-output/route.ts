@@ -5,6 +5,7 @@ import {
   buildTaskOutputFallback,
   buildTaskOutputRequest,
   buildTaskOutputUserPrompt,
+  classifyTaskOutputSourceMode,
   detectTaskOutputFormat,
   isTaskOutputContent,
   normalizeTaskOutputModelResponse,
@@ -69,6 +70,12 @@ function normalizeOutputType(value: unknown): TaskOutputTargetType | null {
     : null
 }
 
+function normalizeSourceMode(value: unknown) {
+  return value === 'course_grounded' || value === 'general_research_labeled' || value === 'source_limited_scaffold'
+    ? value
+    : null
+}
+
 function readLegacyContext(body: Record<string, unknown>): TaskDraftContext | null {
   const taskId = normalizeString(body.taskId, 120) ?? null
   const moduleId = normalizeString(body.moduleId, 120) ?? null
@@ -114,6 +121,9 @@ function readTaskOutputRequest(body: unknown): TaskOutputRequest | null {
     const instructions = normalizeBlockString(body.instructions, 6000)
     const sourceKey = normalizeString(body.sourceKey, 400)
     if (!taskId || !title || !instructions || !sourceKey) return null
+    const requirements = normalizeStringList(body.requirements, 8, 220)
+    const selectedContext = normalizeStringList(body.selectedContext, 6, 800)
+    const groundingStatus = body.groundingStatus === 'limited' ? 'limited' : 'grounded'
 
     return {
       taskId,
@@ -123,16 +133,26 @@ function readTaskOutputRequest(body: unknown): TaskOutputRequest | null {
       ...(normalizeString(body.dueDate, 80) ? { dueDate: normalizeString(body.dueDate, 80) } : {}),
       ...(normalizeString(body.taskType, 60) ? { taskType: normalizeString(body.taskType, 60) } : {}),
       instructions,
-      requirements: normalizeStringList(body.requirements, 8, 220),
+      requirements,
       sourceKey,
       preset,
       outputType,
-      selectedContext: normalizeStringList(body.selectedContext, 6, 800),
-      groundingStatus: body.groundingStatus === 'limited' ? 'limited' : 'grounded',
+      selectedContext,
+      groundingStatus,
+      sourceMode: normalizeSourceMode(body.sourceMode)
+        ?? classifyTaskOutputSourceMode({
+          title,
+          instructions,
+          requirements,
+          selectedContext,
+          groundingStatus,
+          preset,
+          outputType,
+        }),
       detectedFormat: detectTaskOutputFormat({
         title,
         instructions,
-        requirements: normalizeStringList(body.requirements, 8, 220),
+        requirements,
         preset,
         outputType,
       }),
@@ -194,7 +214,12 @@ export async function POST(req: NextRequest) {
 
   const fallback = buildTaskOutputFallback(requestBody)
   const generationMode = classifyTaskOutputGenerationMode(requestBody)
-  if (previousTaskOutput && generationMode === 'refinement_needs_facts' && (previousTaskOutput.readinessStatus ?? 'ready') !== 'ready') {
+  if (
+    previousTaskOutput
+    && generationMode === 'refinement_needs_facts'
+    && requestBody.sourceMode !== 'general_research_labeled'
+    && (previousTaskOutput.readinessStatus ?? 'ready') !== 'ready'
+  ) {
     const output = normalizeTaskOutputModelResponse({
       title: previousTaskOutput.title,
       summary: previousTaskOutput.summary,
@@ -215,7 +240,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, output, cacheStatus: 'miss' as const })
   }
 
-  if (requestBody.groundingStatus === 'limited') {
+  if (requestBody.sourceMode === 'source_limited_scaffold') {
     return NextResponse.json({ ok: true, output: fallback, cacheStatus: 'miss' as const })
   }
 

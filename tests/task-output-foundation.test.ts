@@ -4,6 +4,7 @@ import {
   buildTaskOutputFallback,
   buildTaskOutputRequest,
   buildTaskOutputUserPrompt,
+  classifyTaskOutputSourceMode,
   detectTaskOutputFormat,
   evaluateTaskOutputReadiness,
   normalizeTaskOutputModelResponse,
@@ -43,6 +44,7 @@ test('task output request stays grounded in task instructions and readable selec
   assert.equal(request.preset, 'report')
   assert.equal(request.outputType, 'pdf')
   assert.equal(request.groundingStatus, 'grounded')
+  assert.equal(request.sourceMode, 'course_grounded')
   assert.ok(request.instructions.includes('two-page report'))
   assert.ok(request.selectedContext.some((item) => item.includes('Evaporation changes liquid water into vapor.')))
   assert.ok(request.selectedContext.some((item) => item.includes('Precipitation returns water to the surface')))
@@ -79,6 +81,7 @@ test('short-answer task output is grounded by actionable prompt and answers dire
   })
 
   assert.equal(request.groundingStatus, 'grounded')
+  assert.equal(request.sourceMode, 'course_grounded')
   assert.equal(request.detectedFormat, 'short_answer')
 
   const fallback = buildTaskOutputFallback(request)
@@ -312,7 +315,7 @@ test('outline-only output is saved but not marked ready', () => {
   assert.equal(output.readinessStatus, 'draft_outline_only')
 })
 
-test('research-heavy task with no factual source becomes Needs research', () => {
+test('research assignment with weak course context uses general research mode and can produce a completed report', () => {
   const request = buildTaskOutputRequest({
     taskId: 'task-research',
     taskTitle: 'Assignment No. 3/Research: Top 10',
@@ -330,20 +333,114 @@ test('research-heavy task with no factual source becomes Needs research', () => 
     outputType: 'docx',
   })
 
-  const readiness = evaluateTaskOutputReadiness({
-    request,
-    previewContent: [
-      'Research-ready draft',
-      '',
-      'Selection criteria: impact, spread, technical significance, and relevance within the past decade.',
-      'Research fields: name, year, threat type, attack method, affected systems, impact, mitigation, and citation.',
-      'Recommended source categories: government advisories, vendor threat reports, academic or security research, and incident writeups.',
-      'Citation checklist: collect author or organization, publication date, title, URL, and access date for each source.',
-    ].join('\n'),
+  assert.equal(request.sourceMode, 'general_research_labeled')
+
+  const report = buildCompletedGeneralResearchReport()
+  const output = normalizeTaskOutputModelResponse({
+    title: 'Top 10 Malware, Viruses, and Security Threats Report',
+    summary: 'Completed report prepared with general/background research labeling.',
+    previewMode: 'rich_text',
+    previewContent: report,
+    stylesheet: null,
+    script: null,
+    groundingNote: 'General/background research was used because course-provided source content was insufficient.',
+    limitationNote: 'General/background references should be verified before final submission.',
+    warnings: ['Course-provided source content was insufficient, so this report uses labeled general/background research.'],
+    requirementsUsed: request.requirements,
+    selectedContextUsed: [],
+  }, request, null)
+
+  assert.equal(output.sourceMode, 'general_research_labeled')
+  assert.equal(output.readinessStatus, 'ready')
+  assert.match(output.previewContent, /General\/background research note/i)
+  assert.match(output.previewContent, /Threat summary table/i)
+  assert.match(output.previewContent, /10\. Mirai/i)
+  assert.doesNotMatch(output.previewContent, /research needed|add source|fill in|to be completed after research|____/i)
+})
+
+test('course-grounded assignment with enough source context stays course grounded', () => {
+  const source = Array.from({ length: 8 }, () => [
+    'Network segmentation limits lateral movement by separating sensitive systems from general user traffic.',
+    'Least privilege reduces account misuse by giving users only the access needed for assigned duties.',
+    'Incident response plans define detection, containment, eradication, recovery, and lessons learned steps.',
+  ].join(' ')).join('\n')
+  const request = buildTaskOutputRequest({
+    taskId: 'task-course-grounded',
+    taskTitle: 'Security Controls Analysis',
+    taskDetails: 'Analyze the module reading and explain how three security controls reduce organizational risk.',
+    deadline: null,
+    priority: 'medium',
+    courseName: 'IT Security',
+    moduleTitle: 'Security Controls',
+    resourceSnippet: source,
+    sourceText: source,
+    sourceNote: null,
+    moduleSummary: null,
+  }, {
+    preset: 'report',
+    outputType: 'docx',
   })
 
-  assert.equal(readiness.status, 'needs_research')
-  assert.equal(readiness.label, 'Needs research')
+  assert.equal(request.groundingStatus, 'grounded')
+  assert.equal(request.sourceMode, 'course_grounded')
+})
+
+test('non-research assignment with insufficient context uses source-limited scaffold mode', () => {
+  const request = buildTaskOutputRequest({
+    taskId: 'task-source-limited',
+    taskTitle: 'Module Reading Response',
+    taskDetails: 'Answer using the module reading and course notes: What is the author\'s main argument?',
+    deadline: null,
+    priority: 'medium',
+    courseName: 'Reading Seminar',
+    moduleTitle: 'Module 2',
+    resourceSnippet: null,
+    sourceText: null,
+    sourceNote: null,
+    moduleSummary: null,
+  }, {
+    preset: 'report',
+    outputType: 'docx',
+  })
+
+  assert.equal(request.groundingStatus, 'grounded')
+  assert.equal(request.sourceMode, 'source_limited_scaffold')
+})
+
+test('general research report needs honest labeling and cannot fake course-provided sources', () => {
+  const request = {
+    ...buildTaskOutputRequest({
+      taskId: 'task-fake-course-source',
+      taskTitle: 'Research Malware Trends',
+      taskDetails: 'Research and analyze malware trends with references.',
+      deadline: null,
+      priority: 'high' as const,
+      courseName: 'IT Security',
+      moduleTitle: 'Threats',
+      resourceSnippet: null,
+      sourceText: null,
+      sourceNote: null,
+      moduleSummary: null,
+    }, {
+      preset: 'report',
+      outputType: 'docx',
+    }),
+    sourceMode: 'general_research_labeled' as const,
+  }
+
+  const missingLabel = evaluateTaskOutputReadiness({
+    request,
+    previewContent: 'This completed malware report explains ransomware, worms, botnets, phishing, credential theft, supply chain attacks, destructive malware, banking Trojans, spyware, and cryptojacking with analysis, recommendations, and references.',
+  })
+  assert.equal(missingLabel.ready, false)
+  assert.ok(missingLabel.reasons.includes('missing_general_research_label'))
+
+  const fakeCourseSource = evaluateTaskOutputReadiness({
+    request,
+    previewContent: `${buildCompletedGeneralResearchReport()}\n\nThese are course-provided sources from the selected course sources.`,
+  })
+  assert.equal(fakeCourseSource.ready, false)
+  assert.ok(fakeCourseSource.reasons.includes('fake_course_source_claim'))
 })
 
 test('external sources required and completed after research output becomes Needs research', () => {
@@ -586,6 +683,7 @@ test('weak task-output grounding falls back to scaffold-only export bundle', () 
   })
 
   assert.equal(request.groundingStatus, 'limited')
+  assert.equal(request.sourceMode, 'source_limited_scaffold')
 
   const fallback = buildTaskOutputFallback(request)
   assert.equal(fallback.version, 'task-output-v1')
@@ -633,6 +731,7 @@ test('task output HTML exports stay deterministic and revision history appends n
     requirements: ['Add a hero section'],
     selectedContext: ['Old context'],
     groundingStatus: 'grounded',
+    sourceMode: 'course_grounded',
     groundingNote: 'Old note',
     limitationNote: null,
     warnings: [],
@@ -672,6 +771,18 @@ test('task output HTML exports stay deterministic and revision history appends n
   assert.equal(normalized.revisionHistory[1]?.label, 'Initial generation')
 })
 
+test('source mode classifier routes weak research deliverables to general research mode', () => {
+  assert.equal(classifyTaskOutputSourceMode({
+    title: 'Top 10 Technology Threats',
+    instructions: 'Research and compare the top 10 technology threats in a report with references.',
+    requirements: [],
+    selectedContext: [],
+    groundingStatus: 'limited',
+    preset: 'report',
+    outputType: 'docx',
+  }), 'general_research_labeled')
+})
+
 function createResource(title: string, text: string): ModuleResource {
   return {
     id: title.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
@@ -698,4 +809,75 @@ function createResource(title: string, text: string): ModuleResource {
     createdAt: '2026-05-18T00:00:00.000Z',
     updatedAt: '2026-05-18T00:00:00.000Z',
   } as unknown as ModuleResource
+}
+
+function buildCompletedGeneralResearchReport() {
+  return [
+    'Top 10 Malware, Viruses, and Security Threats from the Past Decade',
+    '',
+    'General/background research note',
+    'Canvas/source material details were insufficient for this assignment, so this completed report uses cautious general/background research knowledge. References below are labeled as general/background references to verify before submission, not as selected course evidence.',
+    '',
+    'Introduction',
+    'The past decade of security threats shows a shift from single destructive viruses toward financially motivated ransomware, credential theft, botnets, supply-chain compromise, and large-scale exploitation of internet-facing systems. These threats matter because they combine technical weaknesses with human, organizational, and recovery failures.',
+    '',
+    'Threat summary table',
+    '| Rank | Threat | Main category | Why it matters |',
+    '| --- | --- | --- | --- |',
+    '| 1 | WannaCry | Ransomware worm | Rapid global spread and disruption of hospitals and public services |',
+    '| 2 | NotPetya | Destructive malware | Wiper-like damage disguised as ransomware |',
+    '| 3 | SolarWinds compromise | Supply-chain attack | Trusted software updates became an intrusion path |',
+    '| 4 | Log4Shell exploitation | Software vulnerability exploitation | A common logging library exposed many systems |',
+    '| 5 | Emotet | Malware delivery botnet | Enabled credential theft and follow-on ransomware |',
+    '| 6 | Ryuk | Targeted ransomware | Focused on high-value organizational disruption |',
+    '| 7 | TrickBot | Banking Trojan and loader | Supported credential theft and ransomware operations |',
+    '| 8 | Colonial Pipeline ransomware incident | Ransomware impact case | Showed operational and public infrastructure consequences |',
+    '| 9 | Pegasus spyware | Mobile spyware | Highlighted risks to mobile privacy and targeted surveillance |',
+    '| 10 | Mirai | IoT botnet | Used insecure connected devices for large denial-of-service attacks |',
+    '',
+    '1. WannaCry',
+    'WannaCry is widely discussed as a ransomware worm because it combined file encryption with worm-like propagation. Its importance is that patching, network segmentation, and backup readiness became visible as basic operational controls.',
+    '',
+    '2. NotPetya',
+    'NotPetya appeared similar to ransomware but caused destructive loss at scale. It is significant because recovery planning and business continuity can matter as much as prevention.',
+    '',
+    '3. SolarWinds compromise',
+    'The SolarWinds incident represents a supply-chain compromise in which trusted software distribution became an attack path. It shows why vendor risk, monitoring, and least privilege matter.',
+    '',
+    '4. Log4Shell exploitation',
+    'Log4Shell showed how a widely used software component can create broad exposure across many organizations. It highlights asset inventory, dependency management, and rapid patching.',
+    '',
+    '5. Emotet',
+    'Emotet functioned as a malware platform used for delivery and follow-on compromise. It matters because phishing, credentials, and modular malware ecosystems often connect.',
+    '',
+    '6. Ryuk',
+    'Ryuk is associated with targeted ransomware operations against organizations. It shows how attackers can combine access, lateral movement, and pressure on recovery.',
+    '',
+    '7. TrickBot',
+    'TrickBot is commonly discussed as a banking Trojan and loader. It matters because credential theft can become the entry point for larger incidents.',
+    '',
+    '8. Colonial Pipeline ransomware incident',
+    'This ransomware case is important because a cyber incident affected operations and public confidence. It connects cybersecurity with continuity planning and executive decision-making.',
+    '',
+    '9. Pegasus spyware',
+    'Pegasus is associated with highly targeted mobile spyware. It shows that endpoint security includes mobile devices, privacy risk, and protection for high-risk users.',
+    '',
+    '10. Mirai',
+    'Mirai used insecure Internet of Things devices to build a botnet. It demonstrates why default passwords, device management, and network visibility matter.',
+    '',
+    'Overall analysis',
+    'The common pattern is that modern threats exploit both technical and organizational weaknesses. Ransomware depends on poor recovery posture, supply-chain attacks exploit trust, botnets exploit unmanaged devices, and spyware exploits endpoints that users carry every day.',
+    '',
+    'Lessons learned',
+    'Organizations should maintain patching, backups, network segmentation, identity protection, vendor review, monitoring, and incident response practice. Students should also notice that cybersecurity is not only a technical issue; it includes policy, people, continuity, and risk decisions.',
+    '',
+    'Recommendations',
+    'Use multi-factor authentication, maintain tested offline backups, patch critical systems quickly, monitor endpoints and networks, train users against phishing, segment high-value systems, and prepare an incident response plan.',
+    '',
+    'Conclusion',
+    'The most infamous threats from the past decade show that security failures can spread quickly and create real-world disruption. A strong defense combines prevention, detection, response, and recovery.',
+    '',
+    'References',
+    'General/background references to verify before submission: Cybersecurity and Infrastructure Security Agency advisories, Microsoft security reports, Europol cybercrime reports, MITRE ATT&CK technique summaries, and major vendor threat intelligence reports. Exact URLs, publication dates, and APA formatting should be verified before final submission because no exact instructor source list was surfaced.',
+  ].join('\n')
 }

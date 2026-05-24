@@ -34,7 +34,9 @@ export function StudyOutputTaskOutputPage({
   const activityExportHtml = printableHtml?.includes('activity-submission') ? printableHtml : null
   const readinessStatus = taskOutput.readinessStatus ?? 'ready'
   const groundingLabel = readinessStatus === 'ready'
-    ? (taskOutput.groundingStatus === 'limited' ? 'Limited grounding' : 'Grounded output')
+    ? (taskOutput.sourceMode === 'general_research_labeled'
+      ? 'General research'
+      : taskOutput.groundingStatus === 'limited' ? 'Limited grounding' : 'Grounded output')
     : readinessStatus === 'needs_research'
       ? 'Research needed'
       : readinessStatus === 'draft_outline_only'

@@ -5,6 +5,78 @@ Last Updated: 2026-05-25
 
 ---
 
+## Session Update - 2026-05-25 (Research Capable Task Output Modes)
+
+### What changed
+
+- Added explicit Task Output source modes:
+  - `course_grounded` for assignments with enough relevant course/module/source text.
+  - `general_research_labeled` for research-style deliverables when course source context is insufficient.
+  - `source_limited_scaffold` for tasks that still cannot be completed safely.
+- Updated `/api/task-output` so limited course/source context no longer automatically returns a scaffold when the assignment clearly asks for research; those requests now reach the full Task Output model in `general_research_labeled` mode.
+- Reworked the Task Output prompt contract to require completed deliverables first in general research mode, while clearly labeling general/background knowledge and avoiding fake course-provided source claims.
+- Updated readiness evaluation so completed general/background research reports can be marked ready when honestly labeled, while placeholder reports, missing labels, and fake course-source claims remain blocked.
+- Added a small UI label for ready general research task outputs.
+
+### Files touched
+
+- `app/api/task-output/route.ts`
+- `components/StudyOutputTaskOutputPage.tsx`
+- `lib/task-output.ts`
+- `lib/types.ts`
+- `tests/task-output-foundation.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Task Output was too conservative for assignments whose actual instructions require external/general research. The previous flow treated weak course source context as a reason to return scaffolds, even for deliverables like a Top 10 malware report where the assignment itself asks the student to investigate and produce a completed report.
+
+### Current product direction
+
+Stay Focused remains schedule-first over Canvas. Task Output should help students complete scheduled work honestly: course-grounded when course sources exist, general/background research when the assignment asks for it and course sources are insufficient, and scaffold-only only when completion would be unsafe.
+
+### Tests run
+
+- `git status --short`: clean before editing.
+- `npm run typecheck`: blocked because `npm` is not available on PATH.
+- `npm run lint`: blocked because `npm` is not available on PATH.
+- `npm test -- task-output task-output-foundation task-output-save`: blocked because `npm` is not available on PATH.
+- Direct typecheck equivalent: bundled Node running `node_modules/typescript/bin/tsc --noEmit`: passed.
+- Direct lint equivalent: bundled Node running `node_modules/eslint/bin/eslint.js`: passed with 4 existing unused Reviewer warnings in `lib/deep-learn-generation.ts`.
+- Direct relevant tests with bundled Node + `tsx`: `tests/task-output-foundation.test.ts tests/task-output-save.test.ts tests/study-output-print.test.ts`: passed, 31/31 tests.
+- `git diff --check`: passed with existing CRLF normalization warnings only.
+
+### Verification result
+
+- Verified research assignments with weak course context use `general_research_labeled` and can save a completed report as ready when it contains honest general/background labeling.
+- Verified course-grounded assignments with enough source text stay `course_grounded`.
+- Verified non-research/course-source-specific assignments with insufficient source context use `source_limited_scaffold`.
+- Verified placeholder-heavy research outputs still remain non-ready.
+- Verified general research output must include honest labeling and cannot claim fake course-provided sources.
+- Verified saved Task Output rendering/print tests still pass.
+
+### Known risks
+
+- General research mode depends on the model's background knowledge and should still be manually QA'd for high-stakes or citation-heavy assignments.
+- Reference sections intentionally avoid pretending exact retrieval data exists; students should verify URLs, publication dates, and APA details before final submission.
+- `npm`/`npx` remain unavailable on PATH in this shell, so verification used direct bundled Node invocations.
+- Lint still reports pre-existing unused Reviewer helper warnings only.
+
+### Blockers
+
+- No Phase 3 code blocker remains.
+- Local command blocker: `npm` is unavailable on PATH.
+
+### Next recommended step
+
+Run live QA for the IT Security "Top 10 Most Infamous Malware, Viruses, and Security Threats from the Past Decade" assignment and confirm it generates a completed report with a general/background research note, threat summary table, 10 entries, analysis, recommendations, conclusion, and honest references-to-verify section.
+
+### Suggested commit message
+
+`add research capable task output modes`
+
+---
+
 ## Session Update - 2026-05-25 (Harden Resource Extraction Queue Readiness)
 
 ### What changed

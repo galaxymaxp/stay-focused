@@ -9,6 +9,7 @@ import type {
   TaskOutputPreset,
   TaskOutputPreviewMode,
   TaskOutputReadinessStatus,
+  TaskOutputSourceMode,
   TaskOutputTargetType,
 } from '@/lib/types'
 
@@ -26,6 +27,7 @@ export interface TaskOutputRequest {
   outputType: TaskOutputTargetType
   selectedContext: string[]
   groundingStatus: TaskOutputGroundingStatus
+  sourceMode: TaskOutputSourceMode
   detectedFormat: TaskOutputDetectedFormat
   previousOutput?: string | null
   refinementInstruction?: string | null
@@ -68,23 +70,27 @@ export interface TaskOutputReadinessEvaluation {
 }
 
 export const TASK_OUTPUT_SYSTEM_PROMPT = [
-  'You are Stay Focused\'s grounded task-output generator.',
+  'You are Stay Focused\'s task-output generator.',
   '',
-  'Your job is to produce the student deliverable itself using only the surfaced task instructions, rubric/requirements, and readable selected context.',
+  'Your job is to produce the student deliverable itself from the surfaced task instructions, rubric/requirements, selected context, and the explicit generation mode.',
   '',
   'Rules:',
-  '- Ground every part of the output in the task data provided in this request.',
+  '- Always follow the explicit Task Output mode.',
+  '- In course_grounded mode, ground every part of the output in the task data and selected readable course/source context.',
+  '- In general_research_labeled mode, complete the requested deliverable using cautious general/background knowledge because course-provided source content is insufficient.',
+  '- In general_research_labeled mode, clearly label the output and reference section as general/background research, not course-provided evidence.',
+  '- In source_limited_scaffold mode, return only a conservative scaffold because the task cannot be completed safely.',
   '- Do not invent requirements, rubric criteria, or missing deliverable details.',
-    '- Do not invent citations, quotations, page numbers, references, or sources.',
-    '- Do not fabricate external facts, threat names, dates, impact figures, recommendations, or APA references from model memory.',
-    '- Do not present model-memory facts as course-confirmed or externally sourced.',
-    '- Do not include unrelated course requirements, course outcomes, room links, syllabus policies, or extra deliverables not requested by the assignment.',
+  '- Do not invent quotations, page numbers, retrieval dates, course-provided sources, or source precision.',
+  '- Do not present general/background knowledge as course-confirmed or selected-source evidence.',
+  '- Do not include unrelated course requirements, course outcomes, room links, syllabus policies, or extra deliverables not requested by the assignment.',
   '- Generate the actual answer/content first. Do not return a planning scaffold when enough prompt/source context exists.',
   '- Preserve instructor constraints such as sentence counts, word counts, point values, rubric criteria, required headings, and file format.',
   '- If the task asks for 2-3 sentences, return 2-3 polished sentences and nothing longer unless the requested export wrapper requires it.',
   '- For reports, documents, HTML, PDF, DOCX, and presentation exports, wrap the actual answer/content in the selected format instead of outputting only section placeholders.',
-  '- If the source text is genuinely weak or missing, state exactly what is missing and return only a conservative scaffold/draft that is safe.',
-  '- For research-style assignments, if the surfaced Canvas/module text contains only the assignment prompt and not enough factual source content, do not invent a completed report. Return a research plan, filled structure, and source requirements instead.',
+  '- If the source text is genuinely weak or missing and the mode is source_limited_scaffold, state exactly what is missing and return only a conservative scaffold/draft that is safe.',
+  '- For research-style assignments in general_research_labeled mode, produce the completed report/deliverable instead of an empty scaffold.',
+  '- For APA/reference sections in general_research_labeled mode, use honest labels such as "General/background references to verify" when exact retrieval data is unavailable.',
   '- Do not use generic motivational filler, fake confidence, or decorative academic fluff.',
   '- Prefer compact, export-ready structure over long explanations.',
   '- Keep presentation, report, reviewer, webpage, and documentation outputs aligned with the requested preset and target output type.',
@@ -112,6 +118,15 @@ export function buildTaskOutputRequest(context: TaskDraftContext, input: {
   const draftPayload = buildTaskDraftRequestPayload(context)
   const selectedContext = buildSelectedContext(context)
   const groundingStatus = classifyTaskOutputGrounding(context, draftPayload.instructions)
+  const sourceMode = classifyTaskOutputSourceMode({
+    title: draftPayload.title,
+    instructions: draftPayload.instructions,
+    requirements: draftPayload.requirements ?? [],
+    selectedContext,
+    groundingStatus,
+    preset: input.preset,
+    outputType: input.outputType,
+  })
 
   return {
     taskId: context.taskId ?? '',
@@ -131,6 +146,7 @@ export function buildTaskOutputRequest(context: TaskDraftContext, input: {
     outputType: input.outputType,
     selectedContext,
     groundingStatus,
+    sourceMode,
     detectedFormat: detectTaskOutputFormat({
       title: draftPayload.title,
       instructions: draftPayload.instructions,
@@ -143,7 +159,9 @@ export function buildTaskOutputRequest(context: TaskDraftContext, input: {
 
 export function buildTaskOutputUserPrompt(input: TaskOutputRequest) {
   return [
-    'Use only the task data surfaced in this request.',
+    input.sourceMode === 'general_research_labeled'
+      ? 'Complete this research deliverable using cautious general/background knowledge, with clear labeling that course-provided source content was insufficient.'
+      : 'Use only the task data surfaced in this request.',
     '',
     'Task data:',
     `Task title: ${input.title}`,
@@ -155,6 +173,7 @@ export function buildTaskOutputUserPrompt(input: TaskOutputRequest) {
     `Requested output type: ${input.outputType}`,
     `Detected task format: ${input.detectedFormat}`,
     `Grounding strength: ${input.groundingStatus}`,
+    `Task Output mode: ${input.sourceMode}`,
     '',
     'Instructions:',
     input.instructions,
@@ -170,7 +189,9 @@ export function buildTaskOutputUserPrompt(input: TaskOutputRequest) {
       : '- No extra selected context was surfaced.',
     '',
     'Source context status:',
-    input.selectedContext.length > 0
+    input.sourceMode === 'general_research_labeled'
+      ? '- Course-provided factual source context is insufficient. General/background research may be used only with honest labeling.'
+      : input.selectedContext.length > 0
       ? '- Readable related Canvas/course source text is included above.'
       : '- No readable related Canvas/course source text was available. Do not treat the task title, file titles, metadata, or assignment wording as factual source content.',
     input.previousOutput
@@ -189,29 +210,44 @@ export function buildTaskOutputUserPrompt(input: TaskOutputRequest) {
       : '',
     '',
     'Contract:',
-    '- Stay strictly grounded in the surfaced task data.',
+    `- Task Output mode is ${input.sourceMode}.`,
+    input.sourceMode === 'general_research_labeled'
+      ? '- Produce the completed deliverable first, using cautious general/background knowledge and honest source labeling.'
+      : '- Stay strictly grounded in the surfaced task data.',
     '- The original Canvas task remains the anchor even when revising a previous output.',
     '- A user refinement may change tone, format, length, organization, or emphasis, but it may not turn unsupported facts into course-confirmed facts.',
-    '- For refinement, preserve the previous output\'s factual boundaries. You may reshape supported content; you may not add unsupported facts, citations, threat names, dates, impact figures, or external claims.',
+    input.sourceMode === 'general_research_labeled'
+      ? '- For refinement, you may complete research-style content with general/background knowledge, but must not call it course-provided or exact retrieved evidence.'
+      : '- For refinement, preserve the previous output\'s factual boundaries. You may reshape supported content; you may not add unsupported facts, citations, threat names, dates, impact figures, or external claims.',
     '- Produce the submission-ready answer/content before any notes about limitations.',
     '- Do not output a generic scaffold with headings like Purpose, Deliverable focus, Grounded context, or Next edit pass when grounding is marked grounded.',
     '- Apply instructor format constraints exactly, especially sentence counts and required sections.',
     '- No fake citations.',
-    '- Do not invent APA references.',
-    '- Do not fabricate external facts.',
+    input.sourceMode === 'general_research_labeled'
+      ? '- References must be labeled as general/background references to verify unless exact source metadata was provided.'
+      : '- Do not invent APA references.',
+    input.sourceMode === 'general_research_labeled'
+      ? '- Do not fabricate course-provided facts or exact source confidence.'
+      : '- Do not fabricate external facts.',
     '- Do not present generic model-memory facts as course-confirmed.',
     '- No fabricated requirements.',
     '- Do not include unrelated course requirements, room links, ODL links, syllabus/CLO material, or backup/restore sections unless the task explicitly asks for them.',
     '- Do not mark research plans, source checklists, or templates as final or ready.',
-    '- If grounding is limited, say what readable assignment/source text is missing and keep any draft conservative.',
-    '- If the task requires external research and no factual research sources are surfaced, label the output as research-needed rather than final.',
+    input.sourceMode === 'source_limited_scaffold'
+      ? '- If grounding is limited, say what readable assignment/source text is missing and keep any draft conservative.'
+      : '- If course context is limited, keep the limitation label but do not turn a research assignment into an empty scaffold.',
+    input.sourceMode === 'general_research_labeled'
+      ? '- Do not output "research needed" placeholder sections; complete the report and include an honest general/background source note.'
+      : '- If the task requires external research and no approved research mode is available, label the output as research-needed rather than final.',
     '- Make the output feel submission-ready, not like tutoring notes.',
   ].join('\n')
 }
 
 export function buildTaskOutputFallback(input: TaskOutputRequest): StudyOutputTaskOutputContent {
   const previewMode = resolvePreviewMode(input.outputType)
-  const previewContent = input.groundingStatus === 'grounded'
+  const previewContent = input.sourceMode === 'general_research_labeled'
+    ? buildGeneralResearchUnavailablePreview(input, previewMode)
+    : input.groundingStatus === 'grounded'
     ? buildGroundedAnswerPreview(input, previewMode)
     : buildFallbackPreview(input, previewMode)
   const readiness = evaluateTaskOutputReadiness({
@@ -223,7 +259,9 @@ export function buildTaskOutputFallback(input: TaskOutputRequest): StudyOutputTa
       ? 'Add real task evidence, source detail, or class-specific content before submission.'
       : null,
   })
-  const warning = input.groundingStatus === 'limited'
+  const warning = input.sourceMode === 'general_research_labeled'
+    ? 'General research mode was selected, but the model response was unavailable; this output needs another generation pass before submission.'
+    : input.groundingStatus === 'limited'
     ? 'Limited readable source text was available, so this stays as a conservative scaffold.'
     : 'This first-pass output stays tightly grounded in the surfaced task requirements.'
 
@@ -247,12 +285,17 @@ export function buildTaskOutputFallback(input: TaskOutputRequest): StudyOutputTa
     requirements: input.requirements.slice(0, 8),
     selectedContext: input.selectedContext.slice(0, 6),
     groundingStatus: input.groundingStatus,
+    sourceMode: input.sourceMode,
     readinessStatus: readiness.status,
     readinessLabel: readiness.label,
-    groundingNote: input.groundingStatus === 'limited'
+    groundingNote: input.sourceMode === 'general_research_labeled'
+      ? 'This task is marked for general/background research because the assignment asks for research and course-provided factual source content was insufficient.'
+      : input.groundingStatus === 'limited'
       ? 'Only partial readable task/source text was available, so this output is a scaffold anchored to surfaced requirements only.'
       : 'This output is a direct first-pass answer grounded in the surfaced task prompt, requirements, and readable course/source context.',
-    limitationNote: input.groundingStatus === 'limited'
+    limitationNote: input.sourceMode === 'general_research_labeled'
+      ? 'Regenerate with the task-output model to complete the report; verify any general/background references before submission.'
+      : input.groundingStatus === 'limited'
       ? 'Add real task evidence, source detail, or class-specific content before submission.'
       : null,
     warnings: [warning],
@@ -278,7 +321,9 @@ export function normalizeTaskOutputModelResponse(
   const title = cleanInline(response.title) || buildTaskOutputTitle(request)
   const previewContent = cleanBlock(response.previewContent) || buildFallbackPreview(request, previewMode)
   const groundingNote = cleanInline(response.groundingNote)
-    || (request.groundingStatus === 'limited'
+    || (request.sourceMode === 'general_research_labeled'
+      ? 'General/background research was used because course-provided source content was insufficient.'
+      : request.groundingStatus === 'limited'
       ? 'Only partial readable task/source text was available, so this output stays limited and scaffold-first.'
       : 'This output is grounded in the surfaced task instructions and selected readable context.')
   const limitationNote = cleanInline(response.limitationNote ?? null)
@@ -315,10 +360,13 @@ export function normalizeTaskOutputModelResponse(
     requirements: sanitizeStringList(response.requirementsUsed?.length ? response.requirementsUsed : request.requirements, 8),
     selectedContext: sanitizeStringList(response.selectedContextUsed?.length ? response.selectedContextUsed : request.selectedContext, 6),
     groundingStatus: request.groundingStatus,
+    sourceMode: request.sourceMode,
     readinessStatus: readiness.status,
     readinessLabel: readiness.label,
     groundingNote,
-    limitationNote: request.groundingStatus === 'limited'
+    limitationNote: request.sourceMode === 'general_research_labeled'
+      ? limitationNote ?? 'General/background research was used because course-provided source context was insufficient. Verify references before final submission.'
+      : request.groundingStatus === 'limited'
       ? limitationNote ?? 'Add course-specific facts or source details before submitting this output.'
       : limitationNote,
     warnings: sanitizeStringList(response.warnings ?? [], 6),
@@ -405,15 +453,78 @@ function classifyTaskOutputGrounding(context: TaskDraftContext, instructions: st
   return 'limited'
 }
 
+export function classifyTaskOutputSourceMode(input: {
+  title: string
+  instructions: string
+  requirements?: string[]
+  selectedContext?: string[]
+  groundingStatus: TaskOutputGroundingStatus
+  preset?: TaskOutputPreset
+  outputType?: TaskOutputTargetType
+}): TaskOutputSourceMode {
+  const selectedContextChars = cleanBlock((input.selectedContext ?? []).join('\n')).length
+  if (requiresCourseProvidedSource(input) && selectedContextChars < 220 && !isResearchStyleDeliverable(input)) {
+    return 'source_limited_scaffold'
+  }
+  if (input.groundingStatus === 'grounded' && selectedContextChars >= 500) return 'course_grounded'
+
+  if (isResearchStyleDeliverable(input) && selectedContextChars < 500) {
+    return 'general_research_labeled'
+  }
+
+  if (input.groundingStatus === 'grounded') return 'course_grounded'
+  return 'source_limited_scaffold'
+}
+
+function requiresCourseProvidedSource(input: {
+  title: string
+  instructions: string
+  requirements?: string[]
+}) {
+  const text = normalizeComparisonText([
+    input.title,
+    input.instructions,
+    ...(input.requirements ?? []),
+  ].join(' '))
+  return /\busing (?:the )?(?:module|course|class|lecture|reading|readings|textbook|canvas|provided material|notes)\b|\bfrom (?:the )?(?:module|course|class|lecture|reading|readings|textbook|canvas|provided material|notes)\b|\baccording to (?:the )?(?:module|course|class|lecture|reading|readings|textbook|canvas|provided material|notes)\b|\bassigned readings?\b|\bcourse evidence\b|\bmodule framework\b/i.test(text)
+}
+
+function isResearchStyleDeliverable(input: {
+  title: string
+  instructions: string
+  requirements?: string[]
+  preset?: TaskOutputPreset
+  outputType?: TaskOutputTargetType
+}) {
+  const text = normalizeComparisonText([
+    input.title,
+    input.instructions,
+    ...(input.requirements ?? []),
+    input.preset ?? '',
+    input.outputType ?? '',
+  ].join(' '))
+  const asksForResearch = /\b(research|investigate|investigation|case stud(?:y|ies)|top\s+\d+|most infamous|past decade|current events?|recent examples?|technology topics?|security threats?|malware|viruses?|references?|apa|citations?)\b/i.test(text)
+    || /\b(?:compare|comparison|analyze|analysis)\b.*\b(?:technology|security|malware|viruses?|threats?|current|recent)\b/i.test(text)
+  const deliverableShape = /\b(report|essay|paper|analysis|presentation|document|webpage|html|pdf|docx|ppt|table|summary)\b/i.test(text)
+  const shortAnswer = /\b(2\s*[-–]\s*3|two\s+to\s+three|one|two|three)\s+(?:complete\s+)?sentences?\b/i.test(text)
+    || /\bshort answer\b|\bdiscussion post\b|\breflection\b/.test(text)
+
+  return asksForResearch && deliverableShape && !shortAnswer
+}
+
 function buildTaskOutputTitle(input: TaskOutputRequest) {
   return input.title
 }
 
 function buildTaskOutputSummary(input: TaskOutputRequest, fallback: boolean) {
-  const lead = input.groundingStatus === 'limited'
+  const lead = input.sourceMode === 'general_research_labeled'
+    ? 'General research task output'
+    : input.groundingStatus === 'limited'
     ? 'Limited-grounding scaffold'
     : 'Grounded task output'
-  const tail = fallback
+  const tail = input.sourceMode === 'general_research_labeled'
+    ? 'prepared with honest general/background research labeling because course source context was insufficient.'
+    : fallback
     ? 'prepared conservatively from surfaced task requirements.'
     : 'prepared from surfaced task requirements and selected readable context.'
   return `${lead} for a ${input.outputType.toUpperCase()} ${input.preset}. ${tail}`
@@ -476,6 +587,32 @@ function buildFallbackPreview(input: TaskOutputRequest, previewMode: TaskOutputP
     '',
     ...buildSectionList(input).flatMap((item) => [item.heading, item.body, '']),
   ].join('\n').trim()
+}
+
+function buildGeneralResearchUnavailablePreview(input: TaskOutputRequest, previewMode: TaskOutputPreviewMode) {
+  const body = [
+    input.title,
+    '',
+    'General/background research mode',
+    'This assignment asks for a completed research deliverable, but the generation model was unavailable in this run. Course-provided factual source content was insufficient, so Stay Focused did not create a fake completed report from placeholders.',
+    '',
+    'Recommended retry',
+    'Regenerate this Task Output when the model is available. The completed pass should include the deliverable first, clear general/background research labeling, and references that are honest about verification needs.',
+  ].join('\n')
+
+  if (previewMode === 'html') {
+    return [
+      '<main class="task-output-shell">',
+      `  <h1>${escapeHtml(input.title)}</h1>`,
+      '  <section>',
+      '    <h2>General/background research mode</h2>',
+      '    <p>This assignment asks for a completed research deliverable, but the generation model was unavailable in this run. Course-provided factual source content was insufficient, so Stay Focused did not create a fake completed report from placeholders.</p>',
+      '  </section>',
+      '</main>',
+    ].join('\n')
+  }
+
+  return body
 }
 
 function buildGroundedAnswerPreview(input: TaskOutputRequest, previewMode: TaskOutputPreviewMode) {
@@ -587,6 +724,8 @@ export function evaluateTaskOutputReadiness(input: {
     /\breplace (?:the )?placeholders?\b/g,
     /\badd (?:real|course-specific|your|the strongest|grounded) (?:task )?(?:evidence|detail|details|content)\b/g,
     /\bwrite (?:your|the) answer here\b/g,
+    /\badd sources?\b/g,
+    /\badd citations?\b/g,
     /\bto be completed after research\b/g,
     /\bmust be completed after research\b/g,
     /\bcomplete(?:d)? after research\b/g,
@@ -620,8 +759,11 @@ export function evaluateTaskOutputReadiness(input: {
   const hasResearchRequirement = /\b(research|investigate|top\s+\d+|past decade|sources?|references?|citations?|case stud(?:y|ies)|current events?|recent examples?)\b/i.test(taskText)
   const hasCourseSourceRequirement = /\b(course|module|class|lecture|reading|readings|textbook|canvas|source|sources|provided material|notes|rubric)\b/i.test(taskText)
   const selectedContextChars = selectedContextText.length
-  const hasInsufficientResearchSource = hasResearchRequirement && selectedContextChars < 500
+  const usesGeneralResearch = input.request.sourceMode === 'general_research_labeled'
+  const hasInsufficientResearchSource = hasResearchRequirement && selectedContextChars < 500 && !usesGeneralResearch
   const hasMissingCourseSource = !hasResearchRequirement && hasCourseSourceRequirement && selectedContextChars < 220
+  const hasGeneralResearchLabel = /\b(general|background)\s+(?:research|knowledge|references?|sources?)\b|\bcourse-provided source content (?:was|is) insufficient\b|\bverify (?:before|prior to) submission\b/i.test(text)
+  const falselyClaimsCourseSources = usesGeneralResearch && /\bcourse[- ]provided (?:sources?|evidence|references?)\b|\bselected course sources?\b|\bsource-grounded\b/i.test(text)
   const contentWords = new Set(substantiveWords)
   const instructionWords = new Set(taskText.split(/\s+/).filter((word) => /^[a-z][a-z'-]{3,}$/i.test(word)))
   const copiedInstructionWords = [...contentWords].filter((word) => instructionWords.has(word)).length
@@ -637,7 +779,9 @@ export function evaluateTaskOutputReadiness(input: {
     && taskText.includes(normalized)
     && newContentWords < 20
 
-  if (input.request.groundingStatus === 'limited') reasons.push('limited_grounding')
+  if (input.request.groundingStatus === 'limited' && !usesGeneralResearch) reasons.push('limited_grounding')
+  if (usesGeneralResearch && !hasGeneralResearchLabel) reasons.push('missing_general_research_label')
+  if (falselyClaimsCourseSources) reasons.push('fake_course_source_claim')
   if (underscoreRuns >= 2) reasons.push('blank_lines_or_underscores')
   if (placeholderPhrases >= 2) reasons.push('placeholder_language')
   if (hasResearchRequirement && placeholderPhrases >= 1) reasons.push('external_research_required')
@@ -648,7 +792,7 @@ export function evaluateTaskOutputReadiness(input: {
   if (uniqueSubstantiveWords.size < 35 && text.length < 900) reasons.push('too_little_substantive_content')
   if (sameAsInstructions || assignmentTextRestated || copiedInstructionsOnly || exactInstructionRestated) reasons.push('copied_assignment_instructions')
   if (hasInsufficientResearchSource) reasons.push('external_research_required')
-  if (hasMissingCourseSource) reasons.push('course_source_content_required')
+  if (hasMissingCourseSource && !usesGeneralResearch) reasons.push('course_source_content_required')
 
   if (reasons.includes('external_research_required')) {
     return {
@@ -668,7 +812,7 @@ export function evaluateTaskOutputReadiness(input: {
     }
   }
 
-  if (reasons.includes('course_source_content_required') || input.request.groundingStatus === 'limited') {
+  if (reasons.includes('course_source_content_required') || (input.request.groundingStatus === 'limited' && !usesGeneralResearch)) {
     return {
       status: 'needs_course_source_content',
       label: 'Needs source content',
@@ -989,6 +1133,7 @@ export function buildTaskOutputPromptPreview(input: TaskOutputRequest, output?: 
     `preset: ${input.preset}`,
     `output_type: ${input.outputType}`,
     `grounding_status: ${input.groundingStatus}`,
+    `source_mode: ${input.sourceMode}`,
     '',
     'prompt_contract <<',
     prompt,
