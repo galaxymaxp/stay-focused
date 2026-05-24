@@ -27,6 +27,7 @@ import { normalizeExtension } from '@/lib/canvas-resource-extraction'
 import {
   hasCanvasResourceRefreshRowChanged,
   prepareCanvasResourceRefreshRow,
+  shouldQueueCanvasResourceRefreshPreparation,
   type CanvasResourceRefreshInput,
   type ExistingCanvasResourceSnapshot,
 } from '@/lib/canvas-resource-refresh'
@@ -584,7 +585,7 @@ export async function refreshCanvasModuleResourceMetadataForCourse(input: {
 
       if (insertedRow) {
         const insertedResource = adaptModuleResourceRow(insertedRow as Record<string, unknown>)
-        if (shouldQueueRefreshedResourcePreparation(insertedResource)) {
+        if (shouldQueueCanvasResourceRefreshPreparation(insertedResource)) {
           resourcesNeedingPreparation.push(insertedResource)
         }
       }
@@ -616,7 +617,7 @@ export async function refreshCanvasModuleResourceMetadataForCourse(input: {
 
     if (updatedRow) {
       const updatedResource = adaptModuleResourceRow(updatedRow as Record<string, unknown>)
-      if (shouldQueueRefreshedResourcePreparation(updatedResource)) {
+      if (shouldQueueCanvasResourceRefreshPreparation(updatedResource)) {
         resourcesNeedingPreparation.push(updatedResource)
       }
     }
@@ -2050,18 +2051,6 @@ function buildLightweightModuleResourcesForRefresh(input: {
   }
 
   return { resources, moduleItemsChecked }
-}
-
-function shouldQueueRefreshedResourcePreparation(resource: ModuleResource) {
-  if (resource.extractionStatus === 'completed' || resource.extractionStatus === 'extracted' || resource.extractionStatus === 'unsupported') {
-    return false
-  }
-
-  if (!resource.sourceUrl && !resource.htmlUrl) {
-    return false
-  }
-
-  return true
 }
 
 function buildSyncedTaskDrafts(

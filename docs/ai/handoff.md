@@ -5,6 +5,71 @@ Last Updated: 2026-05-18
 
 ---
 
+## Session Update - 2026-05-25 (Resource Refresh Metadata Only)
+
+### What changed
+
+- Removed the `/api/cron/resource-refresh` post-response `after()` worker hook that called `processPendingResourceExtractionJobs`.
+- Kept Canvas module resource discovery and metadata refresh intact through `refreshCanvasModuleResourceMetadataForCourse`.
+- Moved the refreshed-resource preparation queue predicate into `lib/canvas-resource-refresh.ts` so the metadata refresh queue decision is directly testable.
+- Added focused tests that assert:
+  - unprocessed refreshed resources with a source/html URL are queued for `resource_extraction`
+  - completed/unsupported/sourceless resources are not queued
+  - the cron route does not import/call extraction or OCR workers and does not call `after()`
+  - the metadata path still creates queue jobs instead of processing them inline
+
+### Files touched
+
+- `app/api/cron/resource-refresh/route.ts`
+- `actions/canvas.ts`
+- `lib/canvas-resource-refresh.ts`
+- `tests/canvas-resource-refresh.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Phase 1 cleanup keeps `/api/cron/resource-refresh` metadata-and-queue-only. The cron route should discover Canvas module resources and enqueue preparation work when needed, but extraction and OCR processing must be handled by the queue worker path, not inline or via `after()` from this route.
+
+### Current product direction
+
+Stay Focused remains schedule-first over Canvas. This change reduces background cron stalls and keeps resource preparation asynchronous so Canvas updates can continue feeding the student workflow without blocking on expensive source processing.
+
+### Tests run
+
+- `git status --short` before editing: clean.
+- `git diff --check`: passed, with existing CRLF normalization warnings only.
+- `rg -n "processPendingResourceExtractionJobs|after\\(|processSourceOcrJob|autoEnqueueSourceOcrJobs|processPendingSourceOcr" app/api/cron/resource-refresh/route.ts actions/canvas.ts lib/canvas-resource-refresh.ts tests/canvas-resource-refresh.test.ts -S`: route is clean; matches remain only in tests and unrelated `actions/canvas.ts` external sync paths.
+- `npm run typecheck`: skipped/blocked because `npm` is not available on PATH in this shell.
+- `npm run lint`: skipped/blocked because `npm` is not available on PATH in this shell.
+- `npm test -- canvas-resource-refresh queue source-ocr-updates`: skipped/blocked because `npm` is not available on PATH in this shell.
+
+### Verification result
+
+- Static verification confirms `/api/cron/resource-refresh` no longer imports `after` or `processPendingResourceExtractionJobs`.
+- Static verification confirms the cron route contains no `source_ocr`/OCR worker calls.
+- Code inspection confirms resource discovery still calls `refreshCanvasModuleResourceMetadataForCourse`.
+- Code inspection confirms changed/new resources still flow into `queueResourceExtractionJobs`.
+- Automated TypeScript, lint, and test verification could not run because this environment has no system `node`/`npm`, no project `node_modules`, and no npm shim available.
+
+### Known risks
+
+- The focused tests were added but could not be executed locally in this shell.
+- The queue predicate is now exported from `lib/canvas-resource-refresh.ts`; behavior is unchanged, but it is a slightly broader public helper surface.
+
+### Blockers
+
+- Local verification blocker: `npm` and `npx` are not recognized in the current PowerShell environment. A bundled Codex `node.exe` exists, but it does not include npm, and the repository has no `node_modules`.
+
+### Next recommended step
+
+Run `npm install` or restore Node/npm on PATH, then rerun `npm run typecheck`, `npm run lint`, and `npm test -- canvas-resource-refresh queue source-ocr-updates` before relying on the commit in production.
+
+### Suggested commit message
+
+`keep resource refresh metadata only`
+
+---
+
 ## Session Update - 2026-05-18 (Task Output Routing And Refinement)
 
 ### What changed

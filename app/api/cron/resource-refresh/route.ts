@@ -1,5 +1,4 @@
-import { after, type NextRequest, NextResponse } from 'next/server'
-import { processPendingResourceExtractionJobs } from '@/actions/queue-jobs'
+import { type NextRequest, NextResponse } from 'next/server'
 import { refreshCanvasModuleResourceMetadataForCourse } from '@/actions/canvas'
 import { getCourses, normalizeCanvasUrl } from '@/lib/canvas'
 import { buildResourceRefreshActivityDetail, recordResourceRefreshActivity } from '@/lib/resource-refresh-activity'
@@ -15,7 +14,6 @@ const DEFAULT_COURSE_LIMIT = 6
 const DEFAULT_MODULE_LIMIT = 40
 const DEFAULT_MODULE_ITEM_LIMIT = 400
 const DEFAULT_CANVAS_FETCH_TIMEOUT_MS = 8000
-const DEFAULT_POST_REFRESH_JOB_LIMIT = 1
 
 interface UserSettingsRow {
   user_id: string
@@ -60,7 +58,6 @@ export async function GET(req: NextRequest) {
   const moduleItemLimit = getPositiveIntegerEnv('RESOURCE_REFRESH_MODULE_ITEM_LIMIT', DEFAULT_MODULE_ITEM_LIMIT)
   const refreshWindowMs = getPositiveIntegerEnv('RESOURCE_REFRESH_MIN_INTERVAL_MS', DAILY_REFRESH_WINDOW_MS)
   const canvasFetchTimeoutMs = getPositiveIntegerEnv('RESOURCE_REFRESH_CANVAS_FETCH_TIMEOUT_MS', DEFAULT_CANVAS_FETCH_TIMEOUT_MS)
-  const postRefreshJobLimit = getPositiveIntegerEnv('RESOURCE_REFRESH_POST_QUEUE_JOB_LIMIT', DEFAULT_POST_REFRESH_JOB_LIMIT)
   const courseCandidateLimit = getResourceRefreshCourseCandidateLimit(courseLimit)
 
   const summary = {
@@ -206,13 +203,6 @@ export async function GET(req: NextRequest) {
       }
     }
   }
-
-  after(async () => {
-    const workerStats = await processPendingResourceExtractionJobs(postRefreshJobLimit)
-    if (workerStats.jobsStarted > 0 || workerStats.warnings.length > 0) {
-      console.info('[resource-refresh] post-refresh resource preparation worker', workerStats)
-    }
-  })
 
   return NextResponse.json({
     ok: true,

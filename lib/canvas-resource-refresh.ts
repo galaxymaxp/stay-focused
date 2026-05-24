@@ -1,7 +1,7 @@
 import { evaluateResourceTextPreservation } from '@/lib/canvas-resource-preservation'
 import { buildModuleResourceAssessmentMetadata } from '@/lib/module-resource-quality'
 import { normalizeOptionalCanvasSyncText, normalizeRequiredCanvasSyncText } from '@/lib/canvas-sync'
-import type { ModuleResourceExtractionStatus, ModuleResourceVisualExtractionStatus } from '@/lib/types'
+import type { ModuleResource, ModuleResourceExtractionStatus, ModuleResourceVisualExtractionStatus } from '@/lib/types'
 
 export interface CanvasResourceRefreshInput {
   canvasInstanceUrl: string | null
@@ -175,4 +175,16 @@ export function hasCanvasResourceRefreshRowChanged(
     || existing.extractionProvider !== next.extraction_provider
     || existing.required !== next.required
     || JSON.stringify(existing.metadata) !== JSON.stringify(next.metadata)
+}
+
+export function shouldQueueCanvasResourceRefreshPreparation(resource: ModuleResource) {
+  if (resource.extractionStatus === 'completed' || resource.extractionStatus === 'extracted' || resource.extractionStatus === 'unsupported') {
+    return false
+  }
+
+  if (!resource.sourceUrl && !resource.htmlUrl) {
+    return false
+  }
+
+  return true
 }
