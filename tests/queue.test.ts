@@ -424,10 +424,13 @@ test('fresh and retry learn generation jobs route through classic Markdown Revie
   assert.doesNotMatch(queueSource, /generatorMode|structured_fact_card_compiler_v1/)
 })
 
-test('legacy staged composer is gated by explicit generator mode', () => {
+test('legacy staged composer is isolated behind explicit compatibility helper', () => {
   const generationSource = readFileSync('lib/deep-learn-generation.ts', 'utf8')
-  assert.match(generationSource, /rawMode === LEGACY_STAGED_COMPOSER_VERSION/)
+  assert.match(generationSource, /generateLegacyDeepLearnStructuredContentForCompatibility/)
+  assert.match(generationSource, /legacyStructuredCompatibilityMode/)
+  assert.match(generationSource, /ignoring inactive reviewer generator mode/)
   assert.match(generationSource, /event:\s*'legacy_composer_started'/)
+  assert.doesNotMatch(generationSource, /DEEP_LEARN_GENERATOR_MODE=legacy_staged_composer/)
   assert.doesNotMatch(generationSource, /allowsLegacyStructuredContentCompatibility/)
   assert.doesNotMatch(generationSource, /isLegacyDeepLearnResponseMock/)
 })

@@ -5,6 +5,78 @@ Last Updated: 2026-05-27
 
 ---
 
+## Session Update - 2026-05-27 (Phase 4 Markdown Reviewer Active Contract)
+
+### What changed
+
+- Made markdown Reviewer the active new Reviewer contract:
+  - active generation stays on `classic_markdown_reviewer_v1`;
+  - active output is `reviewerMarkdown`;
+  - active Study Output creation uses `buildActiveDeepLearnReviewerContent`;
+  - active rendering continues through `ReviewerMarkdownDocument`.
+- Added a guard so `DEEP_LEARN_GENERATOR_MODE=legacy_staged_composer` no longer routes active generation back to the old structured/staged composer.
+- Isolated legacy structured generation behind `generateLegacyDeepLearnStructuredContentForCompatibility` for compatibility tests only.
+- Kept legacy structured/card rendering available for old saved Reviewer records that do not have `reviewerMarkdown`.
+- Split Reviewer tests so active markdown behavior and legacy saved-record compatibility are named separately.
+- Removed dead unused Reviewer markdown coverage helpers from `lib/deep-learn-generation.ts`, clearing the previous Reviewer lint warnings.
+- Did not change Task Output, cron, resource refresh, OCR, or Reviewer hover/explanation UI.
+
+### Files touched
+
+- `actions/study-outputs.ts`
+- `lib/deep-learn-generation.ts`
+- `lib/study-outputs/reviewer.ts`
+- `tests/deep-learn-generation.test.ts`
+- `tests/queue.test.ts`
+- `tests/study-output-reviewer.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+The active Reviewer direction is the source-first markdown Reviewer. The old structured/card/fact-bank composer remained reachable through environment routing and made the architecture harder to reason about. This cleanup makes the active path explicit while preserving old saved structured Reviewer rendering so existing library records still open.
+
+### Current product direction
+
+Stay Focused remains schedule-first over Canvas. Deep Learn should produce a single dependable markdown Reviewer artifact for execution blocks, with legacy structured data treated as historical compatibility rather than an active generation target.
+
+### Tests run
+
+- `git status --short --branch`: clean at session start on `main...origin/main`.
+- `npm run typecheck`: blocked because `npm` is not available on PATH.
+- `npm run lint`: blocked because `npm` is not available on PATH.
+- `npm test -- deep-learn-generation study-output-reviewer study-output-quiz-pack`: blocked because `npm` is not available on PATH.
+- Direct typecheck equivalent: bundled Node running `node_modules/typescript/bin/tsc --noEmit`: passed.
+- Direct lint equivalent: bundled Node running `node_modules/eslint/bin/eslint.js`: passed with no warnings.
+- Direct relevant tests with bundled Node + `tsx`: `tests/deep-learn-generation.test.ts tests/study-output-reviewer.test.ts tests/study-output-quiz-pack.test.ts tests/queue.test.ts`: passed, 193/193 tests.
+
+### Verification result
+
+- Confirmed new Reviewer generation stores `reviewerMarkdown` and leaves structured `answerBank` / identification arrays empty for the active markdown path.
+- Confirmed active generation ignores the old legacy structured generator env override and still calls `deep_learn_reviewer_classic_markdown`.
+- Confirmed new Reviewer Study Output creation requires markdown and blocks old structured notes from creating new structured Reviewer outputs.
+- Confirmed saved structured/card Reviewer content still renders through the legacy fallback when `reviewerMarkdown` is absent.
+- Confirmed `ReviewerMarkdownDocument` remains the renderer for markdown Reviewer output.
+- Confirmed no metadata/debug/internal labels leak into active Reviewer output tests.
+
+### Known risks
+
+- Old saved structured Reviewer records remain supported, so some legacy adapter code is intentionally still present for rendering compatibility and quiz-pack reuse.
+- Existing old Deep Learn notes without `reviewerMarkdown` must be regenerated from source before creating a new markdown Reviewer Study Output.
+
+### Blockers
+
+- `npm` and `npx` remain unavailable on PATH, so verification used direct bundled Node equivalents.
+
+### Next recommended step
+
+After deploy, click through one existing markdown Deep Learn record and one older saved structured Reviewer library record to confirm the active markdown creation path and legacy saved-record rendering both behave as expected in the UI.
+
+### Suggested commit message
+
+`make markdown reviewer the active contract`
+
+---
+
 ## Session Update - 2026-05-27 (Phase 3.6 Task Refresh Cron Timeout Hardening)
 
 ### What changed

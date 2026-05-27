@@ -4,11 +4,48 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { buildDeepLearnNoteRecord } from '../lib/deep-learn'
 import { buildAcademicSourceMap } from '../lib/deep-learn-source-map'
-import { buildDeepLearnReviewerContent, buildReviewerContentFromSourceMap, getDeepLearnReviewerReadiness } from '../lib/study-outputs/reviewer'
+import {
+  buildActiveDeepLearnReviewerContent,
+  buildDeepLearnReviewerContent,
+  buildReviewerContentFromSourceMap,
+  getDeepLearnMarkdownReviewerReadiness,
+  getDeepLearnReviewerReadiness,
+} from '../lib/study-outputs/reviewer'
 import { StudyOutputReviewerPage } from '../components/StudyOutputReviewerPage'
 import type { DeepLearnNote, StudyOutput } from '../lib/types'
 
-test('ready Deep Learn pack can build a reviewer output', () => {
+test('active markdown Reviewer builder requires reviewerMarkdown and stores markdown content', () => {
+  const markdown = '# IT Security Reviewer\n\n## Key Concepts\n\n- CIA Triad means confidentiality, integrity, and availability.'
+  const note = createNote({
+    reviewerMarkdown: markdown,
+    noteBody: markdown,
+    answerBank: [],
+    identificationItems: [],
+    distinctions: [],
+    likelyQuizTargets: [],
+  })
+
+  const readiness = getDeepLearnMarkdownReviewerReadiness(note)
+  const reviewer = buildActiveDeepLearnReviewerContent(note)
+
+  assert.equal(readiness.ok, true)
+  assert.equal(reviewer.reviewerMarkdown, markdown)
+  assert.deepEqual(reviewer.highYieldConcepts, [])
+  assert.deepEqual(reviewer.identificationReview, [])
+  assert.deepEqual(reviewer.quickReviewBlocks, [])
+})
+
+test('active markdown Reviewer builder blocks old structured notes from creating new reviewer outputs', () => {
+  const note = createNote({ reviewerMarkdown: null })
+
+  const readiness = getDeepLearnMarkdownReviewerReadiness(note)
+
+  assert.equal(readiness.ok, false)
+  assert.match(readiness.message, /older structured Reviewer format/i)
+  assert.throws(() => buildActiveDeepLearnReviewerContent(note), /older structured Reviewer format/i)
+})
+
+test('legacy saved structured Reviewer content can still be built for compatibility', () => {
   const note = createNote()
 
   const reviewer = buildDeepLearnReviewerContent(note)

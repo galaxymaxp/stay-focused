@@ -454,6 +454,7 @@ interface DeepLearnGenerationOptions {
     canonicalSourceId?: string | null
     retryOfJobId?: string | null
   }
+  legacyStructuredCompatibilityMode?: boolean
 }
 
 interface DeepLearnGeneratorSelection {
@@ -689,8 +690,10 @@ export async function generateDeepLearnStructuredContent(
   createResponse: DeepLearnResponseCreator,
   options: DeepLearnGenerationOptions = {},
 ): Promise<{ content: DeepLearnGeneratedContent; compactFallbackUsed: boolean }> {
-  const generatorSelection = selectDeepLearnGenerator()
-  if (generatorSelection.version === LEGACY_STAGED_COMPOSER_VERSION) {
+  const generatorSelection = selectDeepLearnGenerator({
+    allowLegacyStructuredCompatibilityMode: options.legacyStructuredCompatibilityMode === true,
+  })
+  if (options.legacyStructuredCompatibilityMode === true && generatorSelection.version === LEGACY_STAGED_COMPOSER_VERSION) {
     logDeepLearnGeneratorRouting({
       generatorVersion: LEGACY_STAGED_COMPOSER_VERSION,
       event: 'legacy_composer_started',
@@ -703,6 +706,18 @@ export async function generateDeepLearnStructuredContent(
     return generateDeepLearnStructuredContentLegacy(input, grounding, createResponse, options)
   }
   return generateClassicMarkdownReviewerContent(input, grounding, createResponse, options)
+}
+
+export async function generateLegacyDeepLearnStructuredContentForCompatibility(
+  input: DeepLearnPromptInput,
+  grounding: DeepLearnPreparedGrounding,
+  createResponse: DeepLearnResponseCreator,
+  options: DeepLearnGenerationOptions = {},
+): Promise<{ content: DeepLearnGeneratedContent; compactFallbackUsed: boolean }> {
+  return generateDeepLearnStructuredContent(input, grounding, createResponse, {
+    ...options,
+    legacyStructuredCompatibilityMode: true,
+  })
 }
 
 interface OnePassReviewerModelConfig {
@@ -942,39 +957,6 @@ function sanitizeReviewerMarkdown(value: string) {
     .replace(/[ \t]+\n/g, '\n')
     .replace(/\n{4,}/g, '\n\n\n')
     .trim()
-}
-
-function isMeaningfulReviewerMarkdown(markdown: string | null | undefined, sourceText: string) {
-  const text = markdown?.trim() ?? ''
-  if (text.length < 1200) return false
-  if (!/^#\s*Reviewer:/im.test(text)) return false
-  for (const heading of ['High-Yield Overview', 'Complete Exam Reviewer', 'Identification Reviewer', 'Multiple Choice Practice', 'Enumeration / List Questions', 'Final Quick Review']) {
-    if (!new RegExp(`^##\\s+${escapeRegExp(heading)}\\s*$`, 'im').test(text)) return false
-  }
-  if (hasReviewerComposerLeakageText(text) || containsInternalPipelineText(text)) return false
-  const tokens = normalizeAcademicLookup(text).split(' ').filter((token) => token.length >= 5)
-  if (tokens.length < 80) return false
-  const sourceKey = normalizeAcademicLookup(sourceText)
-  if (!sourceKey) return true
-  const sample = tokens.slice(0, 500)
-  const matched = sample.filter((token) => sourceKey.includes(token)).length
-  return matched / sample.length >= 0.1
-}
-
-function evaluateReviewerMarkdownHeadingCoverage(outline: SourceOutlineItem[], markdown: string) {
-  const required = getRequiredSourceOutlineItems(outline)
-  const contentKey = normalizeAcademicLookup(markdown)
-  const covered = required.filter((item) => {
-    const tokens = item.normalizedTitle.split(' ').filter((token) => token.length >= 4)
-    if (tokens.length === 0) return false
-    return tokens.filter((token) => contentKey.includes(token)).length / tokens.length >= 0.66
-  })
-  const coveredKeys = new Set(covered.map((item) => item.id))
-  return {
-    required,
-    covered,
-    uncovered: required.filter((item) => !coveredKeys.has(item.id)),
-  }
 }
 
 async function generateOnePassReviewerContent(
@@ -2352,13 +2334,13 @@ function buildFactCardDistinctions(cards: StudyFactCard[]) {
     }))
 }
 
-function selectDeepLearnGenerator(): DeepLearnGeneratorSelection {
+function selectDeepLearnGenerator(options: { allowLegacyStructuredCompatibilityMode?: boolean } = {}): DeepLearnGeneratorSelection {
   const rawMode = process.env.DEEP_LEARN_GENERATOR_MODE?.trim()
-  if (rawMode === LEGACY_STAGED_COMPOSER_VERSION) {
-    return { version: LEGACY_STAGED_COMPOSER_VERSION, reason: 'DEEP_LEARN_GENERATOR_MODE=legacy_staged_composer' }
+  if (options.allowLegacyStructuredCompatibilityMode && rawMode === LEGACY_STAGED_COMPOSER_VERSION) {
+    return { version: LEGACY_STAGED_COMPOSER_VERSION, reason: 'legacy_structured_compatibility_mode' }
   }
-  if (rawMode && rawMode !== STRUCTURED_FACT_CARD_COMPILER_VERSION) {
-    console.warn('[deep-learn-generation] ignoring invalid generator mode', {
+  if (rawMode) {
+    console.warn('[deep-learn-generation] ignoring inactive reviewer generator mode', {
       requestedMode: rawMode,
       defaultGeneratorVersion: CLASSIC_MARKDOWN_REVIEWER_VERSION,
     })
@@ -2591,6 +2573,12 @@ function logClassicMarkdownReviewerSummary(input: {
     validationFailureReason: input.validationFailureReason,
   })
 }
+
+const LEGACY_STRUCTURED_REVIEWER_GENERATORS_FOR_COMPATIBILITY = {
+  generateOnePassReviewerContent,
+  compileDeepLearnStudyPackFromFactCards,
+}
+void LEGACY_STRUCTURED_REVIEWER_GENERATORS_FOR_COMPATIBILITY
 
 async function generateDeepLearnStructuredContentLegacy(
   input: DeepLearnPromptInput,

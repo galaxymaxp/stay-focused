@@ -9,7 +9,7 @@ import { StudyOutputSaveError } from '@/lib/study-output-errors'
 import { findTaskOutputStudyOutput, getStudyOutputById, saveStudyOutput } from '@/lib/study-outputs/store'
 import { serializeErrorForLogging } from '@/lib/supabase'
 import { buildDeepLearnQuizPackContent } from '@/lib/study-outputs/quiz-pack'
-import { buildDeepLearnReviewerContent } from '@/lib/study-outputs/reviewer'
+import { buildActiveDeepLearnReviewerContent } from '@/lib/study-outputs/reviewer'
 import { buildDeepLearnSheetContent } from '@/lib/study-outputs/sheets'
 import { buildTaskOutputRequest, isTaskOutputApiResponse } from '@/lib/task-output'
 import { resolveGroundedTaskOutputContext } from '@/lib/task-output-context'
@@ -28,7 +28,7 @@ export async function makeDeepLearnReviewerAction(input: {
     resourceId: input.resourceId,
     outputKind: 'reviewer',
     missingNoteMessage: 'Deep Learn needs a saved ready Study Pack before it can generate a Reviewer.',
-    buildContent: buildDeepLearnReviewerContent,
+    buildContent: buildActiveDeepLearnReviewerContent,
   })
 }
 

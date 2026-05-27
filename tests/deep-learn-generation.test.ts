@@ -29,6 +29,7 @@ import {
   buildDeepLearnSourceDiagnostics,
   buildAcademicStructuredGrounding,
   generateDeepLearnStructuredContent,
+  generateLegacyDeepLearnStructuredContentForCompatibility,
   structureAcademicSourceText,
   validateDeepLearnContentReadyForSave,
 } from '../lib/deep-learn-generation'
@@ -56,7 +57,7 @@ async function generateDeepLearnStructuredContentWithLegacyComposer(
   const previousMode = process.env.DEEP_LEARN_GENERATOR_MODE
   process.env.DEEP_LEARN_GENERATOR_MODE = LEGACY_STAGED_COMPOSER_VERSION
   try {
-    return await generateDeepLearnStructuredContent(...args)
+    return await generateLegacyDeepLearnStructuredContentForCompatibility(...args)
   } finally {
     if (previousMode === undefined) {
       delete process.env.DEEP_LEARN_GENERATOR_MODE
@@ -2656,6 +2657,25 @@ test('meaningful academic source calls model and saves reviewerMarkdown in simpl
   assert.equal(typeof summary?.sourceCharCount, 'number')
   assert.equal(summary?.sourceWasTruncated, false)
   assert.equal(summary?.savedReviewerMarkdown, true)
+})
+
+test('active Reviewer generation ignores legacy structured generator env override', async () => {
+  const fixture = getReviewerSourceFixture('multi-phase-systems-analysis')
+  const result = await withTemporaryEnv({
+    DEEP_LEARN_GENERATOR_MODE: LEGACY_STAGED_COMPOSER_VERSION,
+  }, () => generateDeepLearnStructuredContent(
+    createStructuredPromptInput(fixture.extractedText, fixture.title),
+    createStructuredPreparedGrounding(fixture.extractedText),
+    async (request) => {
+      assert.equal(request.schemaName, 'deep_learn_reviewer_classic_markdown')
+      assert.doesNotMatch(request.promptText, /answerBank|factCards|coverage-first/i)
+      return textResponse(buildClassicReviewerMarkdown(fixture))
+    },
+  ))
+
+  assert.ok(result.content.reviewerMarkdown)
+  assert.equal(result.content.answerBank.length, 0)
+  assert.equal(result.content.identificationItems.length, 0)
 })
 
 test('Reviewer classic markdown covers SDLC Phase 1 through Phase 7', async () => {

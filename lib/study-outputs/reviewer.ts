@@ -182,6 +182,41 @@ export function buildDeepLearnReviewerContent(note: DeepLearnNote): StudyOutputR
   }
 }
 
+export function buildActiveDeepLearnReviewerContent(note: DeepLearnNote): StudyOutputReviewerContent {
+  const readiness = getDeepLearnMarkdownReviewerReadiness(note)
+  if (!readiness.ok) {
+    throw new Error(readiness.message)
+  }
+
+  const markdown = note.reviewerMarkdown ?? note.noteBody
+  return {
+    version: 'reviewer-v1',
+    sourceNoteId: note.id,
+    sourceResourceId: note.resourceId,
+    title: buildReviewerTitle(note.title),
+    summary: 'Full exam Reviewer generated directly from the selected source.',
+    intro: cleanReviewerText(note.overview),
+    reviewerMarkdown: markdown,
+    highYieldConcepts: [],
+    identificationReview: [],
+    quickReviewBlocks: [],
+    distinctions: [],
+    likelyQuizTargets: [],
+    cautionNotes: note.cautionNotes.map(cleanReviewerText).filter(Boolean).slice(0, 6),
+  }
+}
+
+export function getDeepLearnMarkdownReviewerReadiness(note: DeepLearnNote | null): ReviewerBuildReadiness {
+  const readiness = getDeepLearnReviewerReadiness(note)
+  if (!readiness.ok) return readiness
+  if (note && hasFullReviewerMarkdown(note)) return readiness
+  return {
+    ok: false,
+    reason: 'empty',
+    message: 'This Study Pack uses an older structured Reviewer format. Regenerate Deep Learn from the source to create a markdown Reviewer.',
+  }
+}
+
 function buildReviewerTitle(noteTitle: string) {
   const trimmed = noteTitle.trim()
   if (!trimmed) return 'Reviewer'
