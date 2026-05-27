@@ -490,6 +490,58 @@ test('task output normalizer removes internal source mode labels from user-visib
   assert.match(output.groundingNote, /general\/background research/)
 })
 
+test('task output normalizer treats HTML-like report content as HTML for saved preview and export', () => {
+  const request = buildTaskOutputRequest({
+    taskId: 'task-html-report',
+    taskTitle: 'Research Malware Trends',
+    taskDetails: 'Research and analyze malware trends with references.',
+    deadline: null,
+    priority: 'high',
+    courseName: 'IT Security',
+    moduleTitle: 'Threats',
+    resourceSnippet: null,
+    sourceText: null,
+    sourceNote: null,
+    moduleSummary: null,
+  }, {
+    preset: 'report',
+    outputType: 'docx',
+  })
+
+  const output = normalizeTaskOutputModelResponse({
+    title: 'Malware Report',
+    summary: 'Completed report.',
+    previewMode: 'rich_text',
+    previewContent: [
+      '<h1>Malware Report</h1>',
+      '<p><strong>General/background research note:</strong> Verify before submission.</p>',
+      '<h2>Summary Table</h2>',
+      '<table><tr><th>Threat</th></tr><tr><td>WannaCry</td></tr></table>',
+      '<h2>1. WannaCry</h2>',
+      '<p>WannaCry was a ransomware worm with global impact.</p>',
+      '<h2>References</h2>',
+      '<p>General/background references to verify.</p>',
+    ].join(''),
+    stylesheet: null,
+    script: null,
+    groundingNote: 'General/background research was used because course-provided source content was insufficient.',
+    limitationNote: 'Verify references before submission.',
+    warnings: [],
+    requirementsUsed: request.requirements,
+    selectedContextUsed: [],
+  }, request, null)
+
+  assert.equal(output.previewMode, 'html')
+  const htmlExport = output.exports.find((file) => file.filename.endsWith('.html'))
+  const textExport = output.exports.find((file) => file.filename.endsWith('.txt'))
+  assert.ok(htmlExport)
+  assert.ok(textExport)
+  assert.match(htmlExport.content, /<h1>Malware Report<\/h1>/)
+  assert.doesNotMatch(htmlExport.content, /&lt;h1&gt;Malware Report/)
+  assert.doesNotMatch(textExport.content, /<h1>|<\/h1>/)
+  assert.match(textExport.content, /Malware Report/)
+})
+
 test('external sources required and completed after research output becomes Needs research', () => {
   const request = buildTaskOutputRequest({
     taskId: 'task-research-template',

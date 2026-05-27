@@ -5,6 +5,83 @@ Last Updated: 2026-05-27
 
 ---
 
+## Session Update - 2026-05-27 (Phase 3.5.1 Task Output Save Export QA)
+
+### What changed
+
+- Smoke-tested the saved Study Library artifact and export/download path for the real IT Security "Assignment No. 3/Research: Top 10" task.
+- Used the real Canvas-synced task row:
+  - task page: `/modules/f2c89ddd-7c5b-4220-a586-8634f148d7a3/tasks`
+  - saved artifact: `/library/bfd1153b-cbc3-4751-af4d-dfcfacba1d8a`
+- Found and fixed one narrow Task Output save/render/export issue:
+  - model responses can contain HTML report markup while declaring `previewMode: "rich_text"`;
+  - normalized HTML-like Task Output report content to `previewMode: "html"` so Study Library preview and exported HTML render headings/tables instead of treating them as plain escaped text.
+- Added focused regression coverage for HTML-like report normalization and export behavior.
+- Did not touch Reviewer, cron, resource refresh, OCR, queue semantics, schema, or broad generation behavior.
+
+### Why it changed
+
+The Phase 3.5 report content was complete, but the saved/export path needs to preserve it as a usable artifact. During smoke testing, the saved/export payload preserved the text, but HTML-like report content could be routed through the rich-text path and risk a poor saved preview/export. The fix keeps Task Output reports export-ready without changing unrelated flows.
+
+### Current product direction
+
+Stay Focused remains schedule-first over Canvas. Task Output should save completed scheduled deliverables into Study Library with honest grounding labels and exports that preserve the full student-ready output.
+
+### Tests run
+
+- `git status --short --branch`: clean at session start on `main...origin/main`.
+- Browser attempt: local app opened, but the in-app browser first hit a Turbopack Windows process-spawn failure, then the browser tool blocked the local URL by policy; click-by-click UI smoke could not continue in Browser.
+- Direct local server fallback: started Next dev with bundled Node and `next dev --webpack`.
+- Direct model generation attempt against `/api/task-output`: blocked by DNS failure resolving `api.openai.com`, so generation returned the intended model-unavailable fallback. Phase 3.5 generation QA remains the source of truth for live model generation.
+- Real persisted artifact smoke: used the real Supabase task row, saved/reopened Study Library artifact `bfd1153b-cbc3-4751-af4d-dfcfacba1d8a`, rendered the Study Library Task Output component to static markup, and inspected the saved HTML/text exports.
+- `npm run typecheck`: blocked because `npm` is not available on PATH.
+- `npm run lint`: blocked because `npm` is not available on PATH.
+- `npm test -- task-output task-output-foundation task-output-save`: blocked because `npm` is not available on PATH.
+- Direct typecheck equivalent: bundled Node running `node_modules/typescript/bin/tsc --noEmit`: passed.
+- Direct lint equivalent: bundled Node running `node_modules/eslint/bin/eslint.js`: passed with 4 existing unused Reviewer warnings in `lib/deep-learn-generation.ts`.
+- Direct relevant tests with bundled Node + `tsx`: `tests/task-output-foundation.test.ts tests/task-output-save.test.ts tests/study-output-print.test.ts`: passed, 34/34 tests.
+
+### Smoke verification result
+
+- Saved artifact result:
+  - `sourceMode`: `general_research_labeled`
+  - `previewMode`: `html`
+  - `readinessStatus`: `ready`
+  - exports: HTML and text backup
+- Confirmed saved artifact preserves:
+  - full report body
+  - 10 detailed entries
+  - conclusion
+  - references
+  - honest general/background research labeling
+  - no internal source mode labels
+  - no clipped ending
+- Confirmed HTML export preserves rendered headings/tables and does not escape report headings as literal `&lt;h1&gt;` / `&lt;table&gt;`.
+- Confirmed static Study Library render contains the full report, conclusion, references, general/background label, and no internal mode labels.
+
+### Known risks
+
+- Click-by-click authenticated browser verification was blocked by local browser/tool policy, so the UI smoke was completed through the same saved artifact data, export payload, and render component path rather than manual clicks.
+- OpenAI live generation was unavailable during this session due `api.openai.com` DNS resolution failure; this did not block save/export verification because Phase 3.5 already verified live generation.
+- General/background references still need student verification before formal submission.
+- Lint still reports pre-existing unused Reviewer helper warnings only.
+
+### Blockers
+
+- `npm` and `npx` remain unavailable on PATH, so verification used direct bundled Node equivalents.
+- Browser tool could not complete local authenticated UI navigation in this session.
+- DNS to `api.openai.com` failed during the smoke run.
+
+### Next recommended step
+
+After local browser access and OpenAI DNS are healthy, run one final click-through from the real task page: open the Activity output panel, use "Open saved output", click the HTML/text download buttons, and visually confirm the downloaded HTML in a browser.
+
+### Suggested commit message
+
+`qa task output save export`
+
+---
+
 ## Session Update - 2026-05-27 (Phase 3.5 Task Output Research Mode QA)
 
 ### What changed

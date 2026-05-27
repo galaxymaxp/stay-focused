@@ -317,9 +317,10 @@ export function normalizeTaskOutputModelResponse(
   request: TaskOutputRequest,
   previous: StudyOutputTaskOutputContent | null,
 ): StudyOutputTaskOutputContent {
-  const previewMode = normalizePreviewMode(response.previewMode, request.outputType)
+  const normalizedPreviewContent = sanitizeInternalModeLabels(cleanBlock(response.previewContent))
+  const previewMode = normalizePreviewMode(response.previewMode, request.outputType, normalizedPreviewContent)
   const title = sanitizeInternalModeLabels(cleanInline(response.title)) || buildTaskOutputTitle(request)
-  const previewContent = sanitizeInternalModeLabels(cleanBlock(response.previewContent)) || buildFallbackPreview(request, previewMode)
+  const previewContent = normalizedPreviewContent || buildFallbackPreview(request, previewMode)
   const groundingNote = sanitizeInternalModeLabels(cleanInline(response.groundingNote))
     || (request.sourceMode === 'general_research_labeled'
       ? 'General/background research was used because course-provided source content was insufficient.'
@@ -898,9 +899,18 @@ function resolvePreviewMode(outputType: TaskOutputTargetType): TaskOutputPreview
   return 'rich_text'
 }
 
-function normalizePreviewMode(value: string, outputType: TaskOutputTargetType): TaskOutputPreviewMode {
-  if (value === 'html' || value === 'code' || value === 'rich_text') return value
+function normalizePreviewMode(value: string, outputType: TaskOutputTargetType, previewContent = ''): TaskOutputPreviewMode {
+  if (value === 'code') return 'code'
+  if ((value === 'html' || looksLikeHtmlPreviewContent(previewContent)) && outputType !== 'css' && outputType !== 'js') return 'html'
+  if (value === 'rich_text') return 'rich_text'
   return resolvePreviewMode(outputType)
+}
+
+function looksLikeHtmlPreviewContent(value: string) {
+  if (!value) return false
+  const htmlTagMatches = value.match(/<\/?(?:main|section|article|h[1-6]|p|ul|ol|li|table|thead|tbody|tr|td|th|strong|em|div|span)\b[^>]*>/gi) ?? []
+  if (htmlTagMatches.length >= 4) return true
+  return /^\s*<(?:!doctype\s+html|html|body|main|section|article|h1|h2|p|table)\b/i.test(value)
 }
 
 function buildTaskOutputExports(input: {
