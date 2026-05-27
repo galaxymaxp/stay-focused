@@ -18,6 +18,7 @@ import { UserAvatar } from '@/components/UserAvatar'
 import { useThemeSettings } from '@/components/ThemeProvider'
 import { useAuthSummary } from '@/components/useAuthSummary'
 import { isCurrentUserCanvasConnected } from '@/lib/canvas-settings-state'
+import { CANVAS_ONBOARDING_STEPS, CANVAS_VIDEO_PLACEHOLDER_TEXT, getCanvasTokenPageUrl } from '@/lib/canvas-onboarding'
 import type { UserAvatarApiResponse } from '@/components/useUserAvatarProfile'
 import type { AvatarSource } from '@/lib/profile-avatar'
 import { ACCENT_OPTIONS, type AccentName, type ThemeMode } from '@/lib/theme'
@@ -476,9 +477,40 @@ export function SettingsPage() {
                       </form>
                     )}
 
-                    <p className="settings-card-note" style={{ marginTop: '1rem' }}>
-                      To create a Canvas access token: Go to Canvas → Account → Settings → New Access Token. Your token is stored securely and only used to sync your courses.
-                    </p>
+                    <div style={{ marginTop: '1rem', padding: '1rem', borderRadius: '10px', border: '1px solid color-mix(in srgb, var(--amber) 28%, var(--border-subtle) 72%)', background: 'color-mix(in srgb, var(--amber-light) 12%, var(--surface-base) 88%)' }}>
+                      <p style={{ margin: '0 0 0.5rem', fontSize: '12px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
+                        How to get a Canvas token
+                      </p>
+                      <p style={{ margin: '0 0 0.6rem', fontSize: '13px', lineHeight: 1.6, color: 'var(--text-secondary)', fontStyle: 'italic' }}>
+                        {CANVAS_VIDEO_PLACEHOLDER_TEXT}
+                      </p>
+                      <ol style={{ margin: 0, paddingLeft: '1.1rem', display: 'grid', gap: '0.3rem', fontSize: '13px', lineHeight: 1.6, color: 'var(--text-secondary)' }}>
+                        {CANVAS_ONBOARDING_STEPS.map((step, i) => (
+                          <li key={i}>{step}</li>
+                        ))}
+                      </ol>
+                      {(() => {
+                        const settingsLink = getCanvasTokenPageUrl(userSettings?.canvasApiUrl ?? '')
+                        return settingsLink ? (
+                          <div style={{ marginTop: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                            <a
+                              href={settingsLink}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="ui-button ui-button-secondary"
+                              style={{ textDecoration: 'none', fontSize: '13px' }}
+                            >
+                              Open Canvas settings &rarr;
+                            </a>
+                            <p className="settings-card-note" style={{ margin: 0 }}>{settingsLink}</p>
+                          </div>
+                        ) : (
+                          <p className="settings-card-note" style={{ marginTop: '0.6rem' }}>
+                            Save your Canvas URL above to get a direct link to your token settings.
+                          </p>
+                        )
+                      })()}
+                    </div>
 
                     <div style={{ marginTop: '1rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
                       <Link href="/sync" className="ui-button ui-button-secondary" style={{ textDecoration: 'none' }}>

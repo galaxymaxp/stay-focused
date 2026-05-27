@@ -12,6 +12,7 @@ import { UnsyncButton } from '@/components/UnsyncButton'
 import { useAuthSummary } from '@/components/useAuthSummary'
 import type { CanvasSyncPhase, SyncActivitySnapshot } from '@/components/useCanvasSyncStatus'
 import type { CanvasCourse } from '@/lib/canvas'
+import { CANVAS_ONBOARDING_STEPS, CANVAS_VIDEO_PLACEHOLDER_TEXT, getCanvasTokenPageUrl } from '@/lib/canvas-onboarding'
 import { deriveCanvasCourseStatus } from '@/lib/canvas-course-status'
 import { buildCanvasCourseSyncKey } from '@/lib/canvas-sync'
 import { dispatchInAppToast } from '@/lib/notifications'
@@ -836,6 +837,16 @@ function SetupModal({
   onOpenTokenPage: () => void
   onTestConnection: () => void
 }) {
+  const [linkCopied, setLinkCopied] = useState(false)
+  const tokenPageUrl = getCanvasTokenPageUrl(canvasUrl)
+
+  function handleCopyLink() {
+    if (!tokenPageUrl) return
+    navigator.clipboard.writeText(tokenPageUrl).catch(() => {})
+    setLinkCopied(true)
+    window.setTimeout(() => setLinkCopied(false), 2000)
+  }
+
   return (
     <div className="ui-overlay" style={modalBackdropStyle} onClick={onClose}>
       <div style={modalCardStyle} onClick={(event) => event.stopPropagation()}>
@@ -843,7 +854,7 @@ function SetupModal({
           <div>
             <p className="ui-kicker">Connect Canvas</p>
             <h2 style={{ margin: '0.38rem 0 0', fontSize: '1.1rem', lineHeight: 1.35, color: 'var(--text-primary)' }}>
-              {stage === 'guide' ? 'Create an access token' : 'Enter your connection details'}
+              {stage === 'guide' ? 'Generate a Canvas access token' : 'Enter your connection details'}
             </h2>
           </div>
           <button type="button" onClick={onClose} className="ui-button ui-button-ghost ui-button-sm" aria-label="Close setup">
@@ -853,13 +864,19 @@ function SetupModal({
 
         {stage === 'guide' ? (
           <div style={{ display: 'grid', gap: '0.9rem' }}>
-            <p style={bodyCopyStyle}>
-              Open your Canvas settings, create a token, then return here to test the connection.
-            </p>
+            <div style={videoPanelStyle}>
+              <span style={videoIconStyle}>&#9654;</span>
+              <p style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                {CANVAS_VIDEO_PLACEHOLDER_TEXT}
+              </p>
+              <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-muted)' }}>
+                Follow the steps below in the meantime.
+              </p>
+            </div>
 
             <Field
-              label="Canvas URL"
-              hint="Used to open the correct Canvas settings page."
+              label="Your Canvas URL"
+              hint="Enter your school's Canvas URL to generate a direct link to your settings page."
               value={canvasUrl}
               onChange={onCanvasUrlChange}
               placeholder="https://your-school.instructure.com"
@@ -867,21 +884,40 @@ function SetupModal({
               type="url"
             />
 
+            {tokenPageUrl ? (
+              <div style={settingsLinkPanelStyle}>
+                <span style={{ fontSize: '12px', color: 'var(--text-muted)', flex: '1 1 160px', overflowWrap: 'anywhere', wordBreak: 'break-all' }}>
+                  {tokenPageUrl}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleCopyLink}
+                  className="ui-button ui-button-ghost ui-button-sm"
+                  style={{ flexShrink: 0 }}
+                >
+                  {linkCopied ? 'Copied' : 'Copy link'}
+                </button>
+              </div>
+            ) : (
+              <p style={helperTextStyle}>
+                Enter your Canvas URL above to get a direct link to your token settings.
+              </p>
+            )}
+
             <ol style={{ margin: 0, paddingLeft: '1.1rem', display: 'grid', gap: '0.45rem', color: 'var(--text-secondary)', fontSize: '13px', lineHeight: 1.6 }}>
-              <li>Open your Canvas settings page.</li>
-              <li>Create a new personal access token.</li>
-              <li>Copy the token before leaving Canvas.</li>
-              <li>Return here and paste it in.</li>
+              {CANVAS_ONBOARDING_STEPS.map((step, i) => (
+                <li key={i}>{step}</li>
+              ))}
             </ol>
 
             {connectionError && <Message>{connectionError}</Message>}
 
             <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
               <button type="button" onClick={onOpenTokenPage} className="ui-button ui-button-primary ui-button-sm">
-                Open token page
+                Open Canvas settings
               </button>
               <button type="button" onClick={onNext} className="ui-button ui-button-ghost ui-button-sm">
-                I already have a token
+                I have a token
               </button>
             </div>
           </div>
@@ -902,7 +938,7 @@ function SetupModal({
             />
             <Field
               label="Access token"
-              hint="Paste the token exactly as Canvas provided it."
+              hint="Canvas only shows this token once — paste it exactly as it appeared."
               value={token}
               onChange={onTokenChange}
               placeholder="Paste your Canvas access token"
@@ -1158,20 +1194,6 @@ function Message({ children }: { children: ReactNode }) {
   )
 }
 
-function getCanvasTokenPageUrl(canvasUrl: string) {
-  const trimmed = canvasUrl.trim()
-  if (!trimmed) return null
-
-  try {
-    const normalizedInput = /^[a-zA-Z][a-zA-Z\d+\-.]*:\/\//.test(trimmed)
-      ? trimmed
-      : `https://${trimmed}`
-    const url = new URL(normalizedInput)
-    return `${url.origin}/profile/settings`
-  } catch {
-    return null
-  }
-}
 
 function groupCoursesForPicker(courses: CanvasCourse[]) {
   const current = courses.filter((course) => deriveCanvasCourseStatus(course) === 'active')
@@ -1396,4 +1418,42 @@ const bodyCopyStyle: CSSProperties = {
   fontSize: '13px',
   lineHeight: 1.65,
   color: 'var(--text-secondary)',
+}
+
+const videoPanelStyle: CSSProperties = {
+  borderRadius: '12px',
+  border: '1px solid color-mix(in srgb, var(--amber) 30%, var(--border-subtle) 70%)',
+  background: 'color-mix(in srgb, var(--amber-light) 14%, var(--surface-elevated) 86%)',
+  padding: '1.3rem 1rem',
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  gap: '0.4rem',
+  textAlign: 'center',
+}
+
+const videoIconStyle: CSSProperties = {
+  width: '32px',
+  height: '32px',
+  borderRadius: '50%',
+  background: 'color-mix(in srgb, var(--amber) 18%, var(--surface-elevated) 82%)',
+  border: '1.5px solid color-mix(in srgb, var(--amber) 40%, var(--border-subtle) 60%)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  fontSize: '13px',
+  color: 'var(--text-secondary)',
+  lineHeight: 1,
+  paddingLeft: '2px',
+}
+
+const settingsLinkPanelStyle: CSSProperties = {
+  borderRadius: '10px',
+  border: '1px solid color-mix(in srgb, var(--border-subtle) 88%, transparent)',
+  background: 'var(--surface-elevated)',
+  padding: '0.6rem 0.85rem',
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.5rem',
+  flexWrap: 'wrap',
 }

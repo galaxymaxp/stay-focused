@@ -5,6 +5,87 @@ Last Updated: 2026-05-27
 
 ---
 
+## Session Update - 2026-05-27 (Canvas Token Onboarding Improvement)
+
+### What changed
+
+- Extracted `getCanvasTokenPageUrl()` into a new `lib/canvas-onboarding.ts` module alongside two new exported constants: `CANVAS_ONBOARDING_STEPS` (7 steps covering the full token flow) and `CANVAS_VIDEO_PLACEHOLDER_TEXT`.
+- Updated `ConnectCanvasFlow.tsx` `SetupModal` — guide stage now includes:
+  - A warm amber video placeholder panel ("A step-by-step walkthrough video will be added here.") using existing `--amber` / `--amber-light` CSS variables.
+  - A dynamic Canvas settings link row (shows the generated `/profile/settings` URL + a copy-to-clipboard button) when the user has entered a Canvas URL; falls back to plain helper text when not.
+  - Expanded step list (7 steps from the constant, replacing the previous 4-item list).
+  - Token field hint updated to read "Canvas only shows this token once — paste it exactly as it appeared."
+  - "Open token page" button relabeled "Open Canvas settings".
+- Updated `SettingsPage.tsx` Canvas section — added a warm amber instruction panel below the save form with:
+  - Video placeholder text (italic).
+  - Same 7-step ordered list from the constant.
+  - Dynamic "Open Canvas settings →" link button and URL display when `userSettings.canvasApiUrl` is saved; fallback note when not.
+- Removed the now-redundant local `getCanvasTokenPageUrl` definition from `ConnectCanvasFlow.tsx`.
+- Added `tests/canvas-onboarding.test.ts` — 11 tests covering URL generation, fallback behavior, video placeholder presence, step count, step content keywords, and error message hygiene.
+
+### Files touched
+
+- `lib/canvas-onboarding.ts` — new file
+- `components/ConnectCanvasFlow.tsx` — import updated, `SetupModal` revised, local helper removed, style constants added
+- `components/SettingsPage.tsx` — import added, Canvas section instruction panel added
+- `tests/canvas-onboarding.test.ts` — new test file (11 tests)
+- `docs/ai/handoff.md` — this entry
+
+### Why it changed
+
+Canvas sync onboarding was prioritized over Phase 6.1 queue cleanup. Students had no walkthrough video, no visible settings link to copy, and a minimal 4-step instruction list. The goal was to make the token generation flow clear and copyable without adding a real video file yet.
+
+### Design file fetch status
+
+Design file at `https://api.anthropic.com/v1/design/h/-dFwJ2B5sSGyTobKHzX2uA` returned binary/gzip content — not readable design spec. Per task instructions, existing Stay Focused UI patterns were reused: `--amber` / `--amber-light` variables for the warm academic palette, `borderRadius: 12px`, `color-mix()` borders, `var(--surface-elevated)` backgrounds, and the existing `ui-button` / `ui-kicker` class system.
+
+### Relevant design aspects applied
+
+- Warm amber panel for video placeholder (matches the golden accent system already in use in `endedBadgeStyle` and `StatusRow`).
+- Settings link row uses `var(--surface-elevated)` + `var(--border-subtle)` — same pattern as `toggleShellStyle`.
+- No new design language introduced; all color tokens are pre-existing in the codebase.
+
+### Tests run
+
+- Node runtime: `AppData\Local\Temp\node-v22.13.1-win-x64\node-v22.13.1-win-x64\node.exe` (v22.13.1)
+- `node node_modules/typescript/bin/tsc --noEmit`: **passed** (no output)
+- `node node_modules/eslint/bin/eslint.js --max-warnings=0` on changed files: **passed** (no output)
+- `node node_modules/tsx/dist/cli.cjs --test tests/canvas-onboarding.test.ts`: **11/11 passed, 0 failed**
+- `node node_modules/tsx/dist/cli.cjs --test tests/canvas-settings-state.test.ts tests/canvas-onboarding.test.ts`: **18/18 passed, 0 failed**
+
+### Verification result
+
+- TypeScript: clean
+- Lint: clean
+- New tests: 11/11 pass covering URL generation, fallback, video placeholder, step list structure, and error message hygiene
+- Existing Canvas state tests: 6/6 still pass
+
+### Known risks
+
+- The `videoIconStyle` uses `paddingLeft: '2px'` to nudge the ▶ play glyph center-visually — this may need minor tuning on some font rendering environments.
+- The Settings page Canvas instructions section uses an IIFE (`(() => {...})()`) for the conditional link logic. This is valid JSX but a small extracted component would be cleaner if this section grows.
+- `SettingsPage.tsx` canvas URL input remains uncontrolled (`defaultValue`), so the dynamic settings link reflects the *saved* URL, not live input. Students need to save their URL first before the direct link appears. This is the minimal-change approach; converting to a controlled input would require more refactoring.
+
+### OAuth / better onboarding path note
+
+The app currently uses Personal Access Token (PAT) auth only. Canvas OAuth (Developer Key flow) would be the better long-term onboarding path — no manual token copy, no risk of expiry surprises, and a cleaner student experience. However, OAuth requires the school's Canvas instance to have a Developer Key configured, which is an admin-level action most schools have not enabled for third-party apps. PAT remains the practical current path. If a school partner agrees to enable a Developer Key, the OAuth flow should be added as an alternative to PAT in the setup modal (not a replacement, since many schools will never enable it).
+
+### Blockers
+
+- `npm` and `npx` remain unavailable on PATH; tests used bundled Node v22.13.1 at `AppData\Local\Temp\node-v22.13.1-win-x64\node-v22.13.1-win-x64\node.exe`.
+- No real video file committed — placeholder text only. The path `/tutorials/canvas-token-walkthrough.mp4` is reserved for a future video asset; the placeholder gracefully renders without it.
+
+### Next recommended step
+
+- Record or source a short (60–90 s) screen capture showing: Canvas → Account → Settings → New Access Token → copy → paste into Stay Focused → Test connection. Drop the video at `public/tutorials/canvas-token-walkthrough.mp4` and replace the placeholder panel in `ConnectCanvasFlow.tsx` with a `<video>` element pointing to that path.
+- Phase 6.1 queue cleanup can resume after the video asset is added or explicitly deferred.
+
+### Suggested commit message
+
+`improve canvas token onboarding`
+
+---
+
 ## Session Update - 2026-05-27 (Phase 6 — Study Library Readiness Status Cleanup)
 
 ### What changed
