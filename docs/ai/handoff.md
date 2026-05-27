@@ -5,6 +5,78 @@ Last Updated: 2026-05-27
 
 ---
 
+## Session Update - 2026-05-27 (Phase 5 Reviewer Markdown Validation Hardening)
+
+### What changed
+
+- Strengthened the active markdown Reviewer prompt to require source-first study-guide organization, source heading order, exact academic term preservation, and clean markdown-only output.
+- Added lightweight source-outline use in the active markdown path so the model sees the major source order before generating.
+- Added deterministic markdown validation for weak Reviewer output:
+  - rejects or repairs ignored source structure
+  - rejects or repairs source heading reordering
+  - rejects or repairs mostly generic summaries
+  - rejects or repairs loss of important exact source terms
+  - blocks metadata/debug/internal leakage
+- Added markdown-only repair using the existing Reviewer repair model when the first markdown output is weak.
+- Added line-level markdown sanitization for UUIDs, file IDs, file names used as content, OCR/extraction notes, debug labels, internal mode/model names, metadata text, and refusal text.
+- Kept active Reviewer output as `reviewerMarkdown`; no card/grid/answerBank-first or structured Reviewer generation was reintroduced.
+- Did not touch Task Output, cron, resource refresh, OCR, schema, or Reviewer hover explanations.
+
+### Files touched
+
+- `lib/deep-learn-generation.ts`
+- `tests/deep-learn-generation.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Phase 4 made markdown Reviewer the active contract and Phase 4.5 verified rendering. Phase 5 hardens that contract so markdown Reviewers stay source-grounded, preserve source organization and exact academic terms, and avoid leaking extraction/debug metadata into student-facing study guides.
+
+### Current product direction
+
+Stay Focused remains schedule-first over Canvas. Deep Learn Reviewers should be dependable source-first study guides that help a student know what to review during a scheduled block, while old structured/card Reviewer records remain legacy display compatibility only.
+
+### Tests run
+
+- `git status --short --branch`: clean at session start on `main...origin/main`.
+- `npm run typecheck`: blocked because `npm` is not available on PATH.
+- `npm run lint`: blocked because `npm` is not available on PATH.
+- `npm test -- deep-learn-generation study-output-reviewer study-output-quiz-pack queue`: blocked because `npm` is not available on PATH.
+- Direct typecheck equivalent: bundled Node running `node_modules/typescript/bin/tsc --noEmit`: passed.
+- Direct lint equivalent: bundled Node running `node_modules/eslint/bin/eslint.js`: passed with no warnings.
+- Direct focused test: bundled Node running `--test --import tsx tests/deep-learn-generation.test.ts`: passed, 89/89 tests.
+- Direct requested test equivalent: bundled Node running `--test --import tsx tests/deep-learn-generation.test.ts tests/study-output-reviewer.test.ts tests/study-output-quiz-pack.test.ts tests/queue.test.ts`: passed, 196/196 tests.
+
+### Verification result
+
+- Confirmed active markdown Reviewer generation still calls `deep_learn_reviewer_classic_markdown` and stores `reviewerMarkdown` with empty structured arrays.
+- Confirmed weak compact/generic markdown is repaired through markdown-only generation instead of being saved as-is.
+- Confirmed source heading order is repaired when model output reorders major headings.
+- Confirmed exact academic terms such as legal terms and technical acronyms are preserved.
+- Confirmed UUIDs, file names, OCR/extraction notes, debug labels, and internal mode names are filtered from markdown output.
+- Confirmed empty/bad selected source text is blocked before model generation and does not fall back to stale module/course/task context.
+- Confirmed legacy structured/card Reviewer compatibility tests still pass, while active markdown remains the new path.
+
+### Known risks
+
+- Source-outline detection is intentionally lightweight and source-agnostic; unusual lecture formatting may under-detect or over-detect some headings.
+- Stricter markdown validation may add one repair call for sparse or oddly formatted sources, increasing latency/cost for those cases.
+- Validation checks heading order from markdown headings rather than every body-text mention to avoid false failures from source excerpts inside sections.
+
+### Blockers
+
+- `npm` and `npx` remain unavailable on PATH, and the PATH `node.exe` is blocked by Windows permissions, so verification used the bundled Codex Node runtime.
+
+### Next recommended step
+
+Run one deployed authenticated generation for a long lecture PDF and one bullet-heavy module, then inspect the saved markdown Reviewer for source heading order, exact terms, and absence of metadata/debug leakage.
+
+### Suggested commit message
+
+`validate reviewer markdown coverage`
+
+---
+
 ## Session Update - 2026-05-27 (Phase 4.5 Reviewer Markdown Contract QA)
 
 ### What changed

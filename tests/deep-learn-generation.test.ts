@@ -2631,7 +2631,8 @@ test('meaningful academic source calls model and saves reviewerMarkdown in simpl
       async (request) => {
         assert.equal(request.schemaName, 'deep_learn_reviewer_classic_markdown')
         assert.equal(request.model, 'gpt-5.4-classic')
-        assert.match(request.promptText, /You are creating a student reviewer/i)
+        assert.match(request.promptText, /source-first/i)
+        assert.match(request.promptText, /Major source outline/i)
         assert.match(request.promptText, /Return only Markdown/i)
         assert.doesNotMatch(request.promptText, /factCard|answerBank|Generate exactly|coverage-first/i)
         return textResponse(buildClassicReviewerMarkdown(fixture))
@@ -2801,13 +2802,20 @@ test('Reviewer classic markdown covers PATHFit Arnis exam areas', async () => {
 
 test('compact Markdown output saves successfully', async () => {
   const fixture = getReviewerSourceFixture('multi-phase-systems-analysis')
+  let calls = 0
   const result = await generateDeepLearnStructuredContent(
     createStructuredPromptInput(fixture.extractedText, fixture.title),
     createStructuredPreparedGrounding(fixture.extractedText),
-    async () => textResponse('## Key Concepts\n\n- Planning defines scope.\n- Testing checks whether the system works.'),
+    async () => {
+      calls += 1
+      return textResponse(calls === 1
+        ? '## Key Concepts\n\n- Planning defines scope.\n- Testing checks whether the system works.'
+        : buildClassicReviewerMarkdown(fixture))
+    },
   )
 
-  assert.equal(result.content.reviewerMarkdown, '## Key Concepts\n\n- Planning defines scope.\n- Testing checks whether the system works.')
+  assert.equal(calls, 2)
+  assert.match(result.content.reviewerMarkdown ?? '', /## Complete Exam Reviewer/)
   assert.equal(result.content.answerBank.length, 0)
 })
 
@@ -2862,13 +2870,18 @@ test('missing exact Reviewer headings still saves Markdown', async () => {
     '1. What is the CIA triad?',
   ].join('\n')
 
+  let calls = 0
   const result = await generateDeepLearnStructuredContent(
     createStructuredPromptInput(fixture.extractedText, fixture.title),
     createStructuredPreparedGrounding(fixture.extractedText),
-    async () => textResponse(markdown),
+    async () => {
+      calls += 1
+      return textResponse(calls === 1 ? markdown : buildClassicReviewerMarkdown(fixture))
+    },
   )
 
-  assert.equal(result.content.reviewerMarkdown, normalizeReviewerMarkdownLayout(markdown))
+  assert.equal(calls, 2)
+  assert.notEqual(result.content.reviewerMarkdown, normalizeReviewerMarkdownLayout(markdown))
 })
 
 test('lower quiz count still saves Reviewer Markdown', async () => {
@@ -2884,13 +2897,134 @@ test('lower quiz count still saves Reviewer Markdown', async () => {
     'Answer: RA 9850.',
   ].join('\n')
 
+  let calls = 0
   const result = await generateDeepLearnStructuredContent(
     createStructuredPromptInput(fixture.extractedText, fixture.title),
     createStructuredPreparedGrounding(fixture.extractedText),
+    async () => {
+      calls += 1
+      return textResponse(calls === 1 ? markdown : buildClassicReviewerMarkdown(fixture))
+    },
+  )
+
+  assert.equal(calls, 2)
+  assert.notEqual(result.content.reviewerMarkdown, normalizeReviewerMarkdownLayout(markdown))
+})
+
+test('Reviewer markdown repair preserves source heading order', async () => {
+  const source = [
+    'Cellular Respiration',
+    'Glycolysis',
+    'Glycolysis converts glucose into pyruvate and produces a small amount of ATP in the cytoplasm.',
+    'Krebs Cycle',
+    'Krebs Cycle oxidizes acetyl-CoA and produces carbon dioxide, NADH, and FADH2 in the mitochondria.',
+    'Electron Transport Chain',
+    'Electron Transport Chain uses electrons from NADH and FADH2 to build a proton gradient for ATP synthase.',
+  ].join('\n')
+  const repaired = [
+    '# Reviewer: Cellular Respiration',
+    '',
+    '## Complete Exam Reviewer',
+    '### Glycolysis',
+    '- Glycolysis converts glucose into pyruvate and produces ATP.',
+    '',
+    '### Krebs Cycle',
+    '- Krebs Cycle oxidizes acetyl-CoA and produces carbon dioxide, NADH, and FADH2.',
+    '',
+    '### Electron Transport Chain',
+    '- Electron Transport Chain builds a proton gradient for ATP synthase.',
+    '',
+    '## Identification Reviewer',
+    '1. Glycolysis - glucose to pyruvate.',
+    '2. Krebs Cycle - acetyl-CoA oxidation.',
+    '3. Electron Transport Chain - proton gradient.',
+  ].join('\n')
+  let calls = 0
+
+  const result = await generateDeepLearnStructuredContent(
+    createStructuredPromptInput(source, 'Biology Lecture'),
+    createStructuredPreparedGrounding(source),
+    async () => {
+      calls += 1
+      return textResponse(calls === 1
+        ? repaired.replace('### Glycolysis', '### Electron Transport Chain\n- Electron Transport Chain builds a proton gradient.\n\n### Glycolysis')
+        : repaired)
+    },
+  )
+
+  const markdown = result.content.reviewerMarkdown ?? ''
+  assert.equal(calls, 2)
+  assert.ok(markdown.indexOf('Glycolysis') < markdown.indexOf('Krebs Cycle'))
+  assert.ok(markdown.indexOf('Krebs Cycle') < markdown.indexOf('Electron Transport Chain'))
+})
+
+test('Reviewer markdown preserves important exact academic terms from the source', async () => {
+  const source = [
+    'Contract Formation',
+    'Offer is a manifestation of willingness to enter into a bargain.',
+    'Acceptance is an objective manifestation of assent to the terms of the offer.',
+    'Consideration is a bargained-for exchange with legal value.',
+    'Promissory Estoppel can enforce a promise when reliance is reasonable and injustice can be avoided only by enforcement.',
+  ].join('\n')
+  const markdown = [
+    '# Reviewer: Contract Formation',
+    '',
+    '## Complete Exam Reviewer',
+    '### Offer',
+    '- Offer is a manifestation of willingness to enter into a bargain.',
+    '### Acceptance',
+    '- Acceptance is an objective manifestation of assent to the terms of the offer.',
+    '### Consideration',
+    '- Consideration is a bargained-for exchange with legal value.',
+    '### Promissory Estoppel',
+    '- Promissory Estoppel depends on reasonable reliance and avoiding injustice.',
+  ].join('\n')
+
+  const result = await generateDeepLearnStructuredContent(
+    createStructuredPromptInput(source, 'Contracts Lecture'),
+    createStructuredPreparedGrounding(source),
     async () => textResponse(markdown),
   )
 
-  assert.equal(result.content.reviewerMarkdown, normalizeReviewerMarkdownLayout(markdown))
+  const rendered = result.content.reviewerMarkdown ?? ''
+  for (const term of ['Offer', 'Acceptance', 'Consideration', 'Promissory Estoppel']) {
+    assert.match(rendered, new RegExp(escapeRegExp(term)))
+  }
+})
+
+test('Reviewer markdown filters metadata, OCR notes, UUIDs, file names, and internal labels', async () => {
+  const source = [
+    'Memory Management',
+    'Paging divides memory into fixed-size pages and maps them to frames.',
+    'Segmentation divides memory by logical program sections such as code, stack, and heap.',
+    'Virtual Memory lets a process use an address space larger than physical memory.',
+  ].join('\n')
+  const leaky = [
+    '# Reviewer: Operating Systems',
+    '',
+    'File title: os-memory.pdf',
+    'UUID: 11111111-1111-4111-8111-111111111111',
+    'OCR quality note: extraction quality reported as weak.',
+    'Internal mode: classic_markdown_reviewer_v1',
+    '',
+    '## Complete Exam Reviewer',
+    '### Paging',
+    '- Paging divides memory into fixed-size pages and maps them to frames.',
+    '### Segmentation',
+    '- Segmentation divides memory by logical program sections such as code, stack, and heap.',
+    '### Virtual Memory',
+    '- Virtual Memory lets a process use an address space larger than physical memory.',
+  ].join('\n')
+
+  const result = await generateDeepLearnStructuredContent(
+    createStructuredPromptInput(source, 'os-memory.pdf'),
+    createStructuredPreparedGrounding(source),
+    async () => textResponse(leaky),
+  )
+
+  const markdown = result.content.reviewerMarkdown ?? ''
+  assert.match(markdown, /Paging/)
+  assert.doesNotMatch(markdown, /11111111-1111-4111-8111-111111111111|os-memory\.pdf|OCR quality|extraction quality|classic_markdown_reviewer/i)
 })
 
 test('empty model output fails cleanly', async () => {
@@ -2932,7 +3066,7 @@ test('bad or empty source is blocked before model call in simple Reviewer mode',
   assert.equal(calls, 0)
 })
 
-test('Reviewer simple markdown does not retry unusable compact output', async () => {
+test('Reviewer simple markdown repairs unusable compact output without structured generation', async () => {
   const fixture = getReviewerSourceFixture('multi-phase-systems-analysis')
   const calls: Array<{ schemaName: string; model?: string }> = []
   const result = await withTemporaryEnv({
@@ -2943,14 +3077,15 @@ test('Reviewer simple markdown does not retry unusable compact output', async ()
     createStructuredPreparedGrounding(fixture.extractedText),
     async (request) => {
       calls.push({ schemaName: request.schemaName, model: request.model })
-      return textResponse('too short')
+      return textResponse(calls.length === 1 ? 'too short' : buildClassicReviewerMarkdown(fixture))
     },
   ))
 
   assert.deepEqual(calls, [
     { schemaName: 'deep_learn_reviewer_classic_markdown', model: 'gpt-5.4-primary' },
+    { schemaName: 'deep_learn_reviewer_classic_markdown', model: 'gpt-5.5-repair' },
   ])
-  assert.equal(result.content.reviewerMarkdown, 'too short')
+  assert.match(result.content.reviewerMarkdown ?? '', /## Complete Exam Reviewer/)
 })
 
 test('task_output model routing keeps full generation separate from Deep Learn models', () => {

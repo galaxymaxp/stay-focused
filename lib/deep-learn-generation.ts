@@ -728,6 +728,27 @@ interface OnePassReviewerModelConfig {
 interface ClassicReviewerMarkdownResult {
   markdown: string
   model: string
+  repairAttempted: boolean
+  validation: ReviewerMarkdownValidationResult
+}
+
+interface ReviewerMarkdownValidationResult {
+  ok: boolean
+  reason: 'ok'
+    | 'empty'
+    | 'metadata_leakage'
+    | 'refusal_text'
+    | 'file_name_as_content'
+    | 'internal_mode_leakage'
+    | 'generic_summary'
+    | 'source_structure_ignored'
+    | 'source_heading_order'
+    | 'lost_exact_terms'
+  message: string | null
+  outlineRequiredCount: number
+  outlineCoveredCount: number
+  outlineMissingCount: number
+  uncoveredHeadings: string[]
 }
 
 export type SourceOutlineItem = {
@@ -764,6 +785,7 @@ async function generateClassicMarkdownReviewerContent(
   const cleanedSource = cleanupStudyCompilerSource(input.promptGrounding)
   const sourceText = truncateForModel(cleanedSource, getReviewerOnePassSourceCharCap())
   const sourceWasTruncated = cleanedSource.length > sourceText.length
+  const sourceOutline = buildSourceOutline(sourceText)
   const modelConfig = getOnePassReviewerModelConfig()
   const sourceDiagnostics = buildDeepLearnSourceDiagnostics(input, options.diagnosticsContext)
 
@@ -796,23 +818,25 @@ async function generateClassicMarkdownReviewerContent(
     grounding,
     createResponse,
     model: modelConfig.primaryModel,
+    repairModel: modelConfig.repairModel,
+    sourceOutline,
   })
 
   const content = buildDeepLearnContentFromReviewerMarkdown(result.markdown, input.resource.title)
 
   logClassicMarkdownReviewerSummary({
     primaryModel: modelConfig.primaryModel,
-    repairModel: null,
-    repairAttempted: false,
+    repairModel: modelConfig.repairModel,
+    repairAttempted: result.repairAttempted,
     reviewerMarkdownLength: result.markdown.length,
     sourceCharCount: sourceText.length,
     sourceWasTruncated,
-    outlineRequiredCount: null,
-    outlineCoveredCount: null,
-    outlineMissingCount: null,
-    uncoveredHeadings: [],
-    validationPassed: true,
-    validationFailureReason: null,
+    outlineRequiredCount: result.validation.outlineRequiredCount,
+    outlineCoveredCount: result.validation.outlineCoveredCount,
+    outlineMissingCount: result.validation.outlineMissingCount,
+    uncoveredHeadings: result.validation.uncoveredHeadings,
+    validationPassed: result.validation.ok,
+    validationFailureReason: result.validation.ok ? null : result.validation.reason,
     simpleReviewerMode: true,
     sourceTitle: input.resource.title,
     selectedSourceField: sourceDiagnostics.sourceFieldUsed,
@@ -851,6 +875,8 @@ async function generateSimpleReviewerMarkdown(input: {
   grounding: DeepLearnPreparedGrounding
   createResponse: DeepLearnResponseCreator
   model: string
+  repairModel: string
+  sourceOutline: SourceOutlineItem[]
 }): Promise<ClassicReviewerMarkdownResult> {
   const academicText = input.academicText.trim()
   if (!academicText || !isMeaningfulDeepLearnSourceText({ text: academicText, title: input.sourceTitle })) {
@@ -862,11 +888,46 @@ async function generateSimpleReviewerMarkdown(input: {
     })
   }
 
+  const response = await requestClassicReviewerMarkdown({
+    ...input,
+    promptText: buildSimpleReviewerMarkdownPrompt(input),
+    maxOutputTokens: REVIEWER_ONE_PASS_MAX_OUTPUT_TOKENS,
+    model: input.model,
+  })
+  const markdown = normalizeReviewerMarkdownLayout(sanitizeReviewerMarkdown(response.output_text ?? '', input.sourceTitle))
+  const validation = validateReviewerMarkdownAgainstSource(markdown, academicText, input.sourceOutline)
+  if (validation.ok) return { markdown, model: input.model, repairAttempted: false, validation }
+
+  const repairResponse = await requestClassicReviewerMarkdown({
+    ...input,
+    promptText: buildSimpleReviewerMarkdownRepairPrompt({
+      ...input,
+      previousMarkdown: markdown,
+      failure: validation,
+    }),
+    maxOutputTokens: REVIEWER_ONE_PASS_REPAIR_MAX_OUTPUT_TOKENS,
+    model: input.repairModel,
+  })
+  const repairedMarkdown = normalizeReviewerMarkdownLayout(sanitizeReviewerMarkdown(repairResponse.output_text ?? '', input.sourceTitle))
+  const repairedValidation = validateReviewerMarkdownAgainstSource(repairedMarkdown, academicText, input.sourceOutline)
+  if (!repairedValidation.ok) {
+    throw new DeepLearnGenerationIncompleteError(`invalid_reviewer_markdown:${repairedValidation.reason}`)
+  }
+  return { markdown: repairedMarkdown, model: input.repairModel, repairAttempted: true, validation: repairedValidation }
+}
+
+async function requestClassicReviewerMarkdown(input: {
+  grounding: DeepLearnPreparedGrounding
+  createResponse: DeepLearnResponseCreator
+  promptText: string
+  maxOutputTokens: number
+  model: string
+}) {
   const response = await withTimeout(
     input.createResponse({
       grounding: input.grounding,
-      promptText: buildSimpleReviewerMarkdownPrompt(input),
-      maxOutputTokens: REVIEWER_ONE_PASS_MAX_OUTPUT_TOKENS,
+      promptText: input.promptText,
+      maxOutputTokens: input.maxOutputTokens,
       schemaName: REVIEWER_CLASSIC_MARKDOWN_SCHEMA_NAME,
       schema: {},
       model: input.model,
@@ -881,11 +942,10 @@ async function generateSimpleReviewerMarkdown(input: {
   if (response.status && response.status !== 'completed') {
     throw new DeepLearnGenerationIncompleteError(response.incomplete_details?.reason ?? response.status)
   }
-  const markdown = normalizeReviewerMarkdownLayout(sanitizeReviewerMarkdown(response.output_text ?? ''))
-  if (!markdown) {
+  if (!response.output_text?.trim()) {
     throw new DeepLearnGenerationIncompleteError('empty_reviewer_markdown')
   }
-  return { markdown, model: input.model }
+  return response
 }
 
 function buildSimpleReviewerMarkdownPrompt(input: {
@@ -893,19 +953,56 @@ function buildSimpleReviewerMarkdownPrompt(input: {
   courseName: string
   moduleName: string
   academicText: string
+  sourceOutline: SourceOutlineItem[]
 }) {
+  const outline = formatReviewerSourceOutlineForPrompt(input.sourceOutline)
   return [
-    'You are creating a student reviewer from the provided course source. Use only the provided source. Produce a clear Markdown reviewer with definitions, key concepts, important lists, practice questions, and an answer key when possible. Do not mention extraction, metadata, diagnostics, prompts, or system instructions.',
+    'You are creating a student study guide from the selected academic source. Use only the selected source text below.',
+    'Organize the Reviewer source-first: follow the selected source order, keep academically meaningful major source headings in the same relative order, and write under those headings before adding practice questions.',
+    'Preserve exact academic terms, acronyms, laws, formulas, named processes, classifications, and list item names from the source. Do not replace them with broad tutor paraphrases.',
+    'Format as clean Markdown study-guide prose with headings, bullets, definitions, enumerations, compare/distinguish notes, practice questions, and an answer key when useful. Do not create card grids, answer-bank-first output, JSON, tables of flashcards, or structured/card labels.',
+    'Never include UUIDs, file IDs, file names as content, debug labels, extraction/OCR quality notes, model names, internal mode names, metadata-only text, refusal text, prompt instructions, course metadata, module metadata, or task context as study content.',
     '',
-    `Source title: ${input.sourceTitle}`,
-    `Course: ${input.courseName || 'Course'}`,
-    `Module: ${input.moduleName || 'Module'}`,
+    'Major source outline to preserve when academically meaningful:',
+    outline || '- Use the source paragraphs in their original order.',
     '',
     'Return only Markdown. Do not return JSON.',
     '',
-    'Provided course source:',
+    'Selected academic source text:',
     input.academicText,
   ].filter(Boolean).join('\n')
+}
+
+function buildSimpleReviewerMarkdownRepairPrompt(input: {
+  academicText: string
+  sourceOutline: SourceOutlineItem[]
+  previousMarkdown: string
+  failure: ReviewerMarkdownValidationResult
+}) {
+  const outline = formatReviewerSourceOutlineForPrompt(input.sourceOutline)
+  return [
+    'Repair the previous Markdown Reviewer. Return a clean Markdown Reviewer only.',
+    `Fix this validation failure: ${input.failure.reason}.`,
+    'Keep the output source-first, preserve the source heading order, and keep exact academic terms from the selected source.',
+    'Remove all UUIDs, file IDs, file names used as content, debug labels, extraction/OCR notes, model/internal mode names, metadata-only text, refusal text, and prompt/internal labels.',
+    'Do not return JSON, cards, grids, answer-bank labels, or structured generation fields.',
+    '',
+    'Major source outline to preserve:',
+    outline || '- Use the source paragraphs in their original order.',
+    '',
+    'Previous weak Markdown Reviewer:',
+    input.previousMarkdown,
+    '',
+    'Selected academic source text:',
+    input.academicText,
+  ].join('\n')
+}
+
+function formatReviewerSourceOutlineForPrompt(outline: SourceOutlineItem[]) {
+  return getRequiredSourceOutlineItems(outline)
+    .slice(0, 16)
+    .map((item, index) => `${index + 1}. ${item.title}`)
+    .join('\n')
 }
 
 function buildDeepLearnContentFromReviewerMarkdown(markdown: string, fallbackTitle: string): DeepLearnGeneratedContent {
@@ -951,12 +1048,156 @@ function extractReviewerMarkdownSection(markdown: string, heading: string) {
   return markdown.match(pattern)?.[1]?.trim() ?? null
 }
 
-function sanitizeReviewerMarkdown(value: string) {
+function sanitizeReviewerMarkdown(value: string, sourceTitle?: string | null) {
+  const titlePattern = sourceTitle ? escapeRegExp(sourceTitle.trim()) : null
+  const extensionPattern = /\b[\w .()[\]-]{2,80}\.(?:pdf|docx?|pptx?|xlsx?|txt|html?)\b/i
   return sanitizeStudentFacingText(value)
     .replace(/\r\n/g, '\n')
     .replace(/[ \t]+\n/g, '\n')
+    .split('\n')
+    .map((line) => line.trimEnd())
+    .filter((line) => {
+      const compact = line.replace(/\s+/g, ' ').trim()
+      if (!compact) return true
+      if (/\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/i.test(compact)) return false
+      if (/^(?:file(?:\s+id|\s+title)?|source type|module name|course name|task name|extraction quality|source text quality|grounding strategy|ai fallback|debug|uuid|metadata|queue|diagnostics?|ocr(?:\s+quality|\s+notes?)?)\s*:/i.test(compact)) return false
+      if (/\b(?:extraction quality|source text quality|grounding strategy|metadata-only|metadata only|visual extraction|ocr quality|ocr confidence|debug label|internal mode|model name|classic_markdown_reviewer|structured_fact_card|legacy_staged_composer|deep_learn_reviewer|answerBank)\b/i.test(compact)) return false
+      if (/\b(?:unable to transcribe|cannot transcribe|i(?:'| a)?m unable|as an ai|i cannot access|i can't access)\b/i.test(compact)) return false
+      if (extensionPattern.test(compact) && !/^#\s*Reviewer:/i.test(compact)) return false
+      if (titlePattern && new RegExp(`^(?:#+\\s*)?${titlePattern}$`, 'i').test(compact)) return false
+      return true
+    })
+    .join('\n')
     .replace(/\n{4,}/g, '\n\n\n')
     .trim()
+}
+
+function validateReviewerMarkdownAgainstSource(
+  markdown: string,
+  sourceText: string,
+  outline: SourceOutlineItem[],
+): ReviewerMarkdownValidationResult {
+  const required = getRequiredSourceOutlineItems(outline).slice(0, 16)
+  const base = buildReviewerMarkdownValidationResult('ok', null, required, required.filter((item) => markdownMentionsOutlineItem(markdown, item)), [])
+  if (!markdown.trim()) return { ...base, ok: false, reason: 'empty', message: 'Reviewer Markdown was empty.' }
+  if (hasReviewerMarkdownRefusalText(markdown)) return { ...base, ok: false, reason: 'refusal_text', message: 'Reviewer Markdown included refusal text.' }
+  if (hasReviewerMarkdownMetadataLeakage(markdown)) return { ...base, ok: false, reason: 'metadata_leakage', message: 'Reviewer Markdown included metadata or debug text.' }
+  if (/\b(?:classic_markdown_reviewer|structured_fact_card|legacy_staged_composer|deep_learn_reviewer|gpt-5|model name|internal mode)\b/i.test(markdown)) {
+    return { ...base, ok: false, reason: 'internal_mode_leakage', message: 'Reviewer Markdown included internal model or mode text.' }
+  }
+  if (/\b[\w .()[\]-]{2,80}\.(?:pdf|docx?|pptx?|xlsx?|txt|html?)\b/i.test(markdown.replace(/^#\s*Reviewer:[^\n]+/im, ''))) {
+    return { ...base, ok: false, reason: 'file_name_as_content', message: 'Reviewer Markdown used a file name as study content.' }
+  }
+
+  const covered = required.filter((item) => markdownMentionsOutlineItem(markdown, item))
+  const uncovered = required.filter((item) => !covered.includes(item))
+  const withCoverage = buildReviewerMarkdownValidationResult('ok', null, required, covered, uncovered)
+  if (required.length >= 3 && covered.length < Math.min(3, Math.ceil(required.length * 0.45))) {
+    return { ...withCoverage, ok: false, reason: 'source_structure_ignored', message: 'Reviewer Markdown did not follow enough source structure.' }
+  }
+  if (!reviewerMarkdownPreservesHeadingOrder(markdown, covered)) {
+    return { ...withCoverage, ok: false, reason: 'source_heading_order', message: 'Reviewer Markdown reordered major source headings.' }
+  }
+  const exactTerms = extractImportantReviewerSourceTerms(sourceText, outline)
+  const missingTerms = exactTerms.filter((term) => !markdownIncludesExactTerm(markdown, term))
+  if (exactTerms.length >= 4 && missingTerms.length > Math.max(2, Math.floor(exactTerms.length * 0.45))) {
+    return { ...withCoverage, ok: false, reason: 'lost_exact_terms', message: 'Reviewer Markdown lost too many exact academic terms.' }
+  }
+  if (isMostlyGenericReviewerMarkdown(markdown, sourceText, exactTerms)) {
+    return { ...withCoverage, ok: false, reason: 'generic_summary', message: 'Reviewer Markdown was mostly generic summary.' }
+  }
+  return withCoverage
+}
+
+function buildReviewerMarkdownValidationResult(
+  reason: ReviewerMarkdownValidationResult['reason'],
+  message: string | null,
+  required: SourceOutlineItem[],
+  covered: SourceOutlineItem[],
+  uncovered: SourceOutlineItem[],
+): ReviewerMarkdownValidationResult {
+  return {
+    ok: reason === 'ok',
+    reason,
+    message,
+    outlineRequiredCount: required.length,
+    outlineCoveredCount: covered.length,
+    outlineMissingCount: uncovered.length,
+    uncoveredHeadings: uncovered.map((item) => item.title),
+  }
+}
+
+function markdownMentionsOutlineItem(markdown: string, item: SourceOutlineItem) {
+  const markdownKey = normalizeAcademicLookup(markdown)
+  if (item.normalizedTitle.length < 4) return false
+  return markdownKey.includes(item.normalizedTitle)
+}
+
+function reviewerMarkdownPreservesHeadingOrder(markdown: string, covered: SourceOutlineItem[]) {
+  const headingPositions = covered
+    .map((item) => findReviewerMarkdownHeadingIndex(markdown, item))
+    .filter((index): index is number => index != null)
+  if (headingPositions.length < 2) return true
+  let previous = -1
+  for (const index of headingPositions) {
+    if (index < previous) return false
+    previous = index
+  }
+  return true
+}
+
+function findReviewerMarkdownHeadingIndex(markdown: string, item: SourceOutlineItem) {
+  const lines = markdown.split('\n')
+  let offset = 0
+  for (const line of lines) {
+    if (/^#{2,4}\s+/.test(line) && normalizeAcademicLookup(line).includes(item.normalizedTitle)) return offset
+    offset += line.length + 1
+  }
+  return null
+}
+
+function extractImportantReviewerSourceTerms(sourceText: string, outline: SourceOutlineItem[]) {
+  const structured = structureAcademicSourceText(sourceText)
+  const candidates = [
+    ...getRequiredSourceOutlineItems(outline).map((item) => item.title),
+    ...structured.termDefinitions.map((item) => item.term),
+    ...structured.lists.flatMap((list) => [list.heading, ...list.items.slice(0, 8)]),
+  ]
+  const seen = new Set<string>()
+  return candidates
+    .map((term) => term.replace(/\s+/g, ' ').trim())
+    .filter((term) => term.length >= 3 && term.length <= 80)
+    .filter((term) => /[A-Z0-9]/.test(term))
+    .filter((term) => {
+      const key = normalizeAcademicLookup(term)
+      if (!key || seen.has(key) || /^(?:source|module|course|file|metadata|reviewer)$/i.test(key)) return false
+      seen.add(key)
+      return true
+    })
+    .slice(0, 18)
+}
+
+function markdownIncludesExactTerm(markdown: string, term: string) {
+  return new RegExp(`(^|[^A-Za-z0-9])${escapeRegExp(term)}([^A-Za-z0-9]|$)`, 'i').test(markdown)
+}
+
+function isMostlyGenericReviewerMarkdown(markdown: string, sourceText: string, exactTerms: string[]) {
+  if (sourceText.length < 800 || markdown.length >= 1000) return false
+  const sourceTokens = new Set(normalizeAcademicLookup(sourceText).split(' ').filter((token) => token.length >= 5))
+  const markdownTokens = normalizeAcademicLookup(markdown).split(' ').filter((token) => token.length >= 5)
+  if (markdownTokens.length < 45) return true
+  const overlap = markdownTokens.filter((token) => sourceTokens.has(token)).length / Math.max(1, markdownTokens.length)
+  const exactTermHits = exactTerms.filter((term) => markdownIncludesExactTerm(markdown, term)).length
+  return overlap < 0.34 && exactTermHits < Math.min(3, exactTerms.length)
+}
+
+function hasReviewerMarkdownRefusalText(markdown: string) {
+  return /\b(?:unable to transcribe|cannot transcribe|i(?:'| a)?m unable|as an ai|i cannot access|i can't access)\b/i.test(markdown)
+}
+
+function hasReviewerMarkdownMetadataLeakage(markdown: string) {
+  return /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/i.test(markdown)
+    || /\b(?:extraction quality|source text quality|grounding strategy|metadata-only|metadata only|visual extraction|ocr quality|ocr confidence|debug label|file id|uuid|diagnostics?)\b/i.test(markdown)
 }
 
 async function generateOnePassReviewerContent(
@@ -3280,12 +3521,12 @@ function sanitizeDeepLearnContentForSave(
 
 function isMeaningfulSavedReviewerMarkdown(markdown: string | null | undefined) {
   const text = markdown?.trim() ?? ''
-  if (text.length < 1200) return false
-  if (!/^#\s*Reviewer:/im.test(text)) return false
-  for (const heading of ['High-Yield Overview', 'Complete Exam Reviewer', 'Identification Reviewer', 'Multiple Choice Practice', 'Enumeration / List Questions', 'Final Quick Review']) {
-    if (!new RegExp(`^##\\s+${escapeRegExp(heading)}\\s*$`, 'im').test(text)) return false
-  }
-  return !hasReviewerComposerLeakageText(text) && !containsInternalPipelineText(text)
+  if (text.length < 120) return false
+  if (!/^#{1,3}\s+/m.test(text) && !/^[-*]\s+/m.test(text) && !/^\d{1,2}[.)]\s+/m.test(text)) return false
+  return !hasReviewerComposerLeakageText(text)
+    && !containsInternalPipelineText(text)
+    && !hasReviewerMarkdownMetadataLeakage(text)
+    && !hasReviewerMarkdownRefusalText(text)
 }
 
 function isOptionalEnrichmentSectionHeading(value: string) {
