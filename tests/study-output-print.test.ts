@@ -6,7 +6,8 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { StudyOutputQuizPackPage } from '../components/StudyOutputQuizPackPage'
 import { StudyOutputReviewerPage } from '../components/StudyOutputReviewerPage'
 import { StudyOutputTaskOutputPage } from '../components/StudyOutputTaskOutputPage'
-import type { StudyOutput } from '../lib/types'
+import { resolveTaskOutputReadinessDisplay } from '../lib/study-output-content'
+import type { StudyOutput, StudyOutputTaskOutputContent, TaskOutputReadinessStatus, TaskOutputSourceMode } from '../lib/types'
 
 test('reviewer page renders dedicated print metadata and keeps screen controls print-hidden', () => {
   const output = createReviewerOutput()
@@ -72,6 +73,119 @@ test('task output page keeps actions screen-only while printable content stays r
   assert.doesNotMatch(markup, />LEARN</)
   assert.doesNotMatch(markup, /Deep Learn Tasks Quiz|Course Learn|Working context|WORKING CONTEXT/)
 })
+
+test('resolveTaskOutputReadinessDisplay returns null for ready task output', () => {
+  const content = buildTaskOutputContent({ readinessStatus: 'ready' })
+  assert.equal(resolveTaskOutputReadinessDisplay(content), null)
+})
+
+test('resolveTaskOutputReadinessDisplay returns null for legacy content without readinessStatus', () => {
+  const content = buildTaskOutputContent({})
+  assert.equal(resolveTaskOutputReadinessDisplay(content), null)
+})
+
+test('resolveTaskOutputReadinessDisplay returns Needs research for needs_research status', () => {
+  const content = buildTaskOutputContent({ readinessStatus: 'needs_research' })
+  const result = resolveTaskOutputReadinessDisplay(content)
+  assert.ok(result)
+  assert.equal(result.label, 'Needs research')
+  assert.equal(result.isReady, false)
+})
+
+test('resolveTaskOutputReadinessDisplay returns Source-limited draft for needs_course_source_content with source_limited_scaffold', () => {
+  const content = buildTaskOutputContent({
+    readinessStatus: 'needs_course_source_content',
+    sourceMode: 'source_limited_scaffold',
+  })
+  const result = resolveTaskOutputReadinessDisplay(content)
+  assert.ok(result)
+  assert.equal(result.label, 'Source-limited draft')
+  assert.equal(result.isReady, false)
+  assert.match(result.note, /Not enough readable course source text/)
+})
+
+test('non-ready task output page shows readiness banner', () => {
+  const output = createTaskOutputWithReadiness('needs_research', null)
+  const markup = renderToStaticMarkup(createElement(StudyOutputTaskOutputPage, {
+    output,
+    courseLabel: 'English',
+    moduleTitle: 'Essay Writing',
+  }))
+  assert.match(markup, /Needs research/)
+})
+
+test('source-limited task output page shows Source-limited draft banner', () => {
+  const output = createTaskOutputWithReadiness('needs_course_source_content', 'source_limited_scaffold')
+  const markup = renderToStaticMarkup(createElement(StudyOutputTaskOutputPage, {
+    output,
+    courseLabel: 'English',
+    moduleTitle: 'Essay Writing',
+  }))
+  assert.match(markup, /Source-limited draft/)
+  assert.match(markup, /Not enough readable course source text/)
+})
+
+test('ready general research task output does not show readiness banner', () => {
+  const output = createTaskOutputWithReadiness('ready', 'general_research_labeled')
+  const markup = renderToStaticMarkup(createElement(StudyOutputTaskOutputPage, {
+    output,
+    courseLabel: 'English',
+    moduleTitle: 'Essay Writing',
+  }))
+  assert.doesNotMatch(markup, /Needs research|Source-limited draft|Draft outline|Needs review/)
+})
+
+test('legacy task output without readinessStatus renders safely without banner', () => {
+  const output = createTaskOutput()
+  const markup = renderToStaticMarkup(createElement(StudyOutputTaskOutputPage, {
+    output,
+    courseLabel: 'English',
+    moduleTitle: 'Essay Writing',
+  }))
+  assert.doesNotMatch(markup, /Needs research|Source-limited draft|Draft outline/)
+  assert.match(markup, /task-output-print-document/)
+})
+
+function buildTaskOutputContent(overrides: Partial<StudyOutputTaskOutputContent>): StudyOutputTaskOutputContent {
+  return {
+    version: 'task-output-v1',
+    sourceTaskId: 'task-1',
+    taskTitle: 'Essay Draft',
+    preset: 'report',
+    outputType: 'pdf',
+    previewMode: 'html',
+    title: 'Essay Draft Output',
+    summary: 'Grounded task output.',
+    previewContent: '<main><h1>Essay</h1><p>Grounded preview.</p></main>',
+    stylesheet: null,
+    script: null,
+    requirementSummary: 'Use the task instructions.',
+    requirements: ['Address the prompt directly'],
+    selectedContext: ['Use the assigned reading as evidence.'],
+    groundingStatus: 'grounded',
+    groundingNote: 'Built only from readable task and source text.',
+    limitationNote: null,
+    warnings: [],
+    exports: [],
+    revisionHistory: [],
+    ...overrides,
+  }
+}
+
+function createTaskOutputWithReadiness(
+  readinessStatus: TaskOutputReadinessStatus | null,
+  sourceMode: TaskOutputSourceMode | null,
+): StudyOutput {
+  const base = createTaskOutput()
+  return {
+    ...base,
+    content: {
+      ...(base.content as StudyOutputTaskOutputContent),
+      ...(readinessStatus !== null ? { readinessStatus } : {}),
+      ...(sourceMode !== null ? { sourceMode } : {}),
+    },
+  }
+}
 
 function createReviewerOutput(): StudyOutput {
   return {

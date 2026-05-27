@@ -5,6 +5,54 @@ Last Updated: 2026-05-27
 
 ---
 
+## Session Update - 2026-05-27 (Phase 6 — Study Library Readiness Status Cleanup)
+
+### What changed
+
+- Added `resolveTaskOutputReadinessDisplay()` to `lib/study-output-content.ts` — maps internal `readinessStatus` + `sourceMode` to student-friendly display info without leaking internal enum names (`source_limited_scaffold`, `general_research_labeled`, etc.).
+- Added amber readiness banner to `components/StudyOutputTaskOutputPage.tsx` — shown only for non-ready outputs, hidden in print mode (`reviewer-print-hide`). No banner for ready outputs or legacy records without `readinessStatus`.
+- Added 8 new tests to `tests/study-output-print.test.ts` covering all readiness states and the render behavior of the banner.
+
+### Files touched
+
+- `lib/study-output-content.ts` — added `TaskOutputReadinessDisplayInfo` interface and `resolveTaskOutputReadinessDisplay()` function
+- `components/StudyOutputTaskOutputPage.tsx` — import + amber banner in JSX
+- `tests/study-output-print.test.ts` — 8 new tests + `buildTaskOutputContent` / `createTaskOutputWithReadiness` helpers
+
+### Why it changed
+
+Task Output rows are saved with DB `status: 'ready'` even when `content.readinessStatus` is `'needs_research'`, `'draft_outline_only'`, etc. Students had no way to distinguish weak outputs from finished ones. DB `StudyOutputStatus` only has two values (`ready` | `failed`), so a new enum value would require a migration that was not authorized. Fix is display-level only at the detail page.
+
+### Design decisions
+
+- `general_research_labeled` completed reports correctly return null (no banner) when `readinessStatus === 'ready'` — these are legitimate finished outputs.
+- `source_limited_scaffold` mode returns the stricter "Not enough readable course source text was available" wording.
+- Legacy records without `readinessStatus` return null — zero risk of crashing old Study Library records.
+- No change to DB status, library shelf query, or output generation paths.
+
+### Tests run
+
+- Node runtime: `AppData\Local\Temp\node-v22.13.1-win-x64\node.exe` (v22.13.1) + `npx tsx`
+- `npx tsc --noEmit`: passed (no output)
+- `npx eslint lib/study-output-content.ts components/StudyOutputTaskOutputPage.tsx tests/study-output-print.test.ts`: passed (no output)
+- Full required suite (`task-output`, `task-output-save`, `study-output-reviewer`, `study-output-quiz-pack`, `study-output-print`): **63/63 passed, 0 failed**
+
+### Risks / blockers
+
+- DB status stays as `ready` for all non-failed saves — the filter `eq('status', 'ready')` in `listStudyOutputShelfItems` is unaffected. Readiness visibility is detail-page only; Study Library card grid does not show a readiness badge.
+- If a future phase wants per-card readiness in the library shelf, a JSONB column extraction or a new DB status value would be needed.
+
+### Next recommended step
+
+- Phase 6.5: Consider adding a readiness badge/chip to `DraftCard.tsx` in the Study Library shelf view. This requires either: (a) a JSONB content extraction in the PostgREST shelf query to surface `readinessStatus`, or (b) a DB migration to add a `readiness_status` column. Coordinate with schema owner before proceeding.
+- Authenticated click-through on deployed app: open a source-limited Activity from Library, confirm amber "Source-limited draft" banner renders, confirm it disappears in print mode.
+
+### Suggested commit message
+
+`align study output readiness status`
+
+---
+
 ## Session Update - 2026-05-27 (Phase 5.5 QA — Deployed/Authenticated Reviewer Verification)
 
 ### What changed

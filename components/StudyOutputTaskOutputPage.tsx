@@ -4,7 +4,7 @@ import { Download, Printer } from 'lucide-react'
 import { GeneratedContentState } from '@/components/generated-content/GeneratedContentState'
 import { StudyOutputPrintHeader } from '@/components/StudyOutputPrintHeader'
 import { TaskOutputRefinementForm } from '@/components/TaskOutputRefinementForm'
-import { isTaskOutputStudyOutputContent } from '@/lib/study-output-content'
+import { isTaskOutputStudyOutputContent, resolveTaskOutputReadinessDisplay } from '@/lib/study-output-content'
 import { buildTaskOutputActivitySubmissionHtml } from '@/lib/task-output-template'
 import type { StudyOutput, StudyOutputTaskOutputContent } from '@/lib/types'
 
@@ -56,6 +56,7 @@ export function StudyOutputTaskOutputPage({
     script: taskOutput.script,
   })
   const activitySubmissionMarkup = extractMainMarkup(activitySubmissionHtml)
+  const resolvedReadiness = resolveTaskOutputReadinessDisplay(taskOutput)
 
   return (
     <section className="motion-card section-shell section-shell-elevated reviewer-sheet study-output-document">
@@ -95,6 +96,27 @@ export function StudyOutputTaskOutputPage({
         moduleTitle={moduleTitle}
         generatedAt={output.generatedAt ?? output.createdAt}
       />
+
+      {resolvedReadiness !== null && (
+        <div
+          className="reviewer-print-hide"
+          style={{
+            borderRadius: '12px',
+            padding: '0.72rem 1rem',
+            display: 'grid',
+            gap: '0.35rem',
+            border: '1px solid color-mix(in srgb, var(--amber) 28%, var(--border-subtle) 72%)',
+            background: 'color-mix(in srgb, var(--amber-light) 28%, var(--surface-elevated) 72%)',
+          }}
+        >
+          <strong style={{ fontSize: '13px', color: 'var(--text-primary)', lineHeight: 1.35 }}>
+            {resolvedReadiness.label}
+          </strong>
+          <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.55 }}>
+            {resolvedReadiness.note}
+          </p>
+        </div>
+      )}
 
       <div className="reviewer-meta-row reviewer-print-hide">
         {courseLabel ? <span>{courseLabel}</span> : null}

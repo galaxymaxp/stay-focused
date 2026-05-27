@@ -66,6 +66,62 @@ export function isRenderableStudyOutput(output: Pick<StudyOutput, 'outputKind' |
   return false
 }
 
+export interface TaskOutputReadinessDisplayInfo {
+  label: string
+  isReady: boolean
+  note: string
+}
+
+export function resolveTaskOutputReadinessDisplay(
+  content: StudyOutputTaskOutputContent | null | undefined,
+): TaskOutputReadinessDisplayInfo | null {
+  if (!content || content.version !== 'task-output-v1') return null
+  const status = content.readinessStatus
+  // No banner for ready outputs or legacy records without readinessStatus
+  if (!status || status === 'ready') return null
+
+  if (status === 'needs_research') {
+    return {
+      label: 'Needs research',
+      isReady: false,
+      note: 'This output needs external research or course-provided source material before it is ready to submit.',
+    }
+  }
+
+  if (status === 'needs_course_source_content') {
+    const sourceLimited = content.sourceMode === 'source_limited_scaffold'
+    return {
+      label: 'Source-limited draft',
+      isReady: false,
+      note: sourceLimited
+        ? 'Not enough readable course source text was available. Add course-specific content before submitting.'
+        : 'This output needs more course source content. Add the relevant reading or source material before submitting.',
+    }
+  }
+
+  if (status === 'draft_outline_only') {
+    return {
+      label: 'Draft outline',
+      isReady: false,
+      note: 'This output is an outline draft. Replace placeholders and add real content before submitting.',
+    }
+  }
+
+  if (status === 'insufficient_content') {
+    return {
+      label: 'Could not generate enough content',
+      isReady: false,
+      note: 'The generated content did not have enough substance. Try regenerating with more course source context.',
+    }
+  }
+
+  return {
+    label: 'Needs review',
+    isReady: false,
+    note: 'Review and complete this output before submitting.',
+  }
+}
+
 export function getUnsupportedStudyOutputMessage(output: Pick<StudyOutput, 'outputKind' | 'content'>) {
   const label = getStudyOutputKindLabel(output.outputKind).toLowerCase()
 
