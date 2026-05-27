@@ -5,6 +5,73 @@ Last Updated: 2026-05-27
 
 ---
 
+## Session Update - 2026-05-27 (Phase 4.5 Reviewer Markdown Contract QA)
+
+### What changed
+
+- QA-only verification of the Phase 4 markdown Reviewer contract.
+- Started the local app with bundled Node and `next dev --webpack`, then attempted to open `/library` in the in-app browser.
+- Browser local navigation was blocked by the same local network suspension/policy issue seen in earlier QA, so UI verification continued through direct server-rendered Reviewer components.
+- Rendered a current markdown Reviewer Study Output fixture through `StudyOutputReviewerPage` and confirmed it uses `ReviewerMarkdownDocument`.
+- Rendered an old structured Reviewer Study Output fixture without `reviewerMarkdown` and confirmed the legacy fallback still renders without crashing.
+- No product code changes were needed.
+
+### Files touched
+
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Phase 4 made markdown Reviewer the active contract. This QA pass verifies the active markdown rendering path and the old saved-record fallback path after that architecture cleanup.
+
+### Current product direction
+
+Stay Focused remains schedule-first over Canvas. New Reviewer outputs should be source-first markdown artifacts, while old structured/card Reviewer records remain readable only as historical library compatibility.
+
+### Tests run
+
+- `git status --short --branch`: clean at session start on `main...origin/main`.
+- Local app start: bundled Node running `node_modules/next/dist/bin/next dev --webpack --hostname 127.0.0.1 --port 3000`: started.
+- Browser local navigation: attempted `http://127.0.0.1:3000/library` and `http://localhost:3000/library`; blocked by local browser network policy/suspension before authenticated UI could load.
+- Direct Reviewer render QA with bundled Node + `tsx`: passed.
+  - markdown path: `ReviewerMarkdownDocument` present, `reviewer-grid` absent, source-first wording present, no internal/debug labels.
+  - legacy path: `reviewer-grid` present, `ReviewerMarkdownDocument` absent, active markdown builder rejects legacy structured note, no crash or internal/debug labels.
+- `npm run typecheck`: blocked because `npm` is not available on PATH.
+- `npm run lint`: blocked because `npm` is not available on PATH.
+- `npm test -- deep-learn-generation study-output-reviewer study-output-quiz-pack queue`: blocked because `npm` is not available on PATH.
+- Direct typecheck equivalent: bundled Node running `node_modules/typescript/bin/tsc --noEmit`: passed.
+- Direct lint equivalent: bundled Node running `node_modules/eslint/bin/eslint.js`: passed with no warnings.
+- Direct relevant tests with bundled Node + `tsx`: `tests/deep-learn-generation.test.ts tests/study-output-reviewer.test.ts tests/study-output-quiz-pack.test.ts tests/queue.test.ts`: passed, 193/193 tests.
+
+### Verification result
+
+- Markdown Reviewer output renders through `ReviewerMarkdownDocument`.
+- Markdown Reviewer output is readable and source-first.
+- New markdown Reviewer output does not render the old card/grid structure.
+- No internal labels, debug text, generator version, or structured mode labels appeared in the rendered markdown path.
+- Old saved structured Reviewer content without `reviewerMarkdown` still renders through the legacy fallback.
+- The active markdown builder rejects old structured notes, so no new structured Reviewer output is regenerated as an active path.
+
+### Known risks
+
+- Click-by-click authenticated UI verification remains blocked by local browser network policy/suspension, so QA used the same Reviewer page components and Study Output payload shapes directly.
+- A deployed authenticated browser smoke is still useful once browser/local network access is healthy.
+
+### Blockers
+
+- `npm` and `npx` remain unavailable on PATH, so verification used direct bundled Node equivalents.
+- In-app browser could not load local `localhost` / `127.0.0.1` pages during this session.
+
+### Next recommended step
+
+Run one deployed authenticated click-through when browser access is healthy: open a current markdown Reviewer from Library and one older structured Reviewer record, then visually confirm the same active/fallback split.
+
+### Suggested commit message
+
+`qa reviewer markdown contract`
+
+---
+
 ## Session Update - 2026-05-27 (Phase 4 Markdown Reviewer Active Contract)
 
 ### What changed
