@@ -5,6 +5,75 @@ Last Updated: 2026-05-27
 
 ---
 
+## Session Update - 2026-05-27 (Phase 3.6 Task Refresh Cron Timeout Hardening)
+
+### What changed
+
+- Audited `/api/cron/task-refresh` and confirmed it performs Canvas course/assignment fetches and Supabase task writes inline, but does not run Reviewer, Task Output generation, OCR, resource extraction, or resource-refresh workers inline.
+- Added bounded cron limit helpers in `lib/task-refresh-cron.ts`:
+  - default user batch: 5, max 5
+  - default course batch: 8, max 8
+  - default Canvas fetch timeout: 8000 ms, max 10000 ms
+  - default cron time budget: 25000 ms, max 45000 ms
+  - 3000 ms safety buffer before the budget is exhausted
+- Hardened `/api/cron/task-refresh` with time-budget checks before expensive account, course, Canvas assignment, and database-write work.
+- Expanded the cron JSON response to explicitly include `usersChecked`, `coursesChecked`, `tasksChecked`, `tasksUpdated`, `skippedDueTimeLimit`, `warnings`, `errors`, `timedOut`, `partial`, `timeBudgetMs`, and `elapsedMs`.
+- Added progress logging at cron start, Canvas course-list fetch, assignment refresh, and cron finish so timeout sources are easier to locate.
+- Added focused tests for bounded env limits, time-budget early exit, partial warning summaries, and avoiding unrelated heavy workers inline.
+- Did not touch Reviewer, Task Output behavior, OCR, resource extraction, `/api/cron/resource-refresh`, or unrelated browser/OpenAI DNS issues.
+
+### Files touched
+
+- `app/api/cron/task-refresh/route.ts`
+- `lib/task-refresh-cron.ts`
+- `tests/canvas-task-refresh.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+cron-job.org showed `/api/cron/task-refresh` timing out after prior successful runs. The route already had bounded default batches, but env values were not capped and the endpoint had no wall-clock budget/early exit. It could therefore overrun while looping through Canvas-connected users/courses or waiting on Canvas/Supabase work. The fix keeps the endpoint honest and partial-success-safe instead of letting cron hit the platform timeout.
+
+### Current product direction
+
+Stay Focused remains schedule-first over Canvas. Background task refresh should keep schedule metadata current without stealing runtime from heavier generation/extraction systems or creating opaque timeout failures.
+
+### Tests run
+
+- `git status --short --branch`: clean at session start on `main...origin/main`.
+- `npm run typecheck`: blocked because `npm` is not available on PATH.
+- `npm run lint`: blocked because `npm` is not available on PATH.
+- Relevant npm test command: blocked because `npm` is not available on PATH.
+- Direct typecheck equivalent: bundled Node running `node_modules/typescript/bin/tsc --noEmit`: passed.
+- Direct lint equivalent: bundled Node running `node_modules/eslint/bin/eslint.js`: passed with 4 existing unused Reviewer warnings in `lib/deep-learn-generation.ts`.
+- Direct relevant tests with bundled Node + `tsx`: `tests/canvas-task-refresh.test.ts tests/sync-activity.test.ts tests/sync-courses-status.test.ts tests/queue.test.ts`: passed, 76/76 tests.
+
+### Verification result
+
+- Confirmed `/api/cron/task-refresh` now has a cron time budget and returns early with `timedOut: true`, `partial: true`, `skippedDueTimeLimit`, and warnings instead of relying on the platform timeout.
+- Confirmed user and course batch env settings are capped.
+- Confirmed existing task refresh behavior still builds/updates Canvas task drafts and preserves manual completion.
+- Confirmed the route source does not call unrelated heavy workers such as OCR/resource extraction, Reviewer generation, or Task Output generation inline.
+
+### Known risks
+
+- A single Canvas request or Supabase write can still consume up to its own timeout before the next budget check can run; the route now checks before starting each expensive unit and keeps the Canvas timeout capped.
+- `tasksChecked` currently mirrors refreshed assignment count because task refresh derives task metadata from Canvas assignments.
+- Lint still reports pre-existing unused Reviewer helper warnings only.
+
+### Blockers
+
+- `npm` and `npx` remain unavailable on PATH, so verification used direct bundled Node equivalents.
+
+### Next recommended step
+
+Deploy and monitor cron-job.org for `/api/cron/task-refresh`; compare the returned `elapsedMs`, `partial`, `skippedDueTimeLimit`, and warnings across the next few scheduled runs to decide whether the budget or cron cadence needs adjustment.
+
+### Suggested commit message
+
+`harden task refresh cron timeout handling`
+
+---
+
 ## Session Update - 2026-05-27 (Phase 3.5.1 Task Output Save Export QA)
 
 ### What changed

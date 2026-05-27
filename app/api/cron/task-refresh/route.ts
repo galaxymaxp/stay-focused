@@ -3,15 +3,18 @@ import { refreshCanvasTaskMetadataForCourse } from '@/actions/canvas'
 import { getAssignments, getCourses, normalizeCanvasUrl } from '@/lib/canvas'
 import { getResourceRefreshCourseCandidateLimit, prioritizeResourceRefreshCourses } from '@/lib/resource-refresh-priority'
 import { buildTaskRefreshActivityDetail, buildTaskRefreshRunActivity, recordTaskRefreshActivity } from '@/lib/task-refresh-activity'
+import {
+  createTaskRefreshCronSummary,
+  getTaskRefreshElapsedMs,
+  getTaskRefreshRemainingMs,
+  markTaskRefreshCronTimeLimit,
+  resolveTaskRefreshCronLimits,
+  shouldStopTaskRefreshCron,
+} from '@/lib/task-refresh-cron'
 import { createSupabaseServiceRoleClient } from '@/lib/supabase-service'
 
 export const runtime = 'nodejs'
 export const maxDuration = 55
-
-const DEFAULT_USER_LIMIT = 5
-const DEFAULT_COURSE_LIMIT = 8
-const DEFAULT_CANVAS_FETCH_TIMEOUT_MS = 8000
-const DEFAULT_REFRESH_INTERVAL_MS = 15 * 60 * 1000
 
 interface UserSettingsRow {
   user_id: string
@@ -33,13 +36,6 @@ function validateCronSecret(req: NextRequest) {
   return Boolean(cronSecret) && req.headers.get('authorization') === `Bearer ${cronSecret}`
 }
 
-function getPositiveIntegerEnv(name: string, fallback: number) {
-  const raw = process.env[name]?.trim()
-  if (!raw) return fallback
-  const parsed = Number.parseInt(raw, 10)
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
-}
-
 export async function GET(req: NextRequest) {
   if (!validateCronSecret(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -50,22 +46,19 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: false, error: 'Service database client unavailable.' }, { status: 503 })
   }
 
-  const userLimit = getPositiveIntegerEnv('TASK_REFRESH_USER_BATCH_LIMIT', DEFAULT_USER_LIMIT)
-  const courseLimit = getPositiveIntegerEnv('TASK_REFRESH_COURSE_BATCH_LIMIT', DEFAULT_COURSE_LIMIT)
-  const refreshWindowMs = getPositiveIntegerEnv('TASK_REFRESH_MIN_INTERVAL_MS', DEFAULT_REFRESH_INTERVAL_MS)
-  const canvasFetchTimeoutMs = getPositiveIntegerEnv('TASK_REFRESH_CANVAS_FETCH_TIMEOUT_MS', DEFAULT_CANVAS_FETCH_TIMEOUT_MS)
+  const startedAtMs = Date.now()
+  const limits = resolveTaskRefreshCronLimits()
+  const { userLimit, courseLimit, refreshWindowMs, canvasFetchTimeoutMs, timeBudgetMs } = limits
   const courseCandidateLimit = getResourceRefreshCourseCandidateLimit(courseLimit)
 
-  const summary = {
-    usersChecked: 0,
-    coursesChecked: 0,
-    assignmentsChecked: 0,
-    tasksInserted: 0,
-    tasksUpdated: 0,
-    tasksSkipped: 0,
-    skipped: 0,
-    warnings: [] as string[],
-  }
+  const summary = createTaskRefreshCronSummary(limits)
+  console.info('[task-refresh] cron started', {
+    userLimit,
+    courseLimit,
+    courseCandidateLimit,
+    canvasFetchTimeoutMs,
+    timeBudgetMs,
+  })
 
   const { data: settingsRows, error: settingsError } = await supabase
     .from('user_settings')
@@ -79,9 +72,20 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: false, error: 'Could not load Canvas-connected users.' }, { status: 500 })
   }
 
-  for (const row of (settingsRows ?? []) as UserSettingsRow[]) {
+  const rows = (settingsRows ?? []) as UserSettingsRow[]
+  for (let userIndex = 0; userIndex < rows.length; userIndex += 1) {
+    const row = rows[userIndex]
+    if (!row) continue
     if (summary.coursesChecked >= courseLimit) break
     if (!row.user_id || !row.canvas_api_url || !row.canvas_access_token) continue
+    if (shouldStopTaskRefreshCron({ startedAtMs, timeBudgetMs, minRequiredMs: canvasFetchTimeoutMs })) {
+      markTaskRefreshCronTimeLimit({
+        summary,
+        warning: 'Task refresh stopped before the next account because the cron time budget was nearly exhausted.',
+      })
+      break
+    }
+
     summary.usersChecked += 1
     const userSummary = {
       coursesChecked: 0,
@@ -96,6 +100,10 @@ export async function GET(req: NextRequest) {
     const normalizedCanvasUrl = normalizeCanvasUrl(row.canvas_api_url)
     let activeCanvasCourseIds = new Set<number>()
     try {
+      console.info('[task-refresh] loading Canvas course list', {
+        userId: row.user_id,
+        remainingMs: getTaskRefreshRemainingMs(startedAtMs, timeBudgetMs),
+      })
       const activeCanvasCourses = await getCourses({
         url: normalizedCanvasUrl,
         token: row.canvas_access_token,
@@ -109,6 +117,16 @@ export async function GET(req: NextRequest) {
         message: error instanceof Error ? error.message : String(error),
       })
       userSummary.warnings.push('Could not load a Canvas course list; using locally synced courses.')
+    }
+
+    if (shouldStopTaskRefreshCron({ startedAtMs, timeBudgetMs, minRequiredMs: 750 })) {
+      const warning = 'Task refresh stopped before loading synced courses because the cron time budget was nearly exhausted.'
+      markTaskRefreshCronTimeLimit({
+        summary,
+        warning,
+      })
+      userSummary.warnings.push(warning)
+      break
     }
 
     const { data: courseRows, error: courseError } = await supabase
@@ -150,22 +168,50 @@ export async function GET(req: NextRequest) {
       refreshWindowMs,
     })
 
-    for (const course of prioritizedCourses) {
+    for (let courseIndex = 0; courseIndex < prioritizedCourses.length; courseIndex += 1) {
+      const course = prioritizedCourses[courseIndex]
       if (summary.coursesChecked >= courseLimit) break
       if (typeof course.canvasCourseId !== 'number') continue
       if (recentlyRefreshedCourseIds.has(course.id)) {
         summary.skipped += 1
         continue
       }
+      if (shouldStopTaskRefreshCron({ startedAtMs, timeBudgetMs, minRequiredMs: canvasFetchTimeoutMs })) {
+        const warning = 'Task refresh stopped before the next course because the cron time budget was nearly exhausted.'
+        markTaskRefreshCronTimeLimit({
+          summary,
+          skippedCourses: prioritizedCourses.length - courseIndex,
+          warning,
+        })
+        userSummary.warnings.push(warning)
+        break
+      }
 
       summary.coursesChecked += 1
       userSummary.coursesChecked += 1
       try {
+        console.info('[task-refresh] refreshing Canvas assignments', {
+          userId: row.user_id,
+          courseId: course.id,
+          canvasCourseId: course.canvasCourseId,
+          coursesChecked: summary.coursesChecked,
+          remainingMs: getTaskRefreshRemainingMs(startedAtMs, timeBudgetMs),
+        })
         const assignments = await getAssignments(course.canvasCourseId, {
           url: normalizedCanvasUrl,
           token: row.canvas_access_token,
           timeoutMs: canvasFetchTimeoutMs,
         })
+        if (shouldStopTaskRefreshCron({ startedAtMs, timeBudgetMs, minRequiredMs: 1000 })) {
+          const warning = 'Task refresh stopped after fetching assignments so database writes would not overrun the cron time budget.'
+          markTaskRefreshCronTimeLimit({
+            summary,
+            skippedCourses: prioritizedCourses.length - courseIndex - 1,
+            warning,
+          })
+          userSummary.warnings.push(warning)
+          break
+        }
         const result = await refreshCanvasTaskMetadataForCourse({
           userId: row.user_id,
           courseId: course.id,
@@ -174,6 +220,7 @@ export async function GET(req: NextRequest) {
         })
 
         summary.assignmentsChecked += result.assignmentsChecked
+        summary.tasksChecked += result.assignmentsChecked
         summary.tasksInserted += result.tasksInserted
         summary.tasksUpdated += result.tasksUpdated
         summary.tasksSkipped += result.tasksSkipped
@@ -204,6 +251,7 @@ export async function GET(req: NextRequest) {
       } catch (error) {
         const warning = `${course.name}: ${error instanceof Error ? error.message : 'task refresh failed'}`
         summary.warnings.push(warning)
+        summary.errors.push(warning)
         userSummary.failures += 1
         userSummary.warnings.push(warning)
         await recordTaskRefreshActivity({
@@ -229,11 +277,30 @@ export async function GET(req: NextRequest) {
         warnings: userSummary.warnings,
       }))
     }
+
+    if (summary.timedOut) break
   }
+
+  summary.elapsedMs = getTaskRefreshElapsedMs(startedAtMs)
+  console.info('[task-refresh] cron finished', summary)
 
   return NextResponse.json({
     ok: true,
-    ...summary,
+    usersChecked: summary.usersChecked,
+    coursesChecked: summary.coursesChecked,
+    tasksChecked: summary.tasksChecked,
+    assignmentsChecked: summary.assignmentsChecked,
+    tasksInserted: summary.tasksInserted,
+    tasksUpdated: summary.tasksUpdated,
+    tasksSkipped: summary.tasksSkipped,
+    skipped: summary.skipped,
+    skippedDueTimeLimit: summary.skippedDueTimeLimit,
+    warnings: summary.warnings,
+    errors: summary.errors,
+    timedOut: summary.timedOut,
+    partial: summary.partial,
+    timeBudgetMs: summary.timeBudgetMs,
+    elapsedMs: summary.elapsedMs,
   })
 }
 

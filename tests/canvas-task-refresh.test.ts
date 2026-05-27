@@ -1,10 +1,17 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import {
   buildCanvasTaskRefreshDrafts,
   hasCanvasTaskRefreshRowChanged,
   prepareCanvasTaskRefreshRow,
 } from '../lib/canvas-task-refresh'
+import {
+  createTaskRefreshCronSummary,
+  markTaskRefreshCronTimeLimit,
+  resolveTaskRefreshCronLimits,
+  shouldStopTaskRefreshCron,
+} from '../lib/task-refresh-cron'
 import { buildTaskRefreshRunActivity } from '../lib/task-refresh-activity'
 import type { CanvasAssignment } from '../lib/canvas'
 
@@ -112,4 +119,65 @@ test('task refresh cron records warning activity without treating the run as mis
   assert.equal(activity.courseId, null)
   assert.equal(activity.status, 'warning')
   assert.equal(activity.metadata.warningsCount, 1)
+})
+
+test('task refresh cron clamps batch and timeout limits from environment', () => {
+  const limits = resolveTaskRefreshCronLimits({
+    TASK_REFRESH_USER_BATCH_LIMIT: '999',
+    TASK_REFRESH_COURSE_BATCH_LIMIT: '999',
+    TASK_REFRESH_CANVAS_FETCH_TIMEOUT_MS: '999999',
+    TASK_REFRESH_TIME_BUDGET_MS: '999999',
+    TASK_REFRESH_MIN_INTERVAL_MS: '120000',
+  })
+
+  assert.equal(limits.userLimit, 5)
+  assert.equal(limits.courseLimit, 8)
+  assert.equal(limits.canvasFetchTimeoutMs, 10_000)
+  assert.equal(limits.timeBudgetMs, 45_000)
+  assert.equal(limits.refreshWindowMs, 120_000)
+})
+
+test('task refresh cron budget guard stops before expensive work', () => {
+  const startedAtMs = 1_000
+
+  assert.equal(shouldStopTaskRefreshCron({
+    startedAtMs,
+    nowMs: 20_000,
+    timeBudgetMs: 25_000,
+    minRequiredMs: 8_000,
+  }), true)
+  assert.equal(shouldStopTaskRefreshCron({
+    startedAtMs,
+    nowMs: 4_000,
+    timeBudgetMs: 25_000,
+    minRequiredMs: 8_000,
+  }), false)
+})
+
+test('task refresh cron returns partial warning summary when time budget is exhausted', () => {
+  const summary = createTaskRefreshCronSummary({ timeBudgetMs: 25_000 })
+  summary.usersChecked = 1
+  summary.coursesChecked = 2
+
+  markTaskRefreshCronTimeLimit({
+    summary,
+    skippedCourses: 3,
+    warning: 'Task refresh stopped before the next course because the cron time budget was nearly exhausted.',
+  })
+
+  assert.equal(summary.timedOut, true)
+  assert.equal(summary.partial, true)
+  assert.equal(summary.skippedDueTimeLimit, 3)
+  assert.match(summary.warnings.join('\n'), /time budget/i)
+})
+
+test('task refresh cron route has time-budget exits and no unrelated heavy workers inline', () => {
+  const source = readFileSync('app/api/cron/task-refresh/route.ts', 'utf8')
+
+  assert.match(source, /resolveTaskRefreshCronLimits/)
+  assert.match(source, /shouldStopTaskRefreshCron/)
+  assert.match(source, /markTaskRefreshCronTimeLimit/)
+  assert.match(source, /skippedDueTimeLimit/)
+  assert.match(source, /tasksChecked/)
+  assert.doesNotMatch(source, /processPendingResourceExtractionJobs|processSourceOcrJob|autoEnqueueSourceOcrJobs|processPendingSourceOcr|generateDeepLearnNote|responses\.create|task-output/)
 })
