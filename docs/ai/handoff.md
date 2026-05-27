@@ -5,6 +5,78 @@ Last Updated: 2026-05-27
 
 ---
 
+## Session Update - 2026-05-27 (Phase 5.5 QA — Deployed/Authenticated Reviewer Verification)
+
+### What changed
+
+- QA-only verification of Phase 5 Reviewer markdown contract against real source types.
+- No product code changes were made.
+
+### Files touched
+
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+Phase 5 hardened the Reviewer markdown contract. This QA pass verifies that hardened contract holds across a long lecture PDF analog (multi-phase systems analysis, 7 phases) and a bullet-heavy/taxonomy-heavy module (IT Security, 20+ sections), plus the short martial arts module.
+
+### Tests run
+
+- `git status --short --branch`: clean at session start on `main...origin/main`.
+- `npm run typecheck`: blocked because `npm` is not available on PATH.
+- `npm run lint`: blocked because `npm` is not available on PATH.
+- `npm test -- deep-learn-generation study-output-reviewer study-output-quiz-pack queue`: blocked because `npm` is not available on PATH.
+- Node runtime used: bundled Codex Node at `AppData\Local\OpenAI\Codex\bin\5b9024f90663758b\node.exe` (v24.14.0). Previous sessions used the same Codex runtime.
+- Direct typecheck equivalent: `node node_modules/typescript/bin/tsc --noEmit`: passed (no output).
+- Direct lint equivalent: `node node_modules/eslint/bin/eslint.js --max-warnings=0 .`: passed (no output).
+- Direct test suite (deep-learn-generation): `node node_modules/tsx/dist/cli.cjs --test tests/deep-learn-generation.test.ts`: passed, 89/89 tests.
+- Direct test suite (all four): `node node_modules/tsx/dist/cli.cjs --test tests/study-output-reviewer.test.ts tests/study-output-quiz-pack.test.ts tests/queue.test.ts`: passed, 107/107 tests.
+- Total across all four suites: 196/196 passed, 0 failed.
+
+### Verification result — Phase 5 QA checklist
+
+**QA Target 1: Long lecture PDF (multi-phase systems analysis, 7 phases)**
+- Test `Reviewer classic markdown covers SDLC Phase 1 through Phase 7` verifies all seven PHASE headings appear in the saved markdown.
+- `buildClassicReviewerMarkdown` used as a stand-in for the model returning a well-structured reviewer; the generation pipeline accepts and saves it without repair or structured fallback.
+
+**QA Target 2: Bullet-heavy/taxonomy-heavy module (IT Security, 20+ major sections)**
+- Test `Reviewer classic markdown saves IT Security source around 5908 chars without structured fields` verifies all 20 expected sections appear and `answerBank`/`identificationItems` arrays are empty.
+- The Reviewer is stored as `reviewerMarkdown` only.
+
+**QA criteria — all passed:**
+1. Source heading order preserved — `Reviewer markdown repair preserves source heading order` test verifies Glycolysis < Krebs Cycle < ETC ordering enforced after repair.
+2. Major academic headings in relative order — SDLC Phase 1–7 test and IT Security 20-section test both verify heading presence and order.
+3. Exact academic terms preserved — `Reviewer markdown preserves important exact academic terms from the source` verifies Offer, Acceptance, Consideration, Promissory Estoppel survive in the saved markdown.
+4. Output is a clean study guide (not cards/grid) — `simple reviewer Markdown renders directly without structured fallback sections` confirms no `reviewer-grid`, no `Key Answers`, no card structures in the rendered output.
+5. No leaked UUIDs / file IDs / debug labels / OCR notes / internal mode names — `Reviewer markdown filters metadata, OCR notes, UUIDs, file names, and internal labels` test passes; sanitize and validate logic in `deep-learn-generation.ts` blocks all listed leak patterns.
+6. Saved Study Library Reviewer renders correctly — `simple reviewer Markdown renders directly without structured fallback sections` renders through `StudyOutputReviewerPage` → `ReviewerMarkdownDocument` with correct h1/h2/ul/ol structure.
+7. Export/print path renders usable markdown — `ReviewerMarkdownDocument` passes through `normalizeReviewerMarkdownLayout` before rendering; MCQ choices and answer keys render as readable lists, not `<pre>/<code>` blocks.
+8. Legacy structured Reviewer fallback still works — `legacy saved structured Reviewer content can still be built for compatibility` verifies old saved records without `reviewerMarkdown` still render through the legacy fallback without crash.
+
+### Live browser QA note
+
+Local browser network access remains blocked by the same policy/suspension issue seen in previous sessions. QA was performed through the test suite and static code inspection using the bundled Codex Node runtime. A click-through on the deployed app remains the next recommended authenticated smoke test when browser access is healthy.
+
+### Known risks
+
+- No change to any product code in this session; all Phase 5 risks carry forward unchanged from the previous handoff entry.
+- Live browser network access remains unavailable for click-through.
+
+### Blockers
+
+- `npm` and `npx` remain unavailable on PATH; tests used bundled Codex Node v24.14.0 at `AppData\Local\OpenAI\Codex\bin\5b9024f90663758b\node.exe`.
+- In-app browser could not load local pages during this session.
+
+### Next recommended step
+
+Run one deployed authenticated click-through on the live app when browser access is healthy: open a current markdown Reviewer from Library, confirm heading order and study-guide layout, and open one older structured Reviewer record to confirm legacy fallback still renders.
+
+### Suggested commit message
+
+`qa reviewer markdown validation`
+
+---
+
 ## Session Update - 2026-05-27 (Phase 5 Reviewer Markdown Validation Hardening)
 
 ### What changed
