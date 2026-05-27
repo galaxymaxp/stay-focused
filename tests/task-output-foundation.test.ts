@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import {
   buildTaskOutputFallback,
@@ -443,6 +444,52 @@ test('general research report needs honest labeling and cannot fake course-provi
   assert.ok(fakeCourseSource.reasons.includes('fake_course_source_claim'))
 })
 
+test('task output normalizer removes internal source mode labels from user-visible content', () => {
+  const request = buildTaskOutputRequest({
+    taskId: 'task-internal-label',
+    taskTitle: 'Research Malware Trends',
+    taskDetails: 'Research and analyze malware trends with references.',
+    deadline: null,
+    priority: 'high',
+    courseName: 'IT Security',
+    moduleTitle: 'Threats',
+    resourceSnippet: null,
+    sourceText: null,
+    sourceNote: null,
+    moduleSummary: null,
+  }, {
+    preset: 'report',
+    outputType: 'docx',
+  })
+
+  const output = normalizeTaskOutputModelResponse({
+    title: 'general_research_labeled Malware Report',
+    summary: 'Completed in general_research_labeled mode.',
+    previewMode: 'rich_text',
+    previewContent: `${buildCompletedGeneralResearchReport()}\n\nMode: general_research_labeled`,
+    stylesheet: null,
+    script: null,
+    groundingNote: 'Completed in general_research_labeled mode.',
+    limitationNote: 'Do not treat source_limited_scaffold or course_grounded as visible labels.',
+    warnings: ['Avoid general_research_labeled debug labels.'],
+    requirementsUsed: request.requirements,
+    selectedContextUsed: [],
+  }, request, null)
+
+  const userVisibleText = [
+    output.title,
+    output.summary,
+    output.previewContent,
+    output.groundingNote,
+    output.limitationNote ?? '',
+    ...output.warnings,
+    ...output.exports.map((file) => file.content),
+  ].join('\n')
+
+  assert.doesNotMatch(userVisibleText, /general_research_labeled|course_grounded|source_limited_scaffold/)
+  assert.match(output.groundingNote, /general\/background research/)
+})
+
 test('external sources required and completed after research output becomes Needs research', () => {
   const request = buildTaskOutputRequest({
     taskId: 'task-research-template',
@@ -781,6 +828,13 @@ test('source mode classifier routes weak research deliverables to general resear
     preset: 'report',
     outputType: 'docx',
   }), 'general_research_labeled')
+})
+
+test('task output API keeps enough preview content for long research reports', () => {
+  const source = readFileSync('app/api/task-output/route.ts', 'utf8')
+
+  assert.match(source, /previewContent:\s*normalizeBlockString\(raw\.previewContent,\s*60000\)/)
+  assert.doesNotMatch(source, /previewContent:\s*normalizeBlockString\(raw\.previewContent,\s*24000\)/)
 })
 
 function createResource(title: string, text: string): ModuleResource {

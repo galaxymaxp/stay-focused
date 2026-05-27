@@ -318,29 +318,29 @@ export function normalizeTaskOutputModelResponse(
   previous: StudyOutputTaskOutputContent | null,
 ): StudyOutputTaskOutputContent {
   const previewMode = normalizePreviewMode(response.previewMode, request.outputType)
-  const title = cleanInline(response.title) || buildTaskOutputTitle(request)
-  const previewContent = cleanBlock(response.previewContent) || buildFallbackPreview(request, previewMode)
-  const groundingNote = cleanInline(response.groundingNote)
+  const title = sanitizeInternalModeLabels(cleanInline(response.title)) || buildTaskOutputTitle(request)
+  const previewContent = sanitizeInternalModeLabels(cleanBlock(response.previewContent)) || buildFallbackPreview(request, previewMode)
+  const groundingNote = sanitizeInternalModeLabels(cleanInline(response.groundingNote))
     || (request.sourceMode === 'general_research_labeled'
       ? 'General/background research was used because course-provided source content was insufficient.'
       : request.groundingStatus === 'limited'
       ? 'Only partial readable task/source text was available, so this output stays limited and scaffold-first.'
       : 'This output is grounded in the surfaced task instructions and selected readable context.')
-  const limitationNote = cleanInline(response.limitationNote ?? null)
+  const limitationNote = sanitizeInternalModeLabels(cleanInline(response.limitationNote ?? null))
   const exports = buildTaskOutputExports({
     title,
     outputType: request.outputType,
     previewMode,
     previewContent,
-    stylesheet: cleanBlock(response.stylesheet ?? null),
-    script: cleanBlock(response.script ?? null),
+    stylesheet: sanitizeInternalModeLabels(cleanBlock(response.stylesheet ?? null)),
+    script: sanitizeInternalModeLabels(cleanBlock(response.script ?? null)),
     metadata: buildTaskOutputExportMetadata(request),
   })
   const readiness = evaluateTaskOutputReadiness({
     request,
     previewContent,
-    summary: cleanInline(response.summary),
-    warnings: response.warnings ?? [],
+    summary: sanitizeInternalModeLabels(cleanInline(response.summary)),
+    warnings: sanitizeStringList(response.warnings ?? [], 6).map(sanitizeInternalModeLabels),
     limitationNote,
   })
 
@@ -352,10 +352,10 @@ export function normalizeTaskOutputModelResponse(
     outputType: request.outputType,
     previewMode,
     title,
-    summary: cleanInline(response.summary) || buildTaskOutputSummary(request, false),
+    summary: sanitizeInternalModeLabels(cleanInline(response.summary)) || buildTaskOutputSummary(request, false),
     previewContent,
-    stylesheet: cleanBlock(response.stylesheet ?? null),
-    script: cleanBlock(response.script ?? null),
+    stylesheet: sanitizeInternalModeLabels(cleanBlock(response.stylesheet ?? null)),
+    script: sanitizeInternalModeLabels(cleanBlock(response.script ?? null)),
     requirementSummary: summarizeRequirements(response.requirementsUsed?.length ? response.requirementsUsed : request.requirements),
     requirements: sanitizeStringList(response.requirementsUsed?.length ? response.requirementsUsed : request.requirements, 8),
     selectedContext: sanitizeStringList(response.selectedContextUsed?.length ? response.selectedContextUsed : request.selectedContext, 6),
@@ -369,7 +369,7 @@ export function normalizeTaskOutputModelResponse(
       : request.groundingStatus === 'limited'
       ? limitationNote ?? 'Add course-specific facts or source details before submitting this output.'
       : limitationNote,
-    warnings: sanitizeStringList(response.warnings ?? [], 6),
+    warnings: sanitizeStringList(response.warnings ?? [], 6).map(sanitizeInternalModeLabels),
     exports,
     revisionHistory: buildTaskOutputRevisionHistory(previous, request),
   }
@@ -1060,6 +1060,13 @@ function cleanBlock(value: string | null | undefined) {
     .replace(/[ \t]+\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim() ?? ''
+}
+
+function sanitizeInternalModeLabels(value: string) {
+  return value
+    .replace(/\bgeneral_research_labeled\b/g, 'general/background research')
+    .replace(/\bcourse_grounded\b/g, 'course-grounded')
+    .replace(/\bsource_limited_scaffold\b/g, 'source-limited scaffold')
 }
 
 function normalizeComparisonText(value: string | null | undefined) {

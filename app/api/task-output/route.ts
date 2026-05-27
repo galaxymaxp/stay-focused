@@ -187,9 +187,9 @@ function normalizeModelOutput(raw: unknown): TaskOutputModelResponse | null {
     previewMode: raw.previewMode === 'html' || raw.previewMode === 'code' || raw.previewMode === 'rich_text'
       ? raw.previewMode
       : 'rich_text',
-    previewContent: normalizeBlockString(raw.previewContent, 24000) ?? '',
-    stylesheet: normalizeBlockString(raw.stylesheet, 12000) ?? null,
-    script: normalizeBlockString(raw.script, 12000) ?? null,
+    previewContent: normalizeBlockString(raw.previewContent, 60000) ?? '',
+    stylesheet: normalizeBlockString(raw.stylesheet, 20000) ?? null,
+    script: normalizeBlockString(raw.script, 20000) ?? null,
     groundingNote: normalizeString(raw.groundingNote, 260) ?? '',
     limitationNote: normalizeString(raw.limitationNote, 260) ?? null,
     warnings: normalizeStringList(raw.warnings, 6, 220),

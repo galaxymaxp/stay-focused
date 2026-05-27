@@ -1,7 +1,74 @@
 # Stay Focused — AI Session Handoff
 
 Author: galaxymaxp omgraythekid@gmail.com
-Last Updated: 2026-05-25
+Last Updated: 2026-05-27
+
+---
+
+## Session Update - 2026-05-27 (Phase 3.5 Task Output Research Mode QA)
+
+### What changed
+
+- Live-QA'd Phase 3 Task Output research-capable mode against the IT Security "Top 10 Most Infamous Malware, Viruses, and Security Threats from the Past Decade" assignment.
+- Confirmed weak course/source context routes to `general_research_labeled` and returns a ready completed report instead of a scaffold.
+- Made two narrow Task Output-only fixes discovered during QA:
+  - Sanitized internal source mode enum strings from user-visible Task Output content, notes, warnings, and exports.
+  - Increased `/api/task-output` model response preview normalization from 24,000 to 60,000 characters so long research reports are not clipped before conclusion/references.
+- Added focused Task Output regression coverage for both issues.
+- Did not touch Reviewer, OCR, resource refresh, routing outside Task Output, or broad product behavior.
+
+### Why it changed
+
+The first live QA pass generated a strong report but exposed two presentation/completeness defects: the model echoed `general_research_labeled` in a user-facing note, and a subsequent long report was clipped before the References section by the route normalization cap. Both issues directly affected the Phase 3.5 QA checklist and were fixed narrowly in Task Output.
+
+### Current product direction
+
+Stay Focused remains schedule-first over Canvas. Task Output should complete scheduled deliverables honestly: use course-grounded content when sources are strong, use clearly labeled general/background research when the assignment asks for research and course context is weak, and use scaffolds only when completion would be unsafe.
+
+### Tests run
+
+- `git status --short --branch`: clean at session start on `main...origin/main`.
+- `npm run typecheck`: blocked because `npm` is not available on PATH.
+- `npm run lint`: blocked because `npm` is not available on PATH.
+- `npm test -- task-output task-output-foundation task-output-save`: blocked because `npm` is not available on PATH.
+- Direct typecheck equivalent: bundled Node running `node_modules/typescript/bin/tsc --noEmit`: passed.
+- Direct lint equivalent: bundled Node running `node_modules/eslint/bin/eslint.js`: passed with 4 existing unused Reviewer warnings in `lib/deep-learn-generation.ts`.
+- Direct relevant tests with bundled Node + `tsx`: `tests/task-output-foundation.test.ts tests/task-output-save.test.ts`: passed, 29/29 tests.
+
+### Live QA result
+
+- Started local Next dev server with bundled Node at `http://127.0.0.1:3000`.
+- Posted the real IT Security assignment shape to `/api/task-output` with only assignment text and weak selected context.
+- Final live result:
+  - `sourceMode`: `general_research_labeled`
+  - `groundingStatus`: `limited`
+  - `readinessStatus`: `ready`
+  - `readinessLabel`: `Output ready`
+  - preview length: about 31k characters
+  - detailed entries detected: 10
+- Confirmed the report includes title, introduction, summary table, 10 detailed entries, overall analysis, lessons learned, recommendations, conclusion, and references.
+- Confirmed the report clearly labels general/background research and references to verify.
+- Confirmed it does not claim the background references are course-provided references.
+- Confirmed it does not leak internal mode labels such as `general_research_labeled`, `course_grounded`, or `source_limited_scaffold` in user-visible output.
+- Confirmed the preview body is not scaffold-like and contains no `research needed`, `fill in`, `to be completed after research`, blank underscore, or placeholder language.
+
+### Known risks
+
+- General/background research content still needs student verification against instructor-approved or library sources before formal submission.
+- The References section intentionally lists background references to verify rather than pretending exact course-provided citations were surfaced.
+- Lint still reports pre-existing unused Reviewer helper warnings only.
+
+### Blockers
+
+- Local command blocker remains: `npm` and `npx` are unavailable on PATH, so verification used direct bundled Node equivalents.
+
+### Next recommended step
+
+Deploy and run one authenticated UI save/export smoke test for this Task Output from the real task page to confirm the saved Study Library artifact and downloaded export preserve the full long report and references.
+
+### Suggested commit message
+
+`qa task output research mode`
 
 ---
 
