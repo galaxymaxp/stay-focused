@@ -1,7 +1,62 @@
 # Stay Focused — AI Session Handoff
 
 Author: galaxymaxp omgraythekid@gmail.com
-Last Updated: 2026-05-27
+Last Updated: 2026-05-31
+
+---
+
+## Session Update - 2026-05-31 (Deep Learn Reviewer Source-Shaped Generation Fix)
+
+### What changed
+
+- **`lib/deep-learn-generation.ts`**
+  - Rewrote `buildSimpleReviewerMarkdownPrompt` with explicit `SOURCE-SHAPED STRUCTURE` rules: follow source outline as H2 headings, no generic bucket headings (References, Definitions, Terminology, etc.), References placed LAST, no fragment headings.
+  - Added 3 new validation reason codes to `ReviewerMarkdownValidationResult` and `validateReviewerMarkdownAgainstSource`: `references_first`, `fragment_headings`, `generic_bucket_headings`.
+  - Reordered validation so new checks fire before `source_structure_ignored`, ensuring specific reasons are returned instead of the generic catch-all.
+  - Added helper functions: `hasReviewerMarkdownReferencesFirst`, `hasReviewerMarkdownFragmentHeadings`, `hasReviewerMarkdownGenericBucketHeadings`, `buildRepairFailureGuidance`.
+  - Exported `ReviewerMarkdownValidationResult`, `buildSimpleReviewerMarkdownPrompt`, and `validateReviewerMarkdownAgainstSource` for testing.
+  - Strengthened `buildSimpleReviewerMarkdownRepairPrompt` with same structural rules.
+
+- **`tests/fixtures/deep-learn-reviewer-sources.ts`**
+  - Added Firewalls fixture (`id: 'firewalls-and-vpns-chapter2'`) with ~130 lines of representative extracted text covering all major chapter sections, 12 best practices, 5 processing-mode types, 3 generations, 4 architectures, and References.
+
+- **`tests/deep-learn-generation.test.ts`**
+  - Added `type SourceOutlineItem` import.
+  - Added 14 Firewalls regression tests covering: outline detection, prompt structure rules, validation acceptance/rejection for references-first, fragment headings, generic buckets, complete best practices list, processing-mode types, architecture types, stale-concept isolation, practice questions, and answer key alignment.
+  - Added `buildGoodFirewallsReviewerMarkdown()` and `buildFirewallsOutlineMatchingGoodMarkdown()` helper functions.
+  - Updated test assertion from `/source-first/i` to `/SOURCE-SHAPED STRUCTURE/i` to match new prompt wording.
+
+### Files touched
+
+- `lib/deep-learn-generation.ts`
+- `tests/fixtures/deep-learn-reviewer-sources.ts`
+- `tests/deep-learn-generation.test.ts`
+- `docs/ai/handoff.md` — this entry
+
+### Why it changed
+
+Deep Learn Reviewer was producing fragmented, glossary-style output with generic bucket headings (References, Definitions, Terminology), References placed first, and sentence-fragment headings like "Based On" or "Allows The Router To Pre". The fix strengthens the LLM prompt with explicit structural constraints and adds validation checks to catch and repair those failure modes.
+
+### Tests run
+
+- Node runtime: `AppData\Local\Temp\node-v22.13.1-win-x64\node-v22.13.1-win-x64\node.exe` (v22.13.1)
+- `tsc --noEmit`: **passed** (no output)
+- `eslint --max-warnings=0` on changed files: **passed** (no output)
+- `tsx --test deep-learn-generation.test.ts`: **103/103 passed, 0 failed**
+- Full suite (deep-learn-generation + study-output-reviewer + study-output-quiz-pack + deep-learn-readiness): **162/162 passed, 0 failed**
+
+### Current product direction
+
+Schedule-first productivity app. Reviewer generation is now source-shaped and validates against source structure. No UI changes in this session.
+
+### Next recommended steps
+
+- Monitor real LLM reviewer output in prod for remaining fragmentation issues
+- Consider raising `getRequiredSourceOutlineItems` confidence threshold or adjusting detection for headings like "Firewall Architectures" and "Best Practices" if sources commonly use those patterns
+
+### Risks / blockers
+
+None. All changes are generation-layer only — no schema, queue, or UI changes.
 
 ---
 

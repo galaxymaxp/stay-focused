@@ -219,6 +219,167 @@ Security is not only a technical issue. People, processes, and technology must w
 `.trim(),
   },
   {
+    id: 'firewalls-and-vpns-chapter2',
+    title: 'Firewalls and VPNs — Chapter 2',
+    sourceType: 'pdf_text',
+    expectedMajorSections: [
+      'Learning Objectives',
+      'Physical Design',
+      'What is a Firewall',
+      'Firewall Categorization',
+      'Types by Processing Mode',
+      'Types by Development Era',
+      'Types by Structure',
+      'Firewall Architectures',
+      'Best Practices for Firewalls',
+      'Practice Questions',
+      'Answer Key',
+    ],
+    notes:
+      'This fixture represents the Firewalls lecture PDF failure: the AI was generating generic bucket sections (References, Definitions, Terminology, Classifications) with broken fragment headings (Based On, Allows The Router To Pre, Firewall Application Running On A General). The reviewer should follow the source outline, preserve all 12 best practices, include all processing-mode types, and generate practice questions grounded in the source.',
+    extractedText: `
+Firewalls & VPNs — Chapter 2
+Network Security: Firewalls and VPN
+
+Learning Objectives
+After completing this chapter, the student should be able to:
+1. Define firewall and describe the function it performs in the network.
+2. Describe how a firewall can be used to reduce the risks of network attacks.
+3. Understand the difference between the types and generations of firewalls.
+4. List and describe various firewall architectures.
+5. Discuss the best practices for implementing firewalls.
+
+Physical Design
+Physical design is the design of actual hardware and software components and the implementation of the logical design. It refers to the physical security, technical controls, and physical design process used to protect the system.
+
+Technical Control
+Technical controls are safeguards built into hardware and software to protect and control the flow of information.
+
+Security Technologies
+Security technologies include firewalls, intrusion detection systems, and encryption devices. These are implemented as part of the overall physical security design.
+
+Physical Security
+Physical security refers to measures used to protect computing hardware and other assets from physical threats such as theft, tampering, or natural disasters. It includes access controls, locks, and surveillance.
+
+Physical Design Process
+The physical design process involves the following steps:
+1. Identify the protection requirements for each component.
+2. Determine which physical security controls are needed.
+3. Evaluate the technical architecture requirements.
+4. Prepare project plans for the implementation of the design.
+5. Review the design with stakeholders for approval.
+6. Implement the physical design controls.
+
+What is a Firewall?
+A firewall is a device or set of devices designed to permit or deny network transmissions based upon a set of rules. It is used to protect networks from unauthorized access while permitting legitimate communications to pass.
+
+Definition
+A firewall examines all traffic routed between two networks to see if it meets certain criteria. If it does, the traffic is routed between the networks; if not, it is stopped.
+
+Possible Firewall Forms
+A firewall can take one of the following forms:
+• A dedicated hardware appliance
+• Software running on a general-purpose computer
+• An application built into a router or switch
+• A virtual firewall running on a hypervisor or cloud platform
+
+Firewall Categorization
+Firewalls can be categorized based on their processing mode, development era, or structure.
+
+Processing Mode
+Firewalls can be classified based on the method they use to filter traffic:
+• Packet filtering
+• Application-level gateways (proxy firewalls)
+• Circuit-level gateways
+• MAC-layer firewalls
+• Hybrids
+
+Development Era
+Firewalls can be categorized by their generation:
+• First generation — Packet filter / Stateless firewall
+• Second generation — Circuit-level / Stateful firewall
+• Third generation — Application firewall / Next-Generation Firewall (NGFW)
+
+Structure
+Firewalls can also be classified by their commercial deployment structure:
+• Commercial grade firewall
+• SOHO (Small Office / Home Office) firewall
+• Residential grade firewall
+
+Types by Processing Mode
+
+Packet Filtering
+A packet-filtering firewall is a network security device that filters packets based on network-layer and transport-layer information. It allows the router to pre-determine which packets to allow through the router. It works by examining the header of each packet and comparing it to a set of predefined rules. It is the simplest and least expensive type of firewall.
+
+Application-Level Gateways / Proxy Firewall
+An application-level gateway (also called a proxy firewall) is a firewall that can filter traffic at the application layer of the OSI model. It acts as an intermediary between users and the services they connect to. It can inspect the content of traffic, not just the headers.
+
+Circuit-Level Gateways
+A circuit-level gateway works at the session layer of the OSI model. It monitors the handshaking between packets to determine whether a requested session is legitimate. It does not inspect the contents of packets passing through it.
+
+MAC-layer Firewalls
+A MAC-layer firewall operates at the data-link layer (Layer 2) of the OSI model. It can be used to restrict access based on MAC addresses of network devices.
+
+Hybrids
+A hybrid firewall combines features of multiple firewall types such as packet filtering and application proxy functions into a single system.
+
+Types by Development Era
+
+First Generation / Packet Filter / Stateless
+First-generation firewalls are stateless packet filters. They examine each packet in isolation based on network-layer information such as source IP, destination IP, and port. They do not maintain state information about connections.
+
+Second Generation / Circuit-Level / Stateful
+Second-generation firewalls are stateful firewalls. They maintain a state table of active connections and use this information to filter packets. A packet is allowed if it is part of an established, known connection.
+
+Third Generation / Application Firewalls / NGFW
+Third-generation firewalls operate at the application layer. They can inspect packet payloads and understand application protocols. Next-generation firewalls (NGFW) may include features such as deep packet inspection, intrusion prevention, SSL inspection, and application awareness.
+
+Types by Structure
+
+Commercial Grade
+A commercial-grade firewall is a high-performance firewall application running on a general-purpose computer. It is used by large enterprises and can handle high volumes of traffic.
+
+SOHO Firewall
+A SOHO (Small Office / Home Office) firewall is a dedicated hardware device designed for smaller environments. It provides basic firewall features suitable for small businesses or home networks.
+
+Residential Grade
+A residential-grade firewall is a firewall built into a home router or gateway device. It is typically a basic packet filter.
+
+Firewall Architectures
+
+Packet Filtering Routers
+A packet-filtering router is the simplest form of firewall architecture. It allows the router to pre-determine which packets to pass and which to block based on filtering rules. It is the first layer of defense in a network.
+
+Screened Host Firewalls
+A screened host firewall is a system using a combination of a packet-filtering router and an application-level gateway (bastion host). Traffic from outside must first pass through the router and then through the bastion host. This provides two layers of protection.
+
+Dual-Homed Firewalls
+A dual-homed firewall uses a host with two network interface cards — one connected to the external network and one to the internal network. It acts as a barrier between the two networks. IP forwarding is disabled so that packets cannot be routed automatically between the two interfaces.
+
+Screened Subnet Firewalls / DMZ
+A screened subnet firewall (also known as a DMZ architecture) adds an additional layer of security by placing a subnet between the external and internal networks. The DMZ contains servers that must be accessible from the outside. This architecture uses two packet-filtering routers and a bastion host.
+
+Best Practices for Firewalls
+The following best practices should be followed when implementing firewalls:
+1. All traffic from the trust network to the untrusted network should pass through the firewall.
+2. Only authorized traffic, as defined by the local security policy, should be allowed to pass.
+3. The firewall itself must be immune to penetration, which implies the use of a hardened system.
+4. Use a firewall system that is designed to withstand attacks.
+5. All components of the firewall should be located within a physically secure area.
+6. Implement the principle of least privilege for all firewall rules.
+7. Keep the firewall software up to date with security patches.
+8. Log all firewall activity and review logs regularly.
+9. Test the firewall rules after implementation to ensure they work as expected.
+10. Back up all firewall configurations and store backups securely.
+11. Perform regular security audits of the firewall configuration.
+12. Establish a process for reviewing and updating firewall rules when network requirements change.
+
+References
+Whitman, M. & Mattord, H. (2021). Principles of Information Security. Cengage Learning.
+Stallings, W. & Brown, L. (2018). Computer Security: Principles and Practice. Pearson.
+`.trim(),
+  },
+  {
     id: 'short-martial-arts-module',
     title: 'Generic Short Physical Education Martial Arts Module',
     sourceType: 'canvas_page',

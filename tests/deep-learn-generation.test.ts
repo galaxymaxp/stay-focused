@@ -32,6 +32,10 @@ import {
   generateLegacyDeepLearnStructuredContentForCompatibility,
   structureAcademicSourceText,
   validateDeepLearnContentReadyForSave,
+  buildSourceOutline,
+  buildSimpleReviewerMarkdownPrompt,
+  validateReviewerMarkdownAgainstSource,
+  type SourceOutlineItem,
 } from '../lib/deep-learn-generation'
 import {
   DEEP_LEARN_REFINEMENT_BAD_SOURCE_MESSAGE,
@@ -2631,7 +2635,7 @@ test('meaningful academic source calls model and saves reviewerMarkdown in simpl
       async (request) => {
         assert.equal(request.schemaName, 'deep_learn_reviewer_classic_markdown')
         assert.equal(request.model, 'gpt-5.4-classic')
-        assert.match(request.promptText, /source-first/i)
+        assert.match(request.promptText, /SOURCE-SHAPED STRUCTURE/i)
         assert.match(request.promptText, /Major source outline/i)
         assert.match(request.promptText, /Return only Markdown/i)
         assert.doesNotMatch(request.promptText, /factCard|answerBank|Generate exactly|coverage-first/i)
@@ -3592,5 +3596,319 @@ function quizTargetItem(index: number) {
     confusionNotes: [],
     relatedConcepts: [],
   }
+}
+
+// ─── Firewalls source-shaped reviewer regression tests ────────────────────────
+
+const FIREWALLS_FIXTURE = reviewerSourceFixtures.find((f) => f.id === 'firewalls-and-vpns-chapter2')!
+
+test('buildSourceOutline detects Firewalls major headings from lecture PDF text', () => {
+  const outline = buildSourceOutline(FIREWALLS_FIXTURE.extractedText)
+  const titles = outline.map((item) => item.title)
+
+  for (const expected of [
+    'Learning Objectives',
+    'Physical Design',
+    'Firewall Categorization',
+    'Processing Mode',
+    'Development Era',
+  ]) {
+    assert.ok(
+      titles.some((t) => t.toLowerCase().includes(expected.toLowerCase())),
+      `outline missing expected heading: ${expected}`,
+    )
+  }
+})
+
+test('buildSourceOutline for Firewalls does not produce fragment outline items', () => {
+  const outline = buildSourceOutline(FIREWALLS_FIXTURE.extractedText)
+  const fragmentPattern = /^(?:based on|allows? the|for the|in the|of the|on the|to the|with the|from the|by the|as the|which|where|when|this|that|these|those|a(?:nd)?|or|the)\b/i
+  const fragments = outline.filter((item) => item.required).filter((item) => {
+    const words = item.title.trim().split(/\s+/)
+    return words.length <= 4 && fragmentPattern.test(item.title)
+  })
+  assert.deepEqual(fragments.map((f) => f.title), [], 'outline contains fragment items')
+})
+
+test('buildSimpleReviewerMarkdownPrompt for Firewalls source includes key structural instructions', () => {
+  const outline = buildSourceOutline(FIREWALLS_FIXTURE.extractedText)
+  const prompt = buildSimpleReviewerMarkdownPrompt({
+    sourceTitle: FIREWALLS_FIXTURE.title,
+    courseName: 'Network Security',
+    moduleName: 'Chapter 2',
+    academicText: FIREWALLS_FIXTURE.extractedText,
+    sourceOutline: outline,
+  })
+
+  assert.match(prompt, /Do NOT use generic bucket headings/i)
+  assert.match(prompt, /References.*LAST|LAST.*References/i)
+  assert.match(prompt, /numbered lists.*full|full.*numbered lists|Reproduce all numbered/i)
+  assert.match(prompt, /Practice Questions/i)
+  assert.match(prompt, /Answer Key/i)
+  assert.match(prompt, /fragment/i)
+  assert.match(prompt, /Best Practices for Firewalls/i)
+})
+
+test('validateReviewerMarkdownAgainstSource accepts a well-formed Firewalls reviewer', () => {
+  const outline = buildFirewallsOutlineMatchingGoodMarkdown()
+  const goodMarkdown = buildGoodFirewallsReviewerMarkdown()
+  const result = validateReviewerMarkdownAgainstSource(goodMarkdown, FIREWALLS_FIXTURE.extractedText, outline)
+
+  assert.equal(result.ok, true, `validation failed with reason: ${result.reason} — ${result.message}`)
+})
+
+test('validateReviewerMarkdownAgainstSource rejects reviewer that starts with References', () => {
+  const outline = buildSourceOutline(FIREWALLS_FIXTURE.extractedText)
+  const badMarkdown = [
+    '## References',
+    'Whitman, M. & Mattord, H. (2021). Principles of Information Security.',
+    '',
+    '## What is a Firewall',
+    'A firewall filters traffic based on rules.',
+    '',
+    '## Best Practices for Firewalls',
+    '1. All traffic must pass through the firewall.',
+    '2. Only authorized traffic is allowed.',
+  ].join('\n')
+
+  const result = validateReviewerMarkdownAgainstSource(badMarkdown, FIREWALLS_FIXTURE.extractedText, outline)
+
+  assert.equal(result.ok, false)
+  assert.equal(result.reason, 'references_first')
+})
+
+test('validateReviewerMarkdownAgainstSource rejects reviewer with fragment headings', () => {
+  const outline = buildSourceOutline(FIREWALLS_FIXTURE.extractedText)
+  const badMarkdown = [
+    '## What is a Firewall',
+    'A firewall filters traffic based on rules.',
+    '',
+    '## Based On',
+    'Packet filtering based on network-layer rules.',
+    '',
+    '## Allows The Router To Pre',
+    'Allows the router to pre-determine which packets to pass.',
+    '',
+    '## In The Network',
+    'Additional context.',
+    '',
+    '## For The Implementation',
+    'Prepare project plans for the implementation.',
+    '',
+    '## Best Practices for Firewalls',
+    '1. All traffic must pass through the firewall.',
+  ].join('\n')
+
+  const result = validateReviewerMarkdownAgainstSource(badMarkdown, FIREWALLS_FIXTURE.extractedText, outline)
+
+  assert.equal(result.ok, false)
+  assert.equal(result.reason, 'fragment_headings')
+})
+
+test('validateReviewerMarkdownAgainstSource rejects reviewer dominated by generic bucket headings', () => {
+  const outline = buildSourceOutline(FIREWALLS_FIXTURE.extractedText)
+  const badMarkdown = [
+    '## Definitions',
+    'A firewall is a device that filters traffic.',
+    '',
+    '## Terminology',
+    'Packet filter, proxy, stateful — key terms.',
+    '',
+    '## Classifications',
+    'Firewalls are classified by processing mode, era, and structure.',
+    '',
+    '## Relationships',
+    'Routers relate to packet filtering.',
+    '',
+    '## Timelines',
+    'First, second, third generation firewalls.',
+    '',
+    '## References',
+    'Whitman, M. & Mattord, H. (2021).',
+  ].join('\n')
+
+  const result = validateReviewerMarkdownAgainstSource(badMarkdown, FIREWALLS_FIXTURE.extractedText, outline)
+
+  assert.equal(result.ok, false)
+  assert.equal(result.reason, 'generic_bucket_headings')
+})
+
+test('validateReviewerMarkdownAgainstSource accepts Firewalls reviewer with References last', () => {
+  const outline = buildFirewallsOutlineMatchingGoodMarkdown()
+  const goodMarkdown = buildGoodFirewallsReviewerMarkdown() + '\n\n## References\nWhitman, M. & Mattord, H. (2021). Principles of Information Security.'
+  const result = validateReviewerMarkdownAgainstSource(goodMarkdown, FIREWALLS_FIXTURE.extractedText, outline)
+
+  assert.equal(result.ok, true, `validation should pass but failed with: ${result.reason} — ${result.message}`)
+})
+
+test('Firewalls reviewer includes all 12 best practices in a well-formed markdown', () => {
+  const goodMarkdown = buildGoodFirewallsReviewerMarkdown()
+
+  for (let i = 1; i <= 12; i++) {
+    assert.match(goodMarkdown, new RegExp(`${i}\\.`), `missing best practice #${i}`)
+  }
+})
+
+test('Firewalls reviewer includes all major processing-mode types in a well-formed markdown', () => {
+  const goodMarkdown = buildGoodFirewallsReviewerMarkdown()
+
+  for (const type of [
+    'Packet Filtering',
+    'Application-Level',
+    'Circuit-Level',
+    'MAC-layer',
+    'Hybrid',
+  ]) {
+    assert.match(goodMarkdown, new RegExp(type, 'i'), `missing processing-mode type: ${type}`)
+  }
+})
+
+test('Firewalls reviewer includes all major architecture types in a well-formed markdown', () => {
+  const goodMarkdown = buildGoodFirewallsReviewerMarkdown()
+
+  for (const arch of [
+    'Packet Filtering Router',
+    'Screened Host',
+    'Dual-Homed',
+    'Screened Subnet',
+  ]) {
+    assert.match(goodMarkdown, new RegExp(arch, 'i'), `missing architecture: ${arch}`)
+  }
+})
+
+test('Firewalls reviewer does not include unrelated stale concepts from other modules', () => {
+  const goodMarkdown = buildGoodFirewallsReviewerMarkdown()
+
+  assert.doesNotMatch(goodMarkdown, /Domains of IT Security/i)
+  assert.doesNotMatch(goodMarkdown, /cybersecurity approach layers/i)
+  assert.doesNotMatch(goodMarkdown, /PATHFit|Arnis|Eskrima/i)
+  assert.doesNotMatch(goodMarkdown, /Methods of Infiltration|Types of Attackers/i)
+})
+
+test('Firewalls reviewer practice questions reference actual firewall material', () => {
+  const goodMarkdown = buildGoodFirewallsReviewerMarkdown()
+  const questionsSection = goodMarkdown.match(/## Practice Questions([\s\S]*?)(?=## Answer Key|$)/i)?.[1] ?? ''
+
+  assert.ok(questionsSection.length > 0, 'Practice Questions section is missing')
+  assert.match(questionsSection, /firewall/i)
+})
+
+test('Firewalls reviewer answer key exists and matches question count', () => {
+  const goodMarkdown = buildGoodFirewallsReviewerMarkdown()
+  const questionsSection = goodMarkdown.match(/## Practice Questions([\s\S]*?)(?=## Answer Key|$)/i)?.[1] ?? ''
+  const answerSection = goodMarkdown.match(/## Answer Key([\s\S]*?)$/i)?.[1] ?? ''
+
+  const questionCount = (questionsSection.match(/^\d+\./gm) ?? []).length
+  const answerCount = (answerSection.match(/^\d+\./gm) ?? []).length
+
+  assert.ok(questionCount > 0, 'No numbered questions found')
+  assert.ok(answerCount > 0, 'No numbered answers found')
+  assert.equal(questionCount, answerCount, `Question count (${questionCount}) does not match answer count (${answerCount})`)
+})
+
+function buildGoodFirewallsReviewerMarkdown() {
+  return [
+    '## Learning Objectives',
+    'After completing this chapter, the student should be able to:',
+    '1. Define firewall and describe the function it performs in the network.',
+    '2. Describe how a firewall can be used to reduce the risks of network attacks.',
+    '3. Understand the difference between the types and generations of firewalls.',
+    '4. List and describe various firewall architectures.',
+    '5. Discuss the best practices for implementing firewalls.',
+    '',
+    '## Physical Design',
+    'Physical design covers the physical security, technical controls, and physical design process.',
+    '',
+    '## What is a Firewall',
+    'A firewall is a device or set of devices designed to permit or deny network transmissions based upon a set of rules.',
+    '',
+    '**Possible Firewall Forms:**',
+    '- A dedicated hardware appliance',
+    '- Software running on a general-purpose computer',
+    '- An application built into a router or switch',
+    '- A virtual firewall running on a hypervisor or cloud platform',
+    '',
+    '## Firewall Categorization',
+    'Firewalls can be categorized by processing mode, development era, or structure.',
+    '',
+    '**Processing Mode:** Packet filtering, Application-Level Gateways, Circuit-Level Gateways, MAC-layer Firewalls, Hybrids.',
+    '',
+    '**Development Era:** First generation (Stateless), Second generation (Stateful), Third generation (Application / NGFW).',
+    '',
+    '**Structure:** Commercial grade, SOHO firewall, Residential grade.',
+    '',
+    '## Types by Processing Mode',
+    '- **Packet Filtering** — examines packet headers against rules; simplest and least expensive.',
+    '- **Application-Level Gateways (Proxy Firewall)** — inspects traffic at the application layer.',
+    '- **Circuit-Level Gateways** — operates at the session layer; monitors TCP handshakes.',
+    '- **MAC-layer Firewalls** — filters based on MAC addresses at Layer 2.',
+    '- **Hybrids** — combine packet filtering and proxy features.',
+    '',
+    '## Types by Development Era',
+    '- **First Generation / Packet Filter / Stateless** — examines each packet in isolation.',
+    '- **Second Generation / Circuit-Level / Stateful** — maintains a state table of active connections.',
+    '- **Third Generation / Application Firewalls / NGFW** — deep packet inspection, application awareness.',
+    '',
+    '## Types by Structure',
+    '- **Commercial Grade** — high-performance firewall application running on a general-purpose computer.',
+    '- **SOHO Firewall** — dedicated hardware for small office / home office environments.',
+    '- **Residential Grade** — firewall built into a home router or gateway device.',
+    '',
+    '## Firewall Architectures',
+    '- **Packet Filtering Routers** — simplest form; router pre-determines which packets to pass.',
+    '- **Screened Host Firewalls** — packet-filtering router plus bastion host; two protection layers.',
+    '- **Dual-Homed Firewalls** — host with two NICs; IP forwarding disabled between interfaces.',
+    '- **Screened Subnet Firewalls / DMZ** — subnet between external and internal networks using two routers.',
+    '',
+    '## Best Practices for Firewalls',
+    '1. All traffic from the trust network to the untrusted network should pass through the firewall.',
+    '2. Only authorized traffic, as defined by the local security policy, should be allowed to pass.',
+    '3. The firewall itself must be immune to penetration, which implies the use of a hardened system.',
+    '4. Use a firewall system that is designed to withstand attacks.',
+    '5. All components of the firewall should be located within a physically secure area.',
+    '6. Implement the principle of least privilege for all firewall rules.',
+    '7. Keep the firewall software up to date with security patches.',
+    '8. Log all firewall activity and review logs regularly.',
+    '9. Test the firewall rules after implementation to ensure they work as expected.',
+    '10. Back up all firewall configurations and store backups securely.',
+    '11. Perform regular security audits of the firewall configuration.',
+    '12. Establish a process for reviewing and updating firewall rules when network requirements change.',
+    '',
+    '## Practice Questions',
+    '1. What is a firewall?',
+    '2. What are the three ways to categorize firewalls?',
+    '3. What is the difference between a stateless and a stateful firewall?',
+    '4. Name the four major firewall architectures.',
+    '5. What does a DMZ architecture provide?',
+    '6. Which type of firewall operates at the session layer?',
+    '7. What is a dual-homed firewall and what makes it secure?',
+    '8. What does the principle of least privilege mean when applied to firewall rules?',
+    '9. List any four of the twelve best practices for implementing firewalls.',
+    '10. What is a next-generation firewall (NGFW)?',
+    '',
+    '## Answer Key',
+    '1. A device or set of devices designed to permit or deny network transmissions based upon a set of rules.',
+    '2. Processing mode, development era, and structure.',
+    '3. A stateless firewall examines each packet in isolation; a stateful firewall maintains a connection state table.',
+    '4. Packet Filtering Routers, Screened Host Firewalls, Dual-Homed Firewalls, Screened Subnet Firewalls (DMZ).',
+    '5. A DMZ adds an additional subnet between the external and internal networks to isolate public-facing servers.',
+    '6. Circuit-Level Gateway.',
+    '7. A host with two NICs connecting two separate networks; IP forwarding is disabled to prevent automatic routing.',
+    '8. Users and rules should have only the permissions needed — no broader access than necessary.',
+    '9. Any four from the twelve listed (e.g., log activity, keep software patched, audit regularly, harden the firewall).',
+    '10. A third-generation firewall with deep packet inspection, intrusion prevention, SSL inspection, and application awareness.',
+  ].join('\n')
+}
+
+function buildFirewallsOutlineMatchingGoodMarkdown(): SourceOutlineItem[] {
+  return [
+    { id: 'o1', title: 'Learning Objectives', normalizedTitle: 'learning objectives', level: 'major', kind: 'objective', confidence: 0.9, required: true, startOffset: 0 },
+    { id: 'o2', title: 'Physical Design', normalizedTitle: 'physical design', level: 'major', kind: 'heading', confidence: 0.85, required: true, startOffset: 100 },
+    { id: 'o3', title: 'Firewall Categorization', normalizedTitle: 'firewall categorization', level: 'major', kind: 'heading', confidence: 0.85, required: true, startOffset: 500 },
+    { id: 'o4', title: 'Types by Processing Mode', normalizedTitle: 'types by processing mode', level: 'major', kind: 'taxonomy', confidence: 0.85, required: true, startOffset: 600 },
+    { id: 'o5', title: 'Types by Development Era', normalizedTitle: 'types by development era', level: 'major', kind: 'taxonomy', confidence: 0.85, required: true, startOffset: 700 },
+    { id: 'o6', title: 'Firewall Architectures', normalizedTitle: 'firewall architectures', level: 'major', kind: 'heading', confidence: 0.85, required: true, startOffset: 900 },
+    { id: 'o7', title: 'Best Practices for Firewalls', normalizedTitle: 'best practices for firewalls', level: 'major', kind: 'taxonomy', confidence: 0.85, required: true, startOffset: 1200 },
+  ]
 }
 

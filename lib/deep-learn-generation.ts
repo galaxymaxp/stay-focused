@@ -732,7 +732,7 @@ interface ClassicReviewerMarkdownResult {
   validation: ReviewerMarkdownValidationResult
 }
 
-interface ReviewerMarkdownValidationResult {
+export interface ReviewerMarkdownValidationResult {
   ok: boolean
   reason: 'ok'
     | 'empty'
@@ -744,6 +744,9 @@ interface ReviewerMarkdownValidationResult {
     | 'source_structure_ignored'
     | 'source_heading_order'
     | 'lost_exact_terms'
+    | 'references_first'
+    | 'fragment_headings'
+    | 'generic_bucket_headings'
   message: string | null
   outlineRequiredCount: number
   outlineCoveredCount: number
@@ -948,7 +951,7 @@ async function requestClassicReviewerMarkdown(input: {
   return response
 }
 
-function buildSimpleReviewerMarkdownPrompt(input: {
+export function buildSimpleReviewerMarkdownPrompt(input: {
   sourceTitle: string
   courseName: string
   moduleName: string
@@ -957,13 +960,34 @@ function buildSimpleReviewerMarkdownPrompt(input: {
 }) {
   const outline = formatReviewerSourceOutlineForPrompt(input.sourceOutline)
   return [
-    'You are creating a student study guide from the selected academic source. Use only the selected source text below.',
-    'Organize the Reviewer source-first: follow the selected source order, keep academically meaningful major source headings in the same relative order, and write under those headings before adding practice questions.',
-    'Preserve exact academic terms, acronyms, laws, formulas, named processes, classifications, and list item names from the source. Do not replace them with broad tutor paraphrases.',
-    'Format as clean Markdown study-guide prose with headings, bullets, definitions, enumerations, compare/distinguish notes, practice questions, and an answer key when useful. Do not create card grids, answer-bank-first output, JSON, tables of flashcards, or structured/card labels.',
-    'Never include UUIDs, file IDs, file names as content, debug labels, extraction/OCR quality notes, model names, internal mode names, metadata-only text, refusal text, prompt instructions, course metadata, module metadata, or task context as study content.',
+    'You are creating a student exam reviewer from the selected academic source below.',
+    'Use ONLY the selected source text. Do not add outside information.',
     '',
-    'Major source outline to preserve when academically meaningful:',
+    'SOURCE-SHAPED STRUCTURE (required):',
+    '- Follow the major source outline items provided exactly — use those as your H2 section headings.',
+    '- Do NOT invent or rearrange sections. Do NOT collapse multiple source sections into one heading.',
+    '- Do NOT use generic bucket headings like "References", "Definitions", "Terminology", "Relationships", "Classifications", "Timelines", "Glossary", or "Overview" as top-level H2 sections unless the source itself uses them as a primary section.',
+    '- If the source has a References section, place it LAST after practice questions — never first.',
+    '- Do NOT create headings from sentence fragments or chopped phrases. Every H2 heading must be a complete academic topic name (e.g., "What is a Firewall", "Best Practices for Firewalls"), not a partial sentence.',
+    '',
+    'PRESERVE ALL NUMBERED AND BULLETED LISTS COMPLETELY:',
+    '- Reproduce all numbered lists in full: learning objectives, process steps, best practices, classification lists, architecture lists, type lists.',
+    '- Do not abbreviate or truncate a numbered list. If the source has 12 best practices, the reviewer must include all 12.',
+    '- For each firewall type, processing mode, development era, architecture, or classification, include the full list from the source.',
+    '',
+    'EXAM REVIEWER FORMAT:',
+    '- Write under source headings first: organized notes, definitions, comparisons, full lists.',
+    '- Include a "Practice Questions" section grounded in the actual source content: identification, multiple choice, and short answer.',
+    '- Include a complete "Answer Key" matching the practice questions.',
+    '- Do not include stale course metadata, unrelated module topics, or concepts not found in the selected source text.',
+    '',
+    'FORBIDDEN:',
+    '- Do not output JSON, card grids, flashcard tables, or structured/card labels.',
+    '- Do not include UUIDs, file IDs, file names, debug labels, extraction notes, model names, internal mode names, or metadata.',
+    '- Do not create headings from chopped source fragments like "Based On", "Allows The Router To Pre", or "Application Running On A General".',
+    '- Do not include sections about topics not present in the selected source text.',
+    '',
+    'Major source outline to follow (these become your H2 headings in order):',
     outline || '- Use the source paragraphs in their original order.',
     '',
     'Return only Markdown. Do not return JSON.',
@@ -980,14 +1004,20 @@ function buildSimpleReviewerMarkdownRepairPrompt(input: {
   failure: ReviewerMarkdownValidationResult
 }) {
   const outline = formatReviewerSourceOutlineForPrompt(input.sourceOutline)
+  const failureGuidance = buildRepairFailureGuidance(input.failure.reason)
   return [
-    'Repair the previous Markdown Reviewer. Return a clean Markdown Reviewer only.',
-    `Fix this validation failure: ${input.failure.reason}.`,
-    'Keep the output source-first, preserve the source heading order, and keep exact academic terms from the selected source.',
-    'Remove all UUIDs, file IDs, file names used as content, debug labels, extraction/OCR notes, model/internal mode names, metadata-only text, refusal text, and prompt/internal labels.',
-    'Do not return JSON, cards, grids, answer-bank labels, or structured generation fields.',
+    'Repair the previous Markdown Reviewer. Return a complete, clean Markdown Reviewer only.',
+    `Fix this validation failure: ${input.failure.reason}. ${failureGuidance}`,
+    'Use the source outline below as your H2 sections in order. Do not invent headings from sentence fragments.',
+    'Do not use generic bucket headings (References, Definitions, Terminology, Glossary, Overview, Relationships) as top-level sections.',
+    'If the source has References, place them LAST after practice questions.',
+    'Reproduce all numbered lists in full — do not truncate best practices, learning objectives, or type lists.',
+    'Include a Practice Questions section and a complete Answer Key grounded in the source.',
+    'Do not include topics not present in the selected source text.',
+    'Remove all UUIDs, file IDs, debug labels, extraction notes, model names, metadata-only text, and internal labels.',
+    'Do not return JSON, cards, grids, or structured generation fields.',
     '',
-    'Major source outline to preserve:',
+    'Source outline (H2 headings to follow in order):',
     outline || '- Use the source paragraphs in their original order.',
     '',
     'Previous weak Markdown Reviewer:',
@@ -996,6 +1026,15 @@ function buildSimpleReviewerMarkdownRepairPrompt(input: {
     'Selected academic source text:',
     input.academicText,
   ].join('\n')
+}
+
+function buildRepairFailureGuidance(reason: ReviewerMarkdownValidationResult['reason']) {
+  if (reason === 'references_first') return 'Move References to the end, after Practice Questions.'
+  if (reason === 'fragment_headings') return 'Replace all fragment headings with complete academic topic names taken from the source outline.'
+  if (reason === 'generic_bucket_headings') return 'Replace generic bucket sections (Definitions, Terminology, Classifications, Timelines, Relationships) with the actual source section headings.'
+  if (reason === 'source_structure_ignored') return 'Restructure around the source outline headings provided.'
+  if (reason === 'lost_exact_terms') return 'Restore the exact academic terms, type names, and numbered list items from the source.'
+  return 'Follow the source outline strictly and reproduce all numbered lists in full.'
 }
 
 function formatReviewerSourceOutlineForPrompt(outline: SourceOutlineItem[]) {
@@ -1072,7 +1111,7 @@ function sanitizeReviewerMarkdown(value: string, sourceTitle?: string | null) {
     .trim()
 }
 
-function validateReviewerMarkdownAgainstSource(
+export function validateReviewerMarkdownAgainstSource(
   markdown: string,
   sourceText: string,
   outline: SourceOutlineItem[],
@@ -1087,6 +1126,15 @@ function validateReviewerMarkdownAgainstSource(
   }
   if (/\b[\w .()[\]-]{2,80}\.(?:pdf|docx?|pptx?|xlsx?|txt|html?)\b/i.test(markdown.replace(/^#\s*Reviewer:[^\n]+/im, ''))) {
     return { ...base, ok: false, reason: 'file_name_as_content', message: 'Reviewer Markdown used a file name as study content.' }
+  }
+  if (hasReviewerMarkdownReferencesFirst(markdown)) {
+    return { ...base, ok: false, reason: 'references_first', message: 'Reviewer Markdown placed References as the first section. References must come last.' }
+  }
+  if (hasReviewerMarkdownGenericBucketHeadings(markdown)) {
+    return { ...base, ok: false, reason: 'generic_bucket_headings', message: 'Reviewer Markdown uses generic bucket sections instead of source-shaped headings.' }
+  }
+  if (hasReviewerMarkdownFragmentHeadings(markdown)) {
+    return { ...base, ok: false, reason: 'fragment_headings', message: 'Reviewer Markdown contains broken fragment headings from chopped source text.' }
   }
 
   const covered = required.filter((item) => markdownMentionsOutlineItem(markdown, item))
@@ -1198,6 +1246,32 @@ function hasReviewerMarkdownRefusalText(markdown: string) {
 function hasReviewerMarkdownMetadataLeakage(markdown: string) {
   return /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/i.test(markdown)
     || /\b(?:extraction quality|source text quality|grounding strategy|metadata-only|metadata only|visual extraction|ocr quality|ocr confidence|debug label|file id|uuid|diagnostics?)\b/i.test(markdown)
+}
+
+function hasReviewerMarkdownReferencesFirst(markdown: string) {
+  const firstH2 = markdown.match(/^##\s+(.+)$/m)
+  if (!firstH2) return false
+  return /^references?\s*$/i.test(firstH2[1]!.trim())
+}
+
+function hasReviewerMarkdownFragmentHeadings(markdown: string) {
+  const h2Lines = [...markdown.matchAll(/^##\s+(.+)$/gm)].map((m) => m[1]!.trim())
+  if (h2Lines.length === 0) return false
+  const fragmentPattern = /^(?:based on|allows? the|for the|in the|of the|on the|to the|with the|from the|by the|as the|which|where|when|this|that|these|those|its|their|a(?:nd)?|or|the)\b/i
+  const wordCountThreshold = 5
+  const fragments = h2Lines.filter((heading) => {
+    const wordCount = heading.trim().split(/\s+/).length
+    return wordCount <= wordCountThreshold && fragmentPattern.test(heading)
+  })
+  return fragments.length >= 2 || (h2Lines.length >= 4 && fragments.length / h2Lines.length >= 0.3)
+}
+
+function hasReviewerMarkdownGenericBucketHeadings(markdown: string) {
+  const h2Lines = [...markdown.matchAll(/^##\s+(.+)$/gm)].map((m) => m[1]!.trim())
+  if (h2Lines.length < 4) return false
+  const genericBuckets = /^(?:references?|definitions?|terminology|glossary|relationships?|classifications?|timelines?|overview|introduction|summary|background|concepts?|notes?|terms?)$/i
+  const genericCount = h2Lines.filter((heading) => genericBuckets.test(heading)).length
+  return genericCount >= 3 || genericCount / h2Lines.length >= 0.5
 }
 
 async function generateOnePassReviewerContent(
