@@ -1039,7 +1039,7 @@ function buildRepairFailureGuidance(reason: ReviewerMarkdownValidationResult['re
 
 function formatReviewerSourceOutlineForPrompt(outline: SourceOutlineItem[]) {
   return getRequiredSourceOutlineItems(outline)
-    .slice(0, 16)
+    .slice(0, 32)
     .map((item, index) => `${index + 1}. ${item.title}`)
     .join('\n')
 }
@@ -1116,7 +1116,7 @@ export function validateReviewerMarkdownAgainstSource(
   sourceText: string,
   outline: SourceOutlineItem[],
 ): ReviewerMarkdownValidationResult {
-  const required = getRequiredSourceOutlineItems(outline).slice(0, 16)
+  const required = getRequiredSourceOutlineItems(outline).slice(0, 32)
   const base = buildReviewerMarkdownValidationResult('ok', null, required, required.filter((item) => markdownMentionsOutlineItem(markdown, item)), [])
   if (!markdown.trim()) return { ...base, ok: false, reason: 'empty', message: 'Reviewer Markdown was empty.' }
   if (hasReviewerMarkdownRefusalText(markdown)) return { ...base, ok: false, reason: 'refusal_text', message: 'Reviewer Markdown included refusal text.' }
@@ -2203,14 +2203,15 @@ export function buildSourceOutline(sourceText: string): SourceOutlineItem[] {
 
   for (const list of structured.lists) {
     const offset = findSourceOffsetForTitle(sourceText, list.heading) ?? findSourceOffsetForTitle(sourceText, list.items[0] ?? '')
+    const isSyntheticCatchAllList = /^key academic items$/i.test(list.heading)
     addItem({
       title: list.heading,
-      level: list.items.length >= 3 ? 'major' : 'supporting',
+      level: list.items.length >= 3 && !isSyntheticCatchAllList ? 'major' : 'supporting',
       kind: classifySourceOutlineKind(list.heading) === 'procedure' ? 'procedure' : 'taxonomy',
-      confidence: list.items.length >= 3 ? 0.9 : 0.78,
+      confidence: list.items.length >= 3 && !isSyntheticCatchAllList ? 0.9 : 0.74,
       startOffset: offset,
       endOffset: offset == null ? undefined : Math.min(sourceText.length, offset + 1200),
-      required: list.items.length >= 3,
+      required: list.items.length >= 3 && !isSyntheticCatchAllList,
     })
   }
 
@@ -2245,7 +2246,7 @@ export function buildSourceOutline(sourceText: string): SourceOutlineItem[] {
 
   return items
     .sort((left, right) => (left.startOffset ?? Number.MAX_SAFE_INTEGER) - (right.startOffset ?? Number.MAX_SAFE_INTEGER) || right.confidence - left.confidence)
-    .slice(0, 24)
+    .slice(0, 64)
 }
 
 function buildStudyCompilerChunkPlan(sourceText: string, outline: SourceOutlineItem[]) {
@@ -6027,10 +6028,12 @@ function scoreAcademicHeadings(
         heading: canonicalizeAcademicHeading(group.heading) ?? group.heading,
         confidence: group.lines.length > 0 ? 0.72 : 0.58,
       })),
-    ...lists.map((list) => ({
-      heading: canonicalizeAcademicHeading(list.heading) ?? list.heading,
-      confidence: list.items.length >= 3 ? 0.92 : 0.82,
-    })),
+    ...lists
+      .filter((list) => !/^key academic items$/i.test(list.heading))
+      .map((list) => ({
+        heading: canonicalizeAcademicHeading(list.heading) ?? list.heading,
+        confidence: list.items.length >= 3 ? 0.92 : 0.82,
+      })),
   ]
 
   for (const candidate of candidates) {
@@ -6116,7 +6119,7 @@ function cleanupListItem(value: string) {
 
 function normalizeListHeading(heading: string, items: string[]) {
   const joined = items.join(' ')
-  if (/brute[-\s]?force|network sniffing|social engineering|password/i.test(joined)) {
+  if (/password/i.test(joined) && /brute[-\s]?force|network\s+sniffing/i.test(joined)) {
     return 'Password Cracking Methods'
   }
   if (/confidentiality|integrity|availability/i.test(joined)) return 'CIA Triad'

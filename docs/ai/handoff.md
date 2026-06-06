@@ -1,7 +1,74 @@
 # Stay Focused — AI Session Handoff
 
 Author: galaxymaxp omgraythekid@gmail.com
-Last Updated: 2026-05-31
+Last Updated: 2026-06-06
+
+---
+
+## Session Update - 2026-06-06 (Reviewer Markdown QA and Source Outline Hardening)
+
+### What changed
+
+- Ran local deterministic markdown Reviewer QA across:
+  - long lecture/PDF-style source: `multi-phase-systems-analysis`
+  - bullet-heavy module/source: `taxonomy-heavy-security`
+  - Firewalls/VPNs-style source: `firewalls-and-vpns-chapter2`
+- Hardened `lib/deep-learn-generation.ts` so active markdown Reviewer source outlines:
+  - keep more source-outline items available to the prompt/validator (`32` required items from a `64` item outline cap)
+  - do not synthesize stale `Password Cracking Methods` from scattered generic `password` / `social engineering` mentions
+  - do not promote synthetic `Key Academic Items` catch-all lists into required student-facing H2 headings
+  - preserve later Firewalls sections such as `Best Practices for Firewalls`
+- Added focused regression coverage in `tests/deep-learn-generation.test.ts`.
+- Added `/outputs` to `.gitignore` and removed the existing untracked `outputs/` folder after inspection. It was a stale generated production snapshot (`firewall.htm` plus bundled assets), not source input, and it caused lint to scan generated JS.
+- Did not change Task Output, cron/resource refresh/OCR behavior, hover explanations, or structured/card/answerBank-first Reviewer generation.
+
+### Files touched
+
+- `.gitignore`
+- `lib/deep-learn-generation.ts`
+- `tests/deep-learn-generation.test.ts`
+- `docs/ai/handoff.md`
+
+### Why it changed
+
+The QA pass found two source-outline quality risks that could weaken current markdown Reviewer output: a stale synthesized `Password Cracking Methods` heading in a generic security source, and a synthetic `Key Academic Items` catch-all that could interfere with source-order validation. The Firewalls source also needed later sections like Best Practices to stay within the prompt/validation outline instead of being crowded out by early subheadings.
+
+### Tests run
+
+- `npm` / `npx`: unavailable on PATH. Used bundled Node runtime:
+  `C:\Users\Fely Max Dilinila\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe` (`v24.14.0`)
+- Local three-source Reviewer QA harness via `node node_modules/tsx/dist/cli.cjs -e <script>`: **passed**
+  - verified source order, source-shaped H2s, References last, exact terms/lists/classifications, no card/grid output, no metadata/debug/internal/stale leakage
+- `node node_modules/typescript/bin/tsc --noEmit`: **passed**
+- `node node_modules/eslint/bin/eslint.js --max-warnings=0 .`: **passed**
+  - first attempt failed only because untracked `outputs/` generated assets were still present; after removing `outputs/`, lint passed
+- `node node_modules/tsx/dist/cli.cjs --test tests/deep-learn-generation.test.ts`: **104/104 passed**
+- `node node_modules/tsx/dist/cli.cjs --test tests/deep-learn-generation.test.ts tests/study-output-reviewer.test.ts tests/study-output-quiz-pack.test.ts tests/queue.test.ts`: **211/211 passed**
+
+### Verification result
+
+- Current markdown Reviewer path remains active; structured/card/answerBank-first generation was not reintroduced.
+- The Firewalls source outline now retains later required sections, including `Best Practices for Firewalls`.
+- Generic security fixtures no longer get stale `Password Cracking Methods` headings unless the source actually includes method items such as brute-force or network sniffing.
+- Synthetic catch-all lists no longer become required student-facing Reviewer headings.
+
+### Known risks
+
+- Live deployed/authenticated model generation was not run because no `OPENAI_API_KEY` was available in the shell. QA used deterministic local source fixtures and validation logic.
+- Widening prompt/validation outline caps may ask models to follow more H2s for dense sources. This is intentional for coverage, but real model output should still be watched for over-granular headings.
+
+### Blockers
+
+- `npm` and `npx` remain unavailable on PATH.
+- No local OpenAI credentials were available for a true live model call.
+
+### Next recommended step
+
+Run one deployed authenticated Reviewer generation after deploy for the Firewalls PDF and one dense security module, then inspect the saved markdown for section order, Best Practices coverage, References last, and absence of stale headings.
+
+### Suggested commit message
+
+`harden reviewer source outlines`
 
 ---
 

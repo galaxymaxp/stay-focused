@@ -3612,12 +3612,31 @@ test('buildSourceOutline detects Firewalls major headings from lecture PDF text'
     'Firewall Categorization',
     'Processing Mode',
     'Development Era',
+    'Best Practices for Firewalls',
   ]) {
     assert.ok(
       titles.some((t) => t.toLowerCase().includes(expected.toLowerCase())),
       `outline missing expected heading: ${expected}`,
     )
   }
+  assert.ok(
+    outline.filter((item) => item.required).every((item) => !/Key Academic Items/i.test(item.title)),
+    'synthetic catch-all list should not become a required Reviewer heading',
+  )
+})
+
+test('buildSourceOutline does not invent password-cracking headings for generic security terms', () => {
+  const fixture = reviewerSourceFixtures.find((f) => f.id === 'taxonomy-heavy-security')!
+  const outline = buildSourceOutline(fixture.extractedText)
+  const titles = outline.map((item) => item.title)
+
+  assert.ok(titles.some((title) => /CIA Triad/i.test(title)))
+  assert.ok(titles.some((title) => /Threats And Attacks/i.test(title)))
+  assert.ok(titles.some((title) => /Security Practices And Controls/i.test(title)))
+  assert.ok(
+    titles.every((title) => !/Password Cracking Methods/i.test(title)),
+    'outline should not synthesize stale password-cracking methods from scattered password/social-engineering mentions',
+  )
 })
 
 test('buildSourceOutline for Firewalls does not produce fragment outline items', () => {
